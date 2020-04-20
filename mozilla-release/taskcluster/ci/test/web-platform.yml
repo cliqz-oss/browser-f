@@ -77,11 +77,9 @@ web-platform-tests:
         extra-options:
             - --test-type=testharness
 
-web-platform-tests-reftests:
+web-platform-tests-reftest:
     description: "Web platform reftest run"
-    suite:
-        name: web-platform-tests-reftests
-    schedules-component: web-platform-tests-reftests
+    schedules-component: web-platform-tests-reftest
     treeherder-symbol: W(Wr)
     virtualization:
         by-test-platform:
@@ -152,11 +150,9 @@ web-platform-tests-wdspec-headless:
                     - --setpref=toolkit.asyncshutdown.log=true
                     - --headless
 
-web-platform-tests-crashtests:
+web-platform-tests-crashtest:
     description: "Web platform crashtests run"
-    suite:
-        name: web-platform-tests-crashtests
-    schedules-component: web-platform-tests-crashtests
+    schedules-component: web-platform-tests-crashtest
     treeherder-symbol: W(Wc)
     chunks: 1
     mozharness:
@@ -183,11 +179,11 @@ test-verify-wpt:
     max-run-time: 10800
     run-on-projects:
         by-test-platform:
-            # do not run on ccov
+            # do not run on ccov or asan
             .*-ccov/.*: []
             .*-asan/.*: []
-            (?:windows10-64|windows7-32|linux.*64)(?:-qr)?/opt: ['mozilla-central', 'try']
-            macosx.*64(?:-qr)?/opt: ['mozilla-central', 'try']
+            # where shippable is available, do not run on plain opt, except on try
+            (?:windows10-64|windows7-32|linux1804-64|macosx.*64)(?:-qr)?/opt: ['try']
             # do not run on beta or release: usually just confirms earlier results
             default: ['autoland', 'try']
     tier: 2

@@ -127,11 +127,6 @@ const ActorRegistry = {
       constructor: "PreferenceActor",
       type: { global: true },
     });
-    this.registerModule("devtools/server/actors/actor-registry", {
-      prefix: "actorRegistry",
-      constructor: "ActorRegistryActor",
-      type: { global: true },
-    });
     this.registerModule("devtools/server/actors/addon/addons", {
       prefix: "addons",
       constructor: "AddonsActor",
@@ -278,9 +273,8 @@ const ActorRegistry = {
   /**
    * Registers handlers for new target-scoped request types defined dynamically.
    *
-   * Note that the name or actorPrefix of the request type is not allowed to clash with
-   * existing protocol packet properties, like 'title', 'url' or 'actor', since that would
-   * break the protocol.
+   * Note that the name of the request type is not allowed to clash with existing protocol
+   * packet properties, like 'title', 'url' or 'actor', since that would break the protocol.
    *
    * @param options object
    *        - constructorName: (required)
@@ -350,9 +344,8 @@ const ActorRegistry = {
   /**
    * Registers handlers for new browser-scoped request types defined dynamically.
    *
-   * Note that the name or actorPrefix of the request type is not allowed to clash with
-   * existing protocol packet properties, like 'from', 'tabs' or 'selected', since that
-   * would break the protocol.
+   * Note that the name of the request type is not allowed to clash with existing protocol
+   * packet properties, like 'from', 'tabs' or 'selected', since that would break the protocol.
    *
    * @param options object
    *        - constructorName: (required)

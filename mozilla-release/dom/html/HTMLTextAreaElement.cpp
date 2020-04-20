@@ -107,8 +107,8 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLTextAreaElement,
 nsresult HTMLTextAreaElement::Clone(dom::NodeInfo* aNodeInfo,
                                     nsINode** aResult) const {
   *aResult = nullptr;
-  RefPtr<HTMLTextAreaElement> it =
-      new HTMLTextAreaElement(do_AddRef(aNodeInfo));
+  RefPtr<HTMLTextAreaElement> it = new (aNodeInfo->NodeInfoManager())
+      HTMLTextAreaElement(do_AddRef(aNodeInfo));
 
   nsresult rv = const_cast<HTMLTextAreaElement*>(this)->CopyInnerTo(it);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1112,7 +1112,7 @@ void HTMLTextAreaElement::InitializeKeyboardEventListeners() {
   mState->InitializeKeyboardEventListeners();
 }
 
-void HTMLTextAreaElement::OnValueChanged(bool aNotify, ValueChangeKind aKind) {
+void HTMLTextAreaElement::OnValueChanged(ValueChangeKind aKind) {
   if (aKind != ValueChangeKind::Internal) {
     mLastValueChangeWasInteractive = aKind == ValueChangeKind::UserInteraction;
   }
@@ -1123,9 +1123,8 @@ void HTMLTextAreaElement::OnValueChanged(bool aNotify, ValueChangeKind aKind) {
   UpdateTooShortValidityState();
   UpdateValueMissingValidityState();
 
-  if (validBefore != IsValid() ||
-      HasAttr(kNameSpaceID_None, nsGkAtoms::placeholder)) {
-    UpdateState(aNotify);
+  if (validBefore != IsValid() || HasAttr(nsGkAtoms::placeholder)) {
+    UpdateState(true);
   }
 }
 

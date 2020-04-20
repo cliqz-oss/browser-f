@@ -178,18 +178,31 @@ impl<'ctx> ClientStream<'ctx> {
             data.token, data.platform_handles
         );
 
-        let stream = unsafe { audioipc::MessageStream::from_raw_fd(data.platform_handles[0].into_raw()) };
+        let stream =
+            unsafe { audioipc::MessageStream::from_raw_fd(data.platform_handles[0].into_raw()) };
 
         let input_file = unsafe { data.platform_handles[1].into_file() };
         let input_shm = if has_input {
-            Some(SharedMemSlice::from(&input_file, audioipc::SHM_AREA_SIZE).unwrap())
+            match SharedMemSlice::from(&input_file, audioipc::SHM_AREA_SIZE) {
+                Ok(shm) => Some(shm),
+                Err(e) => {
+                    debug!("Client failed to set up input shmem: {}", e);
+                    return Err(Error::error());
+                }
+            }
         } else {
             None
         };
 
         let output_file = unsafe { data.platform_handles[2].into_file() };
         let output_shm = if has_output {
-            Some(SharedMemMutSlice::from(&output_file, audioipc::SHM_AREA_SIZE).unwrap())
+            match SharedMemMutSlice::from(&output_file, audioipc::SHM_AREA_SIZE) {
+                Ok(shm) => Some(shm),
+                Err(e) => {
+                    debug!("Client failed to set up output shmem: {}", e);
+                    return Err(Error::error());
+                }
+            }
         } else {
             None
         };

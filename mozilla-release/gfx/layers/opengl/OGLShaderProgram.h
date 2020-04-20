@@ -11,6 +11,7 @@
 #include "OGLShaderConfig.h"
 
 #include <string>
+#include <utility>
 
 namespace mozilla {
 namespace layers {
@@ -48,7 +49,7 @@ struct ProgramProfileOGL {
   std::string mFragmentShaderString;
 
   // the vertex attributes
-  nsTArray<Pair<nsCString, GLuint>> mAttributes;
+  nsTArray<std::pair<nsCString, GLuint>> mAttributes;
 
   KnownUniform mUniforms[KnownUniform::KnownUniformCount];
   nsTArray<const char*> mDefines;
@@ -207,7 +208,7 @@ class ShaderProgramOGL {
     SetUniform(KnownUniform::BackdropTexture, aUnit);
   }
 
-  void SetRenderColor(const gfx::Color& aColor) {
+  void SetRenderColor(const gfx::DeviceColor& aColor) {
     SetUniform(KnownUniform::RenderColor, aColor);
   }
 
@@ -278,7 +279,7 @@ class ShaderProgramOGL {
   }
 
   void SetUniform(KnownUniform::KnownUniformName aKnownUniform,
-                  const gfx::Color& aColor) {
+                  const gfx::DeviceColor& aColor) {
     ASSERT_THIS_PROGRAM;
     NS_ASSERTION(
         aKnownUniform >= 0 && aKnownUniform < KnownUniform::KnownUniformCount,

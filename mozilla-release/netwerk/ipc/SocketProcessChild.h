@@ -42,6 +42,8 @@ class SocketProcessChild final
       const bool& minimizeMemoryUsage,
       const Maybe<mozilla::ipc::FileDescriptor>& DMDFile);
   mozilla::ipc::IPCResult RecvSetOffline(const bool& aOffline);
+  mozilla::ipc::IPCResult RecvInitLinuxSandbox(
+      const Maybe<ipc::FileDescriptor>& aBrokerFd);
   mozilla::ipc::IPCResult RecvInitSocketProcessBridgeParent(
       const ProcessId& aContentProcessId,
       Endpoint<mozilla::net::PSocketProcessBridgeParent>&& aEndpoint);
@@ -78,6 +80,9 @@ class SocketProcessChild final
   already_AddRefed<PInputChannelThrottleQueueChild>
   AllocPInputChannelThrottleQueueChild(const uint32_t& aMeanBytesPerSecond,
                                        const uint32_t& aMaxBytesPerSecond);
+
+  already_AddRefed<PAltSvcTransactionChild> AllocPAltSvcTransactionChild(
+      const HttpConnectionInfoCloneArgs& aConnInfo, const uint32_t& aCaps);
 
   bool IsShuttingDown() { return mShuttingDown; }
 

@@ -65,6 +65,8 @@ class nsLocalFile final : public nsILocalFileWin {
   bool mResolveDirty;
   bool mFollowSymlinks;  // should we follow symlinks when working on this file
 
+  bool mUseDOSDevicePathSyntax;
+
   // this string will always be in native format!
   nsString mWorkingPath;
 
@@ -83,6 +85,9 @@ class nsLocalFile final : public nsILocalFileWin {
     mResolveDirty = true;
     mShortWorkingPath.Truncate();
   }
+
+  nsresult LookupExtensionIn(const char* const* aExtensionsArray,
+                             size_t aArrayLength, bool* aResult);
 
   nsresult ResolveAndStat();
   nsresult Resolve();

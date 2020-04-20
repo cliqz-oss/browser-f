@@ -135,6 +135,19 @@ class CookieJarSettings final : public nsICookieJarSettings {
   // internal state and it must be sent beck to the content process.
   bool HasBeenChanged() const { return mToBeMerged; }
 
+  void UpdateIsOnContentBlockingAllowList(nsIChannel* aChannel);
+
+  // Utility function to test if the passed cookiebahvior is
+  // BEHAVIOR_REJECT_TRACKER, BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN or
+  // BEHAVIOR_REJECT_FOREIGN when
+  // network.cookie.rejectForeignWithExceptions.enabled pref is set to true.
+  static bool IsRejectThirdPartyContexts(uint32_t aCookieBehavior);
+
+  // This static method returns true if aCookieBehavior is
+  // BEHAVIOR_REJECT_FOREIGN and
+  // network.cookie.rejectForeignWithExceptions.enabled pref is set to true.
+  static bool IsRejectThirdPartyWithExceptions(uint32_t aCookieBehavior);
+
  private:
   enum State {
     // No cookie permissions are allowed to be stored in this object.
@@ -150,6 +163,7 @@ class CookieJarSettings final : public nsICookieJarSettings {
 
   uint32_t mCookieBehavior;
   CookiePermissionList mCookiePermissions;
+  bool mIsOnContentBlockingAllowList;
 
   State mState;
 

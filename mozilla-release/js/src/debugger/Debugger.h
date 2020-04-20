@@ -440,11 +440,7 @@ using Env = JSObject;
 
 // The referent of a Debugger.Script.
 //
-// - For most scripts, we point at their LazyScript, because that address
-//   doesn't change as the script is lazified/delazified.
-//
-// - For scripts that cannot be lazified, and thus have no LazyScript, we point
-//   directly to their JSScript.
+// - For most scripts, we point at their BaseScript.
 //
 // - For Web Assembly instances for which we are presenting a script-like
 //   interface, we point at their WasmInstanceObject.
@@ -956,6 +952,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
 
   JSObject* getHook(Hook hook) const;
   bool hasAnyLiveHooks() const;
+  inline bool isHookCallAllowed(JSContext* cx) const;
 
   static void slowPathPromiseHook(JSContext* cx, Hook hook,
                                   Handle<PromiseObject*> promise);
@@ -972,6 +969,10 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
 
   template <typename RunImpl /* bool () */>
   MOZ_MUST_USE bool enterDebuggerHook(JSContext* cx, RunImpl runImpl) {
+    if (!isHookCallAllowed(cx)) {
+      return true;
+    }
+
     AutoRealm ar(cx, object);
 
     if (!runImpl()) {
@@ -1181,6 +1182,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
    */
   MOZ_MUST_USE bool getFrame(JSContext* cx, const FrameIter& iter,
                              MutableHandleValue vp);
+  MOZ_MUST_USE bool getFrame(JSContext* cx, MutableHandleDebuggerFrame result);
   MOZ_MUST_USE bool getFrame(JSContext* cx, const FrameIter& iter,
                              MutableHandleDebuggerFrame result);
   MOZ_MUST_USE bool getFrame(JSContext* cx,
@@ -1294,7 +1296,7 @@ class DebuggerDebuggeeLink : public NativeObject {
  * js::gc::MemoryUse categories.
  */
 struct Handler {
-  virtual ~Handler() {}
+  virtual ~Handler() = default;
 
   /*
    * If this Handler is a reference to a callable JSObject, return that
@@ -1378,8 +1380,8 @@ class BreakpointSite {
   BreakpointList breakpoints;
 
  protected:
-  BreakpointSite(){};
-  virtual ~BreakpointSite() {}
+  BreakpointSite() = default;
+  virtual ~BreakpointSite() = default;
   void finalize(JSFreeOp* fop);
   virtual gc::Cell* owningCell() = 0;
 

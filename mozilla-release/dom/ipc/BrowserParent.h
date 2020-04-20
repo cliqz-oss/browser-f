@@ -317,7 +317,7 @@ class BrowserParent final : public PBrowserParent,
       const uint32_t& aEvent, const RequestData& aRequestData,
       const bool aBlocked, const nsACString& aTrackingOrigin,
       nsTArray<nsCString>&& aTrackingFullHashes,
-      const Maybe<mozilla::AntiTrackingCommon::StorageAccessGrantedReason>&
+      const Maybe<mozilla::ContentBlockingNotifier::StorageAccessGrantedReason>&
           aReason);
 
   mozilla::ipc::IPCResult RecvNavigationFinished();
@@ -340,7 +340,8 @@ class BrowserParent final : public PBrowserParent,
       const nsTArray<CollectedInputDataValue>& aXPathVals,
       nsTArray<nsCString>&& aOrigins, nsTArray<nsString>&& aKeys,
       nsTArray<nsString>&& aValues, const bool aIsFullStorage,
-      const uint32_t& aFlushId, const bool& aIsFinal, const uint32_t& aEpoch);
+      const bool aNeedCollectSHistory, const uint32_t& aFlushId,
+      const bool& aIsFinal, const uint32_t& aEpoch);
 
   mozilla::ipc::IPCResult RecvBrowserFrameOpenWindow(
       PBrowserParent* aOpener, const nsString& aURL, const nsString& aName,
@@ -429,7 +430,8 @@ class BrowserParent final : public PBrowserParent,
       const bool& aIsVertical, const LayoutDeviceIntPoint& aPoint);
 
   mozilla::ipc::IPCResult RecvEnableDisableCommands(
-      const nsString& aAction, nsTArray<nsCString>&& aEnabledCommands,
+      const MaybeDiscarded<BrowsingContext>& aContext, const nsString& aAction,
+      nsTArray<nsCString>&& aEnabledCommands,
       nsTArray<nsCString>&& aDisabledCommands);
 
   mozilla::ipc::IPCResult RecvSetCursor(
@@ -737,7 +739,13 @@ class BrowserParent final : public PBrowserParent,
                           uint32_t aPresShellId);
   void StopApzAutoscroll(nsViewID aScrollId, uint32_t aPresShellId);
 
-  void SetDestroyingForProcessSwitch() { mIsDestroyingForProcessSwitch = true; }
+  // Suspend nsIWebProgressListener events until after the next STATE_START
+  // onStateChange. This is used to block STATE_STOP events from the old process
+  // when process switching away, as well as the initial about:blank and
+  // STATE_START from the new process.
+  void SuspendProgressEventsUntilAfterNextLoadStarts() {
+    mSuspendedProgressEvents = true;
+  }
 
  protected:
   friend BrowserBridgeParent;
@@ -778,14 +786,14 @@ class BrowserParent final : public PBrowserParent,
   mozilla::ipc::IPCResult RecvSetSystemFont(const nsCString& aFontName);
   mozilla::ipc::IPCResult RecvGetSystemFont(nsCString* aFontName);
 
-  mozilla::ipc::IPCResult RecvVisitURI(const URIParams& aURI,
-                                       const Maybe<URIParams>& aLastVisitedURI,
+  mozilla::ipc::IPCResult RecvVisitURI(nsIURI* aURI, nsIURI* aLastVisitedURI,
                                        const uint32_t& aFlags);
 
-  mozilla::ipc::IPCResult RecvQueryVisitedState(nsTArray<URIParams>&& aURIs);
+  mozilla::ipc::IPCResult RecvQueryVisitedState(
+      const nsTArray<RefPtr<nsIURI>>&& aURIs);
 
   mozilla::ipc::IPCResult RecvMaybeFireEmbedderLoadEvents(
-      bool aIsTrusted, bool aFireLoadAtEmbeddingElement);
+      bool aFireLoadAtEmbeddingElement);
 
  private:
   void SuppressDisplayport(bool aEnabled);
@@ -852,6 +860,21 @@ class BrowserParent final : public PBrowserParent,
   static BrowserParent* UpdateFocus();
 
   void OnSubFrameCrashed();
+
+  struct APZData {
+    bool operator==(const APZData& aOther) {
+      return aOther.guid == guid && aOther.blockId == blockId &&
+             aOther.apzResponse == apzResponse;
+    }
+
+    bool operator!=(const APZData& aOther) { return !(*this == aOther); }
+
+    ScrollableLayerGuid guid;
+    uint64_t blockId;
+    nsEventStatus apzResponse;
+  };
+  void SendRealTouchMoveEvent(WidgetTouchEvent& aEvent, APZData& aAPZData,
+                              uint32_t aConsecutiveTouchMoveCount);
 
  public:
   // Unsets sTopLevelWebFocus regardless of its current value.
@@ -985,10 +1008,11 @@ class BrowserParent final : public PBrowserParent,
   // mouse event and the BrowserChild is ready.
   bool mIsMouseEnterIntoWidgetEventSuppressed : 1;
 
-  // Set to true if we're currently in the middle of replacing this
-  // BrowserParent with a new one connected to a different process, and we
-  // should ignore nsIWebProgressListener stop requests.
-  bool mIsDestroyingForProcessSwitch : 1;
+  // Set to true if we're currently suspending nsIWebProgress events.
+  // We keep suspending until we get a STATE_START onStateChange event
+  // (for something that isn't the initial about:blank) and then start
+  // allowing future events.
+  bool mSuspendedProgressEvents : 1;
 };
 
 struct MOZ_STACK_CLASS BrowserParent::AutoUseNewTab final {

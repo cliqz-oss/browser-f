@@ -11,10 +11,10 @@
 #include "mozilla/IntegerRange.h"
 #include "mozilla/ReentrancyGuard.h"
 #include "mozilla/ScopeExit.h"
-#include "mozilla/TypeTraits.h"
 #include "mozilla/Unused.h"
 
 #include <algorithm>
+#include <type_traits>
 
 #include "jsfriendapi.h"
 
@@ -57,7 +57,6 @@ using JS::MapTypeToTraceKind;
 
 using mozilla::DebugOnly;
 using mozilla::IntegerRange;
-using mozilla::IsSame;
 using mozilla::PodCopy;
 
 // [SMDOC] GC Tracing
@@ -249,9 +248,8 @@ void js::CheckTracedThing(JSTracer* trc, T* thing) {
   MOZ_ASSERT_IF(!isClearEdgesTracer, !zone->usedByHelperThread());
 
   MOZ_ASSERT(thing->isAligned());
-  MOZ_ASSERT(
-      MapTypeToTraceKind<typename mozilla::RemovePointer<T>::Type>::kind ==
-      thing->getTraceKind());
+  MOZ_ASSERT(MapTypeToTraceKind<std::remove_pointer_t<T>>::kind ==
+             thing->getTraceKind());
 
   if (isGcMarkingTracer) {
     GCMarker* gcMarker = GCMarker::fromTracer(trc);
@@ -698,11 +696,10 @@ void js::TraceGCCellPtrRoot(JSTracer* trc, JS::GCCellPtr* thingp,
 // a sufficiently smart C++ compiler may be able to devirtualize some paths.
 template <typename T>
 bool js::gc::TraceEdgeInternal(JSTracer* trc, T* thingp, const char* name) {
-#define IS_SAME_TYPE_OR(name, type, _, _1) mozilla::IsSame<type*, T>::value ||
+#define IS_SAME_TYPE_OR(name, type, _, _1) std::is_same_v<type*, T> ||
   static_assert(JS_FOR_EACH_TRACEKIND(IS_SAME_TYPE_OR)
-                        mozilla::IsSame<T, JS::Value>::value ||
-                    mozilla::IsSame<T, jsid>::value ||
-                    mozilla::IsSame<T, TaggedProto>::value,
+                        std::is_same_v<T, JS::Value> ||
+                    std::is_same_v<T, jsid> || std::is_same_v<T, TaggedProto>,
                 "Only the base cell layout types are allowed into "
                 "marking/tracing internals");
 #undef IS_SAME_TYPE_OR
@@ -783,6 +780,10 @@ void GCMarker::markImplicitEdgesHelper(T markedThing) {
     return;
   }
   WeakEntryVector& markables = p->value;
+
+  // markedThing might be a key in a debugger weakmap, which can end up marking
+  // values that are in a different compartment.
+  AutoClearTracingSource acts(this);
 
   markEphemeronValues(markedThing, markables);
   markables.clear();  // If key address is reused, it should do nothing
@@ -1116,18 +1117,6 @@ void BaseScript::traceChildren(JSTracer* trc) {
 
     if (hasDebugScript()) {
       DebugAPI::traceDebugScript(trc, script);
-    }
-  }
-
-  // Trace the edge to our twin. Note that it will have the opposite type of
-  // current script.
-  if (isLazyScript()) {
-    if (trc->traceWeakEdges()) {
-      TraceNullableEdge(trc, &u.script_, "script");
-    }
-  } else {
-    if (u.lazyScript) {
-      TraceManuallyBarrieredEdge(trc, &u.lazyScript, "lazyScript");
     }
   }
 
@@ -3524,7 +3513,7 @@ size_t js::TenuringTracer::moveBigIntToTenured(JS::BigInt* dst, JS::BigInt* src,
 
 template <typename T>
 static inline void CheckIsMarkedThing(T* thingp) {
-#define IS_SAME_TYPE_OR(name, type, _, _1) mozilla::IsSame<type*, T>::value ||
+#define IS_SAME_TYPE_OR(name, type, _, _1) std::is_same_v<type*, T> ||
   static_assert(JS_FOR_EACH_TRACEKIND(IS_SAME_TYPE_OR) false,
                 "Only the base cell layout types are allowed into "
                 "marking/tracing internals");

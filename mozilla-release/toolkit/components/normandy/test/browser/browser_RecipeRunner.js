@@ -289,27 +289,25 @@ decorate_task(
       filter_expression: "true",
     };
 
-    const rsCollection = await RecipeRunner._remoteSettingsClientForTesting.openCollection();
-    await rsCollection.clear();
+    const db = await RecipeRunner._remoteSettingsClientForTesting.db;
+    await db.clear();
     const fakeSig = { signature: "abc" };
-    await rsCollection.create(
-      { id: "match", recipe: matchRecipe, signature: fakeSig },
-      { synced: true }
-    );
-    await rsCollection.create(
-      { id: "noMatch", recipe: noMatchRecipe, signature: fakeSig },
-      { synced: true }
-    );
-    await rsCollection.create(
-      { id: "missing", recipe: missingRecipe, signature: fakeSig },
-      { synced: true }
-    );
-    await rsCollection.db.saveLastModified(42);
-    rsCollection.db.close();
+    await db.create({ id: "match", recipe: matchRecipe, signature: fakeSig });
+    await db.create({
+      id: "noMatch",
+      recipe: noMatchRecipe,
+      signature: fakeSig,
+    });
+    await db.create({
+      id: "missing",
+      recipe: missingRecipe,
+      signature: fakeSig,
+    });
+    await db.saveLastModified(42);
 
-    let recipesFromRS = (await RecipeRunner._remoteSettingsClientForTesting.get()).map(
-      ({ recipe, signature }) => recipe
-    );
+    let recipesFromRS = (
+      await RecipeRunner._remoteSettingsClientForTesting.get()
+    ).map(({ recipe, signature }) => recipe);
     // Sort the records by id so that they match the order in the assertion
     recipesFromRS.sort((a, b) => a.id - b.id);
     Assert.deepEqual(
@@ -367,19 +365,20 @@ decorate_task(
       capabilities: ["incompatible"],
     };
 
-    const rsCollection = await RecipeRunner._remoteSettingsClientForTesting.openCollection();
-    await rsCollection.clear();
+    const db = await RecipeRunner._remoteSettingsClientForTesting.db;
+    await db.clear();
     const fakeSig = { signature: "abc" };
-    await rsCollection.create(
-      { id: "match", recipe: compatibleRecipe, signature: fakeSig },
-      { synced: true }
-    );
-    await rsCollection.create(
-      { id: "noMatch", recipe: incompatibleRecipe, signature: fakeSig },
-      { synced: true }
-    );
-    await rsCollection.db.saveLastModified(42);
-    rsCollection.db.close();
+    await db.create({
+      id: "match",
+      recipe: compatibleRecipe,
+      signature: fakeSig,
+    });
+    await db.create({
+      id: "noMatch",
+      recipe: incompatibleRecipe,
+      signature: fakeSig,
+    });
+    await db.saveLastModified(42);
 
     await RecipeRunner.run();
 

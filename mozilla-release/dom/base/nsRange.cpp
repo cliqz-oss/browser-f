@@ -217,7 +217,7 @@ static void MarkDescendants(nsINode* aNode) {
   // aNode's descendants unless aNode is already marked as a range common
   // ancestor or a descendant of one, in which case all of our descendants have
   // the bit set already.
-  if (!aNode->IsSelectionDescendant()) {
+  if (!aNode->IsMaybeSelected()) {
     // don't set the Descendant bit on |aNode| itself
     nsINode* node = aNode->GetNextNode(aNode);
     while (node) {
@@ -549,7 +549,7 @@ void nsRange::ContentAppended(nsIContent* aFirstNewContent) {
 
   nsINode* container = aFirstNewContent->GetParentNode();
   MOZ_ASSERT(container);
-  if (container->IsSelectionDescendant() && IsInSelection()) {
+  if (container->IsMaybeSelected() && IsInSelection()) {
     nsINode* child = aFirstNewContent;
     while (child) {
       if (!child
@@ -601,7 +601,7 @@ void nsRange::ContentInserted(nsIContent* aChild) {
     updateBoundaries = true;
   }
 
-  if (container->IsSelectionDescendant() &&
+  if (container->IsMaybeSelected() &&
       !aChild
            ->IsDescendantOfClosestCommonInclusiveAncestorForRangeInSelection()) {
     MarkDescendants(aChild);
@@ -683,7 +683,7 @@ void nsRange::ContentRemoved(nsIContent* aChild, nsIContent* aPreviousSibling) {
   MOZ_ASSERT(mStart.Ref() != aChild);
   MOZ_ASSERT(mEnd.Ref() != aChild);
 
-  if (container->IsSelectionDescendant() &&
+  if (container->IsMaybeSelected() &&
       aChild
           ->IsDescendantOfClosestCommonInclusiveAncestorForRangeInSelection()) {
     aChild
@@ -930,32 +930,33 @@ static int32_t IndexOf(nsINode* aChild) {
   return parent ? parent->ComputeIndexOf(aChild) : -1;
 }
 
-void nsRange::SetSelection(mozilla::dom::Selection* aSelection) {
-  if (mSelection == aSelection) {
+void nsRange::RegisterSelection(Selection& aSelection) {
+  // A range can belong to at most one Selection instance.
+  MOZ_ASSERT(!mSelection);
+
+  if (mSelection == &aSelection) {
     return;
   }
 
-  // At least one of aSelection and mSelection must be null
-  // aSelection will be null when we are removing from a selection
-  // and a range can't be in more than one selection at a time,
-  // thus mSelection must be null too.
-  MOZ_ASSERT(!aSelection || !mSelection);
-
-  // Extra step in case our parent failed to ensure the above
-  // invariant.
-  RefPtr<nsRange> range{this};
-  if (aSelection && mSelection) {
-    RefPtr<Selection> selection{mSelection};
+  // Extra step in case our parent failed to ensure the above precondition.
+  if (mSelection) {
+    const RefPtr<nsRange> range{this};
+    const RefPtr<Selection> selection{mSelection};
     selection->RemoveRangeAndUnselectFramesAndNotifyListeners(*range,
                                                               IgnoreErrors());
   }
 
-  mSelection = aSelection;
-  if (mSelection) {
-    nsINode* commonAncestor = GetClosestCommonInclusiveAncestor();
-    NS_ASSERTION(commonAncestor, "unexpected disconnected nodes");
-    RegisterClosestCommonInclusiveAncestor(commonAncestor);
-  } else if (mRegisteredClosestCommonInclusiveAncestor) {
+  mSelection = &aSelection;
+
+  nsINode* commonAncestor = GetClosestCommonInclusiveAncestor();
+  MOZ_ASSERT(commonAncestor, "unexpected disconnected nodes");
+  RegisterClosestCommonInclusiveAncestor(commonAncestor);
+}
+
+void nsRange::UnregisterSelection() {
+  mSelection = nullptr;
+
+  if (mRegisteredClosestCommonInclusiveAncestor) {
     UnregisterClosestCommonInclusiveAncestor(
         mRegisteredClosestCommonInclusiveAncestor, false);
     MOZ_DIAGNOSTIC_ASSERT(
@@ -1592,7 +1593,8 @@ nsresult nsRange::CutContents(DocumentFragment** aFragment) {
   // If aFragment isn't null, create a temporary fragment to hold our return.
   RefPtr<DocumentFragment> retval;
   if (aFragment) {
-    retval = new DocumentFragment(doc->NodeInfoManager());
+    retval =
+        new (doc->NodeInfoManager()) DocumentFragment(doc->NodeInfoManager());
   }
   nsCOMPtr<nsINode> commonCloneAncestor = retval.get();
 
@@ -2021,7 +2023,7 @@ already_AddRefed<DocumentFragment> nsRange::CloneContents(ErrorResult& aRv) {
   // which might be null
 
   RefPtr<DocumentFragment> clonedFrag =
-      new DocumentFragment(doc->NodeInfoManager());
+      new (doc->NodeInfoManager()) DocumentFragment(doc->NodeInfoManager());
 
   if (Collapsed()) {
     return clonedFrag.forget();

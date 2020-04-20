@@ -6,8 +6,6 @@ use super::utils::{
     ComponentSubType, PropertyScope, Scope,
 };
 use super::*;
-use std::any::Any;
-use std::fmt::Debug;
 
 // make_sized_audio_channel_layout
 // ------------------------------------
@@ -117,7 +115,7 @@ fn test_minimum_resampling_input_frames() {
 
     let frames = 100;
     let times = input_rate / output_rate;
-    let expected = (frames as f64 * times).ceil() as i64;
+    let expected = (frames as f64 * times).ceil() as usize;
 
     assert_eq!(
         minimum_resampling_input_frames(input_rate, output_rate, frames),
@@ -985,81 +983,6 @@ fn test_create_audiounit_with_unknown_scope() {
     let _unit = create_audiounit(&device);
 }
 
-// create_auto_array
-// ------------------------------------
-#[test]
-fn test_create_auto_array() {
-    let buffer_f32 = [3.1_f32, 4.1, 5.9, 2.6, 5.35];
-    let buffer_i16 = [13_i16, 21, 34, 55, 89, 144];
-
-    // Test if the stream latency frame is 4096
-    test_create_auto_array_impl(&buffer_f32, 4096);
-    test_create_auto_array_impl(&buffer_i16, 4096);
-}
-
-#[test]
-#[should_panic]
-fn test_create_auto_array_with_zero_latency_f32() {
-    let buffer_f32 = [3.1_f32, 4.1, 5.9, 2.6, 5.35];
-    test_create_auto_array_impl(&buffer_f32, 0);
-}
-
-#[test]
-#[should_panic]
-fn test_create_auto_array_with_zero_latency_i16() {
-    let buffer_i16 = [13_i16, 21, 34, 55, 89, 144];
-    test_create_auto_array_impl(&buffer_i16, 0);
-}
-
-fn test_create_auto_array_impl<T: Any + Debug + PartialEq>(buffer: &[T], latency: u32) {
-    const CHANNEL: u32 = 2;
-    const BUF_CAPACITY: usize = 1;
-
-    let type_id = std::any::TypeId::of::<T>();
-    let format = if type_id == std::any::TypeId::of::<f32>() {
-        kAudioFormatFlagIsFloat
-    } else if type_id == std::any::TypeId::of::<i16>() {
-        kAudioFormatFlagIsSignedInteger
-    } else {
-        panic!("Unsupported type!");
-    };
-
-    let mut desc = AudioStreamBasicDescription::default();
-    desc.mFormatFlags |= format;
-    desc.mChannelsPerFrame = CHANNEL;
-
-    let mut array = create_auto_array(desc, latency, BUF_CAPACITY).unwrap();
-    array.push(buffer.as_ptr() as *const c_void, buffer.len());
-    assert_eq!(array.elements(), buffer.len());
-    let data = array.as_ptr() as *const T;
-    for (idx, item) in buffer.iter().enumerate() {
-        unsafe {
-            assert_eq!(*data.add(idx), *item);
-        }
-    }
-}
-
-#[test]
-#[should_panic]
-fn test_create_auto_array_with_empty_audiodescription() {
-    let desc = AudioStreamBasicDescription::default();
-    assert_eq!(
-        create_auto_array(desc, 256, 1).unwrap_err(),
-        Error::invalid_format()
-    );
-}
-
-#[test]
-fn test_create_auto_array_with_invalid_audiodescription() {
-    let mut desc = AudioStreamBasicDescription::default();
-    desc.mFormatFlags |= kAudioFormatFlagIsBigEndian;
-    desc.mChannelsPerFrame = 100;
-    assert_eq!(
-        create_auto_array(desc, 256, 1).unwrap_err(),
-        Error::invalid_format()
-    );
-}
-
 // clamp_latency
 // ------------------------------------
 #[test]
@@ -1340,6 +1263,7 @@ fn test_get_device_presentation_latency() {
 }
 
 // create_cubeb_device_info
+// destroy_cubeb_device_info
 // ------------------------------------
 #[test]
 fn test_create_cubeb_device_info() {
@@ -1355,24 +1279,22 @@ fn test_create_cubeb_device_info() {
             let mut results = test_create_device_infos_by_device(device);
             assert_eq!(results.len(), 2);
             // Input device type:
+            let input_result = results.pop_front().unwrap();
             if is_input {
-                check_device_info_by_device(
-                    results.pop_front().unwrap().unwrap(),
-                    device,
-                    Scope::Input,
-                );
+                let mut input_device_info = input_result.unwrap();
+                check_device_info_by_device(&input_device_info, device, Scope::Input);
+                destroy_cubeb_device_info(&mut input_device_info);
             } else {
-                assert_eq!(results.pop_front().unwrap().unwrap_err(), Error::error());
+                assert_eq!(input_result.unwrap_err(), Error::error());
             }
             // Output device type:
+            let output_result = results.pop_front().unwrap();
             if is_output {
-                check_device_info_by_device(
-                    results.pop_front().unwrap().unwrap(),
-                    device,
-                    Scope::Output,
-                );
+                let mut output_device_info = output_result.unwrap();
+                check_device_info_by_device(&output_device_info, device, Scope::Output);
+                destroy_cubeb_device_info(&mut output_device_info);
             } else {
-                assert_eq!(results.pop_front().unwrap().unwrap_err(), Error::error());
+                assert_eq!(output_result.unwrap_err(), Error::error());
             }
         } else {
             println!("No device for {:?}.", scope);
@@ -1390,13 +1312,14 @@ fn test_create_cubeb_device_info() {
         results
     }
 
-    fn check_device_info_by_device(info: ffi::cubeb_device_info, id: AudioObjectID, scope: Scope) {
+    fn check_device_info_by_device(info: &ffi::cubeb_device_info, id: AudioObjectID, scope: Scope) {
         assert!(!info.devid.is_null());
         assert!(mem::size_of_val(&info.devid) >= mem::size_of::<AudioObjectID>());
         assert_eq!(info.devid as AudioObjectID, id);
         assert!(!info.device_id.is_null());
         assert!(!info.friendly_name.is_null());
-        assert_eq!(info.group_id, info.device_id);
+        assert!(!info.group_id.is_null());
+
         // TODO: Hit a kAudioHardwareUnknownPropertyError for AirPods
         // assert!(!info.vendor_name.is_null());
 
@@ -1453,6 +1376,25 @@ fn test_create_device_info_with_unknown_type() {
 }
 
 #[test]
+#[should_panic]
+fn test_device_destroy_empty_device() {
+    let mut device = ffi::cubeb_device_info::default();
+
+    assert!(device.device_id.is_null());
+    assert!(device.group_id.is_null());
+    assert!(device.friendly_name.is_null());
+    assert!(device.vendor_name.is_null());
+
+    // `friendly_name` must be set.
+    destroy_cubeb_device_info(&mut device);
+
+    assert!(device.device_id.is_null());
+    assert!(device.group_id.is_null());
+    assert!(device.friendly_name.is_null());
+    assert!(device.vendor_name.is_null());
+}
+
+#[test]
 fn test_create_device_from_hwdev_with_inout_type() {
     test_create_device_from_hwdev_with_inout_type_by_scope(Scope::Input);
     test_create_device_from_hwdev_with_inout_type_by_scope(Scope::Output);
@@ -1484,71 +1426,6 @@ fn test_is_aggregate_device() {
     let non_aggregate_name_cstring = CString::new("Hello World!").unwrap();
     info.friendly_name = non_aggregate_name_cstring.as_ptr();
     assert!(!is_aggregate_device(&info));
-}
-
-// device_destroy
-// ------------------------------------
-#[test]
-fn test_device_destroy() {
-    let mut device = ffi::cubeb_device_info::default();
-
-    let device_id = CString::new("test: device id").unwrap();
-    let friendly_name = CString::new("test: friendly name").unwrap();
-    let vendor_name = CString::new("test: vendor name").unwrap();
-
-    device.device_id = device_id.into_raw();
-    // The group_id is a mirror to device_id in our implementation, so we could skip it.
-    device.group_id = device.device_id;
-    device.friendly_name = friendly_name.into_raw();
-    device.vendor_name = vendor_name.into_raw();
-
-    audiounit_device_destroy(&mut device);
-
-    assert!(device.device_id.is_null());
-    assert!(device.group_id.is_null());
-    assert!(device.friendly_name.is_null());
-    assert!(device.vendor_name.is_null());
-}
-
-#[test]
-#[should_panic]
-fn test_device_destroy_with_different_device_id_and_group_id() {
-    let mut device = ffi::cubeb_device_info::default();
-
-    let device_id = CString::new("test: device id").unwrap();
-    let group_id = CString::new("test: group id").unwrap();
-    let friendly_name = CString::new("test: friendly name").unwrap();
-    let vendor_name = CString::new("test: vendor name").unwrap();
-
-    device.device_id = device_id.into_raw();
-    device.group_id = group_id.into_raw();
-    device.friendly_name = friendly_name.into_raw();
-    device.vendor_name = vendor_name.into_raw();
-
-    audiounit_device_destroy(&mut device);
-    // Hit the assertion above, so we will leak some memory allocated for the above cstring.
-
-    assert!(device.device_id.is_null());
-    assert!(device.group_id.is_null());
-    assert!(device.friendly_name.is_null());
-    assert!(device.vendor_name.is_null());
-}
-
-#[test]
-fn test_device_destroy_empty_device() {
-    let mut device = ffi::cubeb_device_info::default();
-
-    assert!(device.device_id.is_null());
-    assert!(device.group_id.is_null());
-    assert!(device.friendly_name.is_null());
-    assert!(device.vendor_name.is_null());
-
-    audiounit_device_destroy(&mut device);
-
-    assert!(device.device_id.is_null());
-    assert!(device.group_id.is_null());
-    assert!(device.friendly_name.is_null());
-    assert!(device.vendor_name.is_null());
 }
 
 // get_devices_of_type

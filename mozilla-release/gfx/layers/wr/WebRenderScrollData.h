@@ -18,7 +18,6 @@
 #include "mozilla/layers/LayerAttributes.h"
 #include "mozilla/layers/LayersMessageUtils.h"
 #include "mozilla/layers/FocusTarget.h"
-#include "mozilla/layers/RenderRootBoundary.h"
 #include "mozilla/layers/WebRenderMessageUtils.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "mozilla/HashTable.h"
@@ -97,17 +96,6 @@ class WebRenderLayerScrollData final {
   void SetReferentId(LayersId aReferentId) { mReferentId = Some(aReferentId); }
   Maybe<LayersId> GetReferentId() const { return mReferentId; }
 
-  void SetReferentRenderRoot(RenderRootBoundary aBoundary) {
-    mReferentRenderRoot = Some(aBoundary);
-  }
-  Maybe<RenderRootBoundary> GetReferentRenderRoot() const {
-    return mReferentRenderRoot;
-  }
-  void SetBoundaryRoot(RenderRootBoundary aBoundary) {
-    mBoundaryRoot = Some(aBoundary);
-  }
-  Maybe<RenderRootBoundary> GetBoundaryRoot() const { return mBoundaryRoot; }
-
   void SetScrollbarData(const ScrollbarData& aData) { mScrollbarData = aData; }
   const ScrollbarData& GetScrollbarData() const { return mScrollbarData; }
   void SetScrollbarAnimationId(const uint64_t& aId) {
@@ -177,8 +165,6 @@ class WebRenderLayerScrollData final {
   // (0, 0).
   LayerIntSize mRemoteDocumentSize;
   Maybe<LayersId> mReferentId;
-  Maybe<RenderRootBoundary> mReferentRenderRoot;
-  Maybe<RenderRootBoundary> mBoundaryRoot;
   EventRegionsOverride mEventRegionsOverride;
   ScrollbarData mScrollbarData;
   Maybe<uint64_t> mScrollbarAnimationId;
@@ -270,10 +256,6 @@ class WebRenderScrollData final {
 namespace IPC {
 
 template <>
-struct ParamTraits<mozilla::layers::RenderRootBoundary>
-    : public PlainOldDataSerializer<mozilla::layers::RenderRootBoundary> {};
-
-template <>
 struct ParamTraits<mozilla::layers::WebRenderLayerScrollData> {
   typedef mozilla::layers::WebRenderLayerScrollData paramType;
 
@@ -286,8 +268,6 @@ struct ParamTraits<mozilla::layers::WebRenderLayerScrollData> {
     WriteParam(aMsg, aParam.mVisibleRegion);
     WriteParam(aMsg, aParam.mRemoteDocumentSize);
     WriteParam(aMsg, aParam.mReferentId);
-    WriteParam(aMsg, aParam.mReferentRenderRoot);
-    WriteParam(aMsg, aParam.mBoundaryRoot);
     WriteParam(aMsg, aParam.mEventRegionsOverride);
     WriteParam(aMsg, aParam.mScrollbarData);
     WriteParam(aMsg, aParam.mScrollbarAnimationId);
@@ -309,8 +289,6 @@ struct ParamTraits<mozilla::layers::WebRenderLayerScrollData> {
            ReadParam(aMsg, aIter, &aResult->mVisibleRegion) &&
            ReadParam(aMsg, aIter, &aResult->mRemoteDocumentSize) &&
            ReadParam(aMsg, aIter, &aResult->mReferentId) &&
-           ReadParam(aMsg, aIter, &aResult->mReferentRenderRoot) &&
-           ReadParam(aMsg, aIter, &aResult->mBoundaryRoot) &&
            ReadParam(aMsg, aIter, &aResult->mEventRegionsOverride) &&
            ReadParam(aMsg, aIter, &aResult->mScrollbarData) &&
            ReadParam(aMsg, aIter, &aResult->mScrollbarAnimationId) &&

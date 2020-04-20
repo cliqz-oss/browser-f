@@ -22,13 +22,14 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
+#include <type_traits>
 
 #include "jsapi.h"
 #include "jsnum.h"
 #include "jstypes.h"
 
 #include "frontend/BytecodeCompiler.h"
-#include "frontend/SourceNotes.h"
+#include "frontend/SourceNotes.h"  // SrcNote, SrcNoteType, SrcNoteIterator
 #include "gc/PublicIterators.h"
 #include "js/CharacterEncoding.h"
 #include "js/Printf.h"
@@ -187,15 +188,12 @@ bool js::DumpRealmPCCounts(JSContext* cx) {
   Rooted<GCVector<JSScript*>> scripts(cx, GCVector<JSScript*>(cx));
   for (auto base = cx->zone()->cellIter<BaseScript>(); !base.done();
        base.next()) {
-    if (base->isLazyScript()) {
+    if (base->realm() != cx->realm()) {
       continue;
     }
-    JSScript* script = base->asJSScript();
-    if (script->realm() != cx->realm()) {
-      continue;
-    }
-    if (script->hasScriptCounts()) {
-      if (!scripts.append(script)) {
+    MOZ_ASSERT_IF(base->hasScriptCounts(), base->hasBytecode());
+    if (base->hasScriptCounts()) {
+      if (!scripts.append(base->asJSScript())) {
         return false;
       }
     }
@@ -294,7 +292,7 @@ struct OffsetAndDefIndex {
 namespace mozilla {
 
 template <>
-struct IsPod<OffsetAndDefIndex> : TrueType {};
+struct IsPod<OffsetAndDefIndex> : std::true_type {};
 
 }  // namespace mozilla
 
@@ -695,6 +693,8 @@ uint32_t BytecodeParser::simulateOp(JSOp op, uint32_t offset,
     case JSOp::SetLocal:
     case JSOp::InitAliasedLexical:
     case JSOp::IterNext:
+    case JSOp::CheckLexical:
+    case JSOp::CheckAliasedLexical:
       // Keep the top value.
       MOZ_ASSERT(nuses == 1);
       MOZ_ASSERT(ndefs == 1);
@@ -909,15 +909,15 @@ bool BytecodeParser::parse() {
         // by a thrown exception but is not caught by a later handler in the
         // same function: no more code will execute, and it does not matter what
         // is defined.
-        for (const JSTryNote& tn : script_->trynotes()) {
+        for (const TryNote& tn : script_->trynotes()) {
           if (tn.start == offset + JSOpLength_Try) {
             uint32_t catchOffset = tn.start + tn.length;
-            if (tn.kind == JSTRY_CATCH) {
+            if (tn.kind() == TryNoteKind::Catch) {
               if (!addJump(catchOffset, stackDepth, offsetStack, pc,
                            JumpKind::TryCatch)) {
                 return false;
               }
-            } else if (tn.kind == JSTRY_FINALLY) {
+            } else if (tn.kind() == TryNoteKind::Finally) {
               if (!addJump(catchOffset, stackDepth, offsetStack, pc,
                            JumpKind::TryFinally)) {
                 return false;
@@ -1067,18 +1067,22 @@ static MOZ_MUST_USE bool DisassembleAtPC(
       }
     }
     if (showAll) {
-      jssrcnote* sn = GetSrcNote(cx, script, next);
+      const SrcNote* sn = GetSrcNote(cx, script, next);
       if (sn) {
-        MOZ_ASSERT(!SN_IS_TERMINATOR(sn));
-        jssrcnote* next = SN_NEXT(sn);
-        while (!SN_IS_TERMINATOR(next) && SN_DELTA(next) == 0) {
-          if (!sp->jsprintf("%02u\n    ", SN_TYPE(sn))) {
+        MOZ_ASSERT(!sn->isTerminator());
+        SrcNoteIterator iter(sn);
+        while (true) {
+          ++iter;
+          auto next = *iter;
+          if (!(!next->isTerminator() && next->delta() == 0)) {
+            break;
+          }
+          if (!sp->jsprintf("%s\n    ", sn->name())) {
             return false;
           }
-          sn = next;
-          next = SN_NEXT(sn);
+          sn = *iter;
         }
-        if (!sp->jsprintf("%02u ", SN_TYPE(sn))) {
+        if (!sp->jsprintf("%s ", sn->name())) {
           return false;
         }
       } else {
@@ -1742,8 +1746,8 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
     // Handle simple cases of binary and unary operators.
     switch (CodeSpec(op).nuses) {
       case 2: {
-        jssrcnote* sn = GetSrcNote(cx, script, pc);
-        if (!sn || SN_TYPE(sn) != SRC_ASSIGNOP) {
+        const SrcNote* sn = GetSrcNote(cx, script, pc);
+        if (!sn || sn->type() != SrcNoteType::AssignOp) {
           return write("(") && decompilePCForStackOperand(pc, -2) &&
                  write(" ") && write(token) && write(" ") &&
                  decompilePCForStackOperand(pc, -1) && write(")");
@@ -2594,12 +2598,8 @@ JS_FRIEND_API void js::StopPCCountProfiling(JSContext* cx) {
 
   for (ZonesIter zone(rt, SkipAtoms); !zone.done(); zone.next()) {
     for (auto base = zone->cellIter<BaseScript>(); !base.done(); base.next()) {
-      if (base->isLazyScript()) {
-        continue;
-      }
-      JSScript* script = base->asJSScript();
-      if (script->hasScriptCounts() && script->hasJitScript()) {
-        if (!vec->append(script)) {
+      if (base->hasScriptCounts() && base->hasJitScript()) {
+        if (!vec->append(base->asJSScript())) {
           return;
         }
       }

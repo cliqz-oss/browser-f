@@ -25,6 +25,7 @@ from .parameters import Parameters, get_version, get_app_version
 from .taskgraph import TaskGraph
 from taskgraph.util.python_path import find_object
 from .try_option_syntax import parse_message
+from .util.chunking import resolver
 from .util.hg import get_hg_revision_branch, get_hg_commit_message
 from .util.partials import populate_release_history
 from .util.schema import validate_schema, Schema
@@ -118,12 +119,19 @@ try_task_config_schema = Schema({
     Optional('disable-pgo'): bool,
     Optional('env'): {text_type: text_type},
     Optional('gecko-profile'): bool,
+    Optional(
+        "optimize-strategies",
+        description="Alternative optimization strategies to use instead of the default. "
+                    "A module path pointing to a dict to be use as the `strategy_override` "
+                    "argument in `taskgraph.optimize.optimize_task_graph`."
+    ): text_type,
     Optional('rebuild'): int,
     Optional('use-artifact-builds'): bool,
     Optional(
         "worker-overrides",
         description="Mapping of worker alias to worker pools to use for those aliases."
-    ): {text_type: text_type}
+    ): {text_type: text_type},
+    Optional('routes'): [text_type],
 })
 """
 Schema for try_task_config.json files.
@@ -210,7 +218,11 @@ def taskgraph_decision(options, parameters=None):
     write_artifact('runnable-jobs.json', full_task_graph_to_runnable_jobs(full_task_json))
 
     # write out the public/manifests-by-task.json file
-    write_artifact('manifests-by-task.json', full_task_graph_to_manifests_by_task(full_task_json))
+    write_artifact('manifests-by-task.json.gz',
+                   full_task_graph_to_manifests_by_task(full_task_json))
+
+    # write out the public/tests-by-manifest.json file
+    write_artifact('tests-by-manifest.json.gz', resolver.tests_by_manifest)
 
     # this is just a test to check whether the from_json() function is working
     _, _ = TaskGraph.from_json(full_task_json)
@@ -399,8 +411,7 @@ def set_try_config(parameters, task_config_file):
 
     if 'try:' in parameters['message']:
         parameters['try_mode'] = 'try_option_syntax'
-        args = parse_message(parameters['message'])
-        parameters['try_options'] = args
+        parameters.update(parse_message(parameters['message']))
     else:
         parameters['try_options'] = None
 

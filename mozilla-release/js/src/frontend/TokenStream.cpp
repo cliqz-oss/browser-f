@@ -410,8 +410,8 @@ MOZ_ALWAYS_INLINE bool SourceCoords::add(uint32_t lineNum,
     // Otherwise return false to tell TokenStream about OOM.
     uint32_t maxPtr = MAX_PTR;
     if (!lineStartOffsets_.append(maxPtr)) {
-      static_assert(mozilla::IsSame<decltype(lineStartOffsets_.allocPolicy()),
-                                    TempAllocPolicy&>::value,
+      static_assert(std::is_same_v<decltype(lineStartOffsets_.allocPolicy()),
+                                   TempAllocPolicy&>,
                     "this function's caller depends on it reporting an "
                     "error on failure, as TempAllocPolicy ensures");
       return false;
@@ -630,8 +630,7 @@ void TokenStreamAnyChars::reportErrorNoOffsetVA(unsigned errorNumber,
   ErrorMetadata metadata;
   computeErrorMetadataNoOffset(&metadata);
 
-  ReportCompileErrorLatin1(cx, std::move(metadata), nullptr, JSREPORT_ERROR,
-                           errorNumber, args);
+  ReportCompileErrorLatin1(cx, std::move(metadata), nullptr, errorNumber, args);
 }
 
 // Use the fastest available getc.
@@ -1048,7 +1047,7 @@ MOZ_COLD void TokenStreamChars<Utf8Unit, AnyCharsAccess>::internalEncodingError(
     }
 
     ReportCompileErrorLatin1(anyChars.cx, std::move(err), std::move(notes),
-                             JSREPORT_ERROR, errorNumber, &args);
+                             errorNumber, &args);
   } while (false);
 
   va_end(args);
@@ -2651,7 +2650,13 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::regexpLiteral(
       flag = RegExpFlag::IgnoreCase;
     } else if (unit == 'm') {
       flag = RegExpFlag::Multiline;
-    } else if (unit == 'u') {
+    }
+#ifdef ENABLE_NEW_REGEXP
+    else if (unit == 's') {
+      flag = RegExpFlag::DotAll;
+    }
+#endif
+    else if (unit == 'u') {
       flag = RegExpFlag::Unicode;
     } else if (unit == 'y') {
       flag = RegExpFlag::Sticky;

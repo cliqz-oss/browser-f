@@ -86,6 +86,12 @@ const Curl = {
     // Add URL.
     addParam(data.url);
 
+    // Disable globbing if the URL contains brackets.
+    // cURL also globs braces but they are already percent-encoded.
+    if (data.url.includes("[") || data.url.includes("]")) {
+      addParam("--globoff");
+    }
+
     let postDataText = null;
     const multipartRequest = utils.isMultipartRequest(data);
 
@@ -113,7 +119,7 @@ const Curl = {
       ["PUT", "POST", "PATCH"].includes(data.method)
     ) {
       postDataText = data.postDataText;
-      addPostData("--data");
+      addPostData("--data-raw");
       addPostData(utils.writePostDataTextParams(postDataText));
       ignoredHeaders.add("content-length");
     }

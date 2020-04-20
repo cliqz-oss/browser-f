@@ -155,7 +155,6 @@ IonBuilder::IonBuilder(JSContext* analysisContext, MIRGenerator& mirGen,
       loopStack_(*alloc_),
       trackedOptimizationSites_(*alloc_),
       abortedPreliminaryGroups_(*alloc_),
-      lexicalCheck_(nullptr),
       callerResumePoint_(nullptr),
       callerBuilder_(nullptr),
       iterators_(*alloc_),
@@ -191,12 +190,15 @@ IonBuilder::IonBuilder(JSContext* analysisContext, MIRGenerator& mirGen,
 
 mozilla::GenericErrorResult<AbortReason> IonBuilder::abort(AbortReason r) {
   auto res = mirGen_.abort(r);
+  [[maybe_unused]] unsigned line, column;
 #ifdef DEBUG
-  JitSpew(JitSpew_IonAbort, "aborted @ %s:%d", script()->filename(),
-          PCToLineNumber(script(), pc));
+  line = PCToLineNumber(script(), pc, &column);
 #else
-  JitSpew(JitSpew_IonAbort, "aborted @ %s", script()->filename());
+  line = script()->lineno();
+  column = script()->column();
 #endif
+  JitSpew(JitSpew_IonAbort, "aborted @ %s:%u:%u", script()->filename(), line,
+          column);
   return res;
 }
 
@@ -208,12 +210,15 @@ mozilla::GenericErrorResult<AbortReason> IonBuilder::abort(AbortReason r,
   va_start(ap, message);
   auto res = mirGen_.abortFmt(r, message, ap);
   va_end(ap);
+  [[maybe_unused]] unsigned line, column;
 #ifdef DEBUG
-  JitSpew(JitSpew_IonAbort, "aborted @ %s:%d", script()->filename(),
-          PCToLineNumber(script(), pc));
+  line = PCToLineNumber(script(), pc, &column);
 #else
-  JitSpew(JitSpew_IonAbort, "aborted @ %s", script()->filename());
+  line = script()->lineno();
+  column = script()->column();
 #endif
+  JitSpew(JitSpew_IonAbort, "aborted @ %s:%u:%u", script()->filename(), line,
+          column);
   return res;
 }
 
@@ -228,7 +233,7 @@ IonBuilder* IonBuilder::outermostBuilder() {
 void IonBuilder::spew(const char* message) {
   // Don't call PCToLineNumber in release builds.
 #ifdef DEBUG
-  JitSpew(JitSpew_IonMIR, "%s @ %s:%d", message, script()->filename(),
+  JitSpew(JitSpew_IonMIR, "%s @ %s:%u", message, script()->filename(),
           PCToLineNumber(script(), pc));
 #endif
 }
@@ -889,21 +894,6 @@ AbortReasonOr<Ok> IonBuilder::build() {
   // what we can in an infallible manner.
   MOZ_TRY(rewriteParameters());
 
-  // Check for redeclaration errors for global scripts.
-  if (!info().funMaybeLazy() && !info().module() &&
-      script()->bodyScope()->is<GlobalScope>() &&
-      script()->bodyScope()->as<GlobalScope>().hasBindings()) {
-    MGlobalNameConflictsCheck* redeclCheck =
-        MGlobalNameConflictsCheck::New(alloc());
-    current->add(redeclCheck);
-    MResumePoint* entryRpCopy =
-        MResumePoint::Copy(alloc(), current->entryResumePoint());
-    if (!entryRpCopy) {
-      return abort(AbortReason::Alloc);
-    }
-    redeclCheck->setResumePoint(entryRpCopy);
-  }
-
   // It's safe to start emitting actual IR, so now build the env chain.
   MOZ_TRY(initEnvironmentChain());
   if (info().needsArgsObj()) {
@@ -961,7 +951,10 @@ AbortReasonOr<Ok> IonBuilder::build() {
   }
 
   MOZ_TRY(maybeAddOsrTypeBarriers());
-  MOZ_TRY(processIterators());
+
+  if (!MPhi::markIteratorPhis(iterators_)) {
+    return abort(AbortReason::Alloc);
+  }
 
   if (!info().isAnalysis() && !abortedPreliminaryGroups().empty()) {
     return abort(AbortReason::PreliminaryObjects);
@@ -969,46 +962,6 @@ AbortReasonOr<Ok> IonBuilder::build() {
 
   MOZ_ASSERT(loopDepth_ == 0);
   MOZ_ASSERT(loopStack_.empty());
-  return Ok();
-}
-
-AbortReasonOr<Ok> IonBuilder::processIterators() {
-  // Find and mark phis that must transitively hold an iterator live.
-
-  Vector<MDefinition*, 8, SystemAllocPolicy> worklist;
-
-  for (size_t i = 0; i < iterators_.length(); i++) {
-    MDefinition* iter = iterators_[i];
-    if (!iter->isInWorklist()) {
-      if (!worklist.append(iter)) {
-        return abort(AbortReason::Alloc);
-      }
-      iter->setInWorklist();
-    }
-  }
-
-  while (!worklist.empty()) {
-    MDefinition* def = worklist.popCopy();
-    def->setNotInWorklist();
-
-    if (def->isPhi()) {
-      MPhi* phi = def->toPhi();
-      phi->setIterator();
-      phi->setImplicitlyUsedUnchecked();
-    }
-
-    for (MUseDefIterator iter(def); iter; iter++) {
-      MDefinition* use = iter.def();
-      if (!use->isInWorklist() &&
-          (!use->isPhi() || !use->toPhi()->isIterator())) {
-        if (!worklist.append(use)) {
-          return abort(AbortReason::Alloc);
-        }
-        use->setInWorklist();
-      }
-    }
-  }
-
   return Ok();
 }
 
@@ -1922,6 +1875,9 @@ AbortReasonOr<Ok> IonBuilder::inspectOpcode(JSOp op, bool* restarted) {
     case JSOp::DefFun:
       return jsop_deffun();
 
+    case JSOp::CheckGlobalOrEvalDecl:
+      return jsop_checkGlobalOrEvalDecl();
+
     case JSOp::Eq:
     case JSOp::Ne:
     case JSOp::StrictEq:
@@ -2001,11 +1957,10 @@ AbortReasonOr<Ok> IonBuilder::inspectOpcode(JSOp op, bool* restarted) {
       return Ok();
 
     case JSOp::ThrowSetConst:
-    case JSOp::ThrowSetAliasedConst:
-    case JSOp::ThrowSetCallee:
       return jsop_throwsetconst();
 
     case JSOp::CheckLexical:
+    case JSOp::CheckAliasedLexical:
       return jsop_checklexical();
 
     case JSOp::InitLexical:
@@ -2020,9 +1975,6 @@ AbortReasonOr<Ok> IonBuilder::inspectOpcode(JSOp op, bool* restarted) {
       current->push(value);
       return jsop_setprop(info().getAtom(pc)->asPropertyName());
     }
-
-    case JSOp::CheckAliasedLexical:
-      return jsop_checkaliasedlexical(EnvironmentCoordinate(pc));
 
     case JSOp::InitAliasedLexical:
       return jsop_setaliasedvar(EnvironmentCoordinate(pc));
@@ -2124,11 +2076,6 @@ AbortReasonOr<Ok> IonBuilder::inspectOpcode(JSOp op, bool* restarted) {
       MOZ_TRY(jsop_call(GET_ARGC(pc),
                         JSOp(*pc) == JSOp::New || JSOp(*pc) == JSOp::SuperCall,
                         JSOp(*pc) == JSOp::CallIgnoresRv));
-      if (op == JSOp::CallIter) {
-        if (!outermostBuilder()->iterators_.append(current->peek(-1))) {
-          return abort(AbortReason::Alloc);
-        }
-      }
       return Ok();
 
     case JSOp::Eval:
@@ -2449,8 +2396,8 @@ AbortReasonOr<Ok> IonBuilder::inspectOpcode(JSOp op, bool* restarted) {
     case JSOp::ObjWithProto:
       return jsop_objwithproto();
 
-    case JSOp::BuiltinProto:
-      return jsop_builtinproto();
+    case JSOp::FunctionProto:
+      return jsop_functionproto();
 
     case JSOp::CheckReturn:
       return jsop_checkreturn();
@@ -3376,42 +3323,12 @@ AbortReasonOr<Ok> IonBuilder::visitReturn(JSOp op) {
 AbortReasonOr<Ok> IonBuilder::visitThrow() {
   MDefinition* def = current->pop();
 
-  // MThrow is not marked as effectful. This means when it throws and we
-  // are inside a try block, we could use an earlier resume point and this
-  // resume point may not be up-to-date, for example:
-  //
-  // (function() {
-  //     try {
-  //         var x = 1;
-  //         foo(); // resume point
-  //         x = 2;
-  //         throw foo;
-  //     } catch(e) {
-  //         print(x);
-  //     }
-  // ])();
-  //
-  // If we use the resume point after the call, this will print 1 instead
-  // of 2. To fix this, we create a resume point right before the MThrow.
-  //
-  // Note that this is not a problem for instructions other than MThrow
-  // because they are either marked as effectful (have their own resume
-  // point) or cannot throw a catchable exception.
-  //
-  // We always install this resume point (instead of only when the function
-  // has a try block) in order to handle the Debugger onExceptionUnwind
-  // hook. When we need to handle the hook, we bail out to baseline right
-  // after the throw and propagate the exception when debug mode is on. This
-  // is opposed to the normal behavior of resuming directly in the
-  // associated catch block.
-  MNop* nop = MNop::New(alloc());
-  current->add(nop);
-
-  MOZ_TRY(resumeAfter(nop));
-
   MThrow* ins = MThrow::New(alloc(), def);
-  current->end(ins);
+  current->add(ins);
+  MOZ_TRY(resumeAfter(ins));
 
+  // Terminate the block.
+  current->end(MUnreachable::New(alloc()));
   setTerminatedBlock();
 
   return Ok();
@@ -3519,21 +3436,12 @@ AbortReasonOr<Ok> IonBuilder::jsop_bitnot() {
 
   if (!forceInlineCaches()) {
     MOZ_TRY(bitnotTrySpecialized(&emitted, input));
-    if (emitted) return Ok();
+    if (emitted) {
+      return Ok();
+    }
   }
 
-  MOZ_TRY(arithTryBinaryStub(&emitted, JSOp::BitNot, nullptr, input));
-  if (emitted) {
-    return Ok();
-  }
-
-  // Not possible to optimize. Do a slow vm call.
-  MBitNot* ins = MBitNot::New(alloc(), input);
-
-  current->add(ins);
-  current->push(ins);
-  MOZ_ASSERT(ins->isEffectful());
-  return resumeAfter(ins);
+  return arithUnaryBinaryCache(JSOp::BitNot, nullptr, input);
 }
 
 AbortReasonOr<MBinaryBitwiseInstruction*> IonBuilder::binaryBitOpEmit(
@@ -3629,14 +3537,7 @@ AbortReasonOr<Ok> IonBuilder::jsop_bitop(JSOp op) {
     }
   }
 
-  MOZ_TRY(arithTryBinaryStub(&emitted, op, left, right));
-  if (emitted) {
-    return Ok();
-  }
-
-  // Not possible to optimize. Do a slow vm call.
-  MOZ_TRY(binaryBitOpEmit(op, MIRType::None, left, right));
-  return Ok();
+  return arithUnaryBinaryCache(op, left, right);
 }
 
 MDefinition::Opcode BinaryJSOpToMDefinition(JSOp op) {
@@ -3813,6 +3714,11 @@ AbortReasonOr<Ok> IonBuilder::binaryArithTrySpecializedOnBaselineInspector(
   // Try to emit a specialized binary instruction speculating the
   // type using the baseline caches.
 
+  // Anything complex - strings, symbols, and objects - are not specialized
+  if (!SimpleArithOperand(left) || !SimpleArithOperand(right)) {
+    return Ok();
+  }
+
   MIRType specialization = inspector->expectedBinaryArithSpecialization(pc);
   if (specialization == MIRType::None) {
     return Ok();
@@ -3825,20 +3731,10 @@ AbortReasonOr<Ok> IonBuilder::binaryArithTrySpecializedOnBaselineInspector(
   return Ok();
 }
 
-AbortReasonOr<Ok> IonBuilder::arithTryBinaryStub(bool* emitted, JSOp op,
-                                                 MDefinition* left,
-                                                 MDefinition* right) {
-  MOZ_ASSERT(*emitted == false);
-  JSOp actualOp = JSOp(*pc);
-
-  // The actual jsop 'jsop_pos' is not supported yet.
-  // There's no IC support for JSOp::Pow either.
-  if (actualOp == JSOp::Pos || actualOp == JSOp::Pow) {
-    return Ok();
-  }
-
+AbortReasonOr<Ok> IonBuilder::arithUnaryBinaryCache(JSOp op, MDefinition* left,
+                                                    MDefinition* right) {
   MInstruction* stub = nullptr;
-  switch (actualOp) {
+  switch (JSOp(*pc)) {
     case JSOp::Neg:
     case JSOp::BitNot:
       MOZ_ASSERT_IF(op == JSOp::Mul,
@@ -3871,10 +3767,21 @@ AbortReasonOr<Ok> IonBuilder::arithTryBinaryStub(bool* emitted, JSOp op,
   // is 'empty typed'.
   maybeMarkEmpty(stub);
 
-  MOZ_TRY(resumeAfter(stub));
+  return resumeAfter(stub);
+}
 
-  *emitted = true;
-  return Ok();
+MDefinition* IonBuilder::maybeConvertToNumber(MDefinition* def) {
+  // Try converting strings to numbers during IonBuilder MIR construction,
+  // because MIR foldsTo-folding runs off-main thread.
+  if (def->type() == MIRType::String && def->isConstant()) {
+    JSContext* cx = TlsContext.get();
+    double d;
+    if (StringToNumberPure(cx, def->toConstant()->toString(), &d)) {
+      def->setImplicitlyUsedUnchecked();
+      return constant(NumberValue(d));
+    }
+  }
+  return def;
 }
 
 AbortReasonOr<Ok> IonBuilder::jsop_binary_arith(JSOp op, MDefinition* left,
@@ -3885,6 +3792,11 @@ AbortReasonOr<Ok> IonBuilder::jsop_binary_arith(JSOp op, MDefinition* left,
     MOZ_TRY(binaryArithTryConcat(&emitted, op, left, right));
     if (emitted) {
       return Ok();
+    }
+
+    if (op != JSOp::Add) {
+      left = maybeConvertToNumber(left);
+      right = maybeConvertToNumber(right);
     }
 
     MOZ_TRY(binaryArithTrySpecialized(&emitted, op, left, right));
@@ -3899,23 +3811,7 @@ AbortReasonOr<Ok> IonBuilder::jsop_binary_arith(JSOp op, MDefinition* left,
     }
   }
 
-  MOZ_TRY(arithTryBinaryStub(&emitted, op, left, right));
-  if (emitted) {
-    return Ok();
-  }
-
-  MDefinition::Opcode defOp = BinaryJSOpToMDefinition(op);
-  MBinaryArithInstruction* ins =
-      MBinaryArithInstruction::New(alloc(), defOp, left, right);
-
-  // Decrease type from 'any type' to 'empty type' when one of the operands
-  // is 'empty typed'.
-  maybeMarkEmpty(ins);
-
-  current->add(ins);
-  current->push(ins);
-  MOZ_ASSERT(ins->isEffectful());
-  return resumeAfter(ins);
+  return arithUnaryBinaryCache(op, left, right);
 }
 
 AbortReasonOr<Ok> IonBuilder::jsop_binary_arith(JSOp op) {
@@ -3938,11 +3834,6 @@ AbortReasonOr<Ok> IonBuilder::jsop_pow() {
     }
   }
 
-  MOZ_TRY(arithTryBinaryStub(&emitted, JSOp::Pow, base, exponent));
-  if (emitted) {
-    return Ok();
-  }
-
   // For now, use MIRType::None as a safe cover-all. See bug 1188079.
   MPow* pow = MPow::New(alloc(), base, exponent, MIRType::None);
   current->add(pow);
@@ -3960,12 +3851,21 @@ AbortReasonOr<Ok> IonBuilder::jsop_pos() {
     return Ok();
   }
 
-  // Compile +x as x * 1.
   MDefinition* value = current->pop();
   MConstant* one = MConstant::New(alloc(), Int32Value(1));
   current->add(one);
 
-  return jsop_binary_arith(JSOp::Mul, value, one);
+  // Compile +x as x * 1.
+  MBinaryArithInstruction* ins = MBinaryArithInstruction::New(
+      alloc(), MDefinition::Opcode::Mul, value, one);
+
+  // Decrease type from 'any type' to 'empty type' when one of the operands
+  // is 'empty typed'.
+  maybeMarkEmpty(ins);
+
+  current->add(ins);
+  current->push(ins);
+  return resumeAfter(ins);
 }
 
 AbortReasonOr<Ok> IonBuilder::jsop_neg() {
@@ -7610,23 +7510,45 @@ AbortReasonOr<MBasicBlock*> IonBuilder::newPendingLoopHeader(
     }
   }
 
-  // The bytecode emitted for destructuring assignments uses a "done" stack
-  // value that can be read from the exception handler. Mark the loop phi for
-  // this slot as having implicit uses so it won't be optimized away (replaced
-  // by the JS_OPTIMIZED_OUT magic value).
+  // The exception handler has code to close iterators for certain loops. We
+  // need to mark the phis (and phis these iterators flow into) as having
+  // implicit uses so that Ion does not optimize them away (replace with the
+  // JS_OPTIMIZED_OUT MagicValue).
   // See ProcessTryNotes in vm/Interpreter.cpp.
   MOZ_ASSERT(block->stackDepth() >= info().firstStackSlot());
   bool emptyStack = block->stackDepth() == info().firstStackSlot();
   if (!emptyStack) {
-    JSContext* cx = TlsContext.get();
-    for (TryNoteIterAll tni(cx, script(), pc); !tni.done(); ++tni) {
-      const JSTryNote& tn = **tni;
-      if (tn.kind != JSTRY_DESTRUCTURING) {
-        continue;
+    for (TryNoteIterAllNoGC tni(script(), pc); !tni.done(); ++tni) {
+      const TryNote& tn = **tni;
+
+      // Stop if we reach an outer loop because outer loops were already
+      // processed when we visited their loop headers.
+      if (tn.isLoop()) {
+        BytecodeLocation tnStart = script()->offsetToLocation(tn.start);
+        if (tnStart.toRawBytecode() != pc) {
+          MOZ_ASSERT(tnStart.is(JSOp::LoopHead));
+          MOZ_ASSERT(tnStart.toRawBytecode() < pc);
+          break;
+        }
       }
-      MOZ_ASSERT(tn.stackDepth > 1);
-      uint32_t slot = info().stackSlot(tn.stackDepth - 1);
-      block->getSlot(slot)->setImplicitlyUsedUnchecked();
+
+      switch (tn.kind()) {
+        case TryNoteKind::Destructuring:
+        case TryNoteKind::ForIn: {
+          // For for-in loops we add the iterator object to iterators_. For
+          // destructuring loops we add the "done" value that's on top of the
+          // stack and used in the exception handler.
+          MOZ_ASSERT(tn.stackDepth >= 1);
+          uint32_t slot = info().stackSlot(tn.stackDepth - 1);
+          MPhi* phi = block->getSlot(slot)->toPhi();
+          if (!outermostBuilder()->iterators_.append(phi)) {
+            return abort(AbortReason::Alloc);
+          }
+          break;
+        }
+        default:
+          break;
+      }
     }
   }
 
@@ -8383,10 +8305,7 @@ JSObject* IonBuilder::testGlobalLexicalBinding(PropertyName* name) {
 }
 
 AbortReasonOr<Ok> IonBuilder::jsop_getgname(PropertyName* name) {
-  // Optimize undefined/NaN/Infinity first. We must ensure we handle these
-  // cases *exactly* like Baseline, because it's invalid to add an Ion IC or
-  // VM call (that might trigger invalidation) if there's no Baseline IC for
-  // this op.
+  // Optimize undefined/NaN/Infinity first.
   if (name == names().undefined) {
     pushConstant(UndefinedValue());
     return Ok();
@@ -8475,6 +8394,9 @@ AbortReasonOr<Ok> IonBuilder::jsop_getimport(PropertyName* name) {
   ModuleEnvironmentObject* targetEnv;
   MOZ_ALWAYS_TRUE(env->lookupImport(NameToId(name), &targetEnv, &shape));
 
+  // We always use a type barrier because the slot's value can be modified by
+  // JSOP_SETALIASEDVAR without triggering type updates. This matches
+  // JSOP_GETALIASEDVAR.
   TemporaryTypeSet* types = bytecodeTypes(pc);
   BarrierKind barrier = BarrierKind::TypeSet;
   MOZ_TRY(loadStaticSlot(targetEnv, barrier, types, shape->slot()));
@@ -8499,8 +8421,7 @@ AbortReasonOr<Ok> IonBuilder::jsop_bindname(PropertyName* name) {
     envChain = current->environmentChain();
   }
 
-  MBindNameCache* ins =
-      MBindNameCache::New(alloc(), envChain, name, script(), pc);
+  MBindNameCache* ins = MBindNameCache::New(alloc(), envChain);
   current->add(ins);
   current->push(ins);
 
@@ -8805,8 +8726,6 @@ AbortReasonOr<Ok> IonBuilder::getElemTryArguments(bool* emitted,
   // Emit GetFrameArgument.
 
   MOZ_ASSERT(!info().argsObjAliasesFormals());
-
-  MOZ_ASSERT(!script()->jitScript()->modifiesArguments());
 
   // Type Inference has guaranteed this is an optimized arguments object.
   obj->setImplicitlyUsedUnchecked();
@@ -11891,6 +11810,12 @@ AbortReasonOr<Ok> IonBuilder::jsop_derivedclassconstructor() {
   return resumeAfter(constructor);
 }
 
+static LambdaFunctionInfo LambdaInfoFromFunction(JSFunction* fun) {
+  return LambdaFunctionInfo(fun, fun->baseScript(), fun->flags(), fun->nargs(),
+                            fun->isSingleton(),
+                            ObjectGroup::useSingletonForClone(fun));
+}
+
 AbortReasonOr<Ok> IonBuilder::jsop_lambda(JSFunction* fun) {
   MOZ_ASSERT(usesEnvironmentChain());
   MOZ_ASSERT(!fun->isArrow());
@@ -11901,8 +11826,8 @@ AbortReasonOr<Ok> IonBuilder::jsop_lambda(JSFunction* fun) {
 
   MConstant* cst = MConstant::NewConstraintlessObject(alloc(), fun);
   current->add(cst);
-  MLambda* ins =
-      MLambda::New(alloc(), constraints(), current->environmentChain(), cst);
+  auto* ins = MLambda::New(alloc(), constraints(), current->environmentChain(),
+                           cst, LambdaInfoFromFunction(fun));
   current->add(ins);
   current->push(ins);
 
@@ -11917,8 +11842,9 @@ AbortReasonOr<Ok> IonBuilder::jsop_lambda_arrow(JSFunction* fun) {
   MDefinition* newTargetDef = current->pop();
   MConstant* cst = MConstant::NewConstraintlessObject(alloc(), fun);
   current->add(cst);
-  MLambdaArrow* ins = MLambdaArrow::New(
-      alloc(), constraints(), current->environmentChain(), newTargetDef, cst);
+  auto* ins =
+      MLambdaArrow::New(alloc(), constraints(), current->environmentChain(),
+                        newTargetDef, cst, LambdaInfoFromFunction(fun));
   current->add(ins);
   current->push(ins);
 
@@ -12079,36 +12005,44 @@ AbortReasonOr<Ok> IonBuilder::jsop_deffun() {
   return resumeAfter(deffun);
 }
 
+AbortReasonOr<Ok> IonBuilder::jsop_checkGlobalOrEvalDecl() {
+  MOZ_ASSERT(!script()->isForEval(), "Eval scripts not supported");
+  auto* redeclCheck = MGlobalNameConflictsCheck::New(alloc());
+  current->add(redeclCheck);
+  return resumeAfter(redeclCheck);
+}
+
 AbortReasonOr<Ok> IonBuilder::jsop_throwsetconst() {
   MInstruction* lexicalError =
       MThrowRuntimeLexicalError::New(alloc(), JSMSG_BAD_CONST_ASSIGN);
   current->add(lexicalError);
-  return resumeAfter(lexicalError);
-}
+  MOZ_TRY(resumeAfter(lexicalError));
 
-AbortReasonOr<Ok> IonBuilder::jsop_checklexical() {
-  uint32_t slot = info().localSlot(GET_LOCALNO(pc));
-  MDefinition* lexical;
-  MOZ_TRY_VAR(lexical, addLexicalCheck(current->getSlot(slot)));
-  current->setSlot(slot, lexical);
+  // Terminate the block.
+  current->end(MUnreachable::New(alloc()));
+  setTerminatedBlock();
+
   return Ok();
 }
 
-AbortReasonOr<Ok> IonBuilder::jsop_checkaliasedlexical(
-    EnvironmentCoordinate ec) {
-  MDefinition* let;
-  MOZ_TRY_VAR(let, addLexicalCheck(getAliasedVar(ec)));
+AbortReasonOr<Ok> IonBuilder::jsop_checklexical() {
+  JSOp op = JSOp(*pc);
+  MOZ_ASSERT(op == JSOp::CheckLexical || op == JSOp::CheckAliasedLexical);
 
-  jsbytecode* nextPc = pc + JSOpLength_CheckAliasedLexical;
-  MOZ_ASSERT(JSOp(*nextPc) == JSOp::GetAliasedVar ||
-             JSOp(*nextPc) == JSOp::SetAliasedVar ||
-             JSOp(*nextPc) == JSOp::ThrowSetAliasedConst);
-  MOZ_ASSERT(ec == EnvironmentCoordinate(nextPc));
+  MDefinition* val = current->peek(-1);
+  MDefinition* lexical;
+  MOZ_TRY_VAR(lexical, addLexicalCheck(val));
+  current->pop();
+  current->push(lexical);
 
-  // If we are checking for a load, push the checked let so that the load
-  // can use it.
-  if (JSOp(*nextPc) == JSOp::GetAliasedVar) {
-    setLexicalCheck(let);
+  if (op == JSOp::CheckLexical) {
+    // Set the local slot so that a subsequent GetLocal without a CheckLexical
+    // (the frontend can elide lexical checks) doesn't let a definition with
+    // MIRType::MagicUninitializedLexical escape to arbitrary MIR instructions.
+    // Note that in this case the GetLocal would be unreachable because we throw
+    // an exception here, but we still generate MIR instructions for it.
+    uint32_t slot = info().localSlot(GET_LOCALNO(pc));
+    current->setSlot(slot, lexical);
   }
 
   return Ok();
@@ -12231,10 +12165,6 @@ AbortReasonOr<Ok> IonBuilder::jsop_iter() {
   MDefinition* obj = current->pop();
   MInstruction* ins = MGetIteratorCache::New(alloc(), obj);
 
-  if (!outermostBuilder()->iterators_.append(ins)) {
-    return abort(AbortReason::Alloc);
-  }
-
   current->add(ins);
   current->push(ins);
 
@@ -12316,11 +12246,7 @@ MDefinition* IonBuilder::getAliasedVar(EnvironmentCoordinate ec) {
 }
 
 AbortReasonOr<Ok> IonBuilder::jsop_getaliasedvar(EnvironmentCoordinate ec) {
-  // See jsop_checkaliasedlexical.
-  MDefinition* load = takeLexicalCheck();
-  if (!load) {
-    load = getAliasedVar(ec);
-  }
+  MDefinition* load = getAliasedVar(ec);
   current->push(load);
 
   TemporaryTypeSet* types = bytecodeTypes(pc);
@@ -12741,13 +12667,11 @@ AbortReasonOr<Ok> IonBuilder::jsop_instanceof() {
 }
 
 AbortReasonOr<Ok> IonBuilder::jsop_debugger() {
+  // The |debugger;| statement will bail out to Baseline if the realm is a
+  // debuggee realm with an onDebuggerStatement hook.
   MDebugger* debugger = MDebugger::New(alloc());
   current->add(debugger);
-
-  // The |debugger;| statement will always bail out to baseline if
-  // cx->compartment()->isDebuggee(). Resume in-place and have baseline
-  // handle the details.
-  return resumeAt(debugger, pc);
+  return resumeAfter(debugger);
 }
 
 AbortReasonOr<Ok> IonBuilder::jsop_implicitthis(PropertyName* name) {
@@ -12825,9 +12749,8 @@ AbortReasonOr<Ok> IonBuilder::jsop_objwithproto() {
   return resumeAfter(ins);
 }
 
-AbortReasonOr<Ok> IonBuilder::jsop_builtinproto() {
-  MOZ_ASSERT(GET_UINT8(pc) < JSProto_LIMIT);
-  JSProtoKey key = static_cast<JSProtoKey>(GET_UINT8(pc));
+AbortReasonOr<Ok> IonBuilder::jsop_functionproto() {
+  JSProtoKey key = JSProto_Function;
 
   // Bake in the prototype if it exists.
   if (JSObject* proto = script()->global().maybeGetPrototype(key)) {
@@ -12836,7 +12759,7 @@ AbortReasonOr<Ok> IonBuilder::jsop_builtinproto() {
   }
 
   // Otherwise emit code to generate it.
-  auto* ins = MBuiltinProto::New(alloc(), pc);
+  auto* ins = MFunctionProto::New(alloc());
   current->add(ins);
   current->push(ins);
   return resumeAfter(ins);
@@ -13132,14 +13055,12 @@ AbortReasonOr<MDefinition*> IonBuilder::addLexicalCheck(MDefinition* input) {
              JSOp(*pc) == JSOp::CheckAliasedLexical ||
              JSOp(*pc) == JSOp::GetImport);
 
-  MInstruction* lexicalCheck;
-
   // If we're guaranteed to not be JS_UNINITIALIZED_LEXICAL, no need to check.
   if (input->type() == MIRType::MagicUninitializedLexical) {
     // Mark the input as implicitly used so the JS_UNINITIALIZED_LEXICAL
     // magic value will be preserved on bailout.
     input->setImplicitlyUsedUnchecked();
-    lexicalCheck =
+    MInstruction* lexicalCheck =
         MThrowRuntimeLexicalError::New(alloc(), JSMSG_UNINITIALIZED_LEXICAL);
     current->add(lexicalCheck);
     MOZ_TRY(resumeAfter(lexicalCheck));
@@ -13147,7 +13068,7 @@ AbortReasonOr<MDefinition*> IonBuilder::addLexicalCheck(MDefinition* input) {
   }
 
   if (input->type() == MIRType::Value) {
-    lexicalCheck = MLexicalCheck::New(alloc(), input);
+    MInstruction* lexicalCheck = MLexicalCheck::New(alloc(), input);
     current->add(lexicalCheck);
     if (failedLexicalCheck_) {
       lexicalCheck->setNotMovableUnchecked();
@@ -13155,6 +13076,7 @@ AbortReasonOr<MDefinition*> IonBuilder::addLexicalCheck(MDefinition* input) {
     return lexicalCheck;
   }
 
+  input->setImplicitlyUsedUnchecked();
   return input;
 }
 

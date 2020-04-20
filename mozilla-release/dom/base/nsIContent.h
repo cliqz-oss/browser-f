@@ -75,8 +75,11 @@ class nsIContent : public nsINode {
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ICONTENT_IID)
 
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL_DELETECYCLECOLLECTABLE
+
   NS_DECL_CYCLE_COLLECTION_CLASS(nsIContent)
+
+  NS_DECL_DOMARENA_DESTROY
 
   NS_IMPL_FROMNODE_HELPER(nsIContent, IsContent())
 
@@ -619,7 +622,7 @@ class nsIContent : public nsINode {
    * If this content has independent selection, e.g., if this is input field
    * or textarea, this return TRUE.  Otherwise, false.
    */
-  bool HasIndependentSelection();
+  bool HasIndependentSelection() const;
 
   /**
    * If the content is a part of HTML editor, this returns editing

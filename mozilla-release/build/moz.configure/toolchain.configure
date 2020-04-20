@@ -141,7 +141,7 @@ with only_when(host_is_osx | target_is_osx):
     @imports(_from='biplist', _import='readPlist')
     def macos_sdk(sdk, host):
         sdk_min_version = Version('10.11')
-        sdk_max_version = Version('10.15')
+        sdk_max_version = Version('10.15.4')
 
         if sdk:
             sdk = sdk[0]
@@ -1635,10 +1635,8 @@ def security_hardening_cflags(hardening_flag, asan, debug, optimize, c_compiler,
             js_ldflags.append("-Wl,--dynamicbase")
 
         # Control Flow Guard (CFG) ----------------------------
-        # On aarch64, this is enabled only with explicit --enable-hardening
-        # (roughly: automation) due to a dependency on a patched clang-cl.
         if c_compiler.type == 'clang-cl' and c_compiler.version >= '8' and \
-           (target.cpu != 'aarch64' or hardening_flag):
+           (target.cpu != 'aarch64' or c_compiler.version >= '8.0.1'):
             flags.append("-guard:cf")
             js_flags.append("-guard:cf")
             # nolongjmp is needed because clang doesn't emit the CFG tables of
@@ -2248,6 +2246,19 @@ js_option('--enable-clang-plugin', env='ENABLE_CLANG_PLUGIN',
 
 add_old_configure_assignment('ENABLE_CLANG_PLUGIN',
                              depends_if('--enable-clang-plugin')(lambda _: True))
+
+js_option('--enable-clang-plugin-alpha', env='ENABLE_CLANG_PLUGIN_ALPHA',
+            help='Enable static analysis with clang-plugin alpha checks.')
+
+@depends('--enable-clang-plugin', '--enable-clang-plugin-alpha')
+def check_clang_plugin_alpha(enable_clang_plugin, enable_clang_plugin_alpha):
+    if enable_clang_plugin_alpha:
+        if enable_clang_plugin:
+            return True
+        die("Cannot enable clang-plugin alpha checkers without --enable-clang-plugin.")
+
+add_old_configure_assignment('ENABLE_CLANG_PLUGIN_ALPHA', check_clang_plugin_alpha)
+set_define('MOZ_CLANG_PLUGIN_ALPHA', check_clang_plugin_alpha)
 
 js_option('--enable-mozsearch-plugin', env='ENABLE_MOZSEARCH_PLUGIN',
           help="Enable building with the mozsearch indexer plugin")

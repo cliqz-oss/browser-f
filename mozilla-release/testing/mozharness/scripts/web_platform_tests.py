@@ -222,6 +222,7 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
                 "--stackfix-dir=%s" % os.path.join(dirs["abs_test_install_dir"], "bin"),
                 "--run-by-dir=%i" % (3 if not mozinfo.info["asan"] else 0),
                 "--no-pause-after-test",
+                "--skip-implementation-status=not-implementing",
                 "--instrument-to-file=%s" % os.path.join(dirs["abs_blob_upload_dir"],
                                                          "wpt_instruments.txt")]
 
@@ -276,8 +277,8 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
 
         test_type_suite = {
             "testharness": "web-platform-tests",
-            "crashtest": "web-platform-tests-crashtests",
-            "reftest": "web-platform-tests-reftests",
+            "crashtest": "web-platform-tests-crashtest",
+            "reftest": "web-platform-tests-reftest",
             "wdspec": "web-platform-tests-wdspec",
         }
         for test_type in test_types:

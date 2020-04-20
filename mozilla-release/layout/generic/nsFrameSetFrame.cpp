@@ -182,7 +182,7 @@ nsHTMLFramesetFrame::nsHTMLFramesetFrame(ComputedStyle* aStyle,
   mEdgeColors.Set(NO_COLOR);
 }
 
-nsHTMLFramesetFrame::~nsHTMLFramesetFrame() {}
+nsHTMLFramesetFrame::~nsHTMLFramesetFrame() = default;
 
 NS_QUERYFRAME_HEAD(nsHTMLFramesetFrame)
   NS_QUERYFRAME_ENTRY(nsHTMLFramesetFrame)
@@ -1528,7 +1528,7 @@ void nsDisplayFramesetBlank::Paint(nsDisplayListBuilder* aBuilder,
   int32_t appUnitsPerDevPixel = mFrame->PresContext()->AppUnitsPerDevPixel();
   Rect rect =
       NSRectToSnappedRect(GetPaintRect(), appUnitsPerDevPixel, *drawTarget);
-  ColorPattern white(ToDeviceColor(Color(1.f, 1.f, 1.f, 1.f)));
+  ColorPattern white(ToDeviceColor(sRGBColor::OpaqueWhite()));
   drawTarget->FillRect(rect, white);
 }
 

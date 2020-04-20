@@ -6,7 +6,7 @@
 
 #include "frontend/SharedContext.h"
 
-#include "frontend/AbstractScope.h"
+#include "frontend/AbstractScopePtr.h"
 #include "frontend/ModuleSharedContext.h"
 
 #include "frontend/ParseContext-inl.h"
@@ -76,8 +76,8 @@ void SharedContext::computeInWith(Scope* scope) {
 EvalSharedContext::EvalSharedContext(JSContext* cx, JSObject* enclosingEnv,
                                      CompilationInfo& compilationInfo,
                                      Scope* enclosingScope,
-                                     Directives directives, bool extraWarnings)
-    : SharedContext(cx, Kind::Eval, compilationInfo, directives, extraWarnings),
+                                     Directives directives)
+    : SharedContext(cx, Kind::Eval, compilationInfo, directives),
       enclosingScope_(cx, enclosingScope),
       bindings(cx) {
   computeAllowSyntax(enclosingScope);
@@ -116,25 +116,23 @@ EvalSharedContext::EvalSharedContext(JSContext* cx, JSObject* enclosingEnv,
 bool FunctionBox::atomsAreKept() { return cx_->zone()->hasKeptAtoms(); }
 #endif
 
-FunctionBox::FunctionBox(JSContext* cx, TraceListNode* traceListHead,
+FunctionBox::FunctionBox(JSContext* cx, FunctionBox* traceListHead,
                          uint32_t toStringStart,
                          CompilationInfo& compilationInfo,
-                         Directives directives, bool extraWarnings,
-                         GeneratorKind generatorKind,
+                         Directives directives, GeneratorKind generatorKind,
                          FunctionAsyncKind asyncKind, JSAtom* explicitName,
-                         FunctionFlags flags)
-    : ObjectBox(nullptr, traceListHead, TraceListNode::NodeType::Function),
-      SharedContext(cx, Kind::FunctionBox, compilationInfo, directives,
-                    extraWarnings),
+                         FunctionFlags flags, size_t index)
+    : SharedContext(cx, Kind::FunctionBox, compilationInfo, directives),
+      traceLink_(traceListHead),
+      emitLink_(nullptr),
       enclosingScope_(),
       namedLambdaBindings_(nullptr),
       functionScopeBindings_(nullptr),
       extraVarScopeBindings_(nullptr),
+      funcDataIndex_(index),
       functionNode(nullptr),
       extent{0, 0, toStringStart, 0, 1, 0},
       length(0),
-      isGenerator_(generatorKind == GeneratorKind::Generator),
-      isAsync_(asyncKind == FunctionAsyncKind::AsyncFunction),
       hasDestructuringArgs(false),
       hasParameterExprs(false),
       hasDuplicateParameters(false),
@@ -142,50 +140,29 @@ FunctionBox::FunctionBox(JSContext* cx, TraceListNode* traceListHead,
       isAnnexB(false),
       wasEmitted(false),
       emitBytecode(false),
-      declaredArguments(false),
       usesArguments(false),
       usesApply(false),
       usesThis(false),
       usesReturn(false),
-      hasRest_(false),
       hasExprBody_(false),
-      hasExtensibleScope_(false),
-      argumentsHasLocalBinding_(false),
-      definitelyNeedsArgsObj_(false),
-      needsHomeObject_(false),
-      isDerivedClassConstructor_(false),
-      hasThisBinding_(false),
       nargs_(0),
       explicitName_(explicitName),
-      flags_(flags) {}
-
-FunctionBox::FunctionBox(JSContext* cx, TraceListNode* traceListHead,
-                         JSFunction* fun, uint32_t toStringStart,
-                         CompilationInfo& compilationInfo,
-                         Directives directives, bool extraWarnings,
-                         GeneratorKind generatorKind,
-                         FunctionAsyncKind asyncKind)
-    : FunctionBox(cx, traceListHead, toStringStart, compilationInfo, directives,
-                  extraWarnings, generatorKind, asyncKind, fun->explicitName(),
-                  fun->flags()) {
-  gcThing = fun;
-  // Functions created at parse time may be set singleton after parsing and
-  // baked into JIT code, so they must be allocated tenured. They are held by
-  // the JSScript so cannot be collected during a minor GC anyway.
-  MOZ_ASSERT(fun->isTenured());
+      flags_(flags) {
+  immutableFlags_.setFlag(ImmutableFlags::IsGenerator,
+                          generatorKind == GeneratorKind::Generator);
+  immutableFlags_.setFlag(ImmutableFlags::IsAsync,
+                          asyncKind == FunctionAsyncKind::AsyncFunction);
+  immutableFlags_.setFlag(ImmutableFlags::IsFunction);
 }
 
-FunctionBox::FunctionBox(JSContext* cx, TraceListNode* traceListHead,
-                         uint32_t toStringStart,
-                         CompilationInfo& compilationInfo,
-                         Directives directives, bool extraWarnings,
-                         GeneratorKind generatorKind,
-                         FunctionAsyncKind asyncKind, size_t index)
-    : FunctionBox(cx, traceListHead, toStringStart, compilationInfo, directives,
-                  extraWarnings, generatorKind, asyncKind,
-                  compilationInfo.funcData[index].get().atom,
-                  compilationInfo.funcData[index].get().flags) {
-  funcDataIndex_.emplace(index);
+bool FunctionBox::hasFunctionCreationData() const {
+  return compilationInfo_.funcData[funcDataIndex_]
+      .get()
+      .is<FunctionCreationData>();
+}
+
+bool FunctionBox::hasFunction() const {
+  return compilationInfo_.funcData[funcDataIndex_].get().is<JSFunction*>();
 }
 
 void FunctionBox::initFromLazyFunction(JSFunction* fun) {
@@ -213,7 +190,7 @@ void FunctionBox::initStandaloneFunction(Scope* enclosingScope) {
   // Standalone functions are Function or Generator constructors and are
   // always scoped to the global.
   MOZ_ASSERT(enclosingScope->is<GlobalScope>());
-  enclosingScope_ = AbstractScope(enclosingScope);
+  enclosingScope_ = AbstractScopePtr(enclosingScope);
   allowNewTarget_ = true;
   thisBinding_ = ThisBinding::Function;
 }
@@ -254,7 +231,7 @@ void FunctionBox::initWithEnclosingParseContext(ParseContext* enclosing,
   }
 
   // We inherit the parse goal from our top-level.
-  hasModuleGoal_ = sc->hasModuleGoal();
+  setHasModuleGoal(sc->hasModuleGoal());
 
   if (sc->inWith()) {
     inWith_ = true;
@@ -296,14 +273,14 @@ void FunctionBox::initWithEnclosingScope(JSFunction* fun) {
 
   computeInWith(enclosingScope);
 
-  enclosingScope_ = AbstractScope(enclosingScope);
+  enclosingScope_ = AbstractScopePtr(enclosingScope);
 }
 
 void FunctionBox::setEnclosingScopeForInnerLazyFunction(
-    const AbstractScope& enclosingScope) {
+    const AbstractScopePtr& enclosingScope) {
   // For lazy functions inside a function which is being compiled, we cache
   // the incomplete scope object while compiling, and store it to the
-  // LazyScript once the enclosing script successfully finishes compilation
+  // BaseScript once the enclosing script successfully finishes compilation
   // in FunctionBox::finish.
   MOZ_ASSERT(!enclosingScope_);
   enclosingScope_ = enclosingScope;
@@ -320,24 +297,53 @@ void FunctionBox::finish() {
   }
 }
 
+/* static */
+void FunctionBox::TraceList(JSTracer* trc, FunctionBox* listHead) {
+  for (FunctionBox* node = listHead; node; node = node->traceLink_) {
+    node->trace(trc);
+  }
+}
+
+void FunctionBox::trace(JSTracer* trc) {
+  if (enclosingScope_) {
+    enclosingScope_.trace(trc);
+  }
+  if (explicitName_) {
+    TraceRoot(trc, &explicitName_, "funbox-explicitName");
+  }
+}
+
+JSFunction* FunctionBox::function() const {
+  return compilationInfo_.funcData[funcDataIndex_].as<JSFunction*>();
+}
+
+void FunctionBox::clobberFunction(JSFunction* function) {
+  compilationInfo_.funcData[funcDataIndex_].set(mozilla::AsVariant(function));
+  // After clobbering, these flags need to be updated
+  setIsInterpreted(function->isInterpreted());
+}
+
 ModuleSharedContext::ModuleSharedContext(JSContext* cx, ModuleObject* module,
                                          CompilationInfo& compilationInfo,
                                          Scope* enclosingScope,
                                          ModuleBuilder& builder)
-    : SharedContext(cx, Kind::Module, compilationInfo, Directives(true), false),
+    : SharedContext(cx, Kind::Module, compilationInfo, Directives(true)),
       module_(cx, module),
       enclosingScope_(cx, enclosingScope),
       bindings(cx),
       builder(builder) {
   thisBinding_ = ThisBinding::Module;
-  hasModuleGoal_ = true;
+  immutableFlags_.setFlag(ImmutableFlags::HasModuleGoal);
 }
 
 MutableHandle<FunctionCreationData> FunctionBox::functionCreationData() const {
-  MOZ_ASSERT(hasFunctionCreationIndex());
-  return compilationInfo_.funcData[*funcDataIndex_];
+  MOZ_ASSERT(hasFunctionCreationData());
+  // Marked via CompilationData::funcData rooting.
+  return MutableHandle<FunctionCreationData>::fromMarkedLocation(
+      &compilationInfo_.funcData[funcDataIndex_]
+           .get()
+           .as<FunctionCreationData>());
 }
 
 }  // namespace frontend
-
 }  // namespace js

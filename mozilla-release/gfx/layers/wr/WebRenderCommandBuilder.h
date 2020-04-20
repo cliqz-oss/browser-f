@@ -9,7 +9,6 @@
 
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/layers/ClipManager.h"
-#include "mozilla/layers/RenderRootBoundary.h"
 #include "mozilla/layers/WebRenderMessages.h"
 #include "mozilla/layers/WebRenderScrollData.h"
 #include "mozilla/layers/WebRenderUserData.h"
@@ -52,9 +51,6 @@ class WebRenderScrollDataCollection {
 
   void AppendRoot(Maybe<ScrollMetadata>& aRootMetadata,
                   wr::RenderRootArray<WebRenderScrollData>& aScrollDatas);
-
-  void AppendWrapper(const RenderRootBoundary& aBoundary,
-                     size_t aLayerCountBeforeRecursing);
 
   void AppendScrollData(const wr::DisplayListBuilder& aBuilder,
                         WebRenderLayerManager* aManager, nsDisplayItem* aItem,
@@ -212,19 +208,6 @@ class WebRenderCommandBuilder final {
 
   WebRenderLayerManager* mManager;
 
-  class MOZ_RAII ScrollDataBoundaryWrapper {
-   public:
-    ScrollDataBoundaryWrapper(WebRenderCommandBuilder& aBuilder,
-                              RenderRootBoundary& aBoundary);
-    ~ScrollDataBoundaryWrapper();
-
-   private:
-    WebRenderCommandBuilder& mBuilder;
-    RenderRootBoundary mBoundary;
-    size_t mLayerCountBeforeRecursing;
-  };
-  friend class ScrollDataBoundaryWrapper;
-
  private:
   RenderRootStateManager* GetRenderRootStateManager(wr::RenderRoot aRenderRoot);
   void CreateWebRenderCommands(nsDisplayItem* aItem,
@@ -254,8 +237,6 @@ class WebRenderCommandBuilder final {
 
   wr::RenderRootArray<wr::usize> mBuilderDumpIndex;
   wr::usize mDumpIndent;
-
-  DisplayItemCache mDisplayItemCache;
 
  public:
   // Whether consecutive inactive display items should be grouped into one

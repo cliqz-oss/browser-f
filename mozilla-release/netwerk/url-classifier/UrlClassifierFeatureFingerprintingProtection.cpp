@@ -6,7 +6,6 @@
 
 #include "UrlClassifierFeatureFingerprintingProtection.h"
 
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/net/UrlClassifierCommon.h"
 #include "mozilla/StaticPrefs_privacy.h"
 #include "nsContentUtils.h"
@@ -111,7 +110,10 @@ UrlClassifierFeatureFingerprintingProtection::MaybeCreate(
            "with uri %s",
            aChannel, spec.get()));
     }
+    return nullptr;
+  }
 
+  if (UrlClassifierCommon::IsPassiveContent(aChannel)) {
     return nullptr;
   }
 

@@ -43,7 +43,6 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/gfx/UserData.h"
 #include "mozilla/layers/LayerAttributes.h"
-#include "mozilla/layers/RenderRootBoundary.h"
 #include "mozilla/layers/ScrollableLayerGuid.h"
 #include "nsCSSRenderingBorders.h"
 #include "nsPresArena.h"
@@ -403,13 +402,15 @@ class nsDisplayListBuilder {
    public:
     typedef mozilla::gfx::Matrix4x4 Matrix4x4;
 
-    Preserves3DContext() : mAccumulatedRectLevels(0) {}
+    Preserves3DContext()
+        : mAccumulatedRectLevels(0), mAllowAsyncAnimation(true) {}
 
     Preserves3DContext(const Preserves3DContext& aOther)
         : mAccumulatedTransform(),
           mAccumulatedRect(),
           mAccumulatedRectLevels(0),
-          mVisibleRect(aOther.mVisibleRect) {}
+          mVisibleRect(aOther.mVisibleRect),
+          mAllowAsyncAnimation(aOther.mAllowAsyncAnimation) {}
 
     // Accmulate transforms of ancestors on the preserves-3d chain.
     Matrix4x4 mAccumulatedTransform;
@@ -418,6 +419,8 @@ class nsDisplayListBuilder {
     // How far this frame is from the root of the current 3d context.
     int mAccumulatedRectLevels;
     nsRect mVisibleRect;
+    // Allow async animation for this 3D context.
+    bool mAllowAsyncAnimation;
   };
 
   /**
@@ -923,21 +926,9 @@ class nsDisplayListBuilder {
   void SubtractFromVisibleRegion(nsRegion* aVisibleRegion,
                                  const nsRegion& aRegion);
 
-  void SetNeedsDisplayListBuild(mozilla::wr::RenderRoot aRenderRoot) {
-    MOZ_ASSERT(aRenderRoot != mozilla::wr::RenderRoot::Default);
-    mNeedsDisplayListBuild[aRenderRoot] = true;
-  }
-
   void ExpandRenderRootRect(LayoutDeviceRect aRect,
                             mozilla::wr::RenderRoot aRenderRoot) {
     mRenderRootRects[aRenderRoot] = mRenderRootRects[aRenderRoot].Union(aRect);
-  }
-
-  bool GetNeedsDisplayListBuild(mozilla::wr::RenderRoot aRenderRoot) {
-    if (aRenderRoot == mozilla::wr::RenderRoot::Default) {
-      return true;
-    }
-    return mNeedsDisplayListBuild[aRenderRoot];
   }
 
   void ComputeDefaultRenderRootRect(LayoutDeviceIntSize aClientSize);
@@ -1729,6 +1720,14 @@ class nsDisplayListBuilder {
 
   void SavePreserves3DRect() { mPreserves3DCtx.mVisibleRect = mVisibleRect; }
 
+  void SavePreserves3DAllowAsyncAnimation(bool aValue) {
+    mPreserves3DCtx.mAllowAsyncAnimation = aValue;
+  }
+
+  bool GetPreserves3DAllowAsyncAnimation() const {
+    return mPreserves3DCtx.mAllowAsyncAnimation;
+  }
+
   bool IsBuildingInvisibleItems() const { return mBuildingInvisibleItems; }
 
   void SetBuildingInvisibleItems(bool aBuildingInvisibleItems) {
@@ -1919,7 +1918,6 @@ class nsDisplayListBuilder {
   nsPoint mCurrentOffsetToReferenceFrame;
 
   mozilla::wr::RenderRootArray<LayoutDeviceRect> mRenderRootRects;
-  mozilla::wr::NonDefaultRenderRootArray<bool> mNeedsDisplayListBuild;
 
   RefPtr<AnimatedGeometryRoot> mRootAGR;
   RefPtr<AnimatedGeometryRoot> mCurrentAGR;
@@ -2308,6 +2306,12 @@ class nsDisplayItemBase : public nsDisplayItemLink {
 
   void SetCantBeReused() { mItemFlags += ItemBaseFlag::CantBeReused; }
 
+  bool CanBeCached() const {
+    return !mItemFlags.contains(ItemBaseFlag::CantBeCached);
+  }
+
+  void SetCantBeCached() { mItemFlags += ItemBaseFlag::CantBeCached; }
+
   bool IsOldItem() const { return !!mOldList; }
 
   /**
@@ -2409,6 +2413,7 @@ class nsDisplayItemBase : public nsDisplayItemLink {
  private:
   enum class ItemBaseFlag : uint8_t {
     CantBeReused,
+    CantBeCached,
     DeletedFrame,
     ModifiedFrame,
     ReusedItem,
@@ -3218,16 +3223,6 @@ class nsPaintedDisplayItem : public nsDisplayItem {
     // TODO(miko): Make this a pure virtual function to force implementation.
     MOZ_ASSERT_UNREACHABLE("Paint() is not implemented!");
   }
-
-  /**
-   * Display items that are guaranteed to produce the same output from
-   * |CreateWebRenderCommands()|, regardless of the surrounding state,
-   * can return true. This allows |DisplayItemCache| to cache the output of
-   * |CreateWebRenderCommands()|, and avoid the call for successive paints, if
-   * the item is reused. If calling |CreateWebRenderCommands()| would not create
-   * any WebRender display items, |CanBeCached()| should return false.
-   */
-  virtual bool CanBeCached() const { return false; }
 
   /**
    * External storage used by |DisplayItemCache| to avoid hashmap lookups.
@@ -4464,14 +4459,14 @@ class nsDisplaySolidColor : public nsDisplaySolidColorBase {
  * the find bar highlighter dimmer.
  */
 class nsDisplaySolidColorRegion : public nsPaintedDisplayItem {
-  typedef mozilla::gfx::Color Color;
+  typedef mozilla::gfx::sRGBColor sRGBColor;
 
  public:
   nsDisplaySolidColorRegion(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
                             const nsRegion& aRegion, nscolor aColor)
       : nsPaintedDisplayItem(aBuilder, aFrame),
         mRegion(aRegion),
-        mColor(Color::FromABGR(aColor)) {
+        mColor(sRGBColor::FromABGR(aColor)) {
     NS_ASSERTION(NS_GET_A(aColor) > 0,
                  "Don't create invisible nsDisplaySolidColorRegions!");
     MOZ_COUNT_CTOR(nsDisplaySolidColorRegion);
@@ -4513,7 +4508,7 @@ class nsDisplaySolidColorRegion : public nsPaintedDisplayItem {
 
  private:
   nsRegion mRegion;
-  Color mColor;
+  sRGBColor mColor;
 };
 
 /**
@@ -4657,9 +4652,6 @@ class nsDisplayBackgroundImage : public nsDisplayImageContainer {
     if (aFrame == mDependentFrame) {
       mDependentFrame = nullptr;
     }
-    if (mAssociatedImage && aFrame == mFrame) {
-      DisassociateImage();
-    }
     nsDisplayImageContainer::RemoveFrame(aFrame);
   }
 
@@ -4671,9 +4663,6 @@ class nsDisplayBackgroundImage : public nsDisplayImageContainer {
                                      nsDisplayListBuilder* aBuilder);
   nsRect GetBoundsInternal(nsDisplayListBuilder* aBuilder,
                            nsIFrame* aFrameForBounds = nullptr);
-
-  void AssociateImageIfNeeded();
-  void DisassociateImage();
 
   void PaintInternal(nsDisplayListBuilder* aBuilder, gfxContext* aCtx,
                      const nsRect& aBounds, nsRect* aClipRect);
@@ -4703,8 +4692,6 @@ class nsDisplayBackgroundImage : public nsDisplayImageContainer {
   /* Whether the image should be treated as fixed to the viewport. */
   bool mShouldFixToViewport;
   uint32_t mImageFlags;
-  bool mAssociatedImage;
-  bool mTriedToAssociateImage;
 };
 
 enum class TableType : uint8_t {
@@ -4899,7 +4886,7 @@ class nsDisplayTableThemedBackground : public nsDisplayThemedBackground {
 };
 
 class nsDisplayBackgroundColor : public nsPaintedDisplayItem {
-  typedef mozilla::gfx::Color Color;
+  typedef mozilla::gfx::sRGBColor sRGBColor;
 
  public:
   nsDisplayBackgroundColor(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
@@ -4910,7 +4897,7 @@ class nsDisplayBackgroundColor : public nsPaintedDisplayItem {
         mBackgroundRect(aBackgroundRect),
         mHasStyle(aBackgroundStyle),
         mDependentFrame(nullptr),
-        mColor(Color::FromABGR(aColor)) {
+        mColor(sRGBColor::FromABGR(aColor)) {
     mState.mColor = mColor;
 
     if (mHasStyle) {
@@ -4926,8 +4913,6 @@ class nsDisplayBackgroundColor : public nsPaintedDisplayItem {
       mDependentFrame->RemoveDisplayItem(this);
     }
   }
-
-  bool CanBeCached() const final { return !HasBackgroundClipText(); }
 
   NS_DISPLAY_DECL_NAME("BackgroundColor", TYPE_BACKGROUND_COLOR)
 
@@ -5032,10 +5017,10 @@ class nsDisplayBackgroundColor : public nsPaintedDisplayItem {
   const bool mHasStyle;
   mozilla::StyleGeometryBox mBottomLayerClip;
   nsIFrame* mDependentFrame;
-  mozilla::gfx::Color mColor;
+  mozilla::gfx::sRGBColor mColor;
 
   struct {
-    mozilla::gfx::Color mColor;
+    mozilla::gfx::sRGBColor mColor;
   } mState;
 };
 
@@ -5318,12 +5303,6 @@ class nsDisplayCompositorHitTestInfo : public nsDisplayHitTestInfoBase {
       mozilla::UniquePtr<HitTestInfo>&& aHitTestInfo);
 
   MOZ_COUNTED_DTOR_OVERRIDE(nsDisplayCompositorHitTestInfo)
-
-  bool CanBeCached() const final {
-    // Do not try to cache gecko hit test items with empty hit test area,
-    // because they would not create any WebRender display items.
-    return !HitTestArea().IsEmpty();
-  }
 
   NS_DISPLAY_DECL_NAME("CompositorHitTestInfo", TYPE_COMPOSITOR_HITTEST_INFO)
 
@@ -5791,7 +5770,7 @@ class nsDisplayOpacity : public nsDisplayWrapList {
 class nsDisplayBlendMode : public nsDisplayWrapList {
  public:
   nsDisplayBlendMode(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
-                     nsDisplayList* aList, uint8_t aBlendMode,
+                     nsDisplayList* aList, mozilla::StyleBlend aBlendMode,
                      const ActiveScrolledRoot* aActiveScrolledRoot,
                      uint16_t aIndex = 0);
   nsDisplayBlendMode(nsDisplayListBuilder* aBuilder,
@@ -5841,7 +5820,7 @@ class nsDisplayBlendMode : public nsDisplayWrapList {
   mozilla::gfx::CompositionOp BlendMode();
 
  protected:
-  uint8_t mBlendMode;
+  mozilla::StyleBlend mBlendMode;
   uint16_t mIndex;
 
  private:
@@ -5851,7 +5830,7 @@ class nsDisplayBlendMode : public nsDisplayWrapList {
 class nsDisplayTableBlendMode : public nsDisplayBlendMode {
  public:
   nsDisplayTableBlendMode(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
-                          nsDisplayList* aList, uint8_t aBlendMode,
+                          nsDisplayList* aList, mozilla::StyleBlend aBlendMode,
                           const ActiveScrolledRoot* aActiveScrolledRoot,
                           uint16_t aIndex, nsIFrame* aAncestorFrame)
       : nsDisplayBlendMode(aBuilder, aFrame, aList, aBlendMode,
@@ -6137,43 +6116,6 @@ class nsDisplayOwnLayer : public nsDisplayWrapList {
   bool mForceActive;
   uint64_t mWrAnimationId;
   uint16_t mIndex;
-};
-
-class nsDisplayRenderRoot : public nsDisplayWrapList {
-  nsDisplayRenderRoot(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
-                      nsDisplayList* aList,
-                      const ActiveScrolledRoot* aActiveScrolledRoot,
-                      mozilla::wr::RenderRoot aRenderRoot);
-
-  MOZ_COUNTED_DTOR_OVERRIDE(nsDisplayRenderRoot)
-
-  NS_DISPLAY_DECL_NAME("RenderRoot", TYPE_RENDER_ROOT)
-
-  void InvalidateCachedChildInfo(nsDisplayListBuilder* aBuilder) override;
-  void Destroy(nsDisplayListBuilder* aBuilder) override;
-  void NotifyUsed(nsDisplayListBuilder* aBuilder) override;
-
-  bool UpdateScrollData(
-      mozilla::layers::WebRenderScrollData* aData,
-      mozilla::layers::WebRenderLayerScrollData* aLayerData) override;
-
-  bool ShouldFlattenAway(nsDisplayListBuilder* aBuilder) override {
-    return false;
-  }
-
-  bool CreateWebRenderCommands(
-      mozilla::wr::DisplayListBuilder& aBuilder,
-      mozilla::wr::IpcResourceUpdateQueue& aResources,
-      const StackingContextHelper& aSc,
-      mozilla::layers::RenderRootStateManager* aManager,
-      nsDisplayListBuilder* aDisplayListBuilder) override;
-
- protected:
-  void ExpandDisplayListBuilderRenderRootRect(nsDisplayListBuilder* aBuilder);
-
-  mozilla::wr::RenderRoot mRenderRoot;
-  bool mBuiltWRCommands;
-  mozilla::Maybe<mozilla::layers::RenderRootBoundary> mBoundary;
 };
 
 /**
@@ -6886,7 +6828,7 @@ class nsDisplayTransform : public nsDisplayHitTestInfoBase {
   using TransformReferenceBox = nsStyleTransformMatrix::TransformReferenceBox;
 
  public:
-  enum PrerenderDecision { NoPrerender, FullPrerender, PartialPrerender };
+  enum class PrerenderDecision { No, Full, Partial };
 
   /**
    * Returns a matrix (in pixels) for the current frame. The matrix should be
@@ -7167,16 +7109,25 @@ class nsDisplayTransform : public nsDisplayHitTestInfoBase {
   static Matrix4x4 GetResultingTransformMatrix(
       const FrameTransformProperties& aProperties, TransformReferenceBox&,
       const nsPoint& aOrigin, float aAppUnitsPerPixel, uint32_t aFlags);
+
+  struct PrerenderInfo {
+    PrerenderDecision mDecision = PrerenderDecision::No;
+    bool mHasAnimations = true;
+  };
   /**
    * Decide whether we should prerender some or all of the contents of the
    * transformed frame even when it's not completely visible (yet).
-   * Return FullPrerender if the entire contents should be prerendered,
-   * PartialPrerender if some but not all of the contents should be prerendered,
-   * or NoPrerender if only the visible area should be rendered.
+   * Return PrerenderDecision::Full if the entire contents should be
+   * prerendered, PrerenderDecision::Partial if some but not all of the
+   * contents should be prerendered, or PrerenderDecision::No if only the
+   * visible area should be rendered.
+   * |mNoAffectDecisionInPreserve3D| is set if the prerender decision should not
+   * affect the decision on other frames in the preserve 3d tree.
    * |aDirtyRect| is updated to the area that should be prerendered.
    */
-  static PrerenderDecision ShouldPrerenderTransformedContent(
+  static PrerenderInfo ShouldPrerenderTransformedContent(
       nsDisplayListBuilder* aBuilder, nsIFrame* aFrame, nsRect* aDirtyRect);
+
   bool CanUseAsyncAnimations(nsDisplayListBuilder* aBuilder) override;
 
   bool MayBeAnimated(nsDisplayListBuilder* aBuilder,

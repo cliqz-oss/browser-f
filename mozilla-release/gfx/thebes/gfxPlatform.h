@@ -40,6 +40,7 @@ class nsAtom;
 class nsIObserver;
 class SRGBOverrideObserver;
 class gfxTextPerfMetrics;
+struct FontMatchingStats;
 typedef struct FT_LibraryRec_* FT_Library;
 
 namespace mozilla {
@@ -156,7 +157,8 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   typedef mozilla::StretchRange StretchRange;
   typedef mozilla::SlantStyleRange SlantStyleRange;
   typedef mozilla::WeightRange WeightRange;
-  typedef mozilla::gfx::Color Color;
+  typedef mozilla::gfx::sRGBColor sRGBColor;
+  typedef mozilla::gfx::DeviceColor DeviceColor;
   typedef mozilla::gfx::DataSourceSurface DataSourceSurface;
   typedef mozilla::gfx::DrawTarget DrawTarget;
   typedef mozilla::gfx::IntSize IntSize;
@@ -367,12 +369,14 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
                                    const nsACString& aGenericFamily);
 
   /**
-   * Create the appropriate platform font group
+   * Create a gfxFontGroup based on the given family list and style.
    */
-  virtual gfxFontGroup* CreateFontGroup(
-      const mozilla::FontFamilyList& aFontFamilyList,
-      const gfxFontStyle* aStyle, gfxTextPerfMetrics* aTextPerf,
-      gfxUserFontSet* aUserFontSet, gfxFloat aDevToCssSize) = 0;
+  gfxFontGroup* CreateFontGroup(const mozilla::FontFamilyList& aFontFamilyList,
+                                const gfxFontStyle* aStyle,
+                                gfxTextPerfMetrics* aTextPerf,
+                                FontMatchingStats* aFontMatchingStats,
+                                gfxUserFontSet* aUserFontSet,
+                                gfxFloat aDevToCssSize) const;
 
   /**
    * Look up a local platform font using the full font face name.
@@ -516,11 +520,9 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
 
   /**
    * Convert a pixel using a cms transform in an endian-aware manner.
-   *
-   * Sets 'out' to 'in' if transform is nullptr.
    */
-  static void TransformPixel(const Color& in, Color& out,
-                             qcms_transform* transform);
+  static DeviceColor TransformPixel(const sRGBColor& in,
+                                    qcms_transform* transform);
 
   /**
    * Return the output device ICC profile.

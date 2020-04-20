@@ -121,7 +121,6 @@ with Files("webrtcUI.jsm"):
 with Files("ZoomUI.jsm"):
     BUG_COMPONENT = ("Firefox", "Toolbars and Customization")
 
-
 BROWSER_CHROME_MANIFESTS += [
     'test/browser/browser.ini',
     'test/browser/formValidation/browser.ini',

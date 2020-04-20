@@ -33,6 +33,7 @@ void gecko_profiler_unregister_thread();
 
 void gecko_profiler_start_marker(const char* name);
 void gecko_profiler_end_marker(const char* name);
+void gecko_profiler_event_marker(const char* name);
 void gecko_profiler_add_text_marker(const char* name, const char* text_ptr,
                                     size_t text_len, uint64_t microseconds);
 bool gecko_profiler_thread_is_being_profiled();
@@ -73,6 +74,9 @@ struct WrWindowId;
 struct DocumentId;
 struct WrPipelineInfo;
 
+struct WrPipelineIdAndEpoch;
+using WrPipelineIdEpochs = nsTArray<WrPipelineIdAndEpoch>;
+
 const uint64_t ROOT_CLIP_CHAIN = ~0;
 
 }  // namespace wr
@@ -86,9 +90,10 @@ void apz_run_updater(mozilla::wr::WrWindowId aWindowId);
 void apz_deregister_updater(mozilla::wr::WrWindowId aWindowId);
 
 void apz_register_sampler(mozilla::wr::WrWindowId aWindowId);
-void apz_sample_transforms(mozilla::wr::WrWindowId aWindowId,
-                           mozilla::wr::Transaction* aTransaction,
-                           mozilla::wr::DocumentId aRenderRootId);
+void apz_sample_transforms(
+    mozilla::wr::WrWindowId aWindowId, mozilla::wr::Transaction* aTransaction,
+    mozilla::wr::DocumentId aRenderRootId,
+    const mozilla::wr::WrPipelineIdEpochs* aPipelineEpochs);
 void apz_deregister_sampler(mozilla::wr::WrWindowId aWindowId);
 }  // extern "C"
 

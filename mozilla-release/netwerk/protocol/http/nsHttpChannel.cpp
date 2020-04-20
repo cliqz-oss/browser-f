@@ -55,9 +55,10 @@
 #include "nsThreadUtils.h"
 #include "GeckoProfiler.h"
 #include "nsIConsoleService.h"
-#include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/AntiTrackingUtils.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/ContentBlocking.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
@@ -82,7 +83,6 @@
 #include "nsIHttpChannelInternal.h"
 #include "nsIPrompt.h"
 #include "nsInputStreamPump.h"
-#include "nsIURIFixup.h"
 #include "nsURLHelper.h"
 #include "nsISocketTransport.h"
 #include "nsIStreamConverterService.h"
@@ -119,6 +119,7 @@
 #include "nsINetworkLinkService.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ServiceWorkerUtils.h"
+#include "mozilla/dom/nsHTTPSOnlyStreamListener.h"
 #include "mozilla/net/AsyncUrlChannelClassifier.h"
 #include "mozilla/net/CookieJarSettings.h"
 #include "mozilla/net/NeckoChannelParams.h"
@@ -128,6 +129,7 @@
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/net/SocketProcessParent.h"
 #include "js/Conversions.h"
+#include "mozilla/dom/SecFetch.h"
 
 #ifdef MOZ_TASK_TRACER
 #  include "GeckoTaskTracer.h"
@@ -584,6 +586,8 @@ nsresult nsHttpChannel::OnBeforeConnect() {
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
+  SecFetch::AddSecFetchHeader(this);
+
   nsCOMPtr<nsIPrincipal> resultPrincipal;
   if (!mURI->SchemeIs("https")) {
     nsContentUtils::GetSecurityManager()->GetChannelResultPrincipal(
@@ -620,6 +624,20 @@ nsresult nsHttpChannel::OnBeforeConnect() {
                                   mPrivateBrowsing, mAllowSTS, originAttributes,
                                   shouldUpgrade, std::move(resultCallback),
                                   willCallback);
+      // If the request gets upgraded because of the HTTPS-Only mode, but no
+      // event listener has been registered so far, we want to do that here.
+      uint32_t httpOnlyStatus = mLoadInfo->GetHttpsOnlyStatus();
+      if (httpOnlyStatus &
+          nsILoadInfo::HTTPS_ONLY_UPGRADED_LISTENER_NOT_REGISTERED) {
+        RefPtr<nsHTTPSOnlyStreamListener> httpsOnlyListener =
+            new nsHTTPSOnlyStreamListener(mListener);
+        mListener = httpsOnlyListener;
+
+        httpOnlyStatus ^=
+            nsILoadInfo::HTTPS_ONLY_UPGRADED_LISTENER_NOT_REGISTERED;
+        httpOnlyStatus |= nsILoadInfo::HTTPS_ONLY_UPGRADED_LISTENER_REGISTERED;
+        mLoadInfo->SetHttpsOnlyStatus(httpOnlyStatus);
+      }
       LOG(
           ("nsHttpChannel::OnBeforeConnect "
            "[this=%p willCallback=%d rv=%" PRIx32 "]\n",
@@ -665,6 +683,8 @@ nsresult nsHttpChannel::ContinueOnBeforeConnect(bool aShouldUpgrade,
     } else {
       mCaps |= NS_HTTP_DISALLOW_SPDY;
     }
+    // Upgrades cannot use HTTP/3.
+    mCaps |= NS_HTTP_DISALLOW_HTTP3;
   }
 
   if (mIsTRRServiceChannel) {
@@ -993,7 +1013,8 @@ void nsHttpChannel::SpeculativeConnect() {
   Unused << gHttpHandler->SpeculativeConnect(
       mConnectionInfo, callbacks,
       mCaps & (NS_HTTP_DISALLOW_SPDY | NS_HTTP_TRR_MODE_MASK |
-               NS_HTTP_DISABLE_IPV4 | NS_HTTP_DISABLE_IPV6));
+               NS_HTTP_DISABLE_IPV4 | NS_HTTP_DISABLE_IPV6 |
+               NS_HTTP_DISALLOW_HTTP3));
 }
 
 void nsHttpChannel::DoNotifyListenerCleanup() {
@@ -1234,17 +1255,7 @@ nsresult nsHttpChannel::SetupTransaction() {
     if (NS_FAILED(rv)) return rv;
     if (!buf.IsEmpty() && ((strncmp(mSpec.get(), "http:", 5) == 0) ||
                            strncmp(mSpec.get(), "https:", 6) == 0)) {
-      nsCOMPtr<nsIURIFixup> urifixup = services::GetURIFixup();
-      if (NS_WARN_IF(!urifixup)) {
-        return NS_ERROR_FAILURE;
-      }
-
-      nsCOMPtr<nsIURI> tempURI;
-      nsresult rv = urifixup->CreateExposableURI(mURI, getter_AddRefs(tempURI));
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
-
+      nsCOMPtr<nsIURI> tempURI = nsIOService::CreateExposableURI(mURI);
       rv = tempURI->GetAsciiSpec(path);
       if (NS_FAILED(rv)) return rv;
       requestURI = &path;
@@ -1607,25 +1618,28 @@ nsresult EnsureMIMEOfScript(nsHttpChannel* aChannel, nsIURI* aURI,
       AccumulateCategorical(
           Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_3::importScript_load);
       break;
+    case nsIContentPolicy::TYPE_INTERNAL_AUDIOWORKLET:
+    case nsIContentPolicy::TYPE_INTERNAL_PAINTWORKLET:
+      AccumulateCategorical(
+          Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_3::worklet_load);
+      break;
     default:
       MOZ_ASSERT_UNREACHABLE("unexpected script type");
       break;
   }
 
-  nsCOMPtr<nsIURI> requestURI;
-  aLoadInfo->LoadingPrincipal()->GetURI(getter_AddRefs(requestURI));
-
-  nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
   bool isPrivateWin = aLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
-  nsresult rv = ssm->CheckSameOriginURI(requestURI, aURI, false, isPrivateWin);
-  if (NS_SUCCEEDED(rv)) {
+  bool isSameOrigin = false;
+  aLoadInfo->LoadingPrincipal()->IsSameOrigin(aURI, isPrivateWin,
+                                              &isSameOrigin);
+  if (isSameOrigin) {
     // same origin
     AccumulateCategorical(
         Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_3::same_origin);
   } else {
     bool cors = false;
     nsAutoCString corsOrigin;
-    rv = aResponseHead->GetHeader(
+    nsresult rv = aResponseHead->GetHeader(
         nsHttp::ResolveAtom("Access-Control-Allow-Origin"), corsOrigin);
     if (NS_SUCCEEDED(rv)) {
       if (corsOrigin.Equals("*")) {
@@ -1636,9 +1650,10 @@ nsresult EnsureMIMEOfScript(nsHttpChannel* aChannel, nsIURI* aURI,
         if (NS_SUCCEEDED(rv)) {
           bool isPrivateWin =
               aLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
-          rv = ssm->CheckSameOriginURI(requestURI, corsOriginURI, false,
-                                       isPrivateWin);
-          if (NS_SUCCEEDED(rv)) {
+          bool isSameOrigin = false;
+          aLoadInfo->LoadingPrincipal()->IsSameOrigin(
+              corsOriginURI, isPrivateWin, &isSameOrigin);
+          if (isSameOrigin) {
             cors = true;
           }
         }
@@ -2243,6 +2258,10 @@ nsresult nsHttpChannel::ProcessSecurityHeaders() {
     return NS_OK;
   }
 
+  if (IsBrowsingContextDiscarded()) {
+    return NS_OK;
+  }
+
   nsAutoCString asciiHost;
   nsresult rv = mURI->GetAsciiHost(asciiHost);
   NS_ENSURE_SUCCESS(rv, NS_OK);
@@ -2398,6 +2417,10 @@ void nsHttpChannel::ProcessAltService() {
   }
 
   if (!gHttpHandler->AllowAltSvc() || (mCaps & NS_HTTP_DISALLOW_SPDY)) {
+    return;
+  }
+
+  if (IsBrowsingContextDiscarded()) {
     return;
   }
 
@@ -2590,8 +2613,6 @@ nsresult nsHttpChannel::ContinueProcessResponse1() {
     return NS_OK;
   }
 
-  AssertNotDocumentChannel();
-
   // Check if request was cancelled during http-on-examine-response.
   if (mCanceled) {
     return CallOnStartRequest();
@@ -2656,61 +2677,6 @@ nsresult nsHttpChannel::ContinueProcessResponse1() {
 
   // No process switch needed, continue as normal.
   return ContinueProcessResponse2(rv);
-}
-
-void nsHttpChannel::AssertNotDocumentChannel() {
-  if (!IsDocument()) {
-    return;
-  }
-
-#ifndef DEBUG
-  if (!StaticPrefs::fission_autostart()) {
-    // This assertion is firing in the wild (Bug 1593545) and its not clear
-    // why. Disable the assertion in non-fission non-debug configurations to
-    // avoid crashing user's browsers until we're done dogfooding fission.
-    return;
-  }
-#endif
-
-  nsCOMPtr<nsIParentChannel> parentChannel;
-  NS_QueryNotificationCallbacks(this, parentChannel);
-  RefPtr<DocumentLoadListener> documentChannelParent =
-      do_QueryObject(parentChannel);
-  if (documentChannelParent) {
-    // The load is using document channel.
-    return;
-  }
-
-  RefPtr<HttpChannelParent> httpParent = do_QueryObject(parentChannel);
-  if (!httpParent) {
-    // The load was initiated in the parent and doesn't need document
-    // channel.
-    return;
-  }
-
-  auto contentPolicy = mLoadInfo->GetExternalContentPolicyType();
-  if (contentPolicy != nsIContentPolicy::TYPE_DOCUMENT &&
-      contentPolicy != nsIContentPolicy::TYPE_SUBDOCUMENT) {
-    return;
-  }
-
-  RefPtr<BrowsingContext> bc;
-  MOZ_ALWAYS_SUCCEEDS(mLoadInfo->GetTargetBrowsingContext(getter_AddRefs(bc)));
-  MOZ_ASSERT(bc);  // It shouldn't be possible.
-  if (!bc) {
-    return;
-  }
-
-  if (mLoadInfo->LoadingPrincipal() &&
-      mLoadInfo->LoadingPrincipal()->IsSystemPrincipal()) {
-    // Loads with the system principal can skip document channel
-    return;
-  }
-
-  // The load was supposed to use document channel but didn't.
-  MOZ_DIAGNOSTIC_ASSERT(
-      !StaticPrefs::browser_tabs_documentchannel(),
-      "DocumentChannel is enabled but this load was done without it");
 }
 
 nsresult nsHttpChannel::ContinueProcessResponse2(nsresult rv) {
@@ -4025,8 +3991,7 @@ bool nsHttpChannel::IsIsolated() {
   }
   mIsIsolated = StaticPrefs::browser_cache_cache_isolation() ||
                 (IsThirdPartyTrackingResource() &&
-                 !AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
-                     this, mURI, nullptr));
+                 !ContentBlocking::ShouldAllowAccessFor(this, mURI, nullptr));
   mHasBeenIsolatedChecked = true;
   return mIsIsolated;
 }
@@ -6517,6 +6482,9 @@ nsHttpChannel::AsyncOpen(nsIStreamListener* aListener) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
+  Unused << mLoadInfo->SetHasStoragePermission(
+      AntiTrackingUtils::HasStoragePermissionInParent(this));
+
   static bool sRCWNInited = false;
   if (!sRCWNInited) {
     sRCWNInited = true;
@@ -6780,7 +6748,8 @@ nsresult nsHttpChannel::BeginConnect() {
       (scheme.EqualsLiteral("http") || scheme.EqualsLiteral("https")) &&
       (mapping = gHttpHandler->GetAltServiceMapping(
            scheme, host, port, mPrivateBrowsing, IsIsolated(),
-           GetTopWindowOrigin(), originAttributes))) {
+           GetTopWindowOrigin(), originAttributes,
+           !mUpgradeProtocolCallback && !mProxyInfo))) {
     LOG(("nsHttpChannel %p Alt Service Mapping Found %s://%s:%d [%s]\n", this,
          scheme.get(), mapping->AlternateHost().get(), mapping->AlternatePort(),
          mapping->HashKey().get()));
@@ -7491,14 +7460,12 @@ static bool CompareCrossOriginOpenerPolicies(
     return true;
   }
 
-  if (documentPolicy != resultPolicy) {
+  if (documentPolicy == nsILoadInfo::OPENER_POLICY_UNSAFE_NONE ||
+      resultPolicy == nsILoadInfo::OPENER_POLICY_UNSAFE_NONE) {
     return false;
   }
-  // For the next checks the document and result will have matching policies.
 
-  // We either check if they are same origin or same site.
-  if ((documentPolicy & nsILoadInfo::OPENER_POLICY_SAME_ORIGIN) &&
-      documentOrigin->Equals(resultOrigin)) {
+  if (documentPolicy == resultPolicy && documentOrigin->Equals(resultOrigin)) {
     return true;
   }
 
@@ -7665,10 +7632,6 @@ nsresult nsHttpChannel::ProcessCrossOriginEmbedderPolicyHeader() {
 
 // https://mikewest.github.io/corpp/#corp-check
 nsresult nsHttpChannel::ProcessCrossOriginResourcePolicyHeader() {
-  if (!StaticPrefs::browser_tabs_remote_useCORP()) {
-    return NS_OK;
-  }
-
   // Fetch 4.5.9
   uint32_t corsMode;
   MOZ_ALWAYS_SUCCEEDS(GetCorsMode(&corsMode));
@@ -7733,9 +7696,9 @@ nsresult nsHttpChannel::ProcessCrossOriginResourcePolicyHeader() {
       return NS_ERROR_DOM_CORP_FAILED;
     }
 
-    nsCOMPtr<nsIURI> documentURI = mLoadInfo->LoadingPrincipal()->GetURI();
     nsCOMPtr<nsIURI> resourceURI = channelOrigin->GetURI();
-    if (!documentURI->SchemeIs("https") && resourceURI->SchemeIs("https")) {
+    if (!mLoadInfo->LoadingPrincipal()->SchemeIs("https") &&
+        resourceURI->SchemeIs("https")) {
       return NS_ERROR_DOM_CORP_FAILED;
     }
 
@@ -7896,8 +7859,6 @@ nsHttpChannel::OnStartRequest(nsIRequest* request) {
     HandleAsyncAbort();
     return NS_OK;
   }
-
-  AssertNotDocumentChannel();
 
   // No process change is needed, so continue on to ContinueOnStartRequest1.
   return ContinueOnStartRequest1(rv);
@@ -8300,7 +8261,7 @@ nsresult nsHttpChannel::ContinueOnStopRequest(nsresult aStatus, bool aIsFromNet,
     // Browser upgrading is disabled and the content is already HTTPS
     upgradeKey = NS_LITERAL_CSTRING("disabledNoReason");
     // Checks "security.mixed_content.upgrade_display_content" is true
-    if (nsMixedContentBlocker::ShouldUpgradeMixedDisplayContent()) {
+    if (StaticPrefs::security_mixed_content_upgrade_display_content()) {
       if (mLoadInfo->GetBrowserUpgradeInsecureRequests()) {
         // HTTP content the browser has upgraded to HTTPS
         upgradeKey = NS_LITERAL_CSTRING("enabledUpgrade");
@@ -8318,7 +8279,7 @@ nsresult nsHttpChannel::ContinueOnStopRequest(nsresult aStatus, bool aIsFromNet,
     upgradeKey = NS_LITERAL_CSTRING("disabledUpgrade");
   } else {
     // HTTP content that wouldn't upgrade
-    upgradeKey = nsMixedContentBlocker::ShouldUpgradeMixedDisplayContent()
+    upgradeKey = StaticPrefs::security_mixed_content_upgrade_display_content()
                      ? NS_LITERAL_CSTRING("enabledWont")
                      : NS_LITERAL_CSTRING("disabledWont");
   }
@@ -8717,8 +8678,7 @@ nsHttpChannel::OnTransportStatus(nsITransport* trans, nsresult status,
     nsAutoCString host;
     mURI->GetHost(host);
     if (!(mLoadFlags & LOAD_BACKGROUND)) {
-      mProgressSink->OnStatus(this, nullptr, status,
-                              NS_ConvertUTF8toUTF16(host).get());
+      mProgressSink->OnStatus(this, status, NS_ConvertUTF8toUTF16(host).get());
     } else {
       nsCOMPtr<nsIParentChannel> parentChannel;
       NS_QueryNotificationCallbacks(this, parentChannel);
@@ -8729,7 +8689,7 @@ nsHttpChannel::OnTransportStatus(nsITransport* trans, nsresult status,
       // LOAD_BACKGROUND is checked again in |HttpChannelChild|, so the final
       // consumer won't get this event.
       if (SameCOMIdentity(parentChannel, mProgressSink)) {
-        mProgressSink->OnStatus(this, nullptr, status,
+        mProgressSink->OnStatus(this, status,
                                 NS_ConvertUTF8toUTF16(host).get());
       }
     }
@@ -8744,7 +8704,7 @@ nsHttpChannel::OnTransportStatus(nsITransport* trans, nsresult status,
         GetCallback(mProgressSink);
       }
       if (mProgressSink) {
-        mProgressSink->OnProgress(this, nullptr, progress, progressMax);
+        mProgressSink->OnProgress(this, progress, progressMax);
       }
     }
   }
@@ -10432,9 +10392,7 @@ nsresult nsHttpChannel::RedirectToInterceptedChannel() {
       InterceptedHttpChannel::CreateForInterception(
           mChannelCreationTime, mChannelCreationTimestamp, mAsyncOpenTime);
 
-  nsContentPolicyType type = mLoadInfo
-                                 ? mLoadInfo->GetExternalContentPolicyType()
-                                 : nsIContentPolicy::TYPE_OTHER;
+  nsContentPolicyType type = mLoadInfo->GetExternalContentPolicyType();
 
   nsresult rv = intercepted->Init(
       mURI, mCaps, static_cast<nsProxyInfo*>(mProxyInfo.get()),
@@ -10493,7 +10451,7 @@ void nsHttpChannel::ReEvaluateReferrerAfterTrackingStatusIsKnown() {
   if (!cjs) {
     cjs = net::CookieJarSettings::Create();
   }
-  if (cjs->GetRejectThirdPartyTrackers()) {
+  if (cjs->GetRejectThirdPartyContexts()) {
     bool isPrivate = mLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
     // If our referrer has been set before, and our referrer policy is unset
     // (default policy) if we thought the channel wasn't a third-party

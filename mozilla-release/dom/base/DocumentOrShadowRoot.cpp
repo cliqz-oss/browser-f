@@ -198,6 +198,36 @@ void DocumentOrShadowRoot::ClearAdoptedStyleSheets() {
   mAdoptedStyleSheets.Clear();
 }
 
+void DocumentOrShadowRoot::CloneAdoptedSheetsFrom(
+    const DocumentOrShadowRoot& aSource) {
+  if (!aSource.AdoptedSheetCount()) {
+    return;
+  }
+  Sequence<OwningNonNull<StyleSheet>> list;
+  if (!list.SetCapacity(mAdoptedStyleSheets.Length(), fallible)) {
+    return;
+  }
+
+  Document& ownerDoc = *AsNode().OwnerDoc();
+  const Document& sourceDoc = *aSource.AsNode().OwnerDoc();
+  auto* clonedSheetMap = static_cast<Document::AdoptedStyleSheetCloneCache*>(
+      sourceDoc.GetProperty(nsGkAtoms::adoptedsheetclones));
+  MOZ_ASSERT(clonedSheetMap);
+
+  for (const StyleSheet* sheet : aSource.mAdoptedStyleSheets) {
+    RefPtr<StyleSheet> clone = clonedSheetMap->LookupForAdd(sheet).OrInsert(
+        [&] { return sheet->CloneAdoptedSheet(ownerDoc); });
+    MOZ_ASSERT(clone);
+    MOZ_DIAGNOSTIC_ASSERT(clone->ConstructorDocumentMatches(ownerDoc));
+    DebugOnly<bool> succeeded = list.AppendElement(std::move(clone), fallible);
+    MOZ_ASSERT(succeeded);
+  }
+
+  ErrorResult rv;
+  SetAdoptedStyleSheets(list, rv);
+  MOZ_ASSERT(!rv.Failed());
+}
+
 Element* DocumentOrShadowRoot::GetElementById(const nsAString& aElementId) {
   if (MOZ_UNLIKELY(aElementId.IsEmpty())) {
     nsContentUtils::ReportEmptyGetElementByIdArg(AsNode().OwnerDoc());
@@ -256,25 +286,13 @@ nsIContent* DocumentOrShadowRoot::Retarget(nsIContent* aContent) const {
 }
 
 Element* DocumentOrShadowRoot::GetRetargetedFocusedElement() {
-  if (nsCOMPtr<nsPIDOMWindowOuter> window = AsNode().OwnerDoc()->GetWindow()) {
-    nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
-    nsIContent* focusedContent = nsFocusManager::GetFocusedDescendant(
-        window, nsFocusManager::eOnlyCurrentWindow,
-        getter_AddRefs(focusedWindow));
-    // be safe and make sure the element is from this document
-    if (focusedContent && focusedContent->OwnerDoc() == AsNode().OwnerDoc()) {
-      if (focusedContent->ChromeOnlyAccess()) {
-        focusedContent = focusedContent->FindFirstNonChromeOnlyAccessContent();
-      }
-
-      if (focusedContent) {
-        if (nsIContent* retarget = Retarget(focusedContent)) {
-          return retarget->AsElement();
-        }
-      }
-    }
+  auto* content = AsNode().OwnerDoc()->GetUnretargetedFocusedContent();
+  if (!content) {
+    return nullptr;
   }
-
+  if (nsIContent* retarget = Retarget(content)) {
+    return retarget->AsElement();
+  }
   return nullptr;
 }
 
@@ -582,7 +600,7 @@ void DocumentOrShadowRoot::GetAnimations(
        child = child->GetNextSibling()) {
     if (RefPtr<Element> element = Element::FromNode(child)) {
       nsTArray<RefPtr<Animation>> result;
-      element->GetAnimations(options, result, Element::Flush::No);
+      element->GetAnimationsWithoutFlush(options, result);
       aAnimations.AppendElements(std::move(result));
     }
   }

@@ -32,17 +32,10 @@ const STORAGE_SYNC_CRYPTO_SALT_LENGTH_BYTES = 32;
 const FXA_OAUTH_OPTIONS = {
   scope: STORAGE_SYNC_SCOPE,
 };
-const HISTOGRAM_GET_OPS_SIZE = "STORAGE_SYNC_GET_OPS_SIZE";
-const HISTOGRAM_SET_OPS_SIZE = "STORAGE_SYNC_SET_OPS_SIZE";
-const HISTOGRAM_REMOVE_OPS = "STORAGE_SYNC_REMOVE_OPS";
-const SCALAR_EXTENSIONS_USING = "storage.sync.api.usage.extensions_using";
-const SCALAR_ITEMS_STORED = "storage.sync.api.usage.items_stored";
-const SCALAR_STORAGE_CONSUMED = "storage.sync.api.usage.storage_consumed";
 // Default is 5sec, which seems a bit aggressive on the open internet
 const KINTO_REQUEST_TIMEOUT = 30000;
 
 const { Log } = ChromeUtils.import("resource://gre/modules/Log.jsm");
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
@@ -755,12 +748,9 @@ class ExtensionStorageSync {
   /**
    * @param {FXAccounts} fxaService (Optional) If not
    *    present, trying to sync will fail.
-   * @param {nsITelemetry} telemetry Telemetry service to use to
-   *    report sync usage.
    */
-  constructor(fxaService, telemetry) {
+  constructor(fxaService) {
     this._fxaService = fxaService;
-    this._telemetry = telemetry;
     this.cryptoCollection = new CryptoCollection(fxaService);
     this.listeners = new WeakMap();
   }
@@ -814,23 +804,6 @@ class ExtensionStorageSync {
       });
     });
     await Promise.all(promises);
-
-    // This needs access to an adapter, but any adapter will do
-    const collection = await this.cryptoCollection.getCollection();
-    const storage = await collection.db.calculateStorage();
-    this._telemetry.scalarSet(SCALAR_EXTENSIONS_USING, storage.length);
-    for (let { collectionName, size, numRecords } of storage) {
-      this._telemetry.keyedScalarSet(
-        SCALAR_ITEMS_STORED,
-        collectionName,
-        numRecords
-      );
-      this._telemetry.keyedScalarSet(
-        SCALAR_STORAGE_CONSUMED,
-        collectionName,
-        size
-      );
-    }
   }
 
   async sync(extension, collection) {
@@ -1249,16 +1222,12 @@ class ExtensionStorageSync {
     const coll = await this.getCollection(extension, context);
     const keys = Object.keys(items);
     const ids = keys.map(keyToId);
-    const histogramSize = this._telemetry.getKeyedHistogramById(
-      HISTOGRAM_SET_OPS_SIZE
-    );
     const changes = await coll.execute(
       txn => {
         let changes = {};
         for (let [i, key] of keys.entries()) {
           const id = ids[i];
           let item = items[key];
-          histogramSize.add(extension.id, JSON.stringify(item).length);
           let { oldRecord } = txn.upsert({
             id,
             key,
@@ -1303,10 +1272,6 @@ class ExtensionStorageSync {
     if (Object.keys(changes).length) {
       this.notifyListeners(extension, changes);
     }
-    const histogram = this._telemetry.getKeyedHistogramById(
-      HISTOGRAM_REMOVE_OPS
-    );
-    histogram.add(extension.id, keys.length);
   }
 
   /* Wipe local data for all collections without causing the changes to be synced */
@@ -1341,15 +1306,11 @@ class ExtensionStorageSync {
 
   async get(extension, spec, context) {
     const coll = await this.getCollection(extension, context);
-    const histogramSize = this._telemetry.getKeyedHistogramById(
-      HISTOGRAM_GET_OPS_SIZE
-    );
     let keys, records;
     if (spec === null) {
       records = {};
       const res = await coll.list();
       for (let record of res.data) {
-        histogramSize.add(extension.id, JSON.stringify(record.data).length);
         records[record.key] = record.data;
       }
       return records;
@@ -1368,7 +1329,6 @@ class ExtensionStorageSync {
     for (let key of keys) {
       const res = await coll.getAny(keyToId(key));
       if (res.data && res.data._status != "deleted") {
-        histogramSize.add(extension.id, JSON.stringify(res.data.data).length);
         records[res.data.key] = res.data.data;
       }
     }
@@ -1403,7 +1363,4 @@ class ExtensionStorageSync {
   }
 }
 this.ExtensionStorageSync = ExtensionStorageSync;
-extensionStorageSync = new ExtensionStorageSync(
-  _fxaService,
-  Services.telemetry
-);
+extensionStorageSync = new ExtensionStorageSync(_fxaService);

@@ -5,7 +5,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "necko-config.h"
 #include "nsHttp.h"
 #include "mozilla/net/NeckoChild.h"
 #include "mozilla/dom/ContentChild.h"
@@ -365,9 +364,8 @@ mozilla::ipc::IPCResult NeckoChild::RecvNetworkChangeNotification(
 }
 
 PClassifierDummyChannelChild* NeckoChild::AllocPClassifierDummyChannelChild(
-    nsIURI* aURI, nsIURI* aTopWindowURI,
-    nsIPrincipal* aContentBlockingAllowListPrincipal,
-    const nsresult& aTopWindowURIResult, const Maybe<LoadInfoArgs>& aLoadInfo) {
+    nsIURI* aURI, nsIURI* aTopWindowURI, const nsresult& aTopWindowURIResult,
+    const Maybe<LoadInfoArgs>& aLoadInfo) {
   return new ClassifierDummyChannelChild();
 }
 

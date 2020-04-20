@@ -21,6 +21,8 @@
 #include <algorithm>
 #include <setjmp.h>
 
+#include "jsapi.h"
+
 #include "builtin/AtomicsObject.h"
 #ifdef JS_HAS_INTL_API
 #  include "builtin/intl/SharedIntlData.h"
@@ -29,7 +31,9 @@
 #include "frontend/NameCollections.h"
 #include "gc/GCRuntime.h"
 #include "gc/Tracer.h"
-#include "irregexp/RegExpStack.h"
+#ifndef ENABLE_NEW_REGEXP
+#  include "irregexp/RegExpStack.h"
+#endif
 #include "js/AllocationRecording.h"
 #include "js/BuildId.h"  // JS::BuildIdOp
 #include "js/Debug.h"
@@ -54,7 +58,6 @@
 #include "vm/JSAtom.h"
 #include "vm/JSScript.h"
 #include "vm/OffThreadPromiseRuntimeState.h"  // js::OffThreadPromiseRuntimeState
-#include "vm/PromiseObject.h"                 // js::PromiseObject
 #include "vm/Scope.h"
 #include "vm/SharedImmutableStringsCache.h"
 #include "vm/Stack.h"
@@ -185,7 +188,7 @@ struct WellKnownSymbols {
     return get(size_t(code));
   }
 
-  WellKnownSymbols() {}
+  WellKnownSymbols() = default;
   WellKnownSymbols(const WellKnownSymbols&) = delete;
   WellKnownSymbols& operator=(const WellKnownSymbols&) = delete;
 };
@@ -214,16 +217,14 @@ using ScriptAndCountsVector = GCVector<ScriptAndCounts, 0, SystemAllocPolicy>;
 
 class AutoLockScriptData;
 
-// Self-hosted lazy functions do not maintain a LazyScript as we can compile
-// from the copy in the self-hosting zone. To allow these functions to be
-// called by the JITs, we need a minimal script object. There is one instance
-// per runtime.
+// Self-hosted lazy functions do not maintain a BaseScript as we can clone from
+// the copy in the self-hosting zone. To allow these functions to be called by
+// the JITs, we need a minimal script object. There is one instance per runtime.
 struct SelfHostedLazyScript {
   SelfHostedLazyScript() = default;
 
-  // Pointer to interpreter trampoline. This field is stored at same location
-  // as in JSScript, allowing the JIT to directly call LazyScripts in the same
-  // way as JSScripts.
+  // Pointer to interpreter trampoline. This field is stored at same location as
+  // in BaseScript::jitCodeRaw_.
   uint8_t* jitCodeRaw_ = nullptr;
 
   static constexpr size_t offsetOfJitCodeRaw() {
@@ -288,6 +289,7 @@ struct JSRuntime {
  public:
   JSContext* mainContextFromAnyThread() const { return mainContext_; }
   const void* addressOfMainContext() { return &mainContext_; }
+  js::Fprinter parserWatcherFile;
 
   inline JSContext* mainContextFromOwnThread();
 
@@ -392,9 +394,9 @@ struct JSRuntime {
   /* Optional warning reporter. */
   js::MainThreadData<JS::WarningReporter> warningReporter;
 
-  // Lazy self-hosted functions use a shared SelfHostedLazyScript instead
-  // instead of a LazyScript. This contains the minimal trampolines for the
-  // scripts to perform direct calls.
+  // Lazy self-hosted functions use a shared SelfHostedLazyScript instance
+  // instead instead of a BaseScript. This contains the minimal pointers to
+  // trampolines for the scripts to support direct jitCodeRaw calls.
   js::UnprotectedData<js::SelfHostedLazyScript> selfHostedLazyScript;
 
  private:
@@ -587,12 +589,12 @@ struct JSRuntime {
 
   static js::GlobalObject* createSelfHostingGlobal(JSContext* cx);
 
+ public:
   bool getUnclonedSelfHostedValue(JSContext* cx, js::HandlePropertyName name,
                                   js::MutableHandleValue vp);
   JSFunction* getUnclonedSelfHostedFunction(JSContext* cx,
                                             js::HandlePropertyName name);
 
- public:
   MOZ_MUST_USE bool createJitRuntime(JSContext* cx);
   js::jit::JitRuntime* jitRuntime() const { return jitRuntime_.ref(); }
   bool hasJitRuntime() const { return !!jitRuntime_; }
@@ -860,6 +862,10 @@ struct JSRuntime {
   }
 
   bool hasLiveSABs() const { return liveSABs > 0; }
+
+ public:
+  js::MainThreadData<JS::BeforeWaitCallback> beforeWaitCallback;
+  js::MainThreadData<JS::AfterWaitCallback> afterWaitCallback;
 
  public:
   void reportAllocationOverflow() { js::ReportAllocationOverflow(nullptr); }

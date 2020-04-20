@@ -123,11 +123,14 @@ export function isSymbolsLoading(state: OuterState, source: ?Source): boolean {
 }
 
 export function getInScopeLines(state: OuterState, location: SourceLocation) {
-  const inScopeLines = state.ast.inScopeLines;
+  const { inScopeLines } = state.ast;
   return inScopeLines[makeBreakpointId(location)];
 }
 
-export function hasInScopeLines(state: OuterState, location: SourceLocation) {
+export function hasInScopeLines(
+  state: OuterState,
+  location: SourceLocation
+): boolean {
   return !!getInScopeLines(state, location);
 }
 

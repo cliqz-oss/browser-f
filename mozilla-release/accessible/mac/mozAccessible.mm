@@ -10,6 +10,7 @@
 
 #include "Accessible-inl.h"
 #include "nsAccUtils.h"
+#include "xpcAccessibleMacInterface.h"
 #include "nsIPersistentProperties2.h"
 #include "DocAccessibleParent.h"
 #include "Relation.h"
@@ -20,6 +21,7 @@
 #include "mozilla/a11y/PDocAccessible.h"
 #include "mozilla/dom/BrowserParent.h"
 #include "OuterDocAccessible.h"
+#include "nsChildView.h"
 
 #include "nsRect.h"
 #include "nsCocoaUtils.h"
@@ -31,7 +33,9 @@
 using namespace mozilla;
 using namespace mozilla::a11y;
 
+#define NSAccessibilityARIACurrentAttribute @"AXARIACurrent"
 #define NSAccessibilityDOMIdentifierAttribute @"AXDOMIdentifier"
+#define NSAccessibilityHasPopupAttribute @"AXHasPopup"
 #define NSAccessibilityMathRootRadicandAttribute @"AXMathRootRadicand"
 #define NSAccessibilityMathRootIndexAttribute @"AXMathRootIndex"
 #define NSAccessibilityMathFractionNumeratorAttribute @"AXMathFractionNumerator"
@@ -132,14 +136,8 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
   // unknown (either unimplemented, or irrelevant) elements are marked as ignored
   // as well as expired elements.
 
-  bool noRole = [[self role] isEqualToString:NSAccessibilityUnknownRole];
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    return (noRole && !(accWrap->InteractiveState() & states::FOCUSABLE));
-
-  if (ProxyAccessible* proxy = [self getProxyAccessible])
-    return (noRole && !(proxy->State() & states::FOCUSABLE));
-
-  return true;
+  return [[self role] isEqualToString:NSAccessibilityUnknownRole] &&
+         [self stateWithMask:states::FOCUSABLE];
 
   NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(NO);
 }
@@ -148,6 +146,9 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
   NSMutableArray* additional = [NSMutableArray array];
   [additional addObject:NSAccessibilityDOMIdentifierAttribute];
   switch (mRole) {
+    case roles::SUMMARY:
+      [additional addObject:NSAccessibilityExpandedAttribute];
+      break;
     case roles::MATHML_ROOT:
       [additional addObject:NSAccessibilityMathRootIndexAttribute];
       [additional addObject:NSAccessibilityMathRootRadicandAttribute];
@@ -209,7 +210,8 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
                         NSAccessibilityEnabledAttribute, NSAccessibilitySizeAttribute,
                         NSAccessibilityWindowAttribute, NSAccessibilityFocusedAttribute,
                         NSAccessibilityHelpAttribute, NSAccessibilityTitleUIElementAttribute,
-                        NSAccessibilityTopLevelUIElementAttribute,
+                        NSAccessibilityTopLevelUIElementAttribute, NSAccessibilityHasPopupAttribute,
+                        NSAccessibilityARIACurrentAttribute,
 #if DEBUG
                         @"AXMozDescription",
 #endif
@@ -243,6 +245,57 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
+static const uint64_t kCachedStates = states::CHECKED | states::PRESSED | states::MIXED |
+                                      states::EXPANDED | states::CURRENT | states::SELECTED;
+static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
+
+- (uint64_t)state {
+  uint64_t state = 0;
+  if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
+    state = accWrap->State();
+  }
+
+  if (ProxyAccessible* proxy = [self getProxyAccessible]) {
+    state = proxy->State();
+  }
+
+  if (!(mCachedState & kCacheInitialized)) {
+    mCachedState = state & kCachedStates;
+    mCachedState |= kCacheInitialized;
+  }
+
+  return state;
+}
+
+- (uint64_t)stateWithMask:(uint64_t)mask {
+  if ((mask & kCachedStates) == mask && (mCachedState & kCacheInitialized) != 0) {
+    return mCachedState & mask;
+  }
+
+  return [self state] & mask;
+}
+
+- (void)stateChanged:(uint64_t)state isEnabled:(BOOL)enabled {
+  if ((state & kCachedStates) == 0) {
+    return;
+  }
+
+  if (!(mCachedState & kCacheInitialized)) {
+    [self state];
+    return;
+  }
+
+  if (enabled) {
+    mCachedState |= state;
+  } else {
+    mCachedState &= ~state;
+  }
+}
+
+- (void)invalidateState {
+  mCachedState = 0;
+}
+
 - (id)accessibilityAttributeValue:(NSString*)attribute {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
@@ -256,6 +309,9 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
 #endif
 
   if ([attribute isEqualToString:NSAccessibilityChildrenAttribute]) return [self children];
+  if ([attribute isEqualToString:NSAccessibilityExpandedAttribute]) {
+    return [NSNumber numberWithBool:[self stateWithMask:states::EXPANDED] != 0];
+  }
   if ([attribute isEqualToString:NSAccessibilityParentAttribute]) return [self parent];
 
 #ifdef DEBUG_hakan
@@ -267,7 +323,17 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
   if ([attribute isEqualToString:NSAccessibilitySubroleAttribute]) return [self subrole];
   if ([attribute isEqualToString:NSAccessibilityEnabledAttribute])
     return [NSNumber numberWithBool:[self isEnabled]];
+  if ([attribute isEqualToString:NSAccessibilityHasPopupAttribute]) {
+    return [NSNumber numberWithBool:[self stateWithMask:states::HASPOPUP] != 0];
+  }
   if ([attribute isEqualToString:NSAccessibilityValueAttribute]) return [self value];
+  if ([attribute isEqualToString:NSAccessibilityARIACurrentAttribute]) {
+    if ([self stateWithMask:states::CURRENT]) {
+      return utils::GetAccAttr(self, "current");
+    } else {
+      return nil;
+    }
+  }
   if ([attribute isEqualToString:NSAccessibilityRoleDescriptionAttribute])
     return [self roleDescription];
   if ([attribute isEqualToString:NSAccessibilityFocusedAttribute])
@@ -334,24 +400,13 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
         // Per the MathML 3 spec, the latter happens iff the linethickness
         // attribute is of the form [zero-float][optional-unit]. In that case we
         // set line thickness to zero and in the other cases we set it to one.
-        nsAutoString thickness;
-        if (accWrap) {
-          nsCOMPtr<nsIPersistentProperties> attributes = accWrap->Attributes();
-          nsAccUtils::GetAccAttr(attributes, nsGkAtoms::linethickness_, thickness);
+        if (NSString* thickness = utils::GetAccAttr(self, "thickness")) {
+          NSNumberFormatter* formatter = [[[NSNumberFormatter alloc] init] autorelease];
+          NSNumber* value = [formatter numberFromString:thickness];
+          return [NSNumber numberWithBool:[value boolValue]];
         } else {
-          AutoTArray<Attribute, 10> attrs;
-          proxy->Attributes(&attrs);
-          for (size_t i = 0; i < attrs.Length(); i++) {
-            if (attrs.ElementAt(i).Name() == "thickness") {
-              thickness = attrs.ElementAt(i).Value();
-              break;
-            }
-          }
+          return [NSNumber numberWithInteger:0];
         }
-        double value = 1.0;
-        if (!thickness.IsEmpty())
-          value = PR_strtod(NS_LossyConvertUTF16toASCII(thickness).get(), nullptr);
-        return [NSNumber numberWithInteger:(value ? 1 : 0)];
       }
       break;
     case roles::MATHML_SUB:
@@ -479,7 +534,44 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
 }
 
 - (NSArray*)accessibilityActionNames {
-  return @[NSAccessibilityScrollToVisibleAction];
+  AccessibleWrap* accWrap = [self getGeckoAccessible];
+  ProxyAccessible* proxy = [self getProxyAccessible];
+  // Create actions array
+  NSMutableArray* actions = [NSMutableArray new];
+  if (!accWrap && !proxy) return actions;
+
+  uint8_t count = 0;
+  if (accWrap) {
+    count = accWrap->ActionCount();
+  } else if (proxy) {
+    count = proxy->ActionCount();
+  }
+
+  // Check if the accessible has an existing gecko
+  // action, and add the corresponding Mac action to
+  // the actions array. `count` is guaranteed to be 0 or 1
+  if (count) {
+    nsAutoString name;
+    if (accWrap) {
+      accWrap->ActionNameAt(0, name);
+    } else if (proxy) {
+      proxy->ActionNameAt(0, name);
+    }
+    if (name.EqualsLiteral("select")) {
+      [actions addObject:NSAccessibilityPickAction];
+    } else {
+      [actions addObject:NSAccessibilityPressAction];
+    }
+  }
+
+  // Regardless of `count`, add actions that should be
+  // performable on all accessibles. If we added a press
+  // action, it will be first in the list. We append other
+  // actions here to maintain that invariant.
+  [actions addObject:NSAccessibilityScrollToVisibleAction];
+  [actions addObject:NSAccessibilityShowMenuAction];
+
+  return actions;
 }
 
 - (NSString*)accessibilityActionDescription:(NSString*)action {
@@ -495,45 +587,83 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
     return nil;
   }
 
-  /* If our accessible is labelled by exactly one item, or if its
-   * name is obtained from a subtree, we should let
-   * NSAccessibilityTitleUIElementAttribute determine its label. */
+  nsAutoString name;
+
+  /* If our accessible is:
+   * 1. Named by invisible text, or
+   * 2. Has more than one labeling relation, or
+   * 3. Is a grouping
+   *   ... return its name as a label (AXDescription).
+   */
   if (accWrap) {
-    nsAutoString name;
     ENameValueFlag flag = accWrap->Name(name);
     if (flag == eNameFromSubtree) {
       return nil;
     }
 
-    Relation rel = accWrap->RelationByType(RelationType::LABELLED_BY);
-    if (rel.Next() && !rel.Next()) {
-      return nil;
+    if (mRole != roles::GROUPING && mRole != roles::RADIO_GROUP) {
+      Relation rel = accWrap->RelationByType(RelationType::LABELLED_BY);
+      if (rel.Next() && !rel.Next()) {
+        return nil;
+      }
     }
   } else if (proxy) {
-    nsAutoString name;
     uint32_t flag = proxy->Name(name);
     if (flag == eNameFromSubtree) {
       return nil;
     }
 
-    nsTArray<ProxyAccessible*> rels = proxy->RelationByType(RelationType::LABELLED_BY);
-    if (rels.Length() == 1) {
-      return nil;
+    if (mRole != roles::GROUPING && mRole != roles::RADIO_GROUP) {
+      nsTArray<ProxyAccessible*> rels = proxy->RelationByType(RelationType::LABELLED_BY);
+      if (rels.Length() == 1) {
+        return nil;
+      }
     }
   }
 
-  return [self title];
+  return nsCocoaUtils::ToNSString(name);
 }
 
 - (void)accessibilityPerformAction:(NSString*)action {
+  RefPtr<AccessibleWrap> accWrap = [self getGeckoAccessible];
+  ProxyAccessible* proxy = [self getProxyAccessible];
+
   if ([action isEqualToString:NSAccessibilityScrollToVisibleAction]) {
-    RefPtr<AccessibleWrap> accWrap = [self getGeckoAccessible];
-    ProxyAccessible* proxy = [self getProxyAccessible];
     if (accWrap) {
       accWrap->ScrollTo(nsIAccessibleScrollType::SCROLL_TYPE_ANYWHERE);
     } else if (proxy) {
       proxy->ScrollTo(nsIAccessibleScrollType::SCROLL_TYPE_ANYWHERE);
     }
+  } else if ([action isEqualToString:NSAccessibilityShowMenuAction]) {
+    // We don't need to convert this rect into mac coordinates because the
+    // mouse event synthesizer expects layout (gecko) coordinates.
+    LayoutDeviceIntRect geckoRect;
+    id objOrView = nil;
+    if (accWrap) {
+      geckoRect = LayoutDeviceIntRect::FromUnknownRect(accWrap->Bounds());
+      objOrView =
+          GetObjectOrRepresentedView(GetNativeFromGeckoAccessible(accWrap->RootAccessible()));
+    } else if (proxy) {
+      geckoRect = LayoutDeviceIntRect::FromUnknownRect(proxy->Bounds());
+      objOrView = GetObjectOrRepresentedView(
+          GetNativeFromGeckoAccessible(proxy->OuterDocOfRemoteBrowser()->RootAccessible()));
+    }
+
+    LayoutDeviceIntPoint p = LayoutDeviceIntPoint(geckoRect.X() + (geckoRect.Width() / 2),
+                                                  geckoRect.Y() + (geckoRect.Height() / 2));
+    nsIWidget* widget = [objOrView widget];
+    // XXX: NSRightMouseDown is depreciated in 10.12, should be
+    // changed to NSEventTypeRightMouseDown after refactoring.
+    widget->SynthesizeNativeMouseEvent(p, NSRightMouseDown, 0, nullptr);
+
+  } else {
+    if (accWrap) {
+      accWrap->DoAction(0);
+    } else if (proxy) {
+      proxy->DoAction(0);
+    }
+    // Activating accessible may alter its state.
+    [self invalidateState];
   }
 }
 
@@ -729,8 +859,7 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
   else if (proxy)
     landmark = proxy->LandmarkRole();
 
-  // HTML Elements treated as landmarks
-  // XXX bug 1371712
+  // HTML Elements treated as landmarks, and ARIA landmarks.
   if (landmark) {
     if (landmark == nsGkAtoms::application) return @"AXLandmarkApplication";
     if (landmark == nsGkAtoms::banner) return @"AXLandmarkBanner";
@@ -897,6 +1026,15 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
     case roles::CONTENT_INSERTION:
       return @"AXInsertStyleGroup";
 
+    case roles::CODE:
+      return @"AXCodeStyleGroup";
+
+    case roles::TOGGLE_BUTTON:
+      return @"AXToggle";
+
+    case roles::PAGETAB:
+      return @"AXTabButton";
+
     default:
       break;
   }
@@ -918,6 +1056,7 @@ static const RoleDescrMap sRoleDescrMap[] = {
     {@"AXApplicationTimer", NS_LITERAL_STRING("timer")},
     {@"AXContentSeparator", NS_LITERAL_STRING("separator")},
     {@"AXDefinition", NS_LITERAL_STRING("definition")},
+    {@"AXDetails", NS_LITERAL_STRING("details")},
     {@"AXDocument", NS_LITERAL_STRING("document")},
     {@"AXDocumentArticle", NS_LITERAL_STRING("article")},
     {@"AXDocumentMath", NS_LITERAL_STRING("math")},
@@ -931,6 +1070,7 @@ static const RoleDescrMap sRoleDescrMap[] = {
     {@"AXLandmarkRegion", NS_LITERAL_STRING("region")},
     {@"AXLandmarkSearch", NS_LITERAL_STRING("search")},
     {@"AXSearchField", NS_LITERAL_STRING("searchTextField")},
+    {@"AXSummary", NS_LITERAL_STRING("summary")},
     {@"AXTabPanel", NS_LITERAL_STRING("tabPanel")},
     {@"AXTerm", NS_LITERAL_STRING("term")},
     {@"AXUserInterfaceTooltip", NS_LITERAL_STRING("tooltip")}};
@@ -968,6 +1108,11 @@ struct RoleDescrComparator {
 - (NSString*)title {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
+  // If this is a grouping we provide the name in the label (AXDescription).
+  if (mRole == roles::GROUPING || mRole == roles::RADIO_GROUP) {
+    return nil;
+  }
+
   nsAutoString title;
   if (AccessibleWrap* accWrap = [self getGeckoAccessible])
     accWrap->Name(title);
@@ -993,29 +1138,6 @@ struct RoleDescrComparator {
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-- (void)valueDidChange {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-#ifdef DEBUG_hakan
-  NSLog(@"%@'s value changed!", self);
-#endif
-  // sending out a notification is expensive, so we don't do it other than for really important
-  // objects, like mozTextAccessible.
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
-- (void)selectedTextDidChange {
-  // Do nothing. mozTextAccessible will.
-}
-
-- (void)documentLoadComplete {
-  id realSelf = GetObjectOrRepresentedView(self);
-  NSAccessibilityPostNotification(realSelf, NSAccessibilityFocusedUIElementChangedNotification);
-  NSAccessibilityPostNotification(realSelf, @"AXLoadComplete");
-  NSAccessibilityPostNotification(realSelf, @"AXLayoutComplete");
-}
-
 - (NSString*)help {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
@@ -1035,16 +1157,15 @@ struct RoleDescrComparator {
 - (NSString*)orientation {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
-  uint64_t state;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    state = accWrap->InteractiveState();
-  else if (ProxyAccessible* proxy = [self getProxyAccessible])
-    state = proxy->State();
-  else
-    state = 0;
+  uint64_t state = [self stateWithMask:(states::HORIZONTAL | states::VERTICAL)];
 
-  if (state & states::HORIZONTAL) return NSAccessibilityHorizontalOrientationValue;
-  if (state & states::VERTICAL) return NSAccessibilityVerticalOrientationValue;
+  if (state & states::HORIZONTAL) {
+    return NSAccessibilityHorizontalOrientationValue;
+  }
+
+  if (state & states::VERTICAL) {
+    return NSAccessibilityVerticalOrientationValue;
+  }
 
   return NSAccessibilityUnknownOrientationValue;
 
@@ -1069,15 +1190,7 @@ struct RoleDescrComparator {
 }
 
 - (BOOL)canBeFocused {
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
-    return (accWrap->InteractiveState() & states::FOCUSABLE) != 0;
-  }
-
-  if (ProxyAccessible* proxy = [self getProxyAccessible]) {
-    return (proxy->State() & states::FOCUSABLE) != 0;
-  }
-
-  return false;
+  return [self stateWithMask:states::FOCUSABLE] != 0;
 }
 
 - (BOOL)focus {
@@ -1092,27 +1205,44 @@ struct RoleDescrComparator {
 }
 
 - (BOOL)isEnabled {
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    return ((accWrap->InteractiveState() & states::UNAVAILABLE) == 0);
-
-  if (ProxyAccessible* proxy = [self getProxyAccessible])
-    return ((proxy->State() & states::UNAVAILABLE) == 0);
-
-  return false;
+  return [self stateWithMask:states::UNAVAILABLE] == 0;
 }
 
-// The root accessible calls this when the focused node was
-// changed to us.
-- (void)didReceiveFocus {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
+- (void)firePlatformEvent:(uint32_t)eventType {
+  switch (eventType) {
+    case nsIAccessibleEvent::EVENT_FOCUS:
+      [self postNotification:NSAccessibilityFocusedUIElementChangedNotification];
+      break;
+    case nsIAccessibleEvent::EVENT_DOCUMENT_LOAD_COMPLETE:
+      [self postNotification:NSAccessibilityFocusedUIElementChangedNotification];
+      [self postNotification:@"AXLoadComplete"];
+      [self postNotification:@"AXLayoutComplete"];
+      break;
+    case nsIAccessibleEvent::EVENT_MENUPOPUP_START:
+      [self postNotification:@"AXMenuOpened"];
+      break;
+    case nsIAccessibleEvent::EVENT_MENUPOPUP_END:
+      [self postNotification:@"AXMenuClosed"];
+      break;
+    case nsIAccessibleEvent::EVENT_SELECTION:
+    case nsIAccessibleEvent::EVENT_SELECTION_ADD:
+    case nsIAccessibleEvent::EVENT_SELECTION_REMOVE:
+      [self postNotification:NSAccessibilitySelectedChildrenChangedNotification];
+      break;
+  }
+}
 
-#ifdef DEBUG_hakan
-  NSLog(@"%@ received focus!", self);
-#endif
-  NSAccessibilityPostNotification(GetObjectOrRepresentedView(self),
-                                  NSAccessibilityFocusedUIElementChangedNotification);
+- (void)postNotification:(NSString*)notification {
+  // This sends events via nsIObserverService to be consumed by our mochitests.
+  xpcAccessibleMacInterface::FireEvent(self, notification);
 
-  NS_OBJC_END_TRY_ABORT_BLOCK;
+  if (gfxPlatform::IsHeadless()) {
+    // Using a headless toolkit for tests and whatnot, posting accessibility
+    // notification won't work.
+    return;
+  }
+
+  NSAccessibilityPostNotification(GetObjectOrRepresentedView(self), notification);
 }
 
 - (NSWindow*)window {
@@ -1163,10 +1293,11 @@ struct RoleDescrComparator {
 
   [self invalidateChildren];
 
+  [self invalidateState];
+
   mGeckoAccessible = 0;
 
-  NSAccessibilityPostNotification(
-      self, NSAccessibilityUIElementDestroyedNotification);
+  [self postNotification:NSAccessibilityUIElementDestroyedNotification];
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }

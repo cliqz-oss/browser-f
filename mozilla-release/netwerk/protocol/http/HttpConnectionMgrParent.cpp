@@ -8,8 +8,10 @@
 #include "HttpLog.h"
 
 #include "HttpConnectionMgrParent.h"
+#include "AltSvcTransactionParent.h"
 #include "mozilla/net/HttpTransactionParent.h"
 #include "nsHttpConnectionInfo.h"
+#include "nsISpeculativeConnect.h"
 
 namespace mozilla {
 namespace net {
@@ -95,7 +97,6 @@ nsresult HttpConnectionMgrParent::UpdateParam(nsParamName name,
 void HttpConnectionMgrParent::PrintDiagnostics() {
   // Do nothing here. PrintDiagnostics() will be triggered by pref change in
   // socket process.
-  return;
 }
 
 nsresult HttpConnectionMgrParent::UpdateCurrentTopLevelOuterContentWindowId(
@@ -182,12 +183,38 @@ nsresult HttpConnectionMgrParent::GetSocketThreadTarget(nsIEventTarget**) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-nsresult HttpConnectionMgrParent::SpeculativeConnect(nsHttpConnectionInfo*,
-                                                     nsIInterfaceRequestor*,
-                                                     uint32_t caps,
-                                                     NullHttpTransaction*) {
-  // TODO: fix this in bug 1527384
-  return NS_ERROR_NOT_IMPLEMENTED;
+nsresult HttpConnectionMgrParent::SpeculativeConnect(
+    nsHttpConnectionInfo* aConnInfo, nsIInterfaceRequestor* aCallbacks,
+    uint32_t aCaps, NullHttpTransaction* aTransaction) {
+  NS_ENSURE_ARG_POINTER(aConnInfo);
+
+  if (!CanSend()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  nsCOMPtr<nsISpeculativeConnectionOverrider> overrider =
+      do_GetInterface(aCallbacks);
+  Maybe<SpeculativeConnectionOverriderArgs> overriderArgs;
+  if (overrider) {
+    overriderArgs.emplace();
+    overriderArgs->parallelSpeculativeConnectLimit() =
+        overrider->GetParallelSpeculativeConnectLimit();
+    overriderArgs->ignoreIdle() = overrider->GetIgnoreIdle();
+    overriderArgs->isFromPredictor() = overrider->GetIsFromPredictor();
+    overriderArgs->allow1918() = overrider->GetAllow1918();
+  }
+
+  HttpConnectionInfoCloneArgs connInfo;
+  nsHttpConnectionInfo::SerializeHttpConnectionInfo(aConnInfo, connInfo);
+
+  Maybe<AltSvcTransactionParent*> maybeTrans;
+  RefPtr<AltSvcTransactionParent> trans = do_QueryObject(aTransaction);
+  if (trans) {
+    maybeTrans.emplace(trans.get());
+  }
+
+  Unused << SendSpeculativeConnect(connInfo, overriderArgs, aCaps, maybeTrans);
+  return NS_OK;
 }
 
 nsresult HttpConnectionMgrParent::VerifyTraffic() {

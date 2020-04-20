@@ -52,6 +52,7 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/StaticPrefs_javascript.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMExceptionBinding.h"
 #include "mozilla/dom/Element.h"
@@ -611,15 +612,13 @@ void PrintWinCodebase(T* win) {
     printf("Window doesn't have principals.\n");
     return;
   }
-
-  nsCOMPtr<nsIURI> uri;
-  prin->GetURI(getter_AddRefs(uri));
-  if (!uri) {
-    printf("No URI, maybe the system principal.\n");
+  if (prin->IsSystemPrincipal()) {
+    printf("No URI, it's the system principal.\n");
     return;
   }
-
-  printf("%s\n", uri->GetSpecOrDefault().get());
+  nsCString spec;
+  prin->GetAsciiSpec(spec);
+  printf("%s\n", spec.get());
 }
 
 void PrintWinCodebaseInner(nsGlobalWindowInner* aWin) {
@@ -2014,14 +2013,23 @@ void nsJSContext::MaybeRunNextCollectorSlice(nsIDocShell* aDocShell,
     return;
   }
 
-  nsCOMPtr<nsIDocShellTreeItem> root;
-  aDocShell->GetInProcessSameTypeRootTreeItem(getter_AddRefs(root));
-  if (root == aDocShell) {
+  BrowsingContext* bc = aDocShell->GetBrowsingContext();
+  if (!bc) {
+    return;
+  }
+
+  BrowsingContext* root = bc->Top();
+  if (bc == root) {
     // We don't want to run collectors when loading the top level page.
     return;
   }
 
-  Document* rootDocument = root->GetDocument();
+  nsIDocShell* rootDocShell = root->GetDocShell();
+  if (!rootDocShell) {
+    return;
+  }
+
+  Document* rootDocument = rootDocShell->GetDocument();
   if (!rootDocument ||
       rootDocument->GetReadyStateEnum() != Document::READYSTATE_COMPLETE ||
       rootDocument->IsInBackgroundWindow()) {
@@ -2778,7 +2786,7 @@ void nsJSArgArray::ReleaseJSObjects() {
 }
 
 // QueryInterface implementation for nsJSArgArray
-NS_IMPL_CYCLE_COLLECTION_CLASS(nsJSArgArray)
+NS_IMPL_CYCLE_COLLECTION_MULTI_ZONE_JSHOLDER_CLASS(nsJSArgArray)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsJSArgArray)
   tmp->ReleaseJSObjects();

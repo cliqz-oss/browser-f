@@ -81,6 +81,7 @@
 #endif
 #include "frontend/ModuleSharedContext.h"
 #include "frontend/Parser.h"
+#include "frontend/SourceNotes.h"  // SrcNote, SrcNoteType, SrcNoteIterator
 #include "gc/PublicIterators.h"
 #include "jit/arm/Simulator-arm.h"
 #include "jit/InlinableNatives.h"
@@ -116,10 +117,12 @@
 #include "shell/jsoptparse.h"
 #include "shell/jsshell.h"
 #include "shell/OSObject.h"
+#include "shell/WasmTesting.h"
 #include "threading/ConditionVariable.h"
 #include "threading/ExclusiveData.h"
 #include "threading/LockGuard.h"
 #include "threading/Thread.h"
+#include "util/CompleteFile.h"  // js::FileContents, js::ReadCompleteFile
 #include "util/StringBuffer.h"
 #include "util/Text.h"
 #include "util/Windows.h"
@@ -208,7 +211,11 @@ static const size_t gMaxStackSize = 128 * sizeof(size_t) * 1024;
 static const double MAX_TIMEOUT_SECONDS = 1800.0;
 
 // Not necessarily in sync with the browser
-#define SHARED_MEMORY_DEFAULT 1
+#ifdef ENABLE_SHARED_MEMORY
+#  define SHARED_MEMORY_DEFAULT 1
+#else
+#  define SHARED_MEMORY_DEFAULT 0
+#endif
 
 // Fuzzing support for JS runtime fuzzing
 #ifdef FUZZING_INTERFACES
@@ -489,6 +496,9 @@ bool shell::enableWasmCranelift = false;
 #ifdef ENABLE_WASM_GC
 bool shell::enableWasmGc = false;
 #endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+bool shell::enableWasmMultiValue = true;
+#endif
 bool shell::enableWasmVerbose = false;
 bool shell::enableTestWasmAwaitTier2 = false;
 #ifdef ENABLE_WASM_BIGINT
@@ -500,8 +510,6 @@ bool shell::enableReadableByteStreams = false;
 bool shell::enableBYOBStreamReaders = false;
 bool shell::enableWritableStreams = false;
 bool shell::enableReadableStreamPipeTo = false;
-bool shell::enableFields = false;
-bool shell::enableAwaitFix = false;
 bool shell::enableWeakRefs = false;
 bool shell::enableToSource = false;
 bool shell::enablePropertyErrorMessageFix = false;
@@ -649,7 +657,7 @@ ShellContext::ShellContext(JSContext* cx)
       errFilePtr(nullptr),
       outFilePtr(nullptr),
       offThreadMonitor(mutexid::ShellOffThreadState),
-      finalizationGroupsToCleanUp(cx) {}
+      finalizationRegistriesToCleanUp(cx) {}
 
 ShellContext::~ShellContext() { MOZ_ASSERT(offThreadJobs.empty()); }
 
@@ -887,10 +895,33 @@ static MOZ_MUST_USE bool RunFile(JSContext* cx, const char* filename,
         .setNoScriptRval(true);
 
     if (compileMethod == CompileUtf8::DontInflate) {
-      script = JS::CompileUtf8FileDontInflate(cx, options, file);
+      script = JS::CompileUtf8File(cx, options, file);
     } else {
       fprintf(stderr, "(compiling '%s' after inflating to UTF-16)\n", filename);
-      script = JS::CompileUtf8File(cx, options, file);
+
+      FileContents buffer(cx);
+      if (!ReadCompleteFile(cx, file, buffer)) {
+        return false;
+      }
+
+      size_t length = buffer.length();
+      auto chars = UniqueTwoByteChars(
+          UTF8CharsToNewTwoByteCharsZ(
+              cx,
+              UTF8Chars(reinterpret_cast<const char*>(buffer.begin()),
+                        buffer.length()),
+              &length, js::MallocArena)
+              .get());
+      if (!chars) {
+        return false;
+      }
+
+      JS::SourceText<char16_t> source;
+      if (!source.init(cx, std::move(chars), length)) {
+        return false;
+      }
+
+      script = JS::Compile(cx, options, source);
     }
 
     if (!script) {
@@ -969,7 +1000,6 @@ static bool InitModuleLoader(JSContext* cx) {
   options.setFileAndLine("shell/ModuleLoader.js", 1);
   options.setSelfHostingMode(false);
   options.setForceFullParse();
-  options.werrorOption = true;
   options.setForceStrictMode();
 
   JS::SourceText<Utf8Unit> srcBuf;
@@ -978,7 +1008,7 @@ static bool InitModuleLoader(JSContext* cx) {
   }
 
   RootedValue rv(cx);
-  return JS::EvaluateDontInflate(cx, options, srcBuf, &rv);
+  return JS::Evaluate(cx, options, srcBuf, &rv);
 }
 
 static bool GetModuleImportHook(JSContext* cx,
@@ -1027,35 +1057,36 @@ static MOZ_MUST_USE bool RunModule(JSContext* cx, const char* filename,
   return JS_CallFunction(cx, nullptr, importFun, args, &value);
 }
 
-static void ShellCleanupFinalizationGroupCallback(JSObject* group, void* data) {
+static void ShellCleanupFinalizationRegistryCallback(JSObject* registry,
+                                                     void* data) {
   // In the browser this queues a task. Shell jobs correspond to microtasks so
   // we arrange for cleanup to happen after all jobs/microtasks have run.
   auto sc = static_cast<ShellContext*>(data);
   AutoEnterOOMUnsafeRegion oomUnsafe;
-  if (!sc->finalizationGroupsToCleanUp.append(group)) {
-    oomUnsafe.crash("ShellCleanupFinalizationGroupCallback");
+  if (!sc->finalizationRegistriesToCleanUp.append(registry)) {
+    oomUnsafe.crash("ShellCleanupFinalizationRegistryCallback");
   }
 }
 
-// Run any FinalizationGroup cleanup tasks and return whether any ran.
-static bool MaybeRunFinalizationGroupCleanupTasks(JSContext* cx) {
+// Run any FinalizationRegistry cleanup tasks and return whether any ran.
+static bool MaybeRunFinalizationRegistryCleanupTasks(JSContext* cx) {
   ShellContext* sc = GetShellContext(cx);
   MOZ_ASSERT(!sc->quitting);
 
-  Rooted<ShellContext::ObjectVector> groups(cx);
-  std::swap(groups.get(), sc->finalizationGroupsToCleanUp.get());
+  Rooted<ShellContext::ObjectVector> registries(cx);
+  std::swap(registries.get(), sc->finalizationRegistriesToCleanUp.get());
 
   bool ranTasks = false;
 
-  RootedObject group(cx);
-  for (const auto& g : groups) {
-    group = g;
+  RootedObject registry(cx);
+  for (const auto& r : registries) {
+    registry = r;
 
-    AutoRealm ar(cx, group);
+    AutoRealm ar(cx, registry);
 
     {
       AutoReportException are(cx);
-      mozilla::Unused << JS::CleanupQueuedFinalizationGroup(cx, group);
+      mozilla::Unused << JS::CleanupQueuedFinalizationRegistry(cx, registry);
     }
 
     ranTasks = true;
@@ -1095,8 +1126,8 @@ static void RunShellJobs(JSContext* cx) {
       return;
     }
 
-    // Run tasks (only finalization group clean tasks are possible).
-    bool ranTasks = MaybeRunFinalizationGroupCleanupTasks(cx);
+    // Run tasks (only finalization registry clean tasks are possible).
+    bool ranTasks = MaybeRunFinalizationRegistryCleanupTasks(cx);
     if (!ranTasks) {
       break;
     }
@@ -1370,7 +1401,7 @@ static MOZ_MUST_USE bool EvalUtf8AndPrint(JSContext* cx, const char* bytes,
     return false;
   }
 
-  RootedScript script(cx, JS::CompileDontInflate(cx, options, srcBuf));
+  RootedScript script(cx, JS::Compile(cx, options, srcBuf));
   if (!script) {
     return false;
   }
@@ -1738,19 +1769,7 @@ static bool Options(JSContext* cx, unsigned argc, Value* vp) {
       return false;
     }
 
-    if (StringEqualsLiteral(opt, "strict")) {
-      JS::ContextOptionsRef(cx).toggleExtraWarnings();
-    } else if (StringEqualsLiteral(opt, "werror")) {
-      // Disallow toggling werror when there are off-thread jobs, to avoid
-      // confusing CompileError::throwError.
-      ShellContext* sc = GetShellContext(cx);
-      if (!sc->offThreadJobs.empty()) {
-        JS_ReportErrorASCII(
-            cx, "can't toggle werror when there are off-thread jobs");
-        return false;
-      }
-      JS::ContextOptionsRef(cx).toggleWerror();
-    } else if (StringEqualsLiteral(opt, "throw_on_asmjs_validation_failure")) {
+    if (StringEqualsLiteral(opt, "throw_on_asmjs_validation_failure")) {
       JS::ContextOptionsRef(cx).toggleThrowOnAsmJSValidationFailure();
     } else if (StringEqualsLiteral(opt, "strict_mode")) {
       JS::ContextOptionsRef(cx).toggleStrictMode();
@@ -1762,8 +1781,8 @@ static bool Options(JSContext* cx, unsigned argc, Value* vp) {
 
       JS_ReportErrorASCII(cx,
                           "unknown option name %s."
-                          " The valid names are strict,"
-                          " werror, and strict_mode.",
+                          " The valid names are "
+                          "throw_on_asmjs_validation_failure and strict_mode.",
                           optChars.get());
       return false;
     }
@@ -1771,16 +1790,6 @@ static bool Options(JSContext* cx, unsigned argc, Value* vp) {
 
   UniqueChars names = DuplicateString("");
   bool found = false;
-  if (names && oldContextOptions.extraWarnings()) {
-    names =
-        JS_sprintf_append(std::move(names), "%s%s", found ? "," : "", "strict");
-    found = true;
-  }
-  if (names && oldContextOptions.werror()) {
-    names =
-        JS_sprintf_append(std::move(names), "%s%s", found ? "," : "", "werror");
-    found = true;
-  }
   if (names && oldContextOptions.throwOnAsmJSValidationFailure()) {
     names = JS_sprintf_append(std::move(names), "%s%s", found ? "," : "",
                               "throw_on_asmjs_validation_failure");
@@ -1836,10 +1845,9 @@ static bool LoadScript(JSContext* cx, unsigned argc, Value* vp,
         .setNoScriptRval(true);
 
     RootedValue unused(cx);
-    if (!(compileOnly ? JS::CompileUtf8PathDontInflate(
-                            cx, opts, filename.get()) != nullptr
-                      : JS::EvaluateUtf8PathDontInflate(
-                            cx, opts, filename.get(), &unused))) {
+    if (!(compileOnly
+              ? JS::CompileUtf8Path(cx, opts, filename.get()) != nullptr
+              : JS::EvaluateUtf8Path(cx, opts, filename.get(), &unused))) {
       return false;
     }
   }
@@ -3029,41 +3037,42 @@ static MOZ_MUST_USE bool SrcNotes(JSContext* cx, HandleScript script,
   unsigned offset = 0;
   unsigned colspan = 0;
   unsigned lineno = script->lineno();
-  jssrcnote* notes = script->notes();
-  for (jssrcnote* sn = notes; !SN_IS_TERMINATOR(sn); sn = SN_NEXT(sn)) {
-    unsigned delta = SN_DELTA(sn);
+  SrcNote* notes = script->notes();
+  for (SrcNoteIterator iter(notes); !iter.atEnd(); ++iter) {
+    auto sn = *iter;
+
+    unsigned delta = sn->delta();
     offset += delta;
-    SrcNoteType type = SN_TYPE(sn);
-    const char* name = js_SrcNoteSpec[type].name;
+    SrcNoteType type = sn->type();
+    const char* name = sn->name();
     if (!sp->jsprintf("%3u: %4u %5u [%4u] %-8s", unsigned(sn - notes), lineno,
                       offset, delta, name)) {
       return false;
     }
 
     switch (type) {
-      case SRC_NULL:
-      case SRC_ASSIGNOP:
-      case SRC_BREAKPOINT:
-      case SRC_STEP_SEP:
-      case SRC_XDELTA:
+      case SrcNoteType::Null:
+      case SrcNoteType::AssignOp:
+      case SrcNoteType::Breakpoint:
+      case SrcNoteType::StepSep:
+      case SrcNoteType::XDelta:
         break;
 
-      case SRC_COLSPAN:
-        colspan =
-            SN_OFFSET_TO_COLSPAN(GetSrcNoteOffset(sn, SrcNote::ColSpan::Span));
-        if (!sp->jsprintf("%d", colspan)) {
+      case SrcNoteType::ColSpan:
+        colspan = SrcNote::ColSpan::getSpan(sn);
+        if (!sp->jsprintf("%u", colspan)) {
           return false;
         }
         break;
 
-      case SRC_SETLINE:
-        lineno = GetSrcNoteOffset(sn, SrcNote::SetLine::Line);
+      case SrcNoteType::SetLine:
+        lineno = SrcNote::SetLine::getLine(sn);
         if (!sp->jsprintf(" lineno %u", lineno)) {
           return false;
         }
         break;
 
-      case SRC_NEWLINE:
+      case SrcNoteType::NewLine:
         ++lineno;
         break;
 
@@ -3104,25 +3113,25 @@ static bool Notes(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static const char* TryNoteName(JSTryNoteKind kind) {
+static const char* TryNoteName(TryNoteKind kind) {
   switch (kind) {
-    case JSTRY_CATCH:
+    case TryNoteKind::Catch:
       return "catch";
-    case JSTRY_FINALLY:
+    case TryNoteKind::Finally:
       return "finally";
-    case JSTRY_FOR_IN:
+    case TryNoteKind::ForIn:
       return "for-in";
-    case JSTRY_FOR_OF:
+    case TryNoteKind::ForOf:
       return "for-of";
-    case JSTRY_LOOP:
+    case TryNoteKind::Loop:
       return "loop";
-    case JSTRY_FOR_OF_ITERCLOSE:
+    case TryNoteKind::ForOfIterClose:
       return "for-of-iterclose";
-    case JSTRY_DESTRUCTURING:
+    case TryNoteKind::Destructuring:
       return "destructuring";
   }
 
-  MOZ_CRASH("Bad JSTryNoteKind");
+  MOZ_CRASH("Bad TryNoteKind");
 }
 
 static MOZ_MUST_USE bool TryNotes(JSContext* cx, HandleScript script,
@@ -3132,9 +3141,8 @@ static MOZ_MUST_USE bool TryNotes(JSContext* cx, HandleScript script,
     return false;
   }
 
-  for (const JSTryNote& tn : script->trynotes()) {
-    if (!sp->jsprintf(" %-16s %6u %8u %8u\n",
-                      TryNoteName(static_cast<JSTryNoteKind>(tn.kind)),
+  for (const TryNote& tn : script->trynotes()) {
+    if (!sp->jsprintf(" %-16s %6u %8u %8u\n", TryNoteName(tn.kind()),
                       tn.stackDepth, tn.start, tn.start + tn.length)) {
       return false;
     }
@@ -3554,7 +3562,7 @@ static bool DisassFile(JSContext* cx, unsigned argc, Value* vp) {
         .setIsRunOnce(true)
         .setNoScriptRval(true);
 
-    script = JS::CompileUtf8PathDontInflate(cx, options, filename.get());
+    script = JS::CompileUtf8Path(cx, options, filename.get());
     if (!script) {
       return false;
     }
@@ -3813,7 +3821,7 @@ static bool CreateErrorReport(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  MOZ_ASSERT(!JSREPORT_IS_WARNING(report.report()->flags));
+  MOZ_ASSERT(!report.report()->isWarning());
 
   RootedObject obj(cx, JS_NewPlainObject(cx));
   if (!obj) {
@@ -3904,8 +3912,6 @@ static void SetStandardRealmOptions(JS::RealmOptions& options) {
       .setBYOBStreamReadersEnabled(enableBYOBStreamReaders)
       .setWritableStreamsEnabled(enableWritableStreams)
       .setReadableStreamPipeToEnabled(enableReadableStreamPipeTo)
-      .setFieldsEnabled(enableFields)
-      .setAwaitFixEnabled(enableAwaitFix)
       .setWeakRefsEnabled(enableWeakRefs)
       .setToSourceEnabled(enableToSource)
       .setPropertyErrorMessageFixEnabled(enablePropertyErrorMessageFix);
@@ -4144,8 +4150,8 @@ static void WorkerMain(WorkerInput* input) {
 
   js::UseInternalJobQueues(cx);
 
-  JS::SetHostCleanupFinalizationGroupCallback(
-      cx, ShellCleanupFinalizationGroupCallback, sc);
+  JS::SetHostCleanupFinalizationRegistryCallback(
+      cx, ShellCleanupFinalizationRegistryCallback, sc);
 
   if (!JS::InitSelfHostedCode(cx)) {
     return;
@@ -4684,6 +4690,10 @@ static bool SetJitCompilerOption(JSContext* cx, unsigned argc, Value* vp) {
   // Throw if trying to disable all the Wasm compilers.  The logic here is that
   // if we're trying to disable a compiler that is currently enabled and that is
   // the last compiler enabled then we must throw.
+  //
+  // Note that this check does not prevent an error from being thrown later.
+  // Actual compiler availability is dynamic and depends on other conditions,
+  // such as other options set and whether a debugger is present.
   if ((opt == JSJITCOMPILER_WASM_JIT_BASELINE ||
        opt == JSJITCOMPILER_WASM_JIT_ION ||
        opt == JSJITCOMPILER_WASM_JIT_CRANELIFT) &&
@@ -5434,8 +5444,8 @@ static bool BinParse(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   js::frontend::Directives directives(false);
-  js::frontend::GlobalSharedContext globalsc(
-      cx, ScopeKind::Global, compilationInfo, directives, false);
+  js::frontend::GlobalSharedContext globalsc(cx, ScopeKind::Global,
+                                             compilationInfo, directives);
 
   auto parseFunc = mode == Multipart
                        ? ParseBinASTData<frontend::BinASTTokenReaderMultipart>
@@ -6319,7 +6329,7 @@ static bool CompileAndSerializeInSeparateProcess(JSContext* cx,
 }
 
 static bool WasmCompileAndSerialize(JSContext* cx) {
-  MOZ_ASSERT(wasm::HasCachingSupport(cx));
+  MOZ_ASSERT(wasm::CodeCachingAvailable(cx));
 
 #ifdef XP_WIN
   // See CompileAndSerializeInSeparateProcess for why we've had to smuggle
@@ -6369,7 +6379,7 @@ static bool WasmCompileAndSerialize(JSContext* cx) {
 
 static bool WasmCompileInSeparateProcess(JSContext* cx, unsigned argc,
                                          Value* vp) {
-  if (!wasm::HasCachingSupport(cx)) {
+  if (!wasm::CodeCachingAvailable(cx)) {
     JS_ReportErrorASCII(cx, "WebAssembly caching not supported");
     return false;
   }
@@ -8209,6 +8219,90 @@ static bool SetARMHwCapFlags(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
+static bool WasmTextToBinary(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  RootedObject callee(cx, &args.callee());
+
+  if (!args.requireAtLeast(cx, "wasmTextToBinary", 1)) {
+    return false;
+  }
+
+  if (!args[0].isString()) {
+    ReportUsageErrorASCII(cx, callee, "First argument must be a String");
+    return false;
+  }
+
+  size_t textLen = args[0].toString()->length();
+
+  AutoStableStringChars twoByteChars(cx);
+  if (!twoByteChars.initTwoByte(cx, args[0].toString())) {
+    return false;
+  }
+
+  wasm::Bytes bytes;
+  UniqueChars error;
+  if (!wasm::TextToBinary(twoByteChars.twoByteChars(), textLen, &bytes,
+                          &error)) {
+    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_TEXT_FAIL,
+                             error.get() ? error.get() : "out of memory");
+    return false;
+  }
+
+  RootedObject binary(cx, JS_NewUint8Array(cx, bytes.length()));
+  if (!binary) {
+    return false;
+  }
+
+  memcpy(binary->as<TypedArrayObject>().dataPointerUnshared(), bytes.begin(),
+         bytes.length());
+
+  args.rval().setObject(*binary);
+  return true;
+}
+
+static bool WasmCodeOffsets(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  RootedObject callee(cx, &args.callee());
+
+  if (!args.requireAtLeast(cx, "wasmCodeOffsets", 1)) {
+    return false;
+  }
+
+  if (!args.get(0).isObject()) {
+    JS_ReportErrorASCII(cx, "argument is not an object");
+    return false;
+  }
+
+  SharedMem<uint8_t*> bytes;
+  size_t byteLength;
+
+  JSObject* bufferObject = &args[0].toObject();
+  JSObject* unwrappedBufferObject = CheckedUnwrapStatic(bufferObject);
+  if (!unwrappedBufferObject ||
+      !IsBufferSource(unwrappedBufferObject, &bytes, &byteLength)) {
+    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
+                             JSMSG_WASM_BAD_BUF_ARG);
+    return false;
+  }
+
+  wasm::Uint32Vector offsets;
+  wasm::CodeOffsets(bytes.unwrap(), byteLength, &offsets);
+
+  RootedObject jsOffsets(cx, JS::NewArrayObject(cx, offsets.length()));
+  if (!jsOffsets) {
+    return false;
+  }
+  for (size_t i = 0; i < offsets.length(); i++) {
+    uint32_t offset = offsets[i];
+    RootedValue offsetVal(cx, NumberValue(offset));
+    if (!JS_SetElement(cx, jsOffsets, i, offsetVal)) {
+      return false;
+    }
+  }
+  args.rval().setObject(*jsOffsets);
+  return true;
+}
+
 #ifndef __AFL_HAVE_MANUAL_CONTROL
 #  define __AFL_LOOP(x) true
 #endif
@@ -9213,6 +9307,15 @@ JS_FN_HELP("parseBin", BinParse, 1, 0,
 "  wasm::Module into bytes, and deserialize those bytes in the current\n"
 "  process, returning the resulting WebAssembly.Module."),
 
+    JS_FN_HELP("wasmTextToBinary", WasmTextToBinary, 1, 0,
+"wasmTextToBinary(str)",
+"  Translates the given text wasm module into its binary encoding."),
+
+    JS_FN_HELP("wasmCodeOffsets", WasmCodeOffsets, 1, 0,
+"wasmCodeOffsets(binary)",
+"  Decodes the given wasm binary to find the offsets of every instruction in the"
+"  code section."),
+
     JS_FN_HELP("transplantableObject", TransplantableObject, 0, 0,
 "transplantableObject([options])",
 "  Returns the pair {object, transplant}. |object| is an object which can be\n"
@@ -9578,14 +9681,14 @@ js::shell::AutoReportException::~AutoReportException() {
 
   ShellContext* sc = GetShellContext(cx);
   js::ErrorReport report(cx);
-  if (!report.init(cx, exn, js::ErrorReport::WithSideEffects)) {
+  if (!report.init(cx, exn, js::ErrorReport::WithSideEffects, stack)) {
     fprintf(stderr, "out of memory initializing ErrorReport\n");
     fflush(stderr);
     JS_ClearPendingException(cx);
     return;
   }
 
-  MOZ_ASSERT(!JSREPORT_IS_WARNING(report.report()->flags));
+  MOZ_ASSERT(!report.report()->isWarning());
 
   FILE* fp = ErrorFilePointer();
   PrintError(cx, fp, report.toStringResult(), report.report(), reportWarnings);
@@ -9615,8 +9718,7 @@ void js::shell::WarningReporter(JSContext* cx, JSErrorReport* report) {
   ShellContext* sc = GetShellContext(cx);
   FILE* fp = ErrorFilePointer();
 
-  MOZ_ASSERT(report);
-  MOZ_ASSERT(JSREPORT_IS_WARNING(report->flags));
+  MOZ_ASSERT(report->isWarning());
 
   if (sc->lastWarningEnabled) {
     JS::AutoSaveExceptionState savedExc(cx);
@@ -10163,13 +10265,18 @@ static bool OptionFailure(const char* option, const char* str) {
 static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
   ShellContext* sc = GetShellContext(cx);
 
-  if (op->getBoolOption('s')) {
-    JS::ContextOptionsRef(cx).toggleExtraWarnings();
-  }
-
 #ifdef JS_ENABLE_SMOOSH
   if (op->getBoolOption("smoosh")) {
     JS::ContextOptionsRef(cx).setTrySmoosh(true);
+    js::frontend::InitSmoosh();
+  }
+
+  if (const char* filename = op->getStringOption("not-implemented-watchfile")) {
+    FILE* out = fopen(filename, "a");
+    MOZ_RELEASE_ASSERT(out);
+    setbuf(out, nullptr);  // Make unbuffered
+    cx->runtime()->parserWatcherFile.init(out);
+    JS::ContextOptionsRef(cx).setTrackNotImplemented(true);
   }
 #endif
 
@@ -10274,7 +10381,7 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
       }
 
       RootedValue rval(cx);
-      if (!JS::EvaluateDontInflate(cx, opts, srcBuf, &rval)) {
+      if (!JS::Evaluate(cx, opts, srcBuf, &rval)) {
         return false;
       }
 
@@ -10362,6 +10469,9 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
 #ifdef ENABLE_WASM_GC
   enableWasmGc = op.getBoolOption("wasm-gc");
 #endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+  enableWasmMultiValue = !op.getBoolOption("no-wasm-multi-value");
+#endif
   enableWasmVerbose = op.getBoolOption("wasm-verbose");
   enableTestWasmAwaitTier2 = op.getBoolOption("test-wasm-await-tier2");
   enableAsyncStacks = !op.getBoolOption("no-async-stacks");
@@ -10373,8 +10483,6 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
 #ifdef ENABLE_WASM_BIGINT
   enableWasmBigInt = !op.getBoolOption("no-wasm-bigint");
 #endif
-  enableFields = !op.getBoolOption("disable-experimental-fields");
-  enableAwaitFix = op.getBoolOption("enable-experimental-await-fix");
   enableWeakRefs = op.getBoolOption("enable-weak-refs");
   enableToSource = !op.getBoolOption("disable-tosource");
   enablePropertyErrorMessageFix =
@@ -10391,6 +10499,9 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
 #endif
 #ifdef ENABLE_WASM_GC
       .setWasmGc(enableWasmGc)
+#endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+      .setWasmMultiValue(enableWasmMultiValue)
 #endif
       .setWasmVerbose(enableWasmVerbose)
       .setTestWasmAwaitTier2(enableTestWasmAwaitTier2)
@@ -10618,7 +10729,10 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
   if (op.getBoolOption("no-ti")) {
     jit::JitOptions.typeInference = false;
   }
-  if (op.getBoolOption("warp")) {
+  if (op.getBoolOption("no-warp")) {
+    MOZ_ASSERT(!jit::JitOptions.warpBuilder,
+               "WarpBuilder is disabled by default");
+  } else if (op.getBoolOption("warp")) {
     // WarpBuilder requires TI to be disabled.
     jit::JitOptions.typeInference = false;
     jit::JitOptions.warpBuilder = true;
@@ -10736,6 +10850,9 @@ static void SetWorkerContextOptions(JSContext* cx) {
 #endif
 #ifdef ENABLE_WASM_GC
       .setWasmGc(enableWasmGc)
+#endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+      .setWasmMultiValue(enableWasmMultiValue)
 #endif
 #ifdef ENABLE_WASM_BIGINT
       .setWasmBigIntEnabled(enableWasmBigInt)
@@ -11109,7 +11226,6 @@ int main(int argc, char** argv, char** envp) {
                         "Only compile, don't run (syntax checking mode)") ||
       !op.addBoolOption('w', "warnings", "Emit warnings") ||
       !op.addBoolOption('W', "nowarnings", "Don't emit warnings") ||
-      !op.addBoolOption('s', "strict", "Check strictness") ||
       !op.addBoolOption('D', "dump-bytecode",
                         "Dump bytecode with exec count for all scripts") ||
       !op.addBoolOption('b', "print-timing",
@@ -11145,6 +11261,7 @@ int main(int argc, char** argv, char** envp) {
       !op.addBoolOption('\0', "no-ti", "Disable Type Inference") ||
       !op.addBoolOption('\0', "warp", "Use WarpBuilder as MIR builder") ||
 #endif
+      !op.addBoolOption('\0', "no-warp", "Disable WarpBuilder (default)") ||
       !op.addBoolOption('\0', "no-asmjs", "Disable asm.js compilation") ||
       !op.addStringOption(
           '\0', "wasm-compiler", "[option]",
@@ -11169,6 +11286,13 @@ int main(int argc, char** argv, char** envp) {
 #else
       !op.addBoolOption('\0', "wasm-gc", "No-op") ||
 #endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+      !op.addBoolOption('\0', "no-wasm-multi-value",
+                        "Disable wasm multi-value features") ||
+#else
+      !op.addBoolOption('\0', "no-wasm-multi-value", "No-op") ||
+#endif
+
       !op.addBoolOption('\0', "no-native-regexp",
                         "Disable native regexp compilation") ||
       !op.addBoolOption('\0', "no-unboxed-objects",
@@ -11187,10 +11311,6 @@ int main(int argc, char** argv, char** envp) {
       !op.addBoolOption('\0', "enable-readablestream-pipeto",
                         "Enable support for "
                         "WHATWG ReadableStream.prototype.pipeTo") ||
-      !op.addBoolOption('\0', "disable-experimental-fields",
-                        "Disable public fields in classes") ||
-      !op.addBoolOption('\0', "enable-experimental-await-fix",
-                        "Enable new, faster await semantics") ||
       !op.addBoolOption('\0', "enable-weak-refs", "Enable weak references") ||
       !op.addBoolOption('\0', "disable-tosource", "Disable toSource/uneval") ||
       !op.addBoolOption('\0', "disable-property-error-message-fix",
@@ -11380,6 +11500,8 @@ int main(int argc, char** argv, char** envp) {
                         "Suppress crash minidumps") ||
 #ifdef JS_ENABLE_SMOOSH
       !op.addBoolOption('\0', "smoosh", "Use SmooshMonkey") ||
+      !op.addStringOption('\0', "not-implemented-watchfile", "[filename]",
+                          "Track NotImplemented errors in the new frontend") ||
 #else
       !op.addBoolOption('\0', "smoosh", "No-op") ||
 #endif
@@ -11565,8 +11687,8 @@ int main(int argc, char** argv, char** envp) {
 
   js::UseInternalJobQueues(cx);
 
-  JS::SetHostCleanupFinalizationGroupCallback(
-      cx, ShellCleanupFinalizationGroupCallback, sc.get());
+  JS::SetHostCleanupFinalizationRegistryCallback(
+      cx, ShellCleanupFinalizationRegistryCallback, sc.get());
 
   auto shutdownShellThreads = MakeScopeExit([cx] {
     KillWatchdog(cx);

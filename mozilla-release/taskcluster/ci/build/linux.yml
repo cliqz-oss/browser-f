@@ -121,6 +121,10 @@ linux64-fuzzing/debug:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
     optimization:
         fuzzing-builds:
             - linux
@@ -164,6 +168,10 @@ linux64/debug:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
 
 linux64-plain/debug:
     description: "Linux64 Debug Plain"
@@ -283,7 +291,7 @@ linux64-base-toolchains/opt:
             - linux64-rust-1.41
             - linux64-cbindgen
             - linux64-sccache
-            - linux64-nasm-2.13.02
+            - linux64-nasm-2.14.02
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
@@ -323,10 +331,14 @@ linux64-base-toolchains/debug:
             - linux64-rust-1.41
             - linux64-cbindgen
             - linux64-sccache
-            - linux64-nasm-2.13.02
+            - linux64-nasm-2.14.02
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
 
 linux64-base-toolchains-clang/opt:
     description: "Linux64 base toolchains clang Opt"
@@ -359,7 +371,7 @@ linux64-base-toolchains-clang/opt:
             - linux64-clang-5.0
             - linux64-rust-1.41
             - linux64-cbindgen
-            - linux64-nasm-2.13.02
+            - linux64-nasm-2.14.02
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
@@ -397,10 +409,14 @@ linux64-base-toolchains-clang/debug:
             - linux64-clang-5.0
             - linux64-rust-1.41
             - linux64-cbindgen
-            - linux64-nasm-2.13.02
+            - linux64-nasm-2.14.02
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
 
 linux/opt:
     description: "Linux32 Opt"
@@ -480,6 +496,10 @@ linux/debug:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
 
 linux-rusttests/opt:
     description: "Linux32 Rust Tests Opt"
@@ -781,6 +801,9 @@ linux64-tsan-fuzzing/opt:
     index:
         product: firefox
         job-name: linux64-fuzzing-tsan-opt
+    attributes:
+        # The gtest libxul contains libFuzzer targets
+        skip-verify-test-packaging: true
     treeherder:
         platform: linux64/tsan
         symbol: Bof
@@ -788,6 +811,7 @@ linux64-tsan-fuzzing/opt:
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: tsan-fuzzing
+            MOZ_AUTOMATION_PACKAGE_TESTS: "1"
         max-run-time: 5400
     run:
         using: mozharness
@@ -822,6 +846,9 @@ linux64-asan-fuzzing/opt:
     index:
         product: firefox
         job-name: linux64-fuzzing-asan-opt
+    attributes:
+        # The gtest libxul contains libFuzzer targets
+        skip-verify-test-packaging: true
     treeherder:
         platform: linux64/asan
         symbol: Bof
@@ -830,6 +857,7 @@ linux64-asan-fuzzing/opt:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-fuzzing
             ASAN_OPTIONS: "detect_leaks=0"
+            MOZ_AUTOMATION_PACKAGE_TESTS: "1"
         max-run-time: 5400
     run:
         using: mozharness
@@ -864,6 +892,9 @@ linux64-asan-fuzzing-ccov/opt:
     index:
         product: firefox
         job-name: linux64-ccov-fuzzing-asan-opt
+    attributes:
+        # The gtest libxul contains libFuzzer targets
+        skip-verify-test-packaging: true
     treeherder:
         platform: linux64/asan
         symbol: Bocf
@@ -873,6 +904,7 @@ linux64-asan-fuzzing-ccov/opt:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-fuzzing-ccov
             ASAN_OPTIONS: "detect_leaks=0"
+            MOZ_AUTOMATION_PACKAGE_TESTS: "1"
         max-run-time: 5400
     run:
         using: mozharness
@@ -1033,6 +1065,10 @@ linux64-asan/debug:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
 
 linux64-shippable/opt:
     description: "Linux64 Shippable"
@@ -1117,6 +1153,10 @@ linux64-noopt/debug:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
 
 linux64-rusttests/opt:
     description: "Linux64 Rust Tests Opt"

@@ -95,7 +95,7 @@ using mozilla::ScrollFlags from "mozilla/PresShellForwards.h";
 using struct InputFormData from "mozilla/dom/SessionStoreMessageUtils.h";
 using struct CollectedInputDataValue from "mozilla/dom/SessionStoreMessageUtils.h";
 using refcounted class nsITransportSecurityInfo from "nsITransportSecurityInfo.h";
-using mozilla::AntiTrackingCommon::StorageAccessGrantedReason from "mozilla/AntiTrackingCommon.h";
+using mozilla::ContentBlockingNotifier::StorageAccessGrantedReason from "mozilla/ContentBlockingNotifier.h";
 using CallerType from "mozilla/dom/BindingDeclarations.h";
 
 namespace mozilla {
@@ -148,7 +148,6 @@ struct WebProgressLocationChangeData
   nsIURI documentURI;
   nsIPrincipal contentPrincipal;
   nsIPrincipal contentStoragePrincipal;
-  nsIPrincipal contentBlockingAllowListPrincipal;
   nsIContentSecurityPolicy csp;
   nsIReferrerInfo referrerInfo;
   uint64_t? requestContextID;
@@ -409,7 +408,8 @@ parent:
      * Indicate, based on the current state, that some commands are enabled and
      * some are disabled.
      */
-    async EnableDisableCommands(nsString action,
+    async EnableDisableCommands(MaybeDiscardedBrowsingContext bc,
+                                nsString action,
                                 nsCString[] enabledCommands,
                                 nsCString[] disabledCommands);
 
@@ -615,12 +615,14 @@ parent:
                              CollectedInputDataValue[] aXPathVals,
                              nsCString[] aOrigins, nsString[] aKeys,
                              nsString[] aValues, bool aIsFullStorage,
-                             uint32_t aFlushId, bool aIsFinal, uint32_t aEpoch);
+                             bool aNeedCollectSHistory, uint32_t aFlushId,
+                             bool aIsFinal, uint32_t aEpoch);
 
 child:
     async NativeSynthesisResponse(uint64_t aObserverId, nsCString aResponse);
     async FlushTabState(uint32_t aFlushId, bool aIsFinal);
     async UpdateEpoch(uint32_t aEpoch);
+    async UpdateSHistory(bool aImmediately);
 
 parent:
 
@@ -701,8 +703,7 @@ parent:
      * Called once this PBrowser's OOP subdoc no longer blocks its
      * embedding element's and embedding doc's 'load' events.
      */
-    async MaybeFireEmbedderLoadEvents(bool aIsTrusted,
-                                      bool aFireLoadAtEmbeddingElement);
+    async MaybeFireEmbedderLoadEvents(bool aFireLoadAtEmbeddingElement);
 
     async ScrollRectIntoView(nsRect aRect, ScrollAxis aVertical,
                              ScrollAxis aHorizontal, ScrollFlags aScrollFlags,
@@ -824,11 +825,19 @@ child:
     prio(input) async RealTouchMoveEvent(WidgetTouchEvent aEvent,
                                          ScrollableLayerGuid aGuid,
                                          uint64_t aInputBlockId,
-                                         nsEventStatus aApzResponse);
+                                         nsEventStatus aApzResponse) compress;
     async NormalPriorityRealTouchMoveEvent(WidgetTouchEvent aEvent,
                                            ScrollableLayerGuid aGuid,
                                            uint64_t aInputBlockId,
-                                           nsEventStatus aApzResponse);
+                                           nsEventStatus aApzResponse) compress;
+    prio(input) async RealTouchMoveEvent2(WidgetTouchEvent aEvent,
+                                          ScrollableLayerGuid aGuid,
+                                          uint64_t aInputBlockId,
+                                          nsEventStatus aApzResponse) compress;
+    async NormalPriorityRealTouchMoveEvent2(WidgetTouchEvent aEvent,
+                                            ScrollableLayerGuid aGuid,
+                                            uint64_t aInputBlockId,
+                                            nsEventStatus aApzResponse) compress;
 
     /*
      * We disable the input event queue when there is an active dnd session. We
@@ -1030,11 +1039,11 @@ parent:
     async IsWindowSupportingWebVR(uint64_t aOuterWindowID) returns(bool isSupported);
 
     /** Records a history visit. */
-    async VisitURI(URIParams aURI, URIParams? aLastVisitedURI,
+    async VisitURI(nsIURI aURI, nsIURI aLastVisitedURI,
                    uint32_t aFlags);
 
     /** Fetches the visited status for an array of URIs (Android-only). */
-    async QueryVisitedState(URIParams[] aURIs);
+    async QueryVisitedState(nsIURI[] aURIs);
 
     /**
      * Construct a new WindowGlobal for an existing global in the content process

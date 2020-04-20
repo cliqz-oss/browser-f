@@ -12,7 +12,7 @@ import Services from "devtools-services";
 // Schema version to bump when the async store format has changed incompatibly
 // and old stores should be cleared.
 const prefsSchemaVersion = 11;
-const pref = Services.pref;
+const { pref } = Services;
 
 if (isDevelopment()) {
   pref("devtools.browsertoolbox.fission", false);
@@ -75,6 +75,7 @@ if (isDevelopment()) {
   pref("devtools.debugger.features.inline-preview", true);
   pref("devtools.debugger.features.overlay-step-buttons", true);
   pref("devtools.debugger.features.watchpoints", true);
+  pref("devtools.editor.tabsize", 2);
 }
 
 export const prefs = new PrefsHelper("devtools", {
@@ -117,7 +118,13 @@ export const prefs = new PrefsHelper("devtools", {
   mapScopes: ["Bool", "debugger.map-scopes-enabled"],
   logActions: ["Bool", "debugger.log-actions"],
   logEventBreakpoints: ["Bool", "debugger.log-event-breakpoints"],
+  indentSize: ["Int", "editor.tabsize"],
 });
+
+// The pref may not be defined. Defaulting to null isn't viable (cursor never blinks).
+// Can't use CodeMirror.defaults here because it's loaded later.
+// Hardcode the fallback value to that of CodeMirror.defaults.cursorBlinkRate.
+prefs.cursorBlinkRate = Services.prefs.getIntPref("ui.caretBlinkTime", 530);
 
 export const features = new PrefsHelper("devtools.debugger.features", {
   asyncStepping: ["Bool", "async-stepping"],

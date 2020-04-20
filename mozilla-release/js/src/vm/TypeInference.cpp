@@ -52,7 +52,6 @@ using mozilla::DebugOnly;
 using mozilla::Maybe;
 using mozilla::PodArrayZero;
 using mozilla::PodCopy;
-using mozilla::PodZero;
 
 using js::jit::JitScript;
 
@@ -323,6 +322,8 @@ bool js::ObjectGroupHasProperty(JSContext* cx, ObjectGroup* group, jsid id,
 /////////////////////////////////////////////////////////////////////
 
 TemporaryTypeSet::TemporaryTypeSet(LifoAlloc* alloc, Type type) {
+  MOZ_ASSERT(!jit::JitOptions.warpBuilder);
+
   if (type.isUnknown()) {
     flags |= TYPE_FLAG_BASE_MASK;
     return;
@@ -763,7 +764,7 @@ void TypeSet::print(FILE* fp) {
   }
 
   if (definiteProperty()) {
-    fprintf(fp, " [definite:%d]", definiteSlot());
+    fprintf(fp, " [definite:%u]", definiteSlot());
   }
 
   if (baseFlags() == 0 && !baseObjectCount()) {
@@ -1640,7 +1641,7 @@ namespace {
 // type set. */
 class ConstraintDataFreeze {
  public:
-  ConstraintDataFreeze() {}
+  ConstraintDataFreeze() = default;
 
   const char* kind() { return "freeze"; }
 
@@ -2090,7 +2091,7 @@ namespace {
 
 class ConstraintDataConstantProperty {
  public:
-  explicit ConstraintDataConstantProperty() {}
+  explicit ConstraintDataConstantProperty() = default;
 
   const char* kind() { return "constantProperty"; }
 
@@ -2162,7 +2163,7 @@ bool HeapTypeSetKey::constant(CompilerConstraintList* constraints,
 // A constraint that never triggers recompilation.
 class ConstraintDataInert {
  public:
-  explicit ConstraintDataInert() {}
+  explicit ConstraintDataInert() = default;
 
   const char* kind() { return "inert"; }
 
@@ -2693,11 +2694,8 @@ void js::PrintTypes(JSContext* cx, Compartment* comp, bool force) {
 
   RootedScript script(cx);
   for (auto base = zone->cellIter<BaseScript>(); !base.done(); base.next()) {
-    if (base->isLazyScript()) {
-      continue;
-    }
-    script = base->asJSScript();
-    if (JitScript* jitScript = script->maybeJitScript()) {
+    if (JitScript* jitScript = base->maybeJitScript()) {
+      script = base->asJSScript();
       jitScript->printTypes(cx, script);
     }
   }
@@ -3465,13 +3463,12 @@ void JitScript::MonitorMagicValueBytecodeType(JSContext* cx, JSScript* script,
     return;
   }
 
-  // In derived class constructors (including nested arrows/eval)
-  // GetAliasedVar can return the magic TDZ value.
+  // Ops like GetAliasedVar can return the magic TDZ value.
   MOZ_ASSERT(rval.whyMagic() == JS_UNINITIALIZED_LEXICAL);
-  MOZ_ASSERT(script->function() || script->isForEval());
   MOZ_ASSERT(JSOp(*GetNextPc(pc)) == JSOp::CheckThis ||
              JSOp(*GetNextPc(pc)) == JSOp::CheckThisReinit ||
-             JSOp(*GetNextPc(pc)) == JSOp::CheckReturn);
+             JSOp(*GetNextPc(pc)) == JSOp::CheckReturn ||
+             JSOp(*GetNextPc(pc)) == JSOp::CheckAliasedLexical);
 
   MonitorBytecodeType(cx, script, pc, TypeSet::UnknownType());
 }

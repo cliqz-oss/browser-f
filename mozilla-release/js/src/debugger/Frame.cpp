@@ -236,8 +236,6 @@ DebuggerFrame* DebuggerFrame::create(
     JSContext* cx, HandleObject proto, HandleNativeObject debugger,
     const FrameIter* maybeIter,
     Handle<AbstractGeneratorObject*> maybeGenerator) {
-  MOZ_ASSERT(maybeIter || maybeGenerator);
-
   DebuggerFrame* frame = NewObjectWithGivenProto<DebuggerFrame>(cx, proto);
   if (!frame) {
     return nullptr;
@@ -1002,8 +1000,7 @@ static bool EvaluateInEnv(JSContext* cx, Handle<Env*> env,
     }
 
     frontend::EvalSharedContext evalsc(cx, env, compilationInfo, scope,
-                                       compilationInfo.directives,
-                                       options.extraWarningsOption);
+                                       compilationInfo.directives);
     script = frontend::CompileEvalScript(compilationInfo, evalsc, env, srcBuf);
     if (!script) {
       return false;
@@ -1023,9 +1020,8 @@ static bool EvaluateInEnv(JSContext* cx, Handle<Env*> env,
     MOZ_ASSERT(scopeKind == ScopeKind::Global ||
                scopeKind == ScopeKind::NonSyntactic);
 
-    frontend::GlobalSharedContext globalsc(
-        cx, scopeKind, compilationInfo, compilationInfo.directives,
-        compilationInfo.options.extraWarningsOption);
+    frontend::GlobalSharedContext globalsc(cx, scopeKind, compilationInfo,
+                                           compilationInfo.directives);
     script = frontend::CompileGlobalScript(compilationInfo, globalsc, srcBuf);
     if (!script) {
       return false;

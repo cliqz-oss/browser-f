@@ -15,7 +15,7 @@
 #include "HttpLog.h"
 #include "LoadInfo.h"
 #include "mozIThirdPartyUtil.h"
-#include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/AntiTrackingUtils.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/BinarySearch.h"
 #include "mozilla/ConsoleReportCollector.h"
@@ -291,7 +291,6 @@ void HttpBaseChannel::ReleaseMainThreadOnlyReferences() {
   arrayToRelease.AppendElement(mProgressSink.forget());
   arrayToRelease.AppendElement(mApplicationCache.forget());
   arrayToRelease.AppendElement(mPrincipal.forget());
-  arrayToRelease.AppendElement(mContentBlockingAllowListPrincipal.forget());
   arrayToRelease.AppendElement(mListener.forget());
   arrayToRelease.AppendElement(mCompressListener.forget());
 
@@ -514,8 +513,7 @@ HttpBaseChannel::SetDocshellUserAgentOverride() {
 NS_IMETHODIMP
 HttpBaseChannel::GetOriginalURI(nsIURI** aOriginalURI) {
   NS_ENSURE_ARG_POINTER(aOriginalURI);
-  *aOriginalURI = mOriginalURI;
-  NS_ADDREF(*aOriginalURI);
+  *aOriginalURI = do_AddRef(mOriginalURI).take();
   return NS_OK;
 }
 
@@ -531,8 +529,7 @@ HttpBaseChannel::SetOriginalURI(nsIURI* aOriginalURI) {
 NS_IMETHODIMP
 HttpBaseChannel::GetURI(nsIURI** aURI) {
   NS_ENSURE_ARG_POINTER(aURI);
-  *aURI = mURI;
-  NS_ADDREF(*aURI);
+  *aURI = do_AddRef(mURI).take();
   return NS_OK;
 }
 
@@ -689,8 +686,7 @@ HttpBaseChannel::GetContentDispositionFilename(
     return NS_OK;
   }
 
-  return NS_GetFilenameFromDisposition(aContentDispositionFilename, header,
-                                       mURI);
+  return NS_GetFilenameFromDisposition(aContentDispositionFilename, header);
 }
 
 NS_IMETHODIMP
@@ -1270,8 +1266,9 @@ HttpBaseChannel::GetContentEncodings(nsIUTF8StringEnumerator** aEncodings) {
     *aEncodings = nullptr;
     return NS_OK;
   }
-  nsContentEncodings* enumerator = new nsContentEncodings(this, encoding.get());
-  NS_ADDREF(*aEncodings = enumerator);
+  RefPtr<nsContentEncodings> enumerator =
+      new nsContentEncodings(this, encoding.get());
+  enumerator.forget(aEncodings);
   return NS_OK;
 }
 
@@ -1910,10 +1907,8 @@ HttpBaseChannel::RedirectTo(nsIURI* targetURI) {
   // and to bypass CORS for early redirects.
   // To avoid any bypasses after the channel was flagged by
   // the WebRequst API, we are dropping the flag here.
-  if (mLoadInfo) {
-    mLoadInfo->SetBypassCORSChecks(false);
-    mLoadInfo->SetAllowInsecureRedirectToDataURI(false);
-  }
+  mLoadInfo->SetBypassCORSChecks(false);
+  mLoadInfo->SetAllowInsecureRedirectToDataURI(false);
   return NS_OK;
 }
 
@@ -2015,7 +2010,7 @@ HttpBaseChannel::SetTopWindowURIIfUnknown(nsIURI* aTopWindowURI) {
 NS_IMETHODIMP
 HttpBaseChannel::GetTopWindowURI(nsIURI** aTopWindowURI) {
   nsCOMPtr<nsIURI> uriBeingLoaded =
-      AntiTrackingCommon::MaybeGetDocumentURIBeingLoaded(this);
+      AntiTrackingUtils::MaybeGetDocumentURIBeingLoaded(this);
   return GetTopWindowURI(uriBeingLoaded, aTopWindowURI);
 }
 
@@ -2044,12 +2039,6 @@ nsresult HttpBaseChannel::GetTopWindowURI(nsIURI* aURIBeingLoaded,
         }
       }
 #endif
-
-      if (!mContentBlockingAllowListPrincipal) {
-        Unused << util->GetContentBlockingAllowListPrincipalFromWindow(
-            win, aURIBeingLoaded,
-            getter_AddRefs(mContentBlockingAllowListPrincipal));
-      }
     }
   }
   NS_IF_ADDREF(*aTopWindowURI = mTopWindowURI);
@@ -2061,27 +2050,6 @@ HttpBaseChannel::GetDocumentURI(nsIURI** aDocumentURI) {
   NS_ENSURE_ARG_POINTER(aDocumentURI);
   *aDocumentURI = mDocumentURI;
   NS_IF_ADDREF(*aDocumentURI);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-HttpBaseChannel::GetContentBlockingAllowListPrincipal(
-    nsIPrincipal** aPrincipal) {
-  NS_ENSURE_ARG_POINTER(aPrincipal);
-  if (!mContentBlockingAllowListPrincipal) {
-    if (!mTopWindowURI) {
-      // If mTopWindowURI is null, it's possible that these two fields haven't
-      // been initialized yet.  GetTopWindowURI will lazily initilize both
-      // fields for us.
-      nsCOMPtr<nsIURI> throwAway;
-      Unused << GetTopWindowURI(getter_AddRefs(throwAway));
-    } else {
-      // Otherwise, the content blocking allow list principal is null (which is
-      // possible), so just return what we have...
-    }
-  }
-  nsCOMPtr<nsIPrincipal> copy = mContentBlockingAllowListPrincipal;
-  copy.forget(aPrincipal);
   return NS_OK;
 }
 
@@ -2129,16 +2097,27 @@ HttpBaseChannel::GetResponseVersion(uint32_t* major, uint32_t* minor) {
 void HttpBaseChannel::NotifySetCookie(const nsACString& aCookie) {
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
   if (obs) {
-    nsAutoString cookie;
     obs->NotifyObservers(static_cast<nsIChannel*>(this),
                          "http-on-response-set-cookie",
                          NS_ConvertASCIItoUTF16(aCookie).get());
   }
 }
 
+bool HttpBaseChannel::IsBrowsingContextDiscarded() const {
+  if (mLoadGroup && mLoadGroup->GetIsBrowsingContextDiscarded()) {
+    return true;
+  }
+
+  return false;
+}
+
 NS_IMETHODIMP
 HttpBaseChannel::SetCookie(const nsACString& aCookieHeader) {
   if (mLoadFlags & LOAD_ANONYMOUS) return NS_OK;
+
+  if (IsBrowsingContextDiscarded()) {
+    return NS_OK;
+  }
 
   // empty header isn't an error
   if (aCookieHeader.IsEmpty()) {
@@ -2239,8 +2218,8 @@ HttpBaseChannel::TakeAllSecurityMessages(
         do_CreateInstance(NS_SECURITY_CONSOLE_MESSAGE_CONTRACTID, &rv);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    message->SetTag(pair.first());
-    message->SetCategory(pair.second());
+    message->SetTag(pair.first);
+    message->SetCategory(pair.second);
     aMessages.AppendElement(message);
   }
 
@@ -2268,7 +2247,7 @@ nsresult HttpBaseChannel::AddSecurityMessage(
   // nsSecurityConsoleMessage is not thread-safe refcounted.
   // Delay the object construction until requested.
   // See TakeAllSecurityMessages()
-  Pair<nsString, nsString> pair(aMessageTag, aMessageCategory);
+  std::pair<nsString, nsString> pair(aMessageTag, aMessageCategory);
   mSecurityConsoleMessages.AppendElement(std::move(pair));
 
   nsCOMPtr<nsIConsoleService> console(
@@ -2863,10 +2842,6 @@ void HttpBaseChannel::RemoveAsNonTailRequest() {
 void HttpBaseChannel::AssertPrivateBrowsingId() {
   nsCOMPtr<nsILoadContext> loadContext;
   NS_QueryNotificationCallbacks(this, loadContext);
-  // For addons it's possible that mLoadInfo is null.
-  if (!mLoadInfo) {
-    return;
-  }
 
   if (!loadContext) {
     return;
@@ -2895,10 +2870,6 @@ already_AddRefed<nsILoadInfo> HttpBaseChannel::CloneLoadInfoForRedirect(
     nsIURI* aNewURI, uint32_t aRedirectFlags) {
   // make a copy of the loadinfo, append to the redirectchain
   // this will be set on the newly created channel for the redirect target.
-  if (!mLoadInfo) {
-    return nullptr;
-  }
-
   nsCOMPtr<nsILoadInfo> newLoadInfo =
       static_cast<mozilla::net::LoadInfo*>(mLoadInfo.get())->Clone();
 
@@ -3052,7 +3023,7 @@ void HttpBaseChannel::DoNotifyListener() {
   if (!IsNavigation()) {
     if (mLoadGroup) {
       FlushConsoleReports(mLoadGroup);
-    } else if (mLoadInfo) {
+    } else {
       RefPtr<dom::Document> doc;
       mLoadInfo->GetLoadingDocument(getter_AddRefs(doc));
       FlushConsoleReports(doc);
@@ -3120,24 +3091,8 @@ bool HttpBaseChannel::ShouldRewriteRedirectToGET(
 HttpBaseChannel::ReplacementChannelConfig
 HttpBaseChannel::CloneReplacementChannelConfig(bool aPreserveMethod,
                                                uint32_t aRedirectFlags,
-                                               ReplacementReason aReason,
-                                               uint32_t aExtraLoadFlags) {
+                                               ReplacementReason aReason) {
   ReplacementChannelConfig config;
-  config.loadFlags = mLoadFlags;
-  config.loadFlags |= aExtraLoadFlags;
-
-  // if the original channel was using SSL and this channel is not using
-  // SSL, then no need to inhibit persistent caching.  however, if the
-  // original channel was not using SSL and has INHIBIT_PERSISTENT_CACHING
-  // set, then allow the flag to apply to the redirected channel as well.
-  // since we force set INHIBIT_PERSISTENT_CACHING on all HTTPS channels,
-  // we only need to check if the original channel was using SSL.
-  if (mURI->SchemeIs("https")) {
-    config.loadFlags &= ~INHIBIT_PERSISTENT_CACHING;
-  }
-
-  // Do not pass along LOAD_CHECK_OFFLINE_CACHE
-  config.loadFlags &= ~nsICachingChannel::LOAD_CHECK_OFFLINE_CACHE;
   config.redirectFlags = aRedirectFlags;
   config.classOfService = mClassOfService;
 
@@ -3251,8 +3206,6 @@ HttpBaseChannel::CloneReplacementChannelConfig(bool aPreserveMethod,
 /* static */ void HttpBaseChannel::ConfigureReplacementChannel(
     nsIChannel* newChannel, const ReplacementChannelConfig& config,
     ReplacementReason aReason) {
-  newChannel->SetLoadFlags(config.loadFlags);
-
   nsCOMPtr<nsIClassOfService> cos(do_QueryInterface(newChannel));
   if (cos) {
     cos->SetClassFlags(config.classOfService);
@@ -3422,7 +3375,6 @@ HttpBaseChannel::CloneReplacementChannelConfig(bool aPreserveMethod,
 
 HttpBaseChannel::ReplacementChannelConfig::ReplacementChannelConfig(
     const dom::ReplacementChannelConfigInit& aInit) {
-  loadFlags = aInit.loadFlags();
   redirectFlags = aInit.redirectFlags();
   classOfService = aInit.classOfService();
   privateBrowsing = aInit.privateBrowsing();
@@ -3438,7 +3390,6 @@ HttpBaseChannel::ReplacementChannelConfig::ReplacementChannelConfig(
 dom::ReplacementChannelConfigInit
 HttpBaseChannel::ReplacementChannelConfig::Serialize() {
   dom::ReplacementChannelConfigInit config;
-  config.loadFlags() = loadFlags;
   config.redirectFlags() = redirectFlags;
   config.classOfService() = classOfService;
   config.privateBrowsing() = privateBrowsing;
@@ -3482,6 +3433,23 @@ nsresult HttpBaseChannel::SetupReplacementChannel(nsIURI* newURI,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
+  nsLoadFlags loadFlags = mLoadFlags;
+  loadFlags |= LOAD_REPLACE;
+
+  // if the original channel was using SSL and this channel is not using
+  // SSL, then no need to inhibit persistent caching.  however, if the
+  // original channel was not using SSL and has INHIBIT_PERSISTENT_CACHING
+  // set, then allow the flag to apply to the redirected channel as well.
+  // since we force set INHIBIT_PERSISTENT_CACHING on all HTTPS channels,
+  // we only need to check if the original channel was using SSL.
+  if (mURI->SchemeIs("https")) {
+    loadFlags &= ~INHIBIT_PERSISTENT_CACHING;
+  }
+
+  // Do not pass along LOAD_CHECK_OFFLINE_CACHE
+  loadFlags &= ~nsICachingChannel::LOAD_CHECK_OFFLINE_CACHE;
+  newChannel->SetLoadFlags(loadFlags);
+
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(newChannel);
 
   ReplacementReason redirectType =
@@ -3489,7 +3457,7 @@ nsresult HttpBaseChannel::SetupReplacementChannel(nsIURI* newURI,
           ? ReplacementReason::InternalRedirect
           : ReplacementReason::Redirect;
   ReplacementChannelConfig config = CloneReplacementChannelConfig(
-      preserveMethod, redirectFlags, redirectType, LOAD_REPLACE);
+      preserveMethod, redirectFlags, redirectType);
   ConfigureReplacementChannel(newChannel, config, redirectType);
 
   // Check whether or not this was a cross-domain redirect.
@@ -3588,9 +3556,6 @@ nsresult HttpBaseChannel::SetupReplacementChannel(nsIURI* newURI,
     RefPtr<HttpBaseChannel> realChannel;
     CallQueryInterface(newChannel, realChannel.StartAssignment());
     if (realChannel) {
-      realChannel->SetContentBlockingAllowListPrincipal(
-          mContentBlockingAllowListPrincipal);
-
       realChannel->SetTopWindowURI(mTopWindowURI);
     }
 
@@ -3886,7 +3851,7 @@ HttpBaseChannel::TimingAllowCheck(nsIPrincipal* aOrigin, bool* _retval) {
   }
 
   nsAutoCString origin;
-  nsContentUtils::GetASCIIOrigin(aOrigin, origin);
+  aOrigin->GetAsciiOrigin(origin);
 
   Tokenizer p(headerValue);
   Tokenizer::Token t;
@@ -4121,11 +4086,6 @@ mozilla::dom::PerformanceStorage* HttpBaseChannel::GetPerformanceStorage() {
   if (XRE_IsE10sParentProcess()) {
     return nullptr;
   }
-
-  if (!mLoadInfo) {
-    return nullptr;
-  }
-
   return mLoadInfo->GetPerformanceStorage();
 }
 

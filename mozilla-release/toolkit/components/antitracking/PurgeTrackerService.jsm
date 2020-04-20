@@ -178,33 +178,26 @@ PurgeTrackerService.prototype = {
       return;
     }
 
+    let baseDomainsWithInteraction = new Set();
+    for (let perm of Services.perms.getAllWithTypePrefix("storageAccessAPI")) {
+      baseDomainsWithInteraction.add(perm.principal.baseDomain);
+    }
+
     for (let cookie of cookies) {
       let httpsPrincipal = Services.scriptSecurityManager.createContentPrincipalFromOrigin(
         "https://" +
           cookie.rawHost +
           ChromeUtils.originAttributesToSuffix(cookie.originAttributes)
       );
-      let httpPrincipal = Services.scriptSecurityManager.createContentPrincipalFromOrigin(
-        "http://" +
-          cookie.rawHost +
-          ChromeUtils.originAttributesToSuffix(cookie.originAttributes)
-      );
-
-      // We consider it a valid permission for both if http or https has been given permission
-      let interactionPermission =
-        Services.perms.getPermissionObject(
-          httpsPrincipal,
-          "storageAccessAPI",
-          false
-        ) ||
-        Services.perms.getPermissionObject(
-          httpPrincipal,
-          "storageAccessAPI",
-          false
-        );
 
       // Either the interaction permission was never granted or it expired.
-      if (!interactionPermission) {
+      if (!baseDomainsWithInteraction.has(httpsPrincipal.baseDomain)) {
+        let httpPrincipal = Services.scriptSecurityManager.createContentPrincipalFromOrigin(
+          "http://" +
+            cookie.rawHost +
+            ChromeUtils.originAttributesToSuffix(cookie.originAttributes)
+        );
+
         // We purge if we also find it is a tracker.
         let isTracker =
           (await this.isTracker(httpsPrincipal, feature)) ||
@@ -276,11 +269,17 @@ PurgeTrackerService.prototype = {
 /**
  * Outputs the message to the JavaScript console as well as to stdout.
  *
- * @param {string} msg The message to output.
+ * @param {...string} args The message to output.
  */
-function LOG(msg) {
+var logConsole;
+function LOG(...args) {
   if (loggingEnabled) {
-    dump(`*** PurgeTrackerService: ${msg}\n`);
-    Services.console.logStringMessage(`*** PurgeTrackerService: ${msg}`);
+    if (!logConsole) {
+      logConsole = console.createInstance({
+        prefix: "*** PurgeTrackerService:",
+        maxLogLevelPref: "privacy.purge_trackers.logging.level",
+      });
+    }
+    logConsole.log(...args);
   }
 }

@@ -109,11 +109,11 @@ class FullParseHandler {
         lazyInnerFunctionIndex(0),
         lazyClosedOverBindingIndex(0),
         sourceKind_(kind) {
-    // The LazyScript::gcthings() array contains the inner function list
+    // The BaseScript::gcthings() array contains the inner function list
     // followed by the closed-over bindings data. Advance the index for
     // closed-over bindings to the end of the inner functions. The
     // nextLazyInnerFunction / nextLazyClosedOverBinding accessors confirm we
-    // have the expected types. See also: LazyScript::Create.
+    // have the expected types. See also: BaseScript::CreateLazy.
     if (lazyOuterFunction) {
       for (JS::GCCellPtr gcThing : lazyOuterFunction->gcthings()) {
         if (gcThing.is<JSObject>()) {
@@ -218,21 +218,6 @@ class FullParseHandler {
 
   RawUndefinedLiteralType newRawUndefinedLiteral(const TokenPos& pos) {
     return new_<RawUndefinedLiteral>(pos);
-  }
-
-  // The Boxer object here is any object that can allocate ObjectBoxes.
-  // Specifically, a Boxer has a .newObjectBox(T) method that accepts a
-  // Rooted<RegExpObject*> argument and returns an ObjectBox*.
-  //
-  // Used only by BinAST now.
-  template <class Boxer>
-  RegExpLiteralType newRegExp(RegExpObject* reobj, const TokenPos& pos,
-                              Boxer& boxer) {
-    ObjectBox* objbox = boxer.newObjectBox(reobj);
-    if (!objbox) {
-      return null();
-    }
-    return new_<RegExpLiteral>(objbox, pos);
   }
 
   RegExpLiteralType newRegExp(RegExpIndex index, const TokenPos& pos) {
@@ -1021,9 +1006,6 @@ class FullParseHandler {
   template <typename NodeType>
   MOZ_MUST_USE NodeType setLikelyIIFE(NodeType node) {
     return parenthesize(node);
-  }
-  void setInDirectivePrologue(UnaryNodeType exprStmt) {
-    exprStmt->setIsDirectivePrologueMember();
   }
 
   bool isName(Node node) { return node->isKind(ParseNodeKind::Name); }

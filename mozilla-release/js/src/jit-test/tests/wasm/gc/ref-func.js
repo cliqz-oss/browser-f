@@ -8,12 +8,12 @@ const v2vSigSection = sigSection([v2vSig]);
 // 'ref.func' parses, validates and returns a non-null value
 wasmFullPass(`
 	(module
-		(elem declared $run)
+		(elem declare $run)
 		(func $run (result i32)
 			ref.func $run
 			ref.is_null
 		)
-		(export "run" $run)
+		(export "run" (func $run))
 	)
 `, 0);
 
@@ -21,9 +21,9 @@ wasmFullPass(`
 {
 	let {f1} = wasmEvalText(`
 		(module
-			(elem declared $f1)
+			(elem declare $f1)
 			(func $f1 (result funcref) ref.func $f1)
-			(export "f1" $f1)
+			(export "f1" (func $f1))
 		)
 	`).exports;
 	assertEq(f1(), f1);
@@ -33,11 +33,11 @@ wasmFullPass(`
 {
 	let {f1, f2} = wasmEvalText(`
 		(module
-			(elem declared $f1)
+			(elem declare $f1)
 			(func $f1)
 			(func $f2 (result funcref) ref.func $f1)
-			(export "f1" $f1)
-			(export "f2" $f2)
+			(export "f1" (func $f1))
+			(export "f2" (func $f2))
 		)
 	`).exports;
 	assertEq(f2(), f1);
@@ -47,18 +47,18 @@ wasmFullPass(`
 {
 	let i1 = wasmEvalText(`
 		(module
-			(elem declared $f1)
+			(elem declare $f1)
 			(func $f1)
-			(export "f1" $f1)
+			(export "f1" (func $f1))
 		)
 	`);
 	let i2 = wasmEvalText(`
 		(module
-			(import $f1 "" "f1" (func))
-			(elem declared $f1)
+			(import "" "f1" (func $f1))
+			(elem declare $f1)
 			(func $f2 (result funcref) ref.func $f1)
-			(export "f1" $f1)
-			(export "f2" $f2)
+			(export "f1" (func $f1))
+			(export "f2" (func $f2))
 		)
 	`, {"": i1.exports});
 
@@ -93,7 +93,7 @@ assertErrorMessage(() => validFuncRefText('', 'funcref'), WebAssembly.CompileErr
 // referenced function can be forward declared via segments
 assertEq(validFuncRefText('(elem 0 (i32.const 0) func $referenced)', 'funcref') instanceof WebAssembly.Instance, true);
 assertEq(validFuncRefText('(elem func $referenced)', 'funcref') instanceof WebAssembly.Instance, true);
-assertEq(validFuncRefText('(elem declared $referenced)', 'funcref') instanceof WebAssembly.Instance, true);
+assertEq(validFuncRefText('(elem declare $referenced)', 'funcref') instanceof WebAssembly.Instance, true);
 
 // also when the segment is passive or active 'anyref'
 assertEq(validFuncRefText('(elem 0 (i32.const 0) anyref (ref.func $referenced))', 'anyref') instanceof WebAssembly.Instance, true);
@@ -103,7 +103,7 @@ assertEq(validFuncRefText('(elem anyref (ref.func $referenced))', 'anyref') inst
 assertErrorMessage(() => validFuncRefText('(start $referenced)', 'funcref'),
                    WebAssembly.CompileError,
                    /function index is not in an element segment/);
-assertErrorMessage(() => validFuncRefText('(export "referenced" $referenced)', 'funcref'),
+assertErrorMessage(() => validFuncRefText('(export "referenced" (func $referenced))', 'funcref'),
                    WebAssembly.CompileError,
                    /function index is not in an element segment/);
 
@@ -128,24 +128,14 @@ assertErrorMessage(() => new WebAssembly.Module(
                    WebAssembly.CompileError,
                    /declared segment's element type must be subtype of funcref/);
 
-// declared element segment of type funcref with elemexpr can carry a null
-// value, but the null value must be rejected.
-
-assertErrorMessage(() => new WebAssembly.Module(
-    moduleWithSections([generalElemSection([{ flag: DeclaredElemExpr,
-                                              typeCode: AnyFuncCode,
-                                              elems: [[RefNullCode]] }])])),
-                   WebAssembly.CompileError,
-                   /declared element segments cannot contain ref.null/);
-
 // Test case for bug 1596026: when taking the ref.func of an imported function,
 // the value obtained should not be the JS function.  This would assert (even in
 // a release build), so the test is merely that the code runs.
 
 var ins = new WebAssembly.Instance(new WebAssembly.Module(wasmTextToBinary(`
   (module
-    (import $f "m" "f" (func (param i32) (result i32)))
-    (elem declared $f)
+    (import "m" "f" (func $f (param i32) (result i32)))
+    (elem declare $f)
     (table 1 funcref)
     (func (export "f")
       (table.set 0 (i32.const 0) (ref.func $f))))`)),

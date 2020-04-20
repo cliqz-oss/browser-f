@@ -63,7 +63,7 @@ bool DeclarationKindIsParameter(DeclarationKind kind) {
 bool UsedNameTracker::noteUse(JSContext* cx, JSAtom* name, uint32_t scriptId,
                               uint32_t scopeId) {
   if (UsedNameMap::AddPtr p = map_.lookupForAdd(name)) {
-    if (!p || !p->value().noteUsedInScope(scriptId, scopeId)) {
+    if (!p->value().noteUsedInScope(scriptId, scopeId)) {
       return false;
     }
   } else {
@@ -233,12 +233,11 @@ ParseContext::ParseContext(JSContext* cx, ParseContext*& parent,
       varScope_(nullptr),
       positionalFormalParameterNames_(cx->frontendCollectionPool()),
       closedOverBindingsForLazy_(cx->frontendCollectionPool()),
-      innerFunctionBoxesForLazy(cx),
+      innerFunctionIndexesForLazy(cx),
       newDirectives(newDirectives),
       lastYieldOffset(NoYieldOffset),
       lastAwaitOffset(NoAwaitOffset),
       scriptId_(compilationInfo.usedNames.nextScriptId()),
-      isStandaloneFunctionBody_(false),
       superScopeNeedsHomeObject_(false) {
   if (isFunctionBox()) {
     // We exclude ASM bodies because they are always eager, and the
@@ -272,7 +271,7 @@ bool ParseContext::init() {
     }
     // Named lambdas always need a binding for their own name. If this
     // binding is closed over when we finish parsing the function in
-    // finishExtraFunctionScopes, the function box needs to be marked as
+    // finishFunctionScopes, the function box needs to be marked as
     // needing a dynamic DeclEnv object.
     if (functionBox()->isNamedLambda()) {
       if (!namedLambdaScope_->init(this)) {
@@ -320,7 +319,7 @@ bool ParseContext::annexBAppliesToLexicalFunctionInInnermostScope(
       // function scope, which encloses the var scope. This means the
       // isVarRedeclaredInInnermostScope call above would not catch this
       // case, so test it manually.
-      if (AddDeclaredNamePtr p = funScope.lookupDeclaredNameForAdd(name)) {
+      if (DeclaredNamePtr p = funScope.lookupDeclaredName(name)) {
         DeclarationKind declaredKind = p->value()->kind();
         if (DeclarationKindIsParameter(declaredKind)) {
           redeclaredKind = Some(declaredKind);
@@ -577,7 +576,7 @@ bool ParseContext::declareFunctionArgumentsObject(
                                     DeclaredNameInfo::npos)) {
         return false;
       }
-      funbox->declaredArguments = true;
+      funbox->setDeclaredArguments();
       funbox->usesArguments = true;
     } else if (hasExtraBodyVarScope) {
       // Formal parameters shadow the arguments object.
@@ -591,11 +590,11 @@ bool ParseContext::declareFunctionArgumentsObject(
     // needed?
     //
     // Also see the flags' comments in ContextFlags.
-    funbox->setArgumentsHasLocalBinding();
+    funbox->setArgumentsHasVarBinding();
 
     // Dynamic scope access destroys all hope of optimization.
     if (sc()->bindingsAccessedDynamically()) {
-      funbox->setDefinitelyNeedsArgsObj();
+      funbox->setAlwaysNeedsArgsObj();
     }
   }
 

@@ -317,7 +317,7 @@ static void SetupABIArguments(MacroAssembler& masm, const FuncExport& fe,
           masm.loadPtr(src, iter->gpr());
         } else if (type == MIRType::StackResults) {
           MOZ_ASSERT(args.isSyntheticStackResultPointerArg(iter.index()));
-          MOZ_CRASH("multiple function results not yet implemented");
+          masm.loadPtr(src, iter->gpr());
         } else {
           MOZ_CRASH("unknown GPR type");
         }
@@ -380,7 +380,9 @@ static void SetupABIArguments(MacroAssembler& masm, const FuncExport& fe,
           }
           case MIRType::StackResults: {
             MOZ_ASSERT(args.isSyntheticStackResultPointerArg(iter.index()));
-            MOZ_CRASH("multiple function results not yet implemented");
+            masm.loadPtr(src, scratch);
+            masm.storePtr(scratch, Address(masm.getStackPointer(),
+                                           iter->offsetFromArgBase()));
             break;
           }
           default:
@@ -394,33 +396,37 @@ static void SetupABIArguments(MacroAssembler& masm, const FuncExport& fe,
   }
 }
 
-static void StoreABIReturn(MacroAssembler& masm, const FuncExport& fe,
-                           Register argv) {
-  // Store the return value in argv[0].
-  const ValTypeVector& results = fe.funcType().results();
-  if (results.length() == 0) {
-    return;
+static void StoreRegisterResult(MacroAssembler& masm, const FuncExport& fe,
+                                Register loc) {
+  ResultType results = ResultType::Vector(fe.funcType().results());
+  DebugOnly<bool> sawRegisterResult = false;
+  for (ABIResultIter iter(results); !iter.done(); iter.next()) {
+    const ABIResult& result = iter.cur();
+    if (result.inRegister()) {
+      MOZ_ASSERT(!sawRegisterResult);
+      sawRegisterResult = true;
+      switch (result.type().kind()) {
+        case ValType::I32:
+          masm.store32(result.gpr(), Address(loc, 0));
+          break;
+        case ValType::I64:
+          masm.store64(result.gpr64(), Address(loc, 0));
+          break;
+        case ValType::F32:
+          masm.canonicalizeFloat(result.fpr());
+          masm.storeFloat32(result.fpr(), Address(loc, 0));
+          break;
+        case ValType::F64:
+          masm.canonicalizeDouble(result.fpr());
+          masm.storeDouble(result.fpr(), Address(loc, 0));
+          break;
+        case ValType::Ref:
+          masm.storePtr(result.gpr(), Address(loc, 0));
+          break;
+      }
+    }
   }
-  MOZ_ASSERT(results.length() == 1, "multi-value return unimplemented");
-  switch (results[0].kind()) {
-    case ValType::I32:
-      masm.store32(ReturnReg, Address(argv, 0));
-      break;
-    case ValType::I64:
-      masm.store64(ReturnReg64, Address(argv, 0));
-      break;
-    case ValType::F32:
-      masm.canonicalizeFloat(ReturnFloat32Reg);
-      masm.storeFloat32(ReturnFloat32Reg, Address(argv, 0));
-      break;
-    case ValType::F64:
-      masm.canonicalizeDouble(ReturnDoubleReg);
-      masm.storeDouble(ReturnDoubleReg, Address(argv, 0));
-      break;
-    case ValType::Ref:
-      masm.storePtr(ReturnReg, Address(argv, 0));
-      break;
-  }
+  MOZ_ASSERT(sawRegisterResult == (results.length() > 0));
 }
 
 #if defined(JS_CODEGEN_ARM)
@@ -739,8 +745,8 @@ static bool GenerateInterpEntry(MacroAssembler& masm, const FuncExport& fe,
   WasmPop(masm, WasmTlsReg);
 #endif
 
-  // Store the return value in argv[0].
-  StoreABIReturn(masm, fe, argv);
+  // Store the register result, if any, in argv[0].
+  StoreRegisterResult(masm, fe, argv);
 
   // After the ReturnReg is stored into argv[0] but before fp is clobbered by
   // the PopRegsInMask(NonVolatileRegs) below, set the return value based on
@@ -1566,7 +1572,8 @@ static void StackCopy(MacroAssembler& masm, MIRType type, Register scratch,
     GenPrintIsize(DebugChannel::Import, masm, scratch);
     masm.store64(scratch64, dst);
 #endif
-  } else if (type == MIRType::RefOrNull || type == MIRType::Pointer) {
+  } else if (type == MIRType::RefOrNull || type == MIRType::Pointer ||
+             type == MIRType::StackResults) {
     masm.loadPtr(src, scratch);
     GenPrintPtr(DebugChannel::Import, masm, scratch);
     masm.storePtr(scratch, dst);
@@ -1606,13 +1613,11 @@ static void FillArgumentArrayForExit(
 
   ArgTypeVector args(funcType);
   for (ABIArgIter i(args); !i.done(); i++) {
-    if (args.isSyntheticStackResultPointerArg(i.index())) {
-      MOZ_CRASH("Exit to function returning multiple values unimplemented");
-    }
-
     Address dst(masm.getStackPointer(), argOffset + i.index() * sizeof(Value));
 
     MIRType type = i.mirType();
+    MOZ_ASSERT(args.isSyntheticStackResultPointerArg(i.index()) ==
+               (type == MIRType::StackResults));
     switch (i->kind()) {
       case ABIArg::GPR:
         if (type == MIRType::Int32) {
@@ -1648,6 +1653,10 @@ static void FillArgumentArrayForExit(
             GenPrintPtr(DebugChannel::Import, masm, i->gpr());
             masm.storePtr(i->gpr(), dst);
           }
+        } else if (type == MIRType::StackResults) {
+          MOZ_ASSERT(!toValue, "Multi-result exit to JIT unimplemented");
+          GenPrintPtr(DebugChannel::Import, masm, i->gpr());
+          masm.storePtr(i->gpr(), dst);
         } else {
           MOZ_CRASH("FillArgumentArrayForExit, ABIArg::GPR: unexpected type");
         }
@@ -1878,8 +1887,9 @@ static bool GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi,
   // padding between argv and retaddr ensures that sp is aligned.
   unsigned argOffset =
       AlignBytes(StackArgBytes(invokeArgTypes), sizeof(double));
-  unsigned argBytes =
-      std::max<size_t>(1, fi.funcType().args().length()) * sizeof(Value);
+  // The abiArgCount includes a stack result pointer argument if needed.
+  unsigned abiArgCount = ArgTypeVector(fi.funcType()).length();
+  unsigned argBytes = std::max<size_t>(1, abiArgCount) * sizeof(Value);
   unsigned framePushed =
       StackDecrementForCall(ABIStackAlignment,
                             sizeof(Frame),  // pushed by prologue
@@ -1923,7 +1933,7 @@ static bool GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi,
   i++;
 
   // argument 2: argc
-  unsigned argc = fi.funcType().args().length();
+  unsigned argc = abiArgCount;
   if (i->kind() == ABIArg::GPR) {
     masm.mov(ImmWord(argc), i->gpr());
   } else {
@@ -1946,16 +1956,22 @@ static bool GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi,
 
   // Make the call, test whether it succeeded, and extract the return value.
   AssertStackAlignment(masm, ABIStackAlignment);
-  const ValTypeVector& results = fi.funcType().results();
-  if (results.length() == 0) {
+  ResultType resultType = ResultType::Vector(fi.funcType().results());
+  ValType registerResultType;
+  for (ABIResultIter iter(resultType); !iter.done(); iter.next()) {
+    if (iter.cur().inRegister()) {
+      MOZ_ASSERT(!registerResultType.isValid());
+      registerResultType = iter.cur().type();
+    }
+  }
+  if (!registerResultType.isValid()) {
     masm.call(SymbolicAddress::CallImport_Void);
     masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
     GenPrintf(DebugChannel::Import, masm, "wasm-import[%u]; returns ",
               funcImportIndex);
     GenPrintf(DebugChannel::Import, masm, "void");
   } else {
-    MOZ_ASSERT(results.length() == 1, "multi-value return unimplemented");
-    switch (results[0].kind()) {
+    switch (registerResultType.kind()) {
       case ValType::I32:
         masm.call(SymbolicAddress::CallImport_I32);
         masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
@@ -1990,7 +2006,7 @@ static bool GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi,
         GenPrintF64(DebugChannel::Import, masm, ReturnDoubleReg);
         break;
       case ValType::Ref:
-        switch (results[0].refTypeKind()) {
+        switch (registerResultType.refTypeKind()) {
           case RefType::Func:
             masm.call(SymbolicAddress::CallImport_FuncRef);
             masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg,
@@ -2693,6 +2709,12 @@ bool wasm::GenerateEntryStubs(MacroAssembler& masm, size_t funcExportIndex,
     return true;
   }
 
+  // Returning multiple values to JS JIT code not yet implemented (see
+  // bug 1595031).
+  if (fe.funcType().temporarilyUnsupportedResultCountForJitEntry()) {
+    return true;
+  }
+
   if (!GenerateJitEntry(masm, funcExportIndex, fe, callee, bigIntEnabled,
                         &offsets)) {
     return false;
@@ -2734,6 +2756,12 @@ bool wasm::GenerateStubs(const ModuleEnvironment& env,
     }
 
     if (fi.funcType().temporarilyUnsupportedReftypeForExit()) {
+      continue;
+    }
+
+    // Exit to JS JIT code returning multiple values not yet implemented
+    // (see bug 1595031).
+    if (fi.funcType().temporarilyUnsupportedResultCountForJitExit()) {
       continue;
     }
 

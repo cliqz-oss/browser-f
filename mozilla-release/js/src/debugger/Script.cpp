@@ -48,7 +48,6 @@
 #include "vm/BytecodeUtil-inl.h"      // for BytecodeRangeWithPosition
 #include "vm/JSAtom-inl.h"            // for ValueToId
 #include "vm/JSObject-inl.h"          // for NewBuiltinClassInstance
-#include "vm/JSScript-inl.h"          // for LazyScript::functionDelazifying
 #include "vm/ObjectOperations-inl.h"  // for GetProperty
 #include "vm/Realm-inl.h"             // for AutoRealm::AutoRealm
 
@@ -135,7 +134,7 @@ static JSScript* DelazifyScript(JSContext* cx, Handle<BaseScript*> script) {
       return nullptr;
     }
 
-    if (!script->enclosingScriptHasEverBeenCompiled()) {
+    if (!script->isReadyForDelazification()) {
       // It didn't work! Delazifying the enclosing script still didn't
       // delazify this script. This happens when the function
       // corresponding to this script was removed by constant folding.
@@ -1147,10 +1146,11 @@ class FlowGraphSummary {
         // was an incoming edge of the catch block. This is needed
         // because we only report offsets of entry points which have
         // valid incoming edges.
-        for (const JSTryNote& tn : script->trynotes()) {
+        for (const TryNote& tn : script->trynotes()) {
           if (tn.start == r.frontOffset() + JSOpLength_Try) {
             uint32_t catchOffset = tn.start + tn.length;
-            if (tn.kind == JSTRY_CATCH || tn.kind == JSTRY_FINALLY) {
+            if (tn.kind() == TryNoteKind::Catch ||
+                tn.kind() == TryNoteKind::Finally) {
               addEdge(lineno, column, catchOffset);
             }
           }
@@ -1509,11 +1509,9 @@ static bool BytecodeIsEffectful(JSOp op) {
     case JSOp::GetLocal:
     case JSOp::SetLocal:
     case JSOp::ThrowSetConst:
-    case JSOp::ThrowSetAliasedConst:
-    case JSOp::ThrowSetCallee:
     case JSOp::CheckLexical:
-    case JSOp::InitLexical:
     case JSOp::CheckAliasedLexical:
+    case JSOp::InitLexical:
     case JSOp::Uninitialized:
     case JSOp::Pop:
     case JSOp::PopN:
@@ -1626,11 +1624,12 @@ static bool BytecodeIsEffectful(JSOp op) {
     case JSOp::CheckClassHeritage:
     case JSOp::FunWithProto:
     case JSOp::ObjWithProto:
-    case JSOp::BuiltinProto:
+    case JSOp::FunctionProto:
     case JSOp::DerivedConstructor:
     case JSOp::CheckThis:
     case JSOp::CheckReturn:
     case JSOp::CheckThisReinit:
+    case JSOp::CheckGlobalOrEvalDecl:
     case JSOp::SuperFun:
     case JSOp::SpreadSuperCall:
     case JSOp::SuperCall:
@@ -2244,9 +2243,9 @@ class DebuggerScript::IsInCatchScopeMatcher {
       return false;
     }
 
-    for (const JSTryNote& tn : script->trynotes()) {
+    for (const TryNote& tn : script->trynotes()) {
       if (tn.start <= offset_ && offset_ < tn.start + tn.length &&
-          tn.kind == JSTRY_CATCH) {
+          tn.kind() == TryNoteKind::Catch) {
         isInCatch_ = true;
         return true;
       }

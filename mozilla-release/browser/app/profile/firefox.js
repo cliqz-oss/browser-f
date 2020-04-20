@@ -143,7 +143,7 @@ pref("app.update.elevation.promptMaxAttempts", 2);
 pref("app.update.staging.enabled", true);
 
 // Update service URL:
-pref("app.update.url", "https://aus5.mozilla.org/update/6/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%SYSTEM_CAPABILITIES%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+// app.update.url was removed in Bug 1568994
 // app.update.url.manual is in branding section
 // app.update.url.details is in branding section
 
@@ -488,11 +488,16 @@ pref("browser.tabs.showAudioPlayingIcon", true);
 pref("browser.tabs.delayHidingAudioPlayingIconMS", 3000);
 
 #if defined(NIGHTLY_BUILD) && !defined(MOZ_ASAN)
-  // Pref to control whether we use a separate privileged content process
-  // for about: pages. This pref name did not age well: we will have multiple
-  // types of privileged content processes, each with different privileges.
-  // types of privleged content processes, each with different privleges.
+// Pref to control whether we use a separate privileged content process
+// for about: pages. This pref name did not age well: we will have multiple
+// types of privileged content processes, each with different privileges.
+// types of privleged content processes, each with different privleges.
+#if defined(MOZ_CODE_COVERAGE) && defined(XP_LINUX)
+  // Disabled on Linux ccov builds due to bug 1621269.
   pref("browser.tabs.remote.separatePrivilegedContentProcess", false);
+#else
+  pref("browser.tabs.remote.separatePrivilegedContentProcess", true);
+#endif
   // This pref will cause assertions when a remoteType triggers a process switch
   // to a new remoteType it should not be able to trigger.
   pref("browser.tabs.remote.enforceRemoteTypeRestrictions", true);
@@ -994,9 +999,6 @@ pref("browser.flash-protected-mode-flip.enable", false);
 // Whether we've already flipped protected mode automatically
 pref("browser.flash-protected-mode-flip.done", false);
 
-// Dark in-content pages
-pref("browser.in-content.dark-mode", true);
-
 pref("dom.ipc.shims.enabledWarnings", false);
 
 #if defined(XP_WIN) && defined(MOZ_SANDBOX)
@@ -1024,7 +1026,7 @@ pref("dom.ipc.shims.enabledWarnings", false);
   // On windows these levels are:
   // See - security/sandbox/win/src/sandboxbroker/sandboxBroker.cpp
   // SetSecurityLevelForContentProcess() for what the different settings mean.
-  pref("security.sandbox.content.level", 5);
+  pref("security.sandbox.content.level", 6);
 
   // This controls the depth of stack trace that is logged when Windows sandbox
   // logging is turned on.  This is only currently available for the content
@@ -1048,10 +1050,6 @@ pref("dom.ipc.shims.enabledWarnings", false);
 #endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
-  // Start the Mac sandbox early during child process startup instead
-  // of when messaged by the parent after the message loop is running.
-  pref("security.sandbox.content.mac.earlyinit", true);
-
   // This pref is discussed in bug 1083344, the naming is inspired from its
   // Windows counterpart, but on Mac it's an integer which means:
   // 0 -> "no sandbox" (nightly only)
@@ -1101,6 +1099,12 @@ pref("dom.ipc.shims.enabledWarnings", false);
   // exotic configurations we can't reasonably support out of the box.
   //
   pref("security.sandbox.content.level", 4);
+  // Introduced as part of bug 1608558.  Linux is currently the only platform
+  // that uses a sandbox level for the socket process.  There are currently
+  // only 2 levels:
+  // 0 -> "no sandbox"
+  // 1 -> "sandboxed, allows socket operations and reading necessary certs"
+  pref("security.sandbox.socket.process.level", 1);
   pref("security.sandbox.content.write_path_whitelist", "");
   pref("security.sandbox.content.read_path_whitelist", "");
   pref("security.sandbox.content.syscall_whitelist", "");
@@ -1310,10 +1314,13 @@ pref("browser.newtabpage.activity-stream.discoverystream.personalization.modelKe
   pref("browser.newtabpage.activity-stream.improvesearch.handoffToAwesomebar", false);
 #endif
 
-pref("trailhead.firstrun.branches", "");
+pref("trailhead.firstrun.branches", "join-dynamic");
 
 // Separate about welcome
-pref("browser.aboutwelcome.enabled", false);
+pref("browser.aboutwelcome.enabled", true);
+// Temporary utility to unblock testing on about:welcome experiment variations
+pref("browser.aboutwelcome.temp.testExperiment.slug", "");
+pref("browser.aboutwelcome.temp.testExperiment.branch", "control");
 // See Console.jsm LOG_LEVELS for all possible values
 pref("browser.aboutwelcome.log", "warn");
 
@@ -1358,9 +1365,6 @@ pref("security.app_menu.recordEventTelemetry", true);
 
 // Block insecure active content on https pages
 pref("security.mixed_content.block_active_content", true);
-
-// Show degraded UI for http pages with password fields.
-pref("security.insecure_password.ui.enabled", true);
 
 // Show in-content login form warning UI for insecure login fields
 pref("security.insecure_field_warning.contextual.enabled", true);
@@ -1717,7 +1721,12 @@ pref("extensions.pocket.enabled", true);
 pref("extensions.pocket.oAuthConsumerKey", "40249-e88c401e1b1f2242d9e441c4");
 pref("extensions.pocket.site", "getpocket.com");
 
+// Can be removed once Bug 1618058 is resolved.
+pref("signon.generation.confidenceThreshold", "0.75");
+
+pref("signon.management.page.os-auth.enabled", true);
 pref("signon.management.page.breach-alerts.enabled", true);
+pref("signon.management.page.vulnerable-passwords.enabled", true);
 pref("signon.management.page.sort", "name");
 pref("signon.management.overrideURI", "about:logins?filter=%DOMAIN%");
 // The utm_creative value is appended within the code (specific to the location on
@@ -1729,6 +1738,7 @@ pref("signon.management.page.breachAlertUrl",
      "https://monitor.firefox.com/breach-details/");
 pref("signon.management.page.hideMobileFooter", false);
 pref("signon.management.page.showPasswordSyncNotification", true);
+pref("signon.passwordEditCapture.enabled", true);
 
 // Enable the "Simplify Page" feature in Print Preview. This feature
 // is disabled by default in toolkit.
@@ -1781,6 +1791,8 @@ pref("extensions.formautofill.reauth.enabled", false);
 pref("extensions.formautofill.section.enabled", true);
 pref("extensions.formautofill.loglevel", "Warn");
 
+pref("browser.osKeyStore.loglevel", "Warn");
+
 #ifdef NIGHTLY_BUILD
   // Comma separated list of countries Form Autofill is available in.
   pref("extensions.formautofill.supportedCountries", "US,CA,DE");
@@ -1826,6 +1838,9 @@ pref("app.normandy.onsync_skew_sec", 600);
 #else
   pref("app.shield.optoutstudies.enabled", false);
 #endif
+
+// Web apps support
+pref("browser.ssb.enabled", false);
 
 // Multi-lingual preferences
 #if defined(RELEASE_OR_BETA) && !defined(MOZ_DEV_EDITION)
@@ -2223,6 +2238,8 @@ pref("devtools.responsive.reloadConditions.touchSimulation", false);
 pref("devtools.responsive.reloadConditions.userAgent", false);
 // Whether to show the notification about reloading to apply emulation
 pref("devtools.responsive.reloadNotification.enabled", true);
+// Whether or not we should simulate native touch gestures.
+pref("devtools.responsive.touchGestureSimulation.enabled", false);
 // Whether or not touch simulation is enabled.
 pref("devtools.responsive.touchSimulation.enabled", false);
 // Whether or not meta viewport is enabled, if and only if touchSimulation
@@ -2230,14 +2247,15 @@ pref("devtools.responsive.touchSimulation.enabled", false);
 pref("devtools.responsive.metaViewport.enabled", true);
 // The user agent of the viewport.
 pref("devtools.responsive.userAgent", "");
-// Whether or not the RDM UI is embedded in the browser.
-pref("devtools.responsive.browserUI.enabled", false);
 
-// Show the custom user agent input in Nightly builds.
+// Show the custom user agent input and browser embedded RDM UI in
+// Nightly builds.
 #if defined(NIGHTLY_BUILD)
   pref("devtools.responsive.showUserAgentInput", true);
+  pref("devtools.responsive.browserUI.enabled", true);
 #else
   pref("devtools.responsive.showUserAgentInput", false);
+  pref("devtools.responsive.browserUI.enabled", false);
 #endif
 
 // Show tab debug targets for This Firefox (on by default for local builds).
@@ -2270,7 +2288,13 @@ pref("devtools.aboutdebugging.collapsibilities.temporaryExtension", false);
 // Map top-level await expressions in the console
 pref("devtools.debugger.features.map-await-expression", true);
 
+#if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION)
+pref("devtools.debugger.features.async-captured-stacks", true);
+pref("devtools.debugger.features.async-live-stacks", false);
+#else
 pref("devtools.debugger.features.async-live-stacks", true);
+pref("devtools.debugger.features.async-captured-stacks", false);
+#endif
 
 // Disable autohide for DevTools popups and tooltips.
 // This is currently not exposed by any UI to avoid making

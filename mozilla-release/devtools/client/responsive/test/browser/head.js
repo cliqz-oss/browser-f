@@ -17,12 +17,6 @@ Services.scriptloader.loadSubScript(
   this
 );
 
-// Import helpers registering the test-actor in remote targets
-Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/shared/test/test-actor-registry.js",
-  this
-);
-
 // Import helpers for the inspector that are also shared with others
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/inspector/test/shared-head.js",
@@ -43,6 +37,7 @@ const {
 } = require("devtools/client/shared/devices");
 const { KeyCodes } = require("devtools/client/shared/keycodes");
 const asyncStorage = require("devtools/shared/async-storage");
+const localTypes = require("devtools/client/responsive/types");
 
 loader.lazyRequireGetter(
   this,
@@ -210,8 +205,6 @@ function addRDMTaskWithPreAndPost(url, preTask, task, postTask, options) {
 
       if (waitForDeviceList) {
         // Wait until the device list has been loaded.
-        const localTypes = require("devtools/client/responsive/types");
-
         await waitUntilState(
           store,
           state => state.devices.listState == localTypes.loadableState.LOADED
@@ -946,4 +939,16 @@ function promiseRDMZoom(ui, browser, zoom) {
     // Await the zoom complete event, then reflow.
     zoomComplete.then(promiseContentReflow(ui)).then(resolve);
   });
+}
+
+async function waitForDeviceAndViewportState(ui) {
+  const { store } = ui.toolWindow;
+
+  // Wait until the viewport has been added and the device list has been loaded
+  await waitUntilState(
+    store,
+    state =>
+      state.viewports.length == 1 &&
+      state.devices.listState == localTypes.loadableState.LOADED
+  );
 }

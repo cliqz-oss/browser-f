@@ -465,7 +465,6 @@ class XPCShellTestThread(Thread):
             '-a', self.appPath,
             '-r', self.httpdManifest,
             '-m',
-            '-s',
             '-e', 'const _HEAD_JS_PATH = "%s";' % self.headJSPath,
             '-e', 'const _MOZINFO_JS_PATH = "%s";' % self.mozInfoJSPath,
             '-e', 'const _PREFS_FILE = "%s";' % self.prefsFile.replace('\\', '\\\\'),
@@ -835,6 +834,7 @@ class XPCShellTests(object):
         self.log = log
         self.harness_timeout = HARNESS_TIMEOUT
         self.nodeProc = {}
+        self.http3ServerProc = {}
 
     def getTestManifest(self, manifest):
         if isinstance(manifest, TestManifest):
@@ -1026,6 +1026,8 @@ class XPCShellTests(object):
         # compatible with the sandbox.
         self.env["MOZ_DISABLE_CONTENT_SANDBOX"] = "1"
 
+        self.env["MOZ_DISABLE_SOCKET_PROCESS_SANDBOX"] = "1"
+
         if self.enable_webrender:
             self.env["MOZ_WEBRENDER"] = "1"
             self.env["MOZ_ACCELERATED"] = "1"
@@ -1171,6 +1173,80 @@ class XPCShellTests(object):
                 self.log.info('Node server %s already dead %s' % (name, proc.poll()))
             else:
                 proc.terminate()
+
+            def dumpOutput(fd, label):
+                firstTime = True
+                for msg in fd:
+                    if firstTime:
+                        firstTime = False
+                        self.log.info('Process %s' % label)
+                    self.log.info(msg)
+            dumpOutput(proc.stdout, "stdout")
+            dumpOutput(proc.stderr, "stderr")
+
+    def startHttp3Server(self):
+        """
+          Start a Http3 test server.
+        """
+        binSuffix = ""
+        if sys.platform == 'win32':
+            binSuffix = ".exe"
+
+        http3ServerPath = os.path.join(SCRIPT_DIR, "http3server",
+                                       "http3server" + binSuffix)
+        if build:
+            http3ServerPath = os.path.join(build.topobjdir, "dist", "bin",
+                                           "http3server" + binSuffix)
+
+        if not os.path.exists(http3ServerPath):
+            self.log.warning("Http3 server not found at " + http3ServerPath +
+                             ". Tests requiring http/3 will fail.")
+            return
+
+        # OK, we found our server, let's try to get it running
+        self.log.info('Found %s' % (http3ServerPath))
+        try:
+            dbPath = os.path.join(SCRIPT_DIR, "http3server", "http3serverDB")
+            if build:
+                dbPath = os.path.join(build.topsrcdir, "netwerk", "test",
+                                      "http3serverDB")
+            self.log.info('Using %s' % (dbPath))
+            # We pipe stdin to the server because it will exit when its stdin
+            # reaches EOF
+            process = Popen([http3ServerPath, dbPath], stdin=PIPE, stdout=PIPE,
+                            stderr=PIPE, env=self.env, cwd=os.getcwd())
+            self.http3ServerProc['http3Server'] = process
+
+            # Check to make sure the server starts properly by waiting for it to
+            # tell us it's started
+            msg = process.stdout.readline()
+            if 'server listening' in msg:
+                searchObj = re.search(r'HTTP3 server listening on port ([0-9]+)',
+                                      msg, 0)
+                if searchObj:
+                    self.env["MOZHTTP3_PORT"] = searchObj.group(1)
+        except OSError as e:
+            # This occurs if the subprocess couldn't be started
+            self.log.error('Could not run the http3 server: %s' % (str(e)))
+
+    def shutdownHttp3Server(self):
+        """
+          Shutdown our http3Server process, if it exists
+        """
+        for name, proc in self.http3ServerProc.iteritems():
+            self.log.info('%s server shutting down ...' % name)
+            if proc.poll() is not None:
+                self.log.info('Http3 server %s already dead %s' % (name, proc.poll()))
+            else:
+                proc.terminate()
+                retries = 0
+                while proc.poll() is None:
+                    time.sleep(0.1)
+                    retries += 1
+                    if retries > 40:
+                        self.log.info('Killing proc')
+                        proc.kill()
+                        break
 
             def dumpOutput(fd, label):
                 firstTime = True
@@ -1361,6 +1437,8 @@ class XPCShellTests(object):
         # http/2 server.
         self.trySetupNode()
 
+        self.startHttp3Server()
+
         pStdout, pStderr = self.getPipes()
 
         self.buildTestList(options.get('test_tags'), options.get('testPaths'),
@@ -1539,6 +1617,7 @@ class XPCShellTests(object):
                 self.log.info(':::')
 
         self.shutdownNode()
+        self.shutdownHttp3Server()
 
         return status
 

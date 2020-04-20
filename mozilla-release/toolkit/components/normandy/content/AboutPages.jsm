@@ -15,8 +15,8 @@ ChromeUtils.defineModuleGetter(
 );
 ChromeUtils.defineModuleGetter(
   this,
-  "AddonStudyAction",
-  "resource://normandy/actions/AddonStudyAction.jsm"
+  "BranchedAddonStudyAction",
+  "resource://normandy/actions/BranchedAddonStudyAction.jsm"
 );
 ChromeUtils.defineModuleGetter(
   this,
@@ -135,11 +135,12 @@ XPCOMUtils.defineLazyGetter(AboutPages, "aboutStudies", () => {
      * @param {object} data The data object to send.
      */
     _sendToAll(message, data) {
-      ChromeUtils.nondeterministicGetWeakSetKeys(BrowsingContexts).forEach(
-        browser =>
-          browser.currentWindowGlobal
-            .getActor("ShieldFrame")
-            .sendAsyncMessage(message, data)
+      ChromeUtils.nondeterministicGetWeakSetKeys(
+        BrowsingContexts
+      ).forEach(browser =>
+        browser.currentWindowGlobal
+          .getActor("ShieldFrame")
+          .sendAsyncMessage(message, data)
       );
     },
 
@@ -159,7 +160,7 @@ XPCOMUtils.defineLazyGetter(AboutPages, "aboutStudies", () => {
      */
     async removeAddonStudy(recipeId, reason) {
       try {
-        const action = new AddonStudyAction();
+        const action = new BranchedAddonStudyAction();
         await action.unenroll(recipeId, reason);
       } catch (err) {
         // If the exception was that the study was already removed, that's ok.

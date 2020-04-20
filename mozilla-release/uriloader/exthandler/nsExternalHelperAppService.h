@@ -29,7 +29,6 @@
 #include "nsIObserver.h"
 #include "nsCOMArray.h"
 #include "nsWeakReference.h"
-#include "nsAutoPtr.h"
 #include "mozilla/Attributes.h"
 
 class nsExternalAppHandler;
@@ -429,11 +428,10 @@ class nsExternalAppHandler final : public nsIStreamListener,
   bool GetNeverAskFlagFromPref(const char* prefName, const char* aContentType);
 
   /**
-   * Helper routine to ensure mSuggestedFileName is "correct";
-   * this ensures that mTempFileExtension only contains an extension when it
-   * is different from mSuggestedFileName's extension.
+   * Helper routine to ensure that mTempFileExtension only contains an extension
+   * when it is different from mSuggestedFileName's extension.
    */
-  void EnsureSuggestedFileName();
+  void EnsureTempFileExtension(const nsString& aFileExt);
 
   typedef enum { kReadError, kWriteError, kLaunchError } ErrorType;
   /**

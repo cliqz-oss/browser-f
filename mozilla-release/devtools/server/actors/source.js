@@ -8,7 +8,7 @@ const { Cu } = require("chrome");
 const {
   setBreakpointAtEntryPoints,
 } = require("devtools/server/actors/breakpoint");
-const { ActorClassWithSpec } = require("devtools/shared/protocol");
+const { ActorClassWithSpec, Actor } = require("devtools/shared/protocol");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const { assert } = DevToolsUtils;
 const { joinURI } = require("devtools/shared/path");
@@ -104,6 +104,8 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
   typeName: "source",
 
   initialize: function({ source, thread, isInlineSource, contentType }) {
+    Actor.prototype.initialize.call(this, thread.conn);
+
     this._threadActor = thread;
     this._url = null;
     this._source = source;
@@ -186,9 +188,11 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
   },
 
   destroy: function() {
-    if (this.registeredPool && this.registeredPool.sourceActors) {
-      delete this.registeredPool.sourceActors[this.actorID];
+    const parent = this.getParent();
+    if (parent && parent.sourceActors) {
+      delete parent.sourceActors[this.actorID];
     }
+    Actor.prototype.destroy.call(this);
   },
 
   get isWasm() {
@@ -209,13 +213,6 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
         "Typed array from wasm source binary must cover entire buffer"
       );
       return toResolvedContent(buffer);
-    }
-
-    // If we are replaying then we can only use source saved during the
-    // original recording. If we try to fetch it now it may have changed or
-    // may no longer exist.
-    if (this.dbg.replaying) {
-      return this.dbg.replayingContent(this.url);
     }
 
     // Use `source.text` if it exists, is not the "no source" string, and
@@ -516,7 +513,9 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
       for (const script of childScripts) {
         if (scriptMatches(script)) {
           rv.push(script);
-          addMatchingScripts(script.getChildScripts());
+          if (script.format === "js") {
+            addMatchingScripts(script.getChildScripts());
+          }
         }
       }
     }

@@ -12,8 +12,6 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/FileUtils.h"
 
-#include "necko-config.h"
-
 #include "nsCache.h"
 #include "nsCacheRequest.h"
 #include "nsCacheEntry.h"
@@ -782,7 +780,7 @@ NS_IMETHODIMP nsCacheService::GetCacheIOTarget(
 
   nsresult rv;
   if (mCacheIOThread) {
-    NS_ADDREF(*aCacheIOTarget = mCacheIOThread);
+    *aCacheIOTarget = do_AddRef(mCacheIOThread).take();
     rv = NS_OK;
   } else {
     *aCacheIOTarget = nullptr;
@@ -818,7 +816,7 @@ nsresult nsCacheService::GetOfflineDevice(nsOfflineCacheDevice** aDevice) {
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  NS_ADDREF(*aDevice = mOfflineDevice);
+  *aDevice = do_AddRef(mOfflineDevice).take();
   return NS_OK;
 }
 

@@ -9,9 +9,6 @@
 #include "nsContentTreeOwner.h"
 #include "AppWindow.h"
 
-// Helper Classes
-#include "nsAutoPtr.h"
-
 // Interfaces needed to be included
 #include "nsIDOMWindow.h"
 #include "nsIDOMChromeWindow.h"
@@ -620,9 +617,9 @@ NS_IMETHODIMP nsContentTreeOwner::SetTitle(const nsAString& aTitle) {
 NS_IMETHODIMP
 nsContentTreeOwner::ProvideWindow(
     mozIDOMWindowProxy* aParent, uint32_t aChromeFlags, bool aCalledFromJS,
-    bool aPositionSpecified, bool aSizeSpecified, nsIURI* aURI,
-    const nsAString& aName, const nsACString& aFeatures, bool aForceNoOpener,
-    bool aForceNoReferrer, nsDocShellLoadState* aLoadState, bool* aWindowIsNew,
+    bool aWidthSpecified, nsIURI* aURI, const nsAString& aName,
+    const nsACString& aFeatures, bool aForceNoOpener, bool aForceNoReferrer,
+    nsDocShellLoadState* aLoadState, bool* aWindowIsNew,
     BrowsingContext** aReturn) {
   NS_ENSURE_ARG_POINTER(aParent);
 
@@ -683,8 +680,7 @@ nsContentTreeOwner::ProvideWindow(
   }
 
   int32_t openLocation = nsWindowWatcher::GetWindowOpenLocation(
-      parentWin, aChromeFlags, aCalledFromJS, aPositionSpecified,
-      aSizeSpecified);
+      parentWin, aChromeFlags, aCalledFromJS, aWidthSpecified);
 
   if (openLocation != nsIBrowserDOMWindow::OPEN_NEWTAB &&
       openLocation != nsIBrowserDOMWindow::OPEN_CURRENTWINDOW) {

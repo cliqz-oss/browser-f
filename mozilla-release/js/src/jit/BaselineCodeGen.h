@@ -12,10 +12,9 @@
 #include "jit/BytecodeAnalysis.h"
 #include "jit/FixedList.h"
 #include "jit/MacroAssembler.h"
+#include "vm/GeneratorResumeKind.h"  // GeneratorResumeKind
 
 namespace js {
-
-enum class GeneratorResumeKind;
 
 namespace jit {
 
@@ -245,7 +244,6 @@ class BaselineCodeGen {
 
   MOZ_MUST_USE bool emitFormalArgAccess(JSOp op);
 
-  MOZ_MUST_USE bool emitThrowConstAssignment();
   MOZ_MUST_USE bool emitUninitializedLexicalCheck(const ValueOperand& val);
 
   MOZ_MUST_USE bool emitIsMagicValue();
@@ -263,10 +261,8 @@ class BaselineCodeGen {
   MOZ_MUST_USE bool emitDebugPrologue();
   MOZ_MUST_USE bool emitDebugEpilogue();
 
-  template <typename F1, typename F2>
-  MOZ_MUST_USE bool initEnvironmentChainHelper(const F1& initFunctionEnv,
-                                               const F2& initGlobalOrEvalEnv,
-                                               Register scratch);
+  template <typename F>
+  MOZ_MUST_USE bool initEnvironmentChainHelper(const F& initFunctionEnv);
   MOZ_MUST_USE bool initEnvironmentChain();
 
   MOZ_MUST_USE bool emitTraceLoggerEnter();

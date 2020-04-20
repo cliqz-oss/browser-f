@@ -28,6 +28,7 @@
 #include "js/CharacterEncoding.h"
 #include "js/Class.h"
 #include "js/Conversions.h"
+#include "js/SavedFrameAPI.h"
 #include "js/UniquePtr.h"
 #include "js/Value.h"
 #include "js/Warnings.h"  // JS::{,Set}WarningReporter
@@ -56,6 +57,8 @@
 #include "vm/SavedStacks-inl.h"
 
 using namespace js;
+
+using JS::SavedFrameSelfHosted;
 
 size_t ExtraMallocSize(JSErrorReport* report) {
   if (report->linebuf()) {
@@ -96,9 +99,7 @@ bool CopyExtraData(JSContext* cx, uint8_t** cursor, JSErrorReport* copy,
   /* Copy non-pointer members. */
   copy->isMuted = report->isMuted;
   copy->exnType = report->exnType;
-
-  /* Note that this is before it gets flagged with JSREPORT_EXCEPTION */
-  copy->flags = report->flags;
+  copy->isWarning_ = report->isWarning_;
 
   /* Deep copy notes. */
   if (report->notes) {
@@ -172,6 +173,9 @@ static UniquePtr<T> CopyErrorHelper(JSContext* cx, T* report) {
   }
 
   MOZ_ASSERT(cursor == (uint8_t*)copy.get() + mallocSize);
+
+  // errorMessageName should be static.
+  copy->errorMessageName = report->errorMessageName;
 
   /* Copy non-pointer members. */
   copy->sourceId = report->sourceId;
@@ -276,8 +280,7 @@ JS_FRIEND_API JSLinearString* js::GetErrorTypeName(JSContext* cx,
 
 void js::ErrorToException(JSContext* cx, JSErrorReport* reportp,
                           JSErrorCallback callback, void* userRef) {
-  MOZ_ASSERT(reportp);
-  MOZ_ASSERT(!JSREPORT_IS_WARNING(reportp->flags));
+  MOZ_ASSERT(!reportp->isWarning());
 
   // We cannot throw a proper object inside the self-hosting realm, as we
   // cannot construct the Error constructor without self-hosted code. Just
@@ -295,14 +298,7 @@ void js::ErrorToException(JSContext* cx, JSErrorReport* reportp,
   const JSErrorFormatString* errorString = callback(userRef, errorNumber);
   JSExnType exnType =
       errorString ? static_cast<JSExnType>(errorString->exnType) : JSEXN_ERR;
-  MOZ_ASSERT(exnType < JSEXN_LIMIT);
-  MOZ_ASSERT(exnType != JSEXN_NOTE);
-
-  if (exnType == JSEXN_WARN) {
-    // werror must be enabled, so we use JSEXN_ERR.
-    MOZ_ASSERT(cx->options().werror());
-    exnType = JSEXN_ERR;
-  }
+  MOZ_ASSERT(exnType < JSEXN_ERROR_LIMIT);
 
   // Prevent infinite recursion.
   if (cx->generatingError) {
@@ -351,9 +347,6 @@ void js::ErrorToException(JSContext* cx, JSErrorReport* reportp,
     nstack = &stack->as<SavedFrame>();
   }
   cx->setPendingException(errValue, nstack);
-
-  // Flag the error report passed in to indicate an exception was raised.
-  reportp->flags |= JSREPORT_EXCEPTION;
 }
 
 using SniffingBehavior = js::ErrorReport::SniffingBehavior;
@@ -475,7 +468,8 @@ ErrorReport::ErrorReport(JSContext* cx) : reportp(nullptr), exnObject(cx) {}
 ErrorReport::~ErrorReport() = default;
 
 bool ErrorReport::init(JSContext* cx, HandleValue exn,
-                       SniffingBehavior sniffingBehavior) {
+                       SniffingBehavior sniffingBehavior,
+                       HandleObject fallbackStack) {
   MOZ_ASSERT(!cx->isExceptionPending());
   MOZ_ASSERT(!reportp);
 
@@ -614,45 +608,63 @@ bool ErrorReport::init(JSContext* cx, HandleValue exn,
     //
     // but without the reporting bits.  Instead it just puts all
     // the stuff we care about in our ownedReport and message_.
-    if (!populateUncaughtExceptionReportUTF8(cx, utf8Message)) {
+    if (!populateUncaughtExceptionReportUTF8(cx, fallbackStack, utf8Message)) {
       // Just give up.  We're out of memory or something; not much we can
       // do here.
       return false;
     }
   } else {
     toStringResult_ = JS::ConstUTF8CharsZ(utf8Message, strlen(utf8Message));
-    /* Flag the error as an exception. */
-    reportp->flags |= JSREPORT_EXCEPTION;
   }
 
   return true;
 }
 
-bool ErrorReport::populateUncaughtExceptionReportUTF8(JSContext* cx, ...) {
+bool ErrorReport::populateUncaughtExceptionReportUTF8(
+    JSContext* cx, HandleObject fallbackStack, ...) {
   va_list ap;
-  va_start(ap, cx);
-  bool ok = populateUncaughtExceptionReportUTF8VA(cx, ap);
+  va_start(ap, fallbackStack);
+  bool ok = populateUncaughtExceptionReportUTF8VA(cx, fallbackStack, ap);
   va_end(ap);
   return ok;
 }
 
-bool ErrorReport::populateUncaughtExceptionReportUTF8VA(JSContext* cx,
-                                                        va_list ap) {
+bool ErrorReport::populateUncaughtExceptionReportUTF8VA(
+    JSContext* cx, HandleObject fallbackStack, va_list ap) {
   new (&ownedReport) JSErrorReport();
-  ownedReport.flags = JSREPORT_ERROR;
+  ownedReport.isWarning_ = false;
   ownedReport.errorNumber = JSMSG_UNCAUGHT_EXCEPTION;
-  // XXXbz this assumes the stack we have right now is still
-  // related to our exception object.  It would be better if we
-  // could accept a passed-in stack of some sort instead.
-  NonBuiltinFrameIter iter(cx, cx->realm()->principals());
-  if (!iter.done()) {
-    ownedReport.filename = iter.filename();
-    uint32_t column;
-    ownedReport.sourceId =
-        iter.hasScript() ? iter.script()->scriptSource()->id() : 0;
-    ownedReport.lineno = iter.computeLine(&column);
-    ownedReport.column = FixupColumnForDisplay(column);
-    ownedReport.isMuted = iter.mutedErrors();
+
+  bool skippedAsync;
+  RootedSavedFrame frame(
+      cx, UnwrapSavedFrame(cx, cx->realm()->principals(), fallbackStack,
+                           SavedFrameSelfHosted::Exclude, skippedAsync));
+  if (frame) {
+    filename = StringToNewUTF8CharsZ(cx, *frame->getSource());
+    if (!filename) {
+      return false;
+    }
+
+    // |ownedReport.filename| inherits the lifetime of |ErrorReport::filename|.
+    ownedReport.filename = filename.get();
+    ownedReport.sourceId = frame->getSourceId();
+    ownedReport.lineno = frame->getLine();
+    // Follow FixupColumnForDisplay and set column to 1 for WASM.
+    ownedReport.column = frame->isWasm() ? 1 : frame->getColumn();
+    ownedReport.isMuted = frame->getMutedErrors();
+  } else {
+    // XXXbz this assumes the stack we have right now is still
+    // related to our exception object.
+    NonBuiltinFrameIter iter(cx, cx->realm()->principals());
+    if (!iter.done()) {
+      ownedReport.filename = iter.filename();
+      uint32_t column;
+      ownedReport.sourceId =
+          iter.hasScript() ? iter.script()->scriptSource()->id() : 0;
+      ownedReport.lineno = iter.computeLine(&column);
+      ownedReport.column = FixupColumnForDisplay(column);
+      ownedReport.isMuted = iter.mutedErrors();
+    }
   }
 
   if (!ExpandErrorArgumentsVA(cx, GetErrorMessage, nullptr,

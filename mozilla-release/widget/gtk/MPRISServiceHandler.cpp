@@ -266,13 +266,7 @@ static GVariant* HandleGetProperty(GDBusConnection* aConnection,
                   "Invalid Playback Status");
       return nullptr;
     case Property::eGetMetadata:
-      std::vector<struct MPRISMetadata> list = handler->GetDefaultMetadata();
-      GVariantBuilder builder;
-      g_variant_builder_init(&builder, G_VARIANT_TYPE("a{sv}"));
-      for (auto const& data : list) {
-        g_variant_builder_add(&builder, "{sv}", data.mKey, data.mValue);
-      }
-      return g_variant_builder_end(&builder);
+      return handler->GetMetadataAsGVariant();
   }
 
   MOZ_ASSERT_UNREACHABLE("Switch Statement incomplete");
@@ -563,7 +557,8 @@ bool MPRISServiceHandler::SetRate(double aRate) {
   return true;
 }
 
-void MPRISServiceHandler::SetPlaybackState(dom::PlaybackState aState) {
+void MPRISServiceHandler::SetPlaybackState(
+    dom::MediaSessionPlaybackState aState) {
   LOG("SetPlaybackState");
   if (mPlaybackState == aState) {
     return;
@@ -593,16 +588,41 @@ void MPRISServiceHandler::SetPlaybackState(dom::PlaybackState aState) {
 
 GVariant* MPRISServiceHandler::GetPlaybackStatus() const {
   switch (GetPlaybackState()) {
-    case dom::PlaybackState::ePlaying:
+    case dom::MediaSessionPlaybackState::Playing:
       return g_variant_new_string("Playing");
-    case dom::PlaybackState::ePaused:
+    case dom::MediaSessionPlaybackState::Paused:
       return g_variant_new_string("Paused");
-    case dom::PlaybackState::eStopped:
+    case dom::MediaSessionPlaybackState::None:
       return g_variant_new_string("Stopped");
     default:
       MOZ_ASSERT_UNREACHABLE("Invalid Playback State");
       return nullptr;
   }
+}
+
+void MPRISServiceHandler::SetMediaMetadata(
+    const dom::MediaMetadataBase& aMetadata) {
+  mMetadata = Some(aMetadata);
+}
+
+GVariant* MPRISServiceHandler::GetMetadataAsGVariant() const {
+  GVariantBuilder builder;
+  g_variant_builder_init(&builder, G_VARIANT_TYPE("a{sv}"));
+  g_variant_builder_add(&builder, "{sv}", "mpris:trackid",
+                        g_variant_new("o", "/valid/path"));
+
+  if (mMetadata.isSome()) {
+    g_variant_builder_add(
+        &builder, "{sv}", "xesam:title",
+        g_variant_new_string(NS_ConvertUTF16toUTF8(mMetadata->mTitle).get()));
+    GVariantBuilder artistBuilder;  // Artists is a list.
+    g_variant_builder_init(&artistBuilder, G_VARIANT_TYPE("as"));
+    g_variant_builder_add(&artistBuilder, "s",
+                          NS_ConvertUTF16toUTF8(mMetadata->mArtist).get());
+    g_variant_builder_add(&builder, "{sv}", "xesam:artist",
+                          g_variant_builder_end(&artistBuilder));
+  }
+  return g_variant_builder_end(&builder);
 }
 
 void MPRISServiceHandler::EmitEvent(mozilla::dom::MediaControlKeysEvent event) {
@@ -655,21 +675,6 @@ void MPRISServiceHandler::SetPosition(char* aTrackId, int64_t aPosition) {
 bool MPRISServiceHandler::OpenUri(char* aUri) {
   LOG("OpenUri(%s)", aUri);
   return false;
-}
-
-std::vector<struct MPRISMetadata> MPRISServiceHandler::GetDefaultMetadata() {
-  std::vector<struct MPRISMetadata> list;
-
-  list.push_back({"mpris:trackid", g_variant_new("o", "/valid/path")});
-  list.push_back({"xesam:title", g_variant_new_string("Firefox")});
-
-  GVariantBuilder artistBuilder;  // Artists is a list.
-  g_variant_builder_init(&artistBuilder, G_VARIANT_TYPE("as"));
-  g_variant_builder_add(&artistBuilder, "s", "Mozilla");
-  GVariant* artists = g_variant_builder_end(&artistBuilder);
-
-  list.push_back({"xesam:artist", artists});
-  return list;
 }
 
 }  // namespace widget

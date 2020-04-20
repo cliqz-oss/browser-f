@@ -244,11 +244,11 @@ extern const uint32_t ArgLengths[];
   _(GuardAndGetIndexFromString, Id, Id)                                        \
   _(GuardAndGetNumberFromString, Id, Id)                                       \
   _(GuardAndGetNumberFromBoolean, Id, Id)                                      \
+  _(GuardAndGetInt32FromNumber, Id, Id)                                        \
   _(GuardAndGetIterator, Id, Id, Field, Field)                                 \
   _(GuardHasGetterSetter, Id, Field)                                           \
   _(GuardGroupHasUnanalyzedNewScript, Field)                                   \
   _(GuardIndexIsNonNegative, Id)                                               \
-  _(GuardIndexGreaterThanDenseCapacity, Id, Id)                                \
   _(GuardIndexGreaterThanArrayLength, Id, Id)                                  \
   _(GuardIndexIsValidUpdateOrAdd, Id, Id)                                      \
   _(GuardIndexGreaterThanDenseInitLength, Id, Id)                              \
@@ -1130,6 +1130,13 @@ class MOZ_RAII CacheIRWriter : public JS::CustomAutoRooter {
     return res;
   }
 
+  Int32OperandId guardAndGetInt32FromNumber(NumberOperandId number) {
+    Int32OperandId res(nextOperandId_++);
+    writeOpWithOperandId(CacheOp::GuardAndGetInt32FromNumber, number);
+    writeOperandId(res);
+    return res;
+  }
+
   ObjOperandId guardAndGetIterator(ObjOperandId obj,
                                    PropertyIteratorObject* iter,
                                    NativeIterator** enumeratorsAddr) {
@@ -1158,12 +1165,6 @@ class MOZ_RAII CacheIRWriter : public JS::CustomAutoRooter {
   void guardIndexGreaterThanDenseInitLength(ObjOperandId obj,
                                             Int32OperandId index) {
     writeOpWithOperandId(CacheOp::GuardIndexGreaterThanDenseInitLength, obj);
-    writeOperandId(index);
-  }
-
-  void guardIndexGreaterThanDenseCapacity(ObjOperandId obj,
-                                          Int32OperandId index) {
-    writeOpWithOperandId(CacheOp::GuardIndexGreaterThanDenseCapacity, obj);
     writeOperandId(index);
   }
 
@@ -2875,6 +2876,7 @@ class MOZ_RAII BinaryArithIRGenerator : public IRGenerator {
   AttachDecision tryAttachStringNumberConcat();
   AttachDecision tryAttachStringBooleanConcat();
   AttachDecision tryAttachBigInt();
+  AttachDecision tryAttachStringInt32Arith();
 
  public:
   BinaryArithIRGenerator(JSContext* cx, HandleScript, jsbytecode* pc,

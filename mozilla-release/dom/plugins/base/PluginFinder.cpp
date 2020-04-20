@@ -26,6 +26,7 @@
 #include "prio.h"
 
 #include "nsAppDirectoryServiceDefs.h"
+#include "nsCharSeparatedTokenizer.h"
 #include "nsComponentManagerUtils.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsPluginDirServiceProvider.h"
@@ -179,7 +180,7 @@ nsresult PluginFinder::DoFullSearch(const FoundPluginCallback& aCallback) {
     ReadFlashInfo();
     // Don't do a blocklist check until we're done scanning,
     // as the version might change anyway.
-    nsTArray<mozilla::Pair<bool, RefPtr<nsPluginTag>>> arr;
+    nsTArray<std::pair<bool, RefPtr<nsPluginTag>>> arr;
     mFoundPluginCallback(!!mPlugins, mPlugins, arr);
     // We've passed ownership of the flash plugin to the host, so make sure
     // we don't accidentally try to use it when we leave the mainthread.
@@ -602,7 +603,8 @@ nsresult PluginFinder::ScanPluginsDirectory(nsIFile* pluginsDir,
       pluginFile.FreePluginInfo(info);
 
       // We'll need to do a blocklist request later.
-      mPluginBlocklistRequests.AppendElement(MakePair(!seenBefore, pluginTag));
+      mPluginBlocklistRequests.AppendElement(
+          std::make_pair(!seenBefore, pluginTag));
 
       // Plugin unloading is tag-based. If we created a new tag and loaded
       // the library in the process then we want to attempt to unload it here.
@@ -920,6 +922,33 @@ nsresult PluginFinder::DeterminePluginDirs() {
   MOZ_TRY(dirService->Get(NS_APP_PLUGINS_DIR_LIST,
                           NS_GET_IID(nsISimpleEnumerator),
                           getter_AddRefs(dirEnum)));
+
+  // Add any paths from MOZ_PLUGIN_PATH first.
+#if defined(XP_WIN) || defined(XP_LINUX)
+#  ifdef XP_WIN
+#    define PATH_SEPARATOR ';'
+#  else
+#    define PATH_SEPARATOR ':'
+#  endif
+  const char* pathsenv = PR_GetEnv("MOZ_PLUGIN_PATH");
+  if (pathsenv) {
+    const nsDependentCString pathsStr(pathsenv);
+    nsCCharSeparatedTokenizer paths(pathsStr, PATH_SEPARATOR);
+    while (paths.hasMoreTokens()) {
+      auto pathStr = paths.nextToken();
+      nsCOMPtr<nsIFile> pathFile;
+      rv = NS_NewNativeLocalFile(pathStr, true, getter_AddRefs(pathFile));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        continue;
+      }
+
+      bool exists;
+      if (pathFile && NS_SUCCEEDED(pathFile->Exists(&exists)) && exists) {
+        mPluginDirs.AppendElement(pathFile);
+      }
+    }
+  }
+#endif  // defined(XP_WIN) || defined(XP_LINUX)
 
   bool hasMore = false;
   while (NS_SUCCEEDED(dirEnum->HasMoreElements(&hasMore)) && hasMore) {

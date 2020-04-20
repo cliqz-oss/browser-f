@@ -94,8 +94,8 @@ describe("TelemetryFeed", () => {
     };
     sandbox.spy(global.Cu, "reportError");
     globals.set("gUUIDGenerator", { generateUUID: () => FAKE_UUID });
-    globals.set("aboutNewTabService", {
-      overridden: false,
+    globals.set("AboutNewTab", {
+      newTabURLOverridden: false,
       newTabURL: "",
     });
     globals.set("HomePage", fakeHomePage);
@@ -1262,7 +1262,7 @@ describe("TelemetryFeed", () => {
       const spy = sandbox.spy();
 
       sandbox.stub(Services.prefs, "getIntPref").returns(1);
-      globals.set("AboutNewTabStartupRecorder", {
+      globals.set("AboutNewTab", {
         maybeRecordTopsitesPainted: spy,
       });
       instance.addSession("port123", "about:home");
@@ -1561,8 +1561,8 @@ describe("TelemetryFeed", () => {
       assert.validate(sendEvent.firstCall.args[0], UserEventPing);
     });
     it("should send correct event data for about:newtab set to custom URL", async () => {
-      globals.set("aboutNewTabService", {
-        overridden: true,
+      globals.set("AboutNewTab", {
+        newTabURLOverridden: true,
         newTabURL: "https://searchprovider.com",
       });
       instance._prefs.set(TELEMETRY_PREF, true);
@@ -1613,8 +1613,14 @@ describe("TelemetryFeed", () => {
       const spy = sandbox.spy(instance, "sendStructuredIngestionEvent");
       const session = {
         impressionSets: {
-          source_foo: [{ id: 1, pos: 0 }, { id: 2, pos: 1 }],
-          source_bar: [{ id: 3, pos: 0 }, { id: 4, pos: 1 }],
+          source_foo: [
+            { id: 1, pos: 0 },
+            { id: 2, pos: 1 },
+          ],
+          source_bar: [
+            { id: 3, pos: 0 },
+            { id: 4, pos: 1 },
+          ],
         },
       };
       instance.sendDiscoveryStreamImpressions("foo", session);
@@ -1634,8 +1640,14 @@ describe("TelemetryFeed", () => {
       const spy = sandbox.spy(instance, "sendStructuredIngestionEvent");
       const session = {
         loadedContentSets: {
-          source_foo: [{ id: 1, pos: 0 }, { id: 2, pos: 1 }],
-          source_bar: [{ id: 3, pos: 0 }, { id: 4, pos: 1 }],
+          source_foo: [
+            { id: 1, pos: 0 },
+            { id: 2, pos: 1 },
+          ],
+          source_bar: [
+            { id: 3, pos: 0 },
+            { id: 4, pos: 1 },
+          ],
         },
       };
       instance.sendDiscoveryStreamLoadedContent("foo", session);

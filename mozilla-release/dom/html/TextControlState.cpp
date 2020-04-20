@@ -174,10 +174,6 @@ class RestoreSelectionState : public Runnable {
         mFrame->SetSelectionRange(properties.GetStart(), properties.GetEnd(),
                                   properties.GetDirection());
       }
-      if (!mTextControlState->mSelectionRestoreEagerInit) {
-        mTextControlState->HideSelectionIfBlurred();
-      }
-      mTextControlState->mSelectionRestoreEagerInit = false;
     }
 
     if (mTextControlState) {
@@ -217,7 +213,6 @@ class MOZ_RAII AutoRestoreEditorState final {
     // appearing the method in profile.  So, this class should check if it's
     // necessary to call.
     uint32_t flags = mSavedFlags;
-    flags &= ~(nsIEditor::eEditorDisabledMask);
     flags &= ~(nsIEditor::eEditorReadonlyMask);
     flags |= nsIEditor::eEditorDontEchoPassword;
     if (mSavedFlags != flags) {
@@ -313,8 +308,7 @@ class TextInputSelectionController final : public nsSupportsWeakReference,
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(TextInputSelectionController,
                                            nsISelectionController)
 
-  TextInputSelectionController(nsFrameSelection* aSel, PresShell* aPresShell,
-                               nsIContent* aLimiter);
+  TextInputSelectionController(PresShell* aPresShell, nsIContent* aLimiter);
 
   void SetScrollableFrame(nsIScrollableFrame* aScrollableFrame);
   nsFrameSelection* GetConstFrameSelection() { return mFrameSelection; }
@@ -362,10 +356,11 @@ class TextInputSelectionController final : public nsSupportsWeakReference,
                                           int16_t aStartOffset,
                                           int16_t aEndOffset,
                                           bool* aRetval) override;
+  void SelectionWillTakeFocus() override;
+  void SelectionWillLoseFocus() override;
 
  private:
   RefPtr<nsFrameSelection> mFrameSelection;
-  nsCOMPtr<nsIContent> mLimiter;
   nsIScrollableFrame* mScrollFrame;
   nsWeakPtr mPresShellWeak;
 };
@@ -378,18 +373,16 @@ NS_INTERFACE_TABLE_HEAD(TextInputSelectionController)
   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(TextInputSelectionController)
 NS_INTERFACE_MAP_END
 
-NS_IMPL_CYCLE_COLLECTION_WEAK(TextInputSelectionController, mFrameSelection,
-                              mLimiter)
+NS_IMPL_CYCLE_COLLECTION_WEAK(TextInputSelectionController, mFrameSelection)
 
 TextInputSelectionController::TextInputSelectionController(
-    nsFrameSelection* aSel, PresShell* aPresShell, nsIContent* aLimiter)
+    PresShell* aPresShell, nsIContent* aLimiter)
     : mScrollFrame(nullptr) {
-  if (aSel && aPresShell) {
-    mFrameSelection = aSel;  // we are the owner now!
-    mLimiter = aLimiter;
+  if (aPresShell) {
     bool accessibleCaretEnabled =
         PresShell::AccessibleCaretEnabled(aLimiter->OwnerDoc()->GetDocShell());
-    mFrameSelection->Init(aPresShell, mLimiter, accessibleCaretEnabled);
+    mFrameSelection =
+        new nsFrameSelection(aPresShell, aLimiter, accessibleCaretEnabled);
     mPresShellWeak = do_GetWeakReference(aPresShell);
   }
 }
@@ -772,6 +765,22 @@ TextInputSelectionController::SelectAll() {
   return frameSelection->SelectAll();
 }
 
+void TextInputSelectionController::SelectionWillTakeFocus() {
+  if (mFrameSelection) {
+    if (PresShell* shell = mFrameSelection->GetPresShell()) {
+      shell->FrameSelectionWillTakeFocus(*mFrameSelection);
+    }
+  }
+}
+
+void TextInputSelectionController::SelectionWillLoseFocus() {
+  if (mFrameSelection) {
+    if (PresShell* shell = mFrameSelection->GetPresShell()) {
+      shell->FrameSelectionWillLoseFocus(*mFrameSelection);
+    }
+  }
+}
+
 NS_IMETHODIMP
 TextInputSelectionController::CheckVisibility(nsINode* node,
                                               int16_t startOffset,
@@ -950,6 +959,15 @@ TextInputListener::HandleEvent(Event* aEvent) {
     return NS_ERROR_UNEXPECTED;
   }
 
+  {
+    auto* input = HTMLInputElement::FromNode(mTxtCtrlElement);
+    if (input && input->StepsInputValue(*widgetKeyEvent)) {
+      // As an special case, don't handle key events that would step the value
+      // of our <input type=number>.
+      return NS_OK;
+    }
+  }
+
   KeyEventHandler* keyHandlers = ShortcutKeys::GetHandlers(
       mTxtCtrlElement->IsTextArea() ? HandlerType::eTextArea
                                     : HandlerType::eInput);
@@ -1048,8 +1066,7 @@ void TextInputListener::HandleValueChanged(nsTextControlFrame* aFrame) {
   }
 
   if (!mSettingValue) {
-    mTxtCtrlElement->OnValueChanged(/* aNotify = */ true,
-                                    ValueChangeKind::UserInteraction);
+    mTxtCtrlElement->OnValueChanged(ValueChangeKind::UserInteraction);
   }
 }
 
@@ -1250,7 +1267,7 @@ class MOZ_STACK_CLASS AutoTextControlHandlingState {
       if (!(mSetValueFlags & TextControlState::eSetValue_Notify)) {
         // Listener doesn't update frame, but it is required for
         // placeholder
-        mTextControlState.ValueWasChanged(true);
+        mTextControlState.ValueWasChanged();
       }
     }
     if (!IsOriginalTextControlFrameAlive()) {
@@ -1389,7 +1406,6 @@ TextControlState::TextControlState(TextControlElement* aOwningElement)
       mEditorInitialized(false),
       mValueTransferInProgress(false),
       mSelectionCached(true),
-      mSelectionRestoreEagerInit(false),
       mPlaceholderVisibility(false),
       mPreviewVisibility(false)
 // When adding more member variable initializations here, add the same
@@ -1412,7 +1428,6 @@ TextControlState* TextControlState::Construct(
     state->mEditorInitialized = false;
     state->mValueTransferInProgress = false;
     state->mSelectionCached = true;
-    state->mSelectionRestoreEagerInit = false;
     state->mPlaceholderVisibility = false;
     state->mPreviewVisibility = false;
     // When adding more member variable initializations here, add the same
@@ -1627,16 +1642,15 @@ nsresult TextControlState::BindToFrame(nsTextControlFrame* aFrame) {
   PresShell* presShell = aFrame->PresContext()->GetPresShell();
   MOZ_ASSERT(presShell);
 
-  // Create selection
-  RefPtr<nsFrameSelection> frameSel = new nsFrameSelection();
-
   // Create a SelectionController
-  mSelCon = new TextInputSelectionController(frameSel, presShell, rootNode);
+  mSelCon = new TextInputSelectionController(presShell, rootNode);
   MOZ_ASSERT(!mTextListener, "Should not overwrite the object");
   mTextListener = new TextInputListener(mTextCtrlElement);
 
   mTextListener->SetFrame(mBoundFrame);
-  mSelCon->SetDisplaySelection(nsISelectionController::SELECTION_ON);
+
+  // Editor will override this as needed from InitializeSelection.
+  mSelCon->SetDisplaySelection(nsISelectionController::SELECTION_HIDDEN);
 
   // Get the caret and make it a selection listener.
   // FYI: It's safe to use raw pointer for calling
@@ -1880,19 +1894,11 @@ nsresult TextControlState::PrepareEditor(const nsAString* aValue) {
   editorFlags = newTextEditor->Flags();
 
   // Check if the readonly attribute is set.
-  if (mTextCtrlElement->HasAttr(kNameSpaceID_None, nsGkAtoms::readonly)) {
+  //
+  // TODO: Should probably call IsDisabled(), as it is cheaper.
+  if (mTextCtrlElement->HasAttr(kNameSpaceID_None, nsGkAtoms::readonly) ||
+      mTextCtrlElement->HasAttr(kNameSpaceID_None, nsGkAtoms::disabled)) {
     editorFlags |= nsIEditor::eEditorReadonlyMask;
-  }
-
-  // Check if the disabled attribute is set.
-  // TODO: call IsDisabled() here!
-  if (mTextCtrlElement->HasAttr(kNameSpaceID_None, nsGkAtoms::disabled)) {
-    editorFlags |= nsIEditor::eEditorDisabledMask;
-  }
-
-  // Disable the selection if necessary.
-  if (newTextEditor->IsDisabled()) {
-    mSelCon->SetDisplaySelection(nsISelectionController::SELECTION_OFF);
   }
 
   SetEditorFlagsIfNecessary(*newTextEditor, editorFlags);
@@ -2381,6 +2387,10 @@ void TextControlState::UnbindFromFrame(nsTextControlFrame* aFrame) {
   AutoTextControlHandlingState handlingUnbindFromFrame(
       *this, TextControlAction::UnbindFromFrame);
 
+  if (mSelCon) {
+    mSelCon->SelectionWillLoseFocus();
+  }
+
   // We need to start storing the value outside of the editor if we're not
   // going to use it anymore, so retrieve it for now.
   nsAutoString value;
@@ -2691,10 +2701,7 @@ bool TextControlState::SetValue(const nsAString& aValue,
   auto changeKind = (aFlags & eSetValue_Internal) ? ValueChangeKind::Internal
                                                   : ValueChangeKind::Script;
 
-  // XXX Should we stop notifying "value changed" if mTextCtrlElement has
-  //     been cleared?
-  handlingSetValue.GetTextControlElement()->OnValueChanged(
-      /* aNotify = */ !!mBoundFrame, changeKind);
+  handlingSetValue.GetTextControlElement()->OnValueChanged(changeKind);
   return true;
 }
 
@@ -2980,7 +2987,7 @@ bool TextControlState::SetValueWithoutTextEditor(
       // Update validity state before dispatching "input" event for its
       // listeners like `EditorBase::NotifyEditorObservers()`.
       aHandlingSetValue.GetTextControlElement()->OnValueChanged(
-          true, ValueChangeKind::UserInteraction);
+          ValueChangeKind::UserInteraction);
 
       MOZ_ASSERT(!aHandlingSetValue.GetSettingValue().IsVoid());
       DebugOnly<nsresult> rvIgnored = nsContentUtils::DispatchInputEvent(
@@ -3001,9 +3008,7 @@ bool TextControlState::SetValueWithoutTextEditor(
     }
   }
 
-  // If we've reached the point where the root node has been created, we
-  // can assume that it's safe to notify.
-  ValueWasChanged(!!mBoundFrame);
+  ValueWasChanged();
   return true;
 }
 
@@ -3038,9 +3043,7 @@ void TextControlState::InitializeKeyboardEventListeners() {
   mSelCon->SetScrollableFrame(mBoundFrame->GetScrollTargetFrame());
 }
 
-void TextControlState::ValueWasChanged(bool aNotify) {
-  UpdateOverlayTextVisibility(aNotify);
-}
+void TextControlState::ValueWasChanged() { UpdateOverlayTextVisibility(true); }
 
 void TextControlState::SetPreviewText(const nsAString& aValue, bool aNotify) {
   // If we don't have a preview div, there's nothing to do.
@@ -3087,13 +3090,6 @@ void TextControlState::UpdateOverlayTextVisibility(bool aNotify) {
 
   if (mBoundFrame && aNotify) {
     mBoundFrame->InvalidateFrame();
-  }
-}
-
-void TextControlState::HideSelectionIfBlurred() {
-  MOZ_ASSERT(mSelCon, "Should have a selection controller if we have a frame!");
-  if (!nsContentUtils::IsFocusedContent(mTextCtrlElement)) {
-    mSelCon->SetDisplaySelection(nsISelectionController::SELECTION_HIDDEN);
   }
 }
 

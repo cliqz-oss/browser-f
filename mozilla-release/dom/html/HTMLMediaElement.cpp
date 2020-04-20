@@ -122,6 +122,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <type_traits>
 
 mozilla::LazyLogModule gMediaElementLog("nsMediaElement");
 static mozilla::LazyLogModule gMediaElementEventsLog("nsMediaElementEvents");
@@ -471,6 +472,17 @@ class HTMLMediaElement::MediaControlEventListener final
     }
   }
 
+  void SetPictureInPictureModeEnabled(bool aIsEnabled) {
+    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_ASSERT(IsStarted());
+    if (mIsPictureInPictureEnabled == aIsEnabled) {
+      return;
+    }
+    mIsPictureInPictureEnabled = aIsEnabled;
+    mControlAgent->NotifyPictureInPictureModeChanged(
+        this, mIsPictureInPictureEnabled);
+  }
+
   void OnKeyPressed(MediaControlKeysEvent aEvent) override {
     MOZ_ASSERT(NS_IsMainThread());
     MOZ_ASSERT(IsStarted());
@@ -527,6 +539,7 @@ class HTMLMediaElement::MediaControlEventListener final
   ControlledMediaState mState = ControlledMediaState::eStopped;
   WeakPtr<HTMLMediaElement> mElement;
   RefPtr<ContentMediaAgent> mControlAgent;
+  bool mIsPictureInPictureEnabled = false;
   bool mIsOwnerAudible = false;
 };
 
@@ -3768,7 +3781,8 @@ already_AddRefed<DOMMediaStream> HTMLMediaElement::MozCaptureStream(
   }
 
   MediaTrackGraph* graph = MediaTrackGraph::GetInstance(
-      graphDriverType, window, MediaTrackGraph::REQUEST_DEFAULT_SAMPLE_RATE);
+      graphDriverType, window, MediaTrackGraph::REQUEST_DEFAULT_SAMPLE_RATE,
+      MediaTrackGraph::DEFAULT_OUTPUT_DEVICE);
 
   RefPtr<DOMMediaStream> stream =
       CaptureStreamInternal(StreamCaptureBehavior::CONTINUE_WHEN_ENDED,
@@ -3799,7 +3813,8 @@ already_AddRefed<DOMMediaStream> HTMLMediaElement::MozCaptureStreamUntilEnded(
   }
 
   MediaTrackGraph* graph = MediaTrackGraph::GetInstance(
-      graphDriverType, window, MediaTrackGraph::REQUEST_DEFAULT_SAMPLE_RATE);
+      graphDriverType, window, MediaTrackGraph::REQUEST_DEFAULT_SAMPLE_RATE,
+      MediaTrackGraph::DEFAULT_OUTPUT_DEVICE);
 
   RefPtr<DOMMediaStream> stream =
       CaptureStreamInternal(StreamCaptureBehavior::FINISH_WHEN_ENDED,
@@ -4004,7 +4019,7 @@ HTMLMediaElement::HTMLMediaElement(
       mTracksCaptured(nullptr, "HTMLMediaElement::mTracksCaptured"),
       mErrorSink(new ErrorSink(this)),
       mAudioChannelWrapper(new AudioChannelAgentCallback(this)),
-      mSink(MakePair(nsString(), RefPtr<AudioDeviceInfo>())),
+      mSink(std::pair(nsString(), RefPtr<AudioDeviceInfo>())),
       mShowPoster(IsVideo()) {
   MOZ_ASSERT(mMainThreadEventTarget);
   MOZ_ASSERT(mAbstractMainThread);
@@ -4905,7 +4920,7 @@ nsresult HTMLMediaElement::SetupDecoder(DecoderType* aDecoder,
 
   rv = FinishDecoderSetup(aDecoder);
   // Only ChannelMediaDecoder supports resource cloning.
-  if (IsSame<DecoderType, ChannelMediaDecoder>::value && NS_SUCCEEDED(rv)) {
+  if (std::is_same_v<DecoderType, ChannelMediaDecoder> && NS_SUCCEEDED(rv)) {
     AddMediaElementToURITable();
     NS_ASSERTION(
         MediaElementTableCount(this, mLoadingSrc) == 1,
@@ -4997,9 +5012,9 @@ nsresult HTMLMediaElement::FinishDecoderSetup(MediaDecoder* aDecoder) {
   NotifyDecoderPrincipalChanged();
 
   // Set sink device if we have one. Otherwise the default is used.
-  if (mSink.second()) {
+  if (mSink.second) {
     mDecoder
-        ->SetSink(mSink.second())
+        ->SetSink(mSink.second)
 #ifdef DEBUG
         ->Then(mAbstractMainThread, __func__,
                [](const GenericPromise::ResolveOrRejectValue& aValue) {
@@ -5077,7 +5092,7 @@ void HTMLMediaElement::UpdateSrcMediaStreamPlaying(uint32_t aFlags) {
       mMediaStreamRenderer->Start();
     }
 
-    if (mSink.second()) {
+    if (mSink.second) {
       NS_WARNING(
           "setSinkId() when playing a MediaStream is not supported yet and "
           "will be ignored");
@@ -7265,7 +7280,8 @@ void HTMLMediaElement::AudioCaptureTrackChange(bool aCapture) {
 
     MediaTrackGraph* mtg = MediaTrackGraph::GetInstance(
         MediaTrackGraph::AUDIO_THREAD_DRIVER, window,
-        MediaTrackGraph::REQUEST_DEFAULT_SAMPLE_RATE);
+        MediaTrackGraph::REQUEST_DEFAULT_SAMPLE_RATE,
+        MediaTrackGraph::DEFAULT_OUTPUT_DEVICE);
     RefPtr<DOMMediaStream> stream =
         CaptureStreamInternal(StreamCaptureBehavior::CONTINUE_WHEN_ENDED,
                               StreamCaptureType::CAPTURE_AUDIO, mtg);
@@ -7547,7 +7563,7 @@ already_AddRefed<Promise> HTMLMediaElement::SetSinkId(const nsAString& aSinkId,
     return nullptr;
   }
 
-  if (mSink.first().Equals(aSinkId)) {
+  if (mSink.first.Equals(aSinkId)) {
     promise->MaybeResolveWithUndefined();
     return promise.forget();
   }
@@ -7588,7 +7604,7 @@ already_AddRefed<Promise> HTMLMediaElement::SetSinkId(const nsAString& aSinkId,
              [promise, self = RefPtr<HTMLMediaElement>(this),
               sinkId](const SinkInfoPromise::ResolveOrRejectValue& aValue) {
                if (aValue.IsResolve()) {
-                 self->mSink = MakePair(sinkId, aValue.ResolveValue());
+                 self->mSink = std::pair(sinkId, aValue.ResolveValue());
                  promise->MaybeResolveWithUndefined();
                } else {
                  switch (aValue.RejectValue()) {
@@ -7732,6 +7748,11 @@ void HTMLMediaElement::StartListeningMediaControlEventIfNeeded() {
   // but the audible state update could happen before that. Therefore, we have
   // to manually update media's audible state as well.
   mMediaControlEventListener->UpdateMediaAudibleState(IsAudible());
+
+  // Picture-in-Picture mode can be enabled before we start the listener so we
+  // manually update the status here in case not to forgot to propagate that.
+  mMediaControlEventListener->SetPictureInPictureModeEnabled(
+      IsBeingUsedInPictureInPictureMode());
 }
 
 void HTMLMediaElement::StopListeningMediaControlEventIfNeeded() {
@@ -7760,6 +7781,20 @@ void HTMLMediaElement::CreateStopMediaControlTimerIfNeeded() {
       !mMediaControlEventListener->IsStarted()) {
     return;
   }
+
+  // As the media element being used in the PIP mode would always display on the
+  // screen, users would have high chance to interact with it again, so we don't
+  // want to stop media control.
+  if (IsBeingUsedInPictureInPictureMode()) {
+    MEDIACONTROL_LOG("No need to create a timer for PIP video.");
+    return;
+  }
+
+  if (!Paused()) {
+    MEDIACONTROL_LOG("No need to create a timer for playing media.");
+    return;
+  }
+
   MEDIACONTROL_LOG("Start stop media control timer");
   NS_NewTimerWithFuncCallback(
       getter_AddRefs(mStopMediaControlTimer), StopMediaControlTimerCallback,
@@ -7775,6 +7810,26 @@ void HTMLMediaElement::ClearStopMediaControlTimerIfNeeded() {
     mStopMediaControlTimer->Cancel();
     mStopMediaControlTimer = nullptr;
   }
+}
+
+void HTMLMediaElement::UpdateMediaControlAfterPictureInPictureModeChanged() {
+  // Hasn't started to connect with media control, no need to update anything.
+  if (!mMediaControlEventListener || !mMediaControlEventListener->IsStarted()) {
+    return;
+  }
+  if (IsBeingUsedInPictureInPictureMode()) {
+    mMediaControlEventListener->SetPictureInPictureModeEnabled(true);
+  } else {
+    mMediaControlEventListener->SetPictureInPictureModeEnabled(false);
+    CreateStopMediaControlTimerIfNeeded();
+  }
+}
+
+bool HTMLMediaElement::IsBeingUsedInPictureInPictureMode() const {
+  if (!IsVideo()) {
+    return false;
+  }
+  return static_cast<const HTMLVideoElement*>(this)->IsCloningElementVisually();
 }
 
 }  // namespace dom

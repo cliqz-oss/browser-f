@@ -22,7 +22,7 @@ namespace mozilla {
 namespace baseprofiler {
 
 static UniquePtr<ProfilerMarkerPayload> DeserializeNothing(
-    mozilla::BlocksRingBuffer::EntryReader&) {
+    mozilla::ProfileBufferEntryReader&) {
   return nullptr;
 }
 
@@ -106,17 +106,17 @@ void ProfilerMarkerPayload::StreamType(const char* aMarkerType,
   aWriter.StringProperty("type", aMarkerType);
 }
 
-BlocksRingBuffer::Length
+ProfileBufferEntryWriter::Length
 ProfilerMarkerPayload::CommonPropsTagAndSerializationBytes() const {
   return sizeof(DeserializerTag) +
-         BlocksRingBuffer::SumBytes(mCommonProps.mStartTime,
-                                    mCommonProps.mEndTime, mCommonProps.mStack,
-                                    mCommonProps.mInnerWindowID);
+         ProfileBufferEntryWriter::SumBytes(
+             mCommonProps.mStartTime, mCommonProps.mEndTime,
+             mCommonProps.mStack, mCommonProps.mInnerWindowID);
 }
 
 void ProfilerMarkerPayload::SerializeTagAndCommonProps(
     DeserializerTag aDeserializerTag,
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   aEntryWriter.WriteObject(aDeserializerTag);
   aEntryWriter.WriteObject(mCommonProps.mStartTime);
   aEntryWriter.WriteObject(mCommonProps.mEndTime);
@@ -127,7 +127,7 @@ void ProfilerMarkerPayload::SerializeTagAndCommonProps(
 // static
 ProfilerMarkerPayload::CommonProps
 ProfilerMarkerPayload::DeserializeCommonProps(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+    ProfileBufferEntryReader& aEntryReader) {
   CommonProps props;
   aEntryReader.ReadIntoObject(props.mStartTime);
   aEntryReader.ReadIntoObject(props.mEndTime);
@@ -176,24 +176,24 @@ TracingMarkerPayload::TracingMarkerPayload(CommonProps&& aCommonProps,
 
 TracingMarkerPayload::~TracingMarkerPayload() = default;
 
-BlocksRingBuffer::Length TracingMarkerPayload::TagAndSerializationBytes()
-    const {
+ProfileBufferEntryWriter::Length
+TracingMarkerPayload::TagAndSerializationBytes() const {
   return CommonPropsTagAndSerializationBytes() +
-         BlocksRingBuffer::SumBytes(WrapBlocksRingBufferRawPointer(mCategory),
-                                    mKind);
+         ProfileBufferEntryWriter::SumBytes(
+             WrapProfileBufferRawPointer(mCategory), mKind);
 }
 
 void TracingMarkerPayload::SerializeTagAndPayload(
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   static const DeserializerTag tag = TagForDeserializer(Deserialize);
   SerializeTagAndCommonProps(tag, aEntryWriter);
-  aEntryWriter.WriteObject(WrapBlocksRingBufferRawPointer(mCategory));
+  aEntryWriter.WriteObject(WrapProfileBufferRawPointer(mCategory));
   aEntryWriter.WriteObject(mKind);
 }
 
 // static
 UniquePtr<ProfilerMarkerPayload> TracingMarkerPayload::Deserialize(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+    ProfileBufferEntryReader& aEntryReader) {
   ProfilerMarkerPayload::CommonProps props =
       DeserializeCommonProps(aEntryReader);
   const char* category = aEntryReader.ReadObject<const char*>();
@@ -242,24 +242,25 @@ FileIOMarkerPayload::FileIOMarkerPayload(CommonProps&& aCommonProps,
 
 FileIOMarkerPayload::~FileIOMarkerPayload() = default;
 
-BlocksRingBuffer::Length FileIOMarkerPayload::TagAndSerializationBytes() const {
+ProfileBufferEntryWriter::Length FileIOMarkerPayload::TagAndSerializationBytes()
+    const {
   return CommonPropsTagAndSerializationBytes() +
-         BlocksRingBuffer::SumBytes(WrapBlocksRingBufferRawPointer(mSource),
-                                    mOperation, mFilename);
+         ProfileBufferEntryWriter::SumBytes(
+             WrapProfileBufferRawPointer(mSource), mOperation, mFilename);
 }
 
 void FileIOMarkerPayload::SerializeTagAndPayload(
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   static const DeserializerTag tag = TagForDeserializer(Deserialize);
   SerializeTagAndCommonProps(tag, aEntryWriter);
-  aEntryWriter.WriteObject(WrapBlocksRingBufferRawPointer(mSource));
+  aEntryWriter.WriteObject(WrapProfileBufferRawPointer(mSource));
   aEntryWriter.WriteObject(mOperation);
   aEntryWriter.WriteObject(mFilename);
 }
 
 // static
 UniquePtr<ProfilerMarkerPayload> FileIOMarkerPayload::Deserialize(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+    ProfileBufferEntryReader& aEntryReader) {
   ProfilerMarkerPayload::CommonProps props =
       DeserializeCommonProps(aEntryReader);
   auto source = aEntryReader.ReadObject<const char*>();
@@ -308,18 +309,19 @@ UserTimingMarkerPayload::UserTimingMarkerPayload(
 
 UserTimingMarkerPayload::~UserTimingMarkerPayload() = default;
 
-BlocksRingBuffer::Length UserTimingMarkerPayload::TagAndSerializationBytes()
-    const {
+ProfileBufferEntryWriter::Length
+UserTimingMarkerPayload::TagAndSerializationBytes() const {
   return CommonPropsTagAndSerializationBytes() +
-         BlocksRingBuffer::SumBytes(WrapBlocksRingBufferRawPointer(mEntryType),
-                                    mName, mStartMark, mEndMark);
+         ProfileBufferEntryWriter::SumBytes(
+             WrapProfileBufferRawPointer(mEntryType), mName, mStartMark,
+             mEndMark);
 }
 
 void UserTimingMarkerPayload::SerializeTagAndPayload(
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   static const DeserializerTag tag = TagForDeserializer(Deserialize);
   SerializeTagAndCommonProps(tag, aEntryWriter);
-  aEntryWriter.WriteObject(WrapBlocksRingBufferRawPointer(mEntryType));
+  aEntryWriter.WriteObject(WrapProfileBufferRawPointer(mEntryType));
   aEntryWriter.WriteObject(mName);
   aEntryWriter.WriteObject(mStartMark);
   aEntryWriter.WriteObject(mEndMark);
@@ -327,7 +329,7 @@ void UserTimingMarkerPayload::SerializeTagAndPayload(
 
 // static
 UniquePtr<ProfilerMarkerPayload> UserTimingMarkerPayload::Deserialize(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+    ProfileBufferEntryReader& aEntryReader) {
   ProfilerMarkerPayload::CommonProps props =
       DeserializeCommonProps(aEntryReader);
   auto entryType = aEntryReader.ReadObject<const char*>();
@@ -388,13 +390,14 @@ TextMarkerPayload::TextMarkerPayload(CommonProps&& aCommonProps,
 
 TextMarkerPayload::~TextMarkerPayload() = default;
 
-BlocksRingBuffer::Length TextMarkerPayload::TagAndSerializationBytes() const {
+ProfileBufferEntryWriter::Length TextMarkerPayload::TagAndSerializationBytes()
+    const {
   return CommonPropsTagAndSerializationBytes() +
-         BlocksRingBuffer::SumBytes(mText);
+         ProfileBufferEntryWriter::SumBytes(mText);
 }
 
 void TextMarkerPayload::SerializeTagAndPayload(
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   static const DeserializerTag tag = TagForDeserializer(Deserialize);
   SerializeTagAndCommonProps(tag, aEntryWriter);
   aEntryWriter.WriteObject(mText);
@@ -402,7 +405,7 @@ void TextMarkerPayload::SerializeTagAndPayload(
 
 // static
 UniquePtr<ProfilerMarkerPayload> TextMarkerPayload::Deserialize(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+    ProfileBufferEntryReader& aEntryReader) {
   ProfilerMarkerPayload::CommonProps props =
       DeserializeCommonProps(aEntryReader);
   auto text = aEntryReader.ReadObject<std::string>();
@@ -431,13 +434,14 @@ LogMarkerPayload::LogMarkerPayload(CommonProps&& aCommonProps,
 
 LogMarkerPayload::~LogMarkerPayload() = default;
 
-BlocksRingBuffer::Length LogMarkerPayload::TagAndSerializationBytes() const {
+ProfileBufferEntryWriter::Length LogMarkerPayload::TagAndSerializationBytes()
+    const {
   return CommonPropsTagAndSerializationBytes() +
-         BlocksRingBuffer::SumBytes(mModule, mText);
+         ProfileBufferEntryWriter::SumBytes(mModule, mText);
 }
 
 void LogMarkerPayload::SerializeTagAndPayload(
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   static const DeserializerTag tag = TagForDeserializer(Deserialize);
   SerializeTagAndCommonProps(tag, aEntryWriter);
   aEntryWriter.WriteObject(mModule);
@@ -446,7 +450,7 @@ void LogMarkerPayload::SerializeTagAndPayload(
 
 // static
 UniquePtr<ProfilerMarkerPayload> LogMarkerPayload::Deserialize(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+    ProfileBufferEntryReader& aEntryReader) {
   ProfilerMarkerPayload::CommonProps props =
       DeserializeCommonProps(aEntryReader);
   auto module = aEntryReader.ReadObject<std::string>();
@@ -472,19 +476,20 @@ HangMarkerPayload::HangMarkerPayload(CommonProps&& aCommonProps)
 
 HangMarkerPayload::~HangMarkerPayload() = default;
 
-BlocksRingBuffer::Length HangMarkerPayload::TagAndSerializationBytes() const {
+ProfileBufferEntryWriter::Length HangMarkerPayload::TagAndSerializationBytes()
+    const {
   return CommonPropsTagAndSerializationBytes();
 }
 
 void HangMarkerPayload::SerializeTagAndPayload(
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   static const DeserializerTag tag = TagForDeserializer(Deserialize);
   SerializeTagAndCommonProps(tag, aEntryWriter);
 }
 
 // static
 UniquePtr<ProfilerMarkerPayload> HangMarkerPayload::Deserialize(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+    ProfileBufferEntryReader& aEntryReader) {
   ProfilerMarkerPayload::CommonProps props =
       DeserializeCommonProps(aEntryReader);
   return UniquePtr<ProfilerMarkerPayload>(
@@ -507,20 +512,20 @@ LongTaskMarkerPayload::LongTaskMarkerPayload(CommonProps&& aCommonProps)
 
 LongTaskMarkerPayload::~LongTaskMarkerPayload() = default;
 
-BlocksRingBuffer::Length LongTaskMarkerPayload::TagAndSerializationBytes()
-    const {
+ProfileBufferEntryWriter::Length
+LongTaskMarkerPayload::TagAndSerializationBytes() const {
   return CommonPropsTagAndSerializationBytes();
 }
 
 void LongTaskMarkerPayload::SerializeTagAndPayload(
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   static const DeserializerTag tag = TagForDeserializer(Deserialize);
   SerializeTagAndCommonProps(tag, aEntryWriter);
 }
 
 // static
 UniquePtr<ProfilerMarkerPayload> LongTaskMarkerPayload::Deserialize(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+    ProfileBufferEntryReader& aEntryReader) {
   ProfilerMarkerPayload::CommonProps props =
       DeserializeCommonProps(aEntryReader);
   return UniquePtr<ProfilerMarkerPayload>(

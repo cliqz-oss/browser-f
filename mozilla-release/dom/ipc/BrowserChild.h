@@ -11,7 +11,6 @@
 #include "mozilla/dom/PBrowserChild.h"
 #include "nsIWebNavigation.h"
 #include "nsCOMPtr.h"
-#include "nsAutoPtr.h"
 #include "nsIWebBrowserChrome.h"
 #include "nsIEmbeddingSiteWindow.h"
 #include "nsIWebBrowserChromeFocus.h"
@@ -363,10 +362,25 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
       const WidgetTouchEvent& aEvent, const ScrollableLayerGuid& aGuid,
       const uint64_t& aInputBlockId, const nsEventStatus& aApzResponse);
 
+  mozilla::ipc::IPCResult RecvRealTouchMoveEvent2(
+      const WidgetTouchEvent& aEvent, const ScrollableLayerGuid& aGuid,
+      const uint64_t& aInputBlockId, const nsEventStatus& aApzResponse) {
+    return RecvRealTouchMoveEvent(aEvent, aGuid, aInputBlockId, aApzResponse);
+  }
+
+  mozilla::ipc::IPCResult RecvNormalPriorityRealTouchMoveEvent2(
+      const WidgetTouchEvent& aEvent, const ScrollableLayerGuid& aGuid,
+      const uint64_t& aInputBlockId, const nsEventStatus& aApzResponse) {
+    return RecvNormalPriorityRealTouchMoveEvent(aEvent, aGuid, aInputBlockId,
+                                                aApzResponse);
+  }
+
   mozilla::ipc::IPCResult RecvFlushTabState(const uint32_t& aFlushId,
                                             const bool& aIsFinal);
 
   mozilla::ipc::IPCResult RecvUpdateEpoch(const uint32_t& aEpoch);
+
+  mozilla::ipc::IPCResult RecvUpdateSHistory(const bool& aImmediately);
 
   mozilla::ipc::IPCResult RecvNativeSynthesisResponse(
       const uint64_t& aObserverId, const nsCString& aResponse);
@@ -570,7 +584,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
                                  bool aPreventDefault) const;
   void SetTargetAPZC(
       uint64_t aInputBlockId,
-      const nsTArray<layers::SLGuidAndRenderRoot>& aTargets) const;
+      const nsTArray<layers::ScrollableLayerGuid>& aTargets) const;
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvHandleTap(
       const layers::GeckoContentController::TapType& aType,
@@ -699,7 +713,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
       uint32_t aEvent, nsIChannel* aChannel, bool aBlocked,
       const nsACString& aTrackingOrigin,
       const nsTArray<nsCString>& aTrackingFullHashes,
-      const Maybe<AntiTrackingCommon::StorageAccessGrantedReason>& aReason);
+      const Maybe<ContentBlockingNotifier::StorageAccessGrantedReason>&
+          aReason);
 
  protected:
   virtual ~BrowserChild();

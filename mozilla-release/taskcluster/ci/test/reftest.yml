@@ -45,6 +45,7 @@ job-defaults:
 
 crashtest:
     description: "Crashtest run"
+    schedules-component: crashtest
     treeherder-symbol: R(C)
     chunks:
         by-test-platform:
@@ -91,7 +92,8 @@ jsreftest:
     tier: default
     run-on-projects:
         by-test-platform:
-            android-hw-.*-api-16/debug: ['try', 'mozilla-central']
+            android-hw-.*-aarch64/.*: ['try', 'mozilla-central', 'release']
+            android-hw-.*-api-16/.*: ['try', 'mozilla-central', 'release']
             default: built-projects
 
 reftest:

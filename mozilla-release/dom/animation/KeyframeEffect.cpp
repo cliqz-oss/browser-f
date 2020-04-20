@@ -26,7 +26,6 @@
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/StaticPrefs_layers.h"
-#include "mozilla/TypeTraits.h"
 #include "Layers.h"              // For Layer
 #include "nsComputedDOMStyle.h"  // nsComputedDOMStyle::GetComputedStyle
 #include "nsContentUtils.h"
@@ -1658,6 +1657,10 @@ bool KeyframeEffect::ShouldBlockAsyncTransformAnimations(
     return true;
   }
 
+  const bool enableMainthreadSynchronizationWithGeometricAnimations =
+      StaticPrefs::
+          dom_animations_mainthread_synchronization_with_geometric_animations();
+
   for (const AnimationProperty& property : mProperties) {
     // If there is a property for animations level that is overridden by
     // !important rules, it should not block other animations from running
@@ -1674,7 +1677,8 @@ bool KeyframeEffect::ShouldBlockAsyncTransformAnimations(
       continue;
     }
     // Check for geometric properties
-    if (IsGeometricProperty(property.mProperty)) {
+    if (enableMainthreadSynchronizationWithGeometricAnimations &&
+        IsGeometricProperty(property.mProperty)) {
       aPerformanceWarning =
           AnimationPerformanceWarning::Type::TransformWithGeometricProperties;
       return true;
@@ -1838,7 +1842,7 @@ void KeyframeEffect::SetAnimation(Animation* aAnimation) {
 }
 
 bool KeyframeEffect::CanIgnoreIfNotVisible() const {
-  if (!AnimationUtils::IsOffscreenThrottlingEnabled()) {
+  if (!StaticPrefs::dom_animations_offscreen_throttling()) {
     return false;
   }
 

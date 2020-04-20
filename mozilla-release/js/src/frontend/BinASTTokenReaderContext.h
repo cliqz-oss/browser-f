@@ -313,7 +313,7 @@ class SingleEntryHuffmanTable {
 // An implementation of Huffman Tables for two-entry table.
 class TwoEntriesHuffmanTable {
  public:
-  TwoEntriesHuffmanTable() {}
+  TwoEntriesHuffmanTable() = default;
   TwoEntriesHuffmanTable(TwoEntriesHuffmanTable&& other) noexcept = default;
 
   // Initialize a Huffman table containing `numberOfSymbols`.
@@ -921,7 +921,7 @@ class TemporaryStorageItem {
     // The actual size is defined in TemporaryStorage::alloc.
     T entries_[1];
 
-    Chunk() {}
+    Chunk() = default;
   };
 
   // The total number of used items in this storage.
@@ -931,7 +931,7 @@ class TemporaryStorageItem {
   Chunk* head_ = nullptr;
 
  public:
-  TemporaryStorageItem() {}
+  TemporaryStorageItem() = default;
 
   ~TemporaryStorageItem() {
     Chunk* chunk = head_;
@@ -968,7 +968,7 @@ class TemporaryStorage {
   TemporaryStorageItem<TwoLookupsHuffmanTable> twoTables_;
 
  public:
-  TemporaryStorage() {}
+  TemporaryStorage() = default;
 
   // Allocate `count` number of `T` items and returns the span to point the
   // allocated items.
@@ -1303,7 +1303,7 @@ class HuffmanDictionary {
   };
 
  public:
-  HuffmanDictionary() {}
+  HuffmanDictionary() = default;
   ~HuffmanDictionary();
 
   bool isUnreachable(TableIdentity i) const {
@@ -1631,7 +1631,7 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
       const FieldContext&);
 
   /**
-   * Register LazyScript for later modification.
+   * Register lazy script for later modification.
    */
   MOZ_MUST_USE JS::Result<Ok> registerLazyScript(BaseScript* lazy);
 
@@ -1770,7 +1770,7 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
 
   const uint8_t* posBeforeTree_;
 
-  // LazyScript created while reading the tree.
+  // Lazy script created while reading the tree.
   // After reading tree, the start/end offset are set to correct value.
   Rooted<GCVector<BaseScript*>> lazyScripts_;
 

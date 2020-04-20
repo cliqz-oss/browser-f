@@ -60,6 +60,7 @@
 #include "sslproto.h"
 #include "SSLTokensCache.h"
 #include "prmem.h"
+#include "GeckoProfiler.h"
 
 #if defined(XP_LINUX) && !defined(ANDROID)
 #  include <linux/magic.h>
@@ -1245,11 +1246,11 @@ class CipherSuiteChangeObserver : public nsIObserver {
   static nsresult StartObserve();
 
  protected:
-  virtual ~CipherSuiteChangeObserver() {}
+  virtual ~CipherSuiteChangeObserver() = default;
 
  private:
   static StaticRefPtr<CipherSuiteChangeObserver> sObserver;
-  CipherSuiteChangeObserver() {}
+  CipherSuiteChangeObserver() = default;
 };
 
 NS_IMPL_ISUPPORTS(CipherSuiteChangeObserver, nsIObserver)
@@ -1914,6 +1915,8 @@ static nsresult InitializeNSSWithFallbacks(const nsACString& profilePath,
 
 nsresult nsNSSComponent::InitializeNSS() {
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("nsNSSComponent::InitializeNSS\n"));
+  AUTO_PROFILER_LABEL("nsNSSComponent::InitializeNSS", OTHER);
+  AUTO_PROFILER_TRACING_MARKER("NSS", "nsNSSComponent::InitializeNSS", OTHER);
 
   static_assert(
       nsINSSErrorsService::NSS_SEC_ERROR_BASE == SEC_ERROR_BASE &&
@@ -2307,7 +2310,7 @@ nsNSSComponent::IssuerMatchesMitmCanary(const char* aCertIssuer) {
   return NS_ERROR_FAILURE;
 }
 
-SharedCertVerifier::~SharedCertVerifier() {}
+SharedCertVerifier::~SharedCertVerifier() = default;
 
 NS_IMETHODIMP
 nsNSSComponent::GetDefaultCertVerifier(SharedCertVerifier** result) {
@@ -2441,9 +2444,9 @@ UniqueCERTCertList FindClientCertificatesWithPrivateKeys() {
 
 NS_IMPL_ISUPPORTS(PipUIContext, nsIInterfaceRequestor)
 
-PipUIContext::PipUIContext() {}
+PipUIContext::PipUIContext() = default;
 
-PipUIContext::~PipUIContext() {}
+PipUIContext::~PipUIContext() = default;
 
 NS_IMETHODIMP
 PipUIContext::GetInterface(const nsIID& uuid, void** result) {

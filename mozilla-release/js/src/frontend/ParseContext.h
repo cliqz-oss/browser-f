@@ -304,10 +304,10 @@ class ParseContext : public Nestable<ParseContext> {
   PooledVectorPtr<AtomVector> closedOverBindingsForLazy_;
 
  public:
-  // All inner FunctionBoxes in this context. Only used when syntax parsing.
-  // The FunctionBoxes are traced as part of the TraceList on the parser,
-  // (see TraceListNode::TraceList)
-  FunctionBoxVector innerFunctionBoxesForLazy;
+  // All inner functions in this context. Only used when syntax parsing.
+  // The Functions (or FunctionCreateionDatas) are traced as part of the
+  // CompilationInfo function vector.
+  Vector<FunctionIndex> innerFunctionIndexesForLazy;
 
   // In a function context, points to a Directive struct that can be updated
   // to reflect new directives encountered in the Directive Prologue that
@@ -329,10 +329,6 @@ class ParseContext : public Nestable<ParseContext> {
  private:
   // Monotonically increasing id.
   uint32_t scriptId_;
-
-  // Set when compiling a function using Parser::standaloneFunctionBody via
-  // the Function or Generator constructor.
-  bool isStandaloneFunctionBody_;
 
   // Set when encountering a super.property inside a method. We need to mark
   // the nearest super scope as needing a home object.
@@ -440,10 +436,6 @@ class ParseContext : public Nestable<ParseContext> {
   // and the outermost |if (cond)| at top level, and everything else would not
   // be at top level.
   bool atTopLevel() { return atBodyLevel() && sc_->isTopLevelContext(); }
-
-  void setIsStandaloneFunctionBody() { isStandaloneFunctionBody_ = true; }
-
-  bool isStandaloneFunctionBody() const { return isStandaloneFunctionBody_; }
 
   void setSuperScopeNeedsHomeObject() {
     MOZ_ASSERT(sc_->allowSuperProperty());

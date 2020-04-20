@@ -21,7 +21,8 @@
 #include "nsIPermissionManager.h"
 #include "nsISecureBrowserUI.h"
 #include "nsIWebProgressListener.h"
-#include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/AntiTrackingUtils.h"
+#include "mozilla/ContentBlocking.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/BrowsingContextBinding.h"
@@ -47,6 +48,7 @@
 #endif
 #include "nsBaseCommandController.h"
 #include "nsError.h"
+#include "nsICookieService.h"
 #include "nsISizeOfEventTarget.h"
 #include "nsDOMJSUtils.h"
 #include "nsArrayUtils.h"
@@ -108,6 +110,7 @@
 #include "PostMessageEvent.h"
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/TabGroup.h"
+#include "mozilla/net/CookieJarSettings.h"
 
 // Interfaces Needed
 #include "nsIFrame.h"
@@ -2278,7 +2281,12 @@ nsresult nsGlobalWindowOuter::SetNewDocument(Document* aDocument,
                                js::PrivateValue(nullptr));
       js::SetProxyReservedSlot(obj, HOLDER_WEAKMAP_SLOT, JS::UndefinedValue());
 
+#ifdef NIGHTLY_BUILD
+      outerObject = xpc::TransplantObjectNukingXrayWaiver(cx, obj, outerObject);
+#else
       outerObject = xpc::TransplantObject(cx, obj, outerObject);
+#endif
+
       if (!outerObject) {
         mBrowsingContext->ClearWindowProxy();
         NS_ERROR("unable to transplant wrappers, probably OOM");
@@ -2453,9 +2461,20 @@ nsresult nsGlobalWindowOuter::SetNewDocument(Document* aDocument,
     // situation when we're creating a temporary non-chrome-about-blank
     // document in a chrome docshell, don't notify just yet. Instead wait
     // until we have a real chrome doc.
-    if (!mDocShell ||
-        mDocShell->ItemType() != nsIDocShellTreeItem::typeChrome ||
-        mDoc->NodePrincipal()->IsSystemPrincipal()) {
+    const bool isContentAboutBlankInChromeDocshell = [&] {
+      if (!mDocShell) {
+        return false;
+      }
+
+      RefPtr<BrowsingContext> bc = mDocShell->GetBrowsingContext();
+      if (!bc || bc->GetType() != BrowsingContext::Type::Chrome) {
+        return false;
+      }
+
+      return !mDoc->NodePrincipal()->IsSystemPrincipal();
+    }();
+
+    if (!isContentAboutBlankInChromeDocshell) {
       newInnerWindow->mHasNotifiedGlobalCreated = true;
       nsContentUtils::AddScriptRunner(NewRunnableMethod(
           "nsGlobalWindowOuter::DispatchDOMWindowCreated", this,
@@ -2470,20 +2489,52 @@ nsresult nsGlobalWindowOuter::SetNewDocument(Document* aDocument,
   ReportLargeAllocStatus();
   mLargeAllocStatus = LargeAllocStatus::NONE;
 
+  // Set the cookie jar settings to the window context.
+  if (newInnerWindow) {
+    net::CookieJarSettingsArgs cookieJarSettings;
+    net::CookieJarSettings::Cast(aDocument->CookieJarSettings())
+        ->Serialize(cookieJarSettings);
+
+    newInnerWindow->GetWindowGlobalChild()
+        ->WindowContext()
+        ->SetCookieJarSettings(Some(cookieJarSettings));
+  }
+
   mHasStorageAccess = false;
   nsIURI* uri = aDocument->GetDocumentURI();
   if (newInnerWindow &&
-      aDocument->CookieJarSettings()->GetRejectThirdPartyTrackers() &&
+      aDocument->CookieJarSettings()->GetRejectThirdPartyContexts() &&
       nsContentUtils::IsThirdPartyWindowOrChannel(newInnerWindow, nullptr,
-                                                  uri) &&
-      nsContentUtils::IsThirdPartyTrackingResourceWindow(newInnerWindow)) {
+                                                  uri)) {
+    uint32_t cookieBehavior =
+        aDocument->CookieJarSettings()->GetCookieBehavior();
     // Grant storage access by default if the first-party storage access
     // permission has been granted already.
     // Don't notify in this case, since we would be notifying the user
     // needlessly.
-    mHasStorageAccess = AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
-        newInnerWindow, uri, nullptr);
+    bool checkStorageAccess = false;
+    if (net::CookieJarSettings::IsRejectThirdPartyWithExceptions(
+            cookieBehavior)) {
+      checkStorageAccess = true;
+    } else {
+      MOZ_ASSERT(
+          cookieBehavior == nsICookieService::BEHAVIOR_REJECT_TRACKER ||
+          cookieBehavior ==
+              nsICookieService::BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN);
+      if (nsContentUtils::IsThirdPartyTrackingResourceWindow(newInnerWindow)) {
+        checkStorageAccess = true;
+      }
+    }
+
+    if (checkStorageAccess) {
+      mHasStorageAccess =
+          ContentBlocking::ShouldAllowAccessFor(newInnerWindow, uri, nullptr);
+    }
   }
+
+  newInnerWindow->GetWindowGlobalChild()
+      ->WindowContext()
+      ->SetHasStoragePermission(aDocument->HasStoragePermission());
 
   return NS_OK;
 }
@@ -6387,18 +6438,20 @@ namespace {
 class ChildCommandDispatcher : public Runnable {
  public:
   ChildCommandDispatcher(nsPIWindowRoot* aRoot, nsIBrowserChild* aBrowserChild,
-                         const nsAString& aAction)
+                         nsPIDOMWindowOuter* aWindow, const nsAString& aAction)
       : mozilla::Runnable("ChildCommandDispatcher"),
         mRoot(aRoot),
         mBrowserChild(aBrowserChild),
+        mWindow(aWindow),
         mAction(aAction) {}
 
   NS_IMETHOD Run() override {
     nsTArray<nsCString> enabledCommands, disabledCommands;
     mRoot->GetEnabledDisabledCommands(enabledCommands, disabledCommands);
     if (enabledCommands.Length() || disabledCommands.Length()) {
-      mBrowserChild->EnableDisableCommands(mAction, enabledCommands,
-                                           disabledCommands);
+      BrowserChild* bc = static_cast<BrowserChild*>(mBrowserChild.get());
+      bc->SendEnableDisableCommands(mWindow->GetBrowsingContext(), mAction,
+                                    enabledCommands, disabledCommands);
     }
 
     return NS_OK;
@@ -6407,6 +6460,7 @@ class ChildCommandDispatcher : public Runnable {
  private:
   nsCOMPtr<nsPIWindowRoot> mRoot;
   nsCOMPtr<nsIBrowserChild> mBrowserChild;
+  nsCOMPtr<nsPIDOMWindowOuter> mWindow;
   nsString mAction;
 };
 
@@ -6433,7 +6487,7 @@ void nsGlobalWindowOuter::UpdateCommands(const nsAString& anAction,
       nsCOMPtr<nsPIWindowRoot> root = GetTopWindowRoot();
       if (root) {
         nsContentUtils::AddScriptRunner(
-            new ChildCommandDispatcher(root, child, anAction));
+            new ChildCommandDispatcher(root, child, this, anAction));
       }
       return;
     }
@@ -6644,8 +6698,8 @@ void nsGlobalWindowOuter::ActivateOrDeactivate(bool aActivate) {
   }
 }
 
-static CallState NotifyDocumentTree(Document& aDocument, void*) {
-  aDocument.EnumerateSubDocuments(NotifyDocumentTree, nullptr);
+static CallState NotifyDocumentTree(Document& aDocument) {
+  aDocument.EnumerateSubDocuments(NotifyDocumentTree);
   aDocument.UpdateDocumentStates(NS_DOCUMENT_STATE_WINDOW_INACTIVE, true);
   return CallState::Continue;
 }
@@ -6653,7 +6707,7 @@ static CallState NotifyDocumentTree(Document& aDocument, void*) {
 void nsGlobalWindowOuter::SetActive(bool aActive) {
   nsPIDOMWindowOuter::SetActive(aActive);
   if (mDoc) {
-    NotifyDocumentTree(*mDoc, nullptr);
+    NotifyDocumentTree(*mDoc);
   }
 }
 
@@ -6867,7 +6921,7 @@ nsGlobalWindowOuter::Observe(nsISupports* aSupports, const char* aTopic,
     if (!principal) {
       return NS_OK;
     }
-    if (!AntiTrackingCommon::IsStorageAccessPermission(permission, principal)) {
+    if (!AntiTrackingUtils::IsStorageAccessPermission(permission, principal)) {
       return NS_OK;
     }
     if (!nsCRT::strcmp(aData, u"deleted")) {
@@ -7011,7 +7065,22 @@ nsresult nsGlobalWindowOuter::OpenInternal(
     AppendUTF16toUTF8(nextTok, options);
   }
 
-  bool windowExists = WindowExists(aName, forceNoOpener, !aCalledNoScript);
+  // If current's top-level browsing context's active document's
+  // cross-origin-opener-policy is "same-origin" or "same-origin + COEP" then
+  // if currentDoc's origin is not same origin with currentDoc's top-level
+  // origin, then set noopener to true and name to "_blank".
+  nsAutoString windowName(aName);
+  auto topPolicy = mBrowsingContext->Top()->GetOpenerPolicy();
+  if ((topPolicy == nsILoadInfo::OPENER_POLICY_SAME_ORIGIN ||
+       topPolicy ==
+           nsILoadInfo::
+               OPENER_POLICY_SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP) &&
+      !mBrowsingContext->SameOriginWithTop()) {
+    forceNoOpener = true;
+    windowName = NS_LITERAL_STRING("_blank");
+  }
+
+  bool windowExists = WindowExists(windowName, forceNoOpener, !aCalledNoScript);
 
   // XXXbz When this gets fixed to not use LegacyIsCallerNativeCode()
   // (indirectly) maybe we can nix the AutoJSAPI usage OnLinkClickEvent::Run.
@@ -7068,7 +7137,7 @@ nsresult nsGlobalWindowOuter::OpenInternal(
         }
       }
 
-      FireAbuseEvents(aUrl, aName, aOptions);
+      FireAbuseEvents(aUrl, windowName, aOptions);
       return aDoJSFixups ? NS_OK : NS_ERROR_FAILURE;
     }
   }
@@ -7079,10 +7148,10 @@ nsresult nsGlobalWindowOuter::OpenInternal(
       do_GetService(NS_WINDOWWATCHER_CONTRACTID, &rv);
   NS_ENSURE_TRUE(wwatch, rv);
 
-  NS_ConvertUTF16toUTF8 name(aName);
+  NS_ConvertUTF16toUTF8 name(windowName);
 
   const char* options_ptr = options.IsEmpty() ? nullptr : options.get();
-  const char* name_ptr = aName.IsEmpty() ? nullptr : name.get();
+  const char* name_ptr = windowName.IsEmpty() ? nullptr : name.get();
 
   nsCOMPtr<nsPIWindowWatcher> pwwatch(do_QueryInterface(wwatch));
   NS_ENSURE_STATE(pwwatch);
@@ -7183,8 +7252,8 @@ void nsGlobalWindowOuter::MaybeAllowStorageForOpenedWindow(nsIURI* aURI) {
       aURI, doc->NodePrincipal()->OriginAttributesRef());
 
   // We don't care when the asynchronous work finishes here.
-  Unused << AntiTrackingCommon::AddFirstPartyStorageAccessGrantedFor(
-      principal, inner, AntiTrackingCommon::eOpener);
+  Unused << ContentBlocking::AllowAccessFor(principal, GetBrowsingContext(),
+                                            ContentBlockingNotifier::eOpener);
 }
 
 //*****************************************************************************

@@ -251,83 +251,6 @@ let apiManager = new (class extends SchemaAPIManager {
   }
 })();
 
-// A proxy for extension ports between two DISTINCT message managers.
-// This is used by ProxyMessenger, to ensure that a port always receives a
-// disconnection message when the other side closes, even if that other side
-// fails to send the message before the message manager disconnects.
-class ExtensionPortProxy {
-  /**
-   * @param {number} portId The ID of the port, chosen by the sender.
-   * @param {nsIMessageSender} senderMM
-   * @param {nsIMessageSender} receiverMM Must differ from senderMM.
-   */
-  constructor(portId, senderMM, receiverMM) {
-    this.portId = portId;
-    this.senderMM = senderMM;
-    this.receiverMM = receiverMM;
-  }
-
-  register() {
-    if (ProxyMessenger.portsById.has(this.portId)) {
-      throw new Error(`Extension port IDs may not be re-used: ${this.portId}`);
-    }
-    ProxyMessenger.portsById.set(this.portId, this);
-    ProxyMessenger.ports.get(this.senderMM).add(this);
-    ProxyMessenger.ports.get(this.receiverMM).add(this);
-  }
-
-  unregister() {
-    ProxyMessenger.portsById.delete(this.portId);
-    this._unregisterFromMessageManager(this.senderMM);
-    this._unregisterFromMessageManager(this.receiverMM);
-  }
-
-  _unregisterFromMessageManager(messageManager) {
-    let ports = ProxyMessenger.ports.get(messageManager);
-    ports.delete(this);
-    if (ports.size === 0) {
-      ProxyMessenger.ports.delete(messageManager);
-    }
-  }
-
-  /**
-   * Associate the port with `newMessageManager` instead of `messageManager`.
-   *
-   * @param {nsIMessageSender} messageManager The message manager to replace.
-   * @param {nsIMessageSender} newMessageManager
-   */
-  replaceMessageManager(messageManager, newMessageManager) {
-    if (this.senderMM === messageManager) {
-      this.senderMM = newMessageManager;
-    } else if (this.receiverMM === messageManager) {
-      this.receiverMM = newMessageManager;
-    } else {
-      throw new Error(
-        "This ExtensionPortProxy is not associated with the given message manager"
-      );
-    }
-
-    this._unregisterFromMessageManager(messageManager);
-
-    if (this.senderMM === this.receiverMM) {
-      this.unregister();
-    } else {
-      ProxyMessenger.ports.get(newMessageManager).add(this);
-    }
-  }
-
-  getOtherMessageManager(messageManager) {
-    if (this.senderMM === messageManager) {
-      return this.receiverMM;
-    } else if (this.receiverMM === messageManager) {
-      return this.senderMM;
-    }
-    throw new Error(
-      "This ExtensionPortProxy is not associated with the given message manager"
-    );
-  }
-}
-
 // Handles NativeMessaging and GeckoView, similar to ProxyMessenger below.
 const NativeMessenger = {
   /**
@@ -341,8 +264,9 @@ const NativeMessenger = {
   init() {
     this.conduit = new BroadcastConduit(NativeMessenger, {
       id: "NativeMessenger",
-      recv: ["NativeMessage", "NativeConnect", "PortMessage"],
-      send: ["PortMessage", "PortDisconnect"],
+      reportOnClosed: "portId",
+      recv: ["PortConnect", "PortMessage", "NativeMessage"],
+      cast: ["PortConnect", "PortMessage", "PortDisconnect"],
     });
   },
 
@@ -360,29 +284,80 @@ const NativeMessenger = {
     return this.openNative(nativeApp, sender).sendMessage(holder);
   },
 
-  recvNativeConnect({ nativeApp, portId }, { sender }) {
-    let port = this.openNative(nativeApp, sender).onConnect(portId, this);
-    this.conduit.reportOnClosed(portId);
-    this.ports.set(portId, port);
-  },
+  // TODO: Bug 1583484 - Extract parts of this method shared with sendMessage()
+  async connect(kind, portId, extensionId, sender, arg) {
+    let resolvePort;
+    // PortMessages that follow will need to wait for the port to be opened.
+    this.ports.set(portId, new Promise(res => (resolvePort = res)));
 
-  recvConduitClosed(sender) {
-    let app = this.ports.get(sender.id);
-    if (this.ports.delete(sender.id)) {
-      app.onPortDisconnect();
+    let target = sender.actor.browsingContext.top.embedderElement;
+    let extension = GlobalManager.extensionMap.get(extensionId);
+    if (extension.wakeupBackground) {
+      await extension.wakeupBackground();
+    }
+
+    sender = {
+      id: sender.extensionId,
+      envType: sender.envType,
+      frameId: sender.frameId,
+      url: sender.actor.manager.documentURI.spec,
+    };
+    apiManager.global.tabGetSender(extension, target, sender);
+
+    arg = { portId, extensionId, sender, ...arg };
+    let all = await this.conduit.castPortConnect(kind, arg);
+    resolvePort();
+
+    // If there are no active onConnect listeners.
+    if (!all.some(x => x.value)) {
+      throw new ExtensionError(
+        "Could not establish connection. Receiving end does not exist."
+      );
     }
   },
 
-  recvPortMessage({ holder }, { sender }) {
-    this.ports.get(sender.id).onPortMessage(holder);
+  recvPortConnect({ name, portId, native, ...args }, { sender }) {
+    if (native) {
+      let port = this.openNative(name, sender).onConnect(portId, this);
+      this.ports.set(portId, port);
+      return;
+    }
+
+    let { extensionId, tabId, frameId } = args;
+    if (extensionId) {
+      // runtime.connect() call from a content script.
+      return this.connect("messenger", portId, extensionId, sender, { name });
+    }
+
+    // tabs.connect() call from an extension page.
+    let tab = apiManager.global.tabTracker.getTab(tabId, null);
+    let browser = tab.linkedBrowser || tab.browser;
+    let arg = { name, frameId, topBC: browser.browsingContext.id };
+    return this.connect("tab", portId, sender.extensionId, sender, arg);
   },
 
-  sendPortMessage(portId, holder) {
-    this.conduit.sendPortMessage(portId, { holder });
+  async recvPortMessage({ holder }, { sender }) {
+    if (sender.native) {
+      return this.ports.get(sender.portId).onPortMessage(holder);
+    }
+    await this.ports.get(sender.portId);
+    this.sendPortMessage(sender.portId, holder, !sender.source);
   },
 
-  sendPortDisconnect(portId, error) {
-    this.conduit.sendPortDisconnect(portId, { error });
+  recvConduitClosed(sender) {
+    let app = this.ports.get(sender.portId);
+    if (this.ports.delete(sender.portId) && sender.native) {
+      return app.onPortDisconnect();
+    }
+    this.sendPortDisconnect(sender.portId, null, !sender.source);
+  },
+
+  sendPortMessage(portId, holder, source = true) {
+    this.conduit.castPortMessage("port", { portId, source, holder });
+  },
+
+  sendPortDisconnect(portId, error, source = true) {
+    this.conduit.castPortDisconnect("port", { portId, source, error });
     this.ports.delete(portId);
   },
 };
@@ -408,84 +383,12 @@ ProxyMessenger = {
     // And legacy addons are not associated with a frame, so that is another
     // reason for having a parent process manager here.
     let messageManagers = [Services.mm, Services.ppmm];
-
-    MessageChannel.addListener(messageManagers, "Extension:Connect", this);
     MessageChannel.addListener(messageManagers, "Extension:Message", this);
-    MessageChannel.addListener(
-      messageManagers,
-      "Extension:Port:Disconnect",
-      this
-    );
-    MessageChannel.addListener(
-      messageManagers,
-      "Extension:Port:PostMessage",
-      this
-    );
-
-    Services.obs.addObserver(this, "message-manager-disconnect");
-
-    // Data structures to look up proxied extension ports by message manager,
-    // and by (numeric) portId. These are maintained by ExtensionPortProxy.
-    // Map[nsIMessageSender -> Set(ExtensionPortProxy)]
-    this.ports = new DefaultMap(() => new Set());
-    // Map[portId -> ExtensionPortProxy]
-    this.portsById = new Map();
-  },
-
-  observe(subject, topic, data) {
-    if (topic === "message-manager-disconnect") {
-      if (this.ports.has(subject)) {
-        let ports = this.ports.get(subject);
-        this.ports.delete(subject);
-        for (let port of ports) {
-          MessageChannel.sendMessage(
-            port.getOtherMessageManager(subject),
-            "Extension:Port:Disconnect",
-            null,
-            {
-              // Usually sender.contextId must be set to the sender's context ID
-              // to avoid dispatching the port.onDisconnect event at the sender.
-              // The sender is certainly unreachable because its message manager
-              // was disconnected, so the sender can be left empty.
-              sender: {},
-              recipient: { portId: port.portId },
-              responseType: MessageChannel.RESPONSE_TYPE_NONE,
-            }
-          ).catch(() => {});
-          port.unregister();
-        }
-      }
-    }
-  },
-
-  handleEvent(event) {
-    if (event.type === "SwapDocShells") {
-      let { messageManager } = event.originalTarget;
-      if (this.ports.has(messageManager)) {
-        let ports = this.ports.get(messageManager);
-        let newMessageManager = event.detail.messageManager;
-        for (let port of ports) {
-          port.replaceMessageManager(messageManager, newMessageManager);
-        }
-        this.ports.delete(messageManager);
-
-        event.detail.addEventListener(
-          "EndSwapDocShells",
-          () => {
-            event.detail.addEventListener("SwapDocShells", this, {
-              once: true,
-            });
-          },
-          { once: true }
-        );
-      }
-    }
   },
 
   async receiveMessage({
     target,
     messageName,
-    channelId,
     sender,
     recipient,
     data,
@@ -502,20 +405,14 @@ ProxyMessenger = {
       await extension.wakeupBackground();
     }
 
-    let {
-      messageManager: receiverMM,
-      xulBrowser: receiverBrowser,
-    } = this.getMessageManagerForRecipient(recipient);
+    let receiverMM = this.getMessageManagerForRecipient(recipient)
+      .messageManager;
+
     if (!extension || !receiverMM) {
       return Promise.reject(noHandlerError);
     }
 
-    if (
-      (messageName == "Extension:Message" ||
-        messageName == "Extension:Connect") &&
-      apiManager.global.tabGetSender
-    ) {
-      // From ext-tabs.js, undefined on Android.
+    if (messageName == "Extension:Message" && apiManager.global.tabGetSender) {
       apiManager.global.tabGetSender(extension, target, sender);
     }
 
@@ -524,36 +421,6 @@ ProxyMessenger = {
       recipient,
       responseType,
     });
-
-    if (messageName === "Extension:Connect") {
-      // Register a proxy for the extension port if the message managers differ,
-      // so that a disconnect message can be sent to the other end when either
-      // message manager disconnects.
-      if (target.messageManager !== receiverMM) {
-        // The source of Extension:Connect is always inside a <browser>, whereas
-        // the recipient can be a process (and not be associated with a <browser>).
-        target.addEventListener("SwapDocShells", this, { once: true });
-        if (receiverBrowser) {
-          receiverBrowser.addEventListener("SwapDocShells", this, {
-            once: true,
-          });
-        }
-        let port = new ExtensionPortProxy(
-          data.portId,
-          target.messageManager,
-          receiverMM
-        );
-        port.register();
-        promise.catch(() => {
-          port.unregister();
-        });
-      }
-    } else if (messageName === "Extension:Port:Disconnect") {
-      let port = this.portsById.get(data.portId);
-      if (port) {
-        port.unregister();
-      }
-    }
 
     return promise;
   },
@@ -605,18 +472,6 @@ ProxyMessenger = {
       }
 
       return { messageManager: browser.messageManager, xulBrowser: browser };
-    }
-
-    // port.postMessage / port.disconnect to non-tab contexts.
-    if (recipient.envType === "content_child") {
-      let childId = `${recipient.extensionId}.${recipient.contextId}`;
-      let context = ParentAPIManager.proxyContexts.get(childId);
-      if (context) {
-        return {
-          messageManager: context.parentMessageManager,
-          xulBrowser: context.xulBrowser,
-        };
-      }
     }
 
     // runtime.sendMessage / runtime.connect
@@ -918,6 +773,7 @@ ParentAPIManager = {
 
     this.conduit = new BroadcastConduit(this, {
       id: "ParentAPIManager",
+      reportOnClosed: "childId",
       recv: ["CreateProxyContext", "APICall", "AddListener", "RemoveListener"],
       send: ["CallResult"],
       query: ["RunListener"],
@@ -960,8 +816,6 @@ ParentAPIManager = {
   },
 
   recvCreateProxyContext(data, { actor, sender }) {
-    this.conduit.reportOnClosed(sender.id);
-
     let { envType, extensionId, childId, principal } = data;
     let target = actor.browsingContext.top.embedderElement;
 
@@ -1142,7 +996,7 @@ ParentAPIManager = {
       throw new Error("Got message on unexpected message manager");
     }
 
-    let { childId } = data;
+    let { childId, alreadyLogged = false } = data;
     let handlingUserInput = false;
 
     let listener = async (...listenerArgs) => {
@@ -1187,13 +1041,15 @@ ParentAPIManager = {
       handlingUserInput = true;
     }
     handler.addListener(listener, ...args);
-    ExtensionActivityLog.log(
-      context.extension.id,
-      context.viewType,
-      "api_call",
-      `${data.path}.addListener`,
-      { args }
-    );
+    if (!alreadyLogged) {
+      ExtensionActivityLog.log(
+        context.extension.id,
+        context.viewType,
+        "api_call",
+        `${data.path}.addListener`,
+        { args }
+      );
+    }
   },
 
   async recvRemoveListener(data) {
@@ -1202,6 +1058,17 @@ ParentAPIManager = {
 
     let handler = await context.apiCan.asyncFindAPIPath(data.path);
     handler.removeListener(listener);
+
+    let { alreadyLogged = false } = data;
+    if (!alreadyLogged) {
+      ExtensionActivityLog.log(
+        context.extension.id,
+        context.viewType,
+        "api_call",
+        `${data.path}.removeListener`,
+        { args: [] }
+      );
+    }
   },
 
   getContextById(childId) {
@@ -1836,50 +1703,6 @@ let IconDetails = {
     }
 
     return { size, icon: DEFAULT };
-  },
-
-  convertImageURLToDataURL(imageURL, contentWindow, browserWindow, size = 16) {
-    return new Promise((resolve, reject) => {
-      let image = new contentWindow.Image();
-      image.onload = function() {
-        let canvas = contentWindow.document.createElement("canvas");
-        let ctx = canvas.getContext("2d");
-        let dSize = size * browserWindow.devicePixelRatio;
-
-        // Scales the image while maintaining width to height ratio.
-        // If the width and height differ, the image is centered using the
-        // smaller of the two dimensions.
-        let dWidth, dHeight, dx, dy;
-        if (this.width > this.height) {
-          dWidth = dSize;
-          dHeight = image.height * (dSize / image.width);
-          dx = 0;
-          dy = (dSize - dHeight) / 2;
-        } else {
-          dWidth = image.width * (dSize / image.height);
-          dHeight = dSize;
-          dx = (dSize - dWidth) / 2;
-          dy = 0;
-        }
-
-        canvas.width = dSize;
-        canvas.height = dSize;
-        ctx.drawImage(
-          this,
-          0,
-          0,
-          this.width,
-          this.height,
-          dx,
-          dy,
-          dWidth,
-          dHeight
-        );
-        resolve(canvas.toDataURL("image/png"));
-      };
-      image.onerror = reject;
-      image.src = imageURL;
-    });
   },
 
   // These URLs should already be properly escaped, but make doubly sure CSS

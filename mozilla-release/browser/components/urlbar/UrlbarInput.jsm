@@ -102,6 +102,7 @@ class UrlbarInput {
     this._actionOverrideKeyCount = 0;
     this._autofillPlaceholder = "";
     this._lastSearchString = "";
+    this._lastValidURLStr = "";
     this._valueOnLastSearch = "";
     this._resultForCurrentValue = null;
     this._suppressStartQuery = false;
@@ -120,12 +121,7 @@ class UrlbarInput {
       "removeAttribute",
       "toggleAttribute",
     ];
-    const INPUT_METHODS = [
-      "addEventListener",
-      "blur",
-      "focus",
-      "removeEventListener",
-    ];
+    const INPUT_METHODS = ["addEventListener", "blur", "removeEventListener"];
     const READ_WRITE_PROPERTIES = [
       "placeholder",
       "readOnly",
@@ -244,7 +240,29 @@ class UrlbarInput {
     }
   }
 
+  focus() {
+    let beforeFocus = new CustomEvent("beforefocus", {
+      bubbles: true,
+      cancelable: true,
+    });
+    this.inputField.dispatchEvent(beforeFocus);
+    if (beforeFocus.defaultPrevented) {
+      return;
+    }
+
+    this.inputField.focus();
+  }
+
   select() {
+    let beforeSelect = new CustomEvent("beforeselect", {
+      bubbles: true,
+      cancelable: true,
+    });
+    this.inputField.dispatchEvent(beforeSelect);
+    if (beforeSelect.defaultPrevented) {
+      return;
+    }
+
     // See _on_select().  HTMLInputElement.select() dispatches a "select"
     // event but does not set the primary selection.
     this._suppressPrimaryAdjustment = true;
@@ -258,7 +276,7 @@ class UrlbarInput {
    * @param {nsIURI} [uri]
    *        If this is unspecified, the current URI will be used.
    * @param {boolean} [updatePopupNotifications]
-   *        Passed though to SetPageProxyState.
+   *        Passed though to `setPageProxyState`.
    */
   setURI(uri, updatePopupNotifications) {
     let value = this.window.gBrowser.userTypedValue;
@@ -271,14 +289,14 @@ class UrlbarInput {
       uri = uri || this.window.gBrowser.currentURI;
       // Strip off usernames and passwords for the location bar
       try {
-        uri = Services.uriFixup.createExposableURI(uri);
+        uri = Services.io.createExposableURI(uri);
       } catch (e) {}
 
       // Replace initial page URIs with an empty string
       // only if there's no opener (bug 370555).
       if (
         this.window.isInitialPage(uri) &&
-        this.window.checkEmptyPageOrigin(
+        BrowserUtils.checkEmptyPageOrigin(
           this.window.gBrowser.selectedBrowser,
           uri
         )
@@ -297,13 +315,13 @@ class UrlbarInput {
         !this.window.isBlankPageURL(uri.spec) || uri.schemeIs("moz-extension");
     } else if (
       this.window.isInitialPage(value) &&
-      this.window.checkEmptyPageOrigin(this.window.gBrowser.selectedBrowser)
+      BrowserUtils.checkEmptyPageOrigin(this.window.gBrowser.selectedBrowser)
     ) {
       value = "";
       valid = true;
     }
 
-    let isDifferentValidValue = valid && value != this.value;
+    let isDifferentValidValue = valid && value != this.untrimmedValue;
     this.value = value;
     this.valueIsTyped = !valid;
     this.removeAttribute("usertyping");
@@ -313,7 +331,7 @@ class UrlbarInput {
       this.selectionStart = this.selectionEnd = 0;
     }
 
-    this.window.SetPageProxyState(
+    this.setPageProxyState(
       valid ? "valid" : "invalid",
       updatePopupNotifications
     );
@@ -339,7 +357,7 @@ class UrlbarInput {
     }
 
     try {
-      return Services.uriFixup.createExposableURI(uri);
+      return Services.io.createExposableURI(uri);
     } catch (ex) {}
 
     return uri;
@@ -630,14 +648,15 @@ class UrlbarInput {
 
         if (
           result.heuristic &&
+          this.window.gKeywordURIFixup &&
           UrlbarUtils.looksLikeSingleWordHost(originalUntrimmedValue)
         ) {
-          // The docshell when fixes a single word to a search, also checks the
-          // dns and prompts the user whether they wanted to rather visit that
-          // as a host. On a positive answer, it adds to the domains whitelist
-          // that we use to make decisions. Because here we are directly asking
-          // for a search, bypassing the docshell, we must do it here.
-          // See URIFixupChild.jsm and keyword-uri-fixup.
+          // When fixing a single word to a search, the docShell also checks the
+          // DNS and asks the user whether they would rather visit that as a
+          // host. On a positive answer, it adds to the domain whitelist that
+          // we use to make decisions. Because we are directly asking for a
+          // search here, bypassing the docShell, we need invoke the same check
+          // ourselves. See also URIFixupChild.jsm and keyword-uri-fixup.
           let flags =
             Ci.nsIURIFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS |
             Ci.nsIURIFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP;
@@ -650,10 +669,10 @@ class UrlbarInput {
               originalUntrimmedValue.trim(),
               flags
             );
-            this.window.gKeywordURIFixup({
-              target: this.window.gBrowser.selectedBrowser,
-              data: fixupInfo,
-            });
+            this.window.gKeywordURIFixup.check(
+              this.window.gBrowser.selectedBrowser,
+              fixupInfo
+            );
           } catch (ex) {
             Cu.reportError(
               `An error occured while trying to fixup "${originalUntrimmedValue.trim()}": ${ex}`
@@ -701,7 +720,7 @@ class UrlbarInput {
             Cu.reportError(`Provider not found: ${result.providerName}`);
             return;
           }
-          provider.pickResult(result);
+          provider.tryMethod("pickResult", result);
           return;
         }
         break;
@@ -766,6 +785,11 @@ class UrlbarInput {
    */
   setValueFromResult(result = null, event = null) {
     let canonizedUrl;
+
+    // Usually this is set by a previous input event, but in certain cases, like
+    // when opening Top Sites on a loaded page, it wouldn't happen. To avoid
+    // confusing the user, we always enforce it when a result changes our value.
+    this.setPageProxyState("invalid", true);
 
     if (!result) {
       // This usually happens when there's no selected results (the user cycles
@@ -941,7 +965,7 @@ class UrlbarInput {
    */
   search(value, { focus = true } = {}) {
     if (focus) {
-      this.window.focusAndSelectUrlBar();
+      this.focus();
     }
 
     // If the value is a restricted token, append a space.
@@ -1080,10 +1104,40 @@ class UrlbarInput {
     this._toolbar.removeAttribute("urlbar-exceeds-toolbar-bounds");
   }
 
-  setPageProxyState(state) {
+  /**
+   * Updates the user interface to indicate whether the URI in the address bar
+   * is different than the loaded page, because it's being edited or because a
+   * search result is currently selected and is displayed in the location bar.
+   *
+   * @param {string} state
+   *        The string "valid" indicates that the security indicators and other
+   *        related user interface elments should be shown because the URI in
+   *        the location bar matches the loaded page. The string "invalid"
+   *        indicates that the URI in the location bar is different than the
+   *        loaded page.
+   * @param {boolean} [updatePopupNotifications]
+   *        Indicates whether we should update the PopupNotifications
+   *        visibility due to this change, otherwise avoid doing so as it is
+   *        being handled somewhere else.
+   */
+  setPageProxyState(state, updatePopupNotifications) {
+    let prevState = this.getAttribute("pageproxystate");
+
     this.setAttribute("pageproxystate", state);
     this._inputContainer.setAttribute("pageproxystate", state);
     this._identityBox.setAttribute("pageproxystate", state);
+
+    if (state == "valid") {
+      this._lastValidURLStr = this.value;
+    }
+
+    if (
+      updatePopupNotifications &&
+      prevState != state &&
+      this.window.UpdatePopupNotificationsVisibility
+    ) {
+      this.window.UpdatePopupNotificationsVisibility();
+    }
   }
 
   /**
@@ -1826,7 +1880,10 @@ class UrlbarInput {
     this._revertOnBlurValue = null;
 
     // We may have hidden popup notifications, show them again if necessary.
-    if (this.getAttribute("pageproxystate") != "valid") {
+    if (
+      this.getAttribute("pageproxystate") != "valid" &&
+      this.window.UpdatePopupNotificationsVisibility
+    ) {
       this.window.UpdatePopupNotificationsVisibility();
     }
 
@@ -1869,7 +1926,10 @@ class UrlbarInput {
     this.formatValue();
 
     // Hide popup notifications, to reduce visual noise.
-    if (this.getAttribute("pageproxystate") != "valid") {
+    if (
+      this.getAttribute("pageproxystate") != "valid" &&
+      this.window.UpdatePopupNotificationsVisibility
+    ) {
       this.window.UpdatePopupNotificationsVisibility();
     }
 
@@ -1982,6 +2042,13 @@ class UrlbarInput {
     }
     this.removeAttribute("actiontype");
 
+    if (
+      this.getAttribute("pageproxystate") == "valid" &&
+      this.value != this._lastValidURLStr
+    ) {
+      this.setPageProxyState("invalid", true);
+    }
+
     if (!this.view.isOpen) {
       this.view.clear();
     } else if (!value && !this.openViewOnFocus) {
@@ -2058,9 +2125,8 @@ class UrlbarInput {
   }
 
   _on_overflow(event) {
-    const targetIsPlaceholder = !event.originalTarget.classList.contains(
-      "anonymous-div"
-    );
+    const targetIsPlaceholder =
+      event.originalTarget.implementedPseudoElement == "::placeholder";
     // We only care about the non-placeholder text.
     // This shouldn't be needed, see bug 1487036.
     if (targetIsPlaceholder) {
@@ -2071,9 +2137,8 @@ class UrlbarInput {
   }
 
   _on_underflow(event) {
-    const targetIsPlaceholder = !event.originalTarget.classList.contains(
-      "anonymous-div"
-    );
+    const targetIsPlaceholder =
+      event.originalTarget.implementedPseudoElement == "::placeholder";
     // We only care about the non-placeholder text.
     // This shouldn't be needed, see bug 1487036.
     if (targetIsPlaceholder) {
@@ -2222,7 +2287,7 @@ class UrlbarInput {
     if (droppedURL && droppedURL !== this.window.gBrowser.currentURI.spec) {
       let principal = Services.droppedLinkHandler.getTriggeringPrincipal(event);
       this.value = droppedURL;
-      this.window.SetPageProxyState("invalid");
+      this.setPageProxyState("invalid");
       this.focus();
       // To simplify tracking of events, register an initial event for event
       // telemetry, to replace the missing input event.

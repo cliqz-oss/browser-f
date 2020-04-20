@@ -708,9 +708,9 @@ struct ICRData {
  * inner data type must be trivially copyable by memcpy.  A RawBuffer
  * may be backed by local memory or shared memory.
  */
-template <typename T = uint8_t, typename nonCV = typename RemoveCV<T>::Type,
-          typename EnableIf<std::is_trivially_assignable<nonCV&, nonCV>::value,
-                            int>::Type = 0>
+template <typename T = uint8_t, typename nonCV = std::remove_cv_t<T>,
+          std::enable_if_t<std::is_trivially_assignable<nonCV&, nonCV>::value,
+                           int> = 0>
 class RawBuffer {
   // The SharedMemoryBasic that owns mData, if any.
   RefPtr<mozilla::ipc::SharedMemoryBasic> mSmem;

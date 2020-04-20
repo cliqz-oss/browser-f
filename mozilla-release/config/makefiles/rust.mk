@@ -188,6 +188,13 @@ $(target_rust_nonltoable): RUSTFLAGS:=$(rustflags_override) $(rustflags_sancov) 
 
 TARGET_RECIPES := $(target_rust_ltoable) $(target_rust_nonltoable)
 
+# If this is a release build we want rustc to generate one codegen unit per
+# crate. This results in better optimization and less code duplication at the
+# cost of longer compile times.
+ifndef DEVELOPER_OPTIONS
+$(TARGET_RECIPES): RUSTFLAGS += -C codegen-units=1
+endif
+
 HOST_RECIPES := \
   $(foreach a,library program,$(foreach b,build check,force-cargo-host-$(a)-$(b)))
 
@@ -297,7 +304,7 @@ ifndef MOZ_TSAN
 ifeq ($(OS_ARCH), Linux)
 ifeq (,$(rustflags_sancov))
 ifneq (,$(filter -Clto,$(cargo_rustc_flags)))
-	$(call py_action,check_binary,--target --networking $@)
+	$(call py3_action,check_binary,--target --networking $@)
 endif
 endif
 endif

@@ -10,6 +10,7 @@
 #include "ContentMediaController.h"
 #include "MediaEventSource.h"
 #include "mozilla/dom/MediaSessionController.h"
+#include "mozilla/LinkedList.h"
 #include "nsDataHashtable.h"
 #include "nsISupportsImpl.h"
 
@@ -18,16 +19,6 @@ namespace dom {
 
 class BrowsingContext;
 enum class MediaControlKeysEvent : uint32_t;
-
-// This is used to indicate current media playback state for media controller.
-// For those platforms which have virtual control interface, we have to update
-// the playback state correctly in order to show the correct control icon on the
-// interface.
-enum class PlaybackState : uint8_t {
-  ePlaying,
-  ePaused,
-  eStopped,
-};
 
 /**
  * MediaController is a class, which is used to control all media within a tab.
@@ -53,7 +44,9 @@ enum class PlaybackState : uint8_t {
  * tabs playing media at the same time, we can use the ID to query the specific
  * controller from `MediaControlService`.
  */
-class MediaController final : public MediaSessionController {
+class MediaController final
+    : public MediaSessionController,
+      public LinkedListElement<RefPtr<MediaController>> {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaController, override);
 
@@ -67,17 +60,24 @@ class MediaController final : public MediaSessionController {
   void SeekBackward();
   void SeekForward();
 
+  // If any of controlled media is being used in Picture-In-Picture mode, then
+  // this function should be callled and set the value.
+  void SetIsInPictureInPictureMode(bool aIsInPictureInPictureMode);
+
+  // Reture true if any of controlled media is being used in Picture-In-Picture
+  // mode.
+  bool IsInPictureInPictureMode() const;
+
   // Calling this method explicitly would mark this controller as deprecated,
   // then calling any its method won't take any effect.
   void Shutdown();
 
   bool IsAudible() const;
   uint64_t ControlledMediaNum() const;
-  PlaybackState GetState() const;
+  MediaSessionPlaybackState GetState() const;
 
-  MediaEventSource<PlaybackState>& PlaybackStateChangedEvent() {
-    return mPlaybackStateChangedEvent;
-  }
+  void SetDeclaredPlaybackState(uint64_t aSessionContextId,
+                                MediaSessionPlaybackState aState) override;
 
   // These methods are only being used to notify the state changes of controlled
   // media in ContentParent or MediaControlUtils.
@@ -97,16 +97,35 @@ class MediaController final : public MediaSessionController {
   void Activate();
   void Deactivate();
 
-  void SetPlayState(PlaybackState aState);
+  void SetGuessedPlayState(MediaSessionPlaybackState aState);
+
+  // Whenever the declared playback state (from media session controller) or the
+  // guessed playback state changes, we should recompute actual playback state
+  // to know if we need to update the virtual control interface.
+  void UpdateActualPlaybackState();
 
   bool mAudible = false;
   bool mIsRegisteredToService = false;
   int64_t mControlledMediaNum = 0;
   int64_t mPlayingControlledMediaNum = 0;
   bool mShutdown = false;
+  bool mIsInPictureInPictureMode = false;
 
-  PlaybackState mState = PlaybackState::eStopped;
-  MediaEventProducer<PlaybackState> mPlaybackStateChangedEvent;
+  // This state can match to the `guessed playback state` in the spec [1], it
+  // indicates if we have any media element playing within the tab which this
+  // controller belongs to. But currently we only take media elements into
+  // account, which is different from the way the spec recommends. In addition,
+  // We don't support web audio and plugin and not consider audible state of
+  // media.
+  // [1] https://w3c.github.io/mediasession/#guessed-playback-state
+  MediaSessionPlaybackState mGuessedPlaybackState =
+      MediaSessionPlaybackState::None;
+
+  // This playback state would be the final playback which can be used to know
+  // if the controller is playing or not.
+  // https://w3c.github.io/mediasession/#actual-playback-state
+  MediaSessionPlaybackState mActualPlaybackState =
+      MediaSessionPlaybackState::None;
 };
 
 }  // namespace dom

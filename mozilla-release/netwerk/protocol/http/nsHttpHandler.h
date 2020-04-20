@@ -263,6 +263,8 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
     return mAltSvcCache.get();
   }
 
+  void ClearHostMapping(nsHttpConnectionInfo* aConnInfo);
+
   // cache support
   uint32_t GenerateUniqueID() { return ++mLastUniqueID; }
   uint32_t SessionStartTime() { return mSessionStartTime; }
@@ -329,6 +331,14 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
     return mConnMgr->SpeculativeConnect(clone, callbacks, caps);
   }
 
+  MOZ_MUST_USE nsresult SpeculativeConnect(nsHttpConnectionInfo* ci,
+                                           nsIInterfaceRequestor* callbacks,
+                                           uint32_t caps,
+                                           NullHttpTransaction* aTrans) {
+    RefPtr<nsHttpConnectionInfo> clone = ci->Clone();
+    return mConnMgr->SpeculativeConnect(clone, callbacks, caps, aTrans);
+  }
+
   // Alternate Services Maps are main thread only
   void UpdateAltServiceMapping(AltSvcMapping* map, nsProxyInfo* proxyInfo,
                                nsIInterfaceRequestor* callbacks, uint32_t caps,
@@ -340,9 +350,10 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   already_AddRefed<AltSvcMapping> GetAltServiceMapping(
       const nsACString& scheme, const nsACString& host, int32_t port, bool pb,
       bool isolated, const nsACString& topWindowOrigin,
-      const OriginAttributes& originAttributes) {
-    return mAltSvcCache->GetAltServiceMapping(
-        scheme, host, port, pb, isolated, topWindowOrigin, originAttributes);
+      const OriginAttributes& originAttributes, bool aHttp3Allowed) {
+    return mAltSvcCache->GetAltServiceMapping(scheme, host, port, pb, isolated,
+                                              topWindowOrigin, originAttributes,
+                                              aHttp3Allowed);
   }
 
   //

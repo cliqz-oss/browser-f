@@ -11,6 +11,7 @@
 #include "ExpandedPrincipal.h"
 #include "nsNetUtil.h"
 #include "nsContentUtils.h"
+#include "nsIOService.h"
 #include "nsIURIWithSpecialOrigin.h"
 #include "nsScriptSecurityManager.h"
 #include "nsServiceManagerUtils.h"
@@ -23,9 +24,9 @@
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/dom/nsMixedContentBlocker.h"
 #include "mozilla/Components.h"
-#include "nsIURIFixup.h"
 #include "mozilla/dom/StorageUtils.h"
-
+#include "mozilla/dom/StorageUtils.h"
+#include "nsIURL.h"
 #include "prnetdb.h"
 
 #include "json/json.h"
@@ -482,12 +483,56 @@ BasePrincipal::IsSameOrigin(nsIURI* aURI, bool aIsPrivateWin, bool* aRes) {
   nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
   if (!ssm) {
     return NS_ERROR_UNEXPECTED;
-    ;
   }
   *aRes = NS_SUCCEEDED(
       ssm->CheckSameOriginURI(prinURI, aURI, false, aIsPrivateWin));
   return NS_OK;
 }
+
+NS_IMETHODIMP
+BasePrincipal::IsL10nAllowed(nsIURI* aURI, bool* aRes) {
+  *aRes = false;
+
+  if (nsContentUtils::IsErrorPage(aURI)) {
+    *aRes = true;
+    return NS_OK;
+  }
+
+  // The system principal is always allowed.
+  if (IsSystemPrincipal()) {
+    *aRes = true;
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv = GetURI(getter_AddRefs(uri));
+  NS_ENSURE_SUCCESS(rv, NS_OK);
+
+  bool hasFlags;
+
+  // Allow access to uris that cannot be loaded by web content.
+  rv = NS_URIChainHasFlags(uri, nsIProtocolHandler::URI_DANGEROUS_TO_LOAD,
+                           &hasFlags);
+  NS_ENSURE_SUCCESS(rv, NS_OK);
+  if (hasFlags) {
+    *aRes = true;
+    return NS_OK;
+  }
+
+  // UI resources also get access.
+  rv = NS_URIChainHasFlags(uri, nsIProtocolHandler::URI_IS_UI_RESOURCE,
+                           &hasFlags);
+  NS_ENSURE_SUCCESS(rv, NS_OK);
+  if (hasFlags) {
+    *aRes = true;
+    return NS_OK;
+  }
+
+  auto policy = AddonPolicy();
+  *aRes = (policy && policy->IsPrivileged());
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 BasePrincipal::AllowsRelaxStrictFileOriginPolicy(nsIURI* aURI, bool* aRes) {
   *aRes = false;
@@ -581,19 +626,8 @@ BasePrincipal::GetExposablePrePath(nsACString& aPrepath) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsIURIFixup> fixup(components::URIFixup::Service());
-  nsCOMPtr<nsIURIFixup> urifixup = services::GetURIFixup();
-  if (NS_WARN_IF(!urifixup)) {
-    return NS_OK;
-  }
-
-  nsCOMPtr<nsIURI> fixedURI;
-  rv = fixup->CreateExposableURI(prinURI, getter_AddRefs(fixedURI));
-
-  if (NS_FAILED(rv) || NS_WARN_IF(!fixedURI)) {
-    return NS_OK;
-  }
-  return fixedURI->GetDisplayPrePath(aPrepath);
+  nsCOMPtr<nsIURI> exposableURI = net::nsIOService::CreateExposableURI(prinURI);
+  return exposableURI->GetDisplayPrePath(aPrepath);
 }
 NS_IMETHODIMP
 BasePrincipal::GetPrepath(nsACString& aPath) {
@@ -972,6 +1006,70 @@ BasePrincipal::GetLocalStorageQuotaKey(nsACString& aKey) {
   return NS_OK;
 }
 
+NS_IMETHODIMP
+BasePrincipal::GetStorageOriginKey(nsACString& aOriginKey) {
+  aOriginKey.Truncate();
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv = GetURI(getter_AddRefs(uri));
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (!uri) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsAutoCString domainOrigin;
+  rv = uri->GetAsciiHost(domainOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (domainOrigin.IsEmpty()) {
+    // For the file:/// protocol use the exact directory as domain.
+    if (uri->SchemeIs("file")) {
+      nsCOMPtr<nsIURL> url = do_QueryInterface(uri, &rv);
+      NS_ENSURE_SUCCESS(rv, rv);
+      rv = url->GetDirectory(domainOrigin);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+  }
+
+  // Append reversed domain
+  nsAutoCString reverseDomain;
+  rv = dom::StorageUtils::CreateReversedDomain(domainOrigin, reverseDomain);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  aOriginKey.Append(reverseDomain);
+
+  // Append scheme
+  nsAutoCString scheme;
+  rv = uri->GetScheme(scheme);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  aOriginKey.Append(':');
+  aOriginKey.Append(scheme);
+
+  // Append port if any
+  int32_t port = NS_GetRealPort(uri);
+  if (port != -1) {
+    aOriginKey.Append(nsPrintfCString(":%d", port));
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+BasePrincipal::GetIsScriptAllowedByPolicy(bool* aIsScriptAllowedByPolicy) {
+  *aIsScriptAllowedByPolicy = false;
+  nsCOMPtr<nsIURI> prinURI;
+  nsresult rv = GetURI(getter_AddRefs(prinURI));
+  if (NS_FAILED(rv) || !prinURI) {
+    return NS_OK;
+  }
+  nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
+  if (!ssm) {
+    return NS_ERROR_UNEXPECTED;
+  }
+  return ssm->PolicyAllowsScript(prinURI, aIsScriptAllowedByPolicy);
+}
+
 bool SiteIdentifier::Equals(const SiteIdentifier& aOther) const {
   MOZ_ASSERT(IsInitialized());
   MOZ_ASSERT(aOther.IsInitialized());
@@ -982,12 +1080,14 @@ NS_IMETHODIMP
 BasePrincipal::CreateReferrerInfo(mozilla::dom::ReferrerPolicy aReferrerPolicy,
                                   nsIReferrerInfo** _retval) {
   nsCOMPtr<nsIURI> prinURI;
+  RefPtr<dom::ReferrerInfo> info;
   nsresult rv = GetURI(getter_AddRefs(prinURI));
   if (NS_FAILED(rv) || !prinURI) {
-    return NS_ERROR_NOT_AVAILABLE;
+    info = new dom::ReferrerInfo(nullptr);
+    info.forget(_retval);
+    return NS_OK;
   }
-  RefPtr<dom::ReferrerInfo> info =
-      new dom::ReferrerInfo(prinURI, aReferrerPolicy);
+  info = new dom::ReferrerInfo(prinURI, aReferrerPolicy);
   info.forget(_retval);
   return NS_OK;
 }

@@ -17,6 +17,7 @@
 #include "mozilla/ipc/FileDescriptorSetChild.h"
 #include "mozilla/ipc/IPCStreamAlloc.h"
 #include "mozilla/ipc/ProcessChild.h"
+#include "mozilla/net/AltSvcTransactionChild.h"
 #include "mozilla/net/DNSRequestChild.h"
 #include "mozilla/ipc/PChildToParentStreamChild.h"
 #include "mozilla/ipc/PParentToChildStreamChild.h"
@@ -27,6 +28,10 @@
 #include "nsThreadManager.h"
 #include "ProcessUtils.h"
 #include "SocketProcessBridgeParent.h"
+
+#if defined(XP_LINUX) && defined(MOZ_SANDBOX)
+#  include "mozilla/Sandbox.h"
+#endif
 
 #ifdef MOZ_GECKO_PROFILER
 #  include "ChildProfilerController.h"
@@ -169,6 +174,18 @@ mozilla::ipc::IPCResult SocketProcessChild::RecvSetOffline(
 
   io->SetOffline(aOffline);
 
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult SocketProcessChild::RecvInitLinuxSandbox(
+    const Maybe<ipc::FileDescriptor>& aBrokerFd) {
+#if defined(XP_LINUX) && defined(MOZ_SANDBOX)
+  int fd = -1;
+  if (aBrokerFd.isSome()) {
+    fd = aBrokerFd.value().ClonePlatformHandle().release();
+  }
+  SetSocketProcessSandbox(fd);
+#endif  // XP_LINUX && MOZ_SANDBOX
   return IPC_OK();
 }
 
@@ -323,6 +340,16 @@ SocketProcessChild::AllocPInputChannelThrottleQueueChild(
       new InputChannelThrottleQueueChild();
   p->Init(aMeanBytesPerSecond, aMaxBytesPerSecond);
   return p.forget();
+}
+
+already_AddRefed<PAltSvcTransactionChild>
+SocketProcessChild::AllocPAltSvcTransactionChild(
+    const HttpConnectionInfoCloneArgs& aConnInfo, const uint32_t& aCaps) {
+  RefPtr<nsHttpConnectionInfo> cinfo =
+      nsHttpConnectionInfo::DeserializeHttpConnectionInfoCloneArgs(aConnInfo);
+  RefPtr<AltSvcTransactionChild> child =
+      new AltSvcTransactionChild(cinfo, aCaps);
+  return child.forget();
 }
 
 }  // namespace net

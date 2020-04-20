@@ -91,8 +91,6 @@ class Navigator final : public nsISupports, public nsWrapperCache {
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(Navigator)
 
-  static void Init();
-
   void Invalidate();
   nsPIDOMWindowInner* GetWindow() const { return mWindow; }
 
@@ -125,8 +123,6 @@ class Navigator final : public nsISupports, public nsWrapperCache {
                                    ErrorResult& aRv);
   void RegisterProtocolHandler(const nsAString& aScheme, const nsAString& aURL,
                                const nsAString& aTitle, ErrorResult& aRv);
-  void RegisterContentHandler(const nsAString& aMIMEType, const nsAString& aURL,
-                              const nsAString& aTitle, ErrorResult& aRv);
   nsMimeTypeArray* GetMimeTypes(ErrorResult& aRv);
   nsPluginArray* GetPlugins(ErrorResult& aRv);
   Permissions* GetPermissions(ErrorResult& aRv);

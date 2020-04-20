@@ -9,6 +9,7 @@
 
 #include "prsystem.h"
 
+#include "AltServiceChild.h"
 #include "nsError.h"
 #include "nsHttp.h"
 #include "nsHttpHandler.h"
@@ -53,7 +54,7 @@
 #include "nsIXULRuntime.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsRFPService.h"
-#include "rust-helper/src/helper.h"
+#include "mozilla/net/rust_helper.h"
 
 #include "mozilla/net/HttpConnectionMgrParent.h"
 #include "mozilla/net/NeckoChild.h"
@@ -63,7 +64,7 @@
 #include "mozilla/ipc/URIUtils.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
-#include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/AntiTrackingRedirectHeuristic.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/LazyIdleThread.h"
 #include "mozilla/SyncRunnable.h"
@@ -768,8 +769,7 @@ nsresult nsHttpHandler::GetStreamConverterService(
     mStreamConvSvc = new nsMainThreadPtrHolder<nsIStreamConverterService>(
         "nsHttpHandler::mStreamConvSvc", service);
   }
-  *result = mStreamConvSvc;
-  NS_ADDREF(*result);
+  *result = do_AddRef(mStreamConvSvc.get()).take();
   return NS_OK;
 }
 
@@ -796,7 +796,7 @@ nsICookieService* nsHttpHandler::GetCookieService() {
 nsresult nsHttpHandler::GetIOService(nsIIOService** result) {
   NS_ENSURE_ARG_POINTER(result);
 
-  NS_ADDREF(*result = mIOService);
+  *result = do_AddRef(mIOService.get()).take();
   return NS_OK;
 }
 
@@ -838,7 +838,7 @@ nsresult nsHttpHandler::AsyncOnChannelRedirect(
   newChan->GetURI(getter_AddRefs(newURI));
   MOZ_ASSERT(newURI);
 
-  AntiTrackingCommon::RedirectHeuristic(oldChan, oldURI, newChan, newURI);
+  AntiTrackingRedirectHeuristic(oldChan, oldURI, newChan, newURI);
 
   // TODO E10S This helper has to be initialized on the other process
   RefPtr<nsAsyncRedirectVerifyHelper> redirectCallbackHelper =
@@ -2117,12 +2117,8 @@ nsresult nsHttpHandler::SetupChannelInternal(
   nsresult rv = NewChannelId(channelId);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsContentPolicyType contentPolicyType =
-      aLoadInfo ? aLoadInfo->GetExternalContentPolicyType()
-                : nsIContentPolicy::TYPE_OTHER;
-
   rv = httpChannel->Init(uri, caps, proxyInfo, proxyResolveFlags, proxyURI,
-                         channelId, contentPolicyType);
+                         channelId, aLoadInfo->GetExternalContentPolicyType());
   if (NS_FAILED(rv)) return rv;
 
   // TRRServiceChannel doesn't need loadInfo.
@@ -2428,9 +2424,7 @@ nsresult nsHttpHandler::SpeculativeConnectInternal(
     nsIURI* aURI, nsIPrincipal* aPrincipal, nsIInterfaceRequestor* aCallbacks,
     bool anonymous) {
   if (IsNeckoChild()) {
-    ipc::URIParams params;
-    SerializeURI(aURI, params);
-    gNeckoChild->SendSpeculativeConnect(params, aPrincipal, anonymous);
+    gNeckoChild->SendSpeculativeConnect(aURI, aPrincipal, anonymous);
     return NS_OK;
   }
 
@@ -2825,6 +2819,15 @@ nsresult nsHttpHandler::CompleteUpgrade(
 nsresult nsHttpHandler::DoShiftReloadConnectionCleanup(
     nsHttpConnectionInfo* aCi) {
   return mConnMgr->DoShiftReloadConnectionCleanup(aCi);
+}
+
+void nsHttpHandler::ClearHostMapping(nsHttpConnectionInfo* aConnInfo) {
+  if (XRE_IsSocketProcess()) {
+    AltServiceChild::ClearHostMapping(aConnInfo);
+    return;
+  }
+
+  AltServiceCache()->ClearHostMapping(aConnInfo);
 }
 
 }  // namespace mozilla::net

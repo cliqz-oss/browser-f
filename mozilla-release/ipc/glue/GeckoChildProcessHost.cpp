@@ -38,6 +38,7 @@
 
 #include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "mozilla/ipc/EnvironmentMap.h"
+#include "mozilla/net/SocketProcessHost.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Maybe.h"
@@ -1524,20 +1525,22 @@ bool WindowsProcessLauncher::DoFinishLaunch() {
   }
 
 #  ifdef MOZ_SANDBOX
-  // We need to be able to duplicate handles to some types of non-sandboxed
-  // child processes.
-  switch (mProcessType) {
-    case GeckoProcessType_Default:
-      MOZ_CRASH("shouldn't be launching a parent process");
-    case GeckoProcessType_Plugin:
-    case GeckoProcessType_IPDLUnitTest:
-      // No handle duplication necessary.
-      break;
-    default:
-      if (!SandboxBroker::AddTargetPeer(mResults.mHandle)) {
-        NS_WARNING("Failed to add child process as target peer.");
-      }
-      break;
+  if (!mUseSandbox) {
+    // We need to be able to duplicate handles to some types of non-sandboxed
+    // child processes.
+    switch (mProcessType) {
+      case GeckoProcessType_Default:
+        MOZ_CRASH("shouldn't be launching a parent process");
+      case GeckoProcessType_Plugin:
+      case GeckoProcessType_IPDLUnitTest:
+        // No handle duplication necessary.
+        break;
+      default:
+        if (!SandboxBroker::AddTargetPeer(mResults.mHandle)) {
+          NS_WARNING("Failed to add child process as target peer.");
+        }
+        break;
+    }
   }
 #  endif  // MOZ_SANDBOX
 
@@ -1662,8 +1665,7 @@ bool GeckoChildProcessHost::AppendMacSandboxParams(StringVector& aArgs) {
 }
 
 // Fill |aInfo| with the flags needed to launch the utility sandbox
-/* static */
-bool GeckoChildProcessHost::StaticFillMacSandboxInfo(MacSandboxInfo& aInfo) {
+bool GeckoChildProcessHost::FillMacSandboxInfo(MacSandboxInfo& aInfo) {
   aInfo.type = GetDefaultMacSandboxType();
   aInfo.shouldLog = Preferences::GetBool("security.sandbox.logging.enabled") ||
                     PR_GetEnv("MOZ_SANDBOX_LOGGING");
@@ -1674,10 +1676,6 @@ bool GeckoChildProcessHost::StaticFillMacSandboxInfo(MacSandboxInfo& aInfo) {
   }
   aInfo.appPath.assign(appPath.get());
   return true;
-}
-
-bool GeckoChildProcessHost::FillMacSandboxInfo(MacSandboxInfo& aInfo) {
-  return GeckoChildProcessHost::StaticFillMacSandboxInfo(aInfo);
 }
 
 void GeckoChildProcessHost::DisableOSActivityMode() {
@@ -1705,6 +1703,9 @@ bool GeckoChildProcessHost::StartMacSandbox(int aArgc, char** aArgv,
       break;
     case GeckoProcessType_RDD:
       sandboxType = RDDProcessHost::GetMacSandboxType();
+      break;
+    case GeckoProcessType_Socket:
+      sandboxType = net::SocketProcessHost::GetMacSandboxType();
       break;
     case GeckoProcessType_GMPlugin:
       sandboxType = gmp::GMPProcessParent::GetMacSandboxType();

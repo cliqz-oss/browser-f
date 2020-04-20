@@ -32,6 +32,7 @@ from voluptuous import (
     Exclusive,
 )
 
+import taskgraph
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.attributes import match_run_on_projects, keymatch
 from taskgraph.util.keyed_by import evaluate_keyed_by
@@ -804,7 +805,6 @@ def set_tier(config, tests):
                 'linux64-shippable/opt',
                 'linux64-devedition/opt',
                 'linux64-asan/opt',
-                'linux64-tsan/opt',
                 'linux64-qr/opt',
                 'linux64-qr/debug',
                 'linux64-pgo-qr/opt',
@@ -953,57 +953,57 @@ def setup_browsertime(config, tests):
 
         fs = {
             'by-test-platform': {
-                'android.*': ['linux64-chromedriver', 'linux64-ffmpeg-4.1.4'],
-                'linux.*': [
-                    'linux64-ffmpeg-4.1.4'
-                ],
-                'macosx.*': [
-                    'mac64-ffmpeg-4.1.1'
-                ],
-                'windows.*aarch64.*': [
-                    'win64-ffmpeg-4.1.1'
-                ],
-                'windows.*-32.*': [
-                    'win64-ffmpeg-4.1.1'
-                ],
-                'windows.*-64.*': [
-                    'win64-ffmpeg-4.1.1'
-                ],
+                'android.*': ['linux64-ffmpeg-4.1.4'],
+                'linux.*': ['linux64-ffmpeg-4.1.4'],
+                'macosx.*': ['mac64-ffmpeg-4.1.1'],
+                'windows.*aarch64.*': ['win64-ffmpeg-4.1.1'],
+                'windows.*-32.*': ['win64-ffmpeg-4.1.1'],
+                'windows.*-64.*': ['win64-ffmpeg-4.1.1'],
             },
         }
 
         cd_fetches = {
+            'android.*': [
+                'linux64-chromedriver-80',
+                'linux64-chromedriver-81'
+            ],
             'linux.*': [
-                'linux64-chromedriver-78',
                 'linux64-chromedriver-79',
-                'linux64-chromedriver-80'
+                'linux64-chromedriver-80',
+                'linux64-chromedriver-81'
             ],
             'macosx.*': [
-                'mac64-chromedriver-78',
                 'mac64-chromedriver-79',
-                'mac64-chromedriver-80'
+                'mac64-chromedriver-80',
+                'mac64-chromedriver-81'
             ],
             'windows.*aarch64.*': [
-                'win32-chromedriver-78',
                 'win32-chromedriver-79',
-                'win32-chromedriver-80'
+                'win32-chromedriver-80',
+                'win32-chromedriver-81'
             ],
             'windows.*-32.*': [
-                'win32-chromedriver-78',
                 'win32-chromedriver-79',
-                'win32-chromedriver-80'
+                'win32-chromedriver-80',
+                'win32-chromedriver-81'
             ],
             'windows.*-64.*': [
-                'win32-chromedriver-78',
                 'win32-chromedriver-79',
-                'win32-chromedriver-80'
+                'win32-chromedriver-80',
+                'win32-chromedriver-81'
             ],
         }
 
-        if '--app=chrome' in extra_options or '--app=chromium' in extra_options:
+        if '--app=chrome' in extra_options \
+           or '--app=chromium' in extra_options \
+           or '--app=chrome-m' in extra_options:
             # Only add the chromedriver fetches when chrome/chromium is running
             for platform in cd_fetches:
                 fs['by-test-platform'][platform].extend(cd_fetches[platform])
+
+        # Disable the Raptor install step
+        if '--app=chrome-m' in extra_options:
+            extra_options.append('--noinstall')
 
         test.setdefault('fetches', {}).setdefault('fetch', []).extend(
             evaluate_keyed_by(fs, 'fetches.fetch', test))
@@ -1062,6 +1062,7 @@ def get_mobile_project(test):
         'fennec',
         'geckoview',
         'refbrow',
+        'chrome-m'
     )
 
     for name in mobile_projects:
@@ -1289,8 +1290,8 @@ CHUNK_SUITES_BLACKLIST = (
     'test-verify-gpu',
     'test-verify-wpt',
     'web-platform-tests',
-    'web-platform-tests-crashtests',
-    'web-platform-tests-reftests',
+    'web-platform-tests-crashtest',
+    'web-platform-tests-reftest',
     'web-platform-tests-wdspec',
 )
 """These suites will be chunked at test runtime rather than here in the taskgraph."""
@@ -1322,7 +1323,7 @@ def split_chunks(config, tests):
                 test['chunks'] = maximum_number_verify_chunks
 
         chunked_manifests = None
-        if test['suite'] not in CHUNK_SUITES_BLACKLIST:
+        if not taskgraph.fast and test['suite'] not in CHUNK_SUITES_BLACKLIST:
             suite_definition = TEST_SUITES[test['suite']]
             mozinfo = guess_mozinfo_from_task(test)
             chunked_manifests = get_chunked_manifests(
@@ -1409,11 +1410,7 @@ def set_retry_exit_status(config, tests):
 @transforms.add
 def set_profile(config, tests):
     """Set profiling mode for tests."""
-    profile = None
-    if config.params['try_mode'] == 'try_option_syntax':
-        profile = config.params['try_options']['profile']
-    else:
-        profile = config.params['try_task_config'].get('gecko-profile', False)
+    profile = config.params['try_task_config'].get('gecko-profile', False)
 
     for test in tests:
         if profile and test['suite'] in ['talos', 'raptor']:
@@ -1435,8 +1432,9 @@ def set_tag(config, tests):
 
 @transforms.add
 def set_test_type(config, tests):
+    types = ['mochitest', 'reftest', 'talos', 'raptor', 'geckoview-junit', 'gtest']
     for test in tests:
-        for test_type in ['mochitest', 'reftest', 'talos', 'raptor']:
+        for test_type in types:
             if test_type in test['suite'] and 'web-platform' not in test['suite']:
                 test.setdefault('tags', {})['test-type'] = test_type
         yield test
@@ -1576,14 +1574,18 @@ def make_job_description(config, tests):
             # so do not include the platform or any other components here
             schedules = [category]
         else:
-            schedules = [category, platform_family(test['build-platform'])]
+            schedules = [attributes['unittest_category'], platform_family(test['build-platform'])]
+            component = test.get('schedules-component')
+            if component:
+                schedules.append(component)
 
         if test.get('when'):
             # This may still be used by comm-central.
             jobdesc['when'] = test['when']
         elif 'optimization' in test:
             jobdesc['optimization'] = test['optimization']
-        elif config.params.is_try():
+        # Pushes generated by `mach try auto` should use the non-try optimizations.
+        elif config.params.is_try() and config.params['try_mode'] != 'try_auto':
             jobdesc['optimization'] = {'test-try': schedules}
         elif category in INCLUSIVE_COMPONENTS:
             jobdesc['optimization'] = {'test-inclusive': schedules}

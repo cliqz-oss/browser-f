@@ -182,7 +182,6 @@ static const char kProfileDoChange[] = "profile-do-change";
 uint32_t nsIOService::gDefaultSegmentSize = 4096;
 uint32_t nsIOService::gDefaultSegmentCount = 24;
 
-bool nsIOService::sIsDataURIUniqueOpaqueOrigin = false;
 bool nsIOService::sBlockToplevelDataUriNavigations = false;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -282,8 +281,6 @@ nsresult nsIOService::Init() {
   } else
     NS_WARNING("failed to get observer service");
 
-  Preferences::AddBoolVarCache(&sIsDataURIUniqueOpaqueOrigin,
-                               "security.data_uri.unique_opaque_origin", false);
   Preferences::AddBoolVarCache(
       &sBlockToplevelDataUriNavigations,
       "security.data_uri.block_toplevel_data_uri_navigations", false);
@@ -937,6 +934,30 @@ nsIOService::NewFileURI(nsIFile* file, nsIURI** result) {
   if (NS_FAILED(rv)) return rv;
 
   return fileHandler->NewFileURI(file, result);
+}
+
+// static
+already_AddRefed<nsIURI> nsIOService::CreateExposableURI(nsIURI* aURI) {
+  MOZ_ASSERT(aURI, "Must have a URI");
+  nsCOMPtr<nsIURI> uri = aURI;
+
+  nsAutoCString userPass;
+  uri->GetUserPass(userPass);
+  if (!userPass.IsEmpty()) {
+    DebugOnly<nsresult> rv =
+        NS_MutateURI(uri).SetUserPass(EmptyCString()).Finalize(uri);
+    MOZ_ASSERT(NS_SUCCEEDED(rv) && uri, "Mutating URI should never fail");
+  }
+  return uri.forget();
+}
+
+NS_IMETHODIMP
+nsIOService::CreateExposableURI(nsIURI* aURI, nsIURI** _result) {
+  NS_ENSURE_ARG_POINTER(aURI);
+  NS_ENSURE_ARG_POINTER(_result);
+  nsCOMPtr<nsIURI> exposableURI = CreateExposableURI(aURI);
+  exposableURI.forget(_result);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1856,9 +1877,7 @@ nsresult nsIOService::SpeculativeConnectInternal(
   }
 
   if (IsNeckoChild()) {
-    ipc::URIParams params;
-    SerializeURI(aURI, params);
-    gNeckoChild->SendSpeculativeConnect(params, aPrincipal, aAnonymous);
+    gNeckoChild->SendSpeculativeConnect(aURI, aPrincipal, aAnonymous);
     return NS_OK;
   }
 
@@ -1923,11 +1942,6 @@ NS_IMETHODIMP
 nsIOService::SpeculativeAnonymousConnect(nsIURI* aURI, nsIPrincipal* aPrincipal,
                                          nsIInterfaceRequestor* aCallbacks) {
   return SpeculativeConnectInternal(aURI, aPrincipal, aCallbacks, true);
-}
-
-/*static*/
-bool nsIOService::IsDataURIUniqueOpaqueOrigin() {
-  return sIsDataURIUniqueOpaqueOrigin;
 }
 
 /*static*/

@@ -12,7 +12,6 @@
 #include "jsapi.h"
 #include "js/Array.h"  // JS::GetArrayLength, JS::IsArrayObject, JS::NewArrayObject
 #include "mozilla/Maybe.h"
-#include "mozilla/Pair.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticMutex.h"
@@ -32,9 +31,7 @@
 #include "TelemetryEventData.h"
 #include "TelemetryScalar.h"
 
-using mozilla::ArrayLength;
 using mozilla::Maybe;
-using mozilla::Nothing;
 using mozilla::StaticAutoPtr;
 using mozilla::StaticMutex;
 using mozilla::StaticMutexAutoLock;
@@ -44,11 +41,9 @@ using mozilla::Telemetry::EventExtraEntry;
 using mozilla::Telemetry::LABELS_TELEMETRY_EVENT_RECORDING_ERROR;
 using mozilla::Telemetry::LABELS_TELEMETRY_EVENT_REGISTRATION_ERROR;
 using mozilla::Telemetry::ProcessID;
-using mozilla::Telemetry::Common::AutoHashtable;
 using mozilla::Telemetry::Common::CanRecordDataset;
 using mozilla::Telemetry::Common::CanRecordInProcess;
 using mozilla::Telemetry::Common::CanRecordProduct;
-using mozilla::Telemetry::Common::GetCurrentProduct;
 using mozilla::Telemetry::Common::GetNameForProcessID;
 using mozilla::Telemetry::Common::IsExpiredVersion;
 using mozilla::Telemetry::Common::IsInDataset;
@@ -1242,8 +1237,8 @@ nsresult TelemetryEvent::CreateSnapshots(uint32_t aDataset, bool aClear,
   // from JS recording Telemetry.
 
   // (1) Extract the events from storage with a lock held.
-  nsTArray<mozilla::Pair<const char*, EventRecordArray>> processEvents;
-  nsTArray<mozilla::Pair<uint32_t, EventRecordArray>> leftovers;
+  nsTArray<std::pair<const char*, EventRecordArray>> processEvents;
+  nsTArray<std::pair<uint32_t, EventRecordArray>> leftovers;
   {
     StaticMutexAutoLock locker(gTelemetryEventsMutex);
 
@@ -1279,10 +1274,10 @@ nsresult TelemetryEvent::CreateSnapshots(uint32_t aDataset, bool aClear,
         if (events.Length()) {
           const char* processName = GetNameForProcessID(ProcessID(iter.Key()));
           processEvents.AppendElement(
-              mozilla::MakePair(processName, std::move(events)));
+              std::make_pair(processName, std::move(events)));
           if (leftoverEvents.Length()) {
             leftovers.AppendElement(
-                mozilla::MakePair(iter.Key(), std::move(leftoverEvents)));
+                std::make_pair(iter.Key(), std::move(leftoverEvents)));
           }
         }
       }
@@ -1293,8 +1288,8 @@ nsresult TelemetryEvent::CreateSnapshots(uint32_t aDataset, bool aClear,
     if (aClear) {
       gEventRecords.Clear();
       for (auto& pair : leftovers) {
-        gEventRecords.Put(pair.first(),
-                          new EventRecordArray(std::move(pair.second())));
+        gEventRecords.Put(pair.first,
+                          new EventRecordArray(std::move(pair.second)));
       }
       leftovers.Clear();
     }
@@ -1309,12 +1304,12 @@ nsresult TelemetryEvent::CreateSnapshots(uint32_t aDataset, bool aClear,
   const uint32_t processLength = processEvents.Length();
   for (uint32_t i = 0; i < processLength; ++i) {
     JS::RootedObject eventsArray(cx);
-    if (NS_FAILED(SerializeEventsArray(processEvents[i].second(), cx,
+    if (NS_FAILED(SerializeEventsArray(processEvents[i].second, cx,
                                        &eventsArray, aDataset))) {
       return NS_ERROR_FAILURE;
     }
 
-    if (!JS_DefineProperty(cx, rootObj, processEvents[i].first(), eventsArray,
+    if (!JS_DefineProperty(cx, rootObj, processEvents[i].first, eventsArray,
                            JSPROP_ENUMERATE)) {
       return NS_ERROR_FAILURE;
     }

@@ -10,6 +10,9 @@
 #include "mozilla/leb128iterator.h"
 #include "mozilla/ModuloBuffer.h"
 #include "mozilla/PowerOfTwo.h"
+#include "mozilla/ProfileBufferChunk.h"
+#include "mozilla/ProfileBufferChunkManagerSingle.h"
+#include "mozilla/ProfileBufferChunkManagerWithLocalLimit.h"
 #include "mozilla/Vector.h"
 
 #ifdef MOZ_BASE_PROFILER
@@ -32,6 +35,7 @@
 #include <atomic>
 #include <thread>
 #include <type_traits>
+#include <utility>
 
 using namespace mozilla;
 
@@ -363,6 +367,469 @@ static_assert(
 static_assert(
     !TestConstexprULEB128Reader<0xFFFFFFFFFFFFFFFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu,
                                 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu>());
+
+static void TestChunk() {
+  printf("TestChunk...\n");
+
+  static_assert(!std::is_default_constructible_v<ProfileBufferChunk>,
+                "ProfileBufferChunk should not be default-constructible");
+  static_assert(
+      !std::is_constructible_v<ProfileBufferChunk, ProfileBufferChunk::Length>,
+      "ProfileBufferChunk should not be constructible from Length");
+
+  static_assert(
+      sizeof(ProfileBufferChunk::Header) ==
+          sizeof(ProfileBufferChunk::Header::mOffsetFirstBlock) +
+              sizeof(ProfileBufferChunk::Header::mOffsetPastLastBlock) +
+              sizeof(ProfileBufferChunk::Header::mDoneTimeStamp) +
+              sizeof(ProfileBufferChunk::Header::mBufferBytes) +
+              sizeof(ProfileBufferChunk::Header::mBlockCount) +
+              sizeof(ProfileBufferChunk::Header::mRangeStart) +
+              sizeof(ProfileBufferChunk::Header::mProcessId) +
+              sizeof(ProfileBufferChunk::Header::mPADDING),
+      "ProfileBufferChunk::Header may have unwanted padding, please review");
+  // Note: The above static_assert is an attempt at keeping
+  // ProfileBufferChunk::Header tightly packed, but some changes could make this
+  // impossible to achieve (most probably due to alignment) -- Just do your
+  // best!
+
+  constexpr ProfileBufferChunk::Length TestLen = 1000;
+
+  // Basic allocations of different sizes.
+  for (ProfileBufferChunk::Length len = 0; len <= TestLen; ++len) {
+    auto chunk = ProfileBufferChunk::Create(len);
+    static_assert(
+        std::is_same_v<decltype(chunk), UniquePtr<ProfileBufferChunk>>,
+        "ProfileBufferChunk::Create() should return a "
+        "UniquePtr<ProfileBufferChunk>");
+    MOZ_RELEASE_ASSERT(!!chunk, "OOM!?");
+    MOZ_RELEASE_ASSERT(chunk->BufferBytes() >= len);
+    MOZ_RELEASE_ASSERT(chunk->ChunkBytes() >=
+                       len + ProfileBufferChunk::SizeofChunkMetadata());
+    MOZ_RELEASE_ASSERT(chunk->RemainingBytes() == chunk->BufferBytes());
+    MOZ_RELEASE_ASSERT(chunk->OffsetFirstBlock() == 0);
+    MOZ_RELEASE_ASSERT(chunk->OffsetPastLastBlock() == 0);
+    MOZ_RELEASE_ASSERT(chunk->BlockCount() == 0);
+    MOZ_RELEASE_ASSERT(chunk->ProcessId() == 0);
+    MOZ_RELEASE_ASSERT(chunk->RangeStart() == 0);
+    MOZ_RELEASE_ASSERT(chunk->BufferSpan().LengthBytes() ==
+                       chunk->BufferBytes());
+    MOZ_RELEASE_ASSERT(!chunk->GetNext());
+    MOZ_RELEASE_ASSERT(!chunk->ReleaseNext());
+    MOZ_RELEASE_ASSERT(chunk->Last() == chunk.get());
+  }
+
+  // Allocate the main test Chunk.
+  auto chunkA = ProfileBufferChunk::Create(TestLen);
+  MOZ_RELEASE_ASSERT(!!chunkA, "OOM!?");
+  MOZ_RELEASE_ASSERT(chunkA->BufferBytes() >= TestLen);
+  MOZ_RELEASE_ASSERT(chunkA->ChunkBytes() >=
+                     TestLen + ProfileBufferChunk::SizeofChunkMetadata());
+  MOZ_RELEASE_ASSERT(!chunkA->GetNext());
+  MOZ_RELEASE_ASSERT(!chunkA->ReleaseNext());
+
+  constexpr ProfileBufferIndex chunkARangeStart = 12345;
+  chunkA->SetRangeStart(chunkARangeStart);
+  MOZ_RELEASE_ASSERT(chunkA->RangeStart() == chunkARangeStart);
+
+  // Get a read-only span over its buffer.
+  auto bufferA = chunkA->BufferSpan();
+  static_assert(
+      std::is_same_v<decltype(bufferA), Span<const ProfileBufferChunk::Byte>>,
+      "BufferSpan() should return a Span<const Byte>");
+  MOZ_RELEASE_ASSERT(bufferA.LengthBytes() == chunkA->BufferBytes());
+
+  // Add the initial tail block.
+  constexpr ProfileBufferChunk::Length initTailLen = 10;
+  auto initTail = chunkA->ReserveInitialBlockAsTail(initTailLen);
+  static_assert(
+      std::is_same_v<decltype(initTail), Span<ProfileBufferChunk::Byte>>,
+      "ReserveInitialBlockAsTail() should return a Span<Byte>");
+  MOZ_RELEASE_ASSERT(initTail.LengthBytes() == initTailLen);
+  MOZ_RELEASE_ASSERT(initTail.Elements() == bufferA.Elements());
+  MOZ_RELEASE_ASSERT(chunkA->OffsetFirstBlock() == initTailLen);
+  MOZ_RELEASE_ASSERT(chunkA->OffsetPastLastBlock() == initTailLen);
+
+  // Add the first complete block.
+  constexpr ProfileBufferChunk::Length block1Len = 20;
+  auto block1 = chunkA->ReserveBlock(block1Len);
+  static_assert(
+      std::is_same_v<decltype(block1), ProfileBufferChunk::ReserveReturn>,
+      "ReserveBlock() should return a ReserveReturn");
+  MOZ_RELEASE_ASSERT(block1.mBlockRangeIndex.ConvertToProfileBufferIndex() ==
+                     chunkARangeStart + initTailLen);
+  MOZ_RELEASE_ASSERT(block1.mSpan.LengthBytes() == block1Len);
+  MOZ_RELEASE_ASSERT(block1.mSpan.Elements() ==
+                     bufferA.Elements() + initTailLen);
+  MOZ_RELEASE_ASSERT(chunkA->OffsetFirstBlock() == initTailLen);
+  MOZ_RELEASE_ASSERT(chunkA->OffsetPastLastBlock() == initTailLen + block1Len);
+  MOZ_RELEASE_ASSERT(chunkA->RemainingBytes() != 0);
+
+  // Add another block to over-fill the ProfileBufferChunk.
+  const ProfileBufferChunk::Length remaining =
+      chunkA->BufferBytes() - (initTailLen + block1Len);
+  constexpr ProfileBufferChunk::Length overfill = 30;
+  const ProfileBufferChunk::Length block2Len = remaining + overfill;
+  ProfileBufferChunk::ReserveReturn block2 = chunkA->ReserveBlock(block2Len);
+  MOZ_RELEASE_ASSERT(block2.mBlockRangeIndex.ConvertToProfileBufferIndex() ==
+                     chunkARangeStart + initTailLen + block1Len);
+  MOZ_RELEASE_ASSERT(block2.mSpan.LengthBytes() == remaining);
+  MOZ_RELEASE_ASSERT(block2.mSpan.Elements() ==
+                     bufferA.Elements() + initTailLen + block1Len);
+  MOZ_RELEASE_ASSERT(chunkA->OffsetFirstBlock() == initTailLen);
+  MOZ_RELEASE_ASSERT(chunkA->OffsetPastLastBlock() == chunkA->BufferBytes());
+  MOZ_RELEASE_ASSERT(chunkA->RemainingBytes() == 0);
+
+  // Block must be marked "done" before it can be recycled.
+  chunkA->MarkDone();
+
+  // It must be marked "recycled" before data can be added to it again.
+  chunkA->MarkRecycled();
+
+  // Add an empty initial tail block.
+  Span<ProfileBufferChunk::Byte> initTail2 =
+      chunkA->ReserveInitialBlockAsTail(0);
+  MOZ_RELEASE_ASSERT(initTail2.LengthBytes() == 0);
+  MOZ_RELEASE_ASSERT(initTail2.Elements() == bufferA.Elements());
+  MOZ_RELEASE_ASSERT(chunkA->OffsetFirstBlock() == 0);
+  MOZ_RELEASE_ASSERT(chunkA->OffsetPastLastBlock() == 0);
+
+  // Block must be marked "done" before it can be destroyed.
+  chunkA->MarkDone();
+
+  chunkA->SetProcessId(123);
+  MOZ_RELEASE_ASSERT(chunkA->ProcessId() == 123);
+
+  printf("TestChunk done\n");
+}
+
+static void TestChunkManagerSingle() {
+  printf("TestChunkManagerSingle...\n");
+
+  // Construct a ProfileBufferChunkManagerSingle for one chunk of size >=1000.
+  constexpr ProfileBufferChunk::Length ChunkMinBufferBytes = 1000;
+  ProfileBufferChunkManagerSingle cms{ChunkMinBufferBytes};
+
+  // Reference to base class, to exercize virtual methods.
+  ProfileBufferChunkManager& cm = cms;
+
+#ifdef DEBUG
+  const char* chunkManagerRegisterer = "TestChunkManagerSingle";
+  cm.RegisteredWith(chunkManagerRegisterer);
+#endif  // DEBUG
+
+  const auto maxTotalSize = cm.MaxTotalSize();
+  MOZ_RELEASE_ASSERT(maxTotalSize >= ChunkMinBufferBytes);
+
+  cm.SetChunkDestroyedCallback([](const ProfileBufferChunk&) {
+    MOZ_RELEASE_ASSERT(
+        false,
+        "ProfileBufferChunkManagerSingle should never destroy its one chunk");
+  });
+
+  UniquePtr<ProfileBufferChunk> extantReleasedChunks =
+      cm.GetExtantReleasedChunks();
+  MOZ_RELEASE_ASSERT(!extantReleasedChunks, "Unexpected released chunk(s)");
+
+  // First request.
+  UniquePtr<ProfileBufferChunk> chunk = cm.GetChunk();
+  MOZ_RELEASE_ASSERT(!!chunk, "First chunk request should always work");
+  MOZ_RELEASE_ASSERT(chunk->BufferBytes() >= ChunkMinBufferBytes,
+                     "Unexpected chunk size");
+  MOZ_RELEASE_ASSERT(!chunk->GetNext(), "There should only be one chunk");
+
+  // Keep address, for later checks.
+  const uintptr_t chunkAddress = reinterpret_cast<uintptr_t>(chunk.get());
+
+  extantReleasedChunks = cm.GetExtantReleasedChunks();
+  MOZ_RELEASE_ASSERT(!extantReleasedChunks, "Unexpected released chunk(s)");
+
+  // Second request.
+  MOZ_RELEASE_ASSERT(!cm.GetChunk(), "Second chunk request should always fail");
+
+  extantReleasedChunks = cm.GetExtantReleasedChunks();
+  MOZ_RELEASE_ASSERT(!extantReleasedChunks, "Unexpected released chunk(s)");
+
+  // Add some data to the chunk (to verify recycling later on).
+  MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetFirstBlock == 0);
+  MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetPastLastBlock == 0);
+  MOZ_RELEASE_ASSERT(chunk->RangeStart() == 0);
+  chunk->SetRangeStart(100);
+  MOZ_RELEASE_ASSERT(chunk->RangeStart() == 100);
+  Unused << chunk->ReserveInitialBlockAsTail(1);
+  Unused << chunk->ReserveBlock(2);
+  MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetFirstBlock == 1);
+  MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetPastLastBlock == 1 + 2);
+
+  // Release the first chunk.
+  chunk->MarkDone();
+  cm.ReleaseChunks(std::move(chunk));
+  MOZ_RELEASE_ASSERT(!chunk, "chunk UniquePtr should have been moved-from");
+
+  // Request after release.
+  MOZ_RELEASE_ASSERT(!cm.GetChunk(),
+                     "Chunk request after release should also fail");
+
+  // Check released chunk.
+  extantReleasedChunks = cm.GetExtantReleasedChunks();
+  MOZ_RELEASE_ASSERT(!!extantReleasedChunks,
+                     "Could not retrieve released chunk");
+  MOZ_RELEASE_ASSERT(!extantReleasedChunks->GetNext(),
+                     "There should only be one released chunk");
+  MOZ_RELEASE_ASSERT(
+      reinterpret_cast<uintptr_t>(extantReleasedChunks.get()) == chunkAddress,
+      "Released chunk should be first requested one");
+
+  MOZ_RELEASE_ASSERT(!cm.GetExtantReleasedChunks(),
+                     "Unexpected extra released chunk(s)");
+
+  // Another request after release.
+  MOZ_RELEASE_ASSERT(!cm.GetChunk(),
+                     "Chunk request after release should also fail");
+
+  MOZ_RELEASE_ASSERT(
+      cm.MaxTotalSize() == maxTotalSize,
+      "MaxTotalSize() should not change after requests&releases");
+
+  // Reset the chunk manager. (Single-only non-virtual function.)
+  cms.Reset(std::move(extantReleasedChunks));
+  MOZ_RELEASE_ASSERT(!extantReleasedChunks,
+                     "Released chunk UniquePtr should have been moved-from");
+
+  MOZ_RELEASE_ASSERT(
+      cm.MaxTotalSize() == maxTotalSize,
+      "MaxTotalSize() should not change when resetting with the same chunk");
+
+  // 2nd round, first request. Theoretically async, but this implementation just
+  // immediately runs the callback.
+  bool ran = false;
+  cm.RequestChunk([&](UniquePtr<ProfileBufferChunk> aChunk) {
+    ran = true;
+    MOZ_RELEASE_ASSERT(!!aChunk);
+    chunk = std::move(aChunk);
+  });
+  MOZ_RELEASE_ASSERT(ran, "RequestChunk callback not called immediately");
+  ran = false;
+  cm.FulfillChunkRequests();
+  MOZ_RELEASE_ASSERT(!ran, "FulfillChunkRequests should not have any effects");
+  MOZ_RELEASE_ASSERT(!!chunk, "First chunk request should always work");
+  MOZ_RELEASE_ASSERT(chunk->BufferBytes() >= ChunkMinBufferBytes,
+                     "Unexpected chunk size");
+  MOZ_RELEASE_ASSERT(!chunk->GetNext(), "There should only be one chunk");
+  MOZ_RELEASE_ASSERT(reinterpret_cast<uintptr_t>(chunk.get()) == chunkAddress,
+                     "Requested chunk should be first requested one");
+  // Verify that chunk is empty and usable.
+  MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetFirstBlock == 0);
+  MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetPastLastBlock == 0);
+  MOZ_RELEASE_ASSERT(chunk->RangeStart() == 0);
+  chunk->SetRangeStart(200);
+  MOZ_RELEASE_ASSERT(chunk->RangeStart() == 200);
+  Unused << chunk->ReserveInitialBlockAsTail(3);
+  Unused << chunk->ReserveBlock(4);
+  MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetFirstBlock == 3);
+  MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetPastLastBlock == 3 + 4);
+
+  // Second request.
+  ran = false;
+  cm.RequestChunk([&](UniquePtr<ProfileBufferChunk> aChunk) {
+    ran = true;
+    MOZ_RELEASE_ASSERT(!aChunk, "Second chunk request should always fail");
+  });
+  MOZ_RELEASE_ASSERT(ran, "RequestChunk callback not called");
+
+  // This one does nothing.
+  cm.ForgetUnreleasedChunks();
+
+  // Don't forget to mark chunk "Done" before letting it die.
+  chunk->MarkDone();
+  chunk = nullptr;
+
+  // Create a tiny chunk and reset the chunk manager with it.
+  chunk = ProfileBufferChunk::Create(1);
+  MOZ_RELEASE_ASSERT(!!chunk);
+  auto tinyChunkSize = chunk->BufferBytes();
+  MOZ_RELEASE_ASSERT(tinyChunkSize >= 1);
+  MOZ_RELEASE_ASSERT(tinyChunkSize < ChunkMinBufferBytes);
+  MOZ_RELEASE_ASSERT(chunk->RangeStart() == 0);
+  chunk->SetRangeStart(300);
+  MOZ_RELEASE_ASSERT(chunk->RangeStart() == 300);
+  cms.Reset(std::move(chunk));
+  MOZ_RELEASE_ASSERT(!chunk, "chunk UniquePtr should have been moved-from");
+  MOZ_RELEASE_ASSERT(cm.MaxTotalSize() == tinyChunkSize,
+                     "MaxTotalSize() should match the new chunk size");
+  chunk = cm.GetChunk();
+  MOZ_RELEASE_ASSERT(chunk->RangeStart() == 0, "Got non-recycled chunk");
+
+  // Enough testing! Clean-up.
+  Unused << chunk->ReserveInitialBlockAsTail(0);
+  chunk->MarkDone();
+  cm.ForgetUnreleasedChunks();
+
+#ifdef DEBUG
+  cm.DeregisteredFrom(chunkManagerRegisterer);
+#endif  // DEBUG
+
+  printf("TestChunkManagerSingle done\n");
+}
+
+static void TestChunkManagerWithLocalLimit() {
+  printf("TestChunkManagerWithLocalLimit...\n");
+
+  // Construct a ProfileBufferChunkManagerWithLocalLimit with chunk of minimum
+  // size >=100, up to 1000 bytes.
+  constexpr ProfileBufferChunk::Length MaxTotalBytes = 1000;
+  constexpr ProfileBufferChunk::Length ChunkMinBufferBytes = 100;
+  ProfileBufferChunkManagerWithLocalLimit cmll{MaxTotalBytes,
+                                               ChunkMinBufferBytes};
+
+  // Reference to base class, to exercize virtual methods.
+  ProfileBufferChunkManager& cm = cmll;
+
+#ifdef DEBUG
+  const char* chunkManagerRegisterer = "TestChunkManagerWithLocalLimit";
+  cm.RegisteredWith(chunkManagerRegisterer);
+#endif  // DEBUG
+
+  MOZ_RELEASE_ASSERT(cm.MaxTotalSize() == MaxTotalBytes,
+                     "Max total size should be exactly as given");
+
+  unsigned destroyedChunks = 0;
+  unsigned destroyedBytes = 0;
+  cm.SetChunkDestroyedCallback([&](const ProfileBufferChunk& aChunks) {
+    for (const ProfileBufferChunk* chunk = &aChunks; chunk;
+         chunk = chunk->GetNext()) {
+      destroyedChunks += 1;
+      destroyedBytes += chunk->BufferBytes();
+    }
+  });
+
+  UniquePtr<ProfileBufferChunk> extantReleasedChunks =
+      cm.GetExtantReleasedChunks();
+  MOZ_RELEASE_ASSERT(!extantReleasedChunks, "Unexpected released chunk(s)");
+
+  // First request.
+  UniquePtr<ProfileBufferChunk> chunk = cm.GetChunk();
+  MOZ_RELEASE_ASSERT(!!chunk,
+                     "First chunk immediate request should always work");
+  const auto chunkActualBufferBytes = chunk->BufferBytes();
+  MOZ_RELEASE_ASSERT(chunkActualBufferBytes >= ChunkMinBufferBytes,
+                     "Unexpected chunk size");
+  MOZ_RELEASE_ASSERT(!chunk->GetNext(), "There should only be one chunk");
+
+  // Keep address, for later checks.
+  const uintptr_t chunk1Address = reinterpret_cast<uintptr_t>(chunk.get());
+
+  extantReleasedChunks = cm.GetExtantReleasedChunks();
+  MOZ_RELEASE_ASSERT(!extantReleasedChunks, "Unexpected released chunk(s)");
+
+  // For this test, we need to be able to get at least 2 chunks without hitting
+  // the limit. (If this failed, it wouldn't necessary be a problem with
+  // ProfileBufferChunkManagerWithLocalLimit, fiddle with constants at the top
+  // of this test.)
+  MOZ_RELEASE_ASSERT(chunkActualBufferBytes < 2 * MaxTotalBytes);
+
+  unsigned chunk1ReuseCount = 0;
+
+  // We will do enough loops to go through the maximum size a number of times.
+  const unsigned Rollovers = 3;
+  const unsigned Loops = Rollovers * MaxTotalBytes / chunkActualBufferBytes;
+  for (unsigned i = 0; i < Loops; ++i) {
+    // Add some data to the chunk.
+    MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetFirstBlock == 0);
+    MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetPastLastBlock == 0);
+    MOZ_RELEASE_ASSERT(chunk->RangeStart() == 0);
+    const ProfileBufferIndex index = 1 + i * chunkActualBufferBytes;
+    chunk->SetRangeStart(index);
+    MOZ_RELEASE_ASSERT(chunk->RangeStart() == index);
+    Unused << chunk->ReserveInitialBlockAsTail(1);
+    Unused << chunk->ReserveBlock(2);
+    MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetFirstBlock == 1);
+    MOZ_RELEASE_ASSERT(chunk->ChunkHeader().mOffsetPastLastBlock == 1 + 2);
+
+    // Request a new chunk.
+    bool ran = false;
+    UniquePtr<ProfileBufferChunk> newChunk;
+    cm.RequestChunk([&](UniquePtr<ProfileBufferChunk> aChunk) {
+      ran = true;
+      newChunk = std::move(aChunk);
+    });
+    MOZ_RELEASE_ASSERT(
+        !ran, "RequestChunk should not immediately fulfill the request");
+    cm.FulfillChunkRequests();
+    MOZ_RELEASE_ASSERT(ran, "FulfillChunkRequests should invoke the callback");
+    MOZ_RELEASE_ASSERT(!!newChunk, "Chunk request should always work");
+    MOZ_RELEASE_ASSERT(newChunk->BufferBytes() == chunkActualBufferBytes,
+                       "Unexpected chunk size");
+    MOZ_RELEASE_ASSERT(!newChunk->GetNext(), "There should only be one chunk");
+
+    // Mark previous chunk done and release it.
+    chunk->MarkDone();
+    cm.ReleaseChunks(std::move(chunk));
+
+    // And cycle to the new chunk.
+    chunk = std::move(newChunk);
+
+    if (reinterpret_cast<uintptr_t>(chunk.get()) == chunk1Address) {
+      ++chunk1ReuseCount;
+    }
+  }
+
+  // Expect all rollovers except 1 to destroy chunks.
+  MOZ_RELEASE_ASSERT(destroyedChunks >= (Rollovers - 1) * MaxTotalBytes /
+                                            chunkActualBufferBytes,
+                     "Not enough destroyed chunks");
+  MOZ_RELEASE_ASSERT(destroyedBytes == destroyedChunks * chunkActualBufferBytes,
+                     "Mismatched destroyed chunks and bytes");
+  MOZ_RELEASE_ASSERT(chunk1ReuseCount >= (Rollovers - 1),
+                     "Not enough reuse of the first chunks");
+
+  // Check that chunk manager is reentrant from request callback.
+  bool ran = false;
+  bool ranInner = false;
+  UniquePtr<ProfileBufferChunk> newChunk;
+  cm.RequestChunk([&](UniquePtr<ProfileBufferChunk> aChunk) {
+    ran = true;
+    MOZ_RELEASE_ASSERT(!!aChunk, "Chunk request should always work");
+    Unused << aChunk->ReserveInitialBlockAsTail(0);
+    aChunk->MarkDone();
+    UniquePtr<ProfileBufferChunk> anotherChunk = cm.GetChunk();
+    MOZ_RELEASE_ASSERT(!!anotherChunk);
+    Unused << anotherChunk->ReserveInitialBlockAsTail(0);
+    anotherChunk->MarkDone();
+    cm.RequestChunk([&](UniquePtr<ProfileBufferChunk> aChunk) {
+      ranInner = true;
+      MOZ_RELEASE_ASSERT(!!aChunk, "Chunk request should always work");
+      Unused << aChunk->ReserveInitialBlockAsTail(0);
+      aChunk->MarkDone();
+    });
+    MOZ_RELEASE_ASSERT(
+        !ranInner, "RequestChunk should not immediately fulfill the request");
+  });
+  MOZ_RELEASE_ASSERT(!ran,
+                     "RequestChunk should not immediately fulfill the request");
+  MOZ_RELEASE_ASSERT(
+      !ranInner,
+      "RequestChunk should not immediately fulfill the inner request");
+  cm.FulfillChunkRequests();
+  MOZ_RELEASE_ASSERT(ran, "FulfillChunkRequests should invoke the callback");
+  MOZ_RELEASE_ASSERT(!ranInner,
+                     "FulfillChunkRequests should not immediately fulfill "
+                     "the inner request");
+  cm.FulfillChunkRequests();
+  MOZ_RELEASE_ASSERT(
+      ran, "2nd FulfillChunkRequests should invoke the inner request callback");
+
+  // Enough testing! Clean-up.
+  Unused << chunk->ReserveInitialBlockAsTail(0);
+  chunk->MarkDone();
+  cm.ForgetUnreleasedChunks();
+
+#ifdef DEBUG
+  cm.DeregisteredFrom(chunkManagerRegisterer);
+#endif  // DEBUG
+
+  printf("TestChunkManagerWithLocalLimit done\n");
+}
 
 static void TestModuloBuffer(ModuloBuffer<>& mb, uint32_t MBSize) {
   using MB = ModuloBuffer<>;
@@ -734,7 +1201,7 @@ void TestBlocksRingBufferAPI() {
     MOZ_RELEASE_ASSERT(!(bi0 > bi0));
 
     // Default ProfileBufferBlockIndex can be used, but returns no valid entry.
-    rb.ReadAt(bi0, [](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeReader) {
+    rb.ReadAt(bi0, [](Maybe<ProfileBufferEntryReader>&& aMaybeReader) {
       MOZ_RELEASE_ASSERT(aMaybeReader.isNothing());
     });
 
@@ -747,7 +1214,7 @@ void TestBlocksRingBufferAPI() {
 
     // Push `2` through ReserveAndPut, check output ProfileBufferBlockIndex.
     auto bi2 = rb.ReserveAndPut([]() { return sizeof(uint32_t); },
-                                [](BlocksRingBuffer::EntryWriter* aEW) {
+                                [](ProfileBufferEntryWriter* aEW) {
                                   MOZ_RELEASE_ASSERT(!!aEW);
                                   aEW->WriteObject(uint32_t(2));
                                   return aEW->CurrentBlockIndex();
@@ -761,17 +1228,22 @@ void TestBlocksRingBufferAPI() {
     VERIFY_START_END_PUSHED_CLEARED(1, 11, 2, 0);
 
     // Check single entry at bi2, store next block index.
-    auto bi2Next =
-        rb.ReadAt(bi2, [](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeReader) {
+    auto i2Next =
+        rb.ReadAt(bi2, [bi2](Maybe<ProfileBufferEntryReader>&& aMaybeReader) {
           MOZ_RELEASE_ASSERT(aMaybeReader.isSome());
+          MOZ_RELEASE_ASSERT(aMaybeReader->CurrentBlockIndex() == bi2);
+          MOZ_RELEASE_ASSERT(aMaybeReader->NextBlockIndex() == nullptr);
+          size_t entrySize = aMaybeReader->RemainingBytes();
           MOZ_RELEASE_ASSERT(aMaybeReader->ReadObject<uint32_t>() == 2);
-          MOZ_RELEASE_ASSERT(
-              aMaybeReader->GetEntryAt(aMaybeReader->NextBlockIndex())
-                  .isNothing());
-          return aMaybeReader->NextBlockIndex();
+          // The next block index is after this block, which is made of the
+          // entry size (coded as ULEB128) followed by the entry itself.
+          return bi2.ConvertToProfileBufferIndex() + ULEB128Size(entrySize) +
+                 entrySize;
         });
+    auto bi2Next = rb.GetState().mRangeEnd;
+    MOZ_RELEASE_ASSERT(bi2Next.ConvertToProfileBufferIndex() == i2Next);
     // bi2Next is at the end, nothing to read.
-    rb.ReadAt(bi2Next, [](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeReader) {
+    rb.ReadAt(bi2Next, [](Maybe<ProfileBufferEntryReader>&& aMaybeReader) {
       MOZ_RELEASE_ASSERT(aMaybeReader.isNothing());
     });
 
@@ -825,12 +1297,12 @@ void TestBlocksRingBufferAPI() {
 
     // Push `3` through Put, check writer output
     // is returned to the initial caller.
-    auto put3 =
-        rb.Put(sizeof(uint32_t), [&](BlocksRingBuffer::EntryWriter* aEW) {
-          MOZ_RELEASE_ASSERT(!!aEW);
-          aEW->WriteObject(uint32_t(3));
-          return float(aEW->CurrentBlockIndex().ConvertToProfileBufferIndex());
-        });
+    auto put3 = rb.Put(sizeof(uint32_t), [&](ProfileBufferEntryWriter* aEW) {
+      MOZ_RELEASE_ASSERT(!!aEW);
+      aEW->WriteObject(uint32_t(3));
+      MOZ_RELEASE_ASSERT(aEW->CurrentBlockIndex() == bi2Next);
+      return float(aEW->CurrentBlockIndex().ConvertToProfileBufferIndex());
+    });
     static_assert(std::is_same<decltype(put3), float>::value,
                   "Expect float as returned by callback.");
     MOZ_RELEASE_ASSERT(put3 == 11.0);
@@ -838,26 +1310,17 @@ void TestBlocksRingBufferAPI() {
     //   - S[4 |    int(1)    ] [4 |    int(2)    ] [4 |    int(3)    ]E
     VERIFY_START_END_PUSHED_CLEARED(1, 16, 3, 0);
 
-    // Re-Read single entry at bi2, should now have a next entry.
-    rb.ReadAt(bi2, [&](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeReader) {
+    // Re-Read single entry at bi2, it should now have a next entry.
+    rb.ReadAt(bi2, [&](Maybe<ProfileBufferEntryReader>&& aMaybeReader) {
       MOZ_RELEASE_ASSERT(aMaybeReader.isSome());
+      MOZ_RELEASE_ASSERT(aMaybeReader->CurrentBlockIndex() == bi2);
       MOZ_RELEASE_ASSERT(aMaybeReader->ReadObject<uint32_t>() == 2);
       MOZ_RELEASE_ASSERT(aMaybeReader->NextBlockIndex() == bi2Next);
-      MOZ_RELEASE_ASSERT(aMaybeReader->GetNextEntry().isSome());
-      MOZ_RELEASE_ASSERT(
-          aMaybeReader->GetEntryAt(aMaybeReader->NextBlockIndex()).isSome());
-      MOZ_RELEASE_ASSERT(
-          aMaybeReader->GetNextEntry()->CurrentBlockIndex() ==
-          aMaybeReader->GetEntryAt(aMaybeReader->NextBlockIndex())
-              ->CurrentBlockIndex());
-      MOZ_RELEASE_ASSERT(
-          aMaybeReader->GetEntryAt(aMaybeReader->NextBlockIndex())
-              ->ReadObject<uint32_t>() == 3);
     });
 
     // Check that we have `1` to `3`.
     uint32_t count = 0;
-    rb.ReadEach([&](BlocksRingBuffer::EntryReader& aReader) {
+    rb.ReadEach([&](ProfileBufferEntryReader& aReader) {
       MOZ_RELEASE_ASSERT(aReader.ReadObject<uint32_t>() == ++count);
     });
     MOZ_RELEASE_ASSERT(count == 3);
@@ -883,7 +1346,7 @@ void TestBlocksRingBufferAPI() {
 
     // Check that we have `2` to `4`.
     count = 1;
-    rb.ReadEach([&](BlocksRingBuffer::EntryReader& aReader) {
+    rb.ReadEach([&](ProfileBufferEntryReader& aReader) {
       MOZ_RELEASE_ASSERT(aReader.ReadObject<uint32_t>() == ++count);
     });
     MOZ_RELEASE_ASSERT(count == 4);
@@ -891,33 +1354,25 @@ void TestBlocksRingBufferAPI() {
     // Push 5 through Put, no returns.
     // This will clear the second entry.
     // Check that the EntryWriter can access bi4 but not bi2.
-    auto bi5_6 =
-        rb.Put(sizeof(uint32_t), [&](BlocksRingBuffer::EntryWriter* aEW) {
-          MOZ_RELEASE_ASSERT(!!aEW);
-          aEW->WriteObject(uint32_t(5));
-          MOZ_RELEASE_ASSERT(aEW->GetEntryAt(bi2).isNothing());
-          MOZ_RELEASE_ASSERT(aEW->GetEntryAt(bi4).isSome());
-          MOZ_RELEASE_ASSERT(aEW->GetEntryAt(bi4)->CurrentBlockIndex() == bi4);
-          MOZ_RELEASE_ASSERT(aEW->GetEntryAt(bi4)->ReadObject<uint32_t>() == 4);
-          return MakePair(aEW->CurrentBlockIndex(), aEW->BlockEndIndex());
-        });
-    auto& bi5 = bi5_6.first();
-    auto& bi6 = bi5_6.second();
+    auto bi5 = rb.Put(sizeof(uint32_t), [&](ProfileBufferEntryWriter* aEW) {
+      MOZ_RELEASE_ASSERT(!!aEW);
+      aEW->WriteObject(uint32_t(5));
+      return aEW->CurrentBlockIndex();
+    });
+    auto bi6 = rb.GetState().mRangeEnd;
     //  16  17  18  19  20  21  22  23  24  25  26  11  12  13  14  15 (16)
     //  [4 |    int(4)    ] [4 |    int(5)    ]E ? S[4 |    int(3)    ]
     VERIFY_START_END_PUSHED_CLEARED(11, 26, 5, 2);
 
     // Read single entry at bi2, should now gracefully fail.
-    rb.ReadAt(bi2, [](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeReader) {
+    rb.ReadAt(bi2, [](Maybe<ProfileBufferEntryReader>&& aMaybeReader) {
       MOZ_RELEASE_ASSERT(aMaybeReader.isNothing());
     });
 
     // Read single entry at bi5.
-    rb.ReadAt(bi5, [](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeReader) {
+    rb.ReadAt(bi5, [](Maybe<ProfileBufferEntryReader>&& aMaybeReader) {
       MOZ_RELEASE_ASSERT(aMaybeReader.isSome());
       MOZ_RELEASE_ASSERT(aMaybeReader->ReadObject<uint32_t>() == 5);
-      MOZ_RELEASE_ASSERT(
-          aMaybeReader->GetEntryAt(aMaybeReader->NextBlockIndex()).isNothing());
     });
 
     rb.Read([&](BlocksRingBuffer::Reader* aReader) {
@@ -949,7 +1404,7 @@ void TestBlocksRingBufferAPI() {
 
     // Check that we have `3` to `5`.
     count = 2;
-    rb.ReadEach([&](BlocksRingBuffer::EntryReader& aReader) {
+    rb.ReadEach([&](ProfileBufferEntryReader& aReader) {
       MOZ_RELEASE_ASSERT(aReader.ReadObject<uint32_t>() == ++count);
     });
     MOZ_RELEASE_ASSERT(count == 5);
@@ -962,7 +1417,7 @@ void TestBlocksRingBufferAPI() {
 
     // Check that we have `4` to `5`.
     count = 3;
-    rb.ReadEach([&](BlocksRingBuffer::EntryReader& aReader) {
+    rb.ReadEach([&](ProfileBufferEntryReader& aReader) {
       MOZ_RELEASE_ASSERT(aReader.ReadObject<uint32_t>() == ++count);
     });
     MOZ_RELEASE_ASSERT(count == 5);
@@ -982,7 +1437,7 @@ void TestBlocksRingBufferAPI() {
     rb.ReadEach([&](auto&&) { MOZ_RELEASE_ASSERT(false); });
 
     // Read single entry at bi5, should now gracefully fail.
-    rb.ReadAt(bi5, [](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeReader) {
+    rb.ReadAt(bi5, [](Maybe<ProfileBufferEntryReader>&& aMaybeReader) {
       MOZ_RELEASE_ASSERT(aMaybeReader.isNothing());
     });
 
@@ -1026,14 +1481,14 @@ void TestBlocksRingBufferAPI() {
     VERIFY_START_END_PUSHED_CLEARED(36, 51, 10, 7);
 
     // bi6 should now have been cleared.
-    rb.ReadAt(bi6, [](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeReader) {
+    rb.ReadAt(bi6, [](Maybe<ProfileBufferEntryReader>&& aMaybeReader) {
       MOZ_RELEASE_ASSERT(aMaybeReader.isNothing());
     });
 
     // Check that we have `8`, `7`, `8`.
     count = 0;
     uint32_t expected[3] = {8, 7, 8};
-    rb.ReadEach([&](BlocksRingBuffer::EntryReader& aReader) {
+    rb.ReadEach([&](ProfileBufferEntryReader& aReader) {
       MOZ_RELEASE_ASSERT(count < 3);
       MOZ_RELEASE_ASSERT(aReader.ReadObject<uint32_t>() == expected[count++]);
     });
@@ -1083,7 +1538,7 @@ void TestBlocksRingBufferUnderlyingBufferChanges() {
     MOZ_RELEASE_ASSERT(state.mClearedBlockCount == 0);
     // `Put()` functions run the callback with `Nothing`.
     int32_t ran = 0;
-    rb.Put(1, [&](BlocksRingBuffer::EntryWriter* aMaybeEntryWriter) {
+    rb.Put(1, [&](ProfileBufferEntryWriter* aMaybeEntryWriter) {
       MOZ_RELEASE_ASSERT(!aMaybeEntryWriter);
       ++ran;
     });
@@ -1102,17 +1557,16 @@ void TestBlocksRingBufferUnderlyingBufferChanges() {
     MOZ_RELEASE_ASSERT(ran == 1);
     ran = 0;
     rb.ReadAt(ProfileBufferBlockIndex{},
-              [&](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeEntryReader) {
+              [&](Maybe<ProfileBufferEntryReader>&& aMaybeEntryReader) {
                 MOZ_RELEASE_ASSERT(aMaybeEntryReader.isNothing());
                 ++ran;
               });
     MOZ_RELEASE_ASSERT(ran == 1);
     ran = 0;
-    rb.ReadAt(bi,
-              [&](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeEntryReader) {
-                MOZ_RELEASE_ASSERT(aMaybeEntryReader.isNothing());
-                ++ran;
-              });
+    rb.ReadAt(bi, [&](Maybe<ProfileBufferEntryReader>&& aMaybeEntryReader) {
+      MOZ_RELEASE_ASSERT(aMaybeEntryReader.isNothing());
+      ++ran;
+    });
     MOZ_RELEASE_ASSERT(ran == 1);
     // `ReadEach` shouldn't run the callback (nothing to read).
     rb.ReadEach([](auto&&) { MOZ_RELEASE_ASSERT(false); });
@@ -1156,13 +1610,12 @@ void TestBlocksRingBufferUnderlyingBufferChanges() {
     }
     int32_t ran = 0;
     // The following three `Put...` will write three int32_t of value 1.
-    bi = rb.Put(sizeof(ran),
-                [&](BlocksRingBuffer::EntryWriter* aMaybeEntryWriter) {
-                  MOZ_RELEASE_ASSERT(!!aMaybeEntryWriter);
-                  ++ran;
-                  aMaybeEntryWriter->WriteObject(ran);
-                  return aMaybeEntryWriter->CurrentBlockIndex();
-                });
+    bi = rb.Put(sizeof(ran), [&](ProfileBufferEntryWriter* aMaybeEntryWriter) {
+      MOZ_RELEASE_ASSERT(!!aMaybeEntryWriter);
+      ++ran;
+      aMaybeEntryWriter->WriteObject(ran);
+      return aMaybeEntryWriter->CurrentBlockIndex();
+    });
     MOZ_RELEASE_ASSERT(ran == 1);
     MOZ_RELEASE_ASSERT(rb.PutFrom(&ran, sizeof(ran)) !=
                        ProfileBufferBlockIndex{});
@@ -1174,7 +1627,7 @@ void TestBlocksRingBufferUnderlyingBufferChanges() {
     });
     MOZ_RELEASE_ASSERT(ran == 1);
     ran = 0;
-    rb.ReadEach([&](BlocksRingBuffer::EntryReader& aEntryReader) {
+    rb.ReadEach([&](ProfileBufferEntryReader& aEntryReader) {
       MOZ_RELEASE_ASSERT(aEntryReader.RemainingBytes() == sizeof(ran));
       MOZ_RELEASE_ASSERT(aEntryReader.ReadObject<decltype(ran)>() == 1);
       ++ran;
@@ -1182,17 +1635,16 @@ void TestBlocksRingBufferUnderlyingBufferChanges() {
     MOZ_RELEASE_ASSERT(ran >= 3);
     ran = 0;
     rb.ReadAt(ProfileBufferBlockIndex{},
-              [&](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeEntryReader) {
+              [&](Maybe<ProfileBufferEntryReader>&& aMaybeEntryReader) {
                 MOZ_RELEASE_ASSERT(aMaybeEntryReader.isNothing());
                 ++ran;
               });
     MOZ_RELEASE_ASSERT(ran == 1);
     ran = 0;
-    rb.ReadAt(bi,
-              [&](Maybe<BlocksRingBuffer::EntryReader>&& aMaybeEntryReader) {
-                MOZ_RELEASE_ASSERT(aMaybeEntryReader.isNothing() == !bi);
-                ++ran;
-              });
+    rb.ReadAt(bi, [&](Maybe<ProfileBufferEntryReader>&& aMaybeEntryReader) {
+      MOZ_RELEASE_ASSERT(aMaybeEntryReader.isNothing() == !bi);
+      ++ran;
+    });
     MOZ_RELEASE_ASSERT(ran == 1);
   };
 
@@ -1308,7 +1760,7 @@ void TestBlocksRingBufferThreading() {
             // Reserve as many bytes as the thread number (but at least enough
             // to store an int), and write an increasing int.
             rb.Put(std::max(aThreadNo, int(sizeof(push))),
-                   [&](BlocksRingBuffer::EntryWriter* aEW) {
+                   [&](ProfileBufferEntryWriter* aEW) {
                      MOZ_RELEASE_ASSERT(!!aEW);
                      aEW->WriteObject(aThreadNo * 1000000 + push);
                      *aEW += aEW->RemainingBytes();
@@ -1361,9 +1813,9 @@ void TestBlocksRingBufferSerialization() {
 #define THE_ANSWER "The answer is "
   const char* theAnswer = THE_ANSWER;
 
-  rb.PutObjects('0', WrapBlocksRingBufferLiteralCStringPointer(THE_ANSWER), 42,
+  rb.PutObjects('0', WrapProfileBufferLiteralCStringPointer(THE_ANSWER), 42,
                 std::string(" but pi="), 3.14);
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     char c0;
     const char* answer;
     int integer;
@@ -1376,7 +1828,7 @@ void TestBlocksRingBufferSerialization() {
     MOZ_RELEASE_ASSERT(str == " but pi=");
     MOZ_RELEASE_ASSERT(pi == 3.14);
   });
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     char c0 = aER.ReadObject<char>();
     MOZ_RELEASE_ASSERT(c0 == '0');
     const char* answer = aER.ReadObject<const char*>();
@@ -1410,10 +1862,10 @@ void TestBlocksRingBufferSerialization() {
   });
 
   rb.Clear();
-  rb.PutObjects(std::make_tuple(
-      '0', WrapBlocksRingBufferLiteralCStringPointer(THE_ANSWER), 42,
-      std::string(" but pi="), 3.14));
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.PutObjects(
+      std::make_tuple('0', WrapProfileBufferLiteralCStringPointer(THE_ANSWER),
+                      42, std::string(" but pi="), 3.14));
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     MOZ_RELEASE_ASSERT(aER.ReadObject<char>() == '0');
     MOZ_RELEASE_ASSERT(aER.ReadObject<const char*>() == theAnswer);
     MOZ_RELEASE_ASSERT(aER.ReadObject<int>() == 42);
@@ -1423,9 +1875,9 @@ void TestBlocksRingBufferSerialization() {
 
   rb.Clear();
   rb.PutObjects(MakeTuple('0',
-                          WrapBlocksRingBufferLiteralCStringPointer(THE_ANSWER),
+                          WrapProfileBufferLiteralCStringPointer(THE_ANSWER),
                           42, std::string(" but pi="), 3.14));
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     MOZ_RELEASE_ASSERT(aER.ReadObject<char>() == '0');
     MOZ_RELEASE_ASSERT(aER.ReadObject<const char*>() == theAnswer);
     MOZ_RELEASE_ASSERT(aER.ReadObject<int>() == 42);
@@ -1438,7 +1890,7 @@ void TestBlocksRingBufferSerialization() {
     UniqueFreePtr<char> ufps(strdup(THE_ANSWER));
     rb.PutObjects(ufps);
   }
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     auto ufps = aER.ReadObject<UniqueFreePtr<char>>();
     MOZ_RELEASE_ASSERT(!!ufps);
     MOZ_RELEASE_ASSERT(std::string(THE_ANSWER) == ufps.get());
@@ -1447,7 +1899,7 @@ void TestBlocksRingBufferSerialization() {
   rb.Clear();
   int intArray[] = {1, 2, 3, 4, 5};
   rb.PutObjects(MakeSpan(intArray));
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     int intArrayOut[sizeof(intArray) / sizeof(intArray[0])] = {0};
     auto outSpan = MakeSpan(intArrayOut);
     aER.ReadIntoObject(outSpan);
@@ -1458,7 +1910,7 @@ void TestBlocksRingBufferSerialization() {
 
   rb.Clear();
   rb.PutObjects(Maybe<int>(Nothing{}), Maybe<int>(Some(123)));
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     Maybe<int> mi0, mi1;
     aER.ReadIntoObjects(mi0, mi1);
     MOZ_RELEASE_ASSERT(mi0.isNothing());
@@ -1472,7 +1924,7 @@ void TestBlocksRingBufferSerialization() {
   V v1(3.14);
   V v2(VariantIndex<2>{}, 456);
   rb.PutObjects(v0, v1, v2);
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v0);
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v1);
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v2);
@@ -1496,12 +1948,11 @@ void TestBlocksRingBufferSerialization() {
   }
   BlocksRingBuffer rb3(BlocksRingBuffer::ThreadSafety::WithoutMutex,
                        &buffer3[MBSize], MakePowerOfTwo32<MBSize>());
-  rb2.ReadEach(
-      [&](BlocksRingBuffer::EntryReader& aER) { aER.ReadIntoObject(rb3); });
+  rb2.ReadEach([&](ProfileBufferEntryReader& aER) { aER.ReadIntoObject(rb3); });
 
   // And a 4th heap-allocated one.
   UniquePtr<BlocksRingBuffer> rb4up;
-  rb2.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb2.ReadEach([&](ProfileBufferEntryReader& aER) {
     rb4up = aER.ReadObject<UniquePtr<BlocksRingBuffer>>();
   });
   MOZ_RELEASE_ASSERT(!!rb4up);
@@ -1512,14 +1963,14 @@ void TestBlocksRingBufferSerialization() {
   rb2.Clear();
 
   // And now the 3rd one should have the same contents as the 1st one had.
-  rb3.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb3.ReadEach([&](ProfileBufferEntryReader& aER) {
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v0);
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v1);
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v2);
   });
 
   // And 4th.
-  rb4up->ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb4up->ReadEach([&](ProfileBufferEntryReader& aER) {
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v0);
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v1);
     MOZ_RELEASE_ASSERT(aER.ReadObject<V>() == v2);
@@ -1572,6 +2023,9 @@ void TestProfilerDependencies() {
   TestPowerOfTwoMask();
   TestPowerOfTwo();
   TestLEB128();
+  TestChunk();
+  TestChunkManagerSingle();
+  TestChunkManagerWithLocalLimit();
   TestModuloBuffer();
   TestBlocksRingBufferAPI();
   TestBlocksRingBufferUnderlyingBufferChanges();
@@ -1589,10 +2043,10 @@ class BaseTestMarkerPayload : public baseprofiler::ProfilerMarkerPayload {
 
   // Exploded DECL_BASE_STREAM_PAYLOAD, but without `MFBT_API`s.
   static UniquePtr<ProfilerMarkerPayload> Deserialize(
-      BlocksRingBuffer::EntryReader& aEntryReader);
-  BlocksRingBuffer::Length TagAndSerializationBytes() const override;
+      ProfileBufferEntryReader& aEntryReader);
+  ProfileBufferEntryWriter::Length TagAndSerializationBytes() const override;
   void SerializeTagAndPayload(
-      BlocksRingBuffer::EntryWriter& aEntryWriter) const override;
+      ProfileBufferEntryWriter& aEntryWriter) const override;
   void StreamPayload(
       ::mozilla::baseprofiler::SpliceableJSONWriter& aWriter,
       const ::mozilla::TimeStamp& aProcessStartTime,
@@ -1607,21 +2061,20 @@ class BaseTestMarkerPayload : public baseprofiler::ProfilerMarkerPayload {
 
 // static
 UniquePtr<baseprofiler::ProfilerMarkerPayload>
-BaseTestMarkerPayload::Deserialize(
-    BlocksRingBuffer::EntryReader& aEntryReader) {
+BaseTestMarkerPayload::Deserialize(ProfileBufferEntryReader& aEntryReader) {
   CommonProps props = DeserializeCommonProps(aEntryReader);
   int data = aEntryReader.ReadObject<int>();
   return UniquePtr<baseprofiler::ProfilerMarkerPayload>(
       new BaseTestMarkerPayload(std::move(props), data));
 }
 
-BlocksRingBuffer::Length BaseTestMarkerPayload::TagAndSerializationBytes()
-    const {
+ProfileBufferEntryWriter::Length
+BaseTestMarkerPayload::TagAndSerializationBytes() const {
   return CommonPropsTagAndSerializationBytes() + sizeof(int);
 }
 
 void BaseTestMarkerPayload::SerializeTagAndPayload(
-    BlocksRingBuffer::EntryWriter& aEntryWriter) const {
+    ProfileBufferEntryWriter& aEntryWriter) const {
   static const DeserializerTag tag = TagForDeserializer(Deserialize);
   SerializeTagAndCommonProps(tag, aEntryWriter);
   aEntryWriter.WriteObject(mData);
@@ -1653,7 +2106,7 @@ void TestProfilerMarkerSerialization() {
   }
 
   int read = 0;
-  rb.ReadEach([&](BlocksRingBuffer::EntryReader& aER) {
+  rb.ReadEach([&](ProfileBufferEntryReader& aER) {
     UniquePtr<baseprofiler::ProfilerMarkerPayload> payload =
         aER.ReadObject<UniquePtr<baseprofiler::ProfilerMarkerPayload>>();
     MOZ_RELEASE_ASSERT(!!payload);
@@ -1930,6 +2383,13 @@ int wmain()
 int main()
 #endif  // defined(XP_WIN)
 {
+#ifdef MOZ_BASE_PROFILER
+  printf("BaseTestProfiler -- pid: %d, tid: %d\n",
+         baseprofiler::profiler_current_process_id(),
+         baseprofiler::profiler_current_thread_id());
+  // ::SleepMilli(10000);
+#endif  // MOZ_BASE_PROFILER
+
   // Always run tests that don't involve the profiler directly.
   TestProfilerDependencies();
 

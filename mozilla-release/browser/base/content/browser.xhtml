@@ -40,12 +40,26 @@
         xmlns:html="http://www.w3.org/1999/xhtml"
         xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns="http://www.w3.org/1999/xhtml"
+        title_normal="&mainWindow.title;"
+#ifdef XP_MACOSX
+        title_privatebrowsing="&mainWindow.title;&mainWindow.titlemodifiermenuseparator;&mainWindow.titlePrivateBrowsingSuffix;"
+        titledefault="&mainWindow.title;"
+        titlemodifier=""
+        titlemodifier_normal=""
+        titlemodifier_privatebrowsing="&mainWindow.titlePrivateBrowsingSuffix;"
+#else
+        title_privatebrowsing="&mainWindow.titlemodifier; &mainWindow.titlePrivateBrowsingSuffix;"
+        titlemodifier="&mainWindow.titlemodifier;"
+        titlemodifier_normal="&mainWindow.titlemodifier;"
+        titlemodifier_privatebrowsing="&mainWindow.titlemodifier; &mainWindow.titlePrivateBrowsingSuffix;"
+#endif
 #ifdef XP_WIN
         chromemargin="0,2,2,2"
 #else
         chromemargin="0,-1,-1,-1"
 #endif
         tabsintitlebar="true"
+        titlemenuseparator="&mainWindow.titlemodifiermenuseparator;"
         windowtype="navigator:browser"
         macanimationtype="document"
         screenX="4" screenY="4"
@@ -67,10 +81,9 @@
   <link rel="localization" href="browser/protectionsPanel.ftl"/>
   <link rel="localization" href="browser/appmenu.ftl"/>
   <link rel="localization" href="preview/interventions.ftl"/>
+  <link rel="localization" href="browser/sidebarMenu.ftl"/>
 
-  <title
-    data-l10n-id="browser-main-window-title"
-    data-l10n-args='{"mode": "default"}'></title>
+  <title>&mainWindow.title;</title>
 
 # All JS files which are needed by browser.xhtml and other top level windows to
 # support MacOS specific features *must* go into the global-scripts.inc file so
@@ -256,59 +269,61 @@
       <description/>
     </panel>
 
-    <panel id="editBookmarkPanel"
-           class="panel-no-padding"
-           type="arrow"
-           orient="vertical"
-           ignorekeys="true"
-           hidden="true"
-           tabspecific="true"
-           aria-labelledby="editBookmarkPanelTitle">
-      <box class="panel-header">
-        <label id="editBookmarkPanelTitle"/>
-        <toolbarbutton tabindex="0" id="editBookmarkPanelInfoButton" class="panel-info-button" oncommand="StarUI.toggleRecommendation();" >
-          <image/>
-        </toolbarbutton>
-      </box>
-      <html:div id="editBookmarkPanelInfoArea">
-        <html:div id="editBookmarkPanelRecommendation"></html:div>
-        <html:div id="editBookmarkPanelFaviconContainer">
-          <html:img id="editBookmarkPanelFavicon"/>
+    <html:template id="editBookmarkPanelTemplate">
+      <panel id="editBookmarkPanel"
+             class="panel-no-padding"
+             type="arrow"
+             orient="vertical"
+             ignorekeys="true"
+             hidden="true"
+             tabspecific="true"
+             aria-labelledby="editBookmarkPanelTitle">
+        <box class="panel-header">
+          <label id="editBookmarkPanelTitle"/>
+          <toolbarbutton tabindex="0" id="editBookmarkPanelInfoButton" class="panel-info-button" oncommand="StarUI.toggleRecommendation();" >
+            <image/>
+          </toolbarbutton>
+        </box>
+        <html:div id="editBookmarkPanelInfoArea">
+          <html:div id="editBookmarkPanelRecommendation"></html:div>
+          <html:div id="editBookmarkPanelFaviconContainer">
+            <html:img id="editBookmarkPanelFavicon"/>
+          </html:div>
+          <html:div id="editBookmarkPanelImage"></html:div>
         </html:div>
-        <html:div id="editBookmarkPanelImage"></html:div>
-      </html:div>
 #include ../../components/places/content/editBookmarkPanel.inc.xhtml
-      <vbox id="editBookmarkPanelBottomContent"
-            flex="1">
-        <checkbox id="editBookmarkPanel_showForNewBookmarks"
-                  data-l10n-id="bookmark-panel-show-editor-checkbox"
-                  oncommand="StarUI.onShowForNewBookmarksCheckboxCommand();"/>
-      </vbox>
-      <hbox id="editBookmarkPanelBottomButtons"
-            class="panel-footer"
-            data-l10n-id="bookmark-panel"
-            data-l10n-attrs="style">
+          <vbox id="editBookmarkPanelBottomContent"
+                flex="1">
+            <checkbox id="editBookmarkPanel_showForNewBookmarks"
+                      data-l10n-id="bookmark-panel-show-editor-checkbox"
+                      oncommand="StarUI.onShowForNewBookmarksCheckboxCommand();"/>
+          </vbox>
+          <hbox id="editBookmarkPanelBottomButtons"
+                class="panel-footer"
+                data-l10n-id="bookmark-panel"
+                data-l10n-attrs="style">
 #ifndef XP_UNIX
-        <button id="editBookmarkPanelDoneButton"
-                class="editBookmarkPanelBottomButton"
-                data-l10n-id="bookmark-panel-done-button"
-                default="true"
-                oncommand="StarUI.panel.hidePopup();"/>
-        <button id="editBookmarkPanelRemoveButton"
-                class="editBookmarkPanelBottomButton"
-                oncommand="StarUI.removeBookmarkButtonCommand();"/>
+            <button id="editBookmarkPanelDoneButton"
+                    class="editBookmarkPanelBottomButton"
+                    data-l10n-id="bookmark-panel-done-button"
+                    default="true"
+                    oncommand="StarUI.panel.hidePopup();"/>
+            <button id="editBookmarkPanelRemoveButton"
+                    class="editBookmarkPanelBottomButton"
+                    oncommand="StarUI.removeBookmarkButtonCommand();"/>
 #else
-        <button id="editBookmarkPanelRemoveButton"
-                class="editBookmarkPanelBottomButton"
-                oncommand="StarUI.removeBookmarkButtonCommand();"/>
-        <button id="editBookmarkPanelDoneButton"
-                class="editBookmarkPanelBottomButton"
-                data-l10n-id="bookmark-panel-done-button"
-                default="true"
-                oncommand="StarUI.panel.hidePopup();"/>
+            <button id="editBookmarkPanelRemoveButton"
+                    class="editBookmarkPanelBottomButton"
+                    oncommand="StarUI.removeBookmarkButtonCommand();"/>
+            <button id="editBookmarkPanelDoneButton"
+                    class="editBookmarkPanelBottomButton"
+                    data-l10n-id="bookmark-panel-done-button"
+                    default="true"
+                    oncommand="StarUI.panel.hidePopup();"/>
 #endif
-      </hbox>
-    </panel>
+          </hbox>
+      </panel>
+    </html:template>
 
     <!-- UI tour experience -->
     <panel id="UITourTooltip"
@@ -355,19 +370,19 @@
            position="bottomcenter topleft">
       <toolbarbutton id="sidebar-switcher-bookmarks"
                      type="checkbox"
-                     label="&bookmarksButton.label;"
+                     data-l10n-id="sidebar-menu-bookmarks"
                      class="subviewbutton subviewbutton-iconic"
                      key="viewBookmarksSidebarKb"
                      oncommand="SidebarUI.show('viewBookmarksSidebar');"/>
       <toolbarbutton id="sidebar-switcher-history"
                      type="checkbox"
-                     label="&historyButton.label;"
+                     data-l10n-id="sidebar-menu-history"
                      class="subviewbutton subviewbutton-iconic"
                      key="key_gotoHistory"
                      oncommand="SidebarUI.show('viewHistorySidebar');"/>
       <toolbarbutton id="sidebar-switcher-tabs"
                      type="checkbox"
-                     label="&syncedTabs.sidebar.label;"
+                     data-l10n-id="sidebar-menu-synced-tabs"
                      class="subviewbutton subviewbutton-iconic sync-ui-item"
                      oncommand="SidebarUI.show('viewTabsSidebar');"/>
       <toolbarseparator/>
@@ -377,7 +392,7 @@
                      class="subviewbutton"
                      oncommand="SidebarUI.reversePosition()"/>
       <toolbarseparator/>
-      <toolbarbutton label="&sidebarMenuClose.label;"
+      <toolbarbutton data-l10n-id="sidebar-menu-close"
                      class="subviewbutton"
                      oncommand="SidebarUI.hide()"/>
     </panel>
@@ -653,7 +668,7 @@
                 id="syncedTabsRefreshFilter"/>
     </menupopup>
 
-    <hbox id="statuspanel" inactive="true" renderroot="content">
+    <hbox id="statuspanel" inactive="true">
       <hbox id="statuspanel-inner">
         <label id="statuspanel-label"
                role="status"
@@ -712,7 +727,7 @@
                   tooltip="tabbrowser-tab-tooltip"
                   stopwatchid="FX_TAB_CLICK_MS">
               <hbox class="tab-drop-indicator" hidden="true"/>
-              <arrowscrollbox orient="horizontal" flex="1" style="min-width: 1px;" clicktoscroll="true" class="tabbrowser-arrowscrollbox" scrolledtostart="true" scrolledtoend="true">
+              <arrowscrollbox id="tabbrowser-arrowscrollbox" orient="horizontal" flex="1" style="min-width: 1px;" clicktoscroll="true" scrolledtostart="true" scrolledtoend="true">
                 <tab is="tabbrowser-tab" class="tabbrowser-tab" selected="true" visuallyselected="true" fadein="true"/>
                 <toolbarbutton id="tabs-newtab-button"
                                class="toolbarbutton-1"
@@ -1356,7 +1371,7 @@
 
   <hbox id="fullscr-toggler" hidden="true"/>
 
-  <hbox flex="1" id="browser" renderroot="content">
+  <hbox flex="1" id="browser">
     <vbox id="browser-border-start" hidden="true" layer="true"/>
     <vbox id="sidebar-box" hidden="true" class="chromeclass-extrachrome">
       <box id="sidebar-header" align="center">
@@ -1389,16 +1404,43 @@
     <vbox id="browser-border-end" hidden="true" layer="true"/>
   </hbox>
 
-  <box id="customization-container" flex="1" renderroot="content" hidden="true"><![CDATA[
+  <box id="customization-container" flex="1" hidden="true"><![CDATA[
 #include ../../components/customizableui/content/customizeMode.inc.xhtml
   ]]></box>
 
-# Everything that needs to straddle the line between chrome and content, without being
-# its own widget-level window, needs to go in here, and set the renderroot="popover"
-# attribute, or it will fail to render properly in WebRender.
-#include popovers.inc
+  <html:div id="fullscreen-and-pointerlock-wrapper">
+    <html:div id="fullscreen-warning" class="pointerlockfswarning" hidden="true">
+      <html:div class="pointerlockfswarning-domain-text">
+        &fullscreenWarning.beforeDomain.label;
+        <html:span class="pointerlockfswarning-domain"/>
+        &fullscreenWarning.afterDomain.label;
+      </html:div>
+      <html:div class="pointerlockfswarning-generic-text">
+        &fullscreenWarning.generic.label;
+      </html:div>
+      <html:button id="fullscreen-exit-button"
+                   onclick="FullScreen.exitDomFullScreen();">
+#ifdef XP_MACOSX
+              &exitDOMFullscreenMac.button;
+#else
+              &exitDOMFullscreen.button;
+#endif
+      </html:button>
+    </html:div>
 
-  <vbox id="browser-bottombox" layer="true" renderroot="content">
+    <html:div id="pointerlock-warning" class="pointerlockfswarning" hidden="true">
+      <html:div class="pointerlockfswarning-domain-text">
+        &pointerlockWarning.beforeDomain.label;
+        <html:span class="pointerlockfswarning-domain"/>
+        &pointerlockWarning.afterDomain.label;
+      </html:div>
+      <html:div class="pointerlockfswarning-generic-text">
+        &pointerlockWarning.generic.label;
+      </html:div>
+    </html:div>
+  </html:div>
+
+  <vbox id="browser-bottombox" layer="true">
     <!-- gNotificationBox will be added here lazily. -->
   </vbox>
 

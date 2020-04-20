@@ -1317,6 +1317,15 @@ void GeckoEditableSupport::OnImeRequestCursorUpdates(int aRequestMode) {
   mIMEMonitorCursor = (aRequestMode == EditableClient::START_MONITOR);
 }
 
+void GeckoEditableSupport::OnImeRequestCommit() {
+  if (mIMEMaskEventsCount > 0) {
+    // Not focused.
+    return;
+  }
+
+  RemoveComposition(COMMIT_IME_COMPOSITION);
+}
+
 void GeckoEditableSupport::AsyncNotifyIME(int32_t aNotification) {
   RefPtr<GeckoEditableSupport> self(this);
 
@@ -1515,6 +1524,7 @@ void GeckoEditableSupport::SetInputContext(const InputContext& aContext,
   mInputContext = aContext;
 
   if (mInputContext.mIMEState.mEnabled != IMEState::DISABLED &&
+      !mInputContext.mHTMLInputInputmode.EqualsLiteral("none") &&
       aAction.UserMightRequestOpenVKB()) {
     // Don't reset keyboard when we should simply open the vkb
     mEditable->NotifyIME(EditableListener::NOTIFY_IME_OPEN_VKB);

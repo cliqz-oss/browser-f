@@ -4,14 +4,15 @@
 
 "use strict";
 
-/* exported ObjectFront, attachConsole, attachConsoleToTab, attachConsoleToWorker,
+/* exported attachConsole, attachConsoleToTab, attachConsoleToWorker,
    closeDebugger, checkConsoleAPICalls, checkRawHeaders, runTests, nextTest, Ci, Cc,
    withActiveServiceWorker, Services, consoleAPICall */
 
 const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
 const { DevToolsServer } = require("devtools/server/devtools-server");
-const { DevToolsClient } = require("devtools/shared/client/devtools-client");
-const { ObjectFront } = require("devtools/shared/fronts/object");
+// eslint-disable-next-line mozilla/reject-some-requires
+const { DevToolsClient } = require("devtools/client/devtools-client");
+
 const Services = require("Services");
 
 function initCommon() {
@@ -83,7 +84,7 @@ var _attachConsole = async function(listeners, attachToTab, attachToWorker) {
 
     // Attach the Target and the target thread in order to instantiate the console client.
     await target.attach();
-    const [, threadFront] = await target.attachThread();
+    const threadFront = await target.attachThread();
     await threadFront.resume();
 
     const webConsoleFront = await target.getFront("console");

@@ -17,13 +17,14 @@
   --autocomplete-popup-highlight-background: Highlight;
   --autocomplete-popup-highlight-color: HighlightText;
 
-  /* From in-content/common.inc.css. */
-  --in-content-button-background: rgba(12, 12, 13, 0.1);
-  --in-content-button-background-hover: rgba(12, 12, 13, 0.2);
-  --in-content-button-background-active: rgba(12, 12, 13, 0.3);
-  --in-content-primary-button-background: #0060df;
-  --in-content-primary-button-background-hover: #003eaa;
-  --in-content-primary-button-background-active: #002275;
+  /* Colors copied from in-content button styling */
+  --urlbarView-button-background: rgba(12, 12, 13, 0.1);
+  --urlbarView-button-background-hover: rgba(12, 12, 13, 0.2);
+  --urlbarView-button-background-active: rgba(12, 12, 13, 0.3);
+  --urlbarView-primary-button-text: white;
+  --urlbarView-primary-button-background: #0060df;
+  --urlbarView-primary-button-background-hover: #003eaa;
+  --urlbarView-primary-button-background-active: #002275;
 }
 
 :root[lwt-popup-darktext] {
@@ -35,9 +36,10 @@
   --urlbar-popup-url-color: @lwtPopupBrighttextLinkColor@;
   --urlbar-popup-action-color: #30e60b;
 
-  /* From in-content/common.inc.css. */
-  --in-content-button-background-hover: rgba(249, 249, 250, 0.15);
-  --in-content-button-background-active: rgba(249, 249, 250, 0.2);
+  /* Colors copied from in-content button styling */
+  --urlbarView-button-background: rgba(249, 249, 250, 0.24);
+  --urlbarView-button-background-hover: rgba(249, 249, 250, 0.15);
+  --urlbarView-button-background-active: rgba(249, 249, 250, 0.2);
 }
 
 .urlbarView {
@@ -143,7 +145,8 @@
   max-width: calc(70% - 2 * (16px + (6px + 2px)));
 }
 
-/* Wrap the url to a second line when the window is small */
+/* Wrap the url to a second line when the window is narrow. Do not wrap when the
+   window is also short, because fewer results will be shown. */
 @media screen and (min-height: 600px) {
   .urlbarView.megabar .urlbarView-results[wrap] > .urlbarView-row > .urlbarView-row-inner {
     flex-wrap: wrap;
@@ -163,6 +166,13 @@
   .urlbarView.megabar .urlbarView-results[wrap] > .urlbarView-row[type=remotetab]:-moz-any(:hover, [selected]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title-separator {
     display: none;
   }
+}
+
+/* We should always wrap tip results at narrow widths regardless of screen
+   height. Unlike regular results, unwrapped tips are taller than wrapped
+   tips. */
+.urlbarView.megabar .urlbarView-results[wrap] > .urlbarView-row[type=tip] > .urlbarView-row-inner {
+  flex-wrap: wrap;
 }
 
 .urlbarView-row:not([type=tip]) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-title[overflow],
@@ -245,11 +255,11 @@
 }
 
 .urlbarView-tip-help:hover {
-  background-color: var(--in-content-button-background-hover);
+  background-color: var(--urlbarView-button-background-hover);
 }
 
 .urlbarView-tip-help:hover:active {
-  background-color: var(--in-content-button-background-active);
+  background-color: var(--urlbarView-button-background-active);
 }
 
 @media (min-resolution: 2dppx) {
@@ -331,31 +341,40 @@
    primary button in all other states. */
 .urlbarView-tip-button {
   min-height: 16px;
-  padding: 8px;
-  border: none;
+  padding: 7px;
+  border: 1px solid var(--urlbarView-button-border, var(--urlbarView-button-background));
   border-radius: 2px;
   font-size: 0.93em;
-  color: inherit;
-  background-color: var(--in-content-button-background);
+  color: var(--urlbarView-button-text, inherit);
+  background-color: var(--urlbarView-button-background);
+  background-clip: padding-box;
   min-width: 8.75em;
   text-align: center;
   flex-basis: initial;
   flex-shrink: 0;
 }
 
-.urlbarView-tip-button[selected] {
-  color: white;
-  background-color: var(--in-content-primary-button-background);
-  box-shadow: 0 0 0 1px #0a84ff inset, 0 0 0 1px #0a84ff, 0 0 0 4px rgba(10, 132, 255, 0.3);
-}
 .urlbarView-tip-button:hover {
-  color: white;
-  background-color: var(--in-content-primary-button-background-hover);
+  background-color: var(--urlbarView-button-background-hover);
 }
 
 .urlbarView-tip-button:hover:active {
-  color: white;
-  background-color: var(--in-content-primary-button-background-active);
+  background-color: var(--urlbarView-button-background-active);
+}
+
+.urlbarView-tip-button[selected] {
+  color: var(--urlbarView-primary-button-text);
+  background-color: var(--urlbarView-primary-button-background);
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 1px #0a84ff, 0 0 0 4px rgba(10, 132, 255, 0.3);
+}
+
+.urlbarView-tip-button[selected]:hover {
+  background-color: var(--urlbarView-primary-button-background-hover);
+}
+
+.urlbarView-tip-button[selected]:hover:active {
+  background-color: var(--urlbarView-primary-button-background-active);
 }
 
 .urlbarView-tip-button-spacer {

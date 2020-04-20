@@ -12,6 +12,8 @@ add_task(async function common_initialize() {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["signon.rememberSignons", true],
+      ["signon.testOnlyUserHasInteractedByPrefValue", true],
+      ["signon.testOnlyUserHasInteractedWithDocument", true],
       ["toolkit.telemetry.ipcBatchTimeout", 0],
     ],
   });
@@ -330,7 +332,11 @@ async function waitForDoorhanger(browser, type) {
   await TestUtils.waitForCondition(() => {
     notif = PopupNotifications.getNotification("password", browser);
     if (notif && type !== "any") {
-      return notif.options.passwordNotificationType == type;
+      return (
+        notif.options.passwordNotificationType == type &&
+        notif.anchorElement &&
+        BrowserTestUtils.is_visible(notif.anchorElement)
+      );
     }
     return notif;
   }, `Waiting for a ${type} notification`);
@@ -624,7 +630,7 @@ async function fillGeneratedPasswordFromOpenACPopup(
  */
 async function openPasswordContextMenu(
   browser,
-  passwordInput,
+  input,
   assertCallback = null,
   browsingContext = null
 ) {
@@ -647,14 +653,14 @@ async function openPasswordContextMenu(
   // (which it does for real user input) in order to not show the password autocomplete.
   let eventDetails = { type: "mousedown", button: 2 };
   await BrowserTestUtils.synthesizeMouseAtCenter(
-    passwordInput,
+    input,
     eventDetails,
     browsingContext
   );
   // Synthesize a contextmenu event to actually open the context menu.
   eventDetails = { type: "contextmenu", button: 2 };
   await BrowserTestUtils.synthesizeMouseAtCenter(
-    passwordInput,
+    input,
     eventDetails,
     browsingContext
   );

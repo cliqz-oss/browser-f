@@ -33,6 +33,8 @@ policy-CertificatesDescription = Add certificates or use built-in certificates.
 
 policy-Cookies = Allow or deny websites to set cookies.
 
+policy-DisabledCiphers = Disable ciphers.
+
 policy-DefaultDownloadDirectory = Set the default download directory.
 
 policy-DisableAppUpdate = Prevent the browser from updating.
@@ -112,6 +114,14 @@ policy-Homepage = Set and optionally lock the homepage.
 policy-InstallAddonsPermission = Allow certain websites to install add-ons.
 
 policy-LegacyProfiles = Disable the feature enforcing a separate profile for each installation.
+
+## Do not translate "SameSite", it's the name of a cookie attribute.
+
+policy-LegacySameSiteCookieBehaviorEnabled = Enable default legacy SameSite cookie behavior setting.
+
+policy-LegacySameSiteCookieBehaviorEnabledForDomainList = Revert to legacy SameSite behavior for cookies on specified sites.
+
+##
 
 policy-LocalFileLinks = Allow specific websites to link to local files.
 

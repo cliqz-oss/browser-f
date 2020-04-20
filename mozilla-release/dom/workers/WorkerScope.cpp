@@ -31,6 +31,7 @@
 #include "mozilla/dom/SimpleGlobalObject.h"
 #include "mozilla/dom/TimeoutHandler.h"
 #include "mozilla/dom/WorkerDebuggerGlobalScopeBinding.h"
+#include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/dom/WorkerGlobalScopeBinding.h"
 #include "mozilla/dom/WorkerLocation.h"
 #include "mozilla/dom/WorkerNavigator.h"
@@ -181,10 +182,7 @@ JSObject* WorkerGlobalScope::WrapObject(JSContext* aCx,
   MOZ_CRASH("We should never get here!");
 }
 
-void WorkerGlobalScope::NoteTerminating() {
-  DisconnectEventTargetObjects();
-  StartDying();
-}
+void WorkerGlobalScope::NoteTerminating() { StartDying(); }
 
 already_AddRefed<Console> WorkerGlobalScope::GetConsole(ErrorResult& aRv) {
   mWorkerPrivate->AssertIsOnWorkerThread();
@@ -482,14 +480,14 @@ already_AddRefed<IDBFactory> WorkerGlobalScope::GetIndexedDB(
     const PrincipalInfo& principalInfo =
         mWorkerPrivate->GetEffectiveStoragePrincipalInfo();
 
-    nsresult rv = IDBFactory::CreateForWorker(this, principalInfo,
-                                              mWorkerPrivate->WindowID(),
-                                              getter_AddRefs(indexedDB));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      aErrorResult = rv;
+    auto res = IDBFactory::CreateForWorker(this, principalInfo,
+                                           mWorkerPrivate->WindowID());
+    if (NS_WARN_IF(res.isErr())) {
+      aErrorResult = res.unwrapErr();
       return nullptr;
     }
 
+    indexedDB = res.unwrap();
     mIndexedDB = indexedDB;
   }
 
@@ -612,18 +610,13 @@ bool DedicatedWorkerGlobalScope::WrapGlobalObject(
 
   const bool usesSystemPrincipal = mWorkerPrivate->UsesSystemPrincipal();
 
-  // Note that xpc::ShouldDiscardSystemSource() and
-  // xpc::ExtraWarningsForSystemJS() read prefs that are cached on the main
-  // thread. This is benignly racey.
+  // Note that xpc::ShouldDiscardSystemSource() reads a prefs that is cached
+  // on the main thread. This is benignly racey.
   const bool discardSource =
       usesSystemPrincipal && xpc::ShouldDiscardSystemSource();
-  const bool extraWarnings =
-      usesSystemPrincipal && xpc::ExtraWarningsForSystemJS();
 
   JS::RealmBehaviors& behaviors = options.behaviors();
-  behaviors.setDiscardSource(discardSource)
-      .extraWarningsOverride()
-      .set(extraWarnings);
+  behaviors.setDiscardSource(discardSource);
 
   xpc::SetPrefableRealmOptions(options);
 

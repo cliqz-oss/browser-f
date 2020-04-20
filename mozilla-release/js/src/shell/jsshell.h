@@ -110,6 +110,9 @@ extern bool enableWasmCranelift;
 #ifdef ENABLE_WASM_GC
 extern bool enableWasmGc;
 #endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+extern bool enableWasmMultiValue;
+#endif
 extern bool enableWasmVerbose;
 extern bool enableTestWasmAwaitTier2;
 #ifdef ENABLE_WASM_BIGINT
@@ -121,8 +124,6 @@ extern bool enableReadableByteStreams;
 extern bool enableBYOBStreamReaders;
 extern bool enableWritableStreams;
 extern bool enableReadableStreamPipeTo;
-extern bool enableFields;
-extern bool enableAwaitFix;
 extern bool enableWeakRefs;
 extern bool enableToSource;
 extern bool enablePropertyErrorMessageFix;
@@ -235,9 +236,9 @@ struct ShellContext {
   js::Monitor offThreadMonitor;
   Vector<OffThreadJob*, 0, SystemAllocPolicy> offThreadJobs;
 
-  // Queued finalization group cleanup jobs.
+  // Queued finalization registry cleanup jobs.
   using ObjectVector = GCVector<JSObject*, 0, SystemAllocPolicy>;
-  JS::PersistentRooted<ObjectVector> finalizationGroupsToCleanUp;
+  JS::PersistentRooted<ObjectVector> finalizationRegistriesToCleanUp;
 };
 
 extern ShellContext* GetShellContext(JSContext* cx);

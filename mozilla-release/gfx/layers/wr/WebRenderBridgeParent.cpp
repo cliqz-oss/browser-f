@@ -72,6 +72,13 @@ void gecko_profiler_end_marker(const char* name) {
 #endif
 }
 
+void gecko_profiler_event_marker(const char* name) {
+#ifdef MOZ_GECKO_PROFILER
+  profiler_tracing_marker("WebRender", name,
+                          JS::ProfilingCategoryPair::GRAPHICS, TRACING_EVENT);
+#endif
+}
+
 void gecko_profiler_add_text_marker(const char* name, const char* text_bytes,
                                     size_t text_len, uint64_t microseconds) {
 #ifdef MOZ_GECKO_PROFILER
@@ -218,13 +225,12 @@ class SceneBuiltNotification : public wr::NotificationHandler {
               ContentFullPaintPayload(const mozilla::TimeStamp& aStartTime,
                                       const mozilla::TimeStamp& aEndTime)
                   : ProfilerMarkerPayload(aStartTime, aEndTime) {}
-              mozilla::BlocksRingBuffer::Length TagAndSerializationBytes()
-                  const override {
+              mozilla::ProfileBufferEntryWriter::Length
+              TagAndSerializationBytes() const override {
                 return CommonPropsTagAndSerializationBytes();
               }
-              void SerializeTagAndPayload(
-                  mozilla::BlocksRingBuffer::EntryWriter& aEntryWriter)
-                  const override {
+              void SerializeTagAndPayload(mozilla::ProfileBufferEntryWriter&
+                                              aEntryWriter) const override {
                 static const DeserializerTag tag =
                     TagForDeserializer(Deserialize);
                 SerializeTagAndCommonProps(tag, aEntryWriter);
@@ -240,7 +246,7 @@ class SceneBuiltNotification : public wr::NotificationHandler {
               explicit ContentFullPaintPayload(CommonProps&& aCommonProps)
                   : ProfilerMarkerPayload(std::move(aCommonProps)) {}
               static mozilla::UniquePtr<ProfilerMarkerPayload> Deserialize(
-                  mozilla::BlocksRingBuffer::EntryReader& aEntryReader) {
+                  mozilla::ProfileBufferEntryReader& aEntryReader) {
                 ProfilerMarkerPayload::CommonProps props =
                     DeserializeCommonProps(aEntryReader);
                 return UniquePtr<ProfilerMarkerPayload>(
@@ -343,7 +349,9 @@ WebRenderBridgeParent::WebRenderBridgeParent(
       mDestroyed(false),
       mReceivedDisplayList(false),
       mIsFirstPaint(true),
-      mSkippedComposite(false) {
+      mSkippedComposite(false),
+      mDisablingNativeCompositor(false),
+      mPendingScrollPayloads("WebRenderBridgeParent::mPendingScrollPayloads") {
   MOZ_ASSERT(mAsyncImageManager);
   MOZ_ASSERT(mAnimStorage);
   mAsyncImageManager->AddPipeline(mPipelineId, this);
@@ -352,10 +360,7 @@ WebRenderBridgeParent::WebRenderBridgeParent(
     mCompositorScheduler = new CompositorVsyncScheduler(this, mWidget);
   }
 
-  if (IsRootWebRenderBridgeParent() ||
-      !StaticPrefs::gfx_webrender_split_render_roots_AtStartup()) {
-    mRenderRoot = Some(wr::RenderRoot::Default);
-  }
+  mRenderRoot = Some(wr::RenderRoot::Default);
 
   for (auto& api : aApis) {
     MOZ_ASSERT(api);
@@ -378,7 +383,9 @@ WebRenderBridgeParent::WebRenderBridgeParent(const wr::PipelineId& aPipelineId)
       mDestroyed(true),
       mReceivedDisplayList(false),
       mIsFirstPaint(false),
-      mSkippedComposite(false) {}
+      mSkippedComposite(false),
+      mDisablingNativeCompositor(false),
+      mPendingScrollPayloads("WebRenderBridgeParent::mPendingScrollPayloads") {}
 
 WebRenderBridgeParent::~WebRenderBridgeParent() {
   if (RefPtr<WebRenderBridgeParent> root = GetRootWebRenderBridgeParent()) {
@@ -387,12 +394,7 @@ WebRenderBridgeParent::~WebRenderBridgeParent() {
 }
 
 bool WebRenderBridgeParent::RenderRootIsValid(wr::RenderRoot aRenderRoot) {
-  if (StaticPrefs::gfx_webrender_split_render_roots_AtStartup() &&
-      IsRootWebRenderBridgeParent()) {
-    return aRenderRoot <= wr::kHighestRenderRoot;
-  } else {
-    return aRenderRoot == wr::RenderRoot::Default;
-  }
+  return aRenderRoot == wr::RenderRoot::Default;
 }
 
 void WebRenderBridgeParent::RemoveDeferredPipeline(wr::PipelineId aPipelineId) {
@@ -556,16 +558,6 @@ bool WebRenderBridgeParent::MaybeHandleDeferredPipelineData(
     wr::RenderRoot aRenderRoot, const nsTArray<wr::PipelineId>& aPipelineIds,
     const TimeStamp& aTxnStartTime) {
   MOZ_ASSERT(IsRootWebRenderBridgeParent());
-  if (!StaticPrefs::gfx_webrender_split_render_roots_AtStartup()) {
-    return true;
-  }
-  for (wr::PipelineId pipelineId : aPipelineIds) {
-    if (!MaybeHandleDeferredPipelineDataForPipeline(aRenderRoot, pipelineId,
-                                                    aTxnStartTime)) {
-      return false;
-    }
-  }
-
   return true;
 }
 
@@ -834,8 +826,7 @@ bool WebRenderBridgeParent::PushExternalImageForTexture(
     WebRenderTextureHost* wrTexture = aTexture->AsWebRenderTextureHost();
     if (wrTexture) {
       wrTexture->PushResourceUpdates(aResources, op, keys,
-                                     wrTexture->GetExternalImageKey(),
-                                     /* aPreferCompositorSurface */ false);
+                                     wrTexture->GetExternalImageKey());
       auto it = mTextureHosts.find(wr::AsUint64(aKey));
       MOZ_ASSERT((it == mTextureHosts.end() && !aIsUpdate) ||
                  (it != mTextureHosts.end() && aIsUpdate));
@@ -1047,6 +1038,28 @@ WebRenderBridgeParent::GetCollectedFrames() {
   return Api(wr::RenderRoot::Default)->GetCollectedFrames();
 }
 
+void WebRenderBridgeParent::AddPendingScrollPayload(
+    CompositionPayload& aPayload,
+    const std::pair<wr::PipelineId, wr::Epoch>& aKey) {
+  auto pendingScrollPayloads = mPendingScrollPayloads.Lock();
+  nsTArray<CompositionPayload>* payloads =
+      pendingScrollPayloads->LookupOrAdd(aKey);
+
+  payloads->AppendElement(aPayload);
+}
+
+nsTArray<CompositionPayload>* WebRenderBridgeParent::GetPendingScrollPayload(
+    const std::pair<wr::PipelineId, wr::Epoch>& aKey) {
+  auto pendingScrollPayloads = mPendingScrollPayloads.Lock();
+  return pendingScrollPayloads->Get(aKey);
+}
+
+bool WebRenderBridgeParent::RemovePendingScrollPayload(
+    const std::pair<wr::PipelineId, wr::Epoch>& aKey) {
+  auto pendingScrollPayloads = mPendingScrollPayloads.Lock();
+  return pendingScrollPayloads->Remove(aKey);
+}
+
 CompositorBridgeParent* WebRenderBridgeParent::GetRootCompositorBridgeParent()
     const {
   if (!mCompositorBridge) {
@@ -1092,8 +1105,7 @@ void WebRenderBridgeParent::UpdateAPZFocusState(const FocusTarget& aFocus) {
   }
   LayersId rootLayersId = cbp->RootLayerTreeId();
   if (RefPtr<APZUpdater> apz = cbp->GetAPZUpdater()) {
-    apz->UpdateFocusState(rootLayersId, WRRootId(GetLayersId(), *mRenderRoot),
-                          aFocus);
+    apz->UpdateFocusState(rootLayersId, GetLayersId(), aFocus);
   }
 }
 
@@ -1106,10 +1118,8 @@ void WebRenderBridgeParent::UpdateAPZScrollData(const wr::Epoch& aEpoch,
   }
   LayersId rootLayersId = cbp->RootLayerTreeId();
   if (RefPtr<APZUpdater> apz = cbp->GetAPZUpdater()) {
-    apz->UpdateScrollDataAndTreeState(
-        WRRootId(rootLayersId, wr::RenderRoot::Default),
-        WRRootId(GetLayersId(), RenderRootForExternal(aRenderRoot)), aEpoch,
-        std::move(aData));
+    apz->UpdateScrollDataAndTreeState(rootLayersId, GetLayersId(), aEpoch,
+                                      std::move(aData));
   }
 }
 
@@ -1122,10 +1132,8 @@ void WebRenderBridgeParent::UpdateAPZScrollOffsets(
   }
   LayersId rootLayersId = cbp->RootLayerTreeId();
   if (RefPtr<APZUpdater> apz = cbp->GetAPZUpdater()) {
-    apz->UpdateScrollOffsets(
-        WRRootId(rootLayersId, wr::RenderRoot::Default),
-        WRRootId(GetLayersId(), RenderRootForExternal(aRenderRoot)),
-        std::move(aUpdates), aPaintSequenceNumber);
+    apz->UpdateScrollOffsets(rootLayersId, GetLayersId(), std::move(aUpdates),
+                             aPaintSequenceNumber);
   }
 }
 
@@ -1167,29 +1175,13 @@ bool WebRenderBridgeParent::SetDisplayList(
     if (IsRootWebRenderBridgeParent()) {
       if (aRenderRoot != wr::RenderRoot::Default) {
         MutexAutoLock lock(mRenderRootRectMutex);
-        mRenderRootRects[aRenderRoot] = ViewAs<ScreenPixel>(
-            aRect, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
       }
       LayoutDeviceIntSize widgetSize = mWidget->GetClientSize();
-      LayoutDeviceIntRect rect;
-      if (StaticPrefs::gfx_webrender_split_render_roots_AtStartup()) {
-        rect = RoundedToInt(aRect);
-        rect.SetWidth(
-            std::max(0, std::min(widgetSize.width - rect.X(), rect.Width())));
-        rect.SetHeight(
-            std::max(0, std::min(widgetSize.height - rect.Y(), rect.Height())));
-      } else {
-        // XXX: If we can't have multiple documents, just use the
-        // pre-document- splitting behavior of directly applying the client
-        // size. This is a speculative and temporary attempt to address bug
-        // 1538540, as an incorrect rect supplied to SetDocumentView can cause
-        // us to not build a frame and potentially render with stale texture
-        // cache items.
-        rect = LayoutDeviceIntRect(LayoutDeviceIntPoint(), widgetSize);
-      }
+      LayoutDeviceIntRect rect =
+          LayoutDeviceIntRect(LayoutDeviceIntPoint(), widgetSize);
       aTxn.SetDocumentView(rect);
     }
-    gfx::Color clearColor(0.f, 0.f, 0.f, 0.f);
+    gfx::DeviceColor clearColor(0.f, 0.f, 0.f, 0.f);
     aTxn.SetDisplayList(clearColor, aWrEpoch,
                         wr::ToLayoutSize(RoundedToInt(aRect).Size()),
                         mPipelineId, aContentSize, aDLDesc, dlData);
@@ -1741,6 +1733,8 @@ void WebRenderBridgeParent::DisableNativeCompositor() {
   mApis[wr::RenderRoot::Default]->EnableNativeCompositor(false);
   // Ensure we generate and render a frame immediately.
   ScheduleForcedGenerateFrame();
+
+  mDisablingNativeCompositor = true;
 }
 
 void WebRenderBridgeParent::UpdateQualitySettings() {
@@ -2013,9 +2007,7 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvClearCachedResources() {
   }
 
   for (auto renderRoot : wr::kRenderRoots) {
-    if (renderRoot == wr::RenderRoot::Default ||
-        (IsRootWebRenderBridgeParent() &&
-         StaticPrefs::gfx_webrender_split_render_roots_AtStartup())) {
+    if (renderRoot == wr::RenderRoot::Default) {
       if (mRenderRoot) {
         // Clear resources
         wr::TransactionBuilder txn;
@@ -2109,9 +2101,7 @@ void WebRenderBridgeParent::ScheduleForcedGenerateFrame() {
   }
 
   for (auto renderRoot : wr::kRenderRoots) {
-    if (renderRoot == wr::RenderRoot::Default ||
-        (IsRootWebRenderBridgeParent() &&
-         StaticPrefs::gfx_webrender_split_render_roots_AtStartup())) {
+    if (renderRoot == wr::RenderRoot::Default) {
       wr::TransactionBuilder fastTxn(/* aUseSceneBuilderThread */ false);
       fastTxn.InvalidateRenderedFrame();
       Api(renderRoot)->SendTransaction(fastTxn);
@@ -2152,18 +2142,10 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSyncWithCompositor() {
 }
 
 mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetConfirmedTargetAPZC(
-    const uint64_t& aBlockId, nsTArray<SLGuidAndRenderRoot>&& aTargets) {
+    const uint64_t& aBlockId, nsTArray<ScrollableLayerGuid>&& aTargets) {
   for (size_t i = 0; i < aTargets.Length(); i++) {
     // Guard against bad data from hijacked child processes
-    if (aTargets[i].mRenderRoot > wr::kHighestRenderRoot ||
-        (!StaticPrefs::gfx_webrender_split_render_roots_AtStartup() &&
-         aTargets[i].mRenderRoot != wr::RenderRoot::Default)) {
-      NS_ERROR(
-          "Unexpected render root in RecvSetConfirmedTargetAPZC; dropping "
-          "message...");
-      return IPC_FAIL(this, "Bad render root");
-    }
-    if (aTargets[i].mScrollableLayerGuid.mLayersId != GetLayersId()) {
+    if (aTargets[i].mLayersId != GetLayersId()) {
       NS_ERROR(
           "Unexpected layers id in RecvSetConfirmedTargetAPZC; dropping "
           "message...");
@@ -2218,8 +2200,8 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetAsyncScrollOffset(
   if (mDestroyed) {
     return IPC_OK();
   }
-  mCompositorBridge->SetTestAsyncScrollOffset(
-      WRRootId(GetLayersId(), *mRenderRoot), aScrollId, CSSPoint(aX, aY));
+  mCompositorBridge->SetTestAsyncScrollOffset(GetLayersId(), aScrollId,
+                                              CSSPoint(aX, aY));
   return IPC_OK();
 }
 
@@ -2228,8 +2210,7 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetAsyncZoom(
   if (mDestroyed) {
     return IPC_OK();
   }
-  mCompositorBridge->SetTestAsyncZoom(WRRootId(GetLayersId(), *mRenderRoot),
-                                      aScrollId,
+  mCompositorBridge->SetTestAsyncZoom(GetLayersId(), aScrollId,
                                       LayerToParentLayerScale(aZoom));
   return IPC_OK();
 }
@@ -2238,14 +2219,13 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvFlushApzRepaints() {
   if (mDestroyed) {
     return IPC_OK();
   }
-  mCompositorBridge->FlushApzRepaints(WRRootId(GetLayersId(), *mRenderRoot));
+  mCompositorBridge->FlushApzRepaints(GetLayersId());
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult WebRenderBridgeParent::RecvGetAPZTestData(
     APZTestData* aOutData) {
-  mCompositorBridge->GetAPZTestData(WRRootId(GetLayersId(), *mRenderRoot),
-                                    aOutData);
+  mCompositorBridge->GetAPZTestData(GetLayersId(), aOutData);
   return IPC_OK();
 }
 
@@ -2277,10 +2257,7 @@ bool WebRenderBridgeParent::AdvanceAnimations() {
   return isAnimating;
 }
 
-bool WebRenderBridgeParent::SampleAnimations(
-    wr::RenderRootArray<nsTArray<wr::WrOpacityProperty>>& aOpacityArrays,
-    wr::RenderRootArray<nsTArray<wr::WrTransformProperty>>& aTransformArrays,
-    wr::RenderRootArray<nsTArray<wr::WrColorProperty>>& aColorArrays) {
+bool WebRenderBridgeParent::SampleAnimations(WrAnimations& aAnimations) {
   const bool isAnimating = AdvanceAnimations();
 
   // return the animated data if has
@@ -2289,19 +2266,22 @@ bool WebRenderBridgeParent::SampleAnimations(
          iter.Next()) {
       AnimatedValue* value = iter.UserData();
       wr::RenderRoot renderRoot = mAnimStorage->AnimationRenderRoot(iter.Key());
-      auto& transformArray = aTransformArrays[renderRoot];
-      auto& opacityArray = aOpacityArrays[renderRoot];
-      auto& colorArray = aColorArrays[renderRoot];
-      if (value->Is<AnimationTransform>()) {
-        transformArray.AppendElement(wr::ToWrTransformProperty(
-            iter.Key(), value->Transform().mTransformInDevSpace));
-      } else if (value->Is<float>()) {
-        opacityArray.AppendElement(
-            wr::ToWrOpacityProperty(iter.Key(), value->Opacity()));
-      } else if (value->Is<nscolor>()) {
-        colorArray.AppendElement(wr::ToWrColorProperty(
-            iter.Key(), gfx::Color::FromABGR(value->Color())));
-      }
+      value->Value().match(
+          [&](const AnimationTransform& aTransform) {
+            auto& transformArray = aAnimations.mTransformArrays[renderRoot];
+            transformArray.AppendElement(wr::ToWrTransformProperty(
+                iter.Key(), aTransform.mTransformInDevSpace));
+          },
+          [&](const float& aOpacity) {
+            auto& opacityArray = aAnimations.mOpacityArrays[renderRoot];
+            opacityArray.AppendElement(
+                wr::ToWrOpacityProperty(iter.Key(), aOpacity));
+          },
+          [&](const nscolor& aColor) {
+            auto& colorArray = aAnimations.mColorArrays[renderRoot];
+            colorArray.AppendElement(wr::ToWrColorProperty(
+                iter.Key(), ToDeviceColor(gfx::sRGBColor::FromABGR(aColor))));
+          });
     }
   }
 
@@ -2428,11 +2408,8 @@ void WebRenderBridgeParent::MaybeGenerateFrame(VsyncId aId,
     return;
   }
 
-  wr::RenderRootArray<nsTArray<wr::WrOpacityProperty>> opacityArrays;
-  wr::RenderRootArray<nsTArray<wr::WrTransformProperty>> transformArrays;
-  wr::RenderRootArray<nsTArray<wr::WrColorProperty>> colorArrays;
-
-  if (SampleAnimations(opacityArrays, transformArrays, colorArrays)) {
+  WrAnimations animations;
+  if (SampleAnimations(animations)) {
     // TODO we should have a better way of assessing whether we need a content
     // or a chrome frame generation.
     ScheduleGenerateFrameAllRenderRoots();
@@ -2444,9 +2421,10 @@ void WebRenderBridgeParent::MaybeGenerateFrame(VsyncId aId,
       continue;
     }
     auto renderRoot = api->GetRenderRoot();
-    fastTxns[renderRoot]->UpdateDynamicProperties(opacityArrays[renderRoot],
-                                                  transformArrays[renderRoot],
-                                                  colorArrays[renderRoot]);
+    fastTxns[renderRoot]->UpdateDynamicProperties(
+        animations.mOpacityArrays[renderRoot],
+        animations.mTransformArrays[renderRoot],
+        animations.mColorArrays[renderRoot]);
   }
 
   SetAPZSampleTime();
@@ -2478,6 +2456,16 @@ void WebRenderBridgeParent::MaybeGenerateFrame(VsyncId aId,
 #endif
 
   mMostRecentComposite = TimeStamp::Now();
+
+  // During disabling native compositor, webrender needs to render twice.
+  // Otherwise, browser flashes black.
+  // XXX better fix?
+  if (mDisablingNativeCompositor) {
+    mDisablingNativeCompositor = false;
+
+    // Ensure we generate and render a frame immediately.
+    ScheduleForcedGenerateFrame();
+  }
 }
 
 void WebRenderBridgeParent::HoldPendingTransactionId(
@@ -2497,11 +2485,6 @@ void WebRenderBridgeParent::HoldPendingTransactionId(
 already_AddRefed<wr::WebRenderAPI>
 WebRenderBridgeParent::GetWebRenderAPIAtPoint(const ScreenPoint& aPoint) {
   MutexAutoLock lock(mRenderRootRectMutex);
-  for (auto renderRoot : wr::kNonDefaultRenderRoots) {
-    if (mRenderRootRects[renderRoot].Contains(aPoint)) {
-      return do_AddRef(Api(renderRoot));
-    }
-  }
   return do_AddRef(Api(wr::RenderRoot::Default));
 }
 
@@ -2606,9 +2589,6 @@ TransactionId WebRenderBridgeParent::FlushTransactionIdsForEpoch(
             transactionId.mTxnStartTime, transactionId.mRefreshStartTime,
             transactionId.mFwdTime, transactionId.mSceneBuiltTime,
             transactionId.mSkippedComposites, transactionId.mTxnURL));
-
-        wr::RenderThread::Get()->NotifySlowFrame(
-            mApis[wr::RenderRoot::Default]->GetId());
       }
     }
 

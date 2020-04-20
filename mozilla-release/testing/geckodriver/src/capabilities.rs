@@ -9,7 +9,6 @@ use regex::bytes::Regex;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::default::Default;
-use std::error::Error;
 use std::fs;
 use std::io;
 use std::io::BufWriter;
@@ -102,10 +101,7 @@ impl<'a> FirefoxCapabilities<'a> {
 
 // TODO: put this in webdriver-rust
 fn convert_version_error(err: mozversion::Error) -> WebDriverError {
-    WebDriverError::new(
-        ErrorStatus::SessionNotCreated,
-        err.description().to_string(),
-    )
+    WebDriverError::new(ErrorStatus::SessionNotCreated, err.to_string())
 }
 
 impl<'a> BrowserCapabilities for FirefoxCapabilities<'a> {

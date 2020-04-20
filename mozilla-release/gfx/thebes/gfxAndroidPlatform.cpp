@@ -224,10 +224,6 @@ void gfxAndroidPlatform::GetCommonFallbackFonts(
   aFontList.AppendElement("Droid Sans Fallback");
 }
 
-void gfxAndroidPlatform::GetSystemFontList(nsTArray<FontListEntry>* retValue) {
-  gfxFT2FontList::PlatformFontList()->GetSystemFontList(retValue);
-}
-
 gfxPlatformFontList* gfxAndroidPlatform::CreatePlatformFontList() {
   gfxPlatformFontList* list = new gfxFT2FontList();
   if (NS_SUCCEEDED(list->InitFontList())) {
@@ -237,12 +233,9 @@ gfxPlatformFontList* gfxAndroidPlatform::CreatePlatformFontList() {
   return nullptr;
 }
 
-gfxFontGroup* gfxAndroidPlatform::CreateFontGroup(
-    const FontFamilyList& aFontFamilyList, const gfxFontStyle* aStyle,
-    gfxTextPerfMetrics* aTextPerf, gfxUserFontSet* aUserFontSet,
-    gfxFloat aDevToCssSize) {
-  return new gfxFontGroup(aFontFamilyList, aStyle, aTextPerf, aUserFontSet,
-                          aDevToCssSize);
+void gfxAndroidPlatform::ReadSystemFontList(
+    nsTArray<SystemFontListEntry>* aFontList) {
+  gfxFT2FontList::PlatformFontList()->ReadSystemFontList(aFontList);
 }
 
 bool gfxAndroidPlatform::FontHintingEnabled() {

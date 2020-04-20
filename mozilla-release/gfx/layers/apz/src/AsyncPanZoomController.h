@@ -47,7 +47,6 @@ namespace layers {
 class AsyncDragMetrics;
 class APZCTreeManager;
 struct ScrollableLayerGuid;
-struct SLGuidAndRenderRoot;
 class CompositorController;
 class MetricsSharingController;
 class GestureEventListener;
@@ -196,7 +195,6 @@ class AsyncPanZoomController {
   AsyncPanZoomController(LayersId aLayersId, APZCTreeManager* aTreeManager,
                          const RefPtr<InputQueue>& aInputQueue,
                          GeckoContentController* aController,
-                         wr::RenderRoot aRenderRoot,
                          GestureBehavior aGestures = DEFAULT_GESTURES);
 
   // --------------------------------------------------------------------------
@@ -251,7 +249,8 @@ class AsyncPanZoomController {
    */
   bool AdvanceAnimations(const TimeStamp& aSampleTime);
 
-  bool UpdateAnimation(const TimeStamp& aSampleTime,
+  bool UpdateAnimation(const RecursiveMutexAutoLock& aProofOfLock,
+                       const TimeStamp& aSampleTime,
                        nsTArray<RefPtr<Runnable>>* aOutDeferredTasks);
 
   // --------------------------------------------------------------------------
@@ -308,14 +307,20 @@ class AsyncPanZoomController {
 
   /**
    * Returns the number of CSS pixels of checkerboard according to the metrics
-   * in this APZC.
+   * in this APZC. The argument provided by the caller is the composition bounds
+   * of this APZC, additionally clipped by the composition bounds of any
+   * ancestor APZCs, accounting for all the async transforms.
    */
-  uint32_t GetCheckerboardMagnitude() const;
+  uint32_t GetCheckerboardMagnitude(
+      const ParentLayerRect& aClippedCompositionBounds) const;
 
   /**
    * Report the number of CSSPixel-milliseconds of checkerboard to telemetry.
+   * See GetCheckerboardMagnitude for documentation of the
+   * aClippedCompositionBounds argument that needs to be provided by the caller.
    */
-  void ReportCheckerboard(const TimeStamp& aSampleTime);
+  void ReportCheckerboard(const TimeStamp& aSampleTime,
+                          const ParentLayerRect& aClippedCompositionBounds);
 
   /**
    * Flush any active checkerboard report that's in progress. This basically
@@ -325,14 +330,6 @@ class AsyncPanZoomController {
    * on the next composite.
    */
   void FlushActiveCheckerboardReport();
-
-  /**
-   * Returns whether or not the APZC is currently in a state of checkerboarding.
-   * This is a simple computation based on the last-painted content and whether
-   * the async transform has pushed it so far that it doesn't fully contain the
-   * composition bounds.
-   */
-  bool IsCurrentlyCheckerboarding() const;
 
   /**
    * Recalculates the displayport. Ideally, this should paint an area bigger
@@ -1195,7 +1192,8 @@ class AsyncPanZoomController {
    * true. Otherwise, GetCurrentAsyncTransform() always reflects what's stored
    * in |Metrics()| immediately, without any delay.)
    */
-  bool SampleCompositedAsyncTransform();
+  bool SampleCompositedAsyncTransform(
+      const RecursiveMutexAutoLock& aProofOfLock);
 
   /*
    * Helper functions to query the async layout viewport, scroll offset, and
@@ -1207,6 +1205,12 @@ class AsyncPanZoomController {
   CSSPoint GetEffectiveScrollOffset(AsyncTransformConsumer aMode) const;
   CSSToParentLayerScale2D GetEffectiveZoom(AsyncTransformConsumer aMode) const;
 
+  /**
+   * Returns the visible portion of the content scrolled by this APZC, in
+   * CSS pixels. The caller must have acquired the mRecursiveMutex lock.
+   */
+  CSSRect GetVisibleRect(const RecursiveMutexAutoLock& aProofOfLock) const;
+
  private:
   friend class AutoApplyAsyncTestAttributes;
 
@@ -1216,14 +1220,15 @@ class AsyncPanZoomController {
    * that the GetCurrentAsync* functions consider the test offset and zoom in
    * their computations.
    */
-  void ApplyAsyncTestAttributes();
+  void ApplyAsyncTestAttributes(const RecursiveMutexAutoLock& aProofOfLock);
 
   /**
    * Sets this AsyncPanZoomController's FrameMetrics to |aPrevFrameMetrics| and
    * calls |SampleCompositedAsyncTransform| to unapply any test values applied
    * by |ApplyAsyncTestAttributes|.
    */
-  void UnapplyAsyncTestAttributes(const FrameMetrics& aPrevFrameMetrics);
+  void UnapplyAsyncTestAttributes(const RecursiveMutexAutoLock& aProofOfLock,
+                                  const FrameMetrics& aPrevFrameMetrics);
 
   /* ===================================================================
    * The functions and members in this section are used to manage

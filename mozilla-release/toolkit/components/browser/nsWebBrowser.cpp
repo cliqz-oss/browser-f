@@ -56,6 +56,7 @@ using namespace mozilla::layers;
 nsWebBrowser::nsWebBrowser(int aItemType)
     : mContentType(aItemType),
       mShouldEnableHistory(true),
+      mWillChangeProcess(false),
       mParentNativeWindow(nullptr),
       mProgressListener(nullptr),
       mWidgetListenerDelegate(this),
@@ -1135,7 +1136,7 @@ nsWebBrowser::SetFocus() {
   nsCOMPtr<nsPIDOMWindowOuter> window = GetWindow();
   NS_ENSURE_TRUE(window, NS_ERROR_FAILURE);
 
-  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
   return fm ? fm->SetFocusedWindow(window) : NS_OK;
 }
 
@@ -1192,6 +1193,9 @@ nsWebBrowser::SetDocShell(nsIDocShell* aDocShell) {
     }
     if (mDocShellAsWin) {
       mDocShellAsWin->Destroy();
+    }
+    if (!mWillChangeProcess && mDocShell) {
+      mDocShell->GetBrowsingContext()->Detach(/* aFromIPC */ true);
     }
 
     mDocShell = nullptr;
@@ -1271,7 +1275,7 @@ bool nsWebBrowser::PaintWindow(nsIWidget* aWidget,
 }
 
 void nsWebBrowser::FocusActivate() {
-  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
   nsCOMPtr<nsPIDOMWindowOuter> window = GetWindow();
   if (fm && window) {
     fm->WindowRaised(window);
@@ -1279,10 +1283,17 @@ void nsWebBrowser::FocusActivate() {
 }
 
 void nsWebBrowser::FocusDeactivate() {
-  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
   nsCOMPtr<nsPIDOMWindowOuter> window = GetWindow();
   if (fm && window) {
     fm->WindowLowered(window);
+  }
+}
+
+void nsWebBrowser::SetWillChangeProcess() {
+  mWillChangeProcess = true;
+  if (mDocShell) {
+    nsDocShell::Cast(mDocShell)->SetWillChangeProcess();
   }
 }
 

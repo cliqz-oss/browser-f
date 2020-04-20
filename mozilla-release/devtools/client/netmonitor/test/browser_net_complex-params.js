@@ -9,7 +9,9 @@
  */
 
 add_task(async function() {
-  const { tab, monitor } = await initNetMonitor(PARAMS_URL);
+  const { tab, monitor } = await initNetMonitor(PARAMS_URL, {
+    requestCount: 1,
+  });
   info("Starting test... ");
 
   const { document, store, windowRequire } = monitor.panelWin;
@@ -127,7 +129,12 @@ add_task(async function() {
     document.querySelectorAll(".request-list-item")[11]
   );
   await wait;
-  testParamsTabGetWithArgs(new Map([["a", ["b", "c"]], ["d", "1"]]));
+  testParamsTabGetWithArgs(
+    new Map([
+      ["a", ["b", "c"]],
+      ["d", "1"],
+    ])
+  );
 
   await teardown(monitor);
 

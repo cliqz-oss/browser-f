@@ -11,6 +11,7 @@
 
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/DeferredFinalize.h"
+#include "mozilla/HashTable.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/mozalloc.h"
 #include "mozilla/MemoryReporting.h"
@@ -85,9 +86,35 @@ class JSZoneParticipant : public nsCycleCollectionParticipant {
 
 class IncrementalFinalizeRunnable;
 
-struct JSHolderInfo {
-  void* mHolder;
-  nsScriptObjectTracer* mTracer;
+// A map from JS holders to tracer objects, where the values are stored in a
+// SegmentedVector to speed up iteration.
+class JSHolderMap {
+ public:
+  JSHolderMap();
+
+  template <typename F>
+  void ForEach(F&& f);
+
+  bool Has(void* aHolder) const;
+  nsScriptObjectTracer* Get(void* aHolder) const;
+  nsScriptObjectTracer* GetAndRemove(void* aHolder);
+  void Put(void* aHolder, nsScriptObjectTracer* aTracer);
+
+  size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const;
+
+ private:
+  struct Entry {
+    void* mHolder;
+    nsScriptObjectTracer* mTracer;
+  };
+
+  using EntryVector = SegmentedVector<Entry, 1024, InfallibleAllocPolicy>;
+
+  using EntryMap = mozilla::HashMap<void*, Entry*, DefaultHasher<void*>,
+                                    InfallibleAllocPolicy>;
+
+  EntryVector mJSHolders;
+  EntryMap mJSHolderMap;
 };
 
 class CycleCollectedJSRuntime {
@@ -158,6 +185,9 @@ class CycleCollectedJSRuntime {
   static void OutOfMemoryCallback(JSContext* aContext, void* aData);
 
   static bool ContextCallback(JSContext* aCx, unsigned aOperation, void* aData);
+
+  static void* BeforeWaitCallback(uint8_t* aMemory);
+  static void AfterWaitCallback(void* aCookie);
 
   virtual void TraceNativeBlackRoots(JSTracer* aTracer){};
   void TraceNativeGrayRoots(JSTracer* aTracer);
@@ -310,8 +340,7 @@ class CycleCollectedJSRuntime {
 
   mozilla::TimeStamp mLatestNurseryCollectionStart;
 
-  SegmentedVector<JSHolderInfo, 1024, InfallibleAllocPolicy> mJSHolders;
-  nsDataHashtable<nsPtrHashKey<void>, JSHolderInfo*> mJSHolderMap;
+  JSHolderMap mJSHolders;
 
   typedef nsDataHashtable<nsFuncPtrHashKey<DeferredFinalizeFunction>, void*>
       DeferredFinalizerTable;

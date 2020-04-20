@@ -14,7 +14,6 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Types.h"
-#include "mozilla/TypeTraits.h"
 #include "mozilla/Variant.h"
 
 namespace mozilla {
@@ -185,8 +184,8 @@ struct IsPackableVariant {
     bool ok;
   };
 
-  using Impl = typename Conditional<sizeof(VEbool) <= sizeof(EVbool), VEbool,
-                                    EVbool>::Type;
+  using Impl =
+      std::conditional_t<sizeof(VEbool) <= sizeof(EVbool), VEbool, EVbool>;
 
   static const bool value = sizeof(Impl) <= sizeof(uintptr_t);
 };
@@ -268,12 +267,12 @@ struct HasFreeLSB<T&> {
 template <typename V, typename E>
 struct SelectResultImpl {
   static const PackingStrategy value =
-      (IsEmpty<V>::value && UnusedZero<E>::value)
+      (std::is_empty_v<V> && UnusedZero<E>::value)
           ? PackingStrategy::NullIsOk
           : (detail::HasFreeLSB<V>::value && detail::HasFreeLSB<E>::value)
                 ? PackingStrategy::LowBitTagIsError
-                : (IsDefaultConstructible<V>::value &&
-                   IsDefaultConstructible<E>::value &&
+                : (std::is_default_constructible_v<V> &&
+                   std::is_default_constructible_v<E> &&
                    IsPackableVariant<V, E>::value)
                       ? PackingStrategy::PackedVariant
                       : PackingStrategy::Variant;
@@ -282,10 +281,10 @@ struct SelectResultImpl {
 };
 
 template <typename T>
-struct IsResult : FalseType {};
+struct IsResult : std::false_type {};
 
 template <typename V, typename E>
-struct IsResult<Result<V, E>> : TrueType {};
+struct IsResult<Result<V, E>> : std::true_type {};
 
 }  // namespace detail
 
@@ -328,6 +327,9 @@ class MOZ_MUST_USE_TYPE Result final {
   Impl mImpl;
 
  public:
+  using ok_type = V;
+  using err_type = E;
+
   /** Create a success result. */
   MOZ_IMPLICIT Result(V&& aValue) : mImpl(std::forward<V>(aValue)) {
     MOZ_ASSERT(isOk());
@@ -348,8 +350,7 @@ class MOZ_MUST_USE_TYPE Result final {
   template <typename E2>
   MOZ_IMPLICIT Result(GenericErrorResult<E2>&& aErrorResult)
       : mImpl(std::forward<E2>(aErrorResult.mErrorValue)) {
-    static_assert(mozilla::IsConvertible<E2, E>::value,
-                  "E2 must be convertible to E");
+    static_assert(std::is_convertible_v<E2, E>, "E2 must be convertible to E");
     MOZ_ASSERT(isErr());
   }
 
@@ -360,8 +361,7 @@ class MOZ_MUST_USE_TYPE Result final {
   template <typename E2>
   MOZ_IMPLICIT Result(const GenericErrorResult<E2>& aErrorResult)
       : mImpl(aErrorResult.mErrorValue) {
-    static_assert(mozilla::IsConvertible<E2, E>::value,
-                  "E2 must be convertible to E");
+    static_assert(std::is_convertible_v<E2, E>, "E2 must be convertible to E");
     MOZ_ASSERT(isErr());
   }
 
@@ -496,8 +496,8 @@ class MOZ_MUST_USE_TYPE Result final {
    *     MOZ_ASSERT(res2.isErr());
    *     MOZ_ASSERT(res.unwrapErr() == res2.unwrapErr());
    */
-  template <typename F, typename = typename EnableIf<detail::IsResult<decltype(
-                            (*((F*)nullptr))(*((V*)nullptr)))>::value>::Type>
+  template <typename F, typename = std::enable_if_t<detail::IsResult<
+                            decltype((*((F*)nullptr))(*((V*)nullptr)))>::value>>
   auto andThen(F f) -> decltype(f(*((V*)nullptr))) {
     return MOZ_LIKELY(isOk()) ? f(unwrap())
                               : GenericErrorResult<E>(unwrapErr());

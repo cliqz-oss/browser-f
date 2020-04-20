@@ -453,7 +453,7 @@ void BrowserChild::ContentReceivedInputBlock(uint64_t aInputBlockId,
 
 void BrowserChild::SetTargetAPZC(
     uint64_t aInputBlockId,
-    const nsTArray<SLGuidAndRenderRoot>& aTargets) const {
+    const nsTArray<ScrollableLayerGuid>& aTargets) const {
   if (mApzcTreeManager) {
     mApzcTreeManager->SetTargetAPZC(aInputBlockId, aTargets);
   }
@@ -474,8 +474,8 @@ bool BrowserChild::DoUpdateZoomConstraints(
     return false;
   }
 
-  SLGuidAndRenderRoot guid = SLGuidAndRenderRoot(
-      mLayersId, aPresShellId, aViewId, gfxUtils::GetContentRenderRoot());
+  ScrollableLayerGuid guid =
+      ScrollableLayerGuid(mLayersId, aPresShellId, aViewId);
 
   mApzcTreeManager->UpdateZoomConstraints(guid, aConstraints);
   return true;
@@ -878,10 +878,10 @@ BrowserChild::GetInterface(const nsIID& aIID, void** aSink) {
 
 NS_IMETHODIMP
 BrowserChild::ProvideWindow(mozIDOMWindowProxy* aParent, uint32_t aChromeFlags,
-                            bool aCalledFromJS, bool aPositionSpecified,
-                            bool aSizeSpecified, nsIURI* aURI,
-                            const nsAString& aName, const nsACString& aFeatures,
-                            bool aForceNoOpener, bool aForceNoReferrer,
+                            bool aCalledFromJS, bool aWidthSpecified,
+                            nsIURI* aURI, const nsAString& aName,
+                            const nsACString& aFeatures, bool aForceNoOpener,
+                            bool aForceNoReferrer,
                             nsDocShellLoadState* aLoadState, bool* aWindowIsNew,
                             BrowsingContext** aReturn) {
   *aReturn = nullptr;
@@ -899,7 +899,7 @@ BrowserChild::ProvideWindow(mozIDOMWindowProxy* aParent, uint32_t aChromeFlags,
   if (!iframeMoz) {
     int32_t openLocation = nsWindowWatcher::GetWindowOpenLocation(
         nsPIDOMWindowOuter::From(aParent), aChromeFlags, aCalledFromJS,
-        aPositionSpecified, aSizeSpecified);
+        aWidthSpecified);
 
     // If it turns out we're opening in the current browser, just hand over the
     // current browser's docshell.
@@ -921,10 +921,10 @@ BrowserChild::ProvideWindow(mozIDOMWindowProxy* aParent, uint32_t aChromeFlags,
   // open window call was canceled.  It's important that we pass this error
   // code back to our caller.
   ContentChild* cc = ContentChild::GetSingleton();
-  return cc->ProvideWindowCommon(
-      this, aParent, iframeMoz, aChromeFlags, aCalledFromJS, aPositionSpecified,
-      aSizeSpecified, aURI, aName, aFeatures, aForceNoOpener, aForceNoReferrer,
-      aLoadState, aWindowIsNew, aReturn);
+  return cc->ProvideWindowCommon(this, aParent, iframeMoz, aChromeFlags,
+                                 aCalledFromJS, aWidthSpecified, aURI, aName,
+                                 aFeatures, aForceNoOpener, aForceNoReferrer,
+                                 aLoadState, aWindowIsNew, aReturn);
 }
 
 void BrowserChild::DestroyWindow() {
@@ -1036,9 +1036,8 @@ BrowserChild::~BrowserChild() {
 
 mozilla::ipc::IPCResult BrowserChild::RecvWillChangeProcess(
     WillChangeProcessResolver&& aResolve) {
-  if (nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation())) {
-    RefPtr<nsDocShell> docshell = nsDocShell::Cast(docShell);
-    docshell->SetWillChangeProcess();
+  if (mWebBrowser) {
+    mWebBrowser->SetWillChangeProcess();
   }
   aResolve(true);
   return IPC_OK();
@@ -1194,8 +1193,9 @@ mozilla::ipc::IPCResult BrowserChild::RecvScrollbarPreferenceChanged(
   MOZ_ASSERT(!mIsTopLevel,
              "Scrollbar visibility should be derived from chrome flags for "
              "top-level windows");
-  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
-  nsDocShell::Cast(docShell)->SetScrollbarPreference(aPreference);
+  if (nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation())) {
+    nsDocShell::Cast(docShell)->SetScrollbarPreference(aPreference);
+  }
   return IPC_OK();
 }
 
@@ -1380,8 +1380,7 @@ void BrowserChild::HandleDoubleTap(const CSSPoint& aPoint,
   if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(
           document->GetDocumentElement(), &presShellId, &viewId) &&
       mApzcTreeManager) {
-    SLGuidAndRenderRoot guid(mLayersId, presShellId, viewId,
-                             gfxUtils::GetContentRenderRoot());
+    ScrollableLayerGuid guid(mLayersId, presShellId, viewId);
 
     mApzcTreeManager->ZoomToRect(guid, zoomToRect, DEFAULT_BEHAVIOR);
   }
@@ -1467,9 +1466,8 @@ bool BrowserChild::NotifyAPZStateChange(
 
 void BrowserChild::StartScrollbarDrag(
     const layers::AsyncDragMetrics& aDragMetrics) {
-  SLGuidAndRenderRoot guid(mLayersId, aDragMetrics.mPresShellId,
-                           aDragMetrics.mViewId,
-                           gfxUtils::GetContentRenderRoot());
+  ScrollableLayerGuid guid(mLayersId, aDragMetrics.mPresShellId,
+                           aDragMetrics.mViewId);
 
   if (mApzcTreeManager) {
     mApzcTreeManager->StartScrollbarDrag(guid, aDragMetrics);
@@ -1479,8 +1477,7 @@ void BrowserChild::StartScrollbarDrag(
 void BrowserChild::ZoomToRect(const uint32_t& aPresShellId,
                               const ScrollableLayerGuid::ViewID& aViewId,
                               const CSSRect& aRect, const uint32_t& aFlags) {
-  SLGuidAndRenderRoot guid(mLayersId, aPresShellId, aViewId,
-                           gfxUtils::GetContentRenderRoot());
+  ScrollableLayerGuid guid(mLayersId, aPresShellId, aViewId);
 
   if (mApzcTreeManager) {
     mApzcTreeManager->ZoomToRect(guid, aRect, aFlags);
@@ -2012,6 +2009,14 @@ mozilla::ipc::IPCResult BrowserChild::RecvFlushTabState(
 
 mozilla::ipc::IPCResult BrowserChild::RecvUpdateEpoch(const uint32_t& aEpoch) {
   mSessionStoreListener->SetEpoch(aEpoch);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult BrowserChild::RecvUpdateSHistory(
+    const bool& aImmediately) {
+  if (mSessionStoreListener) {
+    mSessionStoreListener->UpdateSHistoryChanges(aImmediately);
+  }
   return IPC_OK();
 }
 
@@ -2977,13 +2982,6 @@ void BrowserChild::SendRequestFocus(bool aCanFocus, CallerType aCallerType) {
   PBrowserChild::SendRequestFocus(aCanFocus, aCallerType);
 }
 
-void BrowserChild::EnableDisableCommands(
-    const nsAString& aAction, nsTArray<nsCString>& aEnabledCommands,
-    nsTArray<nsCString>& aDisabledCommands) {
-  PBrowserChild::SendEnableDisableCommands(PromiseFlatString(aAction),
-                                           aEnabledCommands, aDisabledCommands);
-}
-
 NS_IMETHODIMP
 BrowserChild::GetTabId(uint64_t* aId) {
   *aId = GetTabId();
@@ -3615,6 +3613,13 @@ NS_IMETHODIMP BrowserChild::OnStateChange(nsIWebProgress* aWebProgress,
     return NS_OK;
   }
 
+  // We shouldn't need to notify the parent of redirect state changes, since
+  // with DocumentChannel that only happens when we switch to the real channel,
+  // and that's an implementation detail that we can hide.
+  if (aStateFlags & nsIWebProgressListener::STATE_IS_REDIRECTED_DOCUMENT) {
+    return NS_OK;
+  }
+
   RefPtr<Document> document;
   if (nsCOMPtr<nsPIDOMWindowOuter> outerWindow = do_GetInterface(docShell)) {
     document = outerWindow->GetExtantDoc();
@@ -3757,8 +3762,6 @@ NS_IMETHODIMP BrowserChild::OnLocationChange(nsIWebProgress* aWebProgress,
     locationChangeData->contentStoragePrincipal() =
         document->EffectiveStoragePrincipal();
     locationChangeData->csp() = document->GetCsp();
-    locationChangeData->contentBlockingAllowListPrincipal() =
-        document->GetContentBlockingAllowListPrincipal();
     locationChangeData->referrerInfo() = document->ReferrerInfo();
     locationChangeData->isSyntheticDocument() = document->IsSyntheticDocument();
 
@@ -4003,8 +4006,9 @@ bool BrowserChild::UpdateSessionStore(uint32_t aFlushId, bool aIsFinal) {
 
   Unused << SendSessionStoreUpdate(
       docShellCaps, privatedMode, positions, positionDescendants, inputs,
-      idVals, xPathVals, origins, keys, values, isFullStorage, aFlushId,
-      aIsFinal, mSessionStoreListener->GetEpoch());
+      idVals, xPathVals, origins, keys, values, isFullStorage,
+      store->GetAndClearSHistoryChanged(), aFlushId, aIsFinal,
+      mSessionStoreListener->GetEpoch());
   return true;
 }
 
@@ -4048,7 +4052,7 @@ void BrowserChild::NotifyContentBlockingEvent(
     uint32_t aEvent, nsIChannel* aChannel, bool aBlocked,
     const nsACString& aTrackingOrigin,
     const nsTArray<nsCString>& aTrackingFullHashes,
-    const Maybe<mozilla::AntiTrackingCommon::StorageAccessGrantedReason>&
+    const Maybe<mozilla::ContentBlockingNotifier::StorageAccessGrantedReason>&
         aReason) {
   if (!IPCOpen()) {
     return;

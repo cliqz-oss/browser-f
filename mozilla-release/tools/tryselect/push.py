@@ -11,12 +11,11 @@ import sys
 from mozboot.util import get_state_dir
 from mozbuild.base import MozbuildObject
 from mozversioncontrol import get_repository_object, MissingVCSExtension
-from .util.estimates import (
-    duration_summary,
+from .util.manage_estimates import (
     download_task_history_data,
     make_trimmed_taskgraph_cache
 )
-
+from .util.estimates import duration_summary
 
 GIT_CINNABAR_NOT_FOUND = """
 Could not detect `git-cinnabar`.
@@ -85,13 +84,15 @@ def check_working_directory(push=True):
         sys.exit(1)
 
 
-def generate_try_task_config(method, labels, try_config=None):
+def generate_try_task_config(method, labels, try_config=None, routes=None):
     try_task_config = try_config or {}
     try_task_config.setdefault('env', {})['TRY_SELECTOR'] = method
     try_task_config.update({
         'version': 1,
         'tasks': sorted(labels),
     })
+    if routes:
+        try_task_config["routes"] = routes
 
     return try_task_config
 
@@ -106,7 +107,7 @@ def display_push_estimates(try_task_config):
     graph_cache = None
     dep_cache = None
     target_file = None
-    for graph_cache_file in ["full_task_graph", "target_task_graph"]:
+    for graph_cache_file in ["target_task_graph", "full_task_graph"]:
         graph_cache = os.path.join(cache_dir, graph_cache_file)
         if os.path.isfile(graph_cache):
             dep_cache = graph_cache.replace("task_graph", "task_dependencies")
@@ -141,7 +142,7 @@ def push_to_try(method, msg, try_task_config=None,
                 push=True, closed_tree=False, files_to_change=None):
     check_working_directory(push)
 
-    if try_task_config:
+    if try_task_config and method not in ('auto', 'empty'):
         display_push_estimates(try_task_config)
 
     # Format the commit message
@@ -152,7 +153,7 @@ def push_to_try(method, msg, try_task_config=None,
     config_path = None
     changed_files = []
     if try_task_config:
-        if push and method != 'again':
+        if push and method not in ('again', 'auto', 'empty'):
             write_task_config_history(msg, try_task_config)
         config_path = write_task_config(try_task_config)
         changed_files.append(config_path)

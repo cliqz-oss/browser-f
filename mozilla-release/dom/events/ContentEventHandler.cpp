@@ -317,16 +317,15 @@ nsresult ContentEventHandler::InitCommon(SelectionType aSelectionType,
   nsresult rv = InitBasic(aRequireFlush);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsISelectionController> selectionController;
+  RefPtr<nsFrameSelection> frameSel;
   if (PresShell* presShell = mDocument->GetPresShell()) {
-    selectionController = presShell->GetSelectionControllerForFocusedContent();
+    frameSel = presShell->GetLastFocusedFrameSelection();
   }
-  if (NS_WARN_IF(!selectionController)) {
+  if (NS_WARN_IF(!frameSel)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  mSelection =
-      selectionController->GetSelection(ToRawSelectionType(aSelectionType));
+  mSelection = frameSel->GetSelection(aSelectionType);
   if (NS_WARN_IF(!mSelection)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -335,8 +334,7 @@ nsresult ContentEventHandler::InitCommon(SelectionType aSelectionType,
   if (mSelection->Type() == SelectionType::eNormal) {
     normalSelection = mSelection;
   } else {
-    normalSelection = selectionController->GetSelection(
-        nsISelectionController::SELECTION_NORMAL);
+    normalSelection = frameSel->GetSelection(SelectionType::eNormal);
     if (NS_WARN_IF(!normalSelection)) {
       return NS_ERROR_NOT_AVAILABLE;
     }
@@ -3019,8 +3017,11 @@ nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent) {
     }
   }
 
-  mSelection->ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION,
-                             ScrollAxis(), ScrollAxis(), 0);
+  // `ContentEventHandler` is a `MOZ_STACK_CLASS`, so `mSelection` is known to
+  // be alive.
+  MOZ_KnownLive(mSelection)
+      ->ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION,
+                       ScrollAxis(), ScrollAxis(), 0);
   aEvent->mSucceeded = true;
   return NS_OK;
 }

@@ -29,12 +29,20 @@ list-empty-button =
     .label = Learn more about add-ons
 
 help-button = Add-ons Support
+sidebar-help-button-title =
+    .title = Add-ons Support
 
 preferences =
     { PLATFORM() ->
         [windows] { -brand-short-name } Options
        *[other] { -brand-short-name } Preferences
     }
+sidebar-preferences-button-title =
+    .title =
+        { PLATFORM() ->
+            [windows] { -brand-short-name } Options
+           *[other] { -brand-short-name } Preferences
+        }
 
 show-unsigned-extensions-button =
     .label = Some extensions could not be verified
@@ -197,17 +205,30 @@ private-browsing-description2 =
     there. We’ve made this change to keep your private browsing private.
     <label data-l10n-name="private-browsing-learn-more">Learn how to manage extension settings</label>
 
-extensions-view-discopane =
-    .name = Recommendations
-    .tooltiptext = { extensions-view-discopane.name }
-
-extensions-view-recent-updates =
-    .name = Recent Updates
-    .tooltiptext = { extensions-view-recent-updates.name }
-
-extensions-view-available-updates =
-    .name = Available Updates
-    .tooltiptext = { extensions-view-available-updates.name }
+addon-category-discover = Recommendations
+addon-category-discover-title =
+    .title = Recommendations
+addon-category-extension = Extensions
+addon-category-extension-title =
+    .title = Extensions
+addon-category-theme = Themes
+addon-category-theme-title =
+    .title = Themes
+addon-category-plugin = Plugins
+addon-category-plugin-title =
+    .title = Plugins
+addon-category-dictionary = Dictionaries
+addon-category-dictionary-title =
+    .title = Dictionaries
+addon-category-locale = Languages
+addon-category-locale-title =
+    .title = Languages
+addon-category-available-updates = Available Updates
+addon-category-available-updates-title =
+    .title = Available Updates
+addon-category-recent-updates = Recent Updates
+addon-category-recent-updates-title =
+    .title = Recent Updates
 
 ## These are global warnings
 
@@ -301,8 +322,8 @@ shortcuts-card-expand-button =
 
 shortcuts-card-collapse-button = Show Less
 
-go-back-button =
-    .tooltiptext = Go back
+header-back-button =
+    .title = Go back
 
 ## Recommended add-ons page
 

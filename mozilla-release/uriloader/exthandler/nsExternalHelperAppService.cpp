@@ -41,7 +41,6 @@
 #include "nsDirectoryServiceDefs.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsThreadUtils.h"
-#include "nsAutoPtr.h"
 #include "nsIMutableArray.h"
 #include "nsIRedirectHistoryEntry.h"
 #include "nsOSHelperAppService.h"
@@ -149,8 +148,7 @@ static nsresult UnescapeFragment(const nsACString& aFragment, nsIURI* aURI,
       do_GetService(NS_ITEXTTOSUBURI_CONTRACTID, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return textToSubURI->UnEscapeURIForUI(NS_LITERAL_CSTRING("UTF-8"), aFragment,
-                                        aResult);
+  return textToSubURI->UnEscapeURIForUI(aFragment, aResult);
 }
 
 /**
@@ -624,10 +622,6 @@ nsresult nsExternalHelperAppService::DoContentContentProcessHelper(
   nsCOMPtr<nsIURI> referrer;
   NS_GetReferrerFromChannel(channel, getter_AddRefs(referrer));
 
-  Maybe<URIParams> uriParams, referrerParams;
-  SerializeURI(uri, uriParams);
-  SerializeURI(referrer, referrerParams);
-
   Maybe<mozilla::net::LoadInfoArgs> loadInfoArgs;
   MOZ_ALWAYS_SUCCEEDS(LoadInfoToLoadInfoArgs(loadInfo, &loadInfoArgs));
 
@@ -645,9 +639,9 @@ nsresult nsExternalHelperAppService::DoContentContentProcessHelper(
   // DoContent.
   RefPtr<ExternalHelperAppChild> childListener = new ExternalHelperAppChild();
   MOZ_ALWAYS_TRUE(child->SendPExternalHelperAppConstructor(
-      childListener, uriParams, loadInfoArgs, nsCString(aMimeContentType), disp,
+      childListener, uri, loadInfoArgs, nsCString(aMimeContentType), disp,
       contentDisposition, fileName, aForceSave, contentLength, wasFileChannel,
-      referrerParams, aContentContext, shouldCloseWindow));
+      referrer, aContentContext, shouldCloseWindow));
 
   NS_ADDREF(*aStreamListener = childListener);
 
@@ -930,12 +924,9 @@ nsExternalHelperAppService::LoadURI(nsIURI* aURI,
   NS_ENSURE_ARG_POINTER(aURI);
 
   if (XRE_IsContentProcess()) {
-    URIParams uri;
-    SerializeURI(aURI, uri);
-
     nsCOMPtr<nsIBrowserChild> browserChild(do_GetInterface(aWindowContext));
     mozilla::dom::ContentChild::GetSingleton()->SendLoadURIExternal(
-        uri, static_cast<dom::BrowserChild*>(browserChild.get()));
+        aURI, static_cast<dom::BrowserChild*>(browserChild.get()));
     return NS_OK;
   }
 
@@ -1178,12 +1169,22 @@ nsExternalAppHandler::nsExternalAppHandler(
     mTempFileExtension = char16_t('.');
   AppendUTF8toUTF16(aTempFileExtension, mTempFileExtension);
 
+  // Get mSuggestedFileName's current file extension.
+  nsAutoString originalFileExt;
+  int32_t pos = mSuggestedFileName.RFindChar('.');
+  if (pos != kNotFound) {
+    mSuggestedFileName.Right(originalFileExt,
+                             mSuggestedFileName.Length() - pos);
+  }
+
   // replace platform specific path separator and illegal characters to avoid
-  // any confusion
-  mSuggestedFileName.ReplaceChar(KNOWN_PATH_SEPARATORS FILE_ILLEGAL_CHARACTERS,
-                                 '_');
-  mTempFileExtension.ReplaceChar(KNOWN_PATH_SEPARATORS FILE_ILLEGAL_CHARACTERS,
-                                 '_');
+  // any confusion.
+  // Try to keep the use of spaces or underscores in sync with the Downloads
+  // code sanitization in DownloadPaths.jsm
+  mSuggestedFileName.ReplaceChar(KNOWN_PATH_SEPARATORS, '_');
+  mSuggestedFileName.ReplaceChar(FILE_ILLEGAL_CHARACTERS, ' ');
+  mTempFileExtension.ReplaceChar(KNOWN_PATH_SEPARATORS, '_');
+  mTempFileExtension.ReplaceChar(FILE_ILLEGAL_CHARACTERS, ' ');
 
   // Remove unsafe bidi characters which might have spoofing implications (bug
   // 511521).
@@ -1204,8 +1205,23 @@ nsExternalAppHandler::nsExternalAppHandler(
   mSuggestedFileName.ReplaceChar(unsafeBidiCharacters, '_');
   mTempFileExtension.ReplaceChar(unsafeBidiCharacters, '_');
 
-  // Make sure extension is correct.
-  EnsureSuggestedFileName();
+  // Remove trailing or leading spaces that we may have generated while
+  // sanitizing.
+  mSuggestedFileName.CompressWhitespace();
+  mTempFileExtension.CompressWhitespace();
+
+  // Append after removing trailing whitespaces from the name.
+  if (originalFileExt.FindCharInSet(
+          KNOWN_PATH_SEPARATORS FILE_ILLEGAL_CHARACTERS) != kNotFound) {
+    // The file extension contains invalid characters and using it would
+    // generate an unusable file, thus use mTempFileExtension instead.
+    mSuggestedFileName.Append(mTempFileExtension);
+    originalFileExt = mTempFileExtension;
+  }
+
+  // Make sure later we won't append mTempFileExtension if it's identical to
+  // the currently used file extension.
+  EnsureTempFileExtension(originalFileExt);
 
   mBufferSize = Preferences::GetUint("network.buffer.cache.size", 4096);
 }
@@ -1295,20 +1311,14 @@ void nsExternalAppHandler::RetargetLoadNotifications(nsIRequest* request) {
  * content-disposition header indicating filename="foobar.exe" from being
  * downloaded to a file with extension .exe and executed.
  */
-void nsExternalAppHandler::EnsureSuggestedFileName() {
+void nsExternalAppHandler::EnsureTempFileExtension(const nsString& aFileExt) {
   // Make sure there is a mTempFileExtension (not "" or ".").
   // Remember that mTempFileExtension will always have the leading "."
   // (the check for empty is just to be safe).
   if (mTempFileExtension.Length() > 1) {
-    // Get mSuggestedFileName's current extension.
-    nsAutoString fileExt;
-    int32_t pos = mSuggestedFileName.RFindChar('.');
-    if (pos != kNotFound)
-      mSuggestedFileName.Right(fileExt, mSuggestedFileName.Length() - pos);
-
     // Now, compare fileExt to mTempFileExtension.
-    if (fileExt.Equals(mTempFileExtension,
-                       nsCaseInsensitiveStringComparator())) {
+    if (aFileExt.Equals(mTempFileExtension,
+                        nsCaseInsensitiveStringComparator())) {
       // Matches -> mTempFileExtension can be empty
       mTempFileExtension.Truncate();
     }

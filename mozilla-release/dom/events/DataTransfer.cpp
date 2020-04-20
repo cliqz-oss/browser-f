@@ -44,8 +44,6 @@
 #include "nsNetUtil.h"
 #include "nsReadableUtils.h"
 
-#define MOZ_CALLS_ENABLED_PREF "dom.datatransfer.mozAtAPIs"
-
 namespace mozilla {
 namespace dom {
 
@@ -302,20 +300,8 @@ void DataTransfer::GetMozTriggeringPrincipalURISpec(
     return;
   }
 
-  nsCOMPtr<nsIURI> uri;
-  principal->GetURI(getter_AddRefs(uri));
-  if (!uri) {
-    aPrincipalURISpec.Truncate(0);
-    return;
-  }
-
   nsAutoCString spec;
-  nsresult rv = uri->GetSpec(spec);
-  if (NS_FAILED(rv)) {
-    aPrincipalURISpec.Truncate(0);
-    return;
-  }
-
+  principal->GetAsciiSpec(spec);
   CopyUTF8toUTF16(spec, aPrincipalURISpec);
 }
 
@@ -1557,17 +1543,9 @@ void DataTransfer::SetMode(DataTransfer::Mode aMode) {
 
 /* static */
 bool DataTransfer::MozAtAPIsEnabled(JSContext* aCx, JSObject* aObj /*unused*/) {
-  // Read the pref
-  static bool sPrefCached = false;
-  static bool sPrefCacheValue = false;
-
-  if (!sPrefCached) {
-    sPrefCached = true;
-    Preferences::AddBoolVarCache(&sPrefCacheValue, MOZ_CALLS_ENABLED_PREF);
-  }
-
   // We can expose moz* APIs if we are chrome code or if pref is enabled
-  return nsContentUtils::IsSystemCaller(aCx) || sPrefCacheValue;
+  return nsContentUtils::IsSystemCaller(aCx) ||
+         StaticPrefs::dom_datatransfer_mozAtAPIs_DoNotUseDirectly();
 }
 
 }  // namespace dom

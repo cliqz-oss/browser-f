@@ -13,7 +13,7 @@
 namespace mozilla {
 namespace webgpu {
 namespace ffi {
-struct WGPUGlobal;
+struct WGPUGlobal_IdentityRecyclerFactory;
 }  // namespace ffi
 
 class WebGPUParent final : public PWebGPUParent {
@@ -45,8 +45,9 @@ class WebGPUParent final : public PWebGPUParent {
       RawId aSelfId, const ffi::WGPUTextureViewDescriptor& aDesc, RawId aNewId);
   ipc::IPCResult RecvTextureDestroy(RawId aSelfId);
   ipc::IPCResult RecvTextureViewDestroy(RawId aSelfId);
-  ipc::IPCResult RecvDeviceCreateSampler(
-      RawId aSelfId, const ffi::WGPUSamplerDescriptor& aDesc, RawId aNewId);
+  ipc::IPCResult RecvDeviceCreateSampler(RawId aSelfId,
+                                         const dom::GPUSamplerDescriptor& aDesc,
+                                         RawId aNewId);
   ipc::IPCResult RecvSamplerDestroy(RawId aSelfId);
   ipc::IPCResult RecvDeviceCreateCommandEncoder(
       RawId aSelfId, const dom::GPUCommandEncoderDescriptor& aDesc,
@@ -90,7 +91,7 @@ class WebGPUParent final : public PWebGPUParent {
   virtual ~WebGPUParent();
   void MaintainDevices();
 
-  const ffi::WGPUGlobal* const mContext;
+  const ffi::WGPUGlobal_IdentityRecyclerFactory* const mContext;
   base::RepeatingTimer<WebGPUParent> mTimer;
 };
 

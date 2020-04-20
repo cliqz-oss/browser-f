@@ -308,7 +308,7 @@ struct DIGroup {
   // current item being processed.
   IntRect mClippedImageBounds;  // mLayerBounds with the clipping of any
                                 // containers applied
-  Maybe<mozilla::Pair<wr::RenderRoot, wr::BlobImageKey>> mKey;
+  Maybe<std::pair<wr::RenderRoot, wr::BlobImageKey>> mKey;
   std::vector<RefPtr<ScaledFont>> mFonts;
 
   DIGroup()
@@ -341,7 +341,7 @@ struct DIGroup {
   void ClearImageKey(RenderRootStateManager* aManager, bool aForce = false) {
     if (mKey) {
       MOZ_RELEASE_ASSERT(aForce || mInvalidRect.IsEmpty());
-      aManager->AddBlobImageKeyForDiscard(mKey.value().second());
+      aManager->AddBlobImageKeyForDiscard(mKey.value().second);
       mKey = Nothing();
     }
     mFonts.clear();
@@ -613,7 +613,7 @@ struct DIGroup {
         // so request it be updated unconditionally (wr should be able to easily
         // detect if this is a no-op on its side, if that matters)
         aResources.SetBlobImageVisibleArea(
-            mKey.value().second(),
+            mKey.value().second,
             ViewAs<ImagePixel>(mVisibleRect,
                                PixelCastJustification::LayerIsImage));
         mLastVisibleRect = mVisibleRect;
@@ -701,7 +701,7 @@ struct DIGroup {
                                  PixelCastJustification::LayerIsImage))) {
         return;
       }
-      mKey = Some(MakePair(aBuilder.GetRenderRoot(), key));
+      mKey = Some(std::make_pair(aBuilder.GetRenderRoot(), key));
     } else {
       wr::ImageDescriptor descriptor(dtSize, 0, dt->GetFormat(), opacity);
 
@@ -715,7 +715,7 @@ struct DIGroup {
       GP("Update Blob %d %d %d %d\n", mInvalidRect.x, mInvalidRect.y,
          mInvalidRect.width, mInvalidRect.height);
       if (!aResources.UpdateBlobImage(
-              mKey.value().second(), descriptor, bytes,
+              mKey.value().second, descriptor, bytes,
               ViewAs<ImagePixel>(mVisibleRect,
                                  PixelCastJustification::LayerIsImage),
               dirtyRect)) {
@@ -724,7 +724,7 @@ struct DIGroup {
     }
     mFonts = std::move(fonts);
     aResources.SetBlobImageVisibleArea(
-        mKey.value().second(),
+        mKey.value().second,
         ViewAs<ImagePixel>(mVisibleRect, PixelCastJustification::LayerIsImage));
     mLastVisibleRect = mVisibleRect;
     PushImage(aBuilder, itemBounds);
@@ -752,7 +752,7 @@ struct DIGroup {
     aBuilder.SetHitTestInfo(mScrollId, hitInfo, SideBits::eNone);
     aBuilder.PushImage(dest, dest, !backfaceHidden,
                        wr::ToImageRendering(sampleFilter),
-                       wr::AsImageKey(mKey.value().second()));
+                       wr::AsImageKey(mKey.value().second));
     aBuilder.ClearHitTestInfo();
   }
 
@@ -1056,21 +1056,6 @@ void WebRenderScrollDataCollection::AppendRoot(
   }
 }
 
-void WebRenderScrollDataCollection::AppendWrapper(
-    const RenderRootBoundary& aBoundary, size_t aLayerCountBeforeRecursing) {
-  wr::RenderRoot root = aBoundary.GetChildType();
-  size_t layerCountAfterRecursing = GetLayerCount(root);
-  MOZ_ASSERT(layerCountAfterRecursing >= aLayerCountBeforeRecursing);
-  if (layerCountAfterRecursing == aLayerCountBeforeRecursing) {
-    // nothing to wrap
-    return;
-  }
-  mInternalScrollDatas[root].emplace_back();
-  mInternalScrollDatas[root].back().InitializeRoot(layerCountAfterRecursing -
-                                                   aLayerCountBeforeRecursing);
-  mInternalScrollDatas[root].back().SetBoundaryRoot(aBoundary);
-}
-
 void WebRenderScrollDataCollection::AppendScrollData(
     const wr::DisplayListBuilder& aBuilder, WebRenderLayerManager* aManager,
     nsDisplayItem* aItem, size_t aLayerCountBeforeRecursing,
@@ -1244,7 +1229,6 @@ void Grouper::ConstructGroups(nsDisplayListBuilder* aDisplayListBuilder,
                              item);
 
       {
-        MOZ_ASSERT(item->GetType() != DisplayItemType::TYPE_RENDER_ROOT);
         auto spaceAndClipChain = mClipManager.SwitchItem(item);
         wr::SpaceAndClipChainHelper saccHelper(aBuilder, spaceAndClipChain);
 
@@ -1552,12 +1536,7 @@ WebRenderCommandBuilder::WebRenderCommandBuilder(
       mLastAsr(nullptr),
       mDumpIndent(0),
       mDoGrouping(false),
-      mContainsSVGGroup(false) {
-  if (XRE_IsContentProcess() &&
-      StaticPrefs::gfx_webrender_enable_item_cache_AtStartup()) {
-    mDisplayItemCache.SetCapacity(10000, 10000);
-  }
-}
+      mContainsSVGGroup(false) {}
 
 void WebRenderCommandBuilder::Destroy() {
   mLastCanvasDatas.Clear();
@@ -1602,13 +1581,6 @@ void WebRenderCommandBuilder::BuildWebRenderCommands(
   mLastAsr = nullptr;
   mContainsSVGGroup = false;
   MOZ_ASSERT(mDumpIndent == 0);
-
-  if (mDisplayItemCache.IsEnabled()) {
-    mDisplayItemCache.UpdateState(aDisplayListBuilder->PartialBuildFailed(),
-                                  aBuilder.CurrentPipelineId());
-    aBuilder.SetDisplayListCacheSize(mDisplayItemCache.CurrentCacheSize());
-    // mDisplayItemCache.Stats().Reset();
-  }
 
   {
     nsPresContext* presContext =
@@ -1679,10 +1651,6 @@ void WebRenderCommandBuilder::BuildWebRenderCommands(
   // Remove the user data those are not displayed on the screen and
   // also reset the data to unused for next transaction.
   RemoveUnusedAndResetWebRenderUserData();
-
-  if (mDisplayItemCache.IsEnabled()) {
-    // mDisplayItemCache.Stats().Print();
-  }
 }
 
 bool WebRenderCommandBuilder::ShouldDumpDisplayList(
@@ -1702,12 +1670,10 @@ void WebRenderCommandBuilder::CreateWebRenderCommands(
   auto* item = aItem->AsPaintedDisplayItem();
   MOZ_RELEASE_ASSERT(item, "Tried to paint item that cannot be painted");
 
-  if (mDisplayItemCache.ReuseItem(item, aBuilder)) {
+  if (aBuilder.ReuseItem(item)) {
     // No further processing should be needed, since the item was reused.
     return;
   }
-
-  mDisplayItemCache.MaybeStartCaching(item, aBuilder);
 
   aItem->SetPaintRect(aItem->GetBuildingRect());
   RenderRootStateManager* manager =
@@ -1721,8 +1687,6 @@ void WebRenderCommandBuilder::CreateWebRenderCommands(
   if (!createdWRCommands) {
     PushItemAsImage(aItem, aBuilder, aResources, aSc, aDisplayListBuilder);
   }
-
-  mDisplayItemCache.MaybeEndCaching(aBuilder);
 }
 
 void WebRenderCommandBuilder::CreateWebRenderCommandsFromDisplayList(
@@ -2086,7 +2050,7 @@ static bool PaintItemByDrawTarget(nsDisplayItem* aItem, gfx::DrawTarget* aDT,
                                   nsDisplayListBuilder* aDisplayListBuilder,
                                   const RefPtr<BasicLayerManager>& aManager,
                                   const gfx::Size& aScale,
-                                  Maybe<gfx::Color>& aHighlight) {
+                                  Maybe<gfx::DeviceColor>& aHighlight) {
   MOZ_ASSERT(aDT);
 
   bool isInvalidated = false;
@@ -2144,7 +2108,7 @@ static bool PaintItemByDrawTarget(nsDisplayItem* aItem, gfx::DrawTarget* aDT,
       float g = float(rand()) / float(RAND_MAX);
       float b = float(rand()) / float(RAND_MAX);
       aDT->FillRect(Rect(visibleRect),
-                    gfx::ColorPattern(gfx::Color(r, g, b, 0.5)));
+                    gfx::ColorPattern(gfx::DeviceColor(r, g, b, 0.5)));
     }
   }
 
@@ -2167,10 +2131,10 @@ WebRenderCommandBuilder::GenerateFallbackData(
   const bool paintOnContentSide = aItem->MustPaintOnContentSide();
   bool useBlobImage =
       StaticPrefs::gfx_webrender_blob_images() && !paintOnContentSide;
-  Maybe<gfx::Color> highlight = Nothing();
+  Maybe<gfx::DeviceColor> highlight = Nothing();
   if (StaticPrefs::gfx_webrender_highlight_painted_layers()) {
-    highlight = Some(useBlobImage ? gfx::Color(1.0, 0.0, 0.0, 0.5)
-                                  : gfx::Color(1.0, 1.0, 0.0, 0.5));
+    highlight = Some(useBlobImage ? gfx::DeviceColor(1.0, 0.0, 0.0, 0.5)
+                                  : gfx::DeviceColor(1.0, 1.0, 0.0, 0.5));
   }
 
   RefPtr<WebRenderFallbackData> fallbackData =
@@ -2256,7 +2220,9 @@ WebRenderCommandBuilder::GenerateFallbackData(
   }
 
   auto visibleSize = visibleRect.Size();
-  if (visibleSize.IsEmpty()) {
+  // these rectangles can overflow from scaling so try to
+  // catch that with IsEmpty() checks. See bug 1622126.
+  if (visibleSize.IsEmpty() || dtRect.IsEmpty()) {
     return nullptr;
   }
 
@@ -2700,19 +2666,6 @@ WebRenderGroupData::~WebRenderGroupData() {
   GP("Group data destruct\n");
   mSubGroup.ClearImageKey(mManager, true);
   mFollowingGroup.ClearImageKey(mManager, true);
-}
-
-WebRenderCommandBuilder::ScrollDataBoundaryWrapper::ScrollDataBoundaryWrapper(
-    WebRenderCommandBuilder& aBuilder, RenderRootBoundary& aBoundary)
-    : mBuilder(aBuilder), mBoundary(aBoundary) {
-  mLayerCountBeforeRecursing =
-      mBuilder.mLayerScrollDatas.GetLayerCount(mBoundary.GetChildType());
-}
-
-WebRenderCommandBuilder::ScrollDataBoundaryWrapper::
-    ~ScrollDataBoundaryWrapper() {
-  mBuilder.mLayerScrollDatas.AppendWrapper(mBoundary,
-                                           mLayerCountBeforeRecursing);
 }
 
 }  // namespace layers

@@ -103,8 +103,7 @@ using JS::CompileOptions;
 using mozilla::Maybe;
 
 static void selfHosting_WarningReporter(JSContext* cx, JSErrorReport* report) {
-  MOZ_ASSERT(report);
-  MOZ_ASSERT(JSREPORT_IS_WARNING(report->flags));
+  MOZ_ASSERT(report->isWarning());
 
   PrintError(cx, stderr, JS::ConstUTF8CharsZ(), report, true);
 }
@@ -520,27 +519,6 @@ static bool intrinsic_MakeConstructible(JSContext* cx, unsigned argc,
   }
 
   ctor->as<JSFunction>().setIsConstructor();
-  args.rval().setUndefined();
-  return true;
-}
-
-static bool intrinsic_MakeDefaultConstructor(JSContext* cx, unsigned argc,
-                                             Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  MOZ_ASSERT(args.length() == 1);
-  MOZ_ASSERT(args[0].toObject().as<JSFunction>().isSelfHostedBuiltin());
-
-  RootedFunction ctor(cx, &args[0].toObject().as<JSFunction>());
-
-  ctor->baseScript()->setIsDefaultClassConstructor();
-
-  // Because self-hosting code does not allow top-level lexicals,
-  // class constructors are class expressions in top-level vars.
-  // Because of this, we give them an inferred atom. Since they
-  // will always be cloned, and given an explicit atom, instead
-  // overrule that.
-  ctor->clearInferredName();
-
   args.rval().setUndefined();
   return true;
 }
@@ -2168,7 +2146,6 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("CreateModuleSyntaxError", intrinsic_CreateModuleSyntaxError, 4, 0),
     JS_FN("AssertionFailed", intrinsic_AssertionFailed, 1, 0),
     JS_FN("DumpMessage", intrinsic_DumpMessage, 1, 0),
-    JS_FN("MakeDefaultConstructor", intrinsic_MakeDefaultConstructor, 2, 0),
     JS_FN("_ConstructorForTypedArray", intrinsic_ConstructorForTypedArray, 1,
           0),
     JS_FN("DecompileArg", intrinsic_DecompileArg, 2, 0),
@@ -2556,8 +2533,6 @@ void js::FillSelfHostingCompileOptions(CompileOptions& options) {
   options.setSkipFilenameValidation(true);
   options.setSelfHostingMode(true);
   options.setForceFullParse();
-  options.werrorOption = true;
-  options.extraWarningsOption = true;
   options.setForceStrictMode();
 }
 
@@ -2633,7 +2608,7 @@ static void MaybePrintAndClearPendingException(JSContext* cx, FILE* file) {
     return;
   }
 
-  MOZ_ASSERT(!JSREPORT_IS_WARNING(report.report()->flags));
+  MOZ_ASSERT(!report.report()->isWarning());
   PrintError(cx, file, report.toStringResult(), report.report(), true);
 }
 
@@ -2664,7 +2639,7 @@ static bool VerifyGlobalNames(JSContext* cx, Handle<GlobalObject*> shg) {
 
   for (auto base = cx->zone()->cellIter<BaseScript>();
        !base.done() && !nameMissing; base.next()) {
-    if (base->isLazyScript()) {
+    if (!base->hasBytecode()) {
       continue;
     }
     JSScript* script = base->asJSScript();
@@ -2745,7 +2720,7 @@ bool JSRuntime::initSelfHosting(JSContext* cx) {
   }
 
   RootedValue rv(cx);
-  if (!EvaluateDontInflate(cx, options, srcBuf, &rv)) {
+  if (!JS::Evaluate(cx, options, srcBuf, &rv)) {
     return false;
   }
 
@@ -3111,10 +3086,21 @@ bool JSRuntime::cloneSelfHostedFunctionScript(JSContext* cx,
                                sourceObject)) {
     return false;
   }
+
   MOZ_ASSERT(targetFun->hasBytecode());
+  RootedScript targetScript(cx, targetFun->nonLazyScript());
+
+  // Relazifiable self-hosted function may be relazified later into a
+  // SelfHostedLazyScript. It is important to note that this only applies to
+  // named self-hosted entry points (that use this clone method). Inner
+  // functions clones used by self-hosted are never relazified, even if they
+  // would be able to in normal script.
+  if (targetScript->isRelazifiable()) {
+    targetScript->setAllowRelazify();
+  }
 
   MOZ_ASSERT(sourceFun->nargs() == targetFun->nargs());
-  MOZ_ASSERT(sourceScript->hasRest() == targetFun->baseScript()->hasRest());
+  MOZ_ASSERT(sourceScript->hasRest() == targetScript->hasRest());
   MOZ_ASSERT(targetFun->strict(), "Self-hosted builtins must be strict");
 
   // The target function might have been relazified after its flags changed.

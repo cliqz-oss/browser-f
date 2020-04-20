@@ -156,7 +156,7 @@ download-wpt-manifest:
 
 define package_archive
 package-tests-$(1): stage-all package-tests-prepare-dest download-wpt-manifest
-	$$(call py_action,test_archive, \
+	$$(call py3_action,test_archive, \
 		$(1) \
 		'$$(abspath $$(test_archive_dir))/$$(PKG_BASENAME).$(1).tests.$(2)')
 package-tests: package-tests-$(1)
@@ -217,6 +217,7 @@ endif
 	cp -RL $(DEPTH)/_tests/gtest $(PKG_STAGE)
 	cp $(topsrcdir)/testing/gtest/rungtests.py $(PKG_STAGE)/gtest
 	cp $(topsrcdir)/testing/gtest/remotegtests.py $(PKG_STAGE)/gtest
+	cp $(topsrcdir)/testing/gtest/mach_test_package_commands.py $(PKG_STAGE)/gtest
 	cp $(DIST)/bin/dependentlibs.list.gtest $(PKG_STAGE)/gtest
 	cp $(DEPTH)/mozinfo.json $(PKG_STAGE)/gtest
 

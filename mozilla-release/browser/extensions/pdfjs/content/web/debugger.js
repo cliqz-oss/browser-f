@@ -109,7 +109,7 @@ var FontInspector = (function FontInspectorClosure() {
         return moreInfo;
       }
       var moreInfo = properties(fontObj, ["name", "type"]);
-      var fontName = fontObj.loadedName;
+      const fontName = fontObj.loadedName;
       var font = document.createElement("div");
       var name = document.createElement("span");
       name.textContent = fontName;
@@ -130,17 +130,12 @@ var FontInspector = (function FontInspectorClosure() {
         event.preventDefault();
         console.log(fontObj);
       });
-      var select = document.createElement("input");
+      const select = document.createElement("input");
       select.setAttribute("type", "checkbox");
       select.dataset.fontName = fontName;
-      select.addEventListener(
-        "click",
-        (function(select, fontName) {
-          return function() {
-            selectFont(fontName, select.checked);
-          };
-        })(select, fontName)
-      );
+      select.addEventListener("click", function() {
+        selectFont(fontName, select.checked);
+      });
       font.appendChild(select);
       font.appendChild(name);
       font.appendChild(document.createTextNode(" "));
@@ -290,6 +285,7 @@ var Stepper = (function StepperClosure() {
     return simpleObj;
   }
 
+  // eslint-disable-next-line no-shadow
   function Stepper(panel, pageIndex, initialBreakPoints) {
     this.panel = panel;
     this.breakPoint = 0;
@@ -476,7 +472,7 @@ var Stats = (function Stats() {
       }
       var statsIndex = getStatIndex(pageNumber);
       if (statsIndex !== false) {
-        var b = stats[statsIndex];
+        const b = stats[statsIndex];
         this.panel.removeChild(b.div);
         stats.splice(statsIndex, 1);
       }

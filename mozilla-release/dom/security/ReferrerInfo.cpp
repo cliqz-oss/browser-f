@@ -9,7 +9,7 @@
 #include "nsIHttpChannel.h"
 #include "nsIObjectInputStream.h"
 #include "nsIObjectOutputStream.h"
-#include "nsIURIFixup.h"
+#include "nsIOService.h"
 #include "nsIURL.h"
 
 #include "nsWhitespaceTokenizer.h"
@@ -18,8 +18,8 @@
 #include "nsCharSeparatedTokenizer.h"
 #include "ReferrerInfo.h"
 
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/ContentBlocking.h"
 #include "mozilla/net/CookieJarSettings.h"
 #include "mozilla/net/HttpBaseChannel.h"
 #include "mozilla/dom/Element.h"
@@ -191,25 +191,21 @@ ReferrerPolicy ReferrerInfo::GetDefaultReferrerPolicy(nsIHttpChannel* aChannel,
                                                       nsIURI* aURI,
                                                       bool privateBrowsing) {
   bool thirdPartyTrackerIsolated = false;
-  nsCOMPtr<nsILoadInfo> loadInfo;
-  if (aChannel) {
-    loadInfo = aChannel->LoadInfo();
-  }
-  nsCOMPtr<nsICookieJarSettings> cjs;
-  if (loadInfo) {
+  if (aChannel && aURI) {
+    nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
+    nsCOMPtr<nsICookieJarSettings> cjs;
     Unused << loadInfo->GetCookieJarSettings(getter_AddRefs(cjs));
-  }
-  if (!cjs) {
-    cjs = net::CookieJarSettings::Create();
-  }
-  if (aChannel && aURI && cjs->GetRejectThirdPartyTrackers()) {
-    uint32_t rejectedReason = 0;
-    thirdPartyTrackerIsolated =
-        !AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
-            aChannel, aURI, &rejectedReason);
-    // Here we intentionally do not notify about the rejection reason, if any
-    // in order to avoid this check to have any visible side-effects (e.g. a
-    // web console report.)
+    if (!cjs) {
+      cjs = net::CookieJarSettings::Create();
+    }
+    if (cjs->GetRejectThirdPartyContexts()) {
+      uint32_t rejectedReason = 0;
+      thirdPartyTrackerIsolated = !ContentBlocking::ShouldAllowAccessFor(
+          aChannel, aURI, &rejectedReason);
+      // Here we intentionally do not notify about the rejection reason, if any
+      // in order to avoid this check to have any visible side-effects (e.g. a
+      // web console report.)
+    }
   }
 
   uint32_t defaultToUse;
@@ -1022,11 +1018,9 @@ already_AddRefed<nsIReferrerInfo> ReferrerInfo::CreateForFetch(
     return referrerInfo.forget();
   }
 
-  nsCOMPtr<nsIURI> principalURI;
-  aPrincipal->GetURI(getter_AddRefs(principalURI));
-
   if (!aDoc) {
-    referrerInfo = new ReferrerInfo(principalURI, ReferrerPolicy::_empty);
+    aPrincipal->CreateReferrerInfo(ReferrerPolicy::_empty,
+                                   getter_AddRefs(referrerInfo));
     return referrerInfo.forget();
   }
 
@@ -1042,21 +1036,16 @@ already_AddRefed<nsIReferrerInfo> ReferrerInfo::CreateForFetch(
   nsCOMPtr<nsIURI> docCurURI = aDoc->GetDocumentURI();
   nsCOMPtr<nsIURI> docOrigURI = aDoc->GetOriginalURI();
 
-  nsCOMPtr<nsIURI> referrerURI;
-
-  if (principalURI && docCurURI && docOrigURI) {
+  if (docCurURI && docOrigURI) {
     bool equal = false;
-    principalURI->Equals(docOrigURI, &equal);
+    aPrincipal->EqualsURI(docOrigURI, &equal);
     if (equal) {
-      referrerURI = docCurURI;
+      referrerInfo = new ReferrerInfo(docCurURI, aDoc->GetReferrerPolicy());
+      return referrerInfo.forget();
     }
   }
-
-  if (!referrerURI) {
-    referrerURI = principalURI;
-  }
-
-  referrerInfo = new ReferrerInfo(referrerURI, aDoc->GetReferrerPolicy());
+  aPrincipal->CreateReferrerInfo(aDoc->GetReferrerPolicy(),
+                                 getter_AddRefs(referrerInfo));
   return referrerInfo.forget();
 }
 
@@ -1257,17 +1246,7 @@ nsresult ReferrerInfo::ComputeReferrer(nsIHttpChannel* aChannel) {
 
   // strip away any userpass; we don't want to be giving out passwords ;-)
   // This is required by Referrer Policy stripping algorithm.
-  nsCOMPtr<nsIURIFixup> urifixup = services::GetURIFixup();
-  if (NS_WARN_IF(!urifixup)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  nsCOMPtr<nsIURI> exposableURI;
-  rv = urifixup->CreateExposableURI(referrer, getter_AddRefs(exposableURI));
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
+  nsCOMPtr<nsIURI> exposableURI = nsIOService::CreateExposableURI(referrer);
   referrer = exposableURI;
 
   TrimmingPolicy trimmingPolicy = ComputeTrimmingPolicy(aChannel);

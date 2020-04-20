@@ -546,7 +546,8 @@ nsresult PrototypeDocumentContentSink::ResumeWalkInternal() {
 
         case nsXULPrototypeNode::eType_Text: {
           // A simple text node.
-          RefPtr<nsTextNode> text = new nsTextNode(mNodeInfoManager);
+          RefPtr<nsTextNode> text =
+              new (mNodeInfoManager) nsTextNode(mNodeInfoManager);
 
           nsXULPrototypeText* textproto =
               static_cast<nsXULPrototypeText*>(childproto);
@@ -632,6 +633,7 @@ nsresult PrototypeDocumentContentSink::DoneWalking() {
 
   if (mScriptLoader) {
     mScriptLoader->ParsingComplete(false);
+    mScriptLoader->DeferCheckpointReached();
   }
 
   StartLayout();

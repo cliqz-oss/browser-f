@@ -87,8 +87,8 @@ class XPCShellDirProvider : public nsIDirectoryServiceProvider2 {
   NS_DECL_NSIDIRECTORYSERVICEPROVIDER
   NS_DECL_NSIDIRECTORYSERVICEPROVIDER2
 
-  XPCShellDirProvider() {}
-  ~XPCShellDirProvider() {}
+  XPCShellDirProvider() = default;
+  ~XPCShellDirProvider() = default;
 
   // The platform resource folder
   void SetGREDirs(nsIFile* greDir);
@@ -485,37 +485,18 @@ static bool Options(JSContext* cx, unsigned argc, Value* vp) {
       return false;
     }
 
-    if (strcmp(opt.get(), "strict") == 0) {
-      ContextOptionsRef(cx).toggleExtraWarnings();
-    } else if (strcmp(opt.get(), "werror") == 0) {
-      ContextOptionsRef(cx).toggleWerror();
-    } else if (strcmp(opt.get(), "strict_mode") == 0) {
+    if (strcmp(opt.get(), "strict_mode") == 0) {
       ContextOptionsRef(cx).toggleStrictMode();
     } else {
       JS_ReportErrorUTF8(cx,
-                         "unknown option name '%s'. The valid names are "
-                         "strict, werror, and strict_mode.",
+                         "unknown option name '%s'. The valid name is "
+                         "strict_mode.",
                          opt.get());
       return false;
     }
   }
 
   UniqueChars names;
-  if (oldContextOptions.extraWarnings()) {
-    names = JS_sprintf_append(std::move(names), "%s", "strict");
-    if (!names) {
-      JS_ReportOutOfMemory(cx);
-      return false;
-    }
-  }
-  if (oldContextOptions.werror()) {
-    names =
-        JS_sprintf_append(std::move(names), "%s%s", names ? "," : "", "werror");
-    if (!names) {
-      JS_ReportOutOfMemory(cx);
-      return false;
-    }
-  }
   if (names && oldContextOptions.strictMode()) {
     names = JS_sprintf_append(std::move(names), "%s%s", names ? "," : "",
                               "strict_mode");
@@ -711,7 +692,7 @@ static bool ProcessUtf8Line(AutoJSAPI& jsapi, const char* buffer,
     return false;
   }
 
-  JS::RootedScript script(cx, JS::CompileDontInflate(cx, options, srcBuf));
+  JS::RootedScript script(cx, JS::Compile(cx, options, srcBuf));
   if (!script) {
     return false;
   }
@@ -847,7 +828,7 @@ static int usage() {
   fprintf(gErrFile, "%s\n", JS_GetImplementationVersion());
   fprintf(
       gErrFile,
-      "usage: xpcshell [-g gredir] [-a appdir] [-r manifest]... [-WwxiCSsmIp] "
+      "usage: xpcshell [-g gredir] [-a appdir] [-r manifest]... [-WwxiCmIp] "
       "[-f scriptfile] [-e script] [scriptfile] [scriptarg...]\n");
   return 2;
 }
@@ -855,30 +836,6 @@ static int usage() {
 static bool printUsageAndSetExitCode() {
   gExitCode = usage();
   return false;
-}
-
-static void ProcessArgsForCompartment(JSContext* cx, char** argv, int argc) {
-  for (int i = 0; i < argc; i++) {
-    if (argv[i][0] != '-' || argv[i][1] == '\0') {
-      break;
-    }
-
-    switch (argv[i][1]) {
-      case 'v':
-      case 'f':
-      case 'e':
-        if (++i == argc) {
-          return;
-        }
-        break;
-      case 'S':
-        ContextOptionsRef(cx).toggleWerror();
-        [[fallthrough]];  // because -S implies -s
-      case 's':
-        ContextOptionsRef(cx).toggleExtraWarnings();
-        break;
-    }
-  }
 }
 
 static bool ProcessArgs(AutoJSAPI& jsapi, char** argv, int argc,
@@ -998,7 +955,7 @@ static bool ProcessArgs(AutoJSAPI& jsapi, char** argv, int argc,
         JS::SourceText<mozilla::Utf8Unit> srcBuf;
         if (srcBuf.init(cx, argv[i], strlen(argv[i]),
                         JS::SourceOwnership::Borrowed)) {
-          JS::EvaluateDontInflate(cx, opts, srcBuf, &rval);
+          JS::Evaluate(cx, opts, srcBuf, &rval);
         }
 
         isInteractive = false;
@@ -1007,10 +964,6 @@ static bool ProcessArgs(AutoJSAPI& jsapi, char** argv, int argc,
       case 'C':
         compileOnly = true;
         isInteractive = false;
-        break;
-      case 'S':
-      case 's':
-        // These options are processed in ProcessArgsForCompartment.
         break;
       case 'p': {
         // plugins path
@@ -1273,7 +1226,6 @@ int XRE_XPCShellMain(int argc, char** argv, char** envp,
 
     argc--;
     argv++;
-    ProcessArgsForCompartment(cx, argv, argc);
 
     nsCOMPtr<nsIPrincipal> systemprincipal;
     // Fetch the system principal and store it away in a global, to use for

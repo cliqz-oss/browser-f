@@ -19,7 +19,7 @@ use crate::{
         all_buffer_stages,
         all_image_stages,
     },
-    hub::{GfxBackend, Global, Storage, Token},
+    hub::{GfxBackend, Global, GlobalIdentityHandlerFactory, Storage, Token},
     id,
     resource::{Buffer, Texture},
     track::TrackerSet,
@@ -35,6 +35,7 @@ use std::{
     slice,
     thread::ThreadId,
 };
+use wgt::RenderPassColorAttachmentDescriptorBase;
 
 
 #[derive(Clone, Copy, Debug, peek_poke::PeekCopy, peek_poke::Poke)]
@@ -196,14 +197,6 @@ impl<B: GfxBackend> CommandBuffer<B> {
 
 #[repr(C)]
 #[derive(Clone, Debug, Default)]
-pub struct CommandEncoderDescriptor {
-    // MSVC doesn't allow zero-sized structs
-    // We can remove this when we actually have a field
-    pub todo: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Debug, Default)]
 pub struct CommandBufferDescriptor {
     pub todo: u32,
 }
@@ -218,7 +211,7 @@ pub struct RawRenderTargets {
     pub depth_stencil: RenderPassDepthStencilAttachmentDescriptor,
 }
 
-impl<F> Global<F> {
+impl<G: GlobalIdentityHandlerFactory> Global<G> {
     pub fn command_encoder_finish<B: GfxBackend>(
         &self,
         encoder_id: id::CommandEncoderId,

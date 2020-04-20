@@ -83,11 +83,11 @@ function configureStore(webConsoleUI, options = {}) {
       editorWidth: getIntPref(PREFS.UI.EDITOR_WIDTH),
       showEditorOnboarding: getBoolPref(PREFS.UI.EDITOR_ONBOARDING),
       timestampsVisible: getBoolPref(PREFS.UI.MESSAGE_TIMESTAMP),
-      showEvaluationSelector: getBoolPref(PREFS.UI.CONTEXT_SELECTOR),
+      showEvaluationContextSelector: getBoolPref(PREFS.UI.CONTEXT_SELECTOR),
     }),
   };
 
-  const toolbox = options.thunkArgs.toolbox;
+  const { toolbox } = options.thunkArgs;
   const sessionId = (toolbox && toolbox.sessionId) || -1;
   const middleware = applyMiddleware(
     ignore,

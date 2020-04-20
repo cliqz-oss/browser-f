@@ -48,6 +48,14 @@ class MediaControlService final : public nsIObserver {
   bool UnregisterActiveMediaController(MediaController* aController);
   uint64_t GetActiveControllersNum() const;
 
+  // This method would be called when the controller changes its playback state.
+  void NotifyControllerPlaybackStateChanged(MediaController* aController);
+
+  // This method would be called when the controller starts to being used in the
+  // picture-in-picture mode.
+  void NotifyControllerBeingUsedInPictureInPictureMode(
+      MediaController* aController);
+
   // The main controller is the controller which can receive the media control
   // key events and would show its metadata to virtual controller interface.
   MediaController* GetMainController() const;
@@ -58,12 +66,14 @@ class MediaControlService final : public nsIObserver {
     return mMediaControllerAmountChangedEvent;
   }
 
-  // This is used for testing only, to generate fake media control keys events.
+  /**
+   * These following functions are used for testing only. We use them to
+   * generate fake media control key events, get the media metadata and playback
+   * state from the main controller.
+   */
   void GenerateMediaControlKeysTestEvent(MediaControlKeysEvent aEvent);
-
-  // Return the media metadata from the main controller, and it's used for test
-  // only.
   MediaMetadataBase GetMainControllerMediaMetadata() const;
+  MediaSessionPlaybackState GetMainControllerPlaybackState() const;
 
  private:
   MediaControlService();
@@ -92,23 +102,37 @@ class MediaControlService final : public nsIObserver {
 
     bool AddController(MediaController* aController);
     bool RemoveController(MediaController* aController);
+    void UpdateMainControllerIfNeeded(MediaController* aController);
 
     void Shutdown();
 
     MediaController* GetMainController() const;
     MediaController* GetControllerById(uint64_t aId) const;
+    bool Contains(MediaController* aController) const;
     uint64_t GetControllersNum() const;
 
-    // Callback functions for monitoring main controller's status change.
-    void ControllerPlaybackStateChanged(PlaybackState aState);
-    void ControllerMetadataChanged(const MediaMetadataBase& aMetadata);
+    // These functions are used for monitoring main controller's status change.
+    void MainControllerPlaybackStateChanged(MediaSessionPlaybackState aState);
+    void MainControllerMetadataChanged(const MediaMetadataBase& aMetadata);
 
    private:
-    void UpdateMainController(MediaController* aController);
+    // Assume that we have a list [A, B, C, D], and we want to reorder B.
+    // When applying `eInsertToTail`, list would become [A, C, D, B].
+    // When applying `eInsertBeforeTail`, list would become [A, C, B, D].
+    enum class InsertOptions {
+      eInsertToTail,
+      eInsertBeforeTail,
+    };
+
+    // Adjust the given controller's order by the insert option.
+    void ReorderGivenController(MediaController* aController,
+                                InsertOptions aOption);
+
+    void UpdateMainControllerInternal(MediaController* aController);
     void ConnectToMainControllerEvents();
     void DisconnectMainControllerEvents();
 
-    nsTArray<RefPtr<MediaController>> mControllers;
+    LinkedList<RefPtr<MediaController>> mControllers;
     RefPtr<MediaController> mMainController;
 
     // These member are use to listen main controller's play state changes and

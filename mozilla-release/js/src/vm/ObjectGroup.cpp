@@ -246,9 +246,9 @@ bool ObjectGroup::useSingletonForAllocationSite(JSScript* script,
 
   uint32_t offset = script->pcToOffset(pc);
 
-  for (const JSTryNote& tn : script->trynotes()) {
-    if (tn.kind != JSTRY_FOR_IN && tn.kind != JSTRY_FOR_OF &&
-        tn.kind != JSTRY_LOOP) {
+  for (const TryNote& tn : script->trynotes()) {
+    if (tn.kind() != TryNoteKind::ForIn && tn.kind() != TryNoteKind::ForOf &&
+        tn.kind() != TryNoteKind::Loop) {
       continue;
     }
 
@@ -1323,11 +1323,7 @@ struct ObjectGroupRealm::AllocationSiteKey {
     MOZ_ASSERT(offset_ < OFFSET_LIMIT);
   }
 
-  AllocationSiteKey(const AllocationSiteKey& key)
-      : script(key.script),
-        offset(key.offset),
-        kind(key.kind),
-        proto(key.proto) {}
+  AllocationSiteKey(const AllocationSiteKey& key) = default;
 
   AllocationSiteKey(AllocationSiteKey&& key)
       : script(std::move(key.script)),
@@ -1527,6 +1523,8 @@ bool ObjectGroup::setAllocationSiteObjectGroup(JSContext* cx,
 ArrayObject* ObjectGroup::getOrFixupCopyOnWriteObject(JSContext* cx,
                                                       HandleScript script,
                                                       jsbytecode* pc) {
+  MOZ_ASSERT(IsTypeInferenceEnabled());
+
   // Make sure that the template object for script/pc has a type indicating
   // that the object and its copies have copy on write elements.
   RootedArrayObject obj(

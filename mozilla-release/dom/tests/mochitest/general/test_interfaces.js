@@ -167,19 +167,21 @@ var interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "AudioParam", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "AudioParamMap", insecureContext: true, disabled: true },
+  { name: "AudioParamMap", insecureContext: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "AudioProcessingEvent", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "AudioScheduledSourceNode", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "AudioWorkletNode", insecureContext: false, disabled: true },
+  { name: "AudioWorklet", insecureContext: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "AuthenticatorAssertionResponse" },
+  { name: "AudioWorkletNode", insecureContext: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "AuthenticatorAttestationResponse" },
+  { name: "AuthenticatorAssertionResponse", android: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "AuthenticatorResponse" },
+  { name: "AuthenticatorAttestationResponse", android: false },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "AuthenticatorResponse", android: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "BarProp", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -231,9 +233,9 @@ var interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "ConvolverNode", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "Credential" },
+  { name: "Credential", android: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "CredentialsContainer" },
+  { name: "CredentialsContainer", android: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "Crypto", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -675,6 +677,8 @@ var interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "MediaList", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "MediaMetadata", insecureContext: true, nightly: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "MediaQueryList", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "MediaQueryListEvent", insecureContext: true },
@@ -682,6 +686,8 @@ var interfaceNamesInGlobalScope = [
   { name: "MediaRecorder", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "MediaRecorderErrorEvent", insecureContext: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "MediaSession", insecureContext: true, nightly: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "MediaSource", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -933,7 +939,7 @@ var interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "PromiseRejectionEvent", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "PublicKeyCredential" },
+  { name: "PublicKeyCredential", android: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "PushManager", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -1387,6 +1393,8 @@ var interfaceNamesInGlobalScope = [
   { name: "Window", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "Worker", insecureContext: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "Worklet", insecureContext: false },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "XMLDocument", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!

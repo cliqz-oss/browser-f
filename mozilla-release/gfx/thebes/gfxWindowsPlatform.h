@@ -88,7 +88,7 @@ struct ClearTypeParameterInfo {
   int32_t enhancedContrast;
 };
 
-class gfxWindowsPlatform : public gfxPlatform {
+class gfxWindowsPlatform final : public gfxPlatform {
   friend class mozilla::gfx::DeviceManagerDx;
 
  public:
@@ -150,12 +150,6 @@ class gfxWindowsPlatform : public gfxPlatform {
 
   void GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh, Script aRunScript,
                               nsTArray<const char*>& aFontList) override;
-
-  gfxFontGroup* CreateFontGroup(const mozilla::FontFamilyList& aFontFamilyList,
-                                const gfxFontStyle* aStyle,
-                                gfxTextPerfMetrics* aTextPerf,
-                                gfxUserFontSet* aUserFontSet,
-                                gfxFloat aDevToCssSize) override;
 
   bool CanUseHardwareVideoDecoding() override;
 

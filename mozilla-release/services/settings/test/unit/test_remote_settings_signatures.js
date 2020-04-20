@@ -63,6 +63,8 @@ function run_test() {
   // because these tests were originally written for OneCRL.
   client = RemoteSettings("signed", { signerName: SIGNER_NAME });
 
+  Services.prefs.setCharPref("services.settings.loglevel", "debug");
+
   // set the content signing root to our test root
   setRoot();
 
@@ -294,23 +296,11 @@ add_task(async function test_check_synchronization_with_signatures() {
     responseBody: JSON.stringify({ data: [] }),
   };
 
+  // Valid signature for empty collection.
   const RESPONSE_BODY_META_EMPTY_SIG = makeMetaResponseBody(
     1000,
     "vxuAg5rDCB-1pul4a91vqSBQRXJG_j7WOYUTswxRSMltdYmbhLRH8R8brQ9YKuNDF56F-w6pn4HWxb076qgKPwgcEBtUeZAO_RtaHXRkRUUgVzAr86yQL4-aJTbv3D6u"
   );
-
-  const RESPONSE_META_NO_SIG = {
-    sampleHeaders: [
-      "Content-Type: application/json; charset=UTF-8",
-      `ETag: \"123456\"`,
-    ],
-    status: { status: 200, statusText: "OK" },
-    responseBody: JSON.stringify({
-      data: {
-        last_modified: 123456,
-      },
-    }),
-  };
 
   // The collection metadata containing the signature for the empty
   // collection.
@@ -334,6 +324,12 @@ add_task(async function test_check_synchronization_with_signatures() {
     ],
   };
 
+  //
+  // 1.
+  // - collection: undefined -> []
+  // - timestamp: undefined -> 1000
+  //
+
   // .. and use this map to register handlers for each path
   registerHandlers(emptyCollectionResponses);
 
@@ -343,12 +339,19 @@ add_task(async function test_check_synchronization_with_signatures() {
   // well and throw if something goes wrong.
   await client.maybeSync(1000);
 
+  equal((await client.get()).length, 0);
+
   let endHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
 
   // ensure that a success histogram is tracked when a succesful sync occurs.
   let expectedIncrements = { [UptakeTelemetry.STATUS.SUCCESS]: 1 };
   checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
 
+  //
+  // 2.
+  // - collection: [] -> [RECORD2, RECORD1]
+  // - timestamp: 1000 -> 3000
+  //
   // Check that some additions (2 records) to the collection have a valid
   // signature.
 
@@ -386,6 +389,13 @@ add_task(async function test_check_synchronization_with_signatures() {
   registerHandlers(twoItemsResponses);
   await client.maybeSync(3000);
 
+  equal((await client.get()).length, 2);
+
+  //
+  // 3.
+  // - collection: [RECORD2, RECORD1] -> [RECORD2, RECORD3]
+  // - timestamp: 3000 -> 4000
+  //
   // Check the collection with one addition and one removal has a valid
   // signature
 
@@ -423,6 +433,13 @@ add_task(async function test_check_synchronization_with_signatures() {
   registerHandlers(oneAddedOneRemovedResponses);
   await client.maybeSync(4000);
 
+  equal((await client.get()).length, 2);
+
+  //
+  // 4.
+  // - collection: [RECORD2, RECORD3] -> [RECORD2, RECORD3]
+  // - timestamp: 4000 -> 4100
+  //
   // Check the signature is still valid with no operation (no changes)
 
   // Leave the collection unchanged
@@ -447,10 +464,20 @@ add_task(async function test_check_synchronization_with_signatures() {
   registerHandlers(noOpResponses);
   await client.maybeSync(4100);
 
-  // Check the collection is reset when the signature is invalid
+  equal((await client.get()).length, 2);
 
-  // Prepare a (deliberately) bad signature to check the collection state is
-  // reset if something is inconsistent
+  //
+  // 5.
+  // - collection: [RECORD2, RECORD3] -> [RECORD2, RECORD3]
+  // - timestamp: 4000 -> 5000
+  //
+  // Check the collection is reset when the signature is invalid.
+  // Client will:
+  //   - Fetch metadata (with bad signature)
+  //   - Perform the sync (fetch empty changes)
+  //   - Refetch the metadata and the whole collection
+  //   - Validate signature successfully, but with no changes to emit.
+
   const RESPONSE_COMPLETE_INITIAL = {
     comment: "RESPONSE_COMPLETE_INITIAL ",
     sampleHeaders: [
@@ -461,21 +488,12 @@ add_task(async function test_check_synchronization_with_signatures() {
     responseBody: JSON.stringify({ data: [RECORD2, RECORD3] }),
   };
 
-  const RESPONSE_COMPLETE_INITIAL_SORTED_BY_ID = {
-    comment: "RESPONSE_COMPLETE_INITIAL ",
-    sampleHeaders: [
-      "Content-Type: application/json; charset=UTF-8",
-      'ETag: "4000"',
-    ],
-    status: { status: 200, statusText: "OK" },
-    responseBody: JSON.stringify({ data: [RECORD3, RECORD2] }),
-  };
-
+  // Prepare a (deliberately) bad signature to check the collection state is
+  // reset if something is inconsistent
   const RESPONSE_BODY_META_BAD_SIG = makeMetaResponseBody(
     4000,
     "aW52YWxpZCBzaWduYXR1cmUK"
   );
-
   const RESPONSE_META_BAD_SIG = makeMetaResponse(
     4000,
     RESPONSE_BODY_META_BAD_SIG,
@@ -496,15 +514,10 @@ add_task(async function test_check_synchronization_with_signatures() {
     "GET:/v1/buckets/main/collections/signed/records?_expected=5000&_sort=-last_modified&_since=4000": [
       RESPONSE_EMPTY_NO_UPDATE,
     ],
-    // The next request is for the full collection. This will be checked
-    // against the valid signature - so the sync should succeed.
-    "GET:/v1/buckets/main/collections/signed/records?_sort=-last_modified": [
+    // The next request is for the full collection. This will be checked against the valid signature
+    // - so the sync should succeed.
+    "GET:/v1/buckets/main/collections/signed/records?_expected=5000&_sort=-last_modified": [
       RESPONSE_COMPLETE_INITIAL,
-    ],
-    // The next request is for the full collection sorted by id. This will be
-    // checked against the valid signature - so the sync should succeed.
-    "GET:/v1/buckets/main/collections/signed/records?_expected=5000&_sort=id": [
-      RESPONSE_COMPLETE_INITIAL_SORTED_BY_ID,
     ],
   };
 
@@ -519,6 +532,8 @@ add_task(async function test_check_synchronization_with_signatures() {
 
   await client.maybeSync(5000);
 
+  equal((await client.get()).length, 2);
+
   endHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
 
   // since we only fixed the signature, and no data was changed, the sync event
@@ -530,6 +545,18 @@ add_task(async function test_check_synchronization_with_signatures() {
   // increment.
   expectedIncrements = { [UptakeTelemetry.STATUS.SIGNATURE_ERROR]: 1 };
   checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
+
+  //
+  // 6.
+  // - collection: [RECORD2, RECORD3] -> [RECORD2, RECORD3]
+  // - timestamp: 4000 -> 5000
+  //
+  // Check the collection is reset when the signature is invalid.
+  // Client will:
+  //   - Fetch metadata (with bad signature)
+  //   - Perform the sync (fetch empty changes)
+  //   - Refetch the whole collection and metadata
+  //   - Sync will be no-op since local is equal to server, no changes to emit.
 
   const badSigGoodOldResponses = {
     // In this test, we deliberately serve a bad signature initially. The
@@ -544,11 +571,11 @@ add_task(async function test_check_synchronization_with_signatures() {
     "GET:/v1/buckets/main/collections/signed/records?_expected=5000&_sort=-last_modified&_since=4000": [
       RESPONSE_EMPTY_NO_UPDATE,
     ],
-    // The next request is for the full collection sorted by id. This will be
+    // The next request is for the full collection. This will be
     // checked against the valid signature and last_modified times will be
-    // compared. Sync should fail, even though the signature is good,
+    // compared. Sync should be a no-op, even though the signature is good,
     // because the local collection is newer.
-    "GET:/v1/buckets/main/collections/signed/records?_expected=5000&_sort=id": [
+    "GET:/v1/buckets/main/collections/signed/records?_expected=5000&_sort=-last_modified": [
       RESPONSE_EMPTY_INITIAL,
     ],
   };
@@ -569,6 +596,14 @@ add_task(async function test_check_synchronization_with_signatures() {
   // thus the sync event is not sent.
   equal(syncEventSent, false);
 
+  //
+  // 7.
+  // - collection: [RECORD2, RECORD3] -> [RECORD2, RECORD3]
+  // - timestamp: 4000 -> 5000
+  //
+  // Check that a tampered local DB will be overwritten and
+  // sync event contain the appropriate data.
+
   const badLocalContentGoodSigResponses = {
     // In this test, we deliberately serve a bad signature initially. The
     // subsequent signature returned is a valid one for the three item
@@ -582,35 +617,32 @@ add_task(async function test_check_synchronization_with_signatures() {
     "GET:/v1/buckets/main/collections/signed/records?_expected=5000&_sort=-last_modified": [
       RESPONSE_COMPLETE_INITIAL,
     ],
-    // The next request is for the full collection sorted by id. This will be
-    // checked against the valid signature - so the sync should succeed.
-    "GET:/v1/buckets/main/collections/signed/records?_expected=5000&_sort=id": [
-      RESPONSE_COMPLETE_INITIAL_SORTED_BY_ID,
-    ],
   };
 
   registerHandlers(badLocalContentGoodSigResponses);
 
   // we create a local state manually here, in order to test that the sync event data
   // properly contains created, updated, and deleted records.
+  // the local DB contains same id as RECORD2 and a fake record.
   // the final server collection contains RECORD2 and RECORD3
-  const kintoCol = await client.openCollection();
-  await kintoCol.clear();
-  await kintoCol.create(
+  await client.db.clear();
+  await client.db.create(
     { ...RECORD2, last_modified: 1234567890, serialNumber: "abc" },
     { synced: true, useRecordId: true }
   );
   const localId = "0602b1b2-12ab-4d3a-b6fb-593244e7b035";
-  await kintoCol.create({ id: localId }, { synced: true, useRecordId: true });
+  await client.db.create({ id: localId }, { synced: true, useRecordId: true });
 
-  let syncData;
+  let syncData = null;
   client.on("sync", ({ data }) => {
     syncData = data;
   });
 
   await client.maybeSync(5000);
 
-  // Local data was unchanged, since it was never than the one returned by the server.
+  // Local data was replaced. But we use records IDs to determine
+  // what was created and deleted. So fake local data will appear
+  // in the sync event.
   equal(syncData.current.length, 2);
   equal(syncData.created.length, 1);
   equal(syncData.created[0].id, RECORD3.id);
@@ -620,6 +652,30 @@ add_task(async function test_check_synchronization_with_signatures() {
   equal(syncData.deleted.length, 1);
   equal(syncData.deleted[0].id, localId);
 
+  //
+  // 8.
+  // - collection: [RECORD2, RECORD3] -> [RECORD2, RECORD3] (unchanged because of error)
+  // - timestamp: 4000 -> 6000
+  //
+  // Check that a failing signature throws after retry, and that sync changes
+  // are not applied.
+
+  const RESPONSE_ONLY_RECORD4 = {
+    comment: "Delete RECORD3, create RECORD4",
+    sampleHeaders: [
+      "Content-Type: application/json; charset=UTF-8",
+      'ETag: "6000"',
+    ],
+    status: { status: 200, statusText: "OK" },
+    responseBody: JSON.stringify({
+      data: [
+        {
+          id: "f765df30-b2f1-42f6-9803-7bd5a07b5098",
+          last_modified: 6000,
+        },
+      ],
+    }),
+  };
   const allBadSigResponses = {
     // In this test, we deliberately serve only a bad signature.
     "GET:/v1/buckets/main/collections/signed?_expected=6000": [
@@ -631,10 +687,9 @@ add_task(async function test_check_synchronization_with_signatures() {
     "GET:/v1/buckets/main/collections/signed/records?_expected=6000&_sort=-last_modified&_since=4000": [
       RESPONSE_EMPTY_NO_UPDATE,
     ],
-    // The next request is for the full collection sorted by id. This will be
-    // checked against the valid signature - so the sync should succeed.
-    "GET:/v1/buckets/main/collections/signed/records?_expected=6000&_sort=id": [
-      RESPONSE_COMPLETE_INITIAL_SORTED_BY_ID,
+    // The next request is for the full collection.
+    "GET:/v1/buckets/main/collections/signed/records?_expected=6000&_sort=-last_modified": [
+      RESPONSE_ONLY_RECORD4,
     ],
   };
 
@@ -644,13 +699,67 @@ add_task(async function test_check_synchronization_with_signatures() {
     await client.maybeSync(6000);
     do_throw("Sync should fail (the signature is intentionally bad)");
   } catch (e) {
-    equal((await client.get()).length, 2);
+    ok(true, "Sync failed as expected (bad signature after retry)");
   }
 
   // Ensure that the failure is reflected in the accumulated telemetry:
   endHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
   expectedIncrements = { [UptakeTelemetry.STATUS.SIGNATURE_RETRY_ERROR]: 1 };
   checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
+
+  // When signature fails after retry, the local data present before sync
+  // should be maintained.
+  ok(
+    arrayEqual(
+      (await client.get()).map(r => r.id),
+      [RECORD3.id, RECORD2.id]
+    ),
+    "Remote changes were not changed"
+  );
+  // And local data should still be valid.
+  await client.get({ verifySignature: true }); // Not raising.
+
+  //
+  // 9.
+  // - collection: [RECORD2, RECORD3] -> [] (cleared)
+  // - timestamp: 4000 -> 6000
+  //
+  // Check that local data is cleared during sync if signature is not valid.
+
+  await client.db.create({
+    id: "c6b19c67-2e0e-4a82-b7f7-1777b05f3e81",
+    last_modified: 42,
+    tampered: true,
+  });
+
+  try {
+    await client.maybeSync(6000);
+    do_throw("Sync should fail (the signature is intentionally bad)");
+  } catch (e) {
+    ok(true, "Sync failed as expected (bad signature after retry)");
+  }
+  // Since local data was tampered, it was cleared.
+  equal((await client.get()).length, 0, "Local database is now empty.");
+
+  //
+  // 11.
+  // - collection: [] -> []
+  // - timestamp: 4000 -> 6000
+  //
+  // Check that we don't apply changes when signature is missing in remote.
+
+  const RESPONSE_META_NO_SIG = {
+    sampleHeaders: [
+      "Content-Type: application/json; charset=UTF-8",
+      `ETag: \"123456\"`,
+    ],
+    status: { status: 200, statusText: "OK" },
+    responseBody: JSON.stringify({
+      data: {
+        last_modified: 123456,
+      },
+    }),
+  };
 
   const missingSigResponses = {
     // In this test, we deliberately serve metadata without the signature attribute.
@@ -660,13 +769,16 @@ add_task(async function test_check_synchronization_with_signatures() {
     ],
   };
 
+  // Local data was empty after last test.
+  equal((await client.get()).length, 0);
+
   startHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
   registerHandlers(missingSigResponses);
   try {
     await client.maybeSync(6000);
     do_throw("Sync should fail (the signature is missing)");
   } catch (e) {
-    equal((await client.get()).length, 2);
+    equal((await client.get()).length, 0, "Local remains empty");
   }
 
   // Ensure that the failure is reflected in the accumulated telemetry:

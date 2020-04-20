@@ -405,10 +405,6 @@ struct BaselineStackBuilder {
 #  error "Bad architecture!"
 #endif
   }
-
-  void setCheckGlobalDeclarationConflicts() {
-    header_->checkGlobalDeclarationConflicts = true;
-  }
 };
 
 #ifdef DEBUG
@@ -485,21 +481,21 @@ static jsbytecode* GetResumePC(JSScript* script, jsbytecode* pc,
   return pc;
 }
 
-static bool HasLiveStackValueAtDepth(JSContext* cx, HandleScript script,
-                                     jsbytecode* pc, uint32_t stackSlotIndex,
+static bool HasLiveStackValueAtDepth(HandleScript script, jsbytecode* pc,
+                                     uint32_t stackSlotIndex,
                                      uint32_t stackDepth) {
   // Return true iff stackSlotIndex is a stack value that's part of an active
   // iterator loop instead of a normal expression stack slot.
 
   MOZ_ASSERT(stackSlotIndex < stackDepth);
 
-  for (TryNoteIterAll tni(cx, script, pc); !tni.done(); ++tni) {
-    const JSTryNote& tn = **tni;
+  for (TryNoteIterAllNoGC tni(script, pc); !tni.done(); ++tni) {
+    const TryNote& tn = **tni;
 
-    switch (tn.kind) {
-      case JSTRY_FOR_IN:
-      case JSTRY_FOR_OF:
-      case JSTRY_DESTRUCTURING:
+    switch (tn.kind()) {
+      case TryNoteKind::ForIn:
+      case TryNoteKind::ForOf:
+      case TryNoteKind::Destructuring:
         MOZ_ASSERT(tn.stackDepth <= stackDepth);
         if (stackSlotIndex < tn.stackDepth) {
           return true;
@@ -683,8 +679,6 @@ static bool InitFromBailout(JSContext* cx, size_t frameNo, HandleFunction fun,
     flags |= BaselineFrame::DEBUGGEE;
   }
 
-  const bool isPrologueBailout = IsPrologueBailout(iter, excInfo);
-
   // Initialize BaselineFrame's envChain and argsObj
   JSObject* envChain = nullptr;
   Value returnValue = UndefinedValue();
@@ -757,14 +751,6 @@ static bool InitFromBailout(JSContext* cx, size_t frameNo, HandleFunction fun,
         MOZ_ASSERT(!script->isForEval());
         MOZ_ASSERT(!script->hasNonSyntacticScope());
         envChain = &(script->global().lexicalEnvironment());
-
-        // We have possibly bailed out before Ion could do the global
-        // declaration conflicts check. Since it's invalid to resume
-        // into the prologue, set a flag so FinishBailoutToBaseline
-        // can do the conflict check.
-        if (isPrologueBailout) {
-          builder.setCheckGlobalDeclarationConflicts();
-        }
       }
     }
 
@@ -1007,9 +993,9 @@ static bool InitFromBailout(JSContext* cx, size_t frameNo, HandleFunction fun,
       // possible nothing was pushed before we threw. We can't drop
       // iterators, however, so read them out. They will be closed by
       // HandleExceptionBaseline.
-      MOZ_ASSERT(cx->realm()->isDebuggee());
+      MOZ_ASSERT(cx->realm()->isDebuggee() || cx->isPropagatingForcedReturn());
       if (iter.moreFrames() ||
-          HasLiveStackValueAtDepth(cx, script, pc, i, exprStackSlots)) {
+          HasLiveStackValueAtDepth(script, pc, i, exprStackSlots)) {
         v = iter.read();
       } else {
         iter.skip();
@@ -1078,7 +1064,7 @@ static bool InitFromBailout(JSContext* cx, size_t frameNo, HandleFunction fun,
 
 #ifdef JS_JITSPEW
   JitSpew(JitSpew_BaselineBailouts,
-          "      Resuming %s pc offset %d (op %s) (line %d) of %s:%u:%u",
+          "      Resuming %s pc offset %d (op %s) (line %u) of %s:%u:%u",
           resumeAfter ? "after" : "at", (int)pcOff, CodeName(op),
           PCToLineNumber(script, pc), script->filename(), script->lineno(),
           script->column());
@@ -1098,7 +1084,7 @@ static bool InitFromBailout(JSContext* cx, size_t frameNo, HandleFunction fun,
     // Compute the native address (within the Baseline Interpreter) that we will
     // resume at and initialize the frame's interpreter fields.
     uint8_t* resumeAddr;
-    if (isPrologueBailout) {
+    if (IsPrologueBailout(iter, excInfo)) {
       JitSpew(JitSpew_BaselineBailouts, "      Resuming into prologue.");
       MOZ_ASSERT(pc == script->code());
       blFrame->setInterpreterFieldsForPrologue(script);
@@ -1632,7 +1618,7 @@ bool jit::BailoutIonToBaseline(JSContext* cx, JitActivation* activation,
 
     MOZ_ASSERT(nextCallee);
     fun = nextCallee;
-    scr = fun->existingScript();
+    scr = fun->nonLazyScript();
 
     frameNo++;
 
@@ -1834,17 +1820,6 @@ bool jit::FinishBailoutToBaseline(BaselineBailoutInfo* bailoutInfoArg) {
   // Ensure the frame has a call object if it needs one.
   if (!EnsureHasEnvironmentObjects(cx, topFrame)) {
     return false;
-  }
-
-  // Check for global declaration conflicts if necessary.
-  if (bailoutInfo->checkGlobalDeclarationConflicts) {
-    Rooted<LexicalEnvironmentObject*> lexicalEnv(
-        cx, &cx->global()->lexicalEnvironment());
-    RootedScript script(cx, topFrame->script());
-    if (!CheckGlobalDeclarationConflicts(cx, script, lexicalEnv,
-                                         cx->global())) {
-      return false;
-    }
   }
 
   // Monitor the top stack value if we are resuming after a JOF_TYPESET op.

@@ -46,9 +46,7 @@ class DocumentChannel : public nsIIdentChannel, public nsITraceableChannel {
   NS_DECLARE_STATIC_IID_ACCESSOR(DOCUMENT_CHANNEL_IID)
 
   DocumentChannel(nsDocShellLoadState* aLoadState, class LoadInfo* aLoadInfo,
-                  nsLoadFlags aLoadFlags, uint32_t aLoadType,
-                  uint32_t aCacheKey, bool aIsActive, bool aIsTopLevelDoc,
-                  bool aHasNonEmptySandboxingFlags);
+                  nsLoadFlags aLoadFlags, uint32_t aCacheKey);
 
   const nsTArray<DocumentChannelRedirect>& GetRedirectChain() const {
     return mRedirects;
@@ -57,11 +55,6 @@ class DocumentChannel : public nsIIdentChannel, public nsITraceableChannel {
   void GetLastVisit(nsIURI** aURI, uint32_t* aChannelRedirectFlags) const {
     *aURI = do_AddRef(mLastVisitInfo.uri()).take();
     *aChannelRedirectFlags = mLastVisitInfo.previousFlags();
-  }
-
-  void SetDocumentOpenFlags(uint32_t aFlags, bool aPluginsAllowed) {
-    mDocumentOpenFlags = Some(aFlags);
-    mPluginsAllowed = aPluginsAllowed;
   }
 
   void SetNavigationTiming(nsDOMNavigationTiming* aTiming) {
@@ -82,15 +75,10 @@ class DocumentChannel : public nsIIdentChannel, public nsITraceableChannel {
 
   const TimeStamp mAsyncOpenTime;
   const RefPtr<nsDocShellLoadState> mLoadState;
-  const uint32_t mLoadType;
   const uint32_t mCacheKey;
-  const bool mIsActive;
-  const bool mIsTopLevelDoc;
-  const bool mHasNonEmptySandboxingFlags;
 
   nsresult mStatus = NS_OK;
   bool mCanceled = false;
-  Maybe<uint32_t> mDocumentOpenFlags;
   bool mIsPending = false;
   bool mWasOpened = false;
   uint64_t mChannelId;
@@ -101,7 +89,6 @@ class DocumentChannel : public nsIIdentChannel, public nsITraceableChannel {
   nsCOMPtr<nsIInterfaceRequestor> mCallbacks;
   nsCOMPtr<nsIStreamListener> mListener;
   nsCOMPtr<nsISupports> mOwner;
-  bool mPluginsAllowed = false;
   RefPtr<nsDOMNavigationTiming> mTiming;
   Maybe<dom::ClientInfo> mInitialClientInfo;
 };

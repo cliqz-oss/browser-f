@@ -45,6 +45,7 @@ interface WindowGlobalParent : WindowContext {
 
   // Information about the currently loaded document.
   readonly attribute Principal documentPrincipal;
+  readonly attribute Principal? contentBlockingAllowListPrincipal;
   readonly attribute URI? documentURI;
 
   // Bit mask containing content blocking events that are recorded in
@@ -53,6 +54,10 @@ interface WindowGlobalParent : WindowContext {
 
   // String containing serialized content blocking log.
   readonly attribute DOMString contentBlockingLog;
+
+  // ContentParent of the process this window is loaded in.
+  // Will be `null` for windows loaded in the parent process.
+  readonly attribute nsIContentParent? contentParent;
 
   static WindowGlobalParent? getByInnerWindowId(unsigned long long innerWindowId);
 

@@ -5,20 +5,21 @@
 
 dictionary VideoFrameMetadata {
   required DOMHighResTimeStamp presentationTime;
-  required DOMHighResTimeStamp expectedPresentationTime;
+  required DOMHighResTimeStamp expectedDisplayTime;
 
   required unsigned long width;
   required unsigned long height;
+  required double mediaTime;
 
-  double presentationTimestamp;
-  double elapsedProcessingTime;
-  unsigned long presentedFrames;
+  required unsigned long presentedFrames;
+  double processingDuration;
+
   DOMHighResTimeStamp captureTime;
   DOMHighResTimeStamp receiveTime;
   unsigned long rtpTimestamp;
 };
 
-callback VideoFrameRequestCallback = void(DOMHighResTimeStamp time, VideoFrameMetadata metadata);
+callback VideoFrameRequestCallback = void(DOMHighResTimeStamp now, VideoFrameMetadata metadata);
 
 partial interface HTMLVideoElement {
     unsigned long requestAnimationFrame(VideoFrameRequestCallback callback);

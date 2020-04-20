@@ -48,8 +48,9 @@ class BigInt final : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
   static constexpr uintptr_t TYPE_FLAGS = js::gc::Cell::BIGINT_BIT;
 
  private:
-  // The low NumFlagBitsReservedForGC flag bits are reserved.
-  static constexpr uintptr_t SignBit = js::Bit(Base::NumFlagBitsReservedForGC);
+  // The low CellFlagBitsReservedForGC flag bits are reserved.
+  static constexpr uintptr_t SignBit =
+      js::Bit(js::gc::CellFlagBitsReservedForGC);
 
   static constexpr size_t InlineDigitsLength =
       (js::gc::MinCellSize - sizeof(Base)) / sizeof(Digit);
@@ -158,6 +159,7 @@ class BigInt final : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
   void finalize(JSFreeOp* fop);
   js::HashNumber hash() const;
   size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
+  size_t sizeOfExcludingThisInNursery(mozilla::MallocSizeOf mallocSizeOf) const;
 
   static BigInt* createUninitialized(
       JSContext* cx, size_t digitLength, bool isNegative,

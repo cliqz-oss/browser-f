@@ -714,7 +714,7 @@ jsbytecode* BaselineScript::approximatePcForNativeAddress(
 
   // Return the last entry's pc. Every BaselineScript has at least one
   // RetAddrEntry for the prologue stack overflow check.
-  MOZ_ASSERT(retAddrEntries().size() > 0);
+  MOZ_ASSERT(!retAddrEntries().empty());
   const RetAddrEntry& lastEntry = retAddrEntries()[retAddrEntries().size() - 1];
   return script->offsetToPC(lastEntry.pcOffset());
 }
@@ -976,14 +976,12 @@ void jit::ToggleBaselineProfiling(JSContext* cx, bool enable) {
 
   for (ZonesIter zone(cx->runtime(), SkipAtoms); !zone.done(); zone.next()) {
     for (auto base = zone->cellIter<BaseScript>(); !base.done(); base.next()) {
-      if (base->isLazyScript()) {
+      if (!base->hasJitScript()) {
         continue;
       }
       JSScript* script = base->asJSScript();
       if (enable) {
-        if (JitScript* jitScript = script->maybeJitScript()) {
-          jitScript->ensureProfileString(cx, script);
-        }
+        script->jitScript()->ensureProfileString(cx, script);
       }
       if (!script->hasBaselineScript()) {
         continue;
@@ -998,13 +996,10 @@ void jit::ToggleBaselineProfiling(JSContext* cx, bool enable) {
 void jit::ToggleBaselineTraceLoggerScripts(JSRuntime* runtime, bool enable) {
   for (ZonesIter zone(runtime, SkipAtoms); !zone.done(); zone.next()) {
     for (auto base = zone->cellIter<BaseScript>(); !base.done(); base.next()) {
-      if (base->isLazyScript()) {
+      if (!base->hasBaselineScript()) {
         continue;
       }
       JSScript* script = base->asJSScript();
-      if (!script->hasBaselineScript()) {
-        continue;
-      }
       script->baselineScript()->toggleTraceLoggerScripts(script, enable);
     }
   }
@@ -1013,13 +1008,10 @@ void jit::ToggleBaselineTraceLoggerScripts(JSRuntime* runtime, bool enable) {
 void jit::ToggleBaselineTraceLoggerEngine(JSRuntime* runtime, bool enable) {
   for (ZonesIter zone(runtime, SkipAtoms); !zone.done(); zone.next()) {
     for (auto base = zone->cellIter<BaseScript>(); !base.done(); base.next()) {
-      if (base->isLazyScript()) {
+      if (!base->hasBaselineScript()) {
         continue;
       }
       JSScript* script = base->asJSScript();
-      if (!script->hasBaselineScript()) {
-        continue;
-      }
       script->baselineScript()->toggleTraceLoggerEngine(enable);
     }
   }

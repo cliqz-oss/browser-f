@@ -52,7 +52,7 @@ static inline bool IsOptimizedArguments(AbstractFramePtr frame,
  * However, this speculation must be guarded before calling 'apply' in case it
  * is not the builtin Function.prototype.apply.
  */
-static inline bool GuardFunApplyArgumentsOptimization(JSContext* cx,
+static inline void GuardFunApplyArgumentsOptimization(JSContext* cx,
                                                       AbstractFramePtr frame,
                                                       CallArgs& args) {
   if (args.length() == 2 && IsOptimizedArguments(frame, args[1])) {
@@ -62,8 +62,6 @@ static inline bool GuardFunApplyArgumentsOptimization(JSContext* cx,
       args[1].setObject(frame.argsObj());
     }
   }
-
-  return true;
 }
 
 /*
@@ -99,45 +97,14 @@ static inline bool IsUninitializedLexicalSlot(HandleObject obj,
   return IsUninitializedLexical(obj->as<NativeObject>().getSlot(shape->slot()));
 }
 
-static inline void ReportUninitializedLexical(JSContext* cx,
-                                              HandlePropertyName name) {
-  ReportRuntimeLexicalError(cx, JSMSG_UNINITIALIZED_LEXICAL, name);
-}
-
-static inline void ReportUninitializedLexical(JSContext* cx,
-                                              HandleScript script,
-                                              jsbytecode* pc) {
-  ReportRuntimeLexicalError(cx, JSMSG_UNINITIALIZED_LEXICAL, script, pc);
-}
-
 static inline bool CheckUninitializedLexical(JSContext* cx, PropertyName* name_,
                                              HandleValue val) {
   if (IsUninitializedLexical(val)) {
     RootedPropertyName name(cx, name_);
-    ReportUninitializedLexical(cx, name);
+    ReportRuntimeLexicalError(cx, JSMSG_UNINITIALIZED_LEXICAL, name);
     return false;
   }
   return true;
-}
-
-static inline bool CheckUninitializedLexical(JSContext* cx, HandleScript script,
-                                             jsbytecode* pc, HandleValue val) {
-  if (IsUninitializedLexical(val)) {
-    ReportUninitializedLexical(cx, script, pc);
-    return false;
-  }
-  return true;
-}
-
-static inline void ReportRuntimeConstAssignment(JSContext* cx,
-                                                HandlePropertyName name) {
-  ReportRuntimeLexicalError(cx, JSMSG_BAD_CONST_ASSIGN, name);
-}
-
-static inline void ReportRuntimeConstAssignment(JSContext* cx,
-                                                HandleScript script,
-                                                jsbytecode* pc) {
-  ReportRuntimeLexicalError(cx, JSMSG_BAD_CONST_ASSIGN, script, pc);
 }
 
 inline bool GetLengthProperty(const Value& lval, MutableHandleValue vp) {
@@ -339,7 +306,7 @@ inline bool SetNameOperation(JSContext* cx, JSScript* script, jsbytecode* pc,
   } else {
     ok = SetProperty(cx, env, id, val, receiver, result);
   }
-  return ok && result.checkStrictErrorOrWarning(cx, env, id, strict);
+  return ok && result.checkStrictModeError(cx, env, id, strict);
 }
 
 inline void InitGlobalLexicalOperation(JSContext* cx,

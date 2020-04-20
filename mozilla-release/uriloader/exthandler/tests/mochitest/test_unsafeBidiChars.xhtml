@@ -41,7 +41,7 @@ const INSECURE_REGISTER_PREF = "dom.registerProtocolHandler.insecure.enabled";
 
 add_task(async function() {
   SpecialPowers.setBoolPref(INSECURE_REGISTER_PREF, false);
-  let url = SimpleTest.getTestFileURL("unsafeBidi_chromeScript.js");
+  let url = SimpleTest.getTestFileURL("HelperAppLauncherDialog_chromeScript.js");
   let chromeScript = SpecialPowers.loadChromeScript(url);
 
   for (let test of tests) {

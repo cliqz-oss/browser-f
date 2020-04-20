@@ -66,7 +66,6 @@ const PREF_APP_UPDATE_SERVICE_MAXERRORS = "app.update.service.maxErrors";
 const PREF_APP_UPDATE_SOCKET_MAXERRORS = "app.update.socket.maxErrors";
 const PREF_APP_UPDATE_SOCKET_RETRYTIMEOUT = "app.update.socket.retryTimeout";
 const PREF_APP_UPDATE_STAGING_ENABLED = "app.update.staging.enabled";
-const PREF_APP_UPDATE_URL = "app.update.url";
 const PREF_APP_UPDATE_URL_DETAILS = "app.update.url.details";
 const PREF_NETWORK_PROXY_TYPE = "network.proxy.type";
 
@@ -3862,9 +3861,14 @@ Checker.prototype = {
   getUpdateURL: async function UC_getUpdateURL(force) {
     this._forced = force;
 
-    let url = Services.prefs
-      .getDefaultBranch(null)
-      .getCharPref(PREF_APP_UPDATE_URL, "");
+    let url = Services.appinfo.updateURL;
+
+    if (Services.policies) {
+      let policies = Services.policies.getActivePolicies();
+      if (policies && "AppUpdateURL" in policies) {
+        url = policies.AppUpdateURL.toString();
+      }
+    }
 
     if (!url) {
       LOG("Checker:getUpdateURL - update URL not defined");
@@ -4834,19 +4838,12 @@ Downloader.prototype = {
    * When new data has been downloaded
    * @param   request
    *          The nsIRequest object for the transfer
-   * @param   context
-   *          Additional data
    * @param   progress
    *          The current number of bytes transferred
    * @param   maxProgress
    *          The total number of bytes that must be transferred
    */
-  onProgress: function Downloader_onProgress(
-    request,
-    context,
-    progress,
-    maxProgress
-  ) {
+  onProgress: function Downloader_onProgress(request, progress, maxProgress) {
     LOG("Downloader:onProgress - progress: " + progress + "/" + maxProgress);
 
     if (progress > this._patch.size) {
@@ -4888,7 +4885,7 @@ Downloader.prototype = {
     for (var i = 0; i < listenerCount; ++i) {
       var listener = listeners[i];
       if (listener instanceof Ci.nsIProgressEventSink) {
-        listener.onProgress(request, context, progress, maxProgress);
+        listener.onProgress(request, progress, maxProgress);
       }
     }
     this.updateService._consecutiveSocketErrors = 0;
@@ -4898,14 +4895,12 @@ Downloader.prototype = {
    * When we have new status text
    * @param   request
    *          The nsIRequest object for the transfer
-   * @param   context
-   *          Additional data
    * @param   status
    *          A status code
    * @param   statusText
    *          Human readable version of |status|
    */
-  onStatus: function Downloader_onStatus(request, context, status, statusText) {
+  onStatus: function Downloader_onStatus(request, status, statusText) {
     LOG(
       "Downloader:onStatus - status: " + status + ", statusText: " + statusText
     );
@@ -4916,7 +4911,7 @@ Downloader.prototype = {
     for (var i = 0; i < listenerCount; ++i) {
       var listener = listeners[i];
       if (listener instanceof Ci.nsIProgressEventSink) {
-        listener.onStatus(request, context, status, statusText);
+        listener.onStatus(request, status, statusText);
       }
     }
   },

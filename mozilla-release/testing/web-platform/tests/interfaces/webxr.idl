@@ -258,5 +258,16 @@ interface XRReferenceSpaceEvent : Event {
 
 dictionary XRReferenceSpaceEventInit : EventInit {
   required XRReferenceSpace referenceSpace;
-  XRRigidTransform transform;
+  XRRigidTransform? transform = null;
+};
+
+dictionary XRPermissionDescriptor: PermissionDescriptor {
+  XRSessionMode mode;
+  sequence<any> requiredFeatures;
+  sequence<any> optionalFeatures;
+};
+
+[Exposed=Window]
+interface XRPermissionStatus: PermissionStatus {
+  attribute FrozenArray<any> granted;
 };

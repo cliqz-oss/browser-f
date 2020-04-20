@@ -16,6 +16,7 @@
 #include "nsTHashtable.h"
 #include "nsHashKeys.h"
 #include "nsISHistory.h"
+#include "nsISHEntry.h"
 
 namespace mozilla {
 namespace dom {
@@ -59,6 +60,8 @@ class CanonicalBrowsingContext final : public BrowsingContext {
 
   // The current active WindowGlobal.
   WindowGlobalParent* GetCurrentWindowGlobal() const;
+
+  already_AddRefed<nsIWidget> GetParentProcessWidgetContaining();
 
   already_AddRefed<WindowGlobalParent> GetEmbedderWindowGlobal() const;
 
@@ -109,6 +112,25 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // control all media belonging to this browsing context tree. Return nullptr
   // if the top-level browsing context has been discarded.
   MediaController* GetMediaController();
+
+  bool HasHistoryEntry(nsISHEntry* aEntry) const {
+    return aEntry && (aEntry == mOSHE || aEntry == mLSHE);
+  }
+
+  void UpdateSHEntries(nsISHEntry* aNewLSHE, nsISHEntry* aNewOSHE) {
+    mLSHE = aNewLSHE;
+    mOSHE = aNewOSHE;
+  }
+
+  void SwapHistoryEntries(nsISHEntry* aOldEntry, nsISHEntry* aNewEntry) {
+    if (aOldEntry == mOSHE) {
+      mOSHE = aNewEntry;
+    }
+
+    if (aOldEntry == mLSHE) {
+      mLSHE = aNewEntry;
+    }
+  }
 
  protected:
   // Called when the browsing context is being discarded.
@@ -171,6 +193,10 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // browsing context tree, so it would only exist in the top level browsing
   // context.
   RefPtr<MediaController> mTabMediaController;
+
+  // These are being mirrored from docshell
+  nsCOMPtr<nsISHEntry> mOSHE;
+  nsCOMPtr<nsISHEntry> mLSHE;
 };
 
 }  // namespace dom

@@ -575,6 +575,7 @@ async function clearDebuggerPreferences(prefs = []) {
   Services.prefs.clearUserPref("devtools.debugger.ignore-caught-exceptions");
   Services.prefs.clearUserPref("devtools.debugger.pending-selected-location");
   Services.prefs.clearUserPref("devtools.debugger.expressions");
+  Services.prefs.clearUserPref("devtools.debugger.breakpoints-visible");
   Services.prefs.clearUserPref("devtools.debugger.call-stack-visible");
   Services.prefs.clearUserPref("devtools.debugger.scopes-visible");
   Services.prefs.clearUserPref("devtools.debugger.skip-pausing");
@@ -1379,6 +1380,8 @@ const selectors = {
   previewPopupInvokeGetterButton: ".preview-popup .invoke-getter",
   previewPopupObjectNumber: ".preview-popup .objectBox-number",
   previewPopupObjectObject: ".preview-popup .objectBox-object",
+  sourceTreeRootNode: ".sources-panel .node .window",
+  sourceTreeFolderNode: ".sources-panel .node .folder",
 };
 
 function getSelector(elementName, ...args) {
@@ -1488,15 +1491,29 @@ async function clickGutter(dbg, line) {
   clickDOMElement(dbg, el);
 }
 
-function selectContextMenuItem(dbg, selector) {
+function findContextMenu(dbg, selector) {
   // the context menu is in the toolbox window
   const doc = dbg.toolbox.topDoc;
 
   // there are several context menus, we want the one with the menu-api
   const popup = doc.querySelector('menupopup[menu-api="true"]');
 
-  const item = popup.querySelector(selector);
+  return popup.querySelector(selector);
+}
+
+async function waitForContextMenu(dbg, selector) {
+  await waitFor(() => findContextMenu(dbg, selector));
+  return findContextMenu(dbg, selector);
+}
+
+function selectContextMenuItem(dbg, selector) {
+  const item = findContextMenu(dbg, selector);
   return EventUtils.synthesizeMouseAtCenter(item, {}, dbg.toolbox.topWindow);
+}
+
+async function assertContextMenuLabel(dbg, selector, label) {
+  const item = await waitForContextMenu(dbg, selector);
+  is(item.label, label, "The label of the context menu item shown to the user");
 }
 
 async function typeInPanel(dbg, text) {

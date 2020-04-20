@@ -201,8 +201,8 @@ SET TIMEOUT: service-workers/service-worker/resources/resource-timing-worker.js
 SET TIMEOUT: shadow-dom/Document-prototype-currentScript.html
 SET TIMEOUT: shadow-dom/scroll-to-the-fragment-in-shadow-tree.html
 SET TIMEOUT: shadow-dom/slotchange-event.html
-SET TIMEOUT: trusted-types/block-string-assignment-to-DOMWindowTimers-setTimeout-setInterval.tentative.html
-SET TIMEOUT: trusted-types/DOMWindowTimers-setTimeout-setInterval.tentative.html
+SET TIMEOUT: trusted-types/block-string-assignment-to-DOMWindowTimers-setTimeout-setInterval.tentative.https.html
+SET TIMEOUT: trusted-types/DOMWindowTimers-setTimeout-setInterval.tentative.https.html
 SET TIMEOUT: user-timing/*
 SET TIMEOUT: web-animations/timing-model/animations/*
 SET TIMEOUT: webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSourceToScriptProcessorTest.html
@@ -322,6 +322,7 @@ SET TIMEOUT: acid/acid3/test.html
 *: css/tools/w3ctestlib/*
 *: resources/webidl2/*
 *: tools/*
+*: */third_party/*
 
 # Build system virtualenv
 *: css/tools/_virtualenv/*
@@ -605,6 +606,13 @@ CSS-COLLIDING-SUPPORT-NAME: css/css-display/support/util.js
 CSS-COLLIDING-SUPPORT-NAME: css/CSS2/normal-flow/support/replaced-min-max-1.png
 CSS-COLLIDING-SUPPORT-NAME: css/vendor-imports/mozilla/mozilla-central-reftests/ui3/support/replaced-min-max-1.png
 
+CSS-COLLIDING-TEST-NAME: css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-invalid.html
+CSS-COLLIDING-TEST-NAME: css/css-sizing/aspect-ratio/parsing/contain-intrinsic-size-invalid.html
+CSS-COLLIDING-TEST-NAME: css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-computed.html
+CSS-COLLIDING-TEST-NAME: css/css-sizing/aspect-ratio/parsing/contain-intrinsic-size-computed.html
+CSS-COLLIDING-TEST-NAME: css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-valid.html
+CSS-COLLIDING-TEST-NAME: css/css-sizing/aspect-ratio/parsing/contain-intrinsic-size-valid.html
+
 # CSS tests that used to be at the top level and weren't subject to lints
 MISSING-LINK: css/css-fonts/matching/fixed-stretch-style-over-weight.html
 SUPPORT-WRONG-DIR: css/css-fonts/matching/font-matching.css
@@ -667,7 +675,6 @@ MISSING-LINK: css/geometry/*.worker.js
 MISSING-LINK: css/filter-effects/*.any.js
 
 # Tests that use WebKit/Blink testing APIs
-LAYOUTTESTS APIS: import-maps/resources/jest-test-helper.js
 LAYOUTTESTS APIS: import-maps/common/resources/common-test-helper.js
 LAYOUTTESTS APIS: resources/chromium/enable-hyperlink-auditing.js
 LAYOUTTESTS APIS: resources/chromium/generic_sensor_mocks.js
@@ -690,7 +697,7 @@ WEB-PLATFORM.TEST:web-bundle/resources/wbn/*.wbn
 # https://github.com/web-platform-tests/wpt/issues/16455
 # Please consult with ecosystem-infra@chromium.org before adding more.
 MISSING DEPENDENCY: idle-detection/interceptor.https.html
-MISSING DEPENDENCY: sms/resources/helper.js
+MISSING DEPENDENCY: credential-management/support/otpcredential-helper.js
 MISSING DEPENDENCY: web-nfc/resources/nfc-helpers.js
 MISSING DEPENDENCY: shape-detection/resources/shapedetection-helpers.js
 MISSING DEPENDENCY: webxr/resources/webxr_util.js

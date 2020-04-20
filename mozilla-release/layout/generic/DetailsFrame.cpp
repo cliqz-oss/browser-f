@@ -33,7 +33,7 @@ namespace mozilla {
 DetailsFrame::DetailsFrame(ComputedStyle* aStyle, nsPresContext* aPresContext)
     : nsBlockFrame(aStyle, aPresContext, kClassID) {}
 
-DetailsFrame::~DetailsFrame() {}
+DetailsFrame::~DetailsFrame() = default;
 
 void DetailsFrame::SetInitialChildList(ChildListID aListID,
                                        nsFrameList& aChildList) {
@@ -95,13 +95,14 @@ nsresult DetailsFrame::CreateAnonymousContent(
 
   RefPtr<NodeInfo> nodeInfo = nodeInfoManager->GetNodeInfo(
       nsGkAtoms::summary, nullptr, kNameSpaceID_XHTML, nsINode::ELEMENT_NODE);
-  mDefaultSummary = new HTMLSummaryElement(nodeInfo.forget());
+  mDefaultSummary = new (nodeInfoManager) HTMLSummaryElement(nodeInfo.forget());
 
   nsAutoString defaultSummaryText;
   nsContentUtils::GetMaybeLocalizedString(
       nsContentUtils::eFORMS_PROPERTIES, "DefaultSummary",
       GetContent()->OwnerDoc(), defaultSummaryText);
-  RefPtr<nsTextNode> description = new nsTextNode(nodeInfoManager);
+  RefPtr<nsTextNode> description =
+      new (nodeInfoManager) nsTextNode(nodeInfoManager);
   description->SetText(defaultSummaryText, false);
   mDefaultSummary->AppendChildTo(description, false);
 

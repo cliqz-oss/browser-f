@@ -7,13 +7,13 @@
 #include "ModuleEvaluator.h"
 
 #include <algorithm>  // For std::find()
+#include <type_traits>
 
 #include <windows.h>
 #include <shlobj.h>
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/ModuleVersionInfo.h"
-#include "mozilla/TypeTraits.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
 #include "mozilla/WinDllServices.h"
@@ -81,7 +81,7 @@ bool ModuleEvaluator::ResolveKnownFolder(REFKNOWNFOLDERID aFolderId,
   }
 
   using ShellStringUniquePtr =
-      UniquePtr<RemovePointer<PWSTR>::Type, CoTaskMemFreeDeleter>;
+      UniquePtr<std::remove_pointer_t<PWSTR>, CoTaskMemFreeDeleter>;
 
   ShellStringUniquePtr path(rawPath);
 

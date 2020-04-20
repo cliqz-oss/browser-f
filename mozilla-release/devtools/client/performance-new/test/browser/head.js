@@ -3,6 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
+const BackgroundJSM = ChromeUtils.import(
+  "resource://devtools/client/performance-new/popup/background.jsm.js"
+);
+
+registerCleanupFunction(() => {
+  BackgroundJSM.revertRecordingPreferences();
+});
+
 /**
  * Allow tests to use "require".
  */
@@ -155,9 +163,14 @@ async function makeSureProfilerPopupIsEnabled() {
     "resource://devtools/client/performance-new/popup/menu-button.jsm.js"
   );
 
-  if (!ProfilerMenuButton.isEnabled()) {
-    info("> The menu button is not enabled, turn it on.");
-    ProfilerMenuButton.toggle(document);
+  if (!ProfilerMenuButton.isInNavbar()) {
+    // Make sure the feature flag is enabled.
+    SpecialPowers.pushPrefEnv({
+      set: [["devtools.performance.popup.feature-flag", true]],
+    });
+
+    info("> The menu button is not in the nav bar, add it.");
+    ProfilerMenuButton.addToNavbar(document);
 
     await waitUntil(
       () => gBrowser.ownerDocument.getElementById("profiler-button"),
@@ -170,12 +183,12 @@ async function makeSureProfilerPopupIsEnabled() {
       info(
         "Clean up after the test by disabling the profiler popup menu button."
       );
-      if (!ProfilerMenuButton.isEnabled()) {
+      if (!ProfilerMenuButton.isInNavbar()) {
         throw new Error(
-          "Expected the profiler popup to still be enabled during the test cleanup."
+          "Expected the profiler popup to still be in the navbar during the test cleanup."
         );
       }
-      ProfilerMenuButton.toggle(document);
+      ProfilerMenuButton.remove();
     });
   } else {
     info("> The menu button was already enabled.");
@@ -208,7 +221,11 @@ async function toggleOpenProfilerPopup() {
  * @returns {Promise}
  */
 function setProfilerFrontendUrl(url) {
-  info("Setting the profiler URL to the fake frontend.");
+  info(
+    "Setting the profiler URL to the fake frontend. Note that this doesn't currently " +
+      "support the WebChannels, so expect a few error messages about the WebChannel " +
+      "URLs not being correct."
+  );
   return SpecialPowers.pushPrefEnv({
     set: [
       // Make sure observer and testing function run in the same process
@@ -332,6 +349,41 @@ function withAboutProfiling(callback) {
 }
 
 /**
+ * Open DevTools and view the performance-new tab. After running the callback, clean
+ * up the test.
+ *
+ * @template T
+ * @param {(Document) => T} callback
+ * @returns {Promise<T>}
+ */
+async function withDevToolsPanel(callback) {
+  SpecialPowers.pushPrefEnv({
+    set: [["devtools.performance.new-panel-enabled", "true"]],
+  });
+
+  const { gDevTools } = require("devtools/client/framework/devtools");
+  const { TargetFactory } = require("devtools/client/framework/target");
+
+  info("Create a new about:blank tab.");
+  const tab = BrowserTestUtils.addTab(gBrowser, "about:blank");
+
+  info("Begin to open the DevTools and the performance-new panel.");
+  const target = await TargetFactory.forTab(tab);
+  const toolbox = await gDevTools.showToolbox(target, "performance");
+
+  const { document } = toolbox.getCurrentPanel().panelWin;
+
+  info("The performance-new panel is now open and ready to use.");
+  await callback(document);
+
+  info("About to remove the about:blank tab");
+  await toolbox.destroy();
+  BrowserTestUtils.removeTab(tab);
+  info("The about:blank tab is now removed.");
+  await new Promise(resolve => setTimeout(resolve, 500));
+}
+
+/**
  * Start and stop the profiler to get the current active configuration. This is
  * done programmtically through the nsIProfiler interface, rather than through click
  * interactions, since the about:profiling page does not include buttons to control
@@ -340,12 +392,10 @@ function withAboutProfiling(callback) {
  * @returns {Object}
  */
 function getActiveConfiguration() {
-  const { startProfiler, stopProfiler } = ChromeUtils.import(
-    "resource://devtools/client/performance-new/popup/background.jsm.js"
-  );
+  const { startProfiler, stopProfiler } = BackgroundJSM;
 
   info("Start the profiler with the current about:profiling configuration.");
-  startProfiler();
+  startProfiler("aboutprofiling");
 
   // Immediately pause the sampling, to make sure the test runs fast. The profiler
   // only needs to be started to initialize the configuration.
@@ -389,8 +439,43 @@ function activeConfigurationHasThread(thread) {
 }
 
 /**
- * Grabs the associated input from the element, or it walks up the DOM from a text
- * element and tries to query select an input.
+ * Use user driven events to start the profiler, and then get the active configuration
+ * of the profiler. This is similar to functions in the head.js file, but is specific
+ * for the DevTools situation. The UI complains if the profiler stops unexpectedly.
+ *
+ * @param {Document} document
+ * @param {string} feature
+ * @returns {boolean}
+ */
+async function devToolsActiveConfigurationHasFeature(document, feature) {
+  info("Get the active configuration of the profiler via user driven events.");
+  const start = await getActiveButtonFromText(document, "Start recording");
+  info("Click the button to start recording.");
+  start.click();
+
+  // Get the cancel button first, so that way we know the profile has actually
+  // been recorded.
+  const cancel = await getActiveButtonFromText(document, "Cancel recording");
+
+  const { activeConfiguration } = Services.profiler;
+  if (!activeConfiguration) {
+    throw new Error(
+      "Expected to find an active configuration for the profile."
+    );
+  }
+
+  info("Click the cancel button to discard the profile..");
+  cancel.click();
+
+  // Wait until the start button is back.
+  await getActiveButtonFromText(document, "Start recording");
+
+  return activeConfiguration.features.includes(feature);
+}
+
+/**
+ * Selects an element with some given text, then it walks up the DOM until it finds
+ * an input or select element via a call to querySelector.
  *
  * @param {Document} document
  * @param {string} text
@@ -405,12 +490,40 @@ async function getNearestInputFromText(document, text) {
   // A non-label node
   let next = textElement;
   while ((next = next.parentElement)) {
-    const input = next.querySelector("input");
+    const input = next.querySelector("input, select");
     if (input) {
       return input;
     }
   }
-  throw new Error("Could not find an input near text element.");
+  throw new Error("Could not find an input or select near the text element.");
+}
+
+/**
+ * Grabs the closest button element from a given snippet of text, and make sure
+ * the button is not disabled.
+ *
+ * @param {Document} document
+ * @param {string} text
+ * @param {HTMLButtonElement}
+ */
+async function getActiveButtonFromText(document, text) {
+  // This could select a span inside the button, or the button itself.
+  let button = await getElementFromDocumentByText(document, text);
+
+  while (button.tagName !== "button") {
+    // Walk up until a button element is found.
+    button = button.parentElement;
+    if (!button) {
+      throw new Error(`Unable to find a button from the text "${text}"`);
+    }
+  }
+
+  await waitUntil(
+    () => !button.disabled,
+    "Waiting until the button is not disabled."
+  );
+
+  return button;
 }
 
 /**
@@ -437,19 +550,19 @@ async function makeSureProfilerPopupIsDisabled() {
     "resource://devtools/client/performance-new/popup/menu-button.jsm.js"
   );
 
-  const originallyIsEnabled = ProfilerMenuButton.isEnabled();
+  const isOriginallyInNavBar = ProfilerMenuButton.isInNavbar();
 
-  if (originallyIsEnabled) {
-    info("> The menu button is enabled, turn it off for this test.");
-    ProfilerMenuButton.toggle(document);
+  if (isOriginallyInNavBar) {
+    info("> The menu button is in the navbar, remove it for this test.");
+    ProfilerMenuButton.remove();
   } else {
-    info("> The menu button was already disabled.");
+    info("> The menu button was not in the navbar yet.");
   }
 
   registerCleanupFunction(() => {
-    info("Revert the profiler menu button to its original enabled state.");
-    if (originallyIsEnabled !== ProfilerMenuButton.isEnabled()) {
-      ProfilerMenuButton.toggle(document);
+    info("Revert the profiler menu button to be back in its original place");
+    if (isOriginallyInNavBar !== ProfilerMenuButton.isInNavbar()) {
+      ProfilerMenuButton.remove();
     }
   });
 }
@@ -468,4 +581,43 @@ function withWebChannelTestDocument(callback) {
     },
     callback
   );
+}
+
+/**
+ * Set a React-friendly input value. Doing this the normal way doesn't work.
+ *
+ * See https://github.com/facebook/react/issues/10135#issuecomment-500929024
+ *
+ * @param {HTMLInputElement} input
+ * @param {string} value
+ */
+function setReactFriendlyInputValue(input, value) {
+  const previousValue = input.value;
+
+  input.value = value;
+
+  const tracker = input._valueTracker;
+  if (tracker) {
+    tracker.setValue(previousValue);
+  }
+
+  // 'change' instead of 'input', see https://github.com/facebook/react/issues/11488#issuecomment-381590324
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/**
+ * The recording state is the internal state machine that represents the async
+ * operations that are going on in the profiler. This function sets up a helper
+ * that will obtain the Redux store and query this internal state. This is useful
+ * for unit testing purposes.
+ *
+ * @param {Document} document
+ */
+function setupGetRecordingState(document) {
+  const selectors = require("devtools/client/performance-new/store/selectors");
+  const store = document.defaultView.gStore;
+  if (!store) {
+    throw new Error("Could not find the redux store on the window object.");
+  }
+  return () => selectors.getRecordingState(store.getState());
 }

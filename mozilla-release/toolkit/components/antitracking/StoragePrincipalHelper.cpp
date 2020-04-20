@@ -7,7 +7,7 @@
 #include "StoragePrincipalHelper.h"
 
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
-#include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/ContentBlocking.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StorageAccess.h"
 #include "nsContentUtils.h"
@@ -32,13 +32,12 @@ bool ChooseOriginAttributes(nsIChannel* aChannel, OriginAttributes& aAttrs) {
   }
 
   uint32_t rejectedReason = 0;
-  if (AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
-          aChannel, uri, &rejectedReason)) {
+  if (ContentBlocking::ShouldAllowAccessFor(aChannel, uri, &rejectedReason)) {
     return false;
   }
 
   // Let's use the storage principal only if we need to partition the cookie
-  // jar.  We use the lower-level AntiTrackingCommon API here to ensure this
+  // jar.  We use the lower-level ContentBlocking API here to ensure this
   // check doesn't send notifications.
   if (!ShouldPartitionStorage(rejectedReason) ||
       !StoragePartitioningEnabled(rejectedReason, cjs)) {
@@ -49,9 +48,11 @@ bool ChooseOriginAttributes(nsIChannel* aChannel, OriginAttributes& aAttrs) {
   if (!toplevelPrincipal) {
     return false;
   }
-
+  // Cast to BasePrincipal to continue to get acess to GetUri()
+  auto* basePrin = BasePrincipal::Cast(toplevelPrincipal);
   nsCOMPtr<nsIURI> principalURI;
-  rv = toplevelPrincipal->GetURI(getter_AddRefs(principalURI));
+
+  rv = basePrin->GetURI(getter_AddRefs(principalURI));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return false;
   }

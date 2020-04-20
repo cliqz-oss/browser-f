@@ -125,6 +125,36 @@ CanonicalBrowsingContext* BrowsingContext::Canonical() {
   return CanonicalBrowsingContext::Cast(this);
 }
 
+bool BrowsingContext::SameOriginWithTop() {
+  MOZ_ASSERT(IsInProcess());
+  // If the top BrowsingContext is not same-process to us, it is cross-origin
+  if (!Top()->IsInProcess()) {
+    return false;
+  }
+
+  nsIDocShell* docShell = GetDocShell();
+  if (!docShell) {
+    return false;
+  }
+  Document* doc = docShell->GetDocument();
+  if (!doc) {
+    return false;
+  }
+  nsIPrincipal* principal = doc->NodePrincipal();
+
+  nsIDocShell* topDocShell = Top()->GetDocShell();
+  if (!topDocShell) {
+    return false;
+  }
+  Document* topDoc = topDocShell->GetDocument();
+  if (!topDoc) {
+    return false;
+  }
+  nsIPrincipal* topPrincipal = topDoc->NodePrincipal();
+
+  return principal->Equals(topPrincipal);
+}
+
 /* static */
 already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
     BrowsingContext* aParent, BrowsingContext* aOpener, const nsAString& aName,
@@ -166,11 +196,25 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
   }
   context->mFields.SetWithoutSyncing<IDX_EmbedderPolicy>(
       nsILoadInfo::EMBEDDER_POLICY_NULL);
+  context->mFields.SetWithoutSyncing<IDX_OpenerPolicy>(
+      nsILoadInfo::OPENER_POLICY_UNSAFE_NONE);
+
+  if (aOpener && aOpener->SameOriginWithTop()) {
+    // We inherit the opener policy if there is a creator and if the creator's
+    // origin is same origin with the creator's top-level origin.
+    // If it is cross origin we should not inherit the CrossOriginOpenerPolicy
+    context->mFields.SetWithoutSyncing<IDX_OpenerPolicy>(
+        aOpener->Top()->GetOpenerPolicy());
+  } else if (aOpener) {
+    // They are not same origin
+    auto topPolicy = aOpener->Top()->GetOpenerPolicy();
+    MOZ_RELEASE_ASSERT(topPolicy == nsILoadInfo::OPENER_POLICY_UNSAFE_NONE ||
+                       topPolicy ==
+                           nsILoadInfo::OPENER_POLICY_SAME_ORIGIN_ALLOW_POPUPS);
+  }
 
   BrowsingContext* inherit = aParent ? aParent : aOpener;
   if (inherit) {
-    context->mFields.SetWithoutSyncing<IDX_OpenerPolicy>(
-        inherit->Top()->GetOpenerPolicy());
     // CORPP 3.1.3 https://mikewest.github.io/corpp/#integration-html
     context->mFields.SetWithoutSyncing<IDX_EmbedderPolicy>(
         inherit->GetEmbedderPolicy());
@@ -196,6 +240,16 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
       context->mFields.GetNonSyncingReference<IDX_HistoryID>());
 
   context->mFields.SetWithoutSyncing<IDX_IsActive>(true);
+
+  const bool allowContentRetargeting =
+      inherit ? inherit->GetAllowContentRetargetingOnChildren() : true;
+  context->mFields.SetWithoutSyncing<IDX_AllowContentRetargeting>(
+      allowContentRetargeting);
+  context->mFields.SetWithoutSyncing<IDX_AllowContentRetargetingOnChildren>(
+      allowContentRetargeting);
+
+  const bool allowPlugins = inherit ? inherit->GetAllowPlugins() : true;
+  context->mFields.SetWithoutSyncing<IDX_AllowPlugins>(allowPlugins);
 
   return context.forget();
 }
@@ -354,16 +408,25 @@ void BrowsingContext::CleanUpDanglingRemoteOuterWindowProxies(
 
 void BrowsingContext::SetEmbedderElement(Element* aEmbedder) {
   mEmbeddedByThisProcess = true;
-  // Notify the parent process of the embedding status. We don't need to do
+
+  // Update embedder-element-specific fields in a shared transaction.
   // this when clearing our embedder, as we're being destroyed either way.
   if (aEmbedder) {
+    Transaction txn;
+    txn.SetEmbedderElementType(Some(aEmbedder->LocalName()));
     if (nsCOMPtr<nsPIDOMWindowInner> inner =
             do_QueryInterface(aEmbedder->GetOwnerGlobal())) {
-      Transaction txn;
       txn.SetEmbedderInnerWindowId(inner->WindowID());
-      txn.SetEmbedderElementType(Some(aEmbedder->LocalName()));
-      txn.Commit(this);
     }
+    if (XRE_IsParentProcess() && IsTopContent()) {
+      nsAutoString messageManagerGroup;
+      if (aEmbedder->IsXULElement()) {
+        aEmbedder->GetAttr(kNameSpaceID_None, nsGkAtoms::messagemanagergroup,
+                           messageManagerGroup);
+      }
+      txn.SetMessageManagerGroup(messageManagerGroup);
+    }
+    txn.Commit(this);
   }
 
   mEmbedderElement = aEmbedder;
@@ -459,7 +522,11 @@ void BrowsingContext::Detach(bool aFromIPC) {
         // Only the embedder process is allowed to initiate a BrowsingContext
         // detach, so if we've gotten here, the host process already knows we've
         // been detached, and there's no need to tell it again.
-        if (!Canonical()->IsEmbeddedInProcess(aParent->ChildID())) {
+        // If the owner process is not the same as the embedder process, its
+        // BrowsingContext will be detached when its nsWebBrowser instance is
+        // destroyed.
+        if (!Canonical()->IsEmbeddedInProcess(aParent->ChildID()) &&
+            !Canonical()->IsOwnedByProcess(aParent->ChildID())) {
           aParent->SendDetachBrowsingContext(Id(), callback, callback);
         }
       });
@@ -588,6 +655,10 @@ void BrowsingContext::RegisterWindowContext(WindowContext* aWindow) {
   MOZ_ASSERT(!mWindowContexts.Contains(aWindow),
              "WindowContext already registered!");
   mWindowContexts.AppendElement(aWindow);
+  if (aWindow->InnerWindowId() == GetCurrentInnerWindowId()) {
+    MOZ_ASSERT(aWindow->GetBrowsingContext() == this);
+    mCurrentWindowContext = aWindow;
+  }
 }
 
 void BrowsingContext::UnregisterWindowContext(WindowContext* aWindow) {
@@ -1013,6 +1084,9 @@ nsresult BrowsingContext::LoadURI(BrowsingContext* aAccessor,
   } else {
     MOZ_DIAGNOSTIC_ASSERT(aAccessor);
     MOZ_DIAGNOSTIC_ASSERT(aAccessor->Group() == Group());
+    if (!aAccessor) {
+      return NS_ERROR_UNEXPECTED;
+    }
 
     if (!aAccessor->CanAccess(this)) {
       return NS_ERROR_DOM_PROP_ACCESS_DENIED;
@@ -1361,6 +1435,14 @@ void BrowsingContext::DidSet(FieldIndex<IDX_Muted>) {
   });
 }
 
+void BrowsingContext::SetAllowContentRetargeting(
+    bool aAllowContentRetargeting) {
+  Transaction txn;
+  txn.SetAllowContentRetargeting(aAllowContentRetargeting);
+  txn.SetAllowContentRetargetingOnChildren(aAllowContentRetargeting);
+  txn.Commit(this);
+}
+
 void BrowsingContext::SetCustomUserAgent(const nsAString& aUserAgent) {
   Top()->SetUserAgentOverride(aUserAgent);
 }
@@ -1376,13 +1458,7 @@ void BrowsingContext::DidSet(FieldIndex<IDX_UserAgentOverride>) {
   });
 }
 
-bool BrowsingContext::CanSet(FieldIndex<IDX_UserAgentOverride>,
-                             const nsString& aUserAgent,
-                             ContentParent* aSource) {
-  if (!IsTop()) {
-    return false;
-  }
-
+bool BrowsingContext::CheckOnlyOwningProcessCanSet(ContentParent* aSource) {
   if (aSource) {
     MOZ_ASSERT(XRE_IsParentProcess());
 
@@ -1398,6 +1474,34 @@ bool BrowsingContext::CanSet(FieldIndex<IDX_UserAgentOverride>,
   }
 
   return true;
+}
+
+bool BrowsingContext::CanSet(FieldIndex<IDX_AllowContentRetargeting>,
+                             const bool& aAllowContentRetargeting,
+                             ContentParent* aSource) {
+  return CheckOnlyOwningProcessCanSet(aSource);
+}
+
+bool BrowsingContext::CanSet(FieldIndex<IDX_AllowContentRetargetingOnChildren>,
+                             const bool& aAllowContentRetargetingOnChildren,
+                             ContentParent* aSource) {
+  return CheckOnlyOwningProcessCanSet(aSource);
+}
+
+bool BrowsingContext::CanSet(FieldIndex<IDX_AllowPlugins>,
+                             const bool& aAllowPlugins,
+                             ContentParent* aSource) {
+  return CheckOnlyOwningProcessCanSet(aSource);
+}
+
+bool BrowsingContext::CanSet(FieldIndex<IDX_UserAgentOverride>,
+                             const nsString& aUserAgent,
+                             ContentParent* aSource) {
+  if (!IsTop()) {
+    return false;
+  }
+
+  return CheckOnlyOwningProcessCanSet(aSource);
 }
 
 bool BrowsingContext::CheckOnlyEmbedderCanSet(ContentParent* aSource) {
@@ -1519,6 +1623,13 @@ void BrowsingContext::DidSet(FieldIndex<IDX_IsPopupSpam>) {
   if (GetIsPopupSpam()) {
     PopupBlocker::RegisterOpenPopupSpam();
   }
+}
+
+bool BrowsingContext::CanSet(FieldIndex<IDX_MessageManagerGroup>,
+                             const nsString& aMessageManagerGroup,
+                             ContentParent* aSource) {
+  // Should only be set in the parent process on toplevel.
+  return XRE_IsParentProcess() && !aSource && IsTopContent();
 }
 
 bool BrowsingContext::IsLoading() {

@@ -233,18 +233,26 @@ panelview {
   max-width: @standaloneSubviewWidth@;
 }
 
-#BMB_bookmarksPopup::part(popupbox) {
+#BMB_bookmarksPopup::part(arrowscrollbox) {
   padding: 0;
 }
 
 /* Remove padding on xul:arrowscrollbox to avoid extra padding on footer */
-#BMB_bookmarksPopup menupopup::part(popupbox) {
+#BMB_bookmarksPopup menupopup::part(arrowscrollbox) {
   padding-bottom: 0px;
 }
 
-#BMB_bookmarksPopup menupopup[nofooterpopup=true]::part(popupbox) {
+#BMB_bookmarksPopup menupopup[nofooterpopup=true]::part(arrowscrollbox) {
   padding-bottom: 4px;
 }
+
+%ifndef XP_MACOSX
+/* Add some space at the top because there are no headers in menupopups of
+   the bookmarks menu. */
+#BMB_bookmarksPopup menupopup::part(arrowscrollbox-scrollbox) {
+  padding-top: 4px;
+}
+%endif
 
 #confirmation-hint {
   --arrowpanel-background: #0060df;
@@ -1644,7 +1652,7 @@ toolbarpaletteitem[place="menu-panel"] > .subviewbutton-nav::after {
 }
 
 #PanelUI-panic-warning {
-  color: #C11F14;
+  color: #d74345;
   text-align: center;
   width: 100%;
   margin-top: 20px;
@@ -1953,6 +1961,7 @@ panelview[mainview] #PanelUI-whatsNew-content {
 
 #protections-popup-message .text-link {
   color: white;
+  font-weight: 600;
 }
 
 #protections-popup-message .text-link:hover {
@@ -2242,8 +2251,7 @@ panelview[mainview] #PanelUI-whatsNew-content {
 }
 
 .PanelUI-profiler-buttons {
-  margin-inline: 10px;
-  margin-block: 7px 12px;
+  margin: 7px 10px 12px;
 }
 
 .PanelUI-profiler-info-icon {

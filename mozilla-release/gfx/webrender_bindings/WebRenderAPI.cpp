@@ -70,6 +70,11 @@ class NewRenderer : public RendererEvent {
     *mUseDComp = compositor->UseDComp();
     *mUseTripleBuffering = compositor->UseTripleBuffering();
 
+    void* swCtx = nullptr;
+    if (gfx::gfxVars::UseSoftwareWebRender()) {
+      swCtx = wr_swgl_create_context();
+    }
+
     // Only allow the panic on GL error functionality in nightly builds,
     // since it (deliberately) crashes the GPU process if any GL call
     // returns an error code.
@@ -98,7 +103,7 @@ class NewRenderer : public RendererEvent {
 #else
             false,
 #endif
-            compositor->gl(), compositor->SurfaceOriginIsTopLeft(),
+            swCtx, compositor->gl(), compositor->SurfaceOriginIsTopLeft(),
             aRenderThread.GetProgramCache()
                 ? aRenderThread.GetProgramCache()->Raw()
                 : nullptr,
@@ -116,6 +121,9 @@ class NewRenderer : public RendererEvent {
             StaticPrefs::gfx_webrender_enable_gpu_markers_AtStartup(),
             panic_on_gl_error)) {
       // wr_window_new puts a message into gfxCriticalNote if it returns false
+      if (swCtx) {
+        wr_swgl_destroy_context(swCtx);
+      }
       return;
     }
     MOZ_ASSERT(wrRenderer);
@@ -123,7 +131,7 @@ class NewRenderer : public RendererEvent {
     RefPtr<RenderThread> thread = &aRenderThread;
     auto renderer =
         MakeUnique<RendererOGL>(std::move(thread), std::move(compositor),
-                                aWindowId, wrRenderer, mBridge);
+                                aWindowId, wrRenderer, mBridge, swCtx);
     if (wrRenderer && renderer) {
       wr::WrExternalImageHandler handler = renderer->GetExternalImageHandler();
       wr_renderer_set_external_image_handler(wrRenderer, &handler);
@@ -193,8 +201,9 @@ void TransactionBuilder::RemovePipeline(PipelineId aPipelineId) {
 }
 
 void TransactionBuilder::SetDisplayList(
-    gfx::Color aBgColor, Epoch aEpoch, const wr::LayoutSize& aViewportSize,
-    wr::WrPipelineId pipeline_id, const wr::LayoutSize& content_size,
+    const gfx::DeviceColor& aBgColor, Epoch aEpoch,
+    const wr::LayoutSize& aViewportSize, wr::WrPipelineId pipeline_id,
+    const wr::LayoutSize& content_size,
     wr::BuiltDisplayListDescriptor dl_descriptor, wr::Vec<uint8_t>& dl_data) {
   wr_transaction_set_display_list(mTxn, aEpoch, ToColorF(aBgColor),
                                   aViewportSize, pipeline_id, content_size,
@@ -330,6 +339,7 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Clone() {
                        mUseTripleBuffering, mSyncHandle, mRenderRoot);
   renderApi->mRootApi = this;  // Hold root api
   renderApi->mRootDocumentApi = this;
+
   return renderApi.forget();
 }
 
@@ -458,7 +468,7 @@ bool WebRenderAPI::HitTest(const wr::WorldPoint& aPoint,
                            layers::ScrollableLayerGuid::ViewID& aOutScrollId,
                            gfx::CompositorHitTestInfo& aOutHitInfo,
                            SideBits& aOutSideBits) {
-  static_assert(DoesCompositorHitTestInfoFitIntoBits<12>(),
+  static_assert(gfx::DoesCompositorHitTestInfoFitIntoBits<12>(),
                 "CompositorHitTestFlags MAX value has to be less than number "
                 "of bits in uint16_t minus 4 for SideBitsPacked");
 
@@ -495,7 +505,7 @@ void WebRenderAPI::Readback(const TimeStamp& aStartTime, gfx::IntSize size,
       aRenderThread.UpdateAndRender(aWindowId, VsyncId(), mStartTime,
                                     /* aRender */ true, Some(mSize),
                                     wr::SurfaceFormatToImageFormat(mFormat),
-                                    Some(mBuffer), false);
+                                    Some(mBuffer));
       layers::AutoCompleteTask complete(mTask);
     }
 
@@ -890,15 +900,21 @@ void WebRenderAPI::RunOnRenderThread(UniquePtr<RendererEvent> aEvent) {
 
 DisplayListBuilder::DisplayListBuilder(PipelineId aId,
                                        const wr::LayoutSize& aContentSize,
-                                       size_t aCapacity, RenderRoot aRenderRoot)
+                                       size_t aCapacity,
+                                       layers::DisplayItemCache* aCache,
+                                       RenderRoot aRenderRoot)
     : mCurrentSpaceAndClipChain(wr::RootScrollNodeWithChain()),
       mActiveFixedPosTracker(nullptr),
       mPipelineId(aId),
       mContentSize(aContentSize),
       mRenderRoot(aRenderRoot),
-      mSendSubBuilderDisplayList(aRenderRoot == wr::RenderRoot::Default) {
+      mDisplayItemCache(aCache) {
   MOZ_COUNT_CTOR(DisplayListBuilder);
   mWrState = wr_state_new(aId, aContentSize, aCapacity);
+
+  if (mDisplayItemCache && mDisplayItemCache->IsEnabled()) {
+    mDisplayItemCache->SetPipelineId(aId);
+  }
 }
 
 DisplayListBuilder::~DisplayListBuilder() {
@@ -910,29 +926,15 @@ void DisplayListBuilder::Save() { wr_dp_save(mWrState); }
 void DisplayListBuilder::Restore() { wr_dp_restore(mWrState); }
 void DisplayListBuilder::ClearSave() { wr_dp_clear_save(mWrState); }
 
-DisplayListBuilder& DisplayListBuilder::CreateSubBuilder(
-    const wr::LayoutSize& aContentSize, size_t aCapacity,
-    wr::RenderRoot aRenderRoot) {
-  MOZ_ASSERT(mRenderRoot == wr::RenderRoot::Default);
-  MOZ_ASSERT(!mSubBuilders[aRenderRoot]);
-  mSubBuilders[aRenderRoot] = MakeUnique<DisplayListBuilder>(
-      mPipelineId, aContentSize, aCapacity, aRenderRoot);
-  return *mSubBuilders[aRenderRoot];
-}
-
 DisplayListBuilder& DisplayListBuilder::SubBuilder(RenderRoot aRenderRoot) {
-  if (aRenderRoot == mRenderRoot) {
-    return *this;
-  }
-  return *mSubBuilders[aRenderRoot];
+  MOZ_ASSERT(aRenderRoot == mRenderRoot);
+  return *this;
 }
 
 bool DisplayListBuilder::HasSubBuilder(RenderRoot aRenderRoot) {
-  if (aRenderRoot == RenderRoot::Default) {
-    MOZ_ASSERT(mRenderRoot == RenderRoot::Default);
-    return true;
-  }
-  return !!mSubBuilders[aRenderRoot];
+  MOZ_ASSERT(aRenderRoot == RenderRoot::Default);
+  MOZ_ASSERT(mRenderRoot == RenderRoot::Default);
+  return true;
 }
 
 usize DisplayListBuilder::Dump(usize aIndent, const Maybe<usize>& aStart,
@@ -954,6 +956,11 @@ void DisplayListBuilder::Finalize(wr::LayoutSize& aOutContentSize,
 void DisplayListBuilder::Finalize(
     layers::RenderRootDisplayListData& aOutTransaction) {
   MOZ_ASSERT(mRenderRoot == wr::RenderRoot::Default);
+
+  if (mDisplayItemCache && mDisplayItemCache->IsEnabled()) {
+    wr_dp_set_cache_size(mWrState, mDisplayItemCache->CurrentSize());
+  }
+
   wr::VecU8 dl;
   wr_api_finalize_builder(SubBuilder(aOutTransaction.mRenderRoot).mWrState,
                           &aOutTransaction.mContentSize,
@@ -998,6 +1005,8 @@ void DisplayListBuilder::PopStackingContext(bool aIsReferenceFrame) {
 
 wr::WrClipChainId DisplayListBuilder::DefineClipChain(
     const nsTArray<wr::WrClipId>& aClips, bool aParentWithCurrentChain) {
+  CancelGroup();
+
   const uint64_t* parent = nullptr;
   if (aParentWithCurrentChain &&
       mCurrentSpaceAndClipChain.clip_chain != wr::ROOT_CLIP_CHAIN) {
@@ -1014,6 +1023,8 @@ wr::WrClipId DisplayListBuilder::DefineClip(
     const Maybe<wr::WrSpaceAndClip>& aParent, const wr::LayoutRect& aClipRect,
     const nsTArray<wr::ComplexClipRegion>* aComplex,
     const wr::ImageMask* aMask) {
+  CancelGroup();
+
   WrClipId clipId;
   if (aParent) {
     clipId = wr_dp_define_clip_with_parent_clip(
@@ -1234,13 +1245,14 @@ void DisplayListBuilder::PushConicGradient(
 void DisplayListBuilder::PushImage(
     const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
     bool aIsBackfaceVisible, wr::ImageRendering aFilter, wr::ImageKey aImage,
-    bool aPremultipliedAlpha, const wr::ColorF& aColor) {
+    bool aPremultipliedAlpha, const wr::ColorF& aColor,
+    bool aPreferCompositorSurface) {
   wr::LayoutRect clip = MergeClipLeaf(aClip);
   WRDL_LOG("PushImage b=%s cl=%s\n", mWrState, Stringify(aBounds).c_str(),
            Stringify(clip).c_str());
   wr_dp_push_image(mWrState, aBounds, clip, aIsBackfaceVisible,
                    &mCurrentSpaceAndClipChain, aFilter, aImage,
-                   aPremultipliedAlpha, aColor);
+                   aPremultipliedAlpha, aColor, aPreferCompositorSurface);
 }
 
 void DisplayListBuilder::PushRepeatingImage(
@@ -1262,11 +1274,13 @@ void DisplayListBuilder::PushYCbCrPlanarImage(
     bool aIsBackfaceVisible, wr::ImageKey aImageChannel0,
     wr::ImageKey aImageChannel1, wr::ImageKey aImageChannel2,
     wr::WrColorDepth aColorDepth, wr::WrYuvColorSpace aColorSpace,
-    wr::WrColorRange aColorRange, wr::ImageRendering aRendering) {
-  wr_dp_push_yuv_planar_image(
-      mWrState, aBounds, MergeClipLeaf(aClip), aIsBackfaceVisible,
-      &mCurrentSpaceAndClipChain, aImageChannel0, aImageChannel1,
-      aImageChannel2, aColorDepth, aColorSpace, aColorRange, aRendering);
+    wr::WrColorRange aColorRange, wr::ImageRendering aRendering,
+    bool aPreferCompositorSurface) {
+  wr_dp_push_yuv_planar_image(mWrState, aBounds, MergeClipLeaf(aClip),
+                              aIsBackfaceVisible, &mCurrentSpaceAndClipChain,
+                              aImageChannel0, aImageChannel1, aImageChannel2,
+                              aColorDepth, aColorSpace, aColorRange, aRendering,
+                              aPreferCompositorSurface);
 }
 
 void DisplayListBuilder::PushNV12Image(
@@ -1274,22 +1288,23 @@ void DisplayListBuilder::PushNV12Image(
     bool aIsBackfaceVisible, wr::ImageKey aImageChannel0,
     wr::ImageKey aImageChannel1, wr::WrColorDepth aColorDepth,
     wr::WrYuvColorSpace aColorSpace, wr::WrColorRange aColorRange,
-    wr::ImageRendering aRendering) {
-  wr_dp_push_yuv_NV12_image(mWrState, aBounds, MergeClipLeaf(aClip),
-                            aIsBackfaceVisible, &mCurrentSpaceAndClipChain,
-                            aImageChannel0, aImageChannel1, aColorDepth,
-                            aColorSpace, aColorRange, aRendering);
+    wr::ImageRendering aRendering, bool aPreferCompositorSurface) {
+  wr_dp_push_yuv_NV12_image(
+      mWrState, aBounds, MergeClipLeaf(aClip), aIsBackfaceVisible,
+      &mCurrentSpaceAndClipChain, aImageChannel0, aImageChannel1, aColorDepth,
+      aColorSpace, aColorRange, aRendering, aPreferCompositorSurface);
 }
 
 void DisplayListBuilder::PushYCbCrInterleavedImage(
     const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
     bool aIsBackfaceVisible, wr::ImageKey aImageChannel0,
     wr::WrColorDepth aColorDepth, wr::WrYuvColorSpace aColorSpace,
-    wr::WrColorRange aColorRange, wr::ImageRendering aRendering) {
+    wr::WrColorRange aColorRange, wr::ImageRendering aRendering,
+    bool aPreferCompositorSurface) {
   wr_dp_push_yuv_interleaved_image(
       mWrState, aBounds, MergeClipLeaf(aClip), aIsBackfaceVisible,
       &mCurrentSpaceAndClipChain, aImageChannel0, aColorDepth, aColorSpace,
-      aColorRange, aRendering);
+      aColorRange, aRendering, aPreferCompositorSurface);
 }
 
 void DisplayListBuilder::PushIFrame(const wr::LayoutRect& aBounds,
@@ -1447,20 +1462,65 @@ void DisplayListBuilder::PushBoxShadow(
                         aBorderRadius, aClipMode);
 }
 
-void DisplayListBuilder::ReuseItem(wr::ItemKey aKey) {
-  wr_dp_push_reuse_item(mWrState, aKey);
+void DisplayListBuilder::StartGroup(nsPaintedDisplayItem* aItem) {
+  if (!mDisplayItemCache || mDisplayItemCache->IsFull()) {
+    return;
+  }
+
+  MOZ_ASSERT(!mCurrentCacheSlot);
+  mCurrentCacheSlot = mDisplayItemCache->AssignSlot(aItem);
+
+  if (mCurrentCacheSlot) {
+    wr_dp_start_item_group(mWrState);
+  }
 }
 
-void DisplayListBuilder::StartCachedItem(wr::ItemKey aKey) {
-  wr_dp_start_cached_item(mWrState, aKey);
+void DisplayListBuilder::CancelGroup() {
+  if (!mDisplayItemCache || !mCurrentCacheSlot) {
+    return;
+  }
+
+  wr_dp_cancel_item_group(mWrState);
+  mCurrentCacheSlot = Nothing();
 }
 
-bool DisplayListBuilder::EndCachedItem(wr::ItemKey aKey) {
-  return wr_dp_end_cached_item(mWrState, aKey);
+void DisplayListBuilder::FinishGroup() {
+  if (!mDisplayItemCache || !mCurrentCacheSlot) {
+    return;
+  }
+
+  MOZ_ASSERT(mCurrentCacheSlot);
+
+  if (wr_dp_finish_item_group(mWrState, mCurrentCacheSlot.ref())) {
+    mDisplayItemCache->MarkSlotOccupied(mCurrentCacheSlot.ref(),
+                                        CurrentSpaceAndClipChain());
+    mDisplayItemCache->Stats().AddCached();
+  }
+
+  mCurrentCacheSlot = Nothing();
 }
 
-void DisplayListBuilder::SetDisplayListCacheSize(const size_t aCacheSize) {
-  wr_dp_set_cache_size(mWrState, aCacheSize);
+bool DisplayListBuilder::ReuseItem(nsPaintedDisplayItem* aItem) {
+  if (!mDisplayItemCache) {
+    return false;
+  }
+
+  mDisplayItemCache->Stats().AddTotal();
+
+  if (mDisplayItemCache->IsEmpty()) {
+    return false;
+  }
+
+  Maybe<uint16_t> slot =
+      mDisplayItemCache->CanReuseItem(aItem, CurrentSpaceAndClipChain());
+
+  if (slot) {
+    mDisplayItemCache->Stats().AddReused();
+    wr_dp_push_reuse_items(mWrState, slot.ref());
+    return true;
+  }
+
+  return false;
 }
 
 Maybe<layers::ScrollableLayerGuid::ViewID>
@@ -1498,7 +1558,7 @@ uint16_t SideBitsToHitInfoBits(SideBits aSideBits) {
 void DisplayListBuilder::SetHitTestInfo(
     const layers::ScrollableLayerGuid::ViewID& aScrollId,
     gfx::CompositorHitTestInfo aHitInfo, SideBits aSideBits) {
-  static_assert(DoesCompositorHitTestInfoFitIntoBits<12>(),
+  static_assert(gfx::DoesCompositorHitTestInfoFitIntoBits<12>(),
                 "CompositorHitTestFlags MAX value has to be less than number "
                 "of bits in uint16_t minus 4 for SideBitsPacked");
 
@@ -1550,7 +1610,7 @@ already_AddRefed<gfxContext> DisplayListBuilder::GetTextContext(
   } else {
     mCachedTextDT->Reinitialize(aResources, aSc, aManager, aItem, aBounds);
     mCachedContext->SetDeviceOffset(aDeviceOffset);
-    mCachedContext->SetMatrix(Matrix());
+    mCachedContext->SetMatrix(gfx::Matrix());
   }
 
   RefPtr<gfxContext> tmp = mCachedContext;

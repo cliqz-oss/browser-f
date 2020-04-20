@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "RendererOGL.h"
+
+#include "base/task.h"
 #include "GLContext.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/gfxVars.h"
@@ -48,12 +50,14 @@ void wr_renderer_unlock_external_image(void* aObj, wr::ExternalImageId aId,
 RendererOGL::RendererOGL(RefPtr<RenderThread>&& aThread,
                          UniquePtr<RenderCompositor> aCompositor,
                          wr::WindowId aWindowId, wr::Renderer* aRenderer,
-                         layers::CompositorBridgeParent* aBridge)
+                         layers::CompositorBridgeParent* aBridge,
+                         void* aSoftwareContext)
     : mThread(aThread),
       mCompositor(std::move(aCompositor)),
       mRenderer(aRenderer),
       mBridge(aBridge),
       mWindowId(aWindowId),
+      mSoftwareContext(aSoftwareContext),
       mDisableNativeCompositor(false) {
   MOZ_ASSERT(mThread);
   MOZ_ASSERT(mCompositor);
@@ -64,13 +68,19 @@ RendererOGL::RendererOGL(RefPtr<RenderThread>&& aThread,
 
 RendererOGL::~RendererOGL() {
   MOZ_COUNT_DTOR(RendererOGL);
+  if (mSoftwareContext) {
+    wr_swgl_make_current(mSoftwareContext);
+  }
   if (!mCompositor->MakeCurrent()) {
     gfxCriticalNote
         << "Failed to make render context current during destroying.";
     // Leak resources!
-    return;
+  } else {
+    wr_renderer_delete(mRenderer);
   }
-  wr_renderer_delete(mRenderer);
+  if (mSoftwareContext) {
+    wr_swgl_destroy_context(mSoftwareContext);
+  }
 }
 
 wr::WrExternalImageHandler RendererOGL::GetExternalImageHandler() {
@@ -99,8 +109,7 @@ static void DoWebRenderDisableNativeCompositor(
 RenderedFrameId RendererOGL::UpdateAndRender(
     const Maybe<gfx::IntSize>& aReadbackSize,
     const Maybe<wr::ImageFormat>& aReadbackFormat,
-    const Maybe<Range<uint8_t>>& aReadbackBuffer, bool aHadSlowFrame,
-    RendererStats* aOutStats) {
+    const Maybe<Range<uint8_t>>& aReadbackBuffer, RendererStats* aOutStats) {
   mozilla::widget::WidgetRenderingContext widgetContext;
 
 #if defined(XP_MACOSX)
@@ -123,6 +132,13 @@ RenderedFrameId RendererOGL::UpdateAndRender(
     return RenderedFrameId();
   }
 
+  auto size = mCompositor->GetBufferSize();
+
+  if (mSoftwareContext) {
+    wr_swgl_make_current(mSoftwareContext);
+    wr_swgl_init_default_framebuffer(mSoftwareContext, size.width, size.height);
+  }
+
   wr_renderer_update(mRenderer);
 
   bool fullRender = mCompositor->RequestFullRender();
@@ -135,11 +151,9 @@ RenderedFrameId RendererOGL::UpdateAndRender(
     wr_renderer_force_redraw(mRenderer);
   }
 
-  auto size = mCompositor->GetBufferSize();
-
   nsTArray<DeviceIntRect> dirtyRects;
-  if (!wr_renderer_render(mRenderer, size.width, size.height, aHadSlowFrame,
-                          aOutStats, &dirtyRects)) {
+  if (!wr_renderer_render(mRenderer, size.width, size.height, aOutStats,
+                          &dirtyRects)) {
     RenderThread::Get()->HandleWebRenderError(WebRenderError::RENDER);
     mCompositor->GetWidget()->PostRender(&widgetContext);
     return RenderedFrameId();
@@ -266,7 +280,7 @@ void RendererOGL::AccumulateMemoryReport(MemoryReport* aReport) {
   // Assume BGRA8 for the format since it's not exposed anywhere,
   // and all compositor backends should be using that.
   uintptr_t swapChainSize = size.width * size.height *
-                            BytesPerPixel(SurfaceFormat::B8G8R8A8) *
+                            BytesPerPixel(gfx::SurfaceFormat::B8G8R8A8) *
                             (mCompositor->UseTripleBuffering() ? 3 : 2);
   aReport->swap_chain += swapChainSize;
 }

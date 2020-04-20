@@ -12,10 +12,12 @@ pub enum ParseError<'alloc> {
     UnterminatedRegExp,
     UnterminatedMultiLineComment,
     LexerError,
+    NoLineTerminatorHereExpectedToken,
+    ParserCannotUnpackToken,
 
     // Generic syntax errors
     NotImplemented(&'static str),
-    SyntaxError(Token<'alloc>),
+    SyntaxError(Token),
     UnexpectedEnd,
     InvalidAssignmentTarget,
     InvalidParameter,
@@ -52,6 +54,10 @@ impl<'alloc> ParseError<'alloc> {
             ParseError::UnterminatedRegExp => format!("unterminated regexp literal"),
             ParseError::UnterminatedMultiLineComment => format!("unterminated multiline comment"),
             ParseError::LexerError => format!("lexical error"),
+            ParseError::NoLineTerminatorHereExpectedToken => format!(
+                "no-line-terminator-here expects a token"
+            ),
+            ParseError::ParserCannotUnpackToken => format!("cannot unpack token"),
             ParseError::NotImplemented(message) => format!("not implemented: {}", message),
             ParseError::SyntaxError(token) => format!("syntax error on: {:?}", token),
             ParseError::UnexpectedEnd => format!("unexpected end of input"),
@@ -105,7 +111,7 @@ impl<'alloc> ParseError<'alloc> {
 }
 
 impl<'alloc> PartialEq for ParseError<'alloc> {
-    fn eq(&self, other: &ParseError<'alloc>) -> bool {
+    fn eq(&self, other: &ParseError) -> bool {
         format!("{:?}", self) == format!("{:?}", other)
     }
 }

@@ -1427,11 +1427,10 @@ bool NativeObject::rollbackProperties(JSContext* cx, HandleNativeObject obj,
     if (obj->lastProperty()->isEmptyShape()) {
       MOZ_ASSERT(slotSpan == 0);
       break;
-    } else {
-      uint32_t slot = obj->lastProperty()->slot();
-      if (slot < slotSpan) {
-        break;
-      }
+    }
+    uint32_t slot = obj->lastProperty()->slot();
+    if (slot < slotSpan) {
+      break;
     }
     if (!NativeObject::removeProperty(cx, obj, obj->lastProperty()->propid())) {
       return false;
@@ -1956,19 +1955,9 @@ void Shape::fixupShapeTreeAfterMovingGC() {
   MOZ_ASSERT(children.isShapeSet());
   ShapeSet* set = children.toShapeSet();
   for (ShapeSet::Enum e(*set); !e.empty(); e.popFront()) {
-    Shape* key = e.front();
-    if (IsForwarded(key)) {
-      key = Forwarded(key);
-    }
-
-    BaseShape* base = key->base();
-    if (IsForwarded(base)) {
-      base = Forwarded(base);
-    }
-    UnownedBaseShape* unowned = base->unowned();
-    if (IsForwarded(unowned)) {
-      unowned = Forwarded(unowned);
-    }
+    Shape* key = MaybeForwarded(e.front());
+    BaseShape* base = MaybeForwarded(key->base());
+    UnownedBaseShape* unowned = MaybeForwarded(base->unowned());
 
     GetterOp getter = key->getter();
     if (key->hasGetterObject()) {
@@ -2083,7 +2072,7 @@ void Shape::dump(js::GenericPrinter& out) const {
   out.printf(" g/s %p/%p slot %d attrs %x ",
              JS_FUNC_TO_DATA_PTR(void*, getter()),
              JS_FUNC_TO_DATA_PTR(void*, setter()),
-             isDataProperty() ? slot() : -1, attrs);
+             isDataProperty() ? int32_t(slot()) : -1, attrs);
 
   if (attrs) {
     int first = 1;

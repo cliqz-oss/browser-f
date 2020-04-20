@@ -16,7 +16,7 @@ Bug 943251 - Test preferences actor
 
 function runTests() {
   const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
-  const {DevToolsClient} = require("devtools/shared/client/devtools-client");
+  const {DevToolsClient} = require("devtools/client/devtools-client");
   const {DevToolsServer} = require("devtools/server/devtools-server");
   const Services = require("Services");
 
@@ -84,7 +84,7 @@ function runTests() {
         (ex) => {
           is(
             ex.message,
-            "Protocol error (unknownError): preference is not of the right type: test.undefined",
+            "Protocol error (unknownError): preference is not of the right type: test.undefined from: " + p.actorID,
             "getCharPref should throw an exception with the preference name"
           );
         }

@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/DOMTypes.h"
+#include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/dom/TabGroup.h"
 #include "mozilla/AbstractThread.h"
 #include "mozilla/PerformanceUtils.h"
@@ -42,6 +43,10 @@ nsresult DocGroup::GetKey(nsIPrincipal* aPrincipal, nsACString& aKey) {
   return rv;
 }
 
+void DocGroup::SetExecutionManager(JSExecutionManager* aManager) {
+  mExecutionManager = aManager;
+}
+
 void DocGroup::RemoveDocument(Document* aDocument) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mDocuments.Contains(aDocument));
@@ -53,6 +58,10 @@ DocGroup::DocGroup(TabGroup* aTabGroup, const nsACString& aKey,
     : mKey(aKey), mTabGroup(aTabGroup), mAgentClusterId(aAgentClusterId) {
   // This method does not add itself to mTabGroup->mDocGroups as the caller does
   // it for us.
+  if (StaticPrefs::dom_arena_allocator_enabled_AtStartup()) {
+    mArena = new mozilla::dom::DOMArena();
+  }
+
   mPerformanceCounter =
       new mozilla::PerformanceCounter(NS_LITERAL_CSTRING("DocGroup:") + aKey);
 }

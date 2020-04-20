@@ -55,8 +55,8 @@ struct Band;
 }
 
 template <>
-struct nsTArray_CopyChooser<regiondetails::Band> {
-  typedef nsTArray_CopyWithConstructors<regiondetails::Band> Type;
+struct nsTArray_RelocationStrategy<regiondetails::Band> {
+  typedef nsTArray_RelocateUsingMoveConstructor<regiondetails::Band> Type;
 };
 
 namespace regiondetails {
@@ -1822,10 +1822,10 @@ class nsRegion {
    * @param aToAPP the APP to scale to
    * @note this can turn an empty region into a non-empty region
    */
-  MOZ_MUST_USE nsRegion ScaleToOtherAppUnitsRoundOut(int32_t aFromAPP,
+  [[nodiscard]] nsRegion ScaleToOtherAppUnitsRoundOut(int32_t aFromAPP,
+                                                      int32_t aToAPP) const;
+  [[nodiscard]] nsRegion ScaleToOtherAppUnitsRoundIn(int32_t aFromAPP,
                                                      int32_t aToAPP) const;
-  MOZ_MUST_USE nsRegion ScaleToOtherAppUnitsRoundIn(int32_t aFromAPP,
-                                                    int32_t aToAPP) const;
   nsRegion& ScaleRoundOut(float aXScale, float aYScale);
   nsRegion& ScaleInverseRoundOut(float aXScale, float aYScale);
   nsRegion& Transform(const mozilla::gfx::Matrix4x4& aTransform);

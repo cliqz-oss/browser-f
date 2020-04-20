@@ -29,7 +29,9 @@
 #include "builtin/String.h"
 #include "builtin/TypedObject.h"
 #include "gc/Nursery.h"
-#include "irregexp/NativeRegExpMacroAssembler.h"
+#ifndef ENABLE_NEW_REGEXP
+#  include "irregexp/NativeRegExpMacroAssembler.h"
+#endif
 #include "jit/AtomicOperations.h"
 #include "jit/BaselineCodeGen.h"
 #include "jit/IonIC.h"
@@ -390,7 +392,7 @@ class ArgSeq;
 template <>
 class ArgSeq<> {
  public:
-  ArgSeq() {}
+  ArgSeq() = default;
 
   inline void generate(CodeGenerator* codegen) const {}
 
@@ -402,7 +404,7 @@ class ArgSeq<> {
 template <typename HeadType, typename... TailTypes>
 class ArgSeq<HeadType, TailTypes...> : public ArgSeq<TailTypes...> {
  private:
-  using RawHeadType = typename mozilla::RemoveReference<HeadType>::Type;
+  using RawHeadType = std::remove_reference_t<HeadType>;
   RawHeadType head_;
 
  public:
@@ -528,7 +530,7 @@ OutOfLineCode* CodeGenerator::oolCallVM(LInstruction* lir, const ArgSeq& args,
   const VMFunctionData& fun = GetVMFunction(id);
   MOZ_ASSERT(fun.explicitArgs == args.numArgs);
   MOZ_ASSERT(fun.returnsData() !=
-             (mozilla::IsSame<StoreOutputTo, StoreNothing>::value));
+             (std::is_same_v<StoreOutputTo, StoreNothing>));
 #endif
 
   OutOfLineCode* ool = new (alloc())
@@ -1227,7 +1229,7 @@ class OutOfLineTestObjectWithLabels : public OutOfLineTestObject {
   Label label2_;
 
  public:
-  OutOfLineTestObjectWithLabels() {}
+  OutOfLineTestObjectWithLabels() = default;
 
   Label* label1() { return &label1_; }
   Label* label2() { return &label2_; }
@@ -1910,22 +1912,43 @@ void CodeGenerator::visitRegExp(LRegExp* lir) {
   masm.bind(ool->rejoin());
 }
 
+#ifdef ENABLE_NEW_REGEXP
+static const size_t InputOutputDataSize = 0;
+#else
+static const size_t InputOutputDataSize = sizeof(irregexp::InputOutputData);
+#endif
+
 // Amount of space to reserve on the stack when executing RegExps inline.
 static const size_t RegExpReservedStack =
-    sizeof(irregexp::InputOutputData) + sizeof(MatchPairs) +
+    InputOutputDataSize + sizeof(MatchPairs) +
     RegExpObject::MaxPairCount * sizeof(MatchPair);
 
 static size_t RegExpPairsVectorStartOffset(size_t inputOutputDataStartOffset) {
-  return inputOutputDataStartOffset + sizeof(irregexp::InputOutputData) +
-         sizeof(MatchPairs);
+  return inputOutputDataStartOffset + InputOutputDataSize + sizeof(MatchPairs);
 }
 
 static Address RegExpPairCountAddress(MacroAssembler& masm,
                                       size_t inputOutputDataStartOffset) {
   return Address(masm.getStackPointer(), inputOutputDataStartOffset +
-                                             sizeof(irregexp::InputOutputData) +
+                                             InputOutputDataSize +
                                              MatchPairs::offsetOfPairCount());
 }
+
+#ifdef ENABLE_NEW_REGEXP
+
+// Prepare an InputOutputData and optional MatchPairs which space has been
+// allocated for on the stack, and try to execute a RegExp on a string input.
+// If the RegExp was successfully executed and matched the input, fallthrough,
+// otherwise jump to notFound or failure.
+static bool PrepareAndExecuteRegExp(
+    JSContext* cx, MacroAssembler& masm, Register regexp, Register input,
+    Register lastIndex, Register temp1, Register temp2, Register temp3,
+    size_t inputOutputDataStartOffset, RegExpShared::CompilationMode mode,
+    bool stringsCanBeInNursery, Label* notFound, Label* failure) {
+  MOZ_CRASH("TODO");
+}
+
+#else
 
 // Prepare an InputOutputData and optional MatchPairs which space has been
 // allocated for on the stack, and try to execute a RegExp on a string input.
@@ -2009,11 +2032,11 @@ static bool PrepareAndExecuteRegExp(
   if (!res) {
     return false;
   }
-#ifdef JS_USE_LINK_REGISTER
+#  ifdef JS_USE_LINK_REGISTER
   if (mode != RegExpShared::MatchOnly) {
     masm.pushReturnAddress();
   }
-#endif
+#  endif
   if (mode == RegExpShared::Normal) {
     // First, fill in a skeletal MatchPairs instance on the stack. This will be
     // passed to the OOL stub in the caller if we aren't able to execute the
@@ -2173,14 +2196,14 @@ static bool PrepareAndExecuteRegExp(
     volatileRegs.add(regexp);
   }
 
-#ifdef JS_TRACE_LOGGING
+#  ifdef JS_TRACE_LOGGING
   if (TraceLogTextIdEnabled(TraceLogger_IrregexpExecute)) {
     masm.push(temp1);
     masm.loadTraceLogger(temp1);
     masm.tracelogStartId(temp1, TraceLogger_IrregexpExecute);
     masm.pop(temp1);
   }
-#endif
+#  endif
 
   // Execute the RegExp.
   masm.computeEffectiveAddress(
@@ -2191,12 +2214,12 @@ static bool PrepareAndExecuteRegExp(
   masm.callWithABI(codePointer);
   masm.PopRegsInMask(volatileRegs);
 
-#ifdef JS_TRACE_LOGGING
+#  ifdef JS_TRACE_LOGGING
   if (TraceLogTextIdEnabled(TraceLogger_IrregexpExecute)) {
     masm.loadTraceLogger(temp1);
     masm.tracelogStopId(temp1, TraceLogger_IrregexpExecute);
   }
-#endif
+#  endif
 
   Label success;
   masm.branch32(Assembler::Equal, matchResultAddress,
@@ -2257,6 +2280,8 @@ static bool PrepareAndExecuteRegExp(
 
   return true;
 }
+
+#endif  // !ENABLE_NEW_REGEXP
 
 static void CopyStringChars(MacroAssembler& masm, Register to, Register from,
                             Register len, Register byteOpScratch,
@@ -2841,7 +2866,7 @@ void CodeGenerator::visitOutOfLineRegExpMatcher(OutOfLineRegExpMatcher* ool) {
   Register temp = regs.takeAny();
 
   masm.computeEffectiveAddress(
-      Address(masm.getStackPointer(), sizeof(irregexp::InputOutputData)), temp);
+      Address(masm.getStackPointer(), InputOutputDataSize), temp);
 
   pushArg(temp);
   pushArg(lastIndex);
@@ -3022,7 +3047,7 @@ void CodeGenerator::visitOutOfLineRegExpSearcher(OutOfLineRegExpSearcher* ool) {
   Register temp = regs.takeAny();
 
   masm.computeEffectiveAddress(
-      Address(masm.getStackPointer(), sizeof(irregexp::InputOutputData)), temp);
+      Address(masm.getStackPointer(), InputOutputDataSize), temp);
 
   pushArg(temp);
   pushArg(lastIndex);
@@ -3092,7 +3117,7 @@ JitCode* JitRealm::generateRegExpTesterStub(JSContext* cx) {
   Register temp2 = regs.takeAny();
   Register temp3 = regs.takeAny();
 
-  masm.reserveStack(sizeof(irregexp::InputOutputData));
+  masm.reserveStack(InputOutputDataSize);
 
   Label notFound, oolEntry;
   if (!PrepareAndExecuteRegExp(cx, masm, regexp, input, lastIndex, temp1, temp2,
@@ -3115,7 +3140,7 @@ JitCode* JitRealm::generateRegExpTesterStub(JSContext* cx) {
   masm.move32(Imm32(RegExpTesterResultFailed), result);
 
   masm.bind(&done);
-  masm.freeStack(sizeof(irregexp::InputOutputData));
+  masm.freeStack(InputOutputDataSize);
   masm.ret();
 
   Linker linker(masm);
@@ -3526,7 +3551,9 @@ void CodeGenerator::visitLambda(LLambda* lir) {
 
   emitLambdaInit(output, envChain, info);
 
-  if (info.flags & FunctionFlags::EXTENDED) {
+  if (info.flags.isExtended()) {
+    MOZ_ASSERT(info.flags.allowSuperProperty() ||
+               info.flags.isSelfHostedBuiltin());
     static_assert(FunctionExtended::NUM_EXTENDED_SLOTS == 2,
                   "All slots must be initialized");
     masm.storeValue(UndefinedValue(),
@@ -3568,7 +3595,7 @@ void CodeGenerator::visitLambdaArrow(LLambdaArrow* lir) {
   emitLambdaInit(output, envChain, info);
 
   // Initialize extended slots. Lexical |this| is stored in the first one.
-  MOZ_ASSERT(info.flags & FunctionFlags::EXTENDED);
+  MOZ_ASSERT(info.flags.isExtended());
   static_assert(FunctionExtended::NUM_EXTENDED_SLOTS == 2,
                 "All slots must be initialized");
   static_assert(FunctionExtended::ARROW_NEWTARGET_SLOT == 0,
@@ -3593,13 +3620,13 @@ void CodeGenerator::emitLambdaInit(Register output, Register envChain,
     uint32_t word;
   } u;
   u.s.nargs = info.nargs;
-  u.s.flags = info.flags;
+  u.s.flags = info.flags.toRaw();
 
   static_assert(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2,
                 "the code below needs to be adapted");
   masm.store32(Imm32(u.word), Address(output, JSFunction::offsetOfNargs()));
-  masm.storePtr(ImmGCPtr(info.scriptOrLazyScript),
-                Address(output, JSFunction::offsetOfScriptOrLazyScript()));
+  masm.storePtr(ImmGCPtr(info.baseScript),
+                Address(output, JSFunction::offsetOfBaseScript()));
   masm.storePtr(envChain, Address(output, JSFunction::offsetOfEnvironment()));
   // No post barrier needed because output is guaranteed to be allocated in
   // the nursery.
@@ -3610,11 +3637,10 @@ void CodeGenerator::emitLambdaInit(Register output, Register envChain,
 void CodeGenerator::visitFunctionWithProto(LFunctionWithProto* lir) {
   Register envChain = ToRegister(lir->environmentChain());
   Register prototype = ToRegister(lir->prototype());
-  const LambdaFunctionInfo& info = lir->mir()->info();
 
   pushArg(prototype);
   pushArg(envChain);
-  pushArg(ImmGCPtr(info.funUnsafe()));
+  pushArg(ImmGCPtr(lir->mir()->function()));
 
   using Fn =
       JSObject* (*)(JSContext*, HandleFunction, HandleObject, HandleObject);
@@ -4395,6 +4421,19 @@ void CodeGenerator::visitToNumeric(LToNumeric* lir) {
   masm.bind(ool->rejoin());
 }
 
+void CodeGenerator::visitToNumber(LToNumber* lir) {
+  ValueOperand operand = ToValue(lir, LToNumber::Input);
+  ValueOperand output = ToOutValue(lir);
+
+  using Fn = bool (*)(JSContext*, HandleValue, MutableHandleValue);
+  OutOfLineCode* ool =
+      oolCallVM<Fn, DoToNumber>(lir, ArgList(operand), StoreValueTo(output));
+
+  masm.branchTestNumber(Assembler::NotEqual, operand, ool->entry());
+  masm.moveValue(operand, output);
+  masm.bind(ool->rejoin());
+}
+
 void CodeGenerator::visitTypeBarrierV(LTypeBarrierV* lir) {
   ValueOperand operand = ToValue(lir, LTypeBarrierV::Input);
   Register unboxScratch = ToTempRegisterOrInvalid(lir->unboxTemp());
@@ -5103,9 +5142,9 @@ void CodeGenerator::visitCallGeneric(LCallGeneric* call) {
                                        &invoke);
     masm.loadJitCodeRaw(calleereg, objreg);
   } else {
-    // If we are using the jitCodeNoArgCheck entry point, the canonical targets
-    // are known, but due to lambda cloning we may still see lazy versions.
-    masm.loadJitCodeMaybeNoArgCheck(calleereg, objreg);
+    // NOTE: We checked that canonical function script had a valid JitScript.
+    // This will not be tossed without all Ion code being tossed first.
+    masm.loadJitCodeNoArgCheck(calleereg, objreg);
   }
 
   // Target may be a different realm even if same compartment.
@@ -5216,14 +5255,9 @@ void CodeGenerator::visitCallKnown(LCallKnown* call) {
   if (call->mir()->needsArgCheck()) {
     masm.loadJitCodeRaw(calleereg, objreg);
   } else {
-    // In order to use the jitCodeNoArgCheck entry point, we must ensure the
-    // JSFunction is pointing to the canonical JSScript. Due to lambda cloning,
-    // we may still be referencing the original LazyScript.
-    //
     // NOTE: We checked that canonical function script had a valid JitScript.
     // This will not be tossed without all Ion code being tossed first.
-
-    masm.loadJitCodeMaybeNoArgCheck(calleereg, objreg);
+    masm.loadJitCodeNoArgCheck(calleereg, objreg);
   }
 
   // Nestle the StackPointer up to the argument vector.
@@ -11227,6 +11261,9 @@ static GetPropertyResultFlags IonGetPropertyICFlags(
              GetPropertyResultFlags::AllowDouble;
   }
 
+  // If WarpBuilder is enabled the IC should support all possible results.
+  MOZ_ASSERT_IF(JitOptions.warpBuilder, flags == GetPropertyResultFlags::All);
+
   return flags;
 }
 
@@ -11335,9 +11372,9 @@ void CodeGenerator::visitCallDeleteProperty(LCallDeleteProperty* lir) {
 
   using Fn = bool (*)(JSContext*, HandleValue, HandlePropertyName, bool*);
   if (lir->mir()->strict()) {
-    callVM<Fn, DeletePropertyJit<true>>(lir);
+    callVM<Fn, DelPropOperation<true>>(lir);
   } else {
-    callVM<Fn, DeletePropertyJit<false>>(lir);
+    callVM<Fn, DelPropOperation<false>>(lir);
   }
 }
 
@@ -11347,9 +11384,9 @@ void CodeGenerator::visitCallDeleteElement(LCallDeleteElement* lir) {
 
   using Fn = bool (*)(JSContext*, HandleValue, HandleValue, bool*);
   if (lir->mir()->strict()) {
-    callVM<Fn, DeleteElementJit<true>>(lir);
+    callVM<Fn, DelElemOperation<true>>(lir);
   } else {
-    callVM<Fn, DeleteElementJit<false>>(lir);
+    callVM<Fn, DelElemOperation<false>>(lir);
   }
 }
 
@@ -13775,11 +13812,9 @@ void CodeGenerator::visitObjectWithProto(LObjectWithProto* lir) {
   callVM<Fn, js::ObjectWithProtoOperation>(lir);
 }
 
-void CodeGenerator::visitBuiltinProto(LBuiltinProto* lir) {
-  pushArg(ImmPtr(lir->mir()->pc()));
-
-  using Fn = JSObject* (*)(JSContext*, jsbytecode*);
-  callVM<Fn, js::BuiltinProtoOperation>(lir);
+void CodeGenerator::visitFunctionProto(LFunctionProto* lir) {
+  using Fn = JSObject* (*)(JSContext*);
+  callVM<Fn, js::FunctionProtoOperation>(lir);
 }
 
 void CodeGenerator::visitSuperFunction(LSuperFunction* lir) {

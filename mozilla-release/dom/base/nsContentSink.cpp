@@ -12,6 +12,8 @@
 #include "nsContentSink.h"
 #include "mozilla/Components.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/StaticPrefs_browser.h"
+#include "mozilla/StaticPrefs_content.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/MutationObservers.h"
 #include "mozilla/css/Loader.h"
@@ -179,30 +181,36 @@ NS_IMETHODIMP
 nsContentSink::StyleSheetLoaded(StyleSheet* aSheet, bool aWasDeferred,
                                 nsresult aStatus) {
   MOZ_ASSERT(!mRunsToCompletion, "How come a fragment parser observed sheets?");
-  if (!aWasDeferred) {
-    MOZ_ASSERT(mPendingSheetCount > 0, "How'd that happen?");
-    --mPendingSheetCount;
+  if (aWasDeferred) {
+    return NS_OK;
+  }
+  MOZ_ASSERT(mPendingSheetCount > 0, "How'd that happen?");
+  --mPendingSheetCount;
 
-    if (mPendingSheetCount == 0 &&
-        (mDeferredLayoutStart || mDeferredFlushTags)) {
-      if (mDeferredFlushTags) {
-        FlushTags();
-      }
-      if (mDeferredLayoutStart) {
-        // We might not have really started layout, since this sheet was still
-        // loading.  Do it now.  Probably doesn't matter whether we do this
-        // before or after we unblock scripts, but before feels saner.  Note
-        // that if mDeferredLayoutStart is true, that means any subclass
-        // StartLayout() stuff that needs to happen has already happened, so we
-        // don't need to worry about it.
-        StartLayout(false);
-      }
-
-      // Go ahead and try to scroll to our ref if we have one
-      ScrollToRef();
+  const bool loadedAllSheets = !mPendingSheetCount;
+  if (loadedAllSheets && (mDeferredLayoutStart || mDeferredFlushTags)) {
+    if (mDeferredFlushTags) {
+      FlushTags();
+    }
+    if (mDeferredLayoutStart) {
+      // We might not have really started layout, since this sheet was still
+      // loading.  Do it now.  Probably doesn't matter whether we do this
+      // before or after we unblock scripts, but before feels saner.  Note
+      // that if mDeferredLayoutStart is true, that means any subclass
+      // StartLayout() stuff that needs to happen has already happened, so
+      // we don't need to worry about it.
+      StartLayout(false);
     }
 
-    mScriptLoader->RemoveParserBlockingScriptExecutionBlocker();
+    // Go ahead and try to scroll to our ref if we have one
+    ScrollToRef();
+  }
+
+  mScriptLoader->RemoveParserBlockingScriptExecutionBlocker();
+
+  if (loadedAllSheets &&
+      mDocument->GetReadyStateEnum() >= Document::READYSTATE_INTERACTIVE) {
+    mScriptLoader->DeferCheckpointReached();
   }
 
   return NS_OK;
@@ -1124,6 +1132,12 @@ void nsContentSink::StartLayout(bool aIgnorePendingSheets) {
 
   mDeferredLayoutStart = false;
 
+  if (aIgnorePendingSheets) {
+    nsContentUtils::ReportToConsole(
+        nsIScriptError::warningFlag, NS_LITERAL_CSTRING("Layout"), mDocument,
+        nsContentUtils::eLAYOUT_PROPERTIES, "ForcedLayoutStart");
+  }
+
   // Notify on all our content.  If none of our presshells have started layout
   // yet it'll be a no-op except for updating our data structures, a la
   // UpdateChildCounts() (because we don't want to double-notify on whatever we
@@ -1374,15 +1388,16 @@ void nsContentSink::EndUpdate(Document* aDocument) {
 }
 
 void nsContentSink::DidBuildModelImpl(bool aTerminated) {
-  if (mDocument) {
-    MOZ_ASSERT(aTerminated || mDocument->GetReadyStateEnum() ==
-                                  Document::READYSTATE_LOADING,
-               "Bad readyState");
-    mDocument->SetReadyStateInternal(Document::READYSTATE_INTERACTIVE);
-  }
+  MOZ_ASSERT(aTerminated ||
+                 mDocument->GetReadyStateEnum() == Document::READYSTATE_LOADING,
+             "Bad readyState");
+  mDocument->SetReadyStateInternal(Document::READYSTATE_INTERACTIVE);
 
   if (mScriptLoader) {
     mScriptLoader->ParsingComplete(aTerminated);
+    if (!mPendingSheetCount) {
+      mScriptLoader->DeferCheckpointReached();
+    }
   }
 
   if (!mDocument->HaveFiredDOMTitleChange()) {

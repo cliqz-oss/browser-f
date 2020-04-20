@@ -7,6 +7,7 @@
 #define EditAggregateTransaction_h
 
 #include "mozilla/EditTransactionBase.h"
+#include "mozilla/OwningNonNull.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsAtom.h"
@@ -42,7 +43,7 @@ class EditAggregateTransaction : public EditTransactionBase {
 
   NS_DECL_EDITTRANSACTIONBASE
 
-  NS_IMETHOD RedoTransaction() override;
+  MOZ_CAN_RUN_SCRIPT NS_IMETHOD RedoTransaction() override;
   NS_IMETHOD Merge(nsITransaction* aTransaction, bool* aDidMerge) override;
 
   /**
@@ -58,7 +59,7 @@ class EditAggregateTransaction : public EditTransactionBase {
  protected:
   virtual ~EditAggregateTransaction() = default;
 
-  nsTArray<RefPtr<EditTransactionBase>> mChildren;
+  nsTArray<OwningNonNull<EditTransactionBase>> mChildren;
   RefPtr<nsAtom> mName;
 };
 

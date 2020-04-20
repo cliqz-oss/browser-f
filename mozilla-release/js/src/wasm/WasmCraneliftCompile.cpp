@@ -36,7 +36,7 @@ using namespace js;
 using namespace js::jit;
 using namespace js::wasm;
 
-bool wasm::CraneliftCanCompile() {
+bool wasm::CraneliftPlatformSupport() {
 #ifdef JS_CODEGEN_X64
   return true;
 #else
@@ -427,7 +427,7 @@ bool wasm::CraneliftCompileFunctions(const ModuleEnvironment& env,
                                      LifoAlloc& lifo,
                                      const FuncCompileInputVector& inputs,
                                      CompiledCode* code, UniqueChars* error) {
-  MOZ_RELEASE_ASSERT(CraneliftCanCompile());
+  MOZ_RELEASE_ASSERT(CraneliftPlatformSupport());
 
   MOZ_ASSERT(env.tier() == Tier::Optimized);
   MOZ_ASSERT(env.optimizedBackend() == OptimizedBackend::Cranelift);
@@ -585,7 +585,7 @@ BD_ConstantValue global_constantValue(const GlobalDesc* global) {
     case TypeCode::F64:
       v.u.f64 = value.f64();
       break;
-    case TypeCode::Ref:
+    case TypeCode::OptRef:
       v.u.r = value.ref().forCompiledCode();
       break;
     default:

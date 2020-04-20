@@ -19,14 +19,12 @@ namespace mozilla {
 namespace net {
 
 DocumentChannelParent::DocumentChannelParent(CanonicalBrowsingContext* aContext,
-                                             nsILoadContext* aLoadContext,
-                                             PBOverrideStatus aOverrideStatus) {
+                                             nsILoadContext* aLoadContext) {
   LOG(("DocumentChannelParent ctor [this=%p]", this));
   // Sometime we can get this called without a BrowsingContext, so that we have
   // an actor to call SendFailedAsyncOpen on.
   if (aContext) {
-    mParent =
-        new DocumentLoadListener(aContext, aLoadContext, aOverrideStatus, this);
+    mParent = new DocumentLoadListener(aContext, aLoadContext, this);
   }
 }
 
@@ -53,12 +51,10 @@ bool DocumentChannelParent::Init(const DocumentChannelCreationArgs& aArgs) {
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   rv = NS_ERROR_UNEXPECTED;
-  if (!mParent->Open(loadState, loadInfo, aArgs.loadFlags(), aArgs.loadType(),
-                     aArgs.cacheKey(), aArgs.isActive(), aArgs.isTopLevelDoc(),
-                     aArgs.hasNonEmptySandboxingFlags(), aArgs.channelId(),
-                     aArgs.asyncOpenTime(), aArgs.documentOpenFlags(),
-                     aArgs.pluginsAllowed(), aArgs.timing().refOr(nullptr),
-                     std::move(clientInfo), aArgs.outerWindowId(), &rv)) {
+  if (!mParent->Open(loadState, loadInfo, aArgs.loadFlags(), aArgs.cacheKey(),
+                     aArgs.channelId(), aArgs.asyncOpenTime(),
+                     aArgs.timing().refOr(nullptr), std::move(clientInfo),
+                     aArgs.outerWindowId(), &rv)) {
     return SendFailedAsyncOpen(rv);
   }
 
@@ -75,6 +71,19 @@ DocumentChannelParent::RedirectToRealChannel(uint32_t aRedirectFlags,
   RedirectToRealChannelArgs args;
   mParent->SerializeRedirectData(args, false, aRedirectFlags, aLoadFlags);
   return SendRedirectToRealChannel(args);
+}
+
+void DocumentChannelParent::CSPViolation(
+    nsCSPContext* aContext, bool aIsCspToInherit, nsIURI* aBlockedURI,
+    nsCSPContext::BlockedContentSource aBlockedContentSource,
+    nsIURI* aOriginalURI, const nsAString& aViolatedDirective,
+    uint32_t aViolatedPolicyIndex, const nsAString& aObserverSubject) {
+  CSPInfo cspInfo;
+  Unused << NS_WARN_IF(NS_FAILED(CSPToCSPInfo(aContext, &cspInfo)));
+  Unused << SendCSPViolation(
+      cspInfo, aIsCspToInherit, aBlockedURI, aBlockedContentSource,
+      aOriginalURI, PromiseFlatString(aViolatedDirective), aViolatedPolicyIndex,
+      PromiseFlatString(aObserverSubject));
 }
 
 }  // namespace net

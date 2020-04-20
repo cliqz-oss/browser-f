@@ -15,6 +15,7 @@
 #include "mozilla/Likely.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/PodOperations.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/TaggedAnonymousMemory.h"
 
 #include <algorithm>
@@ -47,6 +48,7 @@
 #include "vm/JSContext.h"
 #include "vm/JSObject.h"
 #include "vm/SharedArrayObject.h"
+#include "vm/Warnings.h"  // js::WarnNumberASCII
 #include "vm/WrapperObject.h"
 #include "wasm/WasmSignalHandlers.h"
 #include "wasm/WasmTypes.h"
@@ -77,11 +79,11 @@ using namespace js;
 // the page tables.  An earlier problem was Windows Vista Home 64-bit, where the
 // per-process address space is limited to 8TB (40 bits).
 //
-// Thus we track the number of live objects, and set a limit of the number of
-// live buffer objects per process.  We trigger GC work when we approach the
-// limit and we throw an OOM error if the per-process limit is exceeded.  The
-// limit (MaximumLiveMappedBuffers) is specific to architecture, OS, and OS
-// configuration.
+// Thus we track the number of live objects if we are using large mappings, and
+// set a limit of the number of live buffer objects per process. We trigger GC
+// work when we approach the limit and we throw an OOM error if the per-process
+// limit is exceeded. The limit (MaximumLiveMappedBuffers) is specific to
+// architecture, OS, and OS configuration.
 //
 // Since the MaximumLiveMappedBuffers limit is not generally accounted for by
 // any existing GC-trigger heuristics, we need an extra heuristic for triggering
@@ -131,14 +133,20 @@ void* js::MapBufferMemory(size_t mappedSize, size_t initialCommittedSize) {
   MOZ_ASSERT(initialCommittedSize % gc::SystemPageSize() == 0);
   MOZ_ASSERT(initialCommittedSize <= mappedSize);
 
+  auto decrement = mozilla::MakeScopeExit([&] { liveBufferCount--; });
+  if (wasm::IsHugeMemoryEnabled()) {
+    liveBufferCount++;
+  } else {
+    decrement.release();
+  }
+
   // Test >= to guard against the case where multiple extant runtimes
   // race to allocate.
-  if (++liveBufferCount >= MaximumLiveMappedBuffers) {
+  if (liveBufferCount >= MaximumLiveMappedBuffers) {
     if (OnLargeAllocationFailure) {
       OnLargeAllocationFailure();
     }
     if (liveBufferCount >= MaximumLiveMappedBuffers) {
-      liveBufferCount--;
       return nullptr;
     }
   }
@@ -146,13 +154,11 @@ void* js::MapBufferMemory(size_t mappedSize, size_t initialCommittedSize) {
 #ifdef XP_WIN
   void* data = VirtualAlloc(nullptr, mappedSize, MEM_RESERVE, PAGE_NOACCESS);
   if (!data) {
-    liveBufferCount--;
     return nullptr;
   }
 
   if (!VirtualAlloc(data, initialCommittedSize, MEM_COMMIT, PAGE_READWRITE)) {
     VirtualFree(data, 0, MEM_RELEASE);
-    liveBufferCount--;
     return nullptr;
   }
 #else   // XP_WIN
@@ -160,14 +166,12 @@ void* js::MapBufferMemory(size_t mappedSize, size_t initialCommittedSize) {
       MozTaggedAnonymousMmap(nullptr, mappedSize, PROT_NONE,
                              MAP_PRIVATE | MAP_ANON, -1, 0, "wasm-reserved");
   if (data == MAP_FAILED) {
-    liveBufferCount--;
     return nullptr;
   }
 
   // Note we will waste a page on zero-sized memories here
   if (mprotect(data, initialCommittedSize, PROT_READ | PROT_WRITE)) {
     munmap(data, mappedSize);
-    liveBufferCount--;
     return nullptr;
   }
 #endif  // !XP_WIN
@@ -179,6 +183,7 @@ void* js::MapBufferMemory(size_t mappedSize, size_t initialCommittedSize) {
       mappedSize - initialCommittedSize);
 #endif
 
+  decrement.release();
   return data;
 }
 
@@ -245,9 +250,11 @@ void js::UnmapBufferMemory(void* base, size_t mappedSize) {
                                                 mappedSize);
 #endif
 
-  // Decrement the buffer counter at the end -- otherwise, a race condition
-  // could enable the creation of unlimited buffers.
-  liveBufferCount--;
+  if (wasm::IsHugeMemoryEnabled()) {
+    // Decrement the buffer counter at the end -- otherwise, a race condition
+    // could enable the creation of unlimited buffers.
+    --liveBufferCount;
+  }
 }
 
 /*
@@ -679,8 +686,7 @@ static bool CreateSpecificWasmBuffer(
   RawbufT* buffer = RawbufT::Allocate(initialSize, clampedMaxSize, mappedSize);
   if (!buffer) {
     if (useHugeMemory) {
-      JS_ReportErrorFlagsAndNumberASCII(cx, JSREPORT_WARNING, GetErrorMessage,
-                                        nullptr, JSMSG_WASM_HUGE_MEMORY_FAILED);
+      WarnNumberASCII(cx, JSMSG_WASM_HUGE_MEMORY_FAILED);
       if (cx->isExceptionPending()) {
         cx->clearPendingException();
       }

@@ -22,7 +22,7 @@ const onUpdatedEmitter = new EventEmitter();
 
 // Represents an empty theme for convenience of use
 const emptyTheme = {
-  details: {},
+  details: { colors: null, images: null, properties: null },
 };
 
 let defaultTheme = emptyTheme;
@@ -389,7 +389,7 @@ class Theme {
       lwtData.window = getWinUtils(
         windowTracker.getWindow(windowId)
       ).outerWindowID;
-      windowOverrides.set(windowId, emptyTheme);
+      windowOverrides.delete(windowId);
     } else {
       windowOverrides.clear();
       defaultTheme = emptyTheme;
@@ -473,12 +473,12 @@ this.theme = class extends ExtensionAPI {
             if (!browserWindow) {
               return Promise.reject(`Invalid window ID: ${windowId}`);
             }
-          } else if (defaultTheme.extension !== extension) {
-            return;
-          }
 
-          if (!defaultTheme && !windowOverrides.has(windowId)) {
-            // If no theme has been initialized, nothing to do.
+            let theme = windowOverrides.get(windowId) || defaultTheme;
+            if (theme.extension !== extension) {
+              return;
+            }
+          } else if (defaultTheme.extension !== extension) {
             return;
           }
 

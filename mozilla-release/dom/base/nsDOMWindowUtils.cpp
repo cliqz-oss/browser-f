@@ -2459,12 +2459,35 @@ nsDOMWindowUtils::FlushApzRepaints(bool* aOutResult) {
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::DisableApzForElement(Element* aElement) {
+  aElement->SetProperty(nsGkAtoms::apzDisabled, reinterpret_cast<void*>(true));
+  nsIScrollableFrame* sf = nsLayoutUtils::FindScrollableFrameFor(aElement);
+  if (!sf) {
+    return NS_OK;
+  }
+  nsIFrame* frame = do_QueryFrame(sf);
+  if (!frame) {
+    return NS_OK;
+  }
+  frame->SchedulePaint();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMWindowUtils::ZoomToFocusedInput() {
+  if (!Preferences::GetBool("apz.zoom-to-focused-input.enabled")) {
+    return NS_OK;
+  }
+
   nsIWidget* widget = GetWidget();
   if (!widget) {
     return NS_OK;
   }
+
   // If APZ is not enabled, this function is a no-op.
+  //
+  // FIXME(emilio): This is not quite true anymore now that we also
+  // ScrollIntoView() too...
   if (!widget->AsyncPanZoomEnabled()) {
     return NS_OK;
   }
@@ -2474,44 +2497,18 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
     return NS_OK;
   }
 
-  nsCOMPtr<nsIContent> content = fm->GetFocusedElement();
-  if (!content) {
+  RefPtr<Element> element = fm->GetFocusedElement();
+  if (!element) {
     return NS_OK;
   }
 
   RefPtr<PresShell> presShell =
-      APZCCallbackHelper::GetRootContentDocumentPresShellForContent(content);
+      APZCCallbackHelper::GetRootContentDocumentPresShellForContent(element);
   if (!presShell) {
     return NS_OK;
   }
 
-  nsIScrollableFrame* rootScrollFrame =
-      presShell->GetRootScrollFrameAsScrollable();
-  if (!rootScrollFrame) {
-    return NS_OK;
-  }
-
-  nsIFrame* currentFrame = content->GetPrimaryFrame();
-  nsIFrame* rootFrame = presShell->GetRootFrame();
-  nsIFrame* scrolledFrame = rootScrollFrame->GetScrolledFrame();
-  bool isFixedPos = true;
-
-  while (currentFrame) {
-    if (currentFrame == rootFrame) {
-      break;
-    }
-    if (currentFrame == scrolledFrame) {
-      // we are in the rootScrollFrame so this element is not fixed
-      isFixedPos = false;
-      break;
-    }
-    currentFrame = nsLayoutUtils::GetCrossDocParentFrame(currentFrame);
-  }
-
-  if (isFixedPos) {
-    // We didn't find the scrolledFrame in our parent frames so this content
-    // must be fixed position. Zooming into fixed position content doesn't make
-    // sense so just return with out panning and zooming.
+  if (!element->GetPrimaryFrame()) {
     return NS_OK;
   }
 
@@ -2522,34 +2519,42 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
 
   uint32_t presShellId;
   ScrollableLayerGuid::ViewID viewId;
-  if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(
+  if (!APZCCallbackHelper::GetOrCreateScrollIdentifiers(
           document->GetDocumentElement(), &presShellId, &viewId)) {
-    uint32_t flags = layers::DISABLE_ZOOM_OUT;
-    if (!Preferences::GetBool("formhelper.autozoom")) {
-      flags |= layers::PAN_INTO_VIEW_ONLY;
-    } else {
-      flags |= layers::ONLY_ZOOM_TO_DEFAULT_SCALE;
-    }
-
-    // The content may be inside a scrollable subframe inside a non-scrollable
-    // root content document. In this scenario, we want to ensure that the
-    // main-thread side knows to scroll the content into view before we get
-    // the bounding content rect and ask APZ to adjust the visual viewport.
-    presShell->ScrollContentIntoView(
-        content, ScrollAxis(kScrollMinimum, WhenToScroll::IfNotVisible),
-        ScrollAxis(kScrollMinimum, WhenToScroll::IfNotVisible),
-        ScrollFlags::ScrollOverflowHidden);
-
-    CSSRect bounds =
-        nsLayoutUtils::GetBoundingContentRect(content, rootScrollFrame);
-    if (bounds.IsEmpty()) {
-      // Do not zoom on empty bounds. Bail out.
-      return NS_OK;
-    }
-    bounds.Inflate(15.0f, 0.0f);
-    widget->ZoomToRect(presShellId, viewId, bounds, flags);
+    return NS_OK;
   }
 
+  uint32_t flags = layers::DISABLE_ZOOM_OUT;
+  if (!Preferences::GetBool("formhelper.autozoom")) {
+    flags |= layers::PAN_INTO_VIEW_ONLY;
+  } else {
+    flags |= layers::ONLY_ZOOM_TO_DEFAULT_SCALE;
+  }
+
+  // The content may be inside a scrollable subframe inside a non-scrollable
+  // root content document. In this scenario, we want to ensure that the
+  // main-thread side knows to scroll the content into view before we get
+  // the bounding content rect and ask APZ to adjust the visual viewport.
+  presShell->ScrollContentIntoView(
+      element, ScrollAxis(kScrollMinimum, WhenToScroll::IfNotVisible),
+      ScrollAxis(kScrollMinimum, WhenToScroll::IfNotVisible),
+      ScrollFlags::ScrollOverflowHidden);
+
+  nsIScrollableFrame* rootScrollFrame =
+      presShell->GetRootScrollFrameAsScrollable();
+  if (!rootScrollFrame) {
+    return NS_OK;
+  }
+
+  CSSRect bounds =
+      nsLayoutUtils::GetBoundingContentRect(element, rootScrollFrame);
+  if (bounds.IsEmpty()) {
+    // Do not zoom on empty bounds. Bail out.
+    return NS_OK;
+  }
+
+  bounds.Inflate(15.0f, 0.0f);
+  widget->ZoomToRect(presShellId, viewId, bounds, flags);
   return NS_OK;
 }
 
@@ -2573,9 +2578,7 @@ nsDOMWindowUtils::ComputeAnimationDistance(Element* aElement,
     return NS_ERROR_ILLEGAL_VALUE;
   }
 
-  RefPtr<ComputedStyle> computedStyle =
-      nsComputedDOMStyle::GetComputedStyle(aElement, nullptr);
-  *aResult = v1.ComputeDistance(property, v2, computedStyle);
+  *aResult = v1.ComputeDistance(property, v2);
   return NS_OK;
 }
 
@@ -2916,8 +2919,7 @@ NS_IMETHODIMP
 nsDOMWindowUtils::GetFileReferences(const nsAString& aDatabaseName, int64_t aId,
                                     JS::Handle<JS::Value> aOptions,
                                     int32_t* aRefCnt, int32_t* aDBRefCnt,
-                                    int32_t* aSliceRefCnt, JSContext* aCx,
-                                    bool* aResult) {
+                                    JSContext* aCx, bool* aResult) {
   nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryReferent(mWindow);
   NS_ENSURE_TRUE(window, NS_ERROR_FAILURE);
 
@@ -2932,18 +2934,19 @@ nsDOMWindowUtils::GetFileReferences(const nsAString& aDatabaseName, int64_t aId,
     return NS_ERROR_UNEXPECTED;
   }
 
-  quota::PersistenceType persistenceType =
-      quota::PersistenceTypeFromStorage(options.mStorage);
+  const quota::PersistenceType persistenceType =
+      options.mStorage.WasPassed()
+          ? quota::PersistenceTypeFromStorageType(options.mStorage.Value())
+          : quota::PERSISTENCE_TYPE_DEFAULT;
 
   RefPtr<IndexedDatabaseManager> mgr = IndexedDatabaseManager::Get();
 
   if (mgr) {
     rv = mgr->BlockAndGetFileReferences(persistenceType, origin, aDatabaseName,
-                                        aId, aRefCnt, aDBRefCnt, aSliceRefCnt,
-                                        aResult);
+                                        aId, aRefCnt, aDBRefCnt, aResult);
     NS_ENSURE_SUCCESS(rv, rv);
   } else {
-    *aRefCnt = *aDBRefCnt = *aSliceRefCnt = -1;
+    *aRefCnt = *aDBRefCnt = -1;
     *aResult = false;
   }
 

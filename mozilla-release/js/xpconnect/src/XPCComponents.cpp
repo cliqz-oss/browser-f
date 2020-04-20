@@ -161,7 +161,7 @@ nsXPCComponents_Interfaces::GetClassIDNoAlloc(nsCID* aClassIDNoAlloc) {
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-nsXPCComponents_Interfaces::nsXPCComponents_Interfaces() {}
+nsXPCComponents_Interfaces::nsXPCComponents_Interfaces() = default;
 
 nsXPCComponents_Interfaces::~nsXPCComponents_Interfaces() {
   // empty
@@ -314,7 +314,7 @@ nsXPCComponents_Classes::GetClassIDNoAlloc(nsCID* aClassIDNoAlloc) {
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-nsXPCComponents_Classes::nsXPCComponents_Classes() {}
+nsXPCComponents_Classes::nsXPCComponents_Classes() = default;
 
 nsXPCComponents_Classes::~nsXPCComponents_Classes() {
   // empty
@@ -456,7 +456,7 @@ nsXPCComponents_Results::GetClassIDNoAlloc(nsCID* aClassIDNoAlloc) {
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-nsXPCComponents_Results::nsXPCComponents_Results() {}
+nsXPCComponents_Results::nsXPCComponents_Results() = default;
 
 nsXPCComponents_Results::~nsXPCComponents_Results() {
   // empty
@@ -597,7 +597,7 @@ nsXPCComponents_ID::GetClassIDNoAlloc(nsCID* aClassIDNoAlloc) {
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-nsXPCComponents_ID::nsXPCComponents_ID() {}
+nsXPCComponents_ID::nsXPCComponents_ID() = default;
 
 nsXPCComponents_ID::~nsXPCComponents_ID() {
   // empty
@@ -748,7 +748,7 @@ nsXPCComponents_Exception::GetClassIDNoAlloc(nsCID* aClassIDNoAlloc) {
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-nsXPCComponents_Exception::nsXPCComponents_Exception() {}
+nsXPCComponents_Exception::nsXPCComponents_Exception() = default;
 
 nsXPCComponents_Exception::~nsXPCComponents_Exception() {
   // empty
@@ -1042,7 +1042,7 @@ nsXPCComponents_Constructor::GetClassIDNoAlloc(nsCID* aClassIDNoAlloc) {
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-nsXPCComponents_Constructor::nsXPCComponents_Constructor() {}
+nsXPCComponents_Constructor::nsXPCComponents_Constructor() = default;
 
 nsXPCComponents_Constructor::~nsXPCComponents_Constructor() {
   // empty
@@ -1290,10 +1290,10 @@ class nsXPCComponents_Utils final : public nsIXPCComponents_Utils,
   NS_DECL_NSIXPCCOMPONENTS_UTILS
 
  public:
-  nsXPCComponents_Utils() {}
+  nsXPCComponents_Utils() = default;
 
  private:
-  virtual ~nsXPCComponents_Utils() {}
+  virtual ~nsXPCComponents_Utils() = default;
   nsCOMPtr<nsIXPCComponents_utils_Sandbox> mSandbox;
 };
 
@@ -1413,6 +1413,8 @@ nsXPCComponents_Utils::ReportError(HandleValue error, HandleValue stack,
     uint32_t column = err->tokenOffset();
 
     const char16_t* linebuf = err->linebuf();
+    uint32_t flags = err->isWarning() ? nsIScriptError::warningFlag
+                                      : nsIScriptError::errorFlag;
 
     nsresult rv = scripterr->InitWithWindowID(
         err->message() ? NS_ConvertUTF8toUTF16(err->message().c_str())
@@ -1420,7 +1422,8 @@ nsXPCComponents_Utils::ReportError(HandleValue error, HandleValue stack,
         fileUni,
         linebuf ? nsDependentString(linebuf, err->linebufLength())
                 : EmptyString(),
-        err->lineno, column, err->flags, "XPConnect JavaScript", innerWindowID);
+        err->lineno, column, flags, "XPConnect JavaScript", innerWindowID,
+        innerWindowID == 0 ? true : false);
     NS_ENSURE_SUCCESS(rv, NS_OK);
 
     console->LogMessage(scripterr);
@@ -1438,9 +1441,9 @@ nsXPCComponents_Utils::ReportError(HandleValue error, HandleValue stack,
     return NS_OK;
   }
 
-  nsresult rv =
-      scripterr->InitWithWindowID(msg, fileName, EmptyString(), lineNo, 0, 0,
-                                  "XPConnect JavaScript", innerWindowID, true);
+  nsresult rv = scripterr->InitWithWindowID(
+      msg, fileName, EmptyString(), lineNo, 0, 0, "XPConnect JavaScript",
+      innerWindowID, innerWindowID == 0 ? true : false);
   NS_ENSURE_SUCCESS(rv, NS_OK);
 
   console->LogMessage(scripterr);
@@ -2095,8 +2098,6 @@ nsXPCComponents_Utils::Dispatch(HandleValue runnableArg, HandleValue scope,
     return NS_OK;                                                       \
   }
 
-GENERATE_JSCONTEXTOPTION_GETTER_SETTER(Strict, extraWarnings, setExtraWarnings)
-GENERATE_JSCONTEXTOPTION_GETTER_SETTER(Werror, werror, setWerror)
 GENERATE_JSCONTEXTOPTION_GETTER_SETTER(Strict_mode, strictMode, setStrictMode)
 
 #undef GENERATE_JSCONTEXTOPTION_GETTER_SETTER
@@ -2263,12 +2264,12 @@ nsXPCComponents_Utils::GetIncumbentGlobal(HandleValue aCallback, JSContext* aCx,
 
 class WrappedJSHolder : public nsISupports {
   NS_DECL_ISUPPORTS
-  WrappedJSHolder() {}
+  WrappedJSHolder() = default;
 
   RefPtr<nsXPCWrappedJS> mWrappedJS;
 
  private:
-  virtual ~WrappedJSHolder() {}
+  virtual ~WrappedJSHolder() = default;
 };
 
 NS_IMPL_ADDREF(WrappedJSHolder)
@@ -2558,7 +2559,7 @@ nsXPCComponents::nsXPCComponents(XPCWrappedNativeScope* aScope)
   MOZ_ASSERT(aScope, "aScope must not be null");
 }
 
-nsXPCComponents::~nsXPCComponents() {}
+nsXPCComponents::~nsXPCComponents() = default;
 
 void nsXPCComponents::ClearMembers() {
   mInterfaces = nullptr;

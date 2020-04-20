@@ -84,18 +84,15 @@ function evaluateExpression(expression) {
     let mapped;
     ({ expression, mapped } = await getMappedExpression(hud, expression));
 
-    const frameActor = await webConsoleUI.getFrameActor();
-    const selectedThreadFront = toolbox && toolbox.getSelectedThreadFront();
-
     // Even if the evaluation fails,
     // we still need to pass the error response to onExpressionEvaluated.
     const onSettled = res => res;
 
     const response = await client
       .evaluateJSAsync(expression, {
-        selectedThreadFront,
-        frameActor,
-        selectedNodeFront: webConsoleUI.getSelectedNodeFront(),
+        frameActor: await webConsoleUI.getFrameActor(),
+        selectedNodeActor: webConsoleUI.getSelectedNodeActorID(),
+        selectedTargetFront: toolbox && toolbox.getSelectedTargetFront(),
         mapped,
       })
       .then(onSettled, onSettled);
@@ -135,11 +132,10 @@ function onExpressionEvaluated(response) {
 
 function handleHelperResult(response) {
   return async ({ dispatch, hud, webConsoleUI }) => {
-    const result = response.result;
-    const helperResult = response.helperResult;
-    const helperHasRawOutput = !!(helperResult || {}).rawOutput;
+    const { result, helperResult } = response;
+    const helperHasRawOutput = !!helperResult?.rawOutput;
 
-    if (helperResult && helperResult.type) {
+    if (helperResult?.type) {
       switch (helperResult.type) {
         case "clearOutput":
           dispatch(messagesActions.messagesClear());
@@ -208,22 +204,32 @@ function setInputValue(value) {
   };
 }
 
-function terminalInputChanged(expression) {
+/**
+ * Request an eager evaluation from the server.
+ *
+ * @param {String} expression: The expression to evaluate.
+ * @param {Boolean} force: When true, will request an eager evaluation again, even if
+ *                         the expression is the same one than the one that was used in
+ *                         the previous evaluation.
+ */
+function terminalInputChanged(expression, force = false) {
   return async ({ dispatch, webConsoleUI, hud, toolbox, client, getState }) => {
     const prefs = getAllPrefs(getState());
     if (!prefs.eagerEvaluation) {
-      return;
+      return null;
     }
 
     const { terminalInput = "" } = getState().history;
+
     // Only re-evaluate if the expression did change.
     if (
       (!terminalInput && !expression) ||
       (typeof terminalInput === "string" &&
         typeof expression === "string" &&
-        expression.trim() === terminalInput.trim())
+        expression.trim() === terminalInput.trim() &&
+        !force)
     ) {
-      return;
+      return null;
     }
 
     dispatch({
@@ -233,7 +239,6 @@ function terminalInputChanged(expression) {
 
     // There's no need to evaluate an empty string.
     if (!expression || !expression.trim()) {
-      // eslint-disable-next-line consistent-return
       return dispatch({
         type: SET_TERMINAL_EAGER_RESULT,
         expression,
@@ -244,18 +249,14 @@ function terminalInputChanged(expression) {
     let mapped;
     ({ expression, mapped } = await getMappedExpression(hud, expression));
 
-    const frameActor = await webConsoleUI.getFrameActor();
-    const selectedThreadFront = toolbox && toolbox.getSelectedThreadFront();
-
     const response = await client.evaluateJSAsync(expression, {
-      frameActor,
-      selectedThreadFront,
-      selectedNodeFront: webConsoleUI.getSelectedNodeFront(),
+      frameActor: await webConsoleUI.getFrameActor(),
+      selectedNodeActor: webConsoleUI.getSelectedNodeActorID(),
+      selectedTargetFront: toolbox && toolbox.getSelectedTargetFront(),
       mapped,
       eager: true,
     });
 
-    // eslint-disable-next-line consistent-return
     return dispatch({
       type: SET_TERMINAL_EAGER_RESULT,
       result: getEagerEvaluationResult(response),
@@ -263,13 +264,18 @@ function terminalInputChanged(expression) {
   };
 }
 
+/**
+ * Refresh the current eager evaluation by requesting a new eager evaluation.
+ */
+function updateInstantEvaluationResultForCurrentExpression() {
+  return ({ getState, dispatch }) =>
+    dispatch(terminalInputChanged(getState().history.terminalInput, true));
+}
+
 function getEagerEvaluationResult(response) {
   const result = response.exception || response.result;
   // Don't show syntax errors results to the user.
-  if (
-    (result && result.isSyntaxError) ||
-    (result && result.type == "undefined")
-  ) {
+  if (result?.isSyntaxError || (result && result.type == "undefined")) {
     return null;
   }
 
@@ -281,4 +287,5 @@ module.exports = {
   focusInput,
   setInputValue,
   terminalInputChanged,
+  updateInstantEvaluationResultForCurrentExpression,
 };

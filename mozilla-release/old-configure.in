@@ -584,7 +584,7 @@ case "$target" in
     MOZ_GFX_OPTIMIZE_MOBILE=1
     if test -z "$CLANG_CC"; then
         MOZ_OPTIMIZE_FLAGS="-freorder-blocks -fno-reorder-functions -Os"
-    else
+    elif test -n "$RELEASE_OR_BETA"; then
         # From https://github.com/android-ndk/ndk/issues/133#issuecomment-308549264
         # -Oz is smaller than -Os on clang.
         MOZ_OPTIMIZE_FLAGS="-Oz"
@@ -603,6 +603,8 @@ case "$target" in
             AC_TRY_LINK(,,[MOZ_OPTIMIZE_LDFLAGS="$MOZ_OPTIMIZE_LDFLAGS $DISABLE_OUTLINER"])
             LDFLAGS="$_SAVE_LDFLAGS"
         fi
+    else
+        MOZ_OPTIMIZE_FLAGS="-O2"
     fi
     ;;
 
@@ -1504,7 +1506,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.51, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.51.1, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 NSS_CFLAGS="$NSS_CFLAGS -I${DIST}/include/nss"
@@ -1593,7 +1595,6 @@ MOZ_UNIVERSALCHARDET=1
 MOZ_XUL=1
 MOZ_ZIPWRITER=1
 MOZ_NO_SMART_CARDS=
-NECKO_COOKIES=1
 MOZ_USE_NATIVE_POPUP_WINDOWS=
 MOZ_EXCLUDE_HYPHENATION_DICTIONARIES=
 MOZ_SANDBOX=1
@@ -2709,19 +2710,6 @@ if test "$NECKO_WIFI"; then
 fi
 AC_SUBST(NECKO_WIFI)
 AC_SUBST(NECKO_WIFI_DBUS)
-
-dnl
-dnl option to disable cookies
-dnl
-MOZ_ARG_DISABLE_BOOL(cookies,
-[  --disable-cookies       Disable cookie support],
-    NECKO_COOKIES=,
-    NECKO_COOKIES=1)
-AC_SUBST(NECKO_COOKIES)
-if test "$NECKO_COOKIES"; then
-    AC_DEFINE(NECKO_COOKIES)
-    _NON_GLOBAL_ACDEFINES="$_NON_GLOBAL_ACDEFINES NECKO_COOKIES"
-fi
 
 dnl ========================================================
 dnl =

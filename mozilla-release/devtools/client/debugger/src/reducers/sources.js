@@ -72,6 +72,7 @@ import type {
   MappedLocation,
   BreakpointPosition,
   BreakpointPositions,
+  URL,
 } from "../types";
 import type { PendingSelectedLocation, Selector } from "./types";
 import type { Action, DonePromiseAction, FocusItem } from "../actions/types";
@@ -90,11 +91,11 @@ type PlainUrlsMap = { [string]: string[] };
 
 export type SourceBase = {|
   +id: SourceId,
-  +url: string,
+  +url: URL,
   +isBlackBoxed: boolean,
   +isPrettyPrinted: boolean,
-  +relativeUrl: string,
-  +introductionUrl: ?string,
+  +relativeUrl: URL,
+  +introductionUrl: ?URL,
   +introductionType: ?string,
   +extensionName: ?string,
   +isExtension: boolean,
@@ -214,6 +215,16 @@ function update(
 
     case "LOAD_SOURCE_TEXT":
       return updateLoadedState(state, action);
+
+    case "BLACKBOX_SOURCES":
+      if (action.status === "done") {
+        const { shouldBlackBox } = action;
+        const { sources } = action.value;
+
+        updateBlackBoxListSources(sources, shouldBlackBox);
+        return updateBlackboxFlagSources(state, sources, shouldBlackBox);
+      }
+      break;
 
     case "BLACKBOX":
       if (action.status === "done") {
@@ -495,8 +506,27 @@ function updateBlackboxFlag(
   };
 }
 
-function updateBlackBoxList(url, isBlackBoxed) {
-  const tabs = getBlackBoxList();
+function updateBlackboxFlagSources(state, sources, shouldBlackBox) {
+  const sourcesToUpdate = [];
+
+  for (const source of sources) {
+    if (!hasResource(state.sources, source.id)) {
+      // TODO: We may want to consider throwing here once we have a better
+      // handle on async action flow control.
+      continue;
+    }
+
+    sourcesToUpdate.push({
+      id: source.id,
+      isBlackBoxed: shouldBlackBox,
+    });
+  }
+  state.sources = updateResources(state.sources, sourcesToUpdate);
+
+  return state;
+}
+
+function updateBlackboxTabs(tabs, url, isBlackBoxed) {
   const i = tabs.indexOf(url);
   if (i >= 0) {
     if (!isBlackBoxed) {
@@ -505,6 +535,21 @@ function updateBlackBoxList(url, isBlackBoxed) {
   } else if (isBlackBoxed) {
     tabs.push(url);
   }
+}
+
+function updateBlackBoxList(url, isBlackBoxed) {
+  const tabs = getBlackBoxList();
+  updateBlackboxTabs(tabs, url, isBlackBoxed);
+  prefs.tabsBlackBoxed = tabs;
+}
+
+function updateBlackBoxListSources(sources, shouldBlackBox) {
+  const tabs = getBlackBoxList();
+
+  sources.forEach(source => {
+    updateBlackboxTabs(tabs, source.url, shouldBlackBox);
+  });
+
   prefs.tabsBlackBoxed = tabs;
 }
 
@@ -572,7 +617,7 @@ export function getSourceByActorId(
 export function getSourcesByURLInSources(
   sources: SourceResourceState,
   urls: UrlsMap,
-  url: string
+  url: URL
 ): Source[] {
   if (!url || !urls[url]) {
     return [];
@@ -582,11 +627,11 @@ export function getSourcesByURLInSources(
   );
 }
 
-export function getSourcesByURL(state: OuterState, url: string): Source[] {
+export function getSourcesByURL(state: OuterState, url: URL): Source[] {
   return getSourcesByURLInSources(getSources(state), getUrls(state), url);
 }
 
-export function getSourceByURL(state: OuterState, url: string): ?Source {
+export function getSourceByURL(state: OuterState, url: URL): ?Source {
   const foundSources = getSourcesByURL(state, url);
   return foundSources ? foundSources[0] : null;
 }
@@ -594,7 +639,7 @@ export function getSourceByURL(state: OuterState, url: string): ?Source {
 export function getSpecificSourceByURLInSources(
   sources: SourceResourceState,
   urls: UrlsMap,
-  url: string,
+  url: URL,
   isOriginal: boolean
 ): ?Source {
   const foundSources = getSourcesByURLInSources(sources, urls, url);
@@ -606,7 +651,7 @@ export function getSpecificSourceByURLInSources(
 
 export function getSpecificSourceByURL(
   state: OuterState,
-  url: string,
+  url: URL,
   isOriginal: boolean
 ): ?Source {
   return getSpecificSourceByURLInSources(
@@ -617,17 +662,11 @@ export function getSpecificSourceByURL(
   );
 }
 
-export function getOriginalSourceByURL(
-  state: OuterState,
-  url: string
-): ?Source {
+export function getOriginalSourceByURL(state: OuterState, url: URL): ?Source {
   return getSpecificSourceByURL(state, url, true);
 }
 
-export function getGeneratedSourceByURL(
-  state: OuterState,
-  url: string
-): ?Source {
+export function getGeneratedSourceByURL(state: OuterState, url: URL): ?Source {
   return getSpecificSourceByURL(state, url, false);
 }
 
@@ -648,7 +687,7 @@ export function getGeneratedSource(
 
 export function getGeneratedSourceById(
   state: OuterState,
-  sourceId: string
+  sourceId: SourceId
 ): Source {
   const generatedSourceId = originalToGeneratedId(sourceId);
   return getSourceFromId(state, generatedSourceId);
@@ -677,7 +716,7 @@ export function hasPrettySource(state: OuterState, id: string) {
 
 export function getSourcesUrlsInSources(
   state: OuterState,
-  url: ?string
+  url: ?URL
 ): string[] {
   if (!url) {
     return [];
@@ -728,7 +767,7 @@ export function getDisplayedSourcesList(
   ): any);
 }
 
-export function getExtensionNameBySourceUrl(state: OuterState, url: string) {
+export function getExtensionNameBySourceUrl(state: OuterState, url: URL) {
   const match = getSourceList(state).find(
     source => source.url && source.url.startsWith(url)
   );
@@ -797,7 +836,7 @@ export function getSourceContent(
 
 export function getSelectedSourceId(state: OuterState) {
   const source = getSelectedSource((state: any));
-  return source && source.id;
+  return source?.id;
 }
 
 export function getProjectDirectoryRoot(state: OuterState): string {
@@ -918,7 +957,7 @@ export function getSourceActorsForSource(
 
 export function canLoadSource(
   state: OuterState & SourceActorOuterState,
-  sourceId: string
+  sourceId: SourceId
 ) {
   // Return false if we know that loadSourceText() will fail if called on this
   // source. This is used to avoid viewing such sources in the debugger.
@@ -976,31 +1015,31 @@ export function getBreakpointPositions(
 
 export function getBreakpointPositionsForSource(
   state: OuterState,
-  sourceId: string
+  sourceId: SourceId
 ): ?BreakpointPositions {
   const positions = getBreakpointPositions(state);
-  return positions && positions[sourceId];
+  return positions?.[sourceId];
 }
 
 export function hasBreakpointPositions(
   state: OuterState,
-  sourceId: string
+  sourceId: SourceId
 ): boolean {
   return !!getBreakpointPositionsForSource(state, sourceId);
 }
 
 export function getBreakpointPositionsForLine(
   state: OuterState,
-  sourceId: string,
+  sourceId: SourceId,
   line: number
 ): ?Array<BreakpointPosition> {
   const positions = getBreakpointPositionsForSource(state, sourceId);
-  return positions && positions[line];
+  return positions?.[line];
 }
 
 export function hasBreakpointPositionsForLine(
   state: OuterState,
-  sourceId: string,
+  sourceId: SourceId,
   line: number
 ): boolean {
   return !!getBreakpointPositionsForLine(state, sourceId, line);
@@ -1017,7 +1056,7 @@ export function getBreakpointPositionsForLocation(
 
 export function getBreakableLines(
   state: OuterState & SourceActorOuterState,
-  sourceId: string
+  sourceId: SourceId
 ): ?Array<number> {
   if (!sourceId) {
     return null;
@@ -1047,7 +1086,7 @@ export const getSelectedBreakableLines: Selector<Set<number>> = createSelector(
   breakableLines => new Set(breakableLines || [])
 );
 
-export function isSourceLoadingOrLoaded(state: OuterState, sourceId: string) {
+export function isSourceLoadingOrLoaded(state: OuterState, sourceId: SourceId) {
   const { content } = getResource(state.sources.sources, sourceId);
   return content !== null;
 }

@@ -532,7 +532,7 @@ void nsJARChannel::FireOnProgress(uint64_t aProgress) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mProgressSink);
 
-  mProgressSink->OnProgress(this, nullptr, aProgress, mContentLength);
+  mProgressSink->OnProgress(this, aProgress, mContentLength);
 }
 
 //-----------------------------------------------------------------------------
@@ -870,7 +870,7 @@ nsJARChannel::AsyncOpen(nsIStreamListener* aListener) {
 
   LOG(("nsJARChannel::AsyncOpen [this=%p]\n", this));
   MOZ_ASSERT(
-      !mLoadInfo || mLoadInfo->GetSecurityMode() == 0 ||
+      mLoadInfo->GetSecurityMode() == 0 ||
           mLoadInfo->GetInitialSecurityCheckDone() ||
           (mLoadInfo->GetSecurityMode() ==
                nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL &&

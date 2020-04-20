@@ -70,6 +70,20 @@ using namespace sandbox::bpf_dsl;
 // actual value because it shows up in file flags.
 #define O_LARGEFILE_REAL 00100000
 
+#ifndef F_LINUX_SPECIFIC_BASE
+#  define F_LINUX_SPECIFIC_BASE 1024
+#else
+static_assert(F_LINUX_SPECIFIC_BASE == 1024);
+#endif
+
+#ifndef F_ADD_SEALS
+#  define F_ADD_SEALS (F_LINUX_SPECIFIC_BASE + 9)
+#  define F_GET_SEALS (F_LINUX_SPECIFIC_BASE + 10)
+#else
+static_assert(F_ADD_SEALS == (F_LINUX_SPECIFIC_BASE + 9));
+static_assert(F_GET_SEALS == (F_LINUX_SPECIFIC_BASE + 10));
+#endif
+
 // To avoid visual confusion between "ifdef ANDROID" and "ifndef ANDROID":
 #ifndef ANDROID
 #  define DESKTOP
@@ -603,6 +617,11 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
 
         // prctl
       case __NR_prctl: {
+        // WARNING: do not handle __NR_prctl directly in subclasses;
+        // override PrctlPolicy instead.  The special handling of
+        // PR_SET_NO_NEW_PRIVS is used to detect that a thread already
+        // has the policy applied; see also bug 1257361.
+
         if (SandboxInfo::Get().Test(SandboxInfo::kHasSeccompTSync)) {
           return PrctlPolicy();
         }
@@ -1113,6 +1132,9 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
 #ifdef F_SETLKW64
             .Case(F_SETLKW64, Allow())
 #endif
+            // Wayland client libraries use file seals
+            .Case(F_ADD_SEALS, Allow())
+            .Case(F_GET_SEALS, Allow())
             .Default(SandboxPolicyCommon::EvaluateSyscall(sysno));
       }
 
@@ -1269,6 +1291,23 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
 
       case __NR_get_mempolicy:
         return Allow();
+
+        // Mesa's amdgpu driver uses kcmp with KCMP_FILE; see also bug
+        // 1624743.  The pid restriction should be sufficient on its
+        // own if we need to remove the type restriction in the future.
+      case __NR_kcmp: {
+        // The real KCMP_FILE is part of an anonymous enum in
+        // <linux/kcmp.h>, but we can't depend on having that header,
+        // and it's not a #define so the usual #ifndef approach
+        // doesn't work.
+        static const int kKcmpFile = 0;
+        const pid_t myPid = getpid();
+        Arg<pid_t> pid1(0), pid2(1);
+        Arg<int> type(2);
+        return If(AllOf(pid1 == myPid, pid2 == myPid, type == kKcmpFile),
+                  Allow())
+            .Else(InvalidSyscall());
+      }
 
 #endif  // DESKTOP
 
@@ -1478,6 +1517,173 @@ UniquePtr<sandbox::bpf_dsl::Policy> GetDecoderSandboxPolicy(
     SandboxBrokerClient* aMaybeBroker) {
   return UniquePtr<sandbox::bpf_dsl::Policy>(
       new RDDSandboxPolicy(aMaybeBroker));
+}
+
+// Basically a clone of RDDSandboxPolicy until we know exactly what
+// the SocketProcess sandbox looks like.
+class SocketProcessSandboxPolicy final : public SandboxPolicyCommon {
+ public:
+  explicit SocketProcessSandboxPolicy(SandboxBrokerClient* aBroker)
+      : SandboxPolicyCommon(aBroker, ShmemUsage::MAY_CREATE,
+                            AllowUnsafeSocketPair::NO) {}
+
+  static intptr_t FcntlTrap(const sandbox::arch_seccomp_data& aArgs,
+                            void* aux) {
+    const auto cmd = static_cast<int>(aArgs.args[1]);
+    switch (cmd) {
+        // This process can't exec, so the actual close-on-exec flag
+        // doesn't matter; have it always read as true and ignore writes.
+      case F_GETFD:
+        return O_CLOEXEC;
+      case F_SETFD:
+        return 0;
+      default:
+        return -ENOSYS;
+    }
+  }
+
+  Maybe<ResultExpr> EvaluateSocketCall(int aCall,
+                                       bool aHasArgs) const override {
+    switch (aCall) {
+      case SYS_BIND:
+        return Some(Allow());
+
+      case SYS_SOCKET:
+        return Some(Allow());
+
+      case SYS_CONNECT:
+        return Some(Allow());
+
+      case SYS_RECVFROM:
+      case SYS_SENDTO:
+      case SYS_SENDMMSG:
+        return Some(Allow());
+
+      case SYS_RECV:
+      case SYS_SEND:
+      case SYS_GETSOCKOPT:
+      case SYS_SETSOCKOPT:
+      case SYS_GETSOCKNAME:
+      case SYS_GETPEERNAME:
+      case SYS_SHUTDOWN:
+      case SYS_ACCEPT:
+      case SYS_ACCEPT4:
+        return Some(Allow());
+
+      default:
+        return SandboxPolicyCommon::EvaluateSocketCall(aCall, aHasArgs);
+    }
+  }
+
+  ResultExpr PrctlPolicy() const override {
+    // FIXME: bug 1619661
+    return Allow();
+  }
+
+  ResultExpr EvaluateSyscall(int sysno) const override {
+    switch (sysno) {
+      case __NR_getrusage:
+        return Allow();
+
+      case __NR_ioctl: {
+        static const unsigned long kTypeMask = _IOC_TYPEMASK << _IOC_TYPESHIFT;
+        static const unsigned long kTtyIoctls = TIOCSTI & kTypeMask;
+        // On some older architectures (but not x86 or ARM), ioctls are
+        // assigned type fields differently, and the TIOC/TC/FIO group
+        // isn't all the same type.  If/when we support those archs,
+        // this would need to be revised (but really this should be a
+        // default-deny policy; see below).
+        static_assert(kTtyIoctls == (TCSETA & kTypeMask) &&
+                          kTtyIoctls == (FIOASYNC & kTypeMask),
+                      "tty-related ioctls use the same type");
+
+        Arg<unsigned long> request(1);
+        auto shifted_type = request & kTypeMask;
+
+        // Rust's stdlib seems to use FIOCLEX instead of equivalent fcntls.
+        return If(request == FIOCLEX, Allow())
+            // Rust's stdlib also uses FIONBIO instead of equivalent fcntls.
+            .ElseIf(request == FIONBIO, Allow())
+            // ffmpeg, and anything else that calls isatty(), will be told
+            // that nothing is a typewriter:
+            .ElseIf(request == TCGETS, Error(ENOTTY))
+            // Allow anything that isn't a tty ioctl, for now; bug 1302711
+            // will cover changing this to a default-deny policy.
+            .ElseIf(shifted_type != kTtyIoctls, Allow())
+            .Else(SandboxPolicyCommon::EvaluateSyscall(sysno));
+      }
+
+      CASES_FOR_fcntl : {
+        Arg<int> cmd(1);
+        Arg<int> flags(2);
+        // Typical use of F_SETFL is to modify the flags returned by
+        // F_GETFL and write them back, including some flags that
+        // F_SETFL ignores.  This is a default-deny policy in case any
+        // new SETFL-able flags are added.  (In particular we want to
+        // forbid O_ASYNC; see bug 1328896, but also see bug 1408438.)
+        static const int ignored_flags =
+            O_ACCMODE | O_LARGEFILE_REAL | O_CLOEXEC;
+        static const int allowed_flags = ignored_flags | O_APPEND | O_NONBLOCK;
+        return Switch(cmd)
+            // Close-on-exec is meaningless when execve isn't allowed, but
+            // NSPR reads the bit and asserts that it has the expected value.
+            .Case(F_GETFD, Allow())
+            .Case(
+                F_SETFD,
+                If((flags & ~FD_CLOEXEC) == 0, Allow()).Else(InvalidSyscall()))
+            .Case(F_GETFL, Allow())
+            .Case(F_SETFL, If((flags & ~allowed_flags) == 0, Allow())
+                               .Else(InvalidSyscall()))
+            .Case(F_DUPFD_CLOEXEC, Allow())
+            // Nvidia GL and fontconfig (newer versions) use fcntl file locking.
+            .Case(F_SETLK, Allow())
+#ifdef F_SETLK64
+            .Case(F_SETLK64, Allow())
+#endif
+            // Pulseaudio uses F_SETLKW, as does fontconfig.
+            .Case(F_SETLKW, Allow())
+#ifdef F_SETLKW64
+            .Case(F_SETLKW64, Allow())
+#endif
+            .Default(SandboxPolicyCommon::EvaluateSyscall(sysno));
+      }
+
+#ifdef DESKTOP
+      // This section is borrowed from ContentSandboxPolicy
+      CASES_FOR_getrlimit:
+      CASES_FOR_getresuid:
+      CASES_FOR_getresgid:
+        return Allow();
+
+      case __NR_prlimit64: {
+        // Allow only the getrlimit() use case.  (glibc seems to use
+        // only pid 0 to indicate the current process; pid == getpid()
+        // is equivalent and could also be allowed if needed.)
+        Arg<pid_t> pid(0);
+        // This is really a const struct ::rlimit*, but Arg<> doesn't
+        // work with pointers, only integer types.
+        Arg<uintptr_t> new_limit(2);
+        return If(AllOf(pid == 0, new_limit == 0), Allow())
+            .Else(InvalidSyscall());
+      }
+#endif  // DESKTOP
+
+      CASES_FOR_getuid:
+      CASES_FOR_getgid:
+      CASES_FOR_geteuid:
+      CASES_FOR_getegid:
+        return Allow();
+
+      default:
+        return SandboxPolicyCommon::EvaluateSyscall(sysno);
+    }
+  }
+};
+
+UniquePtr<sandbox::bpf_dsl::Policy> GetSocketProcessSandboxPolicy(
+    SandboxBrokerClient* aMaybeBroker) {
+  return UniquePtr<sandbox::bpf_dsl::Policy>(
+      new SocketProcessSandboxPolicy(aMaybeBroker));
 }
 
 }  // namespace mozilla

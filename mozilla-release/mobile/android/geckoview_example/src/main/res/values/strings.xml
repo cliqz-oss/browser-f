@@ -13,6 +13,7 @@
     <string name="request_media">Share video and audio with "%1$s"</string>
     <string name="request_xr">Share WebXR displays with "%1$s"?</string>
     <string name="request_autoplay">Allow video to autoplay on "%1$s"?</string>
+    <string name="request_media_key_system_access">Allow system media key access for "%1$s"?</string>
     <string name="media_back_camera">Back camera</string>
     <string name="media_front_camera">Front camera</string>
     <string name="media_microphone">Microphone</string>
@@ -28,6 +29,7 @@
     <string name="remote_debugging">Remote Debugging</string>
     <string name="forward">Forward</string>
     <string name="reload">Reload</string>
+    <string name="settings">Settings...</string>
     <string name="crashed_title">GeckoView Example Crashed</string>
     <string name="crashed_text">Tap to report to Mozilla.</string>
     <string name="crashed_ignore">Ignore</string>
@@ -37,6 +39,7 @@
     <string name="new_tab">New tab</string>
     <string name="install_addon">Install Add-on...</string>
     <string name="install_addon_hint">Add-on URL: https://addons.mozilla.org/...</string>
+    <string name="update_addon">Update Add-on</string>
     <string name="close_tab">Close tab</string>
     <string name="desktop_mode">Desktop site</string>
     <string name="slow_script">A script on this page is causing your web browser to run slowly</string>
@@ -45,4 +48,22 @@
     <string name="install">Install</string>
     <string name="cancel">Cancel</string>
     <string name="addon_uri">WebExtension xpi URL</string>
+
+    # Preference Keys
+    <string name="key_tracking_protection">tracking_protection</string>
+    <string name="key_autoplay">autoplay</string>
+    <string name="key_remote_debugging">remote_debugging</string>
+    <string name="key_preferred_color_scheme">preferred_color_scheme</string>
+
+    <string-array name="pref_preferred_color_scheme_display_names">
+        <item>Follow System Preference</item>
+        <item>Light</item>
+        <item>Dark</item>
+    </string-array>
+    <string-array name="pref_preferred_color_scheme_values">
+        <item>-1</item>
+        <item>0</item>
+        <item>1</item>
+    </string-array>
+
 </resources>

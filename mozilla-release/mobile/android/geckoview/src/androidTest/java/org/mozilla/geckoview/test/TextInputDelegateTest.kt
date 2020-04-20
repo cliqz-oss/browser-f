@@ -12,6 +12,7 @@ import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.WithDisplay
 import org.mozilla.geckoview.test.util.Callbacks
 
 import androidx.test.filters.MediumTest
+import android.text.InputType;
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -90,6 +91,16 @@ class TextInputDelegateTest : BaseSessionTest() {
                     else -> "new Promise(r => document.querySelector('$id').addEventListener('compositionupdate', r, { once: true }))"
                 })
         ic.setComposingText(text, newCursorPosition)
+        promise.value
+    }
+
+    private fun finishComposingText(ic: InputConnection) {
+        val promise = mainSession.evaluatePromiseJS(
+                when (id) {
+                    "#designmode" -> "new Promise(r => document.querySelector('$id').contentDocument.addEventListener('compositionend', r, { once: true }))"
+                    else -> "new Promise(r => document.querySelector('$id').addEventListener('compositionend', r, { once: true }))"
+                })
+        ic.finishComposingText()
         promise.value
     }
 
@@ -525,5 +536,53 @@ class TextInputDelegateTest : BaseSessionTest() {
         ic.endBatchEdit()
         promise.value
         assertText("empty text", ic, "")
+    }
+
+    @WithDisplay(width = 512, height = 512) // Child process updates require having a display.
+    @Test fun editorInfo_default() {
+        mainSession.textInput.view = View(InstrumentationRegistry.getInstrumentation().targetContext)
+
+        mainSession.loadTestPath(INPUTS_PATH)
+        mainSession.waitForPageStop()
+
+        textContent = ""
+        mainSession.evaluateJS("document.querySelector('$id').focus()")
+        mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+
+        val editorInfo = EditorInfo()
+        mainSession.textInput.onCreateInputConnection(editorInfo)
+        assertThat("Default EditorInfo.inputType", editorInfo.inputType, equalTo(
+            when (id) {
+                "#input" -> InputType.TYPE_CLASS_TEXT or
+                            InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or
+                            InputType.TYPE_TEXT_FLAG_IME_MULTI_LINE
+                else -> InputType.TYPE_CLASS_TEXT or
+                        InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+                        InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or
+                        InputType.TYPE_TEXT_FLAG_IME_MULTI_LINE
+            }))
+    }
+
+    @WithDisplay(width = 512, height = 512) // Child process updates require having a display.
+    @Test fun bug1613804_finishComposingText() {
+        mainSession.textInput.view = View(InstrumentationRegistry.getInstrumentation().targetContext)
+
+        mainSession.loadTestPath(INPUTS_PATH)
+        mainSession.waitForPageStop()
+
+        textContent = ""
+        mainSession.evaluateJS("document.querySelector('$id').focus()")
+        mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+
+        val ic = mainSession.textInput.onCreateInputConnection(EditorInfo())!!
+
+        ic.beginBatchEdit();
+        ic.setComposingText("abc", 1)
+        ic.endBatchEdit()
+
+        // finishComposingText has to dispatch compositionend event.
+        finishComposingText(ic)
+
+        assertText("commit abc", ic, "abc")
     }
 }

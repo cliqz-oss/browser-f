@@ -36,16 +36,16 @@ const CachePanel = createFactory(
   require("devtools/client/netmonitor/src/components/request-details/CachePanel")
 );
 const ResponsePanel = createFactory(
-  require("devtools/client/netmonitor/src/components/ResponsePanel")
+  require("devtools/client/netmonitor/src/components/request-details/ResponsePanel")
 );
 const SecurityPanel = createFactory(
   require("devtools/client/netmonitor/src/components/request-details/SecurityPanel")
 );
 const StackTracePanel = createFactory(
-  require("devtools/client/netmonitor/src/components/StackTracePanel")
+  require("devtools/client/netmonitor/src/components/request-details/StackTracePanel")
 );
 const TimingsPanel = createFactory(
-  require("devtools/client/netmonitor/src/components/TimingsPanel")
+  require("devtools/client/netmonitor/src/components/request-details/TimingsPanel")
 );
 
 const COLLAPSE_DETAILS_PANE = L10N.getStr("collapseDetailsPane");
@@ -221,8 +221,7 @@ class TabboxPanel extends Component {
           request,
         })
       ),
-      request.cause &&
-        request.cause.stacktraceAvailable &&
+      request.cause?.stacktraceAvailable &&
         TabPanel(
           {
             id: PANELS.STACK_TRACE,

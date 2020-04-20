@@ -27,7 +27,7 @@ use crate::debug_server;
 use crate::frame_builder::{FrameBuilder, FrameBuilderConfig};
 use crate::glyph_rasterizer::{FontInstance};
 use crate::gpu_cache::GpuCache;
-use crate::hit_test::{HitTest, HitTester};
+use crate::hit_test::{HitTest, HitTester, SharedHitTester};
 use crate::intern::DataStore;
 use crate::internal_types::{DebugOutput, FastHashMap, FastHashSet, RenderedDocument, ResultMsg};
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
@@ -35,7 +35,7 @@ use crate::picture::{RetainedTiles, TileCacheLogger};
 use crate::prim_store::{PrimitiveScratchBuffer, PrimitiveInstance};
 use crate::prim_store::{PrimitiveInstanceKind, PrimTemplateCommonData};
 use crate::prim_store::interned::*;
-use crate::profiler::{BackendProfileCounters, IpcProfileCounters, ResourceProfileCounters};
+use crate::profiler::{BackendProfileCounters, ResourceProfileCounters};
 use crate::record::ApiRecordingReceiver;
 use crate::record::LogRecorder;
 use crate::render_task_graph::RenderTaskGraphCounters;
@@ -359,7 +359,10 @@ struct Document {
 
     /// A data structure to allow hit testing against rendered frames. This is updated
     /// every time we produce a fully rendered frame.
-    hit_tester: Option<HitTester>,
+    hit_tester: Option<Arc<HitTester>>,
+    /// To avoid synchronous messaging we update a shared hit-tester that other threads
+    /// can query.
+    shared_hit_tester: Arc<SharedHitTester>,
 
     /// Properties that are resolved during frame building and can be changed at any time
     /// without requiring the scene to be re-built.
@@ -415,6 +418,7 @@ impl Document {
             frame_builder: FrameBuilder::new(),
             output_pipelines: FastHashSet::default(),
             hit_tester: None,
+            shared_hit_tester: Arc::new(SharedHitTester::new()),
             dynamic_properties: SceneProperties::new(),
             frame_is_valid: false,
             hit_tester_is_valid: false,
@@ -486,6 +490,9 @@ impl Document {
                 };
 
                 tx.send(result).unwrap();
+            }
+            FrameMsg::RequestHitTester(tx) => {
+                tx.send(self.shared_hit_tester.clone()).unwrap();
             }
             FrameMsg::SetPan(pan) => {
                 if self.view.pan != pan {
@@ -573,12 +580,11 @@ impl Document {
                 debug_flags,
                 tile_cache_logger,
             );
-            self.hit_tester = Some(self.scene.create_hit_tester(&self.data_stores.clip));
+
             frame
         };
 
         self.frame_is_valid = true;
-        self.hit_tester_is_valid = true;
 
         let is_new_scene = self.has_built_scene;
         self.has_built_scene = false;
@@ -593,13 +599,15 @@ impl Document {
         let accumulated_scale_factor = self.view.accumulated_scale_factor();
         let pan = self.view.pan.to_f32() / accumulated_scale_factor;
 
-            self.scene.spatial_tree.update_tree(
-                pan,
-                accumulated_scale_factor,
-                &self.dynamic_properties,
-            );
+        self.scene.spatial_tree.update_tree(
+            pan,
+            accumulated_scale_factor,
+            &self.dynamic_properties,
+        );
 
-        self.hit_tester = Some(self.scene.create_hit_tester(&self.data_stores.clip));
+        let hit_tester = Arc::new(self.scene.create_hit_tester(&self.data_stores.clip));
+        self.hit_tester = Some(Arc::clone(&hit_tester));
+        self.shared_hit_tester.update(hit_tester);
         self.hit_tester_is_valid = true;
     }
 
@@ -778,7 +786,6 @@ impl RenderBackend {
         message: SceneMsg,
         frame_counter: u32,
         txn: &mut Transaction,
-        ipc_profile_counters: &mut IpcProfileCounters,
     ) {
         let doc = self.documents.get_mut(&document_id).expect("No document?");
 
@@ -837,9 +844,8 @@ impl RenderBackend {
                 }
 
                 let display_list_len = built_display_list.data().len();
-                let (builder_start_time, builder_finish_time, send_start_time) =
+                let (builder_start_time_ns, builder_end_time_ns, send_time_ns) =
                     built_display_list.times();
-                let display_list_received_time = precise_time_ns();
 
                 txn.display_list_updates.push(DisplayListUpdate {
                     built_display_list,
@@ -848,21 +854,16 @@ impl RenderBackend {
                     background,
                     viewport_size,
                     content_size,
+                    timings: TransactionTimings {
+                        builder_start_time_ns,
+                        builder_end_time_ns,
+                        send_time_ns,
+                        scene_build_start_time_ns: 0,
+                        scene_build_end_time_ns: 0,
+                        blob_rasterization_end_time_ns: 0,
+                        display_list_len,
+                    },
                 });
-
-                // Note: this isn't quite right as auxiliary values will be
-                // pulled out somewhere in the prim_store, but aux values are
-                // really simple and cheap to access, so it's not a big deal.
-                let display_list_consumed_time = precise_time_ns();
-
-                ipc_profile_counters.set(
-                    builder_start_time,
-                    builder_finish_time,
-                    send_start_time,
-                    display_list_received_time,
-                    display_list_consumed_time,
-                    display_list_len,
-                );
             }
             SceneMsg::SetRootPipeline(pipeline_id) => {
                 profile_scope!("SetRootPipeline");
@@ -909,10 +910,19 @@ impl RenderBackend {
                         for mut txn in txns.drain(..) {
                             let has_built_scene = txn.built_scene.is_some();
 
-                            if has_built_scene {
-                                let scene_build_time =
-                                    txn.scene_build_end_time - txn.scene_build_start_time;
-                                profile_counters.scene_build_time.set(scene_build_time);
+                            if let Some(timings) = txn.timings {
+                                if has_built_scene {
+                                    profile_counters.scene_changed = true;
+                                }
+
+                                profile_counters.txn.set(
+                                    timings.builder_start_time_ns,
+                                    timings.builder_end_time_ns,
+                                    timings.send_time_ns,
+                                    timings.scene_build_start_time_ns,
+                                    timings.scene_build_end_time_ns,
+                                    timings.display_list_len,
+                                );
                             }
 
                             if let Some(doc) = self.documents.get_mut(&txn.document_id) {
@@ -926,6 +936,25 @@ impl RenderBackend {
                                     );
                                 }
 
+                                // If there are any additions or removals of clip modes
+                                // during the scene build, apply them to the data store now.
+                                // This needs to happen before we build the hit tester.
+                                if let Some(updates) = txn.interner_updates.take() {
+                                    #[cfg(feature = "capture")]
+                                    {
+                                        if self.debug_flags.contains(DebugFlags::TILE_CACHE_LOGGING_DBG) {
+                                            self.tile_cache_logger.serialize_updates(&updates);
+                                        }
+                                    }
+                                    doc.data_stores.apply_updates(updates, &mut profile_counters);
+                                }
+
+
+                                // Build the hit tester while the APZ lock is held so that its content
+                                // is in sync with the gecko APZ tree.
+                                if !doc.hit_tester_is_valid {
+                                    doc.rebuild_hit_tester();
+                                }
                                 if let Some(ref tx) = result_tx {
                                     let (resume_tx, resume_rx) = channel();
                                     tx.send(SceneSwapResult::Complete(resume_tx)).unwrap();
@@ -956,7 +985,6 @@ impl RenderBackend {
                             self.update_document(
                                 txn.document_id,
                                 txn.resource_updates.take(),
-                                txn.interner_updates.take(),
                                 txn.frame_ops.take(),
                                 txn.notifications.take(),
                                 txn.render_frame,
@@ -1376,7 +1404,6 @@ impl RenderBackend {
                         scene_msg,
                         *frame_counter,
                         &mut txn,
-                        &mut profile_counters.ipc,
                     )
                 }
 
@@ -1418,7 +1445,6 @@ impl RenderBackend {
                 self.update_document(
                     txn.document_id,
                     txn.resource_updates.take(),
-                    None,
                     txn.frame_ops.take(),
                     txn.notifications.take(),
                     txn.render_frame,
@@ -1462,7 +1488,6 @@ impl RenderBackend {
                 self.update_document(
                     document_id,
                     Vec::default(),
-                    None,
                     Vec::default(),
                     Vec::default(),
                     false,
@@ -1478,7 +1503,6 @@ impl RenderBackend {
         &mut self,
         document_id: DocumentId,
         resource_updates: Vec<ResourceUpdate>,
-        interner_updates: Option<InternerUpdates>,
         mut frame_ops: Vec<FrameMsg>,
         mut notifications: Vec<NotificationRequest>,
         mut render_frame: bool,
@@ -1489,6 +1513,8 @@ impl RenderBackend {
     ) {
         let requested_frame = render_frame;
 
+        let requires_frame_build = self.requires_frame_build();
+        let doc = self.documents.get_mut(&document_id).unwrap();
         // If we have a sampler, get more frame ops from it and add them
         // to the transaction. This is a hook to allow the WR user code to
         // fiddle with things after a potentially long scene build, but just
@@ -1496,25 +1522,12 @@ impl RenderBackend {
         // async transforms.
         if requested_frame || has_built_scene {
             if let Some(ref sampler) = self.sampler {
-                frame_ops.append(&mut sampler.sample(document_id));
+                frame_ops.append(&mut sampler.sample(document_id,
+                                                     &doc.scene.pipeline_epochs));
             }
         }
 
-        let requires_frame_build = self.requires_frame_build();
-        let doc = self.documents.get_mut(&document_id).unwrap();
         doc.has_built_scene |= has_built_scene;
-
-        // If there are any additions or removals of clip modes
-        // during the scene build, apply them to the data store now.
-        if let Some(updates) = interner_updates {
-            #[cfg(feature = "capture")]
-            {
-                if self.debug_flags.contains(DebugFlags::TILE_CACHE_LOGGING_DBG) {
-                    self.tile_cache_logger.serialize_updates(&updates);
-                }
-            }
-            doc.data_stores.apply_updates(updates, profile_counters);
-        }
 
         // TODO: this scroll variable doesn't necessarily mean we scrolled. It is only used
         // for something wrench specific and we should remove it.
@@ -1698,7 +1711,10 @@ impl RenderBackend {
         report.gpu_cache_metadata = self.gpu_cache.size_of(ops);
         for doc in self.documents.values() {
             report.clip_stores += doc.scene.clip_store.size_of(ops);
-            report.hit_testers += doc.hit_tester.size_of(ops);
+            report.hit_testers += match &doc.hit_tester {
+                Some(hit_tester) => hit_tester.size_of(ops),
+                None => 0,
+            };
 
             doc.data_stores.report_memory(ops, &mut report)
         }
@@ -1910,6 +1926,7 @@ impl RenderBackend {
                 output_pipelines: FastHashSet::default(),
                 dynamic_properties: SceneProperties::new(),
                 hit_tester: None,
+                shared_hit_tester: Arc::new(SharedHitTester::new()),
                 frame_is_valid: false,
                 hit_tester_is_valid: false,
                 rendered_frame_is_valid: false,

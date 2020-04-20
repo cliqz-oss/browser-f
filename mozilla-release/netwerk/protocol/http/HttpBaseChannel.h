@@ -295,8 +295,6 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD GetFetchCacheMode(uint32_t* aFetchCacheMode) override;
   NS_IMETHOD SetFetchCacheMode(uint32_t aFetchCacheMode) override;
   NS_IMETHOD GetTopWindowURI(nsIURI** aTopWindowURI) override;
-  NS_IMETHOD GetContentBlockingAllowListPrincipal(
-      nsIPrincipal** aPrincipal) override;
   NS_IMETHOD SetTopWindowURIIfUnknown(nsIURI* aTopWindowURI) override;
   NS_IMETHOD GetProxyURI(nsIURI** proxyURI) override;
   virtual void SetCorsPreflightParameters(
@@ -469,10 +467,6 @@ class HttpBaseChannel : public nsHashPropertyBag,
 
   void SetTopWindowURI(nsIURI* aTopWindowURI) { mTopWindowURI = aTopWindowURI; }
 
-  void SetContentBlockingAllowListPrincipal(nsIPrincipal* aPrincipal) {
-    mContentBlockingAllowListPrincipal = aPrincipal;
-  }
-
   // Set referrerInfo and compute the referrer header if neccessary.
   // Pass true for aSetOriginal if this is a new referrer and should
   // overwrite the 'original' value, false if this is a mutation (like
@@ -485,7 +479,6 @@ class HttpBaseChannel : public nsHashPropertyBag,
     explicit ReplacementChannelConfig(
         const dom::ReplacementChannelConfigInit& aInit);
 
-    uint32_t loadFlags = 0;
     uint32_t redirectFlags = 0;
     uint32_t classOfService = 0;
     Maybe<bool> privateBrowsing = Nothing();
@@ -509,8 +502,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   // Create a ReplacementChannelConfig object that can be used to duplicate the
   // current channel.
   ReplacementChannelConfig CloneReplacementChannelConfig(
-      bool aPreserveMethod, uint32_t aRedirectFlags, ReplacementReason aReason,
-      uint32_t aExtraLoadFlags = 0);
+      bool aPreserveMethod, uint32_t aRedirectFlags, ReplacementReason aReason);
 
   static void ConfigureReplacementChannel(nsIChannel*,
                                           const ReplacementChannelConfig&,
@@ -603,6 +595,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
 
   void MaybeFlushConsoleReports();
 
+  bool IsBrowsingContextDiscarded() const;
+
   friend class PrivateBrowsingChannel<HttpBaseChannel>;
   friend class InterceptFailedOnStop;
 
@@ -622,7 +616,6 @@ class HttpBaseChannel : public nsHashPropertyBag,
   nsCOMPtr<nsIURI> mProxyURI;
   nsCOMPtr<nsIPrincipal> mPrincipal;
   nsCOMPtr<nsIURI> mTopWindowURI;
-  nsCOMPtr<nsIPrincipal> mContentBlockingAllowListPrincipal;
   nsCOMPtr<nsIStreamListener> mListener;
   // An instance of nsHTTPCompressConv
   nsCOMPtr<nsIStreamListener> mCompressListener;
@@ -686,7 +679,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NetAddr mSelfAddr;
   NetAddr mPeerAddr;
 
-  nsTArray<Pair<nsString, nsString>> mSecurityConsoleMessages;
+  nsTArray<std::pair<nsString, nsString>> mSecurityConsoleMessages;
   nsTArray<nsCString> mUnsafeHeaders;
 
   // A time value equal to the starting time of the fetch that initiates the

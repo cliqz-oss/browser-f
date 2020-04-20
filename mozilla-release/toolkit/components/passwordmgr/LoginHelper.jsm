@@ -30,6 +30,7 @@ this.LoginHelper = {
   storageEnabled: null,
   formlessCaptureEnabled: null,
   generationAvailable: null,
+  generationConfidenceThreshold: null,
   generationEnabled: null,
   includeOtherSubdomainsInLookup: null,
   insecureAutofill: null,
@@ -37,6 +38,8 @@ this.LoginHelper = {
   privateBrowsingCaptureEnabled: null,
   schemeUpgrades: null,
   showAutoCompleteFooter: null,
+  testOnlyUserHasInteractedWithDocument: null,
+  userInputRequiredToCapture: null,
 
   init() {
     // Watch for pref changes to update cached pref values.
@@ -63,6 +66,9 @@ this.LoginHelper = {
     this.generationAvailable = Services.prefs.getBoolPref(
       "signon.generation.available"
     );
+    this.generationConfidenceThreshold = parseFloat(
+      Services.prefs.getStringPref("signon.generation.confidenceThreshold")
+    );
     this.generationEnabled = Services.prefs.getBoolPref(
       "signon.generation.enabled"
     );
@@ -76,6 +82,9 @@ this.LoginHelper = {
       "signon.management.overrideURI",
       null
     );
+    this.passwordEditCaptureEnabled = Services.prefs.getBoolPref(
+      "signon.passwordEditCapture.enabled"
+    );
     this.privateBrowsingCaptureEnabled = Services.prefs.getBoolPref(
       "signon.privateBrowsingCapture.enabled"
     );
@@ -86,11 +95,27 @@ this.LoginHelper = {
     this.storeWhenAutocompleteOff = Services.prefs.getBoolPref(
       "signon.storeWhenAutocompleteOff"
     );
+
+    if (
+      Services.prefs.getBoolPref(
+        "signon.testOnlyUserHasInteractedByPrefValue",
+        false
+      )
+    ) {
+      this.testOnlyUserHasInteractedWithDocument = Services.prefs.getBoolPref(
+        "signon.testOnlyUserHasInteractedWithDocument",
+        false
+      );
+      log.debug(
+        "updateSignonPrefs, using pref value for testOnlyUserHasInteractedWithDocument",
+        this.testOnlyUserHasInteractedWithDocument
+      );
+    } else {
+      this.testOnlyUserHasInteractedWithDocument = null;
+    }
+
     this.userInputRequiredToCapture = Services.prefs.getBoolPref(
       "signon.userInputRequiredToCapture.enabled"
-    );
-    this.passwordEditCaptureEnabled = Services.prefs.getBoolPref(
-      "signon.passwordEditCapture.enabled"
     );
   },
 
@@ -853,6 +878,10 @@ this.LoginHelper = {
       return false;
     }
 
+    if (element.hasBeenTypePassword) {
+      return false;
+    }
+
     let fieldType = element.hasAttribute("type")
       ? element.getAttribute("type").toLowerCase()
       : element.type;
@@ -1175,8 +1204,6 @@ this.LoginHelper = {
   },
 };
 
-LoginHelper.init();
-
 XPCOMUtils.defineLazyPreferenceGetter(
   LoginHelper,
   "showInsecureFieldWarning",
@@ -1184,5 +1211,11 @@ XPCOMUtils.defineLazyPreferenceGetter(
 );
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
-  return LoginHelper.createLogger("LoginHelper");
+  let processName =
+    Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT
+      ? "Main"
+      : "Content";
+  return LoginHelper.createLogger(`LoginHelper(${processName})`);
 });
+
+LoginHelper.init();

@@ -26,6 +26,8 @@ install-addon-from-file =
     .label = Add-on aus Datei installieren…
     .accesskey = A
 help-button = Hilfe für Add-ons
+sidebar-help-button-title =
+    .title = Hilfe für Add-ons
 preferences =
     { PLATFORM() ->
         [windows] { -brand-short-name } - Einstellungen
@@ -33,6 +35,12 @@ preferences =
     }
 tools-menu =
     .tooltiptext = Tools für alle Add-ons
+sidebar-preferences-button-title =
+    .title =
+        { PLATFORM() ->
+            [windows] { -brand-short-name } - Einstellungen
+           *[other] { -brand-short-name } - Einstellungen
+        }
 show-unsigned-extensions-button =
     .label = Einige Erweiterungen konnten nicht verifiziert werden.
 show-all-extensions-button =
@@ -171,6 +179,30 @@ extensions-view-recent-updates =
 extensions-view-available-updates =
     .name = Verfügbare Updates
     .tooltiptext = { extensions-view-available-updates.name }
+addon-category-discover = Empfehlungen
+addon-category-discover-title =
+    .title = Empfehlungen
+addon-category-extension = Erweiterungen
+addon-category-extension-title =
+    .title = Erweiterungen
+addon-category-theme = Themes
+addon-category-theme-title =
+    .title = Themes
+addon-category-plugin = Plugins
+addon-category-plugin-title =
+    .title = Plugins
+addon-category-dictionary = Wörterbücher
+addon-category-dictionary-title =
+    .title = Wörterbücher
+addon-category-locale = Sprachen
+addon-category-locale-title =
+    .title = Sprachen
+addon-category-available-updates = Verfügbare Updates
+addon-category-available-updates-title =
+    .title = Verfügbare Updates
+addon-category-recent-updates = Zuletzt durchgeführte Updates
+addon-category-recent-updates-title =
+    .title = Zuletzt durchgeführte Updates
 
 ## These are global warnings
 
@@ -307,6 +339,8 @@ shortcuts-card-expand-button =
 shortcuts-card-collapse-button = Weniger anzeigen
 go-back-button =
     .tooltiptext = Zurück
+header-back-button =
+    .title = Zurück
 
 ## Recommended add-ons page
 
