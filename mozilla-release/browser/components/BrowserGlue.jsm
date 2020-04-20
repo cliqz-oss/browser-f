@@ -3356,8 +3356,6 @@ BrowserGlue.prototype = {
           Services.prefs.clearUserPref("browser.onboarding." + item);
         }
       }
-      // CLIQZ: Initiate doorhanger notification if its update from <1.24.0
-      AppMenuNotifications.showNotification("allow-addons", null, null, {dismissed: true});
     }
 
     if (currentUIVersion < 77) {
