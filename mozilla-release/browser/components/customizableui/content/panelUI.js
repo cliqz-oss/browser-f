@@ -243,9 +243,6 @@ const PanelUI = {
       await PanelMultiView.openPopup(this.panel, anchor, {
         triggerEvent: domEvent,
       });
-      // CLIQZ: check if enabled addons message is there for doorhanger notification
-      const hasEnabledAddonFlag = this._notifications ? this._notifications.filter(n => n.id == 'allow-addons') : [];
-      this._checkEnableAddonMsg(!!(hasEnabledAddonFlag.length > 0));
     })().catch(Cu.reportError);
   },
 
@@ -339,22 +336,6 @@ const PanelUI = {
     let panelState = this.notificationPanel.state;
 
     return panelState == "showing" || panelState == "open";
-  },
-
-  // CLIQZ: function to hide/show menu entry in overflow menu for addon enable notification
-  _checkEnableAddonMsg(active) {
-    const seenPref = 'browser.cliqz.addon-enabled-banner-show';
-    const addonBanner = document.getElementById('addon-enabled-banner');
-    const isSeen = Services.prefs.getBoolPref(seenPref, false);
-
-    if (!isSeen && active) {
-      addonBanner.hidden = false;
-      Services.prefs.setBoolPref(seenPref, true);
-    } else {
-      addonBanner.hidden = true;
-    }
-
-    AppMenuNotifications.removeNotification("allow-addons");
   },
 
   /**
