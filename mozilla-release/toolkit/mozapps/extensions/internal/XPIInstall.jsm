@@ -4034,15 +4034,15 @@ var XPIInstall = {
   },
 
   async _cliqz_UpdateCliqzExtToLatest() {
-    const cliqzFromFeatures =
+    const cliqzFromBrowserPackge =
       await this._cliqz_getCliqzExtFromLocation(KEY_APP_SYSTEM_DEFAULTS) || {};
-    const cliqzFromSystem =
+    const cliqzFromCurrentSystemAddonSet =
       await this._cliqz_getCliqzExtFromLocation(KEY_APP_SYSTEM_ADDONS) || {};
 
     if (
       this.compareCliqzVersions(
-        cliqzFromFeatures.version,
-        cliqzFromSystem.version
+        cliqzFromBrowserPackge.version,
+        cliqzFromCurrentSystemAddonSet.version
       ) == 1
     ) {
       this._cliqz_forceResetAddonSet();
