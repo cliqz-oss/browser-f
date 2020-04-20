@@ -3977,6 +3977,78 @@ var XPIInstall = {
     return false;
   },
 
+  async _cliqz_getCliqzExtFromLocation(loc) {
+    const addons = addonMap(
+      await XPIDatabase.getAddonsInLocation(loc)
+    );
+    return addons.get("cliqz@cliqz.com");
+  },
+
+  // CLIQZ-SPECIAL: This function mocks downloadaddon function from updatesystemaddon
+  // function.This function copies the addons from browser package to a temp location
+  // then this temp location XPI is used to install the system addon set
+  // which eventually deleted the temp location in process
+  async _cliqz_copyAndGetTempPath(addon) {
+    let itemPath = "";
+    let newAddon = null;
+    let systemAddonLocation = XPIStates.getLocation(KEY_APP_SYSTEM_ADDONS);
+
+    try {
+      let path = OS.Path.join(OS.Constants.Path.tmpDir, "tmpaddon");
+      let unique = await OS.File.openUnique(path);
+      unique.file.close();
+      await OS.File.copy(addon.path, unique.path);
+      // Make sure to update file modification times so this is detected
+      // as a new add-on.
+      await OS.File.setDates(unique.path);
+      itemPath = unique.path;
+    } catch (e) {
+      logger.warn(
+        `Failed make temporary copy of ${addon.path}.`,
+        e
+      );
+    }
+
+    if(itemPath !== "") {
+      newAddon = await loadManifestFromFile(
+        nsIFile(itemPath),
+        systemAddonLocation
+      );
+    }
+    return newAddon;
+  },
+
+  async _cliqz_forceResetAddonSet() {
+    let systemAddonLocation = XPIStates.getLocation(KEY_APP_SYSTEM_ADDONS);
+    if (!systemAddonLocation) {
+      return;
+    }
+
+    const addonsInDefaults = await XPIDatabase.getAddonsInLocation(KEY_APP_SYSTEM_DEFAULTS);
+    const addonsTobeInstalled = await Promise.all(addonsInDefaults.map(this._cliqz_copyAndGetTempPath));
+    await systemAddonLocation.installer.installAddonSet(
+      // Filter out nulls in case any
+      addonsTobeInstalled.filter(a => a)
+    );
+    await systemAddonLocation.installer.cleanDirectories();
+  },
+
+  async _cliqz_UpdateCliqzExtToLatest() {
+    const cliqzFromBrowserPackge =
+      await this._cliqz_getCliqzExtFromLocation(KEY_APP_SYSTEM_DEFAULTS) || {};
+    const cliqzFromCurrentSystemAddonSet =
+      await this._cliqz_getCliqzExtFromLocation(KEY_APP_SYSTEM_ADDONS) || {};
+
+    if (
+      this.compareCliqzVersions(
+        cliqzFromBrowserPackge.version,
+        cliqzFromCurrentSystemAddonSet.version
+      ) == 1
+    ) {
+      this._cliqz_forceResetAddonSet();
+    }
+  },
+
   async updateSystemAddons() {
     const PREF_SYS_ADDON_UPDATE_ENABLED = "extensions.systemAddon.update.enabled";
     if (!Services.prefs.getBoolPref(PREF_SYS_ADDON_UPDATE_ENABLED, true)) {
