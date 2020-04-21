@@ -105,8 +105,6 @@ else
 fi
 
 export CQZ_VERSION=$(cat ./mozilla-release/browser/config/version_display.txt)
-export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
-export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 export S3_BUCKET_SERVICE=cliqz-browser-data
 
