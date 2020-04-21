@@ -303,16 +303,8 @@ class UrlbarInput {
       // Replace initial page URIs with an empty string
       // only if there's no opener (bug 370555).
       if (
-<<<<<<< HEAD
         CliqzResources.isInitialPage(uri) &&
-        this.window.checkEmptyPageOrigin(
-||||||| merged common ancestors
-        this.window.isInitialPage(uri) &&
-        this.window.checkEmptyPageOrigin(
-=======
-        this.window.isInitialPage(uri) &&
         BrowserUtils.checkEmptyPageOrigin(
->>>>>>> origin/upstream-betas
           this.window.gBrowser.selectedBrowser,
           uri
         )
@@ -337,16 +329,8 @@ class UrlbarInput {
       }
 
     } else if (
-<<<<<<< HEAD
       CliqzResources.isInitialPage(value) &&
-      this.window.checkEmptyPageOrigin(this.window.gBrowser.selectedBrowser)
-||||||| merged common ancestors
-      this.window.isInitialPage(value) &&
-      this.window.checkEmptyPageOrigin(this.window.gBrowser.selectedBrowser)
-=======
-      this.window.isInitialPage(value) &&
       BrowserUtils.checkEmptyPageOrigin(this.window.gBrowser.selectedBrowser)
->>>>>>> origin/upstream-betas
     ) {
       value = "";
       valid = true;

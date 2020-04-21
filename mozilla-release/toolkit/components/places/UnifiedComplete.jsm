@@ -1047,39 +1047,17 @@ Search.prototype = {
 
     // Check for Preloaded Sites Expiry before Autofill
 
-<<<<<<< HEAD
     /* CLIQZ-SPECIAL: we dont need preloaded sites
     await this._checkPreloadedSitesExpiry();
     */
 
-    if (this._enableAtSearch) {
-      // If the query is simply "@", then the results should be a list of all the
-      // search engines with "@" aliases, without a hueristic result.
-      if (this._trimmedOriginalSearchString == "@") {
-        let added = await this._addSearchEngineTokenAliasMatches();
-        if (added) {
-          this._cleanUpNonCurrentMatches(null);
-          this._autocompleteSearch.finishSearch(true);
-          return;
-        }
-||||||| merged common ancestors
     // If the query is simply "@", then the results should be a list of all the
     // search engines with "@" aliases, without a hueristic result.
-    if (this._trimmedOriginalSearchString == "@") {
-      let added = await this._addSearchEngineTokenAliasMatches();
-      if (added) {
-        this._cleanUpNonCurrentMatches(null);
-        this._autocompleteSearch.finishSearch(true);
-        return;
-=======
-    // If the query is simply "@", then the results should be a list of all the
-    // search engines with "@" aliases, without a hueristic result.
-    if (this._trimmedOriginalSearchString == "@") {
+    if (this._enableAtSearch && this._trimmedOriginalSearchString == "@") {
       let added = await this._addSearchEngineTokenAliasMatches();
       if (added) {
         this._autocompleteSearch.finishSearch(true);
         return;
->>>>>>> origin/upstream-betas
       }
     }
 
@@ -1214,12 +1192,6 @@ Search.prototype = {
     }
     */
 
-<<<<<<< HEAD
-    // Clear previous search suggestions.
-    searchSuggestionsCompletePromise.then(() => {
-      this._cleanUpNonCurrentMatches(UrlbarUtils.RESULT_GROUP.SUGGESTION);
-    });
-
     if (!this._disableAdaptive) {
       // Run the adaptive query first.
       await conn.executeCached(
@@ -1230,30 +1202,6 @@ Search.prototype = {
       if (!this.pending) {
         return;
       }
-||||||| merged common ancestors
-    // Clear previous search suggestions.
-    searchSuggestionsCompletePromise.then(() => {
-      this._cleanUpNonCurrentMatches(UrlbarUtils.RESULT_GROUP.SUGGESTION);
-    });
-
-    // Run the adaptive query first.
-    await conn.executeCached(
-      this._adaptiveQuery[0],
-      this._adaptiveQuery[1],
-      this._onResultRow.bind(this)
-    );
-    if (!this.pending) {
-      return;
-=======
-    // Run the adaptive query first.
-    await conn.executeCached(
-      this._adaptiveQuery[0],
-      this._adaptiveQuery[1],
-      this._onResultRow.bind(this)
-    );
-    if (!this.pending) {
-      return;
->>>>>>> origin/upstream-betas
     }
 
     /* CLIQZ-SPECIAL: we dont support remote tabs

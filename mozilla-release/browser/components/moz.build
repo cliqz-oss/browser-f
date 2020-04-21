@@ -38,15 +38,7 @@ DIRS += [
     'downloads',
     'enterprisepolicies',
     'extensions',
-<<<<<<< HEAD
-#   'fxmonitor',
-    'library',
-||||||| merged common ancestors
-    'fxmonitor',
-    'library',
-=======
-    'fxmonitor',
->>>>>>> origin/upstream-betas
+#    'fxmonitor',
     'migration',
     'newtab',
     'originattributes',

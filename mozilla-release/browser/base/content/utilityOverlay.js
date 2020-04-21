@@ -33,7 +33,8 @@ XPCOMUtils.defineLazyGetter(this, "ReferrerInfo", () =>
 Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
   enumerable: true,
   get() {
-    /* CLIQZ-SPECIAL - we allow cliqz tab to load in private mode
+    // CLIQZ-SPECIAL - we allow cliqz tab to load in private mode
+#if 0
     if (PrivateBrowsingUtils.isWindowPrivate(window)) {
       if (
         !PrivateBrowsingUtils.permanentPrivateBrowsing &&
@@ -61,14 +62,8 @@ Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
         return "about:privatebrowsing";
       }
     }
-<<<<<<< HEAD
-    */
-    return aboutNewTabService.newTabURL;
-||||||| merged common ancestors
-    return aboutNewTabService.newTabURL;
-=======
+#endif
     return AboutNewTab.newTabURL;
->>>>>>> origin/upstream-betas
   },
 });
 

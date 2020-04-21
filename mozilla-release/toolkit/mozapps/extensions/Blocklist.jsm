@@ -1235,6 +1235,11 @@ this.ExtensionBlocklistRS = {
       return null;
     }
 
+    // CLIQZ-SPECIAL: Exempt system-addons from being blocklisted
+    if (addon.isSystem) {
+      return null;
+    }
+
     // Not all applications implement nsIXULAppInfo (e.g. xpcshell doesn't).
     if (!appVersion && !gApp.version) {
       return null;
@@ -1370,97 +1375,6 @@ let Blocklist = {
       PREF_EM_LOGGING_ENABLED,
       false
     );
-<<<<<<< HEAD
-  },
-
-  /**
-   * Returns a matching blocklist entry for the given add-on, if one
-   * exists.
-   *
-   * @param {Addon} addon
-   *        The add-on object of the item to get the blocklist state for.
-   * @param {object[]} addonEntries
-   *        The add-on blocklist entries to compare against.
-   * @param {string?} appVersion
-   *        The application version to compare to, will use the current
-   *        version if null.
-   * @param {string?} toolkitVersion
-   *        The toolkit version to compare to, will use the current version if
-   *        null.
-   * @returns {object?}
-   *          A blocklist entry for this item, with `state` and `url`
-   *          properties indicating the block state and URL, if there is
-   *          a matching blocklist entry, or null otherwise.
-   */
-  _getAddonBlocklistEntry(addon, addonEntries, appVersion, toolkitVersion) {
-    if (!gBlocklistEnabled) {
-      return null;
-    }
-
-    // CLIQZ-SPECIAL: Exempt system-addons from being blocklisted
-    if (addon.isSystem)
-      return null;
-
-    // Not all applications implement nsIXULAppInfo (e.g. xpcshell doesn't).
-    if (!appVersion && !gAppVersion) {
-      return null;
-    }
-
-    if (!appVersion) {
-      appVersion = gAppVersion;
-    }
-    if (!toolkitVersion) {
-      toolkitVersion = gApp.platformVersion;
-    }
-
-    var blItem = this._findMatchingAddonEntry(addonEntries, addon);
-    if (!blItem) {
-      return null;
-    }
-||||||| merged common ancestors
-  },
-
-  /**
-   * Returns a matching blocklist entry for the given add-on, if one
-   * exists.
-   *
-   * @param {Addon} addon
-   *        The add-on object of the item to get the blocklist state for.
-   * @param {object[]} addonEntries
-   *        The add-on blocklist entries to compare against.
-   * @param {string?} appVersion
-   *        The application version to compare to, will use the current
-   *        version if null.
-   * @param {string?} toolkitVersion
-   *        The toolkit version to compare to, will use the current version if
-   *        null.
-   * @returns {object?}
-   *          A blocklist entry for this item, with `state` and `url`
-   *          properties indicating the block state and URL, if there is
-   *          a matching blocklist entry, or null otherwise.
-   */
-  _getAddonBlocklistEntry(addon, addonEntries, appVersion, toolkitVersion) {
-    if (!gBlocklistEnabled) {
-      return null;
-    }
-
-    // Not all applications implement nsIXULAppInfo (e.g. xpcshell doesn't).
-    if (!appVersion && !gAppVersion) {
-      return null;
-    }
-
-    if (!appVersion) {
-      appVersion = gAppVersion;
-    }
-    if (!toolkitVersion) {
-      toolkitVersion = gApp.platformVersion;
-    }
-
-    var blItem = this._findMatchingAddonEntry(addonEntries, addon);
-    if (!blItem) {
-      return null;
-    }
-=======
     gBlocklistEnabled = Services.prefs.getBoolPref(
       PREF_BLOCKLIST_ENABLED,
       true
@@ -1471,7 +1385,6 @@ let Blocklist = {
     );
     Services.prefs.addObserver("extensions.blocklist.", this);
     Services.prefs.addObserver(PREF_EM_LOGGING_ENABLED, this);
->>>>>>> origin/upstream-betas
 
     // If the stub blocklist service deferred any queries because we
     // weren't loaded yet, execute them now.

@@ -227,7 +227,8 @@ const AboutNewTab = {
       : [];
   },
 
-  _alreadyRecordedTopsitesPainted: false,
+  // CLIQZ-SPECIAL: set it initially to true in Cliqz browser;
+  _alreadyRecordedTopsitesPainted: true,
   _nonDefaultStartup: false,
 
   noteNonDefaultStartup() {

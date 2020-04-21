@@ -888,16 +888,10 @@ HttpObserverManager = {
     let channel = this.getWrapper(subject);
     switch (topic) {
       case "http-on-modify-request":
-<<<<<<< HEAD
         if (this.maybeAFW(channel)) {
           break;
         }
-        this.runChannelListener(channel, "opening");
-||||||| merged common ancestors
-        this.runChannelListener(channel, "opening");
-=======
         this.runChannelListener(channel, "onBeforeRequest");
->>>>>>> origin/upstream-betas
         break;
       case "http-on-before-connect":
         this.runChannelListener(channel, "onBeforeSendHeaders");

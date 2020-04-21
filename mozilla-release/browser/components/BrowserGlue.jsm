@@ -33,22 +33,18 @@ ChromeUtils.defineModuleGetter(
   "resource:///modules/CustomizableUI.jsm"
 );
 
-<<<<<<< HEAD
 ChromeUtils.defineModuleGetter(
   this,
   "FileUtils",
   "resource://gre/modules/FileUtils.jsm"
 );
 
-||||||| merged common ancestors
-=======
 ChromeUtils.defineModuleGetter(
   this,
   "AboutNewTab",
   "resource:///modules/AboutNewTab.jsm"
 );
 
->>>>>>> origin/upstream-betas
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "PushService",
@@ -1325,12 +1321,8 @@ BrowserGlue.prototype = {
 
 #if 0
     SaveToPocket.init();
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
 
->>>>>>> origin/upstream-betas
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
 
     if (AppConstants.platform == "win") {
@@ -3084,13 +3076,7 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-<<<<<<< HEAD
     const UI_VERSION = 93;
-||||||| merged common ancestors
-    const UI_VERSION = 92;
-=======
-    const UI_VERSION = 94;
->>>>>>> origin/upstream-betas
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");

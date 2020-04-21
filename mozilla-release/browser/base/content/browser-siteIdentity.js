@@ -268,26 +268,7 @@ var gIdentityHandler = {
     }
     return (this._permissionAnchors = permissionAnchors);
   },
-<<<<<<< HEAD
-#if 0
-  get _trackingProtectionIconContainer() {
-    delete this._trackingProtectionIconContainer;
-    return (this._trackingProtectionIconContainer = document.getElementById(
-      "tracking-protection-icon-container"
-    ));
-  },
-#endif
-||||||| merged common ancestors
-  get _trackingProtectionIconContainer() {
-    delete this._trackingProtectionIconContainer;
-    return (this._trackingProtectionIconContainer = document.getElementById(
-      "tracking-protection-icon-container"
-    ));
-  },
 
-=======
-
->>>>>>> origin/upstream-betas
   get _geoSharingIcon() {
     delete this._geoSharingIcon;
     return (this._geoSharingIcon = document.getElementById("geo-sharing-icon"));

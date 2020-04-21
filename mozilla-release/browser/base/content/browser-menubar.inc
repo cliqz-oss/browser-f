@@ -473,13 +473,9 @@
 #if 0
                 <menuitem id="menu_openTour"
                           oncommand="openTourPage();" data-l10n-id="menu-help-show-tour"/>
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
                 <menuitem id="help_importFromAnotherBrowser"
                           command="cmd_help_importFromAnotherBrowser" data-l10n-id="menu-help-import-from-another-browser"/>
->>>>>>> origin/upstream-betas
                 <menuitem id="menu_keyboardShortcuts"
                           oncommand="openHelpLink('keyboard-shortcuts')"
                           onclick="checkForMiddleClick(this, event);" data-l10n-id="menu-help-keyboard-shortcuts"/>

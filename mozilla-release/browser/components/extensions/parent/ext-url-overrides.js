@@ -89,18 +89,10 @@ function setNewTabURL(extensionId, url) {
     Services.prefs.clearUserPref(NEW_TAB_PRIVATE_ALLOWED);
     Services.prefs.clearUserPref(NEW_TAB_EXTENSION_CONTROLLED);
   }
-<<<<<<< HEAD
   */
   if (url && extensionId === "cliqz@cliqz.com") {
     Services.prefs.setBoolPref(NEW_TAB_EXTENSION_CONTROLLED, true);
-    aboutNewTabService.newTabURL = url;
-||||||| merged common ancestors
-  if (url) {
-    aboutNewTabService.newTabURL = url;
-=======
-  if (url) {
     AboutNewTab.newTabURL = url;
->>>>>>> origin/upstream-betas
   }
 }
 

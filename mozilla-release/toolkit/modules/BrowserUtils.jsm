@@ -106,6 +106,11 @@ var BrowserUtils = {
       ) {
         return true;
       }
+      // CLIQZ-SPECIAL: DB-2359, compare two Cliqz uris ignoring their hash parameters.
+      if (CliqzResources.isCliqzPage(uri.spec) &&
+        CliqzResources.isCliqzPage(contentPrincipal.URI.spec)) {
+          return contentPrincipal.URI.equalsExceptRef(uri);
+      }
       return contentPrincipal.URI.equals(uri);
     }
     // ... so for those that don't have them, enforce that the page has the

@@ -146,15 +146,9 @@
 @BINPATH@/@DLL_PREFIX@mozavutil@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
 #endif
-<<<<<<< HEAD
-@RESPATH@/browser/blocklist.xml
 #if CQZ_ADULT_DOMAINS_BF
 @RESPATH@/browser/adult-domains.bin
 #endif  ; CQZ_ADULT_DOMAINS_BF
-||||||| merged common ancestors
-@RESPATH@/browser/blocklist.xml
-=======
->>>>>>> origin/upstream-betas
 #ifdef XP_WIN
 #ifdef _AMD64_
 @BINPATH@/@DLL_PREFIX@qipcap64@DLL_SUFFIX@

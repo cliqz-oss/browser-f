@@ -1,7 +1,1 @@
-<<<<<<< HEAD
-1.35.0
-||||||| merged common ancestors
-75.0
-=======
-76.0b6
->>>>>>> origin/upstream-betas
+1.36.0

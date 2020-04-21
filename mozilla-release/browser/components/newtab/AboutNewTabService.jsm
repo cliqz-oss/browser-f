@@ -38,21 +38,6 @@ const { E10SUtils } = ChromeUtils.import(
   "resource://gre/modules/E10SUtils.jsm"
 );
 
-<<<<<<< HEAD
-#ifdef MOZ_ACTIVITY_STREAM
-ChromeUtils.defineModuleGetter(
-  this,
-  "AboutNewTab",
-  "resource:///modules/AboutNewTab.jsm"
-);
-#endif
-||||||| merged common ancestors
-ChromeUtils.defineModuleGetter(
-  this,
-  "AboutNewTab",
-  "resource:///modules/AboutNewTab.jsm"
-);
-=======
 /**
  * BEWARE: Do not add variables for holding state in the global scope.
  * Any state variables should be properties of the appropriate class
@@ -61,7 +46,6 @@ ChromeUtils.defineModuleGetter(
  *
  * Constants are fine in the global scope.
  */
->>>>>>> origin/upstream-betas
 
 const PREF_SEPARATE_ABOUT_WELCOME = "browser.aboutwelcome.enabled";
 const SEPARATE_ABOUT_WELCOME_URL =
@@ -129,6 +113,33 @@ class BaseAboutNewTabService {
     // "resource://activity-stream/prerendered/activity-stream.html"
     // "resource://activity-stream/prerendered/activity-stream-debug.html"
     // "resource://activity-stream/prerendered/activity-stream-noscripts.html"
+
+    let uuids = null;
+    try {
+      uuids = JSON.parse(Services.prefs.getStringPref("extensions.webextensions.uuids", ""));
+    } catch (e) {
+      // Error while parsing JSON or reading the pref;
+      // We should notify about that in the console;
+      // As a fallback we can return "about:blank";
+      console.error("BaseAboutNewTabService#defaultURL: " + e);
+      return "about:blank";
+    }
+
+    // CLIQZ-SPECIAL: DB-2458, Why we need this.
+    // mozilla-release/browser/components/extensions/parent/ext-chrome-settings-overrides.js
+    // This file reads the manifest.json file from our Extension and then retrieves
+    // chrome_settings_overrides.homapage to save that value in
+    // browser.startup.homepage (see code of resource://gre/modules/ExtensionPreferencesManager.jsm).
+    // Meanwhile the value is not yet passed to AboutNewTabService so newTabURL is still about:newtab;
+    // Then AboutRedirector.cpp matches about:newtab url against AboutNewTabService.GetDefaultURL;
+    // A bit after mozilla-release/browser/components/extensions/parent/ext-url-overrides.js
+    // gets parsed as well having retrieved chrome_url_overrides.newtab value which is then passed to
+    // set newTabURL setter of AboutNewTabService;
+    // Also AboutNewTabService is invoked in both PROCESS_TYPE_DEFAULT (=0, main) and other processes.
+    // The latter option does not return our freshtab value since it has been set within the parent
+    // process; using preferences as a fallback allows to retrieve our Extension id;
+    return "moz-extension://" + uuids["cliqz@cliqz.com"] + "/modules/freshtab/home.html";
+#if 0
     return [
       "resource://activity-stream/prerendered/",
       "activity-stream",
@@ -139,21 +150,9 @@ class BaseAboutNewTabService {
       this.privilegedAboutProcessEnabled ? "-noscripts" : "",
       ".html",
     ].join("");
+#endif
   }
 
-<<<<<<< HEAD
-  if (IS_MAIN_PROCESS) {
-#ifdef MOZ_ACTIVITY_STREAM
-    AboutNewTab.init();
-#endif
-  } else if (IS_PRIVILEGED_PROCESS) {
-    Services.obs.addObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
-||||||| merged common ancestors
-  if (IS_MAIN_PROCESS) {
-    AboutNewTab.init();
-  } else if (IS_PRIVILEGED_PROCESS) {
-    Services.obs.addObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
-=======
   /*
    * Returns the about:welcome URL
    *
@@ -164,7 +163,6 @@ class BaseAboutNewTabService {
       return SEPARATE_ABOUT_WELCOME_URL;
     }
     return this.defaultURL;
->>>>>>> origin/upstream-betas
   }
 }
 
@@ -247,208 +245,6 @@ class AboutNewTabChildService extends BaseAboutNewTabService {
         win.addEventListener("DOMContentLoaded", onLoaded, { once: true });
         break;
       }
-<<<<<<< HEAD
-      case TOPIC_APP_QUIT:
-        this.uninit();
-        if (IS_MAIN_PROCESS) {
-#ifdef MOZ_ACTIVITY_STREAM
-          AboutNewTab.uninit();
-#endif
-        } else if (IS_PRIVILEGED_PROCESS) {
-          Services.obs.removeObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
-        }
-        break;
-    }
-  },
-
-  notifyChange() {
-    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
-  },
-
-  /**
-   * React to changes to the activity stream being enabled or not.
-   *
-   * This will only act if there is a change of state and if not overridden.
-   *
-   * @returns {Boolean} Returns if there has been a state change
-   *
-   * @param {Boolean}   stateEnabled    activity stream enabled state to set to
-   * @param {Boolean}   forceState      force state change
-   */
-  toggleActivityStream(stateEnabled, forceState = false) {
-    if (
-      !forceState &&
-      (this.overridden || stateEnabled === this.activityStreamEnabled)
-    ) {
-      // exit there is no change of state
-      return false;
-    }
-    if (stateEnabled) {
-      this._activityStreamEnabled = true;
-    } else {
-      this._activityStreamEnabled = false;
-    }
-    this._privilegedAboutContentProcess = Services.prefs.getBoolPref(
-      PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS
-    );
-    if (!IS_RELEASE_OR_BETA) {
-      this._activityStreamDebug = Services.prefs.getBoolPref(
-        PREF_ACTIVITY_STREAM_DEBUG,
-        false
-      );
-    }
-    this._newtabURL = ABOUT_URL;
-    return true;
-  },
-
-  /*
-   * Returns the default URL.
-   *
-   * This URL depends on various activity stream prefs. Overriding
-   * the newtab page has no effect on the result of this function.
-   */
-  get defaultURL() {
-    // Generate the desired activity stream resource depending on state, e.g.,
-    // "resource://activity-stream/prerendered/activity-stream.html"
-    // "resource://activity-stream/prerendered/activity-stream-debug.html"
-    // "resource://activity-stream/prerendered/activity-stream-noscripts.html"
-
-    let freshTabUrl = this.newTabURL;
-    let uuids = null;
-    try {
-      uuids = JSON.parse(Services.prefs.getStringPref("extensions.webextensions.uuids", ""));
-    } catch (e) {
-      // Error while parsing JSON or reading the pref;
-      // We should notify about that in the console;
-      // As a fallback we can return "about:blank";
-      console.error("AboutNewTabService#defaultURL: " + e);
-      return "about:blank";
-    }
-    if (freshTabUrl !== ABOUT_URL) {
-      return freshTabUrl;
-    }
-
-    // CLIQZ-SPECIAL: DB-2458, Why we need this.
-    // mozilla-release/browser/components/extensions/parent/ext-chrome-settings-overrides.js
-    // This file reads the manifest.json file from our Extension and then retrieves
-    // chrome_settings_overrides.homapage to save that value in
-    // browser.startup.homepage (see code of resource://gre/modules/ExtensionPreferencesManager.jsm).
-    // Meanwhile the value is not yet passed to AboutNewTabService so newTabURL is still about:newtab;
-    // Then AboutRedirector.cpp matches about:newtab url against AboutNewTabService.GetDefaultURL;
-    // A bit after mozilla-release/browser/components/extensions/parent/ext-url-overrides.js
-    // gets parsed as well having retrieved chrome_url_overrides.newtab value which is then passed to
-    // set newTabURL setter of AboutNewTabService;
-    // Also AboutNewTabService is invoked in both PROCESS_TYPE_DEFAULT (=0, main) and other processes.
-    // The latter option does not return our freshtab value since it has been set within the parent
-    // process; using preferences as a fallback allows to retrieve our Extension id;
-    return "moz-extension://" + uuids["cliqz@cliqz.com"] + "/modules/freshtab/home.html";
-#if 0
-    return [
-      "resource://activity-stream/prerendered/",
-      "activity-stream",
-      // Debug version loads dev scripts but noscripts separately loads scripts
-      this._activityStreamDebug && !this._privilegedAboutContentProcess
-        ? "-debug"
-        : "",
-      this._privilegedAboutContentProcess ? "-noscripts" : "",
-      ".html",
-    ].join("");
-#endif
-  },
-
-  /*
-   * Returns the about:welcome URL
-   *
-   * This is calculated in the same way the default URL is.
-   */
-  get welcomeURL() {
-    if (isSeparateAboutWelcome) {
-      return SEPARATE_ABOUT_WELCOME_URL;
-||||||| merged common ancestors
-      case TOPIC_APP_QUIT:
-        this.uninit();
-        if (IS_MAIN_PROCESS) {
-          AboutNewTab.uninit();
-        } else if (IS_PRIVILEGED_PROCESS) {
-          Services.obs.removeObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
-        }
-        break;
-    }
-  },
-
-  notifyChange() {
-    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
-  },
-
-  /**
-   * React to changes to the activity stream being enabled or not.
-   *
-   * This will only act if there is a change of state and if not overridden.
-   *
-   * @returns {Boolean} Returns if there has been a state change
-   *
-   * @param {Boolean}   stateEnabled    activity stream enabled state to set to
-   * @param {Boolean}   forceState      force state change
-   */
-  toggleActivityStream(stateEnabled, forceState = false) {
-    if (
-      !forceState &&
-      (this.overridden || stateEnabled === this.activityStreamEnabled)
-    ) {
-      // exit there is no change of state
-      return false;
-    }
-    if (stateEnabled) {
-      this._activityStreamEnabled = true;
-    } else {
-      this._activityStreamEnabled = false;
-    }
-    this._privilegedAboutContentProcess = Services.prefs.getBoolPref(
-      PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS
-    );
-    if (!IS_RELEASE_OR_BETA) {
-      this._activityStreamDebug = Services.prefs.getBoolPref(
-        PREF_ACTIVITY_STREAM_DEBUG,
-        false
-      );
-    }
-    this._newtabURL = ABOUT_URL;
-    return true;
-  },
-
-  /*
-   * Returns the default URL.
-   *
-   * This URL depends on various activity stream prefs. Overriding
-   * the newtab page has no effect on the result of this function.
-   */
-  get defaultURL() {
-    // Generate the desired activity stream resource depending on state, e.g.,
-    // "resource://activity-stream/prerendered/activity-stream.html"
-    // "resource://activity-stream/prerendered/activity-stream-debug.html"
-    // "resource://activity-stream/prerendered/activity-stream-noscripts.html"
-    return [
-      "resource://activity-stream/prerendered/",
-      "activity-stream",
-      // Debug version loads dev scripts but noscripts separately loads scripts
-      this._activityStreamDebug && !this._privilegedAboutContentProcess
-        ? "-debug"
-        : "",
-      this._privilegedAboutContentProcess ? "-noscripts" : "",
-      ".html",
-    ].join("");
-  },
-
-  /*
-   * Returns the about:welcome URL
-   *
-   * This is calculated in the same way the default URL is.
-   */
-  get welcomeURL() {
-    if (isSeparateAboutWelcome) {
-      return SEPARATE_ABOUT_WELCOME_URL;
-=======
->>>>>>> origin/upstream-betas
     }
   }
 }
@@ -459,63 +255,9 @@ class AboutNewTabChildService extends BaseAboutNewTabService {
  * function does the job of choosing the appropriate implementation of
  * nsIAboutNewTabService for the process type.
  */
-<<<<<<< HEAD
-const AboutNewTabStartupRecorder = {
-  //_alreadyRecordedTopsitesPainted: false,
-  // CLIQZ-SPECIAL: don't do this in Cliqz browser
-  _alreadyRecordedTopsitesPainted: true,
-  _nonDefaultStartup: false,
-
-  noteNonDefaultStartup() {
-    this._nonDefaultStartup = true;
-  },
-
-  maybeRecordTopsitesPainted(timestamp) {
-    if (this._alreadyRecordedTopsitesPainted || this._nonDefaultStartup) {
-      return;
-    }
-
-    const SCALAR_KEY = "timestamps.about_home_topsites_first_paint";
-
-    let startupInfo = Services.startup.getStartupInfo();
-    let processStartTs = startupInfo.process.getTime();
-    let delta = Math.round(timestamp - processStartTs);
-    Services.telemetry.scalarSet(SCALAR_KEY, delta);
-    this._alreadyRecordedTopsitesPainted = true;
-  },
-};
-
-const EXPORTED_SYMBOLS = ["AboutNewTabService", "AboutNewTabStartupRecorder"];
-||||||| merged common ancestors
-const AboutNewTabStartupRecorder = {
-  _alreadyRecordedTopsitesPainted: false,
-  _nonDefaultStartup: false,
-
-  noteNonDefaultStartup() {
-    this._nonDefaultStartup = true;
-  },
-
-  maybeRecordTopsitesPainted(timestamp) {
-    if (this._alreadyRecordedTopsitesPainted || this._nonDefaultStartup) {
-      return;
-    }
-
-    const SCALAR_KEY = "timestamps.about_home_topsites_first_paint";
-
-    let startupInfo = Services.startup.getStartupInfo();
-    let processStartTs = startupInfo.process.getTime();
-    let delta = Math.round(timestamp - processStartTs);
-    Services.telemetry.scalarSet(SCALAR_KEY, delta);
-    this._alreadyRecordedTopsitesPainted = true;
-  },
-};
-
-const EXPORTED_SYMBOLS = ["AboutNewTabService", "AboutNewTabStartupRecorder"];
-=======
 function AboutNewTabStubService() {
   if (Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT) {
     return new BaseAboutNewTabService();
   }
   return new AboutNewTabChildService();
 }
->>>>>>> origin/upstream-betas

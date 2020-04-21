@@ -47,12 +47,6 @@ BROWSER_CHROME_MANIFESTS += [
     'content/test/sanitize/browser.ini',
     'content/test/sidebar/browser.ini',
     'content/test/siteIdentity/browser.ini',
-<<<<<<< HEAD
-#   'content/test/siteProtections/browser.ini',
-||||||| merged common ancestors
-    'content/test/siteProtections/browser.ini',
-=======
->>>>>>> origin/upstream-betas
     'content/test/static/browser.ini',
     'content/test/statuspanel/browser.ini',
     'content/test/sync/browser.ini',

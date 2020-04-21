@@ -143,14 +143,7 @@ pref("app.update.elevation.promptMaxAttempts", 2);
 pref("app.update.staging.enabled", true);
 
 // Update service URL:
-<<<<<<< HEAD
-pref("app.update.url", "https://updatecheck.cliqz.com/update/6/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%SYSTEM_CAPABILITIES%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
-
-||||||| merged common ancestors
-pref("app.update.url", "https://aus5.mozilla.org/update/6/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%SYSTEM_CAPABILITIES%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
-=======
 // app.update.url was removed in Bug 1568994
->>>>>>> origin/upstream-betas
 // app.update.url.manual is in branding section
 // app.update.url.details is in branding section
 
@@ -1366,19 +1359,15 @@ pref("browser.newtabpage.activity-stream.discoverystream.personalization.modelKe
 pref("trailhead.firstrun.branches", "join-dynamic");
 
 // Separate about welcome
-<<<<<<< HEAD
 pref("browser.aboutwelcome.enabled", false); // ALWAYS FALSE
 // CLIQZ-SPECIAL: always make sure this remains false,
 // we do not want separate welcome page
-
-||||||| merged common ancestors
-pref("browser.aboutwelcome.enabled", false);
-=======
-pref("browser.aboutwelcome.enabled", true);
+// we do not use any experiments on Cliqz welcome page
+#if 0
 // Temporary utility to unblock testing on about:welcome experiment variations
 pref("browser.aboutwelcome.temp.testExperiment.slug", "");
 pref("browser.aboutwelcome.temp.testExperiment.branch", "control");
->>>>>>> origin/upstream-betas
+#endif
 // See Console.jsm LOG_LEVELS for all possible values
 pref("browser.aboutwelcome.log", "warn");
 
@@ -1804,12 +1793,7 @@ pref("signon.generation.confidenceThreshold", "0.75");
 
 pref("signon.management.page.os-auth.enabled", true);
 pref("signon.management.page.breach-alerts.enabled", true);
-<<<<<<< HEAD
 /* CLIQZ-SPECIAL: force use old password
-||||||| merged common ancestors
-=======
-pref("signon.management.page.vulnerable-passwords.enabled", true);
->>>>>>> origin/upstream-betas
 pref("signon.management.page.sort", "name");
 pref("signon.management.overrideURI", "about:logins?filter=%DOMAIN%");
 */

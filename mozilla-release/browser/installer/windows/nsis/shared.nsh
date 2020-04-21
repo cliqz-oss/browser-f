@@ -508,18 +508,12 @@ ${EndIf}
 !macroend
 !define SetHandlers "!insertmacro SetHandlers"
 
-<<<<<<< HEAD
-; Adds the HKLM\Software\Clients\StartMenuInternet\Cliqz-[pathhash] registry
-||||||| merged common ancestors
-; Adds the HKLM\Software\Clients\StartMenuInternet\Firefox-[pathhash] registry
-=======
 !macro WriteApplicationsSupportedType RegKey Type
   WriteRegStr ${RegKey} "Software\Classes\Applications\${FileMainEXE}\SupportedTypes" "${Type}" ""
 !macroend
 !define WriteApplicationsSupportedType "!insertmacro WriteApplicationsSupportedType"
 
-; Adds the HKLM\Software\Clients\StartMenuInternet\Firefox-[pathhash] registry
->>>>>>> origin/upstream-betas
+; Adds the HKLM\Software\Clients\StartMenuInternet\Cliqz-[pathhash] registry
 ; entries (does not use SHCTX).
 ;
 ; The values for StartMenuInternet are only valid under HKLM and there can only
@@ -590,20 +584,10 @@ ${EndIf}
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 
-<<<<<<< HEAD
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL$2"
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL$2"
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL$2"
-||||||| merged common ancestors
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL$2"
-=======
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "FirefoxURL$2"
->>>>>>> origin/upstream-betas
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "CliqzURL$2"
 
   WriteRegStr ${RegKey} "Software\RegisteredApplications" "$1" "$0\Capabilities"
 

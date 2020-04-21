@@ -31,32 +31,21 @@ appmenu-update-restart =
     .buttonaccesskey = w
     .secondarybuttonlabel = Nicht jetzt
     .secondarybuttonaccesskey = N
-appmenu-update-restart-message = Nach einem schnellen Neustart des Browsers wird { -brand-shorter-name } alle offenen Tabs und Fenster wiederherstellen, die sich nicht im Privaten Modus befinden.
+appmenu-update-restart-message = Nach einem schnellen Neustart des Browsers wird { -brand-shorter-name } alle offenen Tabs und Fenster wiederherstellen, die sich nicht im Vergessen Modus befinden.
 appmenu-addon-private-browsing-installed =
     .buttonlabel = OK
     .buttonaccesskey = O
 appmenu-addon-post-install-message = Die Add-ons lassen sich durch Klicken auf <image data-l10n-name='addon-install-icon'></image> im <image data-l10n-name='addon-menu-icon'></image>-Menü verwalten.
 appmenu-addon-post-install-incognito-checkbox =
-    .label = Ausführen der Erweiterung in privaten Fenstern erlauben
+    .label = Ausführen der Erweiterung in Vergessen Fenstern erlauben
     .accesskey = e
-<<<<<<< HEAD
-||||||| merged common ancestors
 appmenu-addon-private-browsing =
-    .label = Änderung an der Ausführung von Erweiterungen in privaten Fenstern
+    .label = Änderung an der Ausführung von Erweiterungen in Vergessen Fenstern
     .buttonlabel = Erweiterungen verwalten
     .buttonaccesskey = E
     .secondarybuttonlabel = OK
     .secondarybuttonaccesskey = O
-appmenu-addon-private-browsing-message = Neu in { -brand-shorter-name } installierte Erweiterungen sind in privaten Fenstern nicht verfügbar, bis sie durch Sie für die privaten Fenster freigegeben werden.
-appmenu-addon-private-browsing-learn-more = Weitere Informationen zur Verwaltung von Erweiterungseinstellungen
-=======
-appmenu-addon-private-browsing =
-    .label = Änderung an der Ausführung von Erweiterungen in privaten Fenstern
-    .buttonlabel = Erweiterungen verwalten
-    .buttonaccesskey = E
-    .secondarybuttonlabel = OK
-    .secondarybuttonaccesskey = O
-appmenu-addon-private-browsing-message = Neu in { -brand-shorter-name } installierte Erweiterungen sind in privaten Fenstern nicht verfügbar, bis sie durch Sie für die privaten Fenster freigegeben werden.
+appmenu-addon-private-browsing-message = Neu in { -brand-shorter-name } installierte Erweiterungen sind in Vergessen Fenstern nicht verfügbar, bis sie durch Sie für die Vergessen Fenster freigegeben werden.
 appmenu-addon-private-browsing-learn-more = Weitere Informationen zur Verwaltung von Erweiterungseinstellungen
 appmenu-new-tab-controlled =
     .label = Startseite neuer Tabs wurde geändert
@@ -76,4 +65,3 @@ appmenu-tab-hide-controlled =
     .buttonaccesskey = a
     .secondarybuttonlabel = Erweiterung deaktivieren
     .secondarybuttonaccesskey = d
->>>>>>> origin/upstream-betas

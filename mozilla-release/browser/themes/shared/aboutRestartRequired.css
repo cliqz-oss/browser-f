@@ -34,14 +34,8 @@
   background-position: left center;
   background-repeat: no-repeat;
   background-size: 38%;
-<<<<<<< HEAD
-  background-image: url("chrome://browser/content/illustrations/error-connection-failure.svg");
-  */
-||||||| merged common ancestors
-  background-image: url("chrome://browser/content/illustrations/error-connection-failure.svg");
-=======
   background-image: url("chrome://browser/skin/illustrations/error-connection-failure.svg");
->>>>>>> origin/upstream-betas
+  */
 }
 
 #restart {
