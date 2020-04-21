@@ -21,7 +21,7 @@
 #include "prnetdb.h"
 #include "mozilla/Tokenizer.h"
 #include "nsEscape.h"
-#include "rust-helper/src/helper.h"
+#include "mozilla/net/rust_helper.h"
 
 using namespace mozilla;
 
@@ -346,80 +346,12 @@ void net_CoalesceDirs(netCoalesceFlags flags, char* path) {
   *urlPtr = '\0';  // terminate the url
 }
 
-nsresult net_ResolveRelativePath(const nsACString& relativePath,
-                                 const nsACString& basePath,
-                                 nsACString& result) {
-  nsAutoCString name;
-  nsAutoCString path(basePath);
-  bool needsDelim = false;
-
-  if (!path.IsEmpty()) {
-    char16_t last = path.Last();
-    needsDelim = !(last == '/');
-  }
-
-  nsACString::const_iterator beg, end;
-  relativePath.BeginReading(beg);
-  relativePath.EndReading(end);
-
-  bool stop = false;
-  char c;
-  for (; !stop; ++beg) {
-    c = (beg == end) ? '\0' : *beg;
-    // printf("%c [name=%s] [path=%s]\n", c, name.get(), path.get());
-    switch (c) {
-      case '\0':
-      case '#':
-      case '?':
-        stop = true;
-        [[fallthrough]];
-      case '/':
-        // delimiter found
-        if (name.EqualsLiteral("..")) {
-          // pop path
-          // If we already have the delim at end, then
-          //  skip over that when searching for next one to the left
-          int32_t offset = path.Length() - (needsDelim ? 1 : 2);
-          // First check for errors
-          if (offset < 0) return NS_ERROR_MALFORMED_URI;
-          int32_t pos = path.RFind("/", false, offset);
-          if (pos >= 0)
-            path.Truncate(pos + 1);
-          else
-            path.Truncate();
-        } else if (name.IsEmpty() || name.EqualsLiteral(".")) {
-          // do nothing
-        } else {
-          // append name to path
-          if (needsDelim) path += '/';
-          path += name;
-          needsDelim = true;
-        }
-        name.Truncate();
-        break;
-
-      default:
-        // append char to name
-        name += c;
-    }
-  }
-  // append anything left on relativePath (e.g. #..., ;..., ?...)
-  if (c != '\0') path += Substring(--beg, end);
-
-  result = path;
-  return NS_OK;
-}
-
 //----------------------------------------------------------------------------
 // scheme fu
 //----------------------------------------------------------------------------
 
 static bool net_IsValidSchemeChar(const char aChar) {
-  if (IsAsciiAlpha(aChar) || IsAsciiDigit(aChar) || aChar == '+' ||
-      aChar == '.' || aChar == '-') {
-    return true;
-  }
-  return false;
+  return mozilla::net::rust_net_is_valid_scheme_char(aChar);
 }
 
 /* Extract URI-Scheme if possible */
@@ -457,18 +389,8 @@ nsresult net_ExtractURLScheme(const nsACString& inURI, nsACString& scheme) {
   return NS_OK;
 }
 
-bool net_IsValidScheme(const char* scheme, uint32_t schemeLen) {
-  // first char must be alpha
-  if (!IsAsciiAlpha(*scheme)) return false;
-
-  // nsCStrings may have embedded nulls -- reject those too
-  for (; schemeLen; ++scheme, --schemeLen) {
-    if (!(IsAsciiAlpha(*scheme) || IsAsciiDigit(*scheme) || *scheme == '+' ||
-          *scheme == '.' || *scheme == '-'))
-      return false;
-  }
-
-  return true;
+bool net_IsValidScheme(const nsACString& scheme) {
+  return mozilla::net::rust_net_is_valid_scheme(&scheme);
 }
 
 bool net_IsAbsoluteURL(const nsACString& uri) {
@@ -966,9 +888,9 @@ bool net_IsValidHostName(const nsACString& host) {
 }
 
 bool net_IsValidIPv4Addr(const nsACString& aAddr) {
-  return rust_net_is_valid_ipv4_addr(aAddr);
+  return mozilla::net::rust_net_is_valid_ipv4_addr(&aAddr);
 }
 
 bool net_IsValidIPv6Addr(const nsACString& aAddr) {
-  return rust_net_is_valid_ipv6_addr(aAddr);
+  return mozilla::net::rust_net_is_valid_ipv6_addr(&aAddr);
 }

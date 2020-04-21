@@ -180,10 +180,10 @@ class EditorBase : public nsIEditor,
    * @param aFlags        A bitmask of flags for specifying the behavior
    *                      of the editor.
    */
-  MOZ_CAN_RUN_SCRIPT
-  virtual nsresult Init(Document& doc, Element* aRoot,
-                        nsISelectionController* aSelCon, uint32_t aFlags,
-                        const nsAString& aInitialValue);
+  MOZ_CAN_RUN_SCRIPT virtual nsresult Init(Document& doc, Element* aRoot,
+                                           nsISelectionController* aSelCon,
+                                           uint32_t aFlags,
+                                           const nsAString& aInitialValue);
 
   /**
    * PostCreate should be called after Init, and is the time that the editor
@@ -326,8 +326,7 @@ class EditorBase : public nsIEditor,
     eLTR,
     eRTL,
   };
-  MOZ_CAN_RUN_SCRIPT
-  void SwitchTextDirectionTo(TextDirection aTextDirection);
+  MOZ_CAN_RUN_SCRIPT void SwitchTextDirectionTo(TextDirection aTextDirection);
 
   /**
    * Finalizes selection and caret for the editor.
@@ -421,8 +420,8 @@ class EditorBase : public nsIEditor,
     return mTransactionManager->RemoveTransactionListener(aListener);
   }
 
-  MOZ_CAN_RUN_SCRIPT
-  virtual nsresult HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent);
+  MOZ_CAN_RUN_SCRIPT virtual nsresult HandleKeyPressEvent(
+      WidgetKeyboardEvent* aKeyboardEvent);
 
   virtual dom::EventTarget* GetDOMEventTarget() = 0;
 
@@ -489,10 +488,6 @@ class EditorBase : public nsIEditor,
 
   bool IsReadonly() const {
     return (mFlags & nsIEditor::eEditorReadonlyMask) != 0;
-  }
-
-  bool IsDisabled() const {
-    return (mFlags & nsIEditor::eEditorDisabledMask) != 0;
   }
 
   bool IsInputFiltered() const {
@@ -595,7 +590,7 @@ class EditorBase : public nsIEditor,
    * All actions that have to be done when the editor is focused needs to be
    * added here.
    */
-  void OnFocus(dom::EventTarget* aFocusEventTarget);
+  MOZ_CAN_RUN_SCRIPT void OnFocus(nsINode& aFocusEventTargetNode);
 
   /** Resyncs spellchecking state (enabled/disabled).  This should be called
    * when anything that affects spellchecking state changes, such as the
@@ -609,7 +604,7 @@ class EditorBase : public nsIEditor,
    * selection state even if this has no focus.  So if destroying editor,
    * we have to call this method for focused editor to set selection state.
    */
-  void ReinitializeSelection(Element& aElement);
+  MOZ_CAN_RUN_SCRIPT void ReinitializeSelection(Element& aElement);
 
   /**
    * InsertTextAsAction() inserts aStringToInsert at selection.
@@ -815,13 +810,13 @@ class EditorBase : public nsIEditor,
      * itself.
      *
      */
-    MOZ_MUST_USE bool CanHandle() const {
+    [[nodiscard]] bool CanHandle() const {
 #ifdef DEBUG
       mHasCanHandleChecked = true;
 #endif  // #ifdefn DEBUG
       return mSelection && mEditorBase.IsInitialized();
     }
-    MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult
+    [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
     CanHandleAndMaybeDispatchBeforeInputEvent() {
       if (NS_WARN_IF(!CanHandle())) {
         return NS_ERROR_NOT_INITIALIZED;
@@ -838,7 +833,7 @@ class EditorBase : public nsIEditor,
      *                  and it's canceled, returns
      *                  NS_ERROR_EDITOR_ACTION_CANCELED.
      */
-    MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult MaybeDispatchBeforeInputEvent();
+    [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult MaybeDispatchBeforeInputEvent();
 
     /**
      * MarkAsBeforeInputHasBeenDispatched() should be called only when updating
@@ -874,7 +869,13 @@ class EditorBase : public nsIEditor,
 
     bool IsCanceled() const { return mBeforeInputEventCanceled; }
 
-    const RefPtr<Selection>& SelectionRefPtr() const { return mSelection; }
+    const RefPtr<Selection>& SelectionRefPtr() const {
+      MOZ_ASSERT(!mSelection ||
+                 (mSelection->GetType() == SelectionType::eNormal));
+
+      return mSelection;
+    }
+
     nsIPrincipal* GetPrincipal() const { return mPrincipal; }
     EditAction GetEditAction() const { return mEditAction; }
 
@@ -1040,6 +1041,8 @@ class EditorBase : public nsIEditor,
     }
 
     void UpdateSelectionCache(Selection& aSelection) {
+      MOZ_ASSERT(aSelection.GetType() == SelectionType::eNormal);
+
       AutoEditActionDataSetter* actionData = this;
       while (actionData) {
         if (actionData->mSelection) {
@@ -1179,7 +1182,7 @@ class EditorBase : public nsIEditor,
     return mEditActionData->NeedsToDispatchBeforeInputEvent();
   }
 
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult MaybeDispatchBeforeInputEvent() {
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult MaybeDispatchBeforeInputEvent() {
     MOZ_ASSERT(mEditActionData);
     return mEditActionData->MaybeDispatchBeforeInputEvent();
   }
@@ -1217,6 +1220,9 @@ class EditorBase : public nsIEditor,
    */
   const RefPtr<Selection>& SelectionRefPtr() const {
     MOZ_ASSERT(mEditActionData);
+    MOZ_ASSERT(mEditActionData->SelectionRefPtr()->GetType() ==
+               SelectionType::eNormal);
+
     return mEditActionData->SelectionRefPtr();
   }
 
@@ -1342,12 +1348,18 @@ class EditorBase : public nsIEditor,
   EditorRawDOMPoint GetCompositionEndPoint() const;
 
   /**
+   * IsSelectionRangeContainerNotContent() returns true if one of container
+   * of selection ranges is not a content node, i.e., a Document node.
+   */
+  bool IsSelectionRangeContainerNotContent() const;
+
+  /**
    * InsertTextAsSubAction() inserts aStringToInsert at selection.  This
    * should be used for handling it as an edit sub-action.
    *
    * @param aStringToInsert     The string to insert.
    */
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
   InsertTextAsSubAction(const nsAString& aStringToInsert);
 
   /**
@@ -1370,8 +1382,7 @@ class EditorBase : public nsIEditor,
    *                        does nothing during composition, returns NS_OK.
    *                        Otherwise, an error code.
    */
-  MOZ_CAN_RUN_SCRIPT
-  virtual nsresult InsertTextWithTransaction(
+  MOZ_CAN_RUN_SCRIPT virtual nsresult InsertTextWithTransaction(
       Document& aDocument, const nsAString& aStringToInsert,
       const EditorRawDOMPoint& aPointToInsert,
       EditorRawDOMPoint* aPointAfterInsertedString = nullptr);
@@ -1395,7 +1406,7 @@ class EditorBase : public nsIEditor,
    * the text node directly and without transaction.  This is used when
    * setting `<input>.value` and `<textarea>.value`.
    */
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
   SetTextNodeWithoutTransaction(const nsAString& aString, Text& aTextNode);
 
   /**
@@ -1427,7 +1438,7 @@ class EditorBase : public nsIEditor,
    * @param aPointToInsert      The DOM point where should be <br> node inserted
    *                            before.
    */
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE CreateElementResult
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT CreateElementResult
   InsertPaddingBRElementForEmptyLastLineWithTransaction(
       const EditorDOMPoint& aPointToInsert);
 
@@ -1440,8 +1451,7 @@ class EditorBase : public nsIEditor,
    *                            with new element.
    * @param aTagName            The name of new element node.
    */
-  MOZ_CAN_RUN_SCRIPT
-  already_AddRefed<Element> ReplaceContainerWithTransaction(
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> ReplaceContainerWithTransaction(
       Element& aOldContainer, nsAtom& aTagName) {
     return ReplaceContainerWithTransactionInternal(
         aOldContainer, aTagName, *nsGkAtoms::_empty, EmptyString(), false);
@@ -1457,9 +1467,9 @@ class EditorBase : public nsIEditor,
    *                            with new element.
    * @param aTagName            The name of new element node.
    */
-  MOZ_CAN_RUN_SCRIPT
-  already_AddRefed<Element> ReplaceContainerAndCloneAttributesWithTransaction(
-      Element& aOldContainer, nsAtom& aTagName) {
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element>
+  ReplaceContainerAndCloneAttributesWithTransaction(Element& aOldContainer,
+                                                    nsAtom& aTagName) {
     return ReplaceContainerWithTransactionInternal(
         aOldContainer, aTagName, *nsGkAtoms::_empty, EmptyString(), true);
   }
@@ -1476,8 +1486,7 @@ class EditorBase : public nsIEditor,
    * @param aAttribute          Attribute name to be set to the new element.
    * @param aAttributeValue     Attribute value to be set to aAttribute.
    */
-  MOZ_CAN_RUN_SCRIPT
-  already_AddRefed<Element> ReplaceContainerWithTransaction(
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> ReplaceContainerWithTransaction(
       Element& aOldContainer, nsAtom& aTagName, nsAtom& aAttribute,
       const nsAString& aAttributeValue) {
     return ReplaceContainerWithTransactionInternal(
@@ -1489,9 +1498,8 @@ class EditorBase : public nsIEditor,
    * aSourceElement to aDestElement after removing all attributes in
    * aDestElement.
    */
-  MOZ_CAN_RUN_SCRIPT
-  void CloneAttributesWithTransaction(Element& aDestElement,
-                                      Element& aSourceElement);
+  MOZ_CAN_RUN_SCRIPT void CloneAttributesWithTransaction(
+      Element& aDestElement, Element& aSourceElement);
 
   /**
    * RemoveContainerWithTransaction() removes aElement from the DOM tree and
@@ -1499,8 +1507,7 @@ class EditorBase : public nsIEditor,
    *
    * @param aElement            The element to be removed.
    */
-  MOZ_CAN_RUN_SCRIPT
-  nsresult RemoveContainerWithTransaction(Element& aElement);
+  MOZ_CAN_RUN_SCRIPT nsresult RemoveContainerWithTransaction(Element& aElement);
 
   /**
    * InsertContainerWithTransaction() creates new element whose name is
@@ -1516,9 +1523,8 @@ class EditorBase : public nsIEditor,
    *                            was.
    * @return                    The new element.
    */
-  MOZ_CAN_RUN_SCRIPT
-  already_AddRefed<Element> InsertContainerWithTransaction(nsIContent& aContent,
-                                                           nsAtom& aTagName) {
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> InsertContainerWithTransaction(
+      nsIContent& aContent, nsAtom& aTagName) {
     return InsertContainerWithTransactionInternal(
         aContent, aTagName, *nsGkAtoms::_empty, EmptyString());
   }
@@ -1540,8 +1546,7 @@ class EditorBase : public nsIEditor,
    * @param aAttributeValue     Value to be set to aAttribute.
    * @return                    The new element.
    */
-  MOZ_CAN_RUN_SCRIPT
-  already_AddRefed<Element> InsertContainerWithTransaction(
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> InsertContainerWithTransaction(
       nsIContent& aContent, nsAtom& aTagName, nsAtom& aAttribute,
       const nsAString& aAttributeValue) {
     return InsertContainerWithTransactionInternal(aContent, aTagName,
@@ -1573,8 +1578,8 @@ class EditorBase : public nsIEditor,
    * @param aRightNode  The node which will be new container of the content of
    *                    aLeftNode.
    */
-  MOZ_CAN_RUN_SCRIPT
-  nsresult JoinNodesWithTransaction(nsINode& aLeftNode, nsINode& aRightNode);
+  MOZ_CAN_RUN_SCRIPT nsresult JoinNodesWithTransaction(nsINode& aLeftNode,
+                                                       nsINode& aRightNode);
 
   /**
    * MoveNodeWithTransaction() moves aContent to aPointToInsert.
@@ -1591,9 +1596,8 @@ class EditorBase : public nsIEditor,
    * @param aNewContainer   The new container which will contain aContent as
    *                        its last child.
    */
-  MOZ_CAN_RUN_SCRIPT
-  nsresult MoveNodeToEndWithTransaction(nsIContent& aContent,
-                                        nsINode& aNewContainer) {
+  MOZ_CAN_RUN_SCRIPT nsresult
+  MoveNodeToEndWithTransaction(nsIContent& aContent, nsINode& aNewContainer) {
     EditorDOMPoint pointToInsert;
     pointToInsert.SetToEndOf(&aNewContainer);
     return MoveNodeWithTransaction(aContent, pointToInsert);
@@ -1665,10 +1669,8 @@ class EditorBase : public nsIEditor,
    * @param aSourceElement      Element node which provides the value of
    *                            aAttribute in aDestElement.
    */
-  MOZ_CAN_RUN_SCRIPT
-  nsresult CloneAttributeWithTransaction(nsAtom& aAttribute,
-                                         Element& aDestElement,
-                                         Element& aSourceElement);
+  MOZ_CAN_RUN_SCRIPT nsresult CloneAttributeWithTransaction(
+      nsAtom& aAttribute, Element& aDestElement, Element& aSourceElement);
 
   /**
    * RemoveAttributeWithTransaction() removes aAttribute from aElement.
@@ -1676,14 +1678,11 @@ class EditorBase : public nsIEditor,
    * @param aElement        Element node which will lose aAttribute.
    * @param aAttribute      Attribute name to be removed from aElement.
    */
-  MOZ_CAN_RUN_SCRIPT
-  nsresult RemoveAttributeWithTransaction(Element& aElement,
-                                          nsAtom& aAttribute);
+  MOZ_CAN_RUN_SCRIPT nsresult
+  RemoveAttributeWithTransaction(Element& aElement, nsAtom& aAttribute);
 
-  MOZ_CAN_RUN_SCRIPT
-  virtual nsresult RemoveAttributeOrEquivalent(Element* aElement,
-                                               nsAtom* aAttribute,
-                                               bool aSuppressTransaction) = 0;
+  MOZ_CAN_RUN_SCRIPT virtual nsresult RemoveAttributeOrEquivalent(
+      Element* aElement, nsAtom* aAttribute, bool aSuppressTransaction) = 0;
 
   /**
    * SetAttributeWithTransaction() sets aAttribute of aElement to aValue.
@@ -1692,15 +1691,12 @@ class EditorBase : public nsIEditor,
    * @param aAttribute      Attribute name to be set.
    * @param aValue          Attribute value be set to aAttribute.
    */
-  MOZ_CAN_RUN_SCRIPT
-  nsresult SetAttributeWithTransaction(Element& aElement, nsAtom& aAttribute,
-                                       const nsAString& aValue);
+  MOZ_CAN_RUN_SCRIPT nsresult SetAttributeWithTransaction(
+      Element& aElement, nsAtom& aAttribute, const nsAString& aValue);
 
-  MOZ_CAN_RUN_SCRIPT
-  virtual nsresult SetAttributeOrEquivalent(Element* aElement,
-                                            nsAtom* aAttribute,
-                                            const nsAString& aValue,
-                                            bool aSuppressTransaction) = 0;
+  MOZ_CAN_RUN_SCRIPT virtual nsresult SetAttributeOrEquivalent(
+      Element* aElement, nsAtom* aAttribute, const nsAString& aValue,
+      bool aSuppressTransaction) = 0;
 
   /**
    * Method to replace certain CreateElementNS() calls.
@@ -1811,10 +1807,11 @@ class EditorBase : public nsIEditor,
    * @param aCloneAllAttributes If true, all attributes of aOldContainer will
    *                            be copied to the new element.
    */
-  MOZ_CAN_RUN_SCRIPT
-  already_AddRefed<Element> ReplaceContainerWithTransactionInternal(
-      Element& aElement, nsAtom& aTagName, nsAtom& aAttribute,
-      const nsAString& aAttributeValue, bool aCloneAllAttributes);
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element>
+  ReplaceContainerWithTransactionInternal(Element& aElement, nsAtom& aTagName,
+                                          nsAtom& aAttribute,
+                                          const nsAString& aAttributeValue,
+                                          bool aCloneAllAttributes);
 
   /**
    * InsertContainerWithTransactionInternal() creates new element whose name is
@@ -1834,10 +1831,10 @@ class EditorBase : public nsIEditor,
    * @param aAttributeValue     Value to be set to aAttribute.
    * @return                    The new element.
    */
-  MOZ_CAN_RUN_SCRIPT
-  already_AddRefed<Element> InsertContainerWithTransactionInternal(
-      nsIContent& aContent, nsAtom& aTagName, nsAtom& aAttribute,
-      const nsAString& aAttributeValue);
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element>
+  InsertContainerWithTransactionInternal(nsIContent& aContent, nsAtom& aTagName,
+                                         nsAtom& aAttribute,
+                                         const nsAString& aAttributeValue);
 
   /**
    * DoSplitNode() creates a new node (left node) identical to an existing
@@ -1912,22 +1909,21 @@ class EditorBase : public nsIEditor,
    *                    aLeftNode.
    * @return            The point of the first child of the last right node.
    */
-  MOZ_CAN_RUN_SCRIPT
-  EditorDOMPoint JoinNodesDeepWithTransaction(nsIContent& aLeftNode,
-                                              nsIContent& aRightNode);
+  MOZ_CAN_RUN_SCRIPT EditorDOMPoint
+  JoinNodesDeepWithTransaction(nsIContent& aLeftNode, nsIContent& aRightNode);
 
   /**
    * EnsureNoPaddingBRElementForEmptyEditor() removes padding <br> element
    * for empty editor if there is.
    */
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
   EnsureNoPaddingBRElementForEmptyEditor();
 
   /**
    * MaybeCreatePaddingBRElementForEmptyEditor() creates padding <br> element
    * for empty editor if there is no children.
    */
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
   MaybeCreatePaddingBRElementForEmptyEditor();
 
   /**
@@ -1936,7 +1932,7 @@ class EditorBase : public nsIEditor,
    *
    * @param aElement    The element for which to insert formatting.
    */
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult MarkElementDirty(Element& aElement);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult MarkElementDirty(Element& aElement);
 
   MOZ_CAN_RUN_SCRIPT nsresult DoTransactionInternal(nsITransaction* aTxn);
 
@@ -2365,7 +2361,7 @@ class EditorBase : public nsIEditor,
    * XXX What's the difference with PlaceholderTransaction? Should we always
    *     use it instead?
    */
-  void BeginTransactionInternal();
+  MOZ_CAN_RUN_SCRIPT void BeginTransactionInternal();
   MOZ_CAN_RUN_SCRIPT void EndTransactionInternal();
 
  protected:  // Shouldn't be used by friend classes
@@ -2417,8 +2413,7 @@ class EditorBase : public nsIEditor,
    * because SelectAll() creates AutoEditActionSetter but we should avoid
    * to create it as far as possible.
    */
-  MOZ_CAN_RUN_SCRIPT
-  virtual nsresult SelectAllInternal();
+  MOZ_CAN_RUN_SCRIPT virtual nsresult SelectAllInternal();
 
   nsresult DetermineCurrentDirection();
 
@@ -2458,8 +2453,7 @@ class EditorBase : public nsIEditor,
   /**
    * Make the given selection span the entire document.
    */
-  MOZ_CAN_RUN_SCRIPT
-  virtual nsresult SelectEntireDocument() = 0;
+  MOZ_CAN_RUN_SCRIPT virtual nsresult SelectEntireDocument() = 0;
 
   /**
    * Helper method for scrolling the selection into view after
@@ -2470,7 +2464,7 @@ class EditorBase : public nsIEditor,
    * the editor's sync/async settings for reflowing, painting, and scrolling
    * match.
    */
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult ScrollSelectionFocusIntoView();
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult ScrollSelectionFocusIntoView();
 
   /**
    * Helper for GetPreviousNodeInternal() and GetNextNodeInternal().
@@ -2548,8 +2542,7 @@ class EditorBase : public nsIEditor,
     // Check for password/readonly/disabled, which are not spellchecked
     // regardless of DOM. Also, check to see if spell check should be skipped
     // or not.
-    return !IsPasswordEditor() && !IsReadonly() && !IsDisabled() &&
-           !ShouldSkipSpellCheck();
+    return !IsPasswordEditor() && !IsReadonly() && !ShouldSkipSpellCheck();
   }
 
   /**
@@ -2576,7 +2569,8 @@ class EditorBase : public nsIEditor,
    * Creates a range with just the supplied node and appends that to the
    * selection.
    */
-  nsresult AppendNodeToSelectionAsRange(nsINode* aNode);
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult
+  AppendNodeToSelectionAsRange(nsINode* aNode);
 
   /**
    * When you are using AppendNodeToSelectionAsRange(), call this first to
@@ -2589,15 +2583,15 @@ class EditorBase : public nsIEditor,
    * a host of the editor, i.e., the editor doesn't get focus, this does
    * nothing.
    */
-  nsresult InitializeSelection(dom::EventTarget* aFocusEventTarget);
+  MOZ_CAN_RUN_SCRIPT nsresult InitializeSelection(nsINode& aFocusEventTarget);
 
   enum NotificationForEditorObservers {
     eNotifyEditorObserversOfEnd,
     eNotifyEditorObserversOfBefore,
     eNotifyEditorObserversOfCancel
   };
-  MOZ_CAN_RUN_SCRIPT
-  void NotifyEditorObservers(NotificationForEditorObservers aNotification);
+  MOZ_CAN_RUN_SCRIPT void NotifyEditorObservers(
+      NotificationForEditorObservers aNotification);
 
   /**
    * PrepareToInsertBRElement() returns a point where new <br> element should
@@ -2615,7 +2609,7 @@ class EditorBase : public nsIEditor,
    * InsertLineBreakAsSubAction() inserts a line break, i.e., \n if it's
    * TextEditor or <br> if it's HTMLEditor.
    */
-  MOZ_CAN_RUN_SCRIPT MOZ_MUST_USE nsresult InsertLineBreakAsSubAction();
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult InsertLineBreakAsSubAction();
 
  private:
   nsCOMPtr<nsISelectionController> mSelectionController;
@@ -2644,7 +2638,7 @@ class EditorBase : public nsIEditor,
         EditorBase& aEditorBase MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
         : mEditorBase(aEditorBase) {
       MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-      mEditorBase.BeginTransactionInternal();
+      MOZ_KnownLive(mEditorBase).BeginTransactionInternal();
     }
 
     MOZ_CAN_RUN_SCRIPT ~AutoTransactionBatch() {

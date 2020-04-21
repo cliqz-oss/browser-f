@@ -1086,8 +1086,9 @@ already_AddRefed<ShadowRoot> Element::AttachShadowWithoutNameChecks(
    *    context object's node document, host is context object,
    *    and mode is init's mode.
    */
+  auto* nim = nodeInfo->NodeInfoManager();
   RefPtr<ShadowRoot> shadowRoot =
-      new ShadowRoot(this, aMode, nodeInfo.forget());
+      new (nim) ShadowRoot(this, aMode, nodeInfo.forget());
 
   if (NodeOrAncestorHasDirAuto()) {
     shadowRoot->SetAncestorHasDirAuto();
@@ -1587,7 +1588,6 @@ nsresult Element::BindToTree(BindContext& aContext, nsINode& aParent) {
   // Now recurse into our kids. Ensure this happens after binding the shadow
   // root so that directionality of slots is updated.
   {
-    BindContext::NestingLevel level(aContext, *this);
     for (nsIContent* child = GetFirstChild(); child;
          child = child->GetNextSibling()) {
       rv = child->BindToTree(aContext, *this);
@@ -2322,31 +2322,34 @@ nsresult Element::SetAttrAndNotify(
     }
   }
 
-  CustomElementDefinition* definition = GetCustomElementDefinition();
-  // Only custom element which is in `custom` state could get the
-  // CustomElementDefinition.
-  if (definition && definition->IsInObservedAttributeList(aName)) {
-    RefPtr<nsAtom> oldValueAtom;
-    if (oldValue) {
-      oldValueAtom = oldValue->GetAsAtom();
-    } else {
-      // If there is no old value, get the value of the uninitialized
-      // attribute that was swapped with aParsedValue.
-      oldValueAtom = aParsedValue.GetAsAtom();
+  const CustomElementData* data = GetCustomElementData();
+  if (data && data->mState == CustomElementData::State::eCustom) {
+    CustomElementDefinition* definition = data->GetCustomElementDefinition();
+    MOZ_ASSERT(definition, "Should have a valid CustomElementDefinition");
+
+    if (definition->IsInObservedAttributeList(aName)) {
+      RefPtr<nsAtom> oldValueAtom;
+      if (oldValue) {
+        oldValueAtom = oldValue->GetAsAtom();
+      } else {
+        // If there is no old value, get the value of the uninitialized
+        // attribute that was swapped with aParsedValue.
+        oldValueAtom = aParsedValue.GetAsAtom();
+      }
+      RefPtr<nsAtom> newValueAtom = valueForAfterSetAttr.GetAsAtom();
+      nsAutoString ns;
+      nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNamespaceID, ns);
+
+      LifecycleCallbackArgs args = {nsDependentAtomString(aName),
+                                    aModType == MutationEvent_Binding::ADDITION
+                                        ? VoidString()
+                                        : nsDependentAtomString(oldValueAtom),
+                                    nsDependentAtomString(newValueAtom),
+                                    (ns.IsEmpty() ? VoidString() : ns)};
+
+      nsContentUtils::EnqueueLifecycleCallback(
+          Document::eAttributeChanged, this, &args, nullptr, definition);
     }
-    RefPtr<nsAtom> newValueAtom = valueForAfterSetAttr.GetAsAtom();
-    nsAutoString ns;
-    nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNamespaceID, ns);
-
-    LifecycleCallbackArgs args = {nsDependentAtomString(aName),
-                                  aModType == MutationEvent_Binding::ADDITION
-                                      ? VoidString()
-                                      : nsDependentAtomString(oldValueAtom),
-                                  nsDependentAtomString(newValueAtom),
-                                  (ns.IsEmpty() ? VoidString() : ns)};
-
-    nsContentUtils::EnqueueLifecycleCallback(Document::eAttributeChanged, this,
-                                             &args, nullptr, definition);
   }
 
   if (aCallAfterSetAttr) {
@@ -2514,19 +2517,22 @@ void Element::PostIdMaybeChange(int32_t aNamespaceID, nsAtom* aName,
 nsresult Element::OnAttrSetButNotChanged(int32_t aNamespaceID, nsAtom* aName,
                                          const nsAttrValueOrString& aValue,
                                          bool aNotify) {
-  // Only custom element which is in `custom` state could get the
-  // CustomElementDefinition.
-  CustomElementDefinition* definition = GetCustomElementDefinition();
-  if (definition && definition->IsInObservedAttributeList(aName)) {
-    nsAutoString ns;
-    nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNamespaceID, ns);
+  const CustomElementData* data = GetCustomElementData();
+  if (data && data->mState == CustomElementData::State::eCustom) {
+    CustomElementDefinition* definition = data->GetCustomElementDefinition();
+    MOZ_ASSERT(definition, "Should have a valid CustomElementDefinition");
 
-    nsAutoString value(aValue.String());
-    LifecycleCallbackArgs args = {nsDependentAtomString(aName), value, value,
-                                  (ns.IsEmpty() ? VoidString() : ns)};
+    if (definition->IsInObservedAttributeList(aName)) {
+      nsAutoString ns;
+      nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNamespaceID, ns);
 
-    nsContentUtils::EnqueueLifecycleCallback(Document::eAttributeChanged, this,
-                                             &args, nullptr, definition);
+      nsAutoString value(aValue.String());
+      LifecycleCallbackArgs args = {nsDependentAtomString(aName), value, value,
+                                    (ns.IsEmpty() ? VoidString() : ns)};
+
+      nsContentUtils::EnqueueLifecycleCallback(
+          Document::eAttributeChanged, this, &args, nullptr, definition);
+    }
   }
 
   return NS_OK;
@@ -2622,20 +2628,23 @@ nsresult Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName, bool aNotify) {
 
   PostIdMaybeChange(aNameSpaceID, aName, nullptr);
 
-  CustomElementDefinition* definition = GetCustomElementDefinition();
-  // Only custom element which is in `custom` state could get the
-  // CustomElementDefinition.
-  if (definition && definition->IsInObservedAttributeList(aName)) {
-    nsAutoString ns;
-    nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNameSpaceID, ns);
+  const CustomElementData* data = GetCustomElementData();
+  if (data && data->mState == CustomElementData::State::eCustom) {
+    CustomElementDefinition* definition = data->GetCustomElementDefinition();
+    MOZ_ASSERT(definition, "Should have a valid CustomElementDefinition");
 
-    RefPtr<nsAtom> oldValueAtom = oldValue.GetAsAtom();
-    LifecycleCallbackArgs args = {
-        nsDependentAtomString(aName), nsDependentAtomString(oldValueAtom),
-        VoidString(), (ns.IsEmpty() ? VoidString() : ns)};
+    if (definition->IsInObservedAttributeList(aName)) {
+      nsAutoString ns;
+      nsContentUtils::NameSpaceManager()->GetNameSpaceURI(aNameSpaceID, ns);
 
-    nsContentUtils::EnqueueLifecycleCallback(Document::eAttributeChanged, this,
-                                             &args, nullptr, definition);
+      RefPtr<nsAtom> oldValueAtom = oldValue.GetAsAtom();
+      LifecycleCallbackArgs args = {
+          nsDependentAtomString(aName), nsDependentAtomString(oldValueAtom),
+          VoidString(), (ns.IsEmpty() ? VoidString() : ns)};
+
+      nsContentUtils::EnqueueLifecycleCallback(
+          Document::eAttributeChanged, this, &args, nullptr, definition);
+    }
   }
 
   rv = AfterSetAttr(aNameSpaceID, aName, nullptr, &oldValue, nullptr, aNotify);
@@ -3080,15 +3089,27 @@ CORSMode Element::AttrValueToCORSMode(const nsAttrValue* aValue) {
  * Returns nullptr if requests for fullscreen are allowed in the current
  * context. Requests are only allowed if the user initiated them (like with
  * a mouse-click or key press), unless this check has been disabled by
- * setting the pref "full-screen-api.allow-trusted-requests-only" to false.
+ * setting the pref "full-screen-api.allow-trusted-requests-only" to false
+ * or if the caller is privileged. Feature policy may also deny requests.
  * If fullscreen is not allowed, a key for the error message is returned.
  */
 static const char* GetFullscreenError(CallerType aCallerType,
                                       Document* aDocument) {
   MOZ_ASSERT(aDocument);
 
-  if (!StaticPrefs::full_screen_api_allow_trusted_requests_only() ||
-      aCallerType == CallerType::System) {
+  // Privileged callers can always request fullscreen
+  if (aCallerType == CallerType::System) {
+    return nullptr;
+  }
+
+  // Ensure feature policy allows using the fullscreen API
+  if (!FeaturePolicyUtils::IsFeatureAllowed(aDocument,
+                                            NS_LITERAL_STRING("fullscreen"))) {
+    return "FullscreenDeniedFeaturePolicy";
+  }
+
+  // Bypass user interaction checks if preference is set
+  if (!StaticPrefs::full_screen_api_allow_trusted_requests_only()) {
     return nullptr;
   }
 
@@ -3136,12 +3157,6 @@ already_AddRefed<Promise> Element::RequestFullscreen(CallerType aCallerType,
                                                      ErrorResult& aRv) {
   auto request = FullscreenRequest::Create(this, aCallerType, aRv);
   RefPtr<Promise> promise = request->GetPromise();
-
-  if (!FeaturePolicyUtils::IsFeatureAllowed(OwnerDoc(),
-                                            NS_LITERAL_STRING("fullscreen"))) {
-    request->Reject("FullscreenDeniedFeaturePolicy");
-    return promise.forget();
-  }
 
   // Only grant fullscreen requests if this is called from inside a trusted
   // event handler (i.e. inside an event handler for a user initiated event).
@@ -3287,23 +3302,26 @@ already_AddRefed<Animation> Element::Animate(
 }
 
 void Element::GetAnimations(const GetAnimationsOptions& aOptions,
-                            nsTArray<RefPtr<Animation>>& aAnimations,
-                            Flush aFlush) {
-  if (aFlush == Flush::Yes) {
-    if (Document* doc = GetComposedDoc()) {
-      // We don't need to explicitly flush throttled animations here, since
-      // updating the animation style of elements will never affect the set of
-      // running animations and it's only the set of running animations that is
-      // important here.
-      //
-      // NOTE: Any changes to the flags passed to the following call should
-      // be reflected in the flags passed in DocumentOrShadowRoot::GetAnimations
-      // too.
-      doc->FlushPendingNotifications(
-          ChangesToFlush(FlushType::Style, false /* flush animations */));
-    }
+                            nsTArray<RefPtr<Animation>>& aAnimations) {
+  if (Document* doc = GetComposedDoc()) {
+    // We don't need to explicitly flush throttled animations here, since
+    // updating the animation style of elements will never affect the set of
+    // running animations and it's only the set of running animations that is
+    // important here.
+    //
+    // NOTE: Any changes to the flags passed to the following call should
+    // be reflected in the flags passed in DocumentOrShadowRoot::GetAnimations
+    // too.
+    doc->FlushPendingNotifications(
+        ChangesToFlush(FlushType::Style, false /* flush animations */));
   }
 
+  GetAnimationsWithoutFlush(aOptions, aAnimations);
+}
+
+void Element::GetAnimationsWithoutFlush(
+    const GetAnimationsOptions& aOptions,
+    nsTArray<RefPtr<Animation>>& aAnimations) {
   Element* elem = this;
   PseudoStyleType pseudoType = PseudoStyleType::NotPseudo;
   // For animations on generated-content elements, the animations are stored
@@ -3413,8 +3431,8 @@ void Element::SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError) {
       localName = nsGkAtoms::body;
       namespaceID = kNameSpaceID_XHTML;
     }
-    RefPtr<DocumentFragment> fragment =
-        new DocumentFragment(OwnerDoc()->NodeInfoManager());
+    RefPtr<DocumentFragment> fragment = new (OwnerDoc()->NodeInfoManager())
+        DocumentFragment(OwnerDoc()->NodeInfoManager());
     nsContentUtils::ParseFragmentHTML(
         aOuterHTML, fragment, localName, namespaceID,
         OwnerDoc()->GetCompatibilityMode() == eCompatibility_NavQuirks, true);
@@ -3648,6 +3666,23 @@ float Element::FontSizeInflation() {
   }
 
   return 1.0;
+}
+
+void Element::GetImplementedPseudoElement(nsAString& aPseudo) const {
+  PseudoStyleType pseudoType = GetPseudoElementType();
+  if (pseudoType == PseudoStyleType::NotPseudo) {
+    return SetDOMStringToNull(aPseudo);
+  }
+  nsDependentAtomString pseudo(nsCSSPseudoElements::GetPseudoAtom(pseudoType));
+
+  // We want to use the modern syntax (::placeholder, etc), but the atoms only
+  // contain one semi-colon.
+  MOZ_ASSERT(pseudo.Length() > 2 && pseudo[0] == ':' && pseudo[1] != ':');
+
+  aPseudo.Truncate();
+  aPseudo.SetCapacity(pseudo.Length() + 1);
+  aPseudo.Append(':');
+  aPseudo.Append(pseudo);
 }
 
 ReferrerPolicy Element::GetReferrerPolicyAsEnum() {

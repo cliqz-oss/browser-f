@@ -448,7 +448,7 @@ class nsXULAppInfo : public nsIXULAppInfo,
 
 {
  public:
-  constexpr nsXULAppInfo() {}
+  constexpr nsXULAppInfo() = default;
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIPLATFORMINFO
   NS_DECL_NSIXULAPPINFO
@@ -581,6 +581,18 @@ nsXULAppInfo::GetSourceURL(nsACString& aResult) {
     return NS_OK;
   }
   aResult.Assign(gAppData->sourceURL);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXULAppInfo::GetUpdateURL(nsACString& aResult) {
+  if (XRE_IsContentProcess()) {
+    ContentChild* cc = ContentChild::GetSingleton();
+    aResult = cc->GetAppInfo().updateURL;
+    return NS_OK;
+  }
+  aResult.Assign(gAppData->updateURL);
 
   return NS_OK;
 }
@@ -1290,7 +1302,7 @@ class nsSingletonFactory final : public nsIFactory {
   explicit nsSingletonFactory(nsISupports* aSingleton);
 
  private:
-  ~nsSingletonFactory() {}
+  ~nsSingletonFactory() = default;
   nsCOMPtr<nsISupports> mSingleton;
 };
 

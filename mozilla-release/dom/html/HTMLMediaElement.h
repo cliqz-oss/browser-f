@@ -6,7 +6,6 @@
 #ifndef mozilla_dom_HTMLMediaElement_h
 #define mozilla_dom_HTMLMediaElement_h
 
-#include "nsAutoPtr.h"
 #include "nsGenericHTMLElement.h"
 #include "AudioChannelService.h"
 #include "MediaEventSource.h"
@@ -30,6 +29,8 @@
 #include "PrincipalChangeObserver.h"
 #include "nsStubMutationObserver.h"
 #include "MediaSegment.h"  // for PrincipalHandle, GraphTime
+
+#include <utility>
 
 // X.h on Linux #defines CurrentTime as 0L, so we have to #undef it here.
 #ifdef CurrentTime
@@ -735,7 +736,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // empty and the default device is being used.
   void GetSinkId(nsString& aSinkId) {
     MOZ_ASSERT(NS_IsMainThread());
-    aSinkId = mSink.first();
+    aSinkId = mSink.first;
   }
 
   // This is used to notify MediaElementAudioSourceNode that media element is
@@ -1344,6 +1345,10 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // key events.
   void ClearStopMediaControlTimerIfNeeded();
 
+  // This function is used to update the status of media control when the media
+  // changes its status of being used in the Picture-in-Picture mode.
+  void UpdateMediaControlAfterPictureInPictureModeChanged();
+
   // The current decoder. Load() has been called on this decoder.
   // At most one of mDecoder and mSrcStream can be non-null.
   RefPtr<MediaDecoder> mDecoder;
@@ -1902,7 +1907,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // unplugged. It can be set to ("", nullptr). It follows the spec attribute:
   // https://w3c.github.io/mediacapture-output/#htmlmediaelement-extensions
   // Read/Write from the main thread only.
-  Pair<nsString, RefPtr<AudioDeviceInfo>> mSink;
+  std::pair<nsString, RefPtr<AudioDeviceInfo>> mSink;
 
   // This flag is used to control when the user agent is to show a poster frame
   // for a video element instead of showing the video contents.
@@ -1924,6 +1929,9 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   void StartListeningMediaControlEventIfNeeded();
   void StopListeningMediaControlEventIfNeeded();
   RefPtr<MediaControlEventListener> mMediaControlEventListener;
+
+  // Return true if the media element is being used in picture in picture mode.
+  bool IsBeingUsedInPictureInPictureMode() const;
 };
 
 // Check if the context is chrome or has the debugger or tabs permission

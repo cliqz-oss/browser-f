@@ -6,10 +6,10 @@ check-alphabetical-order = false
 [ignore]
 # Ignored packages with duplicated versions
 packages = [
+    "autocfg",
     "core-graphics",
     "core-text",
     "gl_generator",
-    "lazy_static",
     "percent-encoding",
     "rand",
     "rand_core",

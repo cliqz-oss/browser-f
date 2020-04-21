@@ -62,6 +62,14 @@ void GPUVideoTextureHost::Unlock() {
   EnsureWrappedTextureHost()->Unlock();
 }
 
+void GPUVideoTextureHost::PrepareTextureSource(
+    CompositableTextureSourceRef& aTexture) {
+  if (!EnsureWrappedTextureHost()) {
+    return;
+  }
+  EnsureWrappedTextureHost()->PrepareTextureSource(aTexture);
+}
+
 bool GPUVideoTextureHost::BindTextureSource(
     CompositableTextureSourceRef& aTexture) {
   if (!EnsureWrappedTextureHost()) {
@@ -122,6 +130,13 @@ bool GPUVideoTextureHost::HasIntermediateBuffer() const {
   return mWrappedTextureHost->HasIntermediateBuffer();
 }
 
+void GPUVideoTextureHost::UpdatedInternal(const nsIntRegion* Region) {
+  if (!EnsureWrappedTextureHost()) {
+    return;
+  }
+  EnsureWrappedTextureHost()->UpdatedInternal(Region);
+}
+
 void GPUVideoTextureHost::CreateRenderTexture(
     const wr::ExternalImageId& aExternalImageId) {
   MOZ_ASSERT(mExternalImageId.isNothing());
@@ -150,28 +165,28 @@ uint32_t GPUVideoTextureHost::NumSubTextures() {
 
 void GPUVideoTextureHost::PushResourceUpdates(
     wr::TransactionBuilder& aResources, ResourceUpdateOp aOp,
-    const Range<wr::ImageKey>& aImageKeys, const wr::ExternalImageId& aExtID,
-    const bool aPreferCompositorSurface) {
+    const Range<wr::ImageKey>& aImageKeys, const wr::ExternalImageId& aExtID) {
   MOZ_ASSERT(EnsureWrappedTextureHost());
   if (!EnsureWrappedTextureHost()) {
     return;
   }
-  EnsureWrappedTextureHost()->PushResourceUpdates(
-      aResources, aOp, aImageKeys, aExtID, aPreferCompositorSurface);
+  EnsureWrappedTextureHost()->PushResourceUpdates(aResources, aOp, aImageKeys,
+                                                  aExtID);
 }
 
 void GPUVideoTextureHost::PushDisplayItems(
     wr::DisplayListBuilder& aBuilder, const wr::LayoutRect& aBounds,
     const wr::LayoutRect& aClip, wr::ImageRendering aFilter,
-    const Range<wr::ImageKey>& aImageKeys) {
+    const Range<wr::ImageKey>& aImageKeys,
+    const bool aPreferCompositorSurface) {
   MOZ_ASSERT(EnsureWrappedTextureHost());
   MOZ_ASSERT(aImageKeys.length() > 0);
   if (!EnsureWrappedTextureHost()) {
     return;
   }
 
-  EnsureWrappedTextureHost()->PushDisplayItems(aBuilder, aBounds, aClip,
-                                               aFilter, aImageKeys);
+  EnsureWrappedTextureHost()->PushDisplayItems(
+      aBuilder, aBounds, aClip, aFilter, aImageKeys, aPreferCompositorSurface);
 }
 
 }  // namespace layers

@@ -15,6 +15,11 @@ import sys
 import traceback
 
 
+read_input = input
+if sys.version_info.major == 2:
+    read_input = raw_input
+
+
 def add_tests_dir_to_path():
     from os.path import dirname, exists, join, realpath
     js_src_dir = dirname(dirname(realpath(sys.argv[0])))
@@ -56,7 +61,7 @@ def choose_item(jobs, max_items, display):
     for i, job in enumerate(jobs, 1):
         print("{}) {}".format(i, display(job)))
 
-    item = raw_input('Which one:\n')
+    item = read_input('Which one:\n')
     try:
         item = int(item)
         if item > job_count or item < 1:
@@ -166,7 +171,7 @@ def main(argv):
     op.add_argument('--remoteTestRoot', dest='remote_test_root', action='store',
                     type=str, default='/data/local/tests',
                     help='The remote directory to use as test root'
-                    ' (eg. /data/local/tests)')
+                    ' (e.g.  %(default)s)')
     op.add_argument('--localLib', dest='local_lib', action='store',
                     type=str,
                     help='The location of libraries to push -- preferably'
@@ -224,7 +229,9 @@ def main(argv):
 
     if options.run_binast:
         code = 'print(getBuildConfiguration().binast)'
-        is_binast_enabled = subprocess.check_output([js_shell, '-e', code])
+        is_binast_enabled = subprocess.check_output(
+            [js_shell, '-e', code]
+        ).decode(errors='replace')
         if not is_binast_enabled.startswith('true'):
             print("While --run-binast is specified, BinAST is not enabled.",
                   file=sys.stderr)
@@ -334,7 +341,7 @@ def main(argv):
     prologue = os.path.join(jittests.LIB_DIR, 'prologue.js')
     if options.remote:
         prologue = posixpath.join(options.remote_test_root,
-                                  'jit-tests', 'jit-tests', 'lib', 'prologue.js')
+                                  'tests', 'tests', 'lib', 'prologue.js')
 
     prefix += ['-f', prologue]
 

@@ -10,6 +10,7 @@
 #include "MediaControlUtils.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
+#include "mozilla/dom/MediaSessionUtils.h"
 
 // avoid redefined macro in unified build
 #undef LOG
@@ -37,14 +38,14 @@ MediaController::~MediaController() {
 
 void MediaController::Play() {
   LOG("Play");
-  SetPlayState(PlaybackState::ePlaying);
+  SetGuessedPlayState(MediaSessionPlaybackState::Playing);
   UpdateMediaControlKeysEventToContentMediaIfNeeded(
       MediaControlKeysEvent::ePlay);
 }
 
 void MediaController::Pause() {
   LOG("Pause");
-  SetPlayState(PlaybackState::ePaused);
+  SetGuessedPlayState(MediaSessionPlaybackState::Paused);
   UpdateMediaControlKeysEventToContentMediaIfNeeded(
       MediaControlKeysEvent::ePause);
 }
@@ -75,7 +76,7 @@ void MediaController::SeekForward() {
 
 void MediaController::Stop() {
   LOG("Stop");
-  SetPlayState(PlaybackState::eStopped);
+  SetGuessedPlayState(MediaSessionPlaybackState::None);
   UpdateMediaControlKeysEventToContentMediaIfNeeded(
       MediaControlKeysEvent::eStop);
 }
@@ -102,7 +103,7 @@ void MediaController::UpdateMediaControlKeysEventToContentMediaIfNeeded(
 
 void MediaController::Shutdown() {
   MOZ_ASSERT(!mShutdown, "Do not call shutdown twice!");
-  SetPlayState(PlaybackState::eStopped);
+  SetGuessedPlayState(MediaSessionPlaybackState::None);
   // The media controller would be removed from the service when we receive a
   // notification from the content process about all controlled media has been
   // stoppped. However, if controlled media is stopped after detaching
@@ -175,7 +176,7 @@ void MediaController::IncreasePlayingControlledMediaNum() {
              "The number of playing media should not exceed the number of "
              "controlled media!");
   if (mPlayingControlledMediaNum == 1) {
-    SetPlayState(PlaybackState::ePlaying);
+    SetGuessedPlayState(MediaSessionPlaybackState::Playing);
   }
 }
 
@@ -186,7 +187,7 @@ void MediaController::DecreasePlayingControlledMediaNum() {
       mPlayingControlledMediaNum);
   MOZ_ASSERT(mPlayingControlledMediaNum >= 0);
   if (mPlayingControlledMediaNum == 0) {
-    SetPlayState(PlaybackState::ePaused);
+    SetGuessedPlayState(MediaSessionPlaybackState::Paused);
   }
 }
 
@@ -212,19 +213,64 @@ void MediaController::Deactivate() {
   }
 }
 
-void MediaController::SetPlayState(PlaybackState aState) {
-  if (mShutdown || mState == aState) {
-    return;
-  }
-  LOG("SetPlayState : '%s'", ToPlaybackStateEventStr(aState));
-  mState = aState;
-  mPlaybackStateChangedEvent.Notify(mState);
+void MediaController::SetDeclaredPlaybackState(
+    uint64_t aSessionContextId, MediaSessionPlaybackState aState) {
+  MediaSessionController::SetDeclaredPlaybackState(aSessionContextId, aState);
+  UpdateActualPlaybackState();
 }
 
-PlaybackState MediaController::GetState() const { return mState; }
+void MediaController::SetGuessedPlayState(MediaSessionPlaybackState aState) {
+  if (mShutdown || mGuessedPlaybackState == aState) {
+    return;
+  }
+  LOG("SetGuessedPlayState : '%s'", ToMediaSessionPlaybackStateStr(aState));
+  mGuessedPlaybackState = aState;
+  UpdateActualPlaybackState();
+}
+
+void MediaController::UpdateActualPlaybackState() {
+  // The way to compute the actual playback state is based on the spec.
+  // https://w3c.github.io/mediasession/#actual-playback-state
+  MediaSessionPlaybackState newState =
+      GetCurrentDeclaredPlaybackState() == MediaSessionPlaybackState::Playing
+          ? MediaSessionPlaybackState::Playing
+          : mGuessedPlaybackState;
+  if (mActualPlaybackState == newState) {
+    return;
+  }
+  mActualPlaybackState = newState;
+  LOG("UpdateActualPlaybackState : '%s'",
+      ToMediaSessionPlaybackStateStr(mActualPlaybackState));
+  if (RefPtr<MediaControlService> service = MediaControlService::GetService()) {
+    service->NotifyControllerPlaybackStateChanged(this);
+  }
+}
+
+void MediaController::SetIsInPictureInPictureMode(
+    bool aIsInPictureInPictureMode) {
+  if (mIsInPictureInPictureMode == aIsInPictureInPictureMode) {
+    return;
+  }
+  LOG("Set IsInPictureInPictureMode to %s",
+      aIsInPictureInPictureMode ? "true" : "false");
+  mIsInPictureInPictureMode = aIsInPictureInPictureMode;
+  if (RefPtr<MediaControlService> service = MediaControlService::GetService();
+      service && mIsInPictureInPictureMode) {
+    service->NotifyControllerBeingUsedInPictureInPictureMode(this);
+  }
+}
+
+bool MediaController::IsInPictureInPictureMode() const {
+  return mIsInPictureInPictureMode;
+}
+
+MediaSessionPlaybackState MediaController::GetState() const {
+  return mActualPlaybackState;
+}
 
 bool MediaController::IsAudible() const {
-  return mState == PlaybackState::ePlaying && mAudible;
+  return mGuessedPlaybackState == MediaSessionPlaybackState::Playing &&
+         mAudible;
 }
 
 uint64_t MediaController::ControlledMediaNum() const {

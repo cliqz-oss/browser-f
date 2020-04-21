@@ -13,6 +13,8 @@
 
 #include "jspubtd.h"
 
+#include "vm/CheckIsCallableKind.h"  // CheckIsCallableKind
+#include "vm/CheckIsObjectKind.h"    // CheckIsObjectKind
 #include "vm/Iteration.h"
 #include "vm/Stack.h"
 
@@ -312,16 +314,17 @@ extern void UnwindAllEnvironmentsInFrame(JSContext* cx, EnvironmentIter& ei);
 // Compute the pc needed to unwind the scope to the beginning of the block
 // pointed to by the try note.
 extern jsbytecode* UnwindEnvironmentToTryPc(JSScript* script,
-                                            const JSTryNote* tn);
+                                            const TryNote* tn);
+
+namespace detail {
 
 template <class TryNoteFilter>
-class MOZ_STACK_CLASS TryNoteIter {
-  RootedScript script_;
+class MOZ_STACK_CLASS BaseTryNoteIter {
   uint32_t pcOffset_;
   TryNoteFilter isTryNoteValid_;
 
-  const JSTryNote* tn_;
-  const JSTryNote* tnEnd_;
+  const TryNote* tn_;
+  const TryNote* tnEnd_;
 
   void settle() {
     for (; tn_ != tnEnd_; ++tn_) {
@@ -346,7 +349,7 @@ class MOZ_STACK_CLASS TryNoteIter {
        *  should not be. If IteratorClose throws, we don't want to
        *  catch it here.
        *
-       *  To make this work, we use JSTRY_FOR_OF_ITERCLOSE try-notes,
+       *  To make this work, we use TryNoteKind::ForOfIterClose try-notes,
        *  which cover the range of the abnormal completion. When
        *  looking up trynotes, a for-of iterclose note indicates that
        *  the enclosing for-of has just been terminated. As a result,
@@ -387,15 +390,15 @@ class MOZ_STACK_CLASS TryNoteIter {
        *    the outer try-catch. (This occurs if an exception is thrown while
        *    closing the outer iterator.)
        */
-      if (tn_->kind == JSTRY_FOR_OF_ITERCLOSE) {
+      if (tn_->kind() == TryNoteKind::ForOfIterClose) {
         uint32_t iterCloseDepth = 1;
         do {
           ++tn_;
           MOZ_ASSERT(tn_ != tnEnd_);
           if (pcInRange()) {
-            if (tn_->kind == JSTRY_FOR_OF_ITERCLOSE) {
+            if (tn_->kind() == TryNoteKind::ForOfIterClose) {
               iterCloseDepth++;
-            } else if (tn_->kind == JSTRY_FOR_OF) {
+            } else if (tn_->kind() == TryNoteKind::ForOf) {
               iterCloseDepth--;
             }
           }
@@ -431,11 +434,9 @@ class MOZ_STACK_CLASS TryNoteIter {
   }
 
  public:
-  TryNoteIter(JSContext* cx, JSScript* script, jsbytecode* pc,
-              TryNoteFilter isTryNoteValid)
-      : script_(cx, script),
-        pcOffset_(script->pcToOffset(pc)),
-        isTryNoteValid_(isTryNoteValid) {
+  BaseTryNoteIter(JSScript* script, jsbytecode* pc,
+                  TryNoteFilter isTryNoteValid)
+      : pcOffset_(script->pcToOffset(pc)), isTryNoteValid_(isTryNoteValid) {
     // NOTE: The Span is a temporary so we can't use begin()/end()
     // here or the iterator will outlive the span.
     auto trynotes = script->trynotes();
@@ -459,19 +460,42 @@ class MOZ_STACK_CLASS TryNoteIter {
     return offset - start < length;
   }
   bool done() const { return tn_ == tnEnd_; }
-  const JSTryNote* operator*() const { return tn_; }
+  const TryNote* operator*() const { return tn_; }
+};
+
+}  // namespace detail
+
+template <class TryNoteFilter>
+class MOZ_STACK_CLASS TryNoteIter
+    : public detail::BaseTryNoteIter<TryNoteFilter> {
+  using Base = detail::BaseTryNoteIter<TryNoteFilter>;
+
+  // Keep the script alive as long as the iterator is live.
+  RootedScript script_;
+
+ public:
+  TryNoteIter(JSContext* cx, JSScript* script, jsbytecode* pc,
+              TryNoteFilter isTryNoteValid)
+      : Base(script, pc, isTryNoteValid), script_(cx, script) {}
 };
 
 class NoOpTryNoteFilter {
  public:
   explicit NoOpTryNoteFilter() = default;
-  bool operator()(const JSTryNote*) { return true; }
+  bool operator()(const TryNote*) { return true; }
 };
 
-class TryNoteIterAll : public TryNoteIter<NoOpTryNoteFilter> {
+// Iterator over all try notes. Code using this iterator is not allowed to
+// trigger GC to make sure the script stays alive. See TryNoteIter above for the
+// can-GC version.
+class MOZ_STACK_CLASS TryNoteIterAllNoGC
+    : public detail::BaseTryNoteIter<NoOpTryNoteFilter> {
+  using Base = detail::BaseTryNoteIter<NoOpTryNoteFilter>;
+  JS::AutoCheckCannotGC nogc;
+
  public:
-  TryNoteIterAll(JSContext* cx, JSScript* script, jsbytecode* pc)
-      : TryNoteIter(cx, script, pc, NoOpTryNoteFilter()) {}
+  TryNoteIterAllNoGC(JSScript* script, jsbytecode* pc)
+      : Base(script, pc, NoOpTryNoteFilter()) {}
 };
 
 bool HandleClosingGeneratorReturn(JSContext* cx, AbstractFramePtr frame,
@@ -529,12 +553,12 @@ bool UrshValues(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs,
 bool AtomicIsLockFree(JSContext* cx, HandleValue in, int* out);
 
 template <bool strict>
-bool DeletePropertyJit(JSContext* ctx, HandleValue val, HandlePropertyName name,
-                       bool* bv);
+bool DelPropOperation(JSContext* cx, HandleValue val, HandlePropertyName name,
+                      bool* res);
 
 template <bool strict>
-bool DeleteElementJit(JSContext* cx, HandleValue val, HandleValue index,
-                      bool* bv);
+bool DelElemOperation(JSContext* cx, HandleValue val, HandleValue index,
+                      bool* res);
 
 JSObject* BindVarOperation(JSContext* cx, JSObject* envChain);
 
@@ -552,9 +576,9 @@ JSObject* SingletonObjectLiteralOperation(JSContext* cx, HandleScript script,
 
 JSObject* ImportMetaOperation(JSContext* cx, HandleScript script);
 
-JSObject* BuiltinProtoOperation(JSContext* cx, jsbytecode* pc);
+JSObject* FunctionProtoOperation(JSContext* cx);
 
-bool ThrowMsgOperation(JSContext* cx, const unsigned errorNum);
+bool ThrowMsgOperation(JSContext* cx, const unsigned throwMsgKind);
 
 bool GetAndClearException(JSContext* cx, MutableHandleValue res);
 
@@ -625,17 +649,7 @@ void ReportInNotObjectError(JSContext* cx, HandleValue lref, int lindex,
 void ReportRuntimeRedeclaration(JSContext* cx, HandlePropertyName name,
                                 const char* redeclKind);
 
-enum class CheckIsObjectKind : uint8_t {
-  IteratorNext,
-  IteratorReturn,
-  IteratorThrow,
-  GetIterator,
-  GetAsyncIterator
-};
-
 bool ThrowCheckIsObject(JSContext* cx, CheckIsObjectKind kind);
-
-enum class CheckIsCallableKind : uint8_t { IteratorReturn };
 
 bool ThrowCheckIsCallable(JSContext* cx, CheckIsCallableKind kind);
 

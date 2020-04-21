@@ -6,7 +6,6 @@
 
 #include "UrlClassifierFeatureFingerprintingAnnotation.h"
 
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/net/UrlClassifierCommon.h"
 #include "nsIClassifiedChannel.h"
 #include "nsContentUtils.h"
@@ -91,6 +90,10 @@ UrlClassifierFeatureFingerprintingAnnotation::MaybeCreate(
        aChannel));
 
   if (!UrlClassifierCommon::ShouldEnableClassifier(aChannel)) {
+    return nullptr;
+  }
+
+  if (UrlClassifierCommon::IsPassiveContent(aChannel)) {
     return nullptr;
   }
 

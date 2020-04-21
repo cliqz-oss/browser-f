@@ -46,6 +46,14 @@ WebRenderLayerManager::WebRenderLayerManager(nsIWidget* aWidget)
     mStateManagers[renderRoot].mRenderRoot = renderRoot;
     mStateManagers[renderRoot].mLayerManager = this;
   }
+
+  if (XRE_IsContentProcess() &&
+      StaticPrefs::gfx_webrender_enable_item_cache_AtStartup()) {
+    static const size_t kInitialCacheSize = 1024;
+    static const size_t kMaximumCacheSize = 10240;
+
+    mDisplayItemCache.SetCapacity(kInitialCacheSize, kMaximumCacheSize);
+  }
 }
 
 KnowsCompositor* WebRenderLayerManager::AsKnowsCompositor() { return mWrChild; }
@@ -198,6 +206,8 @@ bool WebRenderLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags) {
     return false;
   }
 
+  mDisplayItemCache.SkipWaitingForPartialDisplayList();
+
   // Since we don't do repeat transactions right now, just set the time
   mAnimationReadyTime = TimeStamp::Now();
 
@@ -317,13 +327,7 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
 
   wr::DisplayListBuilder builder(
       WrBridge()->GetPipeline(), wrRects[wr::RenderRoot::Default].size,
-      mLastDisplayListSizes[wr::RenderRoot::Default]);
-  for (auto renderRoot : wr::kNonDefaultRenderRoots) {
-    if (!rects[renderRoot].IsEmpty()) {
-      builder.CreateSubBuilder(wrRects[renderRoot].size,
-                               mLastDisplayListSizes[renderRoot], renderRoot);
-    }
-  }
+      mLastDisplayListSizes[wr::RenderRoot::Default], &mDisplayItemCache);
 
   wr::IpcResourceUpdateQueue resourceUpdates(WrBridge());
   wr::usize builderDumpIndex = 0;
@@ -345,9 +349,12 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
     // generating the WR display list is the closest equivalent
     PaintTelemetry::AutoRecord record(PaintTelemetry::Metric::Layerization);
 
+    mDisplayItemCache.SetDisplayList(aDisplayListBuilder, aDisplayList);
+
     mWebRenderCommandBuilder.BuildWebRenderCommands(
         builder, resourceUpdates, aDisplayList, aDisplayListBuilder,
         mScrollDatas, std::move(aFilters));
+
     builderDumpIndex =
         mWebRenderCommandBuilder.GetBuilderDumpIndex(builder.GetRenderRoot());
     containsSVGGroup = mWebRenderCommandBuilder.GetContainsSVGGroup();

@@ -1193,7 +1193,7 @@ const char* nsProtocolProxyService::ExtractProxyInfo(const char* start,
   const char* type = nullptr;
   switch (len) {
     case 4:
-      if (PL_strncasecmp(start, kProxyType_HTTP, 5) == 0) {
+      if (PL_strncasecmp(start, kProxyType_HTTP, 4) == 0) {
         type = kProxyType_HTTP;
       }
       break;
@@ -1239,7 +1239,7 @@ const char* nsProtocolProxyService::ExtractProxyInfo(const char* start,
       port = 1080;
     }
 
-    nsProxyInfo* pi = new nsProxyInfo();
+    RefPtr<nsProxyInfo> pi = new nsProxyInfo();
     pi->mType = type;
     pi->mFlags = flags;
     pi->mResolveFlags = aResolveFlags;
@@ -1271,7 +1271,7 @@ const char* nsProtocolProxyService::ExtractProxyInfo(const char* start,
       pi->mPort = port;
     }
 
-    NS_ADDREF(*result = pi);
+    pi.forget(result);
   }
 
   while (*end == ';' || *end == ' ' || *end == '\t') ++end;
@@ -1676,7 +1676,7 @@ nsProtocolProxyService::GetFailoverForProxy(nsIProxyInfo* aProxy, nsIURI* aURI,
   LOG(("PAC failover from %s %s:%d to %s %s:%d\n", pi->mType, pi->mHost.get(),
        pi->mPort, pi->mNext->mType, pi->mNext->mHost.get(), pi->mNext->mPort));
 
-  NS_ADDREF(*aResult = pi->mNext);
+  *aResult = do_AddRef(pi->mNext).take();
   return NS_OK;
 }
 
@@ -2005,8 +2005,7 @@ nsresult nsProtocolProxyService::NewProxyInfo_Internal(
     NS_ENSURE_ARG(failover);
   }
 
-  nsProxyInfo* proxyInfo = new nsProxyInfo();
-  if (!proxyInfo) return NS_ERROR_OUT_OF_MEMORY;
+  RefPtr<nsProxyInfo> proxyInfo = new nsProxyInfo();
 
   proxyInfo->mType = aType;
   proxyInfo->mHost = aHost;
@@ -2021,7 +2020,7 @@ nsresult nsProtocolProxyService::NewProxyInfo_Internal(
   proxyInfo->mConnectionIsolationKey = aConnectionIsolationKey;
   failover.swap(proxyInfo->mNext);
 
-  NS_ADDREF(*aResult = proxyInfo);
+  proxyInfo.forget(aResult);
   return NS_OK;
 }
 

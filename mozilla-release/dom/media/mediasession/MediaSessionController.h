@@ -14,6 +14,29 @@
 namespace mozilla {
 namespace dom {
 
+class MediaSessionInfo {
+ public:
+  MediaSessionInfo() = default;
+
+  explicit MediaSessionInfo(MediaMetadataBase& aMetadata) {
+    mMetadata.emplace(aMetadata);
+  }
+
+  MediaSessionInfo(MediaMetadataBase& aMetadata,
+                   MediaSessionPlaybackState& aState) {
+    mMetadata.emplace(aMetadata);
+    mDeclaredPlaybackState = aState;
+  }
+
+  static MediaSessionInfo EmptyInfo() { return MediaSessionInfo(); }
+
+  // These attributes are all propagated from the media session in the content
+  // process.
+  Maybe<MediaMetadataBase> mMetadata;
+  MediaSessionPlaybackState mDeclaredPlaybackState =
+      MediaSessionPlaybackState::None;
+};
+
 /**
  * MediaSessionController is used to track all alive media sessions within a tab
  * and store their metadata which could be used to show on the virtual media
@@ -59,6 +82,15 @@ class MediaSessionController {
     return mMetadataChangedEvent;
   }
 
+  // This method is used to update the declared playback state for the specific
+  // media session.
+  virtual void SetDeclaredPlaybackState(uint64_t aSessionContextId,
+                                        MediaSessionPlaybackState aState);
+
+  // Return the active media session's declared playback state. If we don't have
+  // active media session, we would return 'None'.
+  MediaSessionPlaybackState GetCurrentDeclaredPlaybackState() const;
+
  protected:
   ~MediaSessionController() = default;
   uint64_t mTopLevelBCId;
@@ -66,10 +98,14 @@ class MediaSessionController {
 
  private:
   nsString GetDefaultFaviconURL() const;
+  nsString GetDefaultTitle() const;
   MediaMetadataBase CreateDefaultMetadata() const;
+  bool IsInPrivateBrowsing() const;
+  void FillMissingTitleAndArtworkIfNeeded(MediaMetadataBase& aMetadata) const;
+
   void UpdateActiveMediaSessionContextId();
 
-  nsDataHashtable<nsUint64HashKey, Maybe<MediaMetadataBase>> mMetadataMap;
+  nsDataHashtable<nsUint64HashKey, MediaSessionInfo> mMediaSessionInfoMap;
   MediaEventProducer<MediaMetadataBase> mMetadataChangedEvent;
 };
 

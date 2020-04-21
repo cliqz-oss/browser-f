@@ -89,10 +89,10 @@ add_task(async function test_no_logins_class() {
     // End the test now for Linux since the link is hidden.
     return;
   }
-  await TestUtils.waitForCondition(
-    () => Services.wm.getMostRecentWindow("Browser:MigrationWizard"),
-    "Migrator window opened"
-  );
+  await TestUtils.waitForCondition(() => {
+    let win = Services.wm.getMostRecentWindow("Browser:MigrationWizard");
+    return win && win.document && win.document.readyState == "complete";
+  }, "Migrator window loaded");
   let migratorWindow = Services.wm.getMostRecentWindow(
     "Browser:MigrationWizard"
   );
@@ -138,6 +138,9 @@ add_task(
         let loginList = content.document.querySelector("login-list");
         let loginItem = content.document.querySelector("login-item");
         let loginIntro = content.document.querySelector("login-intro");
+        await ContentTaskUtils.waitForCondition(() => {
+          return !loginList.classList.contains("no-logins");
+        }, "waiting for login-list to leave the no-logins view");
         ok(
           !loginList.classList.contains("empty-search"),
           "login-list should not be showing no logins view since one login exists"

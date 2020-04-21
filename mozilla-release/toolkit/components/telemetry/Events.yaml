@@ -124,8 +124,8 @@ addonsManager:
       source: >
         The source that originally triggered the add-on installation, one of "about:addons",
         "about:debugging", "about:preferences", "amo", "app:profile", "disco", "distribution",
-        "extension", "enterprise-policy", "file-url", "gmp-plugin", "internal", "plugin",
-        "rtamo", "sync", "system-addon", "temporary-addon", "unknown".
+        "extension", "enterprise-policy", "file-url", "geckoview-app", "gmp-plugin",
+        "internal", "plugin", "rtamo", "sync", "system-addon", "temporary-addon", "unknown".
       method: >
         The method used by the source to install the add-on (included when the source can use more than one,
         e.g. install events with source "about:addons" may have "install-from-file" or "url" as method),
@@ -347,6 +347,24 @@ extensions.data:
     description: >
       These events are sent when an extension is migrating its data to the new IndexedDB backend,
       the value of this event is the addon id.
+  storageLocalError:
+    objects: ["get", "set", "remove", "clear"]
+    bug_numbers: [1606903]
+    notification_emails: ["addons-dev-internal@mozilla.com"]
+    expiry_version: "81"
+    products:
+      - "firefox"
+      - "geckoview"
+    record_in_processes: ["main", "content"]
+    release_channel_collection: opt-out
+    extra_keys:
+      error_name: >
+        A DOMException error name if any ("OtherError" for unknown errors).
+    description: >
+      These events are collected when an extension triggers an unexpected error
+      while running a storage.local API call (e.g. because of some underlying
+      QuotaManager and/or IndexedDB error), the value of this event is the
+      addon id.
 
 homepage:
   preference:
@@ -610,14 +628,37 @@ pwmgr:
     record_in_processes: [main, content]
     release_channel_collection: opt-out
     expiry_version: never
+  reauthenticate:
+    description: >
+      Measure how often users are asked to authenticate with their Operating System or Master Password to gain access to stored passwords.
+      Possible values are as follows,
+        "success_no_prompt" should be used when the feature is enabled but no prompt is given to the user because they have recently authenticated.
+        "success_disabled" is used when the feature is disabled.
+        "success_unsupported_platform" should be set when the user attempts to authenticate on an unsupported platform.
+        "success_no_password" should be used when the user doesn't have an OS password set.
+    objects: [
+      "master_password",
+      "os_auth",
+    ]
+    methods: ["reauthenticate"]
+    bug_numbers:
+      - 1628029
+      - 1623745
+    expiry_version: never
+    notification_emails: ["loines@mozilla.com", "passwords-dev@mozilla.org", "jaws@mozilla.com"]
+    release_channel_collection: opt-out
+    products:
+      - "firefox"
+    record_in_processes: [content]
   mgmt_interaction:
     description: >
-      These events record interactions on the about:logins page. Sort methods have an accompanying
-      value that specifies what order the list of logins is sorted with: {last_changed, last_used, title}.
+      These events record interactions on the about:logins page.
     extra_keys:
       breached: >
-        Whether the login is marked as breached or not.
-      sort_key: The key that is used for sorting the login-list
+        Whether the login is marked as breached or not. If a login is both breached and vulnerable, it will only be reported as breached.
+      vulnerable: >
+        Whether the login is marked as vulnerable or not. If a login is both breached and vulnerable, it will only be reported as breached.
+      sort_key: The key that is used for sorting the login-list. Should only be set with the "sort" method.
     objects: [
       "existing_login",
       "list",
@@ -634,6 +675,7 @@ pwmgr:
       "filter",
       "hide",
       "learn_more_breach",
+      "learn_more_vuln",
       "new",
       "open_site",
       "save",
@@ -644,13 +686,13 @@ pwmgr:
     bug_numbers:
       - 1548463
       - 1600958
+      - 1549115
+      - 1628165
     expiry_version: never
     notification_emails: ["loines@mozilla.com", "passwords-dev@mozilla.org", "jaws@mozilla.com"]
     release_channel_collection: opt-out
     products:
       - "firefox"
-      - "fennec"
-      - "geckoview"
     record_in_processes: [content]
   autocomplete_field:
     objects: ["generatedpassword"]

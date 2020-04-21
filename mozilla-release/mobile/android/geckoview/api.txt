@@ -783,6 +783,7 @@ package org.mozilla.geckoview {
   public static class GeckoSession.NavigationDelegate.LoadRequest {
     ctor protected LoadRequest();
     field public final boolean hasUserGesture;
+    field public final boolean isDirectNavigation;
     field public final boolean isRedirect;
     field public final int target;
     field @Nullable public final String triggerUri;
@@ -797,6 +798,7 @@ package org.mozilla.geckoview {
     field public static final int PERMISSION_AUTOPLAY_INAUDIBLE = 4;
     field public static final int PERMISSION_DESKTOP_NOTIFICATION = 1;
     field public static final int PERMISSION_GEOLOCATION = 0;
+    field public static final int PERMISSION_MEDIA_KEY_SYSTEM_ACCESS = 6;
     field public static final int PERMISSION_PERSISTENT_STORAGE = 2;
     field public static final int PERMISSION_XR = 3;
   }
@@ -1367,7 +1369,7 @@ package org.mozilla.geckoview {
   }
 
   public final class RuntimeTelemetry {
-    method @AnyThread @NonNull public GeckoResult<JSONObject> getSnapshots(boolean);
+    method @Deprecated @AnyThread @NonNull public GeckoResult<JSONObject> getSnapshots(boolean);
   }
 
   public static interface RuntimeTelemetry.Delegate {

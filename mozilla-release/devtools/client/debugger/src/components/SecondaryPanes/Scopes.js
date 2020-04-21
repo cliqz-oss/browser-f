@@ -186,7 +186,7 @@ class Scopes extends PureComponent<Props, State> {
       return null;
     }
 
-    const watchpoint = item.contents.watchpoint;
+    const { watchpoint } = item.contents;
     return (
       <button
         className={`remove-${watchpoint}-watchpoint`}
@@ -272,18 +272,14 @@ const mapStateToProps = state => {
   } = getOriginalFrameScope(
     state,
     cx.thread,
-    selectedSource && selectedSource.id,
-    selectedFrame && selectedFrame.id
+    selectedSource?.id,
+    selectedFrame?.id
   ) || { scope: null, pending: false };
 
   const {
     scope: generatedFrameScopes,
     pending: generatedPending,
-  } = getGeneratedFrameScope(
-    state,
-    cx.thread,
-    selectedFrame && selectedFrame.id
-  ) || {
+  } = getGeneratedFrameScope(state, cx.thread, selectedFrame?.id) || {
     scope: null,
     pending: false,
   };
@@ -300,16 +296,13 @@ const mapStateToProps = state => {
   };
 };
 
-export default connect<Props, OwnProps, _, _, _, _>(
-  mapStateToProps,
-  {
-    openLink: actions.openLink,
-    openElementInInspector: actions.openElementInInspectorCommand,
-    highlightDomElement: actions.highlightDomElement,
-    unHighlightDomElement: actions.unHighlightDomElement,
-    toggleMapScopes: actions.toggleMapScopes,
-    setExpandedScope: actions.setExpandedScope,
-    addWatchpoint: actions.addWatchpoint,
-    removeWatchpoint: actions.removeWatchpoint,
-  }
-)(Scopes);
+export default connect<Props, OwnProps, _, _, _, _>(mapStateToProps, {
+  openLink: actions.openLink,
+  openElementInInspector: actions.openElementInInspectorCommand,
+  highlightDomElement: actions.highlightDomElement,
+  unHighlightDomElement: actions.unHighlightDomElement,
+  toggleMapScopes: actions.toggleMapScopes,
+  setExpandedScope: actions.setExpandedScope,
+  addWatchpoint: actions.addWatchpoint,
+  removeWatchpoint: actions.removeWatchpoint,
+})(Scopes);

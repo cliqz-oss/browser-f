@@ -27,18 +27,17 @@ struct BytecodeEmitter;
 class BCEScriptStencil : public ScriptStencil {
   BytecodeEmitter& bce_;
 
-  void init(uint32_t nslots);
   bool getNeedsFunctionEnvironmentObjects() const;
 
+  void init();
+
  public:
-  explicit BCEScriptStencil(BytecodeEmitter& bce, uint32_t nslots);
+  BCEScriptStencil(BytecodeEmitter& bce,
+                   UniquePtr<ImmutableScriptData> immutableScriptData);
 
   virtual bool finishGCThings(JSContext* cx,
-                              mozilla::Span<JS::GCCellPtr> gcthings) const;
-  virtual bool initAtomMap(JSContext* cx, GCPtrAtom* atoms) const;
-  virtual void finishResumeOffsets(mozilla::Span<uint32_t> resumeOffsets) const;
-  virtual void finishScopeNotes(mozilla::Span<ScopeNote> scopeNotes) const;
-  virtual void finishTryNotes(mozilla::Span<JSTryNote> tryNotes) const;
+                              mozilla::Span<JS::GCCellPtr> output) const;
+  virtual void initAtomMap(GCPtrAtom* atoms) const;
   virtual void finishInnerFunctions() const;
 };
 

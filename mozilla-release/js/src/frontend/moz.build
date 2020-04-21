@@ -29,7 +29,7 @@ if CONFIG['JS_ENABLE_SMOOSH']:
                   ])
 
 UNIFIED_SOURCES += [
-    'AbstractScope.cpp',
+    'AbstractScopePtr.cpp',
     'BCEScriptStencil.cpp',
     'BytecodeCompiler.cpp',
     'BytecodeControlStructures.cpp',
@@ -61,6 +61,7 @@ UNIFIED_SOURCES += [
     'ParseNodeVerify.cpp',
     'PropOpEmitter.cpp',
     'SharedContext.cpp',
+    'SourceNotes.cpp',
     'Stencil.cpp',
     'SwitchEmitter.cpp',
     'TDZCheckCache.cpp',

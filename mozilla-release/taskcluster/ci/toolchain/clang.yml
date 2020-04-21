@@ -13,7 +13,7 @@ job-defaults:
 linux64-clang-5.0:
     description: "Clang 5.0 toolchain build"
     treeherder:
-        symbol: TL(clang4.0)
+        symbol: TL(clang5.0)
     worker-type: b-linux-large
     run:
         script: build-clang.sh
@@ -188,7 +188,7 @@ linux64-clang-9-macosx-cross:
     worker:
         max-run-time: 3600
         env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/macosx64/cross-clang.manifest"
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/macosx64/cross-releng.manifest"
     run:
         script: build-clang-linux-macosx-cross.sh
         arguments:
@@ -208,6 +208,26 @@ linux64-clang-9-macosx-cross:
             - linux64-clang-9
             - linux64-gcc-7
 
+linux64-clang-9-win-cross:
+    description: "Clang 9 toolchain build with Windows Compiler RT libs"
+    treeherder:
+        symbol: TL(clang9-win-cross)
+    worker-type: b-linux
+    worker:
+        max-run-time: 600
+    run:
+        script: build-clang-linux-win-cross.sh
+        toolchain-alias: linux64-clang-win-cross
+        toolchain-artifact: public/build/clang.tar.xz
+    dependencies:
+        win64-clang-cl: toolchain-win64-clang-cl
+    fetches:
+        toolchain:
+            - linux64-clang-9
+        win64-clang-cl:
+            - artifact: clang.tar.bz2
+              extract: false
+
 macosx64-clang:
     description: "Clang toolchain build"
     treeherder:
@@ -216,7 +236,7 @@ macosx64-clang:
     worker:
         max-run-time: 3600
         env:
-            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/macosx64/cross-clang.manifest"
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/macosx64/cross-releng.manifest"
     run-on-projects:
         - trunk
         - try

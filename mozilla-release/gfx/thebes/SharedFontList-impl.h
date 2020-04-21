@@ -34,14 +34,14 @@ namespace fontlist {
 struct AliasData {
   nsTArray<Pointer> mFaces;
   uint32_t mIndex = 0;
-  bool mHidden = false;
+  FontVisibility mVisibility = FontVisibility::Unknown;
   bool mBundled = false;
   bool mBadUnderline = false;
   bool mForceClassic = false;
 
   void InitFromFamily(const Family* aFamily) {
     mIndex = aFamily->Index();
-    mHidden = aFamily->IsHidden();
+    mVisibility = aFamily->Visibility();
     mBundled = aFamily->IsBundled();
     mBadUnderline = aFamily->IsBadUnderlineFamily();
     mForceClassic = aFamily->IsForceClassic();
@@ -302,7 +302,7 @@ class FontList {
    * Used by child processes to ensure all the blocks are registered.
    * Returns false on failure.
    */
-  MOZ_MUST_USE bool UpdateShmBlocks();
+  [[nodiscard]] bool UpdateShmBlocks();
 
   /**
    * This makes a *sync* IPC call to get a shared block from the parent.

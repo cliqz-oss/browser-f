@@ -220,19 +220,22 @@ static nsRect GetLineTextArea(nsLineBox* aLine,
  * backplate color. Otheriwse, we use the default background color from
  * our high contrast theme.
  */
-static nscolor GetBackplateColor(nsIFrame* aFrame) {
+static Maybe<nscolor> GetBackplateColor(nsIFrame* aFrame) {
   for (nsIFrame* frame = aFrame; frame; frame = frame->GetParent()) {
+    if (frame->IsThemed()) {
+      return Nothing();
+    }
     auto* bg = frame->StyleBackground();
     if (bg->IsTransparent(frame)) {
       continue;
     }
     nscolor backgroundColor = bg->BackgroundColor(frame);
     if (NS_GET_A(backgroundColor) != 0) {
-      return backgroundColor;
+      return Some(backgroundColor);
     }
     break;
   }
-  return aFrame->PresContext()->DefaultBackgroundColor();
+  return Some(aFrame->PresContext()->DefaultBackgroundColor());
 }
 
 #ifdef DEBUG
@@ -407,7 +410,7 @@ nsBlockFrame* NS_NewBlockFormattingContext(PresShell* aPresShell,
 
 NS_IMPL_FRAMEARENA_HELPERS(nsBlockFrame)
 
-nsBlockFrame::~nsBlockFrame() {}
+nsBlockFrame::~nsBlockFrame() = default;
 
 void nsBlockFrame::AddSizeOfExcludingThisForTree(
     nsWindowSizes& aWindowSizes) const {
@@ -1173,14 +1176,14 @@ class MOZ_RAII LineClampLineIterator {
           break;
         }
         auto entry = mStack.PopLastElement();
-        mCurrentFrame = entry.first();
-        mCur = entry.second();
+        mCurrentFrame = entry.first;
+        mCur = entry.second;
         mEnd = mCurrentFrame->LinesEnd();
       } else if (mCur->IsBlock()) {
         if (nsBlockFrame* child = GetAsLineClampDescendant(mCur->mFirstChild)) {
           nsBlockFrame::LineIterator next = mCur;
           ++next;
-          mStack.AppendElement(MakePair(mCurrentFrame, next));
+          mStack.AppendElement(std::make_pair(mCurrentFrame, next));
           mCur = child->LinesBegin();
           mEnd = child->LinesEnd();
           mCurrentFrame = child;
@@ -1209,7 +1212,7 @@ class MOZ_RAII LineClampLineIterator {
 
   // Stack of mCurrentFrame and mEnd values that we push and pop as we enter and
   // exist blocks.
-  AutoTArray<Pair<nsBlockFrame*, nsBlockFrame::LineIterator>, 8> mStack;
+  AutoTArray<std::pair<nsBlockFrame*, nsBlockFrame::LineIterator>, 8> mStack;
 };
 
 static bool ClearLineClampEllipsis(nsBlockFrame* aFrame) {
@@ -2580,7 +2583,8 @@ void nsBlockFrame::ReflowDirtyLines(BlockReflowInput& aState) {
       // If the previous margin is dirty, reflow the current line
       line->MarkDirty();
       line->ClearPreviousMarginDirty();
-    } else if (line->BEnd() + deltaBCoord > aState.mBEndEdge) {
+    } else if (aState.ContentBSize() != NS_UNCONSTRAINEDSIZE &&
+               line->BEnd() + deltaBCoord > aState.ContentBEnd()) {
       // Lines that aren't dirty but get slid past our height constraint must
       // be reflowed.
       line->MarkDirty();
@@ -3007,48 +3011,52 @@ void nsBlockFrame::ReflowDirtyLines(BlockReflowInput& aState) {
   }
 
   // Handle an odd-ball case: a list-item with no lines
-  if (HasOutsideMarker() && mLines.empty()) {
-    ReflowOutput metrics(aState.mReflowInput);
-    nsIFrame* marker = GetOutsideMarker();
-    WritingMode wm = aState.mReflowInput.GetWritingMode();
-    ReflowOutsideMarker(
-        marker, aState, metrics,
-        aState.mReflowInput.ComputedPhysicalBorderPadding().top);
-    NS_ASSERTION(!MarkerIsEmpty() || metrics.BSize(wm) == 0,
-                 "empty ::marker frame took up space");
+  if (mLines.empty()) {
+    if (HasOutsideMarker()) {
+      ReflowOutput metrics(aState.mReflowInput);
+      nsIFrame* marker = GetOutsideMarker();
+      WritingMode wm = aState.mReflowInput.GetWritingMode();
+      ReflowOutsideMarker(
+          marker, aState, metrics,
+          aState.mReflowInput.ComputedPhysicalBorderPadding().top);
+      NS_ASSERTION(!MarkerIsEmpty() || metrics.BSize(wm) == 0,
+                   "empty ::marker frame took up space");
 
-    if (!MarkerIsEmpty()) {
-      // There are no lines so we have to fake up some y motion so that
-      // we end up with *some* height.
-      // (Note: if we're layout-contained, we have to be sure to leave our
-      // ReflowOutput's BlockStartAscent() (i.e. the baseline) untouched,
-      // because layout-contained frames have no baseline.)
-      if (!aState.mReflowInput.mStyleDisplay->IsContainLayout() &&
-          metrics.BlockStartAscent() == ReflowOutput::ASK_FOR_BASELINE) {
-        nscoord ascent;
-        WritingMode wm = aState.mReflowInput.GetWritingMode();
-        if (nsLayoutUtils::GetFirstLineBaseline(wm, marker, &ascent)) {
-          metrics.SetBlockStartAscent(ascent);
-        } else {
-          metrics.SetBlockStartAscent(metrics.BSize(wm));
+      if (!MarkerIsEmpty()) {
+        // There are no lines so we have to fake up some y motion so that
+        // we end up with *some* height.
+        // (Note: if we're layout-contained, we have to be sure to leave our
+        // ReflowOutput's BlockStartAscent() (i.e. the baseline) untouched,
+        // because layout-contained frames have no baseline.)
+        if (!aState.mReflowInput.mStyleDisplay->IsContainLayout() &&
+            metrics.BlockStartAscent() == ReflowOutput::ASK_FOR_BASELINE) {
+          nscoord ascent;
+          WritingMode wm = aState.mReflowInput.GetWritingMode();
+          if (nsLayoutUtils::GetFirstLineBaseline(wm, marker, &ascent)) {
+            metrics.SetBlockStartAscent(ascent);
+          } else {
+            metrics.SetBlockStartAscent(metrics.BSize(wm));
+          }
+        }
+
+        RefPtr<nsFontMetrics> fm =
+            nsLayoutUtils::GetInflatedFontMetricsForFrame(this);
+
+        nscoord minAscent = nsLayoutUtils::GetCenteredFontBaseline(
+            fm, aState.mMinLineHeight, wm.IsLineInverted());
+        nscoord minDescent = aState.mMinLineHeight - minAscent;
+
+        aState.mBCoord += std::max(minAscent, metrics.BlockStartAscent()) +
+                          std::max(minDescent, metrics.BSize(wm) -
+                                                   metrics.BlockStartAscent());
+
+        nscoord offset = minAscent - metrics.BlockStartAscent();
+        if (offset > 0) {
+          marker->SetRect(marker->GetRect() + nsPoint(0, offset));
         }
       }
-
-      RefPtr<nsFontMetrics> fm =
-          nsLayoutUtils::GetInflatedFontMetricsForFrame(this);
-
-      nscoord minAscent = nsLayoutUtils::GetCenteredFontBaseline(
-          fm, aState.mMinLineHeight, wm.IsLineInverted());
-      nscoord minDescent = aState.mMinLineHeight - minAscent;
-
-      aState.mBCoord +=
-          std::max(minAscent, metrics.BlockStartAscent()) +
-          std::max(minDescent, metrics.BSize(wm) - metrics.BlockStartAscent());
-
-      nscoord offset = minAscent - metrics.BlockStartAscent();
-      if (offset > 0) {
-        marker->SetRect(marker->GetRect() + nsPoint(0, offset));
-      }
+    } else if (ShouldHaveLineIfEmpty()) {
+      aState.mBCoord += aState.mMinLineHeight;
     }
   }
 
@@ -4595,9 +4603,8 @@ bool nsBlockFrame::CreateContinuationFor(BlockReflowInput& aState,
   nsIFrame* newFrame = nullptr;
 
   if (!aFrame->GetNextInFlow()) {
-    newFrame = aState.mPresContext->PresShell()
-                   ->FrameConstructor()
-                   ->CreateContinuingFrame(aState.mPresContext, aFrame, this);
+    newFrame =
+        PresShell()->FrameConstructor()->CreateContinuingFrame(aFrame, this);
 
     mFrames.InsertFrame(nullptr, aFrame, newFrame);
 
@@ -4629,9 +4636,8 @@ void nsBlockFrame::SplitFloat(BlockReflowInput& aState, nsIFrame* aFloat,
       nextInFlow->RemoveStateBits(NS_FRAME_IS_OVERFLOW_CONTAINER);
     }
   } else {
-    nextInFlow = aState.mPresContext->PresShell()
-                     ->FrameConstructor()
-                     ->CreateContinuingFrame(aState.mPresContext, aFloat, this);
+    nextInFlow =
+        PresShell()->FrameConstructor()->CreateContinuingFrame(aFloat, this);
   }
   if (aFloatStatus.IsOverflowIncomplete()) {
     nextInFlow->AddStateBits(NS_FRAME_IS_OVERFLOW_CONTAINER);
@@ -4959,8 +4965,9 @@ bool nsBlockFrame::PlaceLine(BlockReflowInput& aState,
   }
 
   // See if the line fit (our first line always does).
-  if (mLines.front() != aLine && newBCoord > aState.mBEndEdge &&
-      aState.mBEndEdge != NS_UNCONSTRAINEDSIZE) {
+  if (mLines.front() != aLine &&
+      aState.ContentBSize() != NS_UNCONSTRAINEDSIZE &&
+      newBCoord > aState.ContentBEnd()) {
     NS_ASSERTION(aState.mCurrentLine == aLine, "oops");
     if (ShouldAvoidBreakInside(aState.mReflowInput)) {
       // All our content doesn't fit, start on the next page.
@@ -6948,15 +6955,20 @@ void nsBlockFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
             aLineArea.Intersects(aBuilder->GetVisibleRect()));
   };
 
-  // We'll try to draw an accessibility backplate behind text
-  // (to ensure it's readable over any possible background-images),
-  // if all of the following hold:
-  //    (A) the backplate feature is preffed on
-  //    (B) we are not honoring the document colors
-  const bool shouldDrawBackplate =
-      StaticPrefs::browser_display_permit_backplate() &&
-      !PresContext()->PrefSheetPrefs().mUseDocumentColors &&
-      !IsComboboxControlFrame();
+  Maybe<nscolor> backplateColor;
+
+  {
+    // We'll try to draw an accessibility backplate behind text (to ensure it's
+    // readable over any possible background-images), if all of the following
+    // hold:
+    //    (A) the backplate feature is preffed on
+    //    (B) we are not honoring the document colors
+    if (StaticPrefs::browser_display_permit_backplate() &&
+        !PresContext()->PrefSheetPrefs().mUseDocumentColors &&
+        !IsComboboxControlFrame()) {
+      backplateColor = GetBackplateColor(this);
+    }
+  }
 
   // Don't use the line cursor if we might have a descendant placeholder ...
   // it might skip lines that contain placeholders but don't themselves
@@ -6972,10 +6984,10 @@ void nsBlockFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   // backplates behind text. When backplating we consider consecutive
   // runs of text as a whole, which requires we iterate through all lines
   // to find our backplate size.
-  nsLineBox* cursor = (hasDescendantPlaceHolders || textOverflow.isSome() ||
-                       shouldDrawBackplate)
-                          ? nullptr
-                          : GetFirstLineContaining(aBuilder->GetDirtyRect().y);
+  nsLineBox* cursor =
+      (hasDescendantPlaceHolders || textOverflow.isSome() || backplateColor)
+          ? nullptr
+          : GetFirstLineContaining(aBuilder->GetDirtyRect().y);
   LineIterator line_end = LinesEnd();
 
   TextOverflow* textOverflowPtr = textOverflow.ptrOr(nullptr);
@@ -7003,10 +7015,6 @@ void nsBlockFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     nscoord lastY = INT32_MIN;
     nscoord lastYMost = INT32_MIN;
     nsRect curBackplateArea;
-    Maybe<nscolor> backplateColor;
-    if (shouldDrawBackplate) {
-      backplateColor = Some(GetBackplateColor(this));
-    }
     // A frame's display list cannot contain more than one copy of a
     // given display item unless the items are uniquely identifiable.
     // Because backplate occasionally requires multiple
@@ -7027,7 +7035,7 @@ void nsBlockFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
         // If we have encountered a non-inline line but were previously
         // forming a backplate, we should add the backplate to the display
         // list as-is and render future backplates disjointly.
-        MOZ_ASSERT(shouldDrawBackplate,
+        MOZ_ASSERT(backplateColor,
                    "if this master switch is off, curBackplateArea "
                    "must be empty and we shouldn't get here");
         aLists.BorderBackground()->AppendNewToTop<nsDisplaySolidColor>(
@@ -7044,8 +7052,7 @@ void nsBlockFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
         }
         lastY = lineArea.y;
         lastYMost = lineArea.YMost();
-        if (lineInLine && shouldDrawBackplate &&
-            LineHasVisibleInlineContent(line)) {
+        if (lineInLine && backplateColor && LineHasVisibleInlineContent(line)) {
           nsRect lineBackplate = GetLineTextArea(line, aBuilder) +
                                  aBuilder->ToReferenceFrame(this);
           if (curBackplateArea.IsEmpty()) {

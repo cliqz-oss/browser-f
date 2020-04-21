@@ -181,7 +181,7 @@ struct nsStyleImageLayers {
     mozilla::StyleImageLayerRepeat mXRepeat, mYRepeat;
 
     // Initialize nothing
-    Repeat() {}
+    Repeat() = default;
 
     bool IsInitialValue() const {
       return mXRepeat == mozilla::StyleImageLayerRepeat::Repeat &&
@@ -223,13 +223,13 @@ struct nsStyleImageLayers {
 
     // This property is used for background layer only.
     // For a mask layer, it should always be the initial value, which is
-    // NS_STYLE_BLEND_NORMAL.
-    uint8_t mBlendMode;  // NS_STYLE_BLEND_*
+    // StyleBlend::Normal.
+    mozilla::StyleBlend mBlendMode;
 
     // This property is used for mask layer only.
     // For a background layer, it should always be the initial value, which is
-    // NS_STYLE_COMPOSITE_MODE_ADD.
-    uint8_t mComposite;  // NS_STYLE_MASK_COMPOSITE_*
+    // StyleMaskComposite::Add.
+    mozilla::StyleMaskComposite mComposite;
 
     // mask-only property. This property is used for mask layer only. For a
     // background layer, it should always be the initial value, which is
@@ -883,9 +883,8 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleText {
   mozilla::StyleRubyPosition mRubyPosition;
   mozilla::StyleTextSizeAdjust mTextSizeAdjust;
   uint8_t mTextCombineUpright;  // NS_STYLE_TEXT_COMBINE_UPRIGHT_*
-  uint8_t
-      mControlCharacterVisibility;  // NS_STYLE_CONTROL_CHARACTER_VISIBILITY_*
-  uint8_t mTextEmphasisPosition;    // NS_STYLE_TEXT_EMPHASIS_POSITION_*
+  mozilla::StyleControlCharacterVisibility mControlCharacterVisibility;
+  uint8_t mTextEmphasisPosition;  // NS_STYLE_TEXT_EMPHASIS_POSITION_*
   mozilla::StyleTextRendering mTextRendering;
   mozilla::StyleColor mTextEmphasisColor;
   mozilla::StyleColor mWebkitTextFillColor;
@@ -1214,7 +1213,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
   mozilla::StyleTranslate mTranslate;
   mozilla::StyleScale mScale;
 
-  uint8_t mBackfaceVisibility;
+  mozilla::StyleBackfaceVisibility mBackfaceVisibility;
   mozilla::StyleTransformStyle mTransformStyle;
   StyleGeometryBox mTransformBox;
 
@@ -1465,7 +1464,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
   bool HasPerspectiveStyle() const { return !mChildPerspective.IsNone(); }
 
   bool BackfaceIsHidden() const {
-    return mBackfaceVisibility == NS_STYLE_BACKFACE_VISIBILITY_HIDDEN;
+    return mBackfaceVisibility == mozilla::StyleBackfaceVisibility::Hidden;
   }
 
   // FIXME(emilio): This should be more fine-grained on each caller to
@@ -1854,7 +1853,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleEffects {
   }
 
   bool HasMixBlendMode() const {
-    return mMixBlendMode != NS_STYLE_BLEND_NORMAL;
+    return mMixBlendMode != mozilla::StyleBlend::Normal;
   }
 
   mozilla::StyleOwnedSlice<mozilla::StyleFilter> mFilters;
@@ -1862,7 +1861,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleEffects {
   mozilla::StyleOwnedSlice<mozilla::StyleFilter> mBackdropFilters;
   mozilla::StyleClipRectOrAuto mClip;  // offsets from UL border edge
   float mOpacity;
-  uint8_t mMixBlendMode;  // NS_STYLE_BLEND_*
+  mozilla::StyleBlend mMixBlendMode;
 };
 
 #define STATIC_ASSERT_TYPE_LAYOUTS_MATCH(T1, T2)           \
@@ -1952,9 +1951,11 @@ class nsTArray_Simple {
   T* mBuffer;
 
  public:
-  // The existence of a destructor here prevents bindgen from deriving the Clone
-  // trait via a simple memory copy.
-  ~nsTArray_Simple(){};
+  ~nsTArray_Simple() {
+    // The existence of a user-provided, and therefore non-trivial, destructor
+    // here prevents bindgen from deriving the Clone trait via a simple memory
+    // copy.
+  }
 };
 
 STATIC_ASSERT_TYPE_LAYOUTS_MATCH(nsTArray<nsStyleImageLayers::Layer>,

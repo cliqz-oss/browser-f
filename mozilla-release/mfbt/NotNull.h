@@ -64,6 +64,7 @@
 
 #include <stddef.h>
 
+#include <type_traits>
 #include <utility>
 
 #include "mozilla/Assertions.h"
@@ -164,13 +165,14 @@ namespace detail {
 template <typename Pointer>
 struct PointedTo {
   // Remove the reference that dereferencing operators may return.
-  using Type = typename RemoveReference<decltype(*DeclVal<Pointer>())>::Type;
-  using NonConstType = typename RemoveConst<Type>::Type;
+  using Type = std::remove_reference_t<decltype(*std::declval<Pointer>())>;
+  using NonConstType = std::remove_const_t<Type>;
 };
 
 // Specializations for raw pointers.
 // This is especially required because VS 2017 15.6 (March 2018) started
-// rejecting the above `decltype(*DeclVal<Pointer>())` trick for raw pointers.
+// rejecting the above `decltype(*std::declval<Pointer>())` trick for raw
+// pointers.
 // See bug 1443367.
 template <typename T>
 struct PointedTo<T*> {
@@ -192,7 +194,7 @@ struct PointedTo<const T*> {
 template <typename T, typename... Args>
 constexpr NotNull<T> MakeNotNull(Args&&... aArgs) {
   using Pointee = typename detail::PointedTo<T>::NonConstType;
-  static_assert(!IsArray<Pointee>::value,
+  static_assert(!std::is_array_v<Pointee>,
                 "MakeNotNull cannot construct an array");
   return NotNull<T>(new Pointee(std::forward<Args>(aArgs)...));
 }

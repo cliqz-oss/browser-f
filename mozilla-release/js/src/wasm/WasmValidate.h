@@ -19,7 +19,7 @@
 #ifndef wasm_validate_h
 #define wasm_validate_h
 
-#include "mozilla/TypeTraits.h"
+#include <type_traits>
 
 #include "ds/Bitmap.h"
 
@@ -92,12 +92,12 @@ struct CompilerEnvironment {
                       bool hugeMemory, bool bigIntConfigured);
 
   // Compute any remaining compilation parameters.
-  void computeParameters(Decoder& d, bool gcFeatureOptIn);
+  void computeParameters(Decoder& d);
 
   // Compute any remaining compilation parameters.  Only use this method if
   // the CompilerEnvironment was created with values for mode, tier, and
   // debug.
-  void computeParameters(bool gcFeatureOptIn);
+  void computeParameters();
 
   bool isComputed() const { return state_ == Computed; }
   CompileMode mode() const {
@@ -157,15 +157,6 @@ struct ModuleEnvironment {
 
   // Module fields decoded from the module environment (or initialized while
   // validating an asm.js module) and immutable during compilation:
-#ifdef ENABLE_WASM_GC
-  // `gcFeatureOptIn` reflects the presence in a module of a GcFeatureOptIn
-  // section.  This variable will be removed eventually, allowing it to be
-  // replaced everywhere by the value true.
-  //
-  // The flag is used in the value of gcTypesEnabled(), which controls whether
-  // struct types and associated instructions are accepted during validation.
-  bool gcFeatureOptIn;
-#endif
   Maybe<uint32_t> dataCount;
   MemoryUsage memoryUsage;
   uint32_t minMemoryLength;
@@ -197,13 +188,9 @@ struct ModuleEnvironment {
       : kind(kind),
         sharedMemoryEnabled(sharedMemoryEnabled),
         compilerEnv(compilerEnv),
-#ifdef ENABLE_WASM_GC
-        gcFeatureOptIn(false),
-#endif
         memoryUsage(MemoryUsage::None),
         minMemoryLength(0),
-        numStructTypes(0) {
-  }
+        numStructTypes(0) {}
 
   Tier tier() const { return compilerEnv->tier(); }
   OptimizedBackend optimizedBackend() const {
@@ -417,7 +404,7 @@ class Encoder {
   MOZ_MUST_USE bool writeValType(ValType type) {
     static_assert(size_t(TypeCode::Limit) <= UINT8_MAX, "fits");
     if (type.isTypeIndex()) {
-      return writeFixedU8(uint8_t(TypeCode::Ref)) &&
+      return writeFixedU8(uint8_t(TypeCode::OptRef)) &&
              writeVarU32(type.refType().typeIndex());
     }
     TypeCode tc = UnpackTypeCodeType(type.packed());
@@ -551,7 +538,7 @@ class Decoder {
 
   template <typename SInt>
   MOZ_MUST_USE bool readVarS(SInt* out) {
-    using UInt = typename mozilla::MakeUnsigned<SInt>::Type;
+    using UInt = std::make_unsigned_t<SInt>;
     const unsigned numBits = sizeof(SInt) * CHAR_BIT;
     const unsigned remainderBits = numBits % 7;
     const unsigned numBitsInSevens = numBits - remainderBits;
@@ -672,12 +659,12 @@ class Decoder {
   MOZ_MUST_USE ValType uncheckedReadValType() {
     uint8_t code = uncheckedReadFixedU8();
     switch (code) {
-      case uint8_t(TypeCode::Ref):
+      case uint8_t(TypeCode::OptRef):
         return RefType::fromTypeIndex(uncheckedReadVarU32());
       case uint8_t(TypeCode::AnyRef):
       case uint8_t(TypeCode::FuncRef):
       case uint8_t(TypeCode::NullRef):
-        return RefType::fromTypeCode(TypeCode(uncheckedReadVarU32()));
+        return RefType::fromTypeCode(TypeCode(code));
       default:
         return ValType::fromNonRefTypeCode(TypeCode(code));
     }
@@ -706,9 +693,9 @@ class Decoder {
         *type = RefType::fromTypeCode(TypeCode(code));
         return true;
 #  ifdef ENABLE_WASM_GC
-      case uint8_t(TypeCode::Ref): {
+      case uint8_t(TypeCode::OptRef): {
         if (!gcTypesEnabled) {
-          return fail("(ref T) types not enabled");
+          return fail("(optref T) types not enabled");
         }
         uint32_t typeIndex;
         if (!readVarU32(&typeIndex)) {

@@ -28,6 +28,7 @@
 #ifdef FUZZING
 #  include "mozilla/StaticPrefs_fuzzing.h"
 #endif
+#include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_javascript.h"
 #include "mozilla/dom/ScriptSettings.h"
 
@@ -60,6 +61,9 @@
 #include "nsIXULRuntime.h"
 #include "nsJSPrincipals.h"
 #include "ExpandedPrincipal.h"
+#ifdef MOZ_GECKO_PROFILER
+#  include "ProfilerMarkerPayload.h"
+#endif
 
 #if defined(XP_LINUX) && !defined(ANDROID)
 // For getrlimit and min/max.
@@ -581,6 +585,21 @@ bool XPCJSContext::InterruptCallback(JSContext* cx) {
   // Now is a good time to turn on profiling if it's pending.
   PROFILER_JS_INTERRUPT_CALLBACK();
 
+#ifdef MOZ_GECKO_PROFILER
+  nsDependentCString filename("unknown file");
+  JS::AutoFilename scriptFilename;
+  // Computing the line number can be very expensive (see bug 1330231 for
+  // example), so don't request it here.
+  if (JS::DescribeScriptedCaller(cx, &scriptFilename)) {
+    if (const char* file = scriptFilename.get()) {
+      filename.Assign(file, strlen(file));
+    }
+    PROFILER_ADD_MARKER_WITH_PAYLOAD("JS::InterruptCallback", JS,
+                                     TextMarkerPayload,
+                                     (filename, TimeStamp::Now()));
+  }
+#endif
+
   // Normally we record mSlowScriptCheckpoint when we start to process an
   // event. However, we can run JS outside of event handlers. This code takes
   // care of that case.
@@ -735,18 +754,9 @@ static mozilla::Atomic<bool> sDiscardSystemSource(false);
 
 bool xpc::ShouldDiscardSystemSource() { return sDiscardSystemSource; }
 
-#ifdef DEBUG
-static mozilla::Atomic<bool> sExtraWarningsForSystemJS(false);
-bool xpc::ExtraWarningsForSystemJS() { return sExtraWarningsForSystemJS; }
-#else
-bool xpc::ExtraWarningsForSystemJS() { return false; }
-#endif
-
 static mozilla::Atomic<bool> sSharedMemoryEnabled(false);
 static mozilla::Atomic<bool> sStreamsEnabled(false);
-static mozilla::Atomic<bool> sFieldsEnabled(false);
 
-static mozilla::Atomic<bool> sAwaitFixEnabled(false);
 static mozilla::Atomic<bool> sPropertyErrorMessageFixEnabled(false);
 static mozilla::Atomic<bool> sWeakRefsEnabled(false);
 
@@ -759,8 +769,6 @@ void xpc::SetPrefableRealmOptions(JS::RealmOptions& options) {
       .setStreamsEnabled(sStreamsEnabled)
       .setWritableStreamsEnabled(
           StaticPrefs::javascript_options_writable_streams())
-      .setFieldsEnabled(sFieldsEnabled)
-      .setAwaitFixEnabled(sAwaitFixEnabled)
       .setPropertyErrorMessageFixEnabled(sPropertyErrorMessageFixEnabled)
       .setWeakRefsEnabled(sWeakRefsEnabled);
 }
@@ -903,6 +911,10 @@ static void ReloadPrefsCallback(const char* pref, void* aXpccx) {
 #ifdef ENABLE_WASM_GC
   bool useWasmGc = Preferences::GetBool(JS_OPTIONS_DOT_STR "wasm_gc");
 #endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+  bool useWasmMultiValue =
+      Preferences::GetBool(JS_OPTIONS_DOT_STR "wasm_multi_value");
+#endif
   bool useWasmVerbose = Preferences::GetBool(JS_OPTIONS_DOT_STR "wasm_verbose");
   bool throwOnAsmJSValidationFailure = Preferences::GetBool(
       JS_OPTIONS_DOT_STR "throw_on_asmjs_validation_failure");
@@ -921,27 +933,14 @@ static void ReloadPrefsCallback(const char* pref, void* aXpccx) {
   bool dumpStackOnDebuggeeWouldRun = Preferences::GetBool(
       JS_OPTIONS_DOT_STR "dump_stack_on_debuggee_would_run");
 
-  bool werror = Preferences::GetBool(JS_OPTIONS_DOT_STR "werror");
-
-  bool extraWarnings = Preferences::GetBool(JS_OPTIONS_DOT_STR "strict");
-
   sSharedMemoryEnabled =
       Preferences::GetBool(JS_OPTIONS_DOT_STR "shared_memory");
   sStreamsEnabled = Preferences::GetBool(JS_OPTIONS_DOT_STR "streams");
-  sFieldsEnabled =
-      Preferences::GetBool(JS_OPTIONS_DOT_STR "experimental.fields");
-  sAwaitFixEnabled =
-      Preferences::GetBool(JS_OPTIONS_DOT_STR "experimental.await_fix");
   sPropertyErrorMessageFixEnabled =
       Preferences::GetBool(JS_OPTIONS_DOT_STR "property_error_message_fix");
 #ifdef NIGHTLY_BUILD
   sWeakRefsEnabled =
       Preferences::GetBool(JS_OPTIONS_DOT_STR "experimental.weakrefs");
-#endif
-
-#ifdef DEBUG
-  sExtraWarningsForSystemJS =
-      Preferences::GetBool(JS_OPTIONS_DOT_STR "strict.debug");
 #endif
 
 #ifdef JS_GC_ZEAL
@@ -959,6 +958,9 @@ static void ReloadPrefsCallback(const char* pref, void* aXpccx) {
 
   JS::ContextOptionsRef(cx)
       .setAsmJS(useAsmJS)
+#ifdef FUZZING
+      .setFuzzing(fuzzingEnabled)
+#endif
       .setWasm(useWasm)
       .setWasmForTrustedPrinciples(useWasmTrustedPrincipals)
       .setWasmIon(useWasmIon)
@@ -969,16 +971,14 @@ static void ReloadPrefsCallback(const char* pref, void* aXpccx) {
 #ifdef ENABLE_WASM_GC
       .setWasmGc(useWasmGc)
 #endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+      .setWasmMultiValue(useWasmMultiValue)
+#endif
       .setWasmVerbose(useWasmVerbose)
       .setThrowOnAsmJSValidationFailure(throwOnAsmJSValidationFailure)
       .setAsyncStack(useAsyncStack)
       .setThrowOnDebuggeeWouldRun(throwOnDebuggeeWouldRun)
-      .setDumpStackOnDebuggeeWouldRun(dumpStackOnDebuggeeWouldRun)
-      .setWerror(werror)
-#ifdef FUZZING
-      .setFuzzing(fuzzingEnabled)
-#endif
-      .setExtraWarnings(extraWarnings);
+      .setDumpStackOnDebuggeeWouldRun(dumpStackOnDebuggeeWouldRun);
 
   nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
   if (xr) {
@@ -1330,6 +1330,11 @@ void XPCJSContext::AfterProcessTask(uint32_t aNewRecursionDepth) {
   nsJSContext::MaybePokeCC();
   CycleCollectedJSContext::AfterProcessTask(aNewRecursionDepth);
   mozilla::jsipc::AfterProcessTask();
+
+  // This exception might have been set if we called an XPCWrappedJS that threw,
+  // but now we're returning to the event loop, so nothing is going to look at
+  // this value again. Clear it to prevent leaks.
+  SetPendingException(nullptr);
 }
 
 bool XPCJSContext::IsSystemCaller() const {

@@ -38,8 +38,8 @@ class WebConsoleConnectionProxy {
     this._connecter = null;
 
     this._onPageError = this._onPageError.bind(this);
-    this._onLogMessage = this._onLogMessage.bind(this);
     this._onConsoleAPICall = this._onConsoleAPICall.bind(this);
+    this._onLogMessage = this._onLogMessage.bind(this);
     this._onNetworkEvent = this._onNetworkEvent.bind(this);
     this._onNetworkEventUpdate = this._onNetworkEventUpdate.bind(this);
     this._onTabNavigated = this._onTabNavigated.bind(this);

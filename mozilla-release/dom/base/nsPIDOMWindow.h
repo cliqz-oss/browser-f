@@ -13,7 +13,6 @@
 #include "nsCOMPtr.h"
 #include "nsTArray.h"
 #include "mozilla/dom/EventTarget.h"
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/TaskCategory.h"
 #include "js/TypeDecls.h"
@@ -70,6 +69,7 @@ class ServiceWorker;
 class ServiceWorkerDescriptor;
 class Timeout;
 class TimeoutManager;
+class WindowContext;
 class WindowGlobalChild;
 class CustomElementRegistry;
 enum class CallerType : uint32_t;
@@ -377,7 +377,8 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
     return mDoc;
   }
 
-  mozilla::dom::WindowGlobalChild* GetWindowGlobalChild() {
+  mozilla::dom::WindowContext* GetWindowContext() const;
+  mozilla::dom::WindowGlobalChild* GetWindowGlobalChild() const {
     return mWindowGlobalChild;
   }
 

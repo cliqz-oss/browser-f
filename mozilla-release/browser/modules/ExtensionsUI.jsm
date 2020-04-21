@@ -360,7 +360,9 @@ var ExtensionsUI = {
     let appName = brandBundle.GetStringFromName("brandShortName");
     let info2 = Object.assign({ appName }, info);
 
-    let strings = ExtensionData.formatPermissionStrings(info2, bundle);
+    let strings = ExtensionData.formatPermissionStrings(info2, bundle, {
+      collapseOrigins: true,
+    });
     strings.addonName = info.addon.name;
     strings.warningText = bundle.GetStringFromName("webext.changesNewTab.text");
     strings.learnMore = bundle.GetStringFromName("webextPerms.learnMore");

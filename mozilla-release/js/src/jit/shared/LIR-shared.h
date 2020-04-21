@@ -5543,6 +5543,20 @@ class LToNumeric : public LInstructionHelper<BOX_PIECES, BOX_PIECES, 0> {
   const MToNumeric* mir() const { return mir_->toToNumeric(); }
 };
 
+class LToNumber : public LInstructionHelper<BOX_PIECES, BOX_PIECES, 0> {
+ public:
+  LIR_HEADER(ToNumber)
+
+  explicit LToNumber(const LBoxAllocation& input)
+      : LInstructionHelper(classOpcode) {
+    setBoxOperand(Input, input);
+  }
+
+  static const size_t Input = 0;
+
+  const MToNumber* mir() const { return mir_->toToNumber(); }
+};
+
 // Guard that a value is in a TypeSet.
 class LTypeBarrierV : public LInstructionHelper<BOX_PIECES, BOX_PIECES, 2> {
  public:
@@ -6816,6 +6830,13 @@ inline bool LStackArea::ResultIterator::isGcPointer() const {
   MOZ_ASSERT(!done());
   MWasmStackResultArea* area = alloc_.ins()->toWasmStackResultArea()->mir();
   MIRType type = area->result(idx_).type();
+#ifndef JS_PUNBOX64
+  // LDefinition::TypeFrom isn't defined for MIRType::Int64 values on
+  // this platform, so here we have a special case.
+  if (type == MIRType::Int64) {
+    return false;
+  }
+#endif
   return LDefinition::TypeFrom(type) == LDefinition::OBJECT;
 }
 
@@ -6838,15 +6859,28 @@ class LWasmStackResult64 : public LInstructionHelper<INT64_PIECES, 1, 0> {
   LWasmStackResult64() : LInstructionHelper(classOpcode) {}
 
   MWasmStackResult* mir() const { return mir_->toWasmStackResult(); }
-  LStackSlot result(uint32_t base) const {
-    return LStackSlot(base - mir()->result().offset());
+  LStackSlot result(uint32_t base, LDefinition* def) {
+    uint32_t offset = base - mir()->result().offset();
+#if defined(JS_NUNBOX32)
+    if (def == getDef(INT64LOW_INDEX)) {
+      offset -= INT64LOW_OFFSET;
+    } else {
+      MOZ_ASSERT(def == getDef(INT64HIGH_INDEX));
+      offset -= INT64HIGH_OFFSET;
+    }
+#else
+    MOZ_ASSERT(def == getDef(0));
+#endif
+    return LStackSlot(offset);
   }
 };
 
-inline LStackSlot LStackArea::resultAlloc(LInstruction* lir) const {
+inline LStackSlot LStackArea::resultAlloc(LInstruction* lir,
+                                          LDefinition* def) const {
   if (lir->isWasmStackResult64()) {
-    return lir->toWasmStackResult64()->result(base());
+    return lir->toWasmStackResult64()->result(base(), def);
   }
+  MOZ_ASSERT(def == lir->getDef(0));
   return lir->toWasmStackResult()->result(base());
 }
 
@@ -7254,13 +7288,13 @@ class LObjectWithProto : public LCallInstructionHelper<1, BOX_PIECES, 0> {
   }
 };
 
-class LBuiltinProto : public LCallInstructionHelper<1, 0, 0> {
+class LFunctionProto : public LCallInstructionHelper<1, 0, 0> {
  public:
-  LIR_HEADER(BuiltinProto)
+  LIR_HEADER(FunctionProto)
 
-  LBuiltinProto() : LCallInstructionHelper(classOpcode) {}
+  LFunctionProto() : LCallInstructionHelper(classOpcode) {}
 
-  MBuiltinProto* mir() const { return mir_->toBuiltinProto(); }
+  MFunctionProto* mir() const { return mir_->toFunctionProto(); }
 };
 
 class LSuperFunction : public LInstructionHelper<BOX_PIECES, 1, 1> {

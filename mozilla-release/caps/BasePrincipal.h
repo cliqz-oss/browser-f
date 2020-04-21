@@ -122,6 +122,7 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD GetIsSystemPrincipal(bool* aResult) override;
   NS_IMETHOD SchemeIs(const char* aScheme, bool* aResult) override;
   NS_IMETHOD IsURIInPrefList(const char* aPref, bool* aResult) override;
+  NS_IMETHOD IsL10nAllowed(nsIURI* aURI, bool* aResult) override;
   NS_IMETHOD GetAboutModuleFlags(uint32_t* flags) override;
   NS_IMETHOD GetIsAddonOrExpandedAddonPrincipal(bool* aResult) override;
   NS_IMETHOD GetOriginAttributes(JSContext* aCx,
@@ -151,7 +152,10 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD AllowsRelaxStrictFileOriginPolicy(nsIURI* aURI,
                                                bool* aRes) override;
   NS_IMETHOD CreateReferrerInfo(mozilla::dom::ReferrerPolicy aReferrerPolicy,
-                                  nsIReferrerInfo** _retval) override;
+                                nsIReferrerInfo** _retval) override;
+  NS_IMETHOD GetIsScriptAllowedByPolicy(
+      bool* aIsScriptAllowedByPolicy) override;
+  NS_IMETHOD GetStorageOriginKey(nsACString& aOriginKey) override;
   nsresult ToJSON(nsACString& aJSON);
   static already_AddRefed<BasePrincipal> FromJSON(const nsACString& aJSON);
   // Method populates a passed Json::Value with serializable fields

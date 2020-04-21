@@ -55,6 +55,7 @@
 #include "mozilla/ServoElementSnapshot.h"
 #include "mozilla/ShadowParts.h"
 #include "mozilla/StaticPresData.h"
+#include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/RestyleManager.h"
 #include "mozilla/SizeOfState.h"
@@ -1107,18 +1108,18 @@ const AnonymousCounterStyle* Gecko_CounterStyle_GetAnonymous(
 
 void Gecko_EnsureTArrayCapacity(void* aArray, size_t aCapacity,
                                 size_t aElemSize) {
-  auto base = reinterpret_cast<
-      nsTArray_base<nsTArrayInfallibleAllocator, nsTArray_CopyWithMemutils>*>(
-      aArray);
+  auto base =
+      reinterpret_cast<nsTArray_base<nsTArrayInfallibleAllocator,
+                                     nsTArray_RelocateUsingMemutils>*>(aArray);
 
   base->EnsureCapacity<nsTArrayInfallibleAllocator>(aCapacity, aElemSize);
 }
 
 void Gecko_ClearPODTArray(void* aArray, size_t aElementSize,
                           size_t aElementAlign) {
-  auto base = reinterpret_cast<
-      nsTArray_base<nsTArrayInfallibleAllocator, nsTArray_CopyWithMemutils>*>(
-      aArray);
+  auto base =
+      reinterpret_cast<nsTArray_base<nsTArrayInfallibleAllocator,
+                                     nsTArray_RelocateUsingMemutils>*>(aArray);
 
   base->template ShiftData<nsTArrayInfallibleAllocator>(
       0, base->Length(), 0, aElementSize, aElementAlign);
@@ -1645,20 +1646,24 @@ void Gecko_SetJemallocThreadLocalArena(bool enabled) {
 #undef STYLE_STRUCT
 
 bool Gecko_ErrorReportingEnabled(const StyleSheet* aSheet,
-                                 const Loader* aLoader) {
-  return ErrorReporter::ShouldReportErrors(aSheet, aLoader);
+                                 const Loader* aLoader,
+                                 uint64_t* aOutWindowId) {
+  if (!ErrorReporter::ShouldReportErrors(aSheet, aLoader)) {
+    return false;
+  }
+  *aOutWindowId = ErrorReporter::FindInnerWindowId(aSheet, aLoader);
+  return true;
 }
 
 void Gecko_ReportUnexpectedCSSError(
-    const StyleSheet* aSheet, const Loader* aLoader, nsIURI* aURI,
-    const char* message, const char* param, uint32_t paramLen,
-    const char* prefix, const char* prefixParam, uint32_t prefixParamLen,
-    const char* suffix, const char* source, uint32_t sourceLen,
-    const char* selectors, uint32_t selectorsLen, uint32_t lineNumber,
-    uint32_t colNumber) {
+    const uint64_t aWindowId, nsIURI* aURI, const char* message,
+    const char* param, uint32_t paramLen, const char* prefix,
+    const char* prefixParam, uint32_t prefixParamLen, const char* suffix,
+    const char* source, uint32_t sourceLen, const char* selectors,
+    uint32_t selectorsLen, uint32_t lineNumber, uint32_t colNumber) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
-  ErrorReporter reporter(aSheet, aLoader, aURI);
+  ErrorReporter reporter(aWindowId);
 
   if (prefix) {
     if (prefixParam) {
@@ -1685,7 +1690,8 @@ void Gecko_ReportUnexpectedCSSError(
   }
   nsDependentCSubstring sourceValue(source, sourceLen);
   nsDependentCSubstring selectorsValue(selectors, selectorsLen);
-  reporter.OutputError(lineNumber, colNumber, sourceValue, selectorsValue);
+  reporter.OutputError(sourceValue, selectorsValue, lineNumber, colNumber,
+                       aURI);
 }
 
 void Gecko_ContentList_AppendAll(nsSimpleContentList* aList,
@@ -1766,10 +1772,17 @@ nsAtom* Gecko_Element_ImportedPart(const nsAttrValue* aValue,
   return aValue->GetShadowPartsValue().GetReverse(aPartName);
 }
 
-nsAtom* Gecko_Element_ExportedPart(const nsAttrValue* aValue,
-                                   nsAtom* aPartName) {
+nsAtom** Gecko_Element_ExportedParts(const nsAttrValue* aValue,
+                                     nsAtom* aPartName, size_t* aOutLength) {
   if (aValue->Type() != nsAttrValue::eShadowParts) {
     return nullptr;
   }
-  return aValue->GetShadowPartsValue().Get(aPartName);
+  auto* parts = aValue->GetShadowPartsValue().Get(aPartName);
+  if (!parts) {
+    return nullptr;
+  }
+  *aOutLength = parts->Length();
+  static_assert(sizeof(RefPtr<nsAtom>) == sizeof(nsAtom*));
+  static_assert(alignof(RefPtr<nsAtom>) == alignof(nsAtom*));
+  return reinterpret_cast<nsAtom**>(parts->Elements());
 }

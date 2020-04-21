@@ -1424,6 +1424,10 @@ class ExtensionData {
    *                 in computed strings as needed.
    * @param {nsIStringBundle} bundle
    *                          The string bundle to use for l10n.
+   * @param {object} options
+   * @param {boolean} options.collapseOrigins
+   *                  Wether to limit the number of displayed host permissions.
+   *                  Default is false.
    *
    * @returns {object} An object with properties containing localized strings
    *                   for various elements of a permission dialog. The "header"
@@ -1431,7 +1435,11 @@ class ExtensionData {
    *                   and it has the string "<>" as a placeholder for the
    *                   addon name.
    */
-  static formatPermissionStrings(info, bundle) {
+  static formatPermissionStrings(
+    info,
+    bundle,
+    { collapseOrigins = false } = {}
+  ) {
     let result = {};
 
     let perms = info.permissions || { origins: [], permissions: [] };
@@ -1481,7 +1489,7 @@ class ExtensionData {
             ...items.map(item => bundle.formatStringFromName(itemKey, [item]))
           );
         }
-        if (list.length < 5) {
+        if (list.length < 5 || !collapseOrigins) {
           formatItems(list);
         } else {
           formatItems(list.slice(0, 3));

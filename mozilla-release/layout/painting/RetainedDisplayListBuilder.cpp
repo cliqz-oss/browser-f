@@ -844,43 +844,6 @@ bool RetainedDisplayListBuilder::MergeDisplayLists(
   return merge.mResultIsModified;
 }
 
-static void TakeAndAddModifiedAndFramesWithPropsFromRootFrame(
-    nsDisplayListBuilder* aBuilder, nsTArray<nsIFrame*>* aModifiedFrames,
-    nsTArray<nsIFrame*>* aFramesWithProps, nsIFrame* aRootFrame) {
-  MOZ_ASSERT(aRootFrame);
-
-  RetainedDisplayListData* data = GetRetainedDisplayListData(aRootFrame);
-
-  if (!data) {
-    return;
-  }
-
-  for (auto it = data->Iterator(); !it.Done(); it.Next()) {
-    nsIFrame* frame = it.Key();
-    const RetainedDisplayListData::FrameFlags& flags = it.Data();
-
-    if (flags & RetainedDisplayListData::FrameFlags::Modified) {
-      aModifiedFrames->AppendElement(frame);
-    }
-
-    if (flags & RetainedDisplayListData::FrameFlags::HasProps) {
-      aFramesWithProps->AppendElement(frame);
-    }
-
-    if (flags & RetainedDisplayListData::FrameFlags::HadWillChange) {
-      aBuilder->RemoveFromWillChangeBudgets(frame);
-    }
-  }
-
-  data->Clear();
-}
-
-struct CbData {
-  nsDisplayListBuilder* builder;
-  nsTArray<nsIFrame*>* modifiedFrames;
-  nsTArray<nsIFrame*>* framesWithProps;
-};
-
 static nsIFrame* GetRootFrameForPainting(nsDisplayListBuilder* aBuilder,
                                          Document& aDocument) {
   // Although this is the actual subdocument, it might not be
@@ -922,20 +885,41 @@ static nsIFrame* GetRootFrameForPainting(nsDisplayListBuilder* aBuilder,
   return presShell ? presShell->GetRootFrame() : nullptr;
 }
 
-static CallState SubDocEnumCb(Document& aDocument, void* aData) {
-  MOZ_ASSERT(aData);
+static void TakeAndAddModifiedAndFramesWithPropsFromRootFrame(
+    nsDisplayListBuilder* aBuilder, nsTArray<nsIFrame*>* aModifiedFrames,
+    nsTArray<nsIFrame*>* aFramesWithProps, nsIFrame* aRootFrame,
+    Document& aDoc) {
+  MOZ_ASSERT(aRootFrame);
 
-  auto* data = static_cast<CbData*>(aData);
+  if (RetainedDisplayListData* data = GetRetainedDisplayListData(aRootFrame)) {
+    for (auto it = data->Iterator(); !it.Done(); it.Next()) {
+      nsIFrame* frame = it.Key();
+      const RetainedDisplayListData::FrameFlags& flags = it.Data();
 
-  if (nsIFrame* rootFrame = GetRootFrameForPainting(data->builder, aDocument)) {
-    TakeAndAddModifiedAndFramesWithPropsFromRootFrame(
-        data->builder, data->modifiedFrames, data->framesWithProps, rootFrame);
+      if (flags & RetainedDisplayListData::FrameFlags::Modified) {
+        aModifiedFrames->AppendElement(frame);
+      }
 
-    if (Document* innerDoc = rootFrame->PresShell()->GetDocument()) {
-      innerDoc->EnumerateSubDocuments(SubDocEnumCb, aData);
+      if (flags & RetainedDisplayListData::FrameFlags::HasProps) {
+        aFramesWithProps->AppendElement(frame);
+      }
+
+      if (flags & RetainedDisplayListData::FrameFlags::HadWillChange) {
+        aBuilder->RemoveFromWillChangeBudgets(frame);
+      }
     }
+
+    data->Clear();
   }
-  return CallState::Continue;
+
+  auto recurse = [&](Document& aSubDoc) {
+    if (nsIFrame* rootFrame = GetRootFrameForPainting(aBuilder, aSubDoc)) {
+      TakeAndAddModifiedAndFramesWithPropsFromRootFrame(
+          aBuilder, aModifiedFrames, aFramesWithProps, rootFrame, aSubDoc);
+    }
+    return CallState::Continue;
+  };
+  aDoc.EnumerateSubDocuments(recurse);
 }
 
 static void GetModifiedAndFramesWithProps(
@@ -944,12 +928,9 @@ static void GetModifiedAndFramesWithProps(
   nsIFrame* rootFrame = aBuilder->RootReferenceFrame();
   MOZ_ASSERT(rootFrame);
 
+  Document* rootDoc = rootFrame->PresContext()->Document();
   TakeAndAddModifiedAndFramesWithPropsFromRootFrame(
-      aBuilder, aOutModifiedFrames, aOutFramesWithProps, rootFrame);
-
-  Document* rootdoc = rootFrame->PresContext()->Document();
-  CbData data = {aBuilder, aOutModifiedFrames, aOutFramesWithProps};
-  rootdoc->EnumerateSubDocuments(SubDocEnumCb, &data);
+      aBuilder, aOutModifiedFrames, aOutFramesWithProps, rootFrame, *rootDoc);
 }
 
 // ComputeRebuildRegion  debugging
@@ -983,7 +964,7 @@ static bool IsInPreserve3DContext(const nsIFrame* aFrame) {
 static bool ProcessFrameInternal(nsIFrame* aFrame,
                                  nsDisplayListBuilder* aBuilder,
                                  AnimatedGeometryRoot** aAGR, nsRect& aOverflow,
-                                 nsIFrame* aStopAtFrame,
+                                 const nsIFrame* aStopAtFrame,
                                  nsTArray<nsIFrame*>& aOutFramesWithProps,
                                  const bool aStopAtStackingContext) {
   nsIFrame* currentFrame = aFrame;
@@ -1023,7 +1004,7 @@ static bool ProcessFrameInternal(nsIFrame* aFrame,
       // Find a common ancestor frame to handle frame continuations.
       // TODO: It might be possible to write a more specific and efficient
       // function for this.
-      nsIFrame* ancestor = nsLayoutUtils::FindNearestCommonAncestorFrame(
+      const nsIFrame* ancestor = nsLayoutUtils::FindNearestCommonAncestorFrame(
           currentFrame->GetParent(), placeholder->GetParent());
 
       if (!ProcessFrameInternal(placeholder, aBuilder, &dummyAGR,
@@ -1052,7 +1033,8 @@ static bool ProcessFrameInternal(nsIFrame* aFrame,
       MOZ_ASSERT(sf);
       nsRect displayPort;
       DebugOnly<bool> hasDisplayPort = nsLayoutUtils::GetDisplayPort(
-          currentFrame->GetContent(), &displayPort, RelativeTo::ScrollPort);
+          currentFrame->GetContent(), &displayPort,
+          DisplayportRelativeTo::ScrollPort);
       MOZ_ASSERT(hasDisplayPort);
       // get it relative to the scrollport (from the scrollframe)
       nsRect r = aOverflow - sf->GetScrollPortRect().TopLeft();

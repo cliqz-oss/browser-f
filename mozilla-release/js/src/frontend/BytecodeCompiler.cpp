@@ -147,9 +147,12 @@ class MOZ_STACK_CLASS frontend::SourceAwareCompiler {
                                 toStringEnd, len);
   }
 
-  MOZ_MUST_USE bool handleParseFailure(CompilationInfo& compilationInfo,
-                                       const Directives& newDirectives,
-                                       TokenStreamPosition& startPosition);
+  bool canHandleParseFailure(CompilationInfo& compilationInfo,
+                             const Directives& newDirectives);
+
+  void handleParseFailure(CompilationInfo& compilationInfo,
+                          const Directives& newDirectives,
+                          TokenStreamPosition& startPosition);
 };
 
 template <typename Unit>
@@ -162,6 +165,7 @@ class MOZ_STACK_CLASS frontend::ScriptCompiler
   using Base::sourceBuffer_;
 
   using Base::assertSourceParserAndScriptCreated;
+  using Base::canHandleParseFailure;
   using Base::emplaceEmitter;
   using Base::handleParseFailure;
 
@@ -183,12 +187,17 @@ class MOZ_STACK_CLASS frontend::ScriptCompiler
  *
  * See: finishSingleParseTask/finishMultiParseTask for the off-thread case.
  */
-static void tellDebuggerAboutCompiledScript(JSContext* cx,
+static void tellDebuggerAboutCompiledScript(JSContext* cx, bool hideScript,
                                             Handle<JSScript*> script) {
   if (cx->isHelperThreadContext()) {
     return;
   }
-  DebugAPI::onNewScript(cx, script);
+
+  // If hideScript then script may not be ready to be interrogated by the
+  // debugger.
+  if (!hideScript) {
+    DebugAPI::onNewScript(cx, script);
+  }
 }
 
 template <typename Unit>
@@ -208,7 +217,9 @@ static JSScript* CreateGlobalScript(CompilationInfo& compilationInfo,
     return nullptr;
   }
 
-  tellDebuggerAboutCompiledScript(compilationInfo.cx, compilationInfo.script);
+  tellDebuggerAboutCompiledScript(
+      compilationInfo.cx, compilationInfo.options.hideScriptFromDebugger,
+      compilationInfo.script);
 
   assertException.reset();
   return compilationInfo.script;
@@ -226,12 +237,20 @@ JSScript* frontend::CompileGlobalScript(CompilationInfo& compilationInfo,
 #ifdef JS_ENABLE_SMOOSH
   if (compilationInfo.cx->options().trySmoosh()) {
     bool unimplemented = false;
+    JSContext* cx = compilationInfo.cx;
+    JSRuntime* rt = cx->runtime();
     auto script =
         Smoosh::compileGlobalScript(compilationInfo, srcBuf, &unimplemented);
     if (!unimplemented) {
+      if (compilationInfo.cx->options().trackNotImplemented()) {
+        rt->parserWatcherFile.put("1");
+      }
       return script;
     }
 
+    if (compilationInfo.cx->options().trackNotImplemented()) {
+      rt->parserWatcherFile.put("0");
+    }
     fprintf(stderr, "Falling back!\n");
   }
 #endif  // JS_ENABLE_SMOOSH
@@ -256,7 +275,9 @@ static JSScript* CreateEvalScript(CompilationInfo& compilationInfo,
     return nullptr;
   }
 
-  tellDebuggerAboutCompiledScript(compilationInfo.cx, compilationInfo.script);
+  tellDebuggerAboutCompiledScript(
+      compilationInfo.cx, compilationInfo.options.hideScriptFromDebugger,
+      compilationInfo.script);
 
   assertException.reset();
   return compilationInfo.script;
@@ -292,6 +313,7 @@ class MOZ_STACK_CLASS frontend::StandaloneFunctionCompiler final
   using Base = SourceAwareCompiler<Unit>;
 
   using Base::assertSourceAndParserCreated;
+  using Base::canHandleParseFailure;
   using Base::createSourceAndParser;
   using Base::emplaceEmitter;
   using Base::handleParseFailure;
@@ -443,8 +465,9 @@ static bool InternalCreateScript(CompilationInfo& compilationInfo,
                       compilationInfo.options.lineno,
                       compilationInfo.options.column};
   compilationInfo.script = JSScript::Create(
-      compilationInfo.cx, functionOrGlobal, compilationInfo.options,
-      compilationInfo.sourceObject, extent);
+      compilationInfo.cx, functionOrGlobal, compilationInfo.sourceObject,
+      extent,
+      ImmutableScriptFlags::fromCompileOptions(compilationInfo.options));
   return compilationInfo.script != nullptr;
 }
 
@@ -463,18 +486,25 @@ static bool EmplaceEmitter(CompilationInfo& compilationInfo,
 }
 
 template <typename Unit>
-bool frontend::SourceAwareCompiler<Unit>::handleParseFailure(
+bool frontend::SourceAwareCompiler<Unit>::canHandleParseFailure(
+    CompilationInfo& compilationInfo, const Directives& newDirectives) {
+  // Try to reparse if no parse errors were thrown and the directives changed.
+  //
+  // NOTE:
+  // Only the following two directive changes force us to reparse the script:
+  // - The "use asm" directive was encountered.
+  // - The "use strict" directive was encountered and duplicate parameter names
+  //   are present. We reparse in this case to display the error at the correct
+  //   source location. See |Parser::hasValidSimpleStrictParameterNames()|.
+  return !parser->anyChars.hadError() &&
+         compilationInfo.directives != newDirectives;
+}
+
+template <typename Unit>
+void frontend::SourceAwareCompiler<Unit>::handleParseFailure(
     CompilationInfo& compilationInfo, const Directives& newDirectives,
     TokenStreamPosition& startPosition) {
-  if (parser->hadAbortedSyntaxParse()) {
-    // Hit some unrecoverable ambiguity during an inner syntax parse.
-    // Syntax parsing has now been disabled in the parser, so retry
-    // the parse.
-    parser->clearAbortedSyntaxParse();
-  } else if (parser->anyChars.hadError() ||
-             compilationInfo.directives == newDirectives) {
-    return false;
-  }
+  MOZ_ASSERT(canHandleParseFailure(compilationInfo, newDirectives));
 
   // Rewind to starting position to retry.
   parser->tokenStream.rewind(startPosition);
@@ -483,7 +513,6 @@ bool frontend::SourceAwareCompiler<Unit>::handleParseFailure(
   MOZ_ASSERT_IF(compilationInfo.directives.strict(), newDirectives.strict());
   MOZ_ASSERT_IF(compilationInfo.directives.asmJS(), newDirectives.asmJS());
   compilationInfo.directives = newDirectives;
-  return true;
 }
 
 template <typename Unit>
@@ -497,49 +526,45 @@ JSScript* frontend::ScriptCompiler<Unit>::compileScript(
 
   JSContext* cx = compilationInfo.cx;
 
-  for (;;) {
-    ParseNode* pn;
-    {
-      AutoGeckoProfilerEntry pseudoFrame(cx, "script parsing",
-                                         JS::ProfilingCategoryPair::JS_Parsing);
-      if (sc->isEvalContext()) {
-        pn = parser->evalBody(sc->asEvalContext());
-      } else {
-        pn = parser->globalBody(sc->asGlobalContext());
-      }
+  ParseNode* pn;
+  {
+    AutoGeckoProfilerEntry pseudoFrame(cx, "script parsing",
+                                       JS::ProfilingCategoryPair::JS_Parsing);
+    if (sc->isEvalContext()) {
+      pn = parser->evalBody(sc->asEvalContext());
+    } else {
+      pn = parser->globalBody(sc->asGlobalContext());
     }
+  }
 
+  if (!pn) {
+    // Global and eval scripts don't get reparsed after a new directive was
+    // encountered:
+    // - "use strict" doesn't require any special error reporting for scripts.
+    // - "use asm" directives don't have an effect in global/eval contexts.
+    MOZ_ASSERT(
+        !canHandleParseFailure(compilationInfo, compilationInfo.directives));
+    return nullptr;
+  }
+
+  {
     // Successfully parsed. Emit the script.
     AutoGeckoProfilerEntry pseudoFrame(cx, "script emit",
                                        JS::ProfilingCategoryPair::JS_Parsing);
-    if (pn) {
-      // Publish deferred items
-      if (!parser->publishDeferredFunctions()) {
-        return nullptr;
-      }
 
-      Maybe<BytecodeEmitter> emitter;
-      if (!emplaceEmitter(compilationInfo, emitter, sc)) {
-        return nullptr;
-      }
-
-      if (!emitter->emitScript(pn)) {
-        return nullptr;
-      }
-
-      // Success!
-      break;
-    }
-
-    // Maybe we aborted a syntax parse. See if we can try again.
-    if (!handleParseFailure(compilationInfo, compilationInfo.directives,
-                            startPosition)) {
+    // Publish deferred items
+    if (!parser->publishDeferredFunctions()) {
       return nullptr;
     }
 
-    // Reset preserved state before trying again.
-    compilationInfo.usedNames.reset();
-    parser->getTreeHolder().resetFunctionTree();
+    Maybe<BytecodeEmitter> emitter;
+    if (!emplaceEmitter(compilationInfo, emitter, sc)) {
+      return nullptr;
+    }
+
+    if (!emitter->emitScript(pn)) {
+      return nullptr;
+    }
   }
 
   // We have just finished parsing the source. Inform the source so that we
@@ -636,16 +661,22 @@ FunctionNode* frontend::StandaloneFunctionCompiler<Unit>::parse(
   // of directives.
 
   FunctionNode* fn;
-  do {
+  for (;;) {
     Directives newDirectives = compilationInfo.directives;
     fn = parser->standaloneFunction(fun, enclosingScope, parameterListEnd,
                                     generatorKind, asyncKind,
                                     compilationInfo.directives, &newDirectives);
-    if (!fn &&
-        !handleParseFailure(compilationInfo, newDirectives, startPosition)) {
+    if (fn) {
+      break;
+    }
+
+    // Maybe we encountered a new directive. See if we can try again.
+    if (!canHandleParseFailure(compilationInfo, newDirectives)) {
       return nullptr;
     }
-  } while (!fn);
+
+    handleParseFailure(compilationInfo, newDirectives, startPosition);
+  }
 
   return fn;
 }
@@ -743,17 +774,17 @@ static JSScript* CompileGlobalBinASTScriptImpl(
   }
 
   SourceExtent extent(0, len, 0, len, 0, 0);
-  RootedScript script(cx,
-                      JSScript::Create(cx, cx->global(), options,
-                                       compilationInfo.sourceObject, extent));
+  RootedScript script(
+      cx,
+      JSScript::Create(cx, cx->global(), compilationInfo.sourceObject, extent,
+                       ImmutableScriptFlags::fromCompileOptions(options)));
 
   if (!script) {
     return nullptr;
   }
 
   GlobalSharedContext globalsc(cx, ScopeKind::Global, compilationInfo,
-                               compilationInfo.directives,
-                               compilationInfo.options.extraWarningsOption);
+                               compilationInfo.directives);
 
   frontend::BinASTParser<ParserT> parser(cx, compilationInfo, options,
                                          compilationInfo.sourceObject);
@@ -787,7 +818,7 @@ static JSScript* CompileGlobalBinASTScriptImpl(
     *sourceObjectOut = compilationInfo.sourceObject;
   }
 
-  tellDebuggerAboutCompiledScript(cx, script);
+  tellDebuggerAboutCompiledScript(cx, options.hideScriptFromDebugger, script);
 
   assertException.reset();
   return script;
@@ -839,7 +870,8 @@ static ModuleObject* InternalParseModule(
     return nullptr;
   }
 
-  tellDebuggerAboutCompiledScript(cx, compilationInfo.script);
+  tellDebuggerAboutCompiledScript(cx, options.hideScriptFromDebugger,
+                                  compilationInfo.script);
 
   assertException.reset();
   return module;
@@ -900,6 +932,8 @@ static void CheckFlagsOnDelazification(uint32_t lazy, uint32_t nonLazy) {
 #ifdef DEBUG
   // These flags are expect to be unset for lazy scripts and are only valid
   // after a script has been compiled with the full parser.
+  //
+  // NOTE: Keep in sync with JSScript::relazify().
   constexpr uint32_t NonLazyFlagsMask =
       uint32_t(BaseScript::ImmutableFlags::HasNonSyntacticScope) |
       uint32_t(BaseScript::ImmutableFlags::FunctionHasExtraBodyVarScope) |
@@ -908,13 +942,10 @@ static void CheckFlagsOnDelazification(uint32_t lazy, uint32_t nonLazy) {
   // These flags are computed for lazy scripts and may have a different
   // definition for non-lazy scripts.
   //
-  //  IsLazyScript:       This flag will be removed in Bug 1529456.
-  //
   //  TreatAsRunOnce:     Some conditions depend on parent context and are
   //                      computed during lazy parsing, while other conditions
   //                      need to full parse.
   constexpr uint32_t CustomFlagsMask =
-      uint32_t(BaseScript::ImmutableFlags::IsLazyScript) |
       uint32_t(BaseScript::ImmutableFlags::TreatAsRunOnce);
 
   // These flags are expected to match between lazy and full parsing.
@@ -922,6 +953,13 @@ static void CheckFlagsOnDelazification(uint32_t lazy, uint32_t nonLazy) {
 
   MOZ_ASSERT((lazy & NonLazyFlagsMask) == 0);
   MOZ_ASSERT((lazy & MatchedFlagsMask) == (nonLazy & MatchedFlagsMask));
+
+  // The TreatAsRunOnce conditions are stricter for compiled scripts than for
+  // lazy scripts. A compiled script should only have set it if the lazy script
+  // had it. As a result, during relazification we can inherit the compiled
+  // value as the new lazy value.
+  MOZ_ASSERT_IF(nonLazy & uint32_t(BaseScript::ImmutableFlags::TreatAsRunOnce),
+                lazy & uint32_t(BaseScript::ImmutableFlags::TreatAsRunOnce));
 #endif  // DEBUG
 }
 
@@ -933,8 +971,7 @@ static bool CompileLazyFunctionImpl(JSContext* cx, Handle<BaseScript*> lazy,
   // We can only compile functions whose parents have previously been
   // compiled, because compilation requires full information about the
   // function's immediately enclosing scope.
-  MOZ_ASSERT(lazy->enclosingScriptHasEverBeenCompiled());
-
+  MOZ_ASSERT(lazy->isReadyForDelazification());
   MOZ_ASSERT(!lazy->isBinAST());
 
   AutoAssertReportedException assertException(cx);
@@ -989,10 +1026,8 @@ static bool CompileLazyFunctionImpl(JSContext* cx, Handle<BaseScript*> lazy,
     return false;
   }
 
-  Rooted<JSScript*> script(cx, JSScript::CreateFromLazy(cx, lazy));
-  if (!script) {
-    return false;
-  }
+  Rooted<JSScript*> script(cx, JSScript::CastFromLazy(lazy));
+  uint32_t lazyFlags = lazy->immutableFlags();
 
   FieldInitializers fieldInitializers = FieldInitializers::Invalid();
   if (fun->isClassConstructor()) {
@@ -1010,7 +1045,7 @@ static bool CompileLazyFunctionImpl(JSContext* cx, Handle<BaseScript*> lazy,
     return false;
   }
 
-  CheckFlagsOnDelazification(lazy->immutableFlags(), script->immutableFlags());
+  CheckFlagsOnDelazification(lazyFlags, script->immutableFlags());
 
   assertException.reset();
   return true;
@@ -1037,7 +1072,7 @@ static bool CompileLazyBinASTFunctionImpl(JSContext* cx,
   // We can only compile functions whose parents have previously been
   // compiled, because compilation requires full information about the
   // function's immediately enclosing scope.
-  MOZ_ASSERT(lazy->enclosingScriptHasEverBeenCompiled());
+  MOZ_ASSERT(lazy->isReadyForDelazification());
   MOZ_ASSERT(lazy->isBinAST());
 
   AutoAssertReportedException assertException(cx);
@@ -1055,10 +1090,7 @@ static bool CompileLazyBinASTFunctionImpl(JSContext* cx,
   CompilationInfo compilationInfo(cx, allocScope, options);
   compilationInfo.initFromSourceObject(lazy->sourceObject());
 
-  RootedScript script(cx, JSScript::CreateFromLazy(cx, lazy));
-  if (!script) {
-    return false;
-  }
+  RootedScript script(cx, JSScript::CastFromLazy(lazy));
 
   frontend::BinASTParser<ParserT> parser(cx, compilationInfo, options,
                                          compilationInfo.sourceObject, lazy);
@@ -1143,7 +1175,8 @@ static bool CompileStandaloneFunction(JSContext* cx, MutableHandleFunction fun,
       compilationInfo.sourceObject->source()->setParameterListEnd(
           *parameterListEnd);
     }
-    tellDebuggerAboutCompiledScript(cx, compilationInfo.script);
+    tellDebuggerAboutCompiledScript(cx, options.hideScriptFromDebugger,
+                                    compilationInfo.script);
   }
 
   assertException.reset();

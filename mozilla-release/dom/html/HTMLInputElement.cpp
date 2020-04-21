@@ -12,9 +12,10 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/Directory.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
-#include "mozilla/dom/HTMLFormSubmission.h"
 #include "mozilla/dom/FileSystemUtils.h"
 #include "mozilla/dom/GetFilesHelper.h"
+#include "mozilla/dom/HTMLFormSubmission.h"
+#include "mozilla/dom/InputType.h"
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/dom/WheelEventBinding.h"
 #include "mozilla/PresShell.h"
@@ -25,7 +26,6 @@
 #include "nsQueryObject.h"
 
 #include "nsIRadioVisitor.h"
-#include "InputType.h"
 
 #include "HTMLFormSubmissionConstants.h"
 #include "mozilla/Telemetry.h"
@@ -1066,8 +1066,8 @@ nsresult HTMLInputElement::Clone(dom::NodeInfo* aNodeInfo,
                                  nsINode** aResult) const {
   *aResult = nullptr;
 
-  RefPtr<HTMLInputElement> it = new HTMLInputElement(
-      do_AddRef(aNodeInfo), NOT_FROM_PARSER, FromClone::yes);
+  RefPtr<HTMLInputElement> it = new (aNodeInfo->NodeInfoManager())
+      HTMLInputElement(do_AddRef(aNodeInfo), NOT_FROM_PARSER, FromClone::yes);
 
   nsresult rv = const_cast<HTMLInputElement*>(this)->CopyInnerTo(it);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1193,9 +1193,13 @@ nsresult HTMLInputElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
     // of the element so, if the value of the element is different than @value,
     // we have to re-set it. This is only the case when GetValueMode() returns
     // VALUE_MODE_VALUE.
-    if (aName == nsGkAtoms::value && !mValueChanged &&
-        GetValueMode() == VALUE_MODE_VALUE) {
-      SetDefaultValueAsValue();
+    if (aName == nsGkAtoms::value) {
+      if (!mValueChanged && GetValueMode() == VALUE_MODE_VALUE) {
+        SetDefaultValueAsValue();
+      }
+      // GetStepBase() depends on the `value` attribute if `min` is not present,
+      // even if the value doesn't change.
+      UpdateStepMismatchValidityState();
     }
 
     //
@@ -2133,7 +2137,7 @@ void HTMLInputElement::OpenDateTimePicker(const DateTimeValue& aInitialValue) {
     return;
   }
 
-  mDateTimeInputBoxValue = new DateTimeValue(aInitialValue);
+  mDateTimeInputBoxValue = MakeUnique<DateTimeValue>(aInitialValue);
   nsContentUtils::DispatchChromeEvent(
       OwnerDoc(), static_cast<Element*>(this),
       NS_LITERAL_STRING("MozOpenDateTimePicker"), CanBubble::eYes,
@@ -2145,7 +2149,7 @@ void HTMLInputElement::UpdateDateTimePicker(const DateTimeValue& aValue) {
     return;
   }
 
-  mDateTimeInputBoxValue = new DateTimeValue(aValue);
+  mDateTimeInputBoxValue = MakeUnique<DateTimeValue>(aValue);
   nsContentUtils::DispatchChromeEvent(
       OwnerDoc(), static_cast<Element*>(this),
       NS_LITERAL_STRING("MozUpdateDateTimePicker"), CanBubble::eYes,
@@ -2684,7 +2688,7 @@ nsresult HTMLInputElement::SetValueInternal(const nsAString& aValue,
           }
         }
         if (mDoneCreating) {
-          OnValueChanged(/* aNotify = */ true, ValueChangeKind::Internal);
+          OnValueChanged(ValueChangeKind::Internal);
         }
         // else DoneCreatingElement calls us again once mDoneCreating is true
       }
@@ -2702,8 +2706,7 @@ nsresult HTMLInputElement::SetValueInternal(const nsAString& aValue,
       // a single line text control, TextControlState::SetValue will call
       // nsHTMLInputElement::OnValueChanged which is going to call UpdateState()
       // if the element is focused. This bug 665547.
-      if (PlaceholderApplies() &&
-          HasAttr(kNameSpaceID_None, nsGkAtoms::placeholder)) {
+      if (PlaceholderApplies() && HasAttr(nsGkAtoms::placeholder)) {
         UpdateState(true);
       }
 
@@ -3576,10 +3579,36 @@ nsresult HTMLInputElement::MaybeInitPickers(EventChainPostVisitor& aVisitor) {
  * Control is treated specially, since sometimes we ignore it, and sometimes
  * we don't (for webcompat reasons).
  */
-static bool IgnoreInputEventWithModifier(WidgetInputEvent* aEvent,
+static bool IgnoreInputEventWithModifier(const WidgetInputEvent& aEvent,
                                          bool ignoreControl) {
-  return (ignoreControl && aEvent->IsControl()) || aEvent->IsAltGraph() ||
-         aEvent->IsFn() || aEvent->IsOS();
+  return (ignoreControl && aEvent.IsControl()) || aEvent.IsAltGraph() ||
+         aEvent.IsFn() || aEvent.IsOS();
+}
+
+bool HTMLInputElement::StepsInputValue(
+    const WidgetKeyboardEvent& aEvent) const {
+  if (mType != NS_FORM_INPUT_NUMBER) {
+    return false;
+  }
+  if (aEvent.mMessage != eKeyPress) {
+    return false;
+  }
+  if (!aEvent.IsTrusted()) {
+    return false;
+  }
+  if (aEvent.mKeyCode != NS_VK_UP && aEvent.mKeyCode != NS_VK_DOWN) {
+    return false;
+  }
+  if (IgnoreInputEventWithModifier(aEvent, false)) {
+    return false;
+  }
+  if (aEvent.DefaultPrevented()) {
+    return false;
+  }
+  if (!IsMutable()) {
+    return false;
+  }
+  return true;
 }
 
 nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
@@ -3706,26 +3735,10 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
 
   if (NS_SUCCEEDED(rv)) {
     WidgetKeyboardEvent* keyEvent = aVisitor.mEvent->AsKeyboardEvent();
-    if (mType == NS_FORM_INPUT_NUMBER && keyEvent &&
-        keyEvent->mMessage == eKeyPress && aVisitor.mEvent->IsTrusted() &&
-        (keyEvent->mKeyCode == NS_VK_UP || keyEvent->mKeyCode == NS_VK_DOWN) &&
-        !IgnoreInputEventWithModifier(keyEvent, false)) {
-      // We handle the up/down arrow keys specially for <input type=number>.
-      // On some platforms the editor for the nested text control will
-      // process these keys to send the cursor to the start/end of the text
-      // control and as a result aVisitor.mEventStatus will already have been
-      // set to nsEventStatus_eConsumeNoDefault. However, we know that
-      // whenever the up/down arrow keys cause the value of the number
-      // control to change the string in the text control will change, and
-      // the cursor will be moved to the end of the text control, overwriting
-      // the editor's handling of up/down keypress events. For that reason we
-      // just ignore aVisitor.mEventStatus here and go ahead and handle the
-      // event to increase/decrease the value of the number control.
-      if (!aVisitor.mEvent->DefaultPreventedByContent() && IsMutable()) {
-        StepNumberControlForUserEvent(keyEvent->mKeyCode == NS_VK_UP ? 1 : -1);
-        FireChangeEventIfNeeded();
-        aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
-      }
+    if (keyEvent && StepsInputValue(*keyEvent)) {
+      StepNumberControlForUserEvent(keyEvent->mKeyCode == NS_VK_UP ? 1 : -1);
+      FireChangeEventIfNeeded();
+      aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
     } else if (nsEventStatus_eIgnore == aVisitor.mEventStatus) {
       switch (aVisitor.mEvent->mMessage) {
         case eFocus: {
@@ -3938,7 +3951,7 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
           }
           if (mType == NS_FORM_INPUT_NUMBER && aVisitor.mEvent->IsTrusted()) {
             if (mouseEvent->mButton == MouseButton::eLeft &&
-                !IgnoreInputEventWithModifier(mouseEvent, false)) {
+                !IgnoreInputEventWithModifier(*mouseEvent, false)) {
               nsNumberControlFrame* numberControlFrame =
                   do_QueryFrame(GetPrimaryFrame());
               if (numberControlFrame) {
@@ -4085,7 +4098,7 @@ void HTMLInputElement::PostHandleEventForRangeThumb(
         break;  // don't start drag if someone else is already capturing
       }
       WidgetInputEvent* inputEvent = aVisitor.mEvent->AsInputEvent();
-      if (IgnoreInputEventWithModifier(inputEvent, true)) {
+      if (IgnoreInputEventWithModifier(*inputEvent, true)) {
         break;  // ignore
       }
       if (aVisitor.mEvent->mMessage == eMouseDown) {
@@ -6642,38 +6655,32 @@ void HTMLInputElement::InitializeKeyboardEventListeners() {
   }
 }
 
-void HTMLInputElement::OnValueChanged(bool aNotify, ValueChangeKind aKind) {
+void HTMLInputElement::OnValueChanged(ValueChangeKind aKind) {
   if (aKind != ValueChangeKind::Internal) {
     mLastValueChangeWasInteractive = aKind == ValueChangeKind::UserInteraction;
   }
 
-  UpdateAllValidityStates(aNotify);
+  UpdateAllValidityStates(true);
 
   if (HasDirAuto()) {
-    SetDirectionFromValue(aNotify);
+    SetDirectionFromValue(true);
   }
 
   // :placeholder-shown pseudo-class may change when the value changes.
   // However, we don't want to waste cycles if the state doesn't apply.
-  if (PlaceholderApplies() &&
-      HasAttr(kNameSpaceID_None, nsGkAtoms::placeholder)) {
-    UpdateState(aNotify);
+  if (PlaceholderApplies() && HasAttr(nsGkAtoms::placeholder)) {
+    UpdateState(true);
   }
 }
 
 bool HTMLInputElement::HasCachedSelection() {
-  bool isCached = false;
   TextControlState* state = GetEditorState();
-  if (state) {
-    isCached = state->IsSelectionCached() &&
-               state->HasNeverInitializedBefore() &&
-               state->GetSelectionProperties().GetStart() !=
-                   state->GetSelectionProperties().GetEnd();
-    if (isCached) {
-      state->WillInitEagerly();
-    }
+  if (!state) {
+    return false;
   }
-  return isCached;
+  return state->IsSelectionCached() && state->HasNeverInitializedBefore() &&
+         state->GetSelectionProperties().GetStart() !=
+             state->GetSelectionProperties().GetEnd();
 }
 
 void HTMLInputElement::FieldSetDisabledChanged(bool aNotify) {

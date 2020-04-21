@@ -28,14 +28,15 @@ add_task(async function test_with_rs_messages() {
   );
   const initialMessageCount = ASRouter.state.messages.length;
   const client = RemoteSettings("cfr");
-  const collection = await client.openCollection();
-  await collection.clear();
-  await collection.create(
-    // Modify targeting to ensure the messages always show up
-    { ...msg, targeting: "true" },
-    { useRecordId: true }
-  );
-  await collection.db.saveLastModified(42); // Prevent from loading JSON dump.
+  await client.db.clear();
+  await client.db.create({
+    // Modify targeting and randomize message name to work around the message
+    // getting blocked (for --verify)
+    ...msg,
+    id: `MOMENTS_MOCHITEST_${Date.now()}`,
+    targeting: "true",
+  });
+  await client.db.saveLastModified(42); // Prevent from loading JSON dump.
 
   // Reload the provider
   await ASRouter._updateMessageProviders();
@@ -59,7 +60,7 @@ add_task(async function test_with_rs_messages() {
 
   // Insert a new message and test that priority override works as expected
   msg.content.action.data.url = "https://www.mozilla.org/#mochitest";
-  await collection.create(
+  await client.db.create(
     // Modify targeting to ensure the messages always show up
     {
       ...msg,
@@ -96,7 +97,7 @@ add_task(async function test_with_rs_messages() {
     "Correct value set for higher priority message"
   );
 
-  await collection.clear();
+  await client.db.clear();
   // Wait to reset the WNPanel messages from state
   const previousMessageCount = ASRouter.state.messages.length;
   await BrowserTestUtils.waitForCondition(async () => {

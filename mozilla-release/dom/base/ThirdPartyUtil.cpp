@@ -19,6 +19,7 @@
 #include "nsReadableUtils.h"
 #include "nsThreadUtils.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/ContentBlocking.h"
 #include "mozilla/ContentBlockingAllowList.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/Logging.h"
@@ -493,15 +494,15 @@ ThirdPartyUtil::AnalyzeChannel(nsIChannel* aChannel, bool aNotify, nsIURI* aURI,
         aRequireThirdPartyCheck ? result.contains(ThirdPartyAnalysis::IsForeign)
                                 : true;
     if (performStorageChecks &&
-        AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
-            aChannel, aURI ? aURI : uri.get(), aRejectedReason)) {
+        ContentBlocking::ShouldAllowAccessFor(aChannel, aURI ? aURI : uri.get(),
+                                              aRejectedReason)) {
       result += ThirdPartyAnalysis::IsFirstPartyStorageAccessGranted;
     }
 
     if (aNotify && !result.contains(
                        ThirdPartyAnalysis::IsFirstPartyStorageAccessGranted)) {
-      AntiTrackingCommon::NotifyBlockingDecision(
-          aChannel, AntiTrackingCommon::BlockingDecision::eBlock,
+      ContentBlockingNotifier::OnDecision(
+          aChannel, ContentBlockingNotifier::BlockingDecision::eBlock,
           *aRejectedReason);
     }
   }

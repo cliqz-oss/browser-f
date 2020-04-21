@@ -4,9 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/ContentBlockingNotifier.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Printf.h"
@@ -23,6 +23,7 @@
 #include "nsIClassifiedChannel.h"
 #include "nsIWebProgressListener.h"
 #include "nsIHttpChannel.h"
+#include "nsIScriptError.h"
 
 #include "nsCookiePermission.h"
 #include "nsIURI.h"
@@ -109,6 +110,9 @@ static const int64_t kCookiePurgeAge =
 #undef ADD_TEN_PERCENT
 #define ADD_TEN_PERCENT(i) static_cast<uint32_t>((i) + (i) / 10)
 
+#define CONSOLE_SAMESITE_CATEGORY NS_LITERAL_CSTRING("cookieSameSite")
+#define CONSOLE_GENERIC_CATEGORY NS_LITERAL_CSTRING("cookies")
+
 // default limits for the cookie list. these can be tuned by the
 // network.cookie.maxNumber and network.cookie.maxPerHost prefs respectively.
 static const uint32_t kMaxNumberOfCookies = 3000;
@@ -116,6 +120,10 @@ static const uint32_t kMaxCookiesPerHost = 180;
 static const uint32_t kCookieQuotaPerHost = 150;
 static const uint32_t kMaxBytesPerCookie = 4096;
 static const uint32_t kMaxBytesPerPath = 1024;
+
+// XXX This is not the final URL. See bug 1620334.
+#define SAMESITE_MDN_URL \
+  NS_LITERAL_STRING("https://developer.mozilla.org/docs/Web/HTTP/Cookies")
 
 // pref string constants
 static const char kPrefMaxNumberOfCookies[] = "network.cookie.maxNumber";
@@ -182,6 +190,20 @@ static LazyLogModule gCookieLog("cookie");
   MOZ_LOG(gCookieLog, lvl, ("\n")); \
   PR_END_MACRO
 
+static const char* SameSiteToString(uint32_t aSameSite) {
+  switch (aSameSite) {
+    case nsICookie::SAMESITE_NONE:
+      return "none";
+    case nsICookie::SAMESITE_LAX:
+      return "lax";
+    case nsICookie::SAMESITE_STRICT:
+      return "strict";
+    default:
+      MOZ_CRASH("Invalid nsICookie sameSite value");
+      return "";
+  }
+}
+
 static void LogFailure(bool aSetCookie, nsIURI* aHostURI,
                        const nsACString& aCookieString, const char* aReason) {
   // if logging isn't enabled, return now to save cycles
@@ -241,6 +263,10 @@ static void LogCookie(nsCookie* aCookie) {
             ("is secure: %s\n", aCookie->IsSecure() ? "true" : "false"));
     MOZ_LOG(gCookieLog, LogLevel::Debug,
             ("is httpOnly: %s\n", aCookie->IsHttpOnly() ? "true" : "false"));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,
+            ("sameSite: %s - rawSameSite: %s\n",
+             SameSiteToString(aCookie->SameSite()),
+             SameSiteToString(aCookie->RawSameSite())));
 
     nsAutoCString suffix;
     aCookie->OriginAttributesRef().CreateSuffix(suffix);
@@ -471,7 +497,8 @@ class CompareCookiesByIndex {
 // Return false if the cookie should be ignored for the current channel.
 bool ProcessSameSiteCookieForForeignRequest(nsIChannel* aChannel,
                                             nsCookie* aCookie,
-                                            bool aIsSafeTopLevelNav) {
+                                            bool aIsSafeTopLevelNav,
+                                            bool aLaxByDefault) {
   int32_t sameSiteAttr = 0;
   aCookie->GetSameSite(&sameSiteAttr);
 
@@ -486,13 +513,12 @@ bool ProcessSameSiteCookieForForeignRequest(nsIChannel* aChannel,
   // 2 minutes of tolerance for 'sameSite=lax by default' for cookies set
   // without a sameSite value when used for unsafe http methods.
   if (StaticPrefs::network_cookie_sameSite_laxPlusPOST_timeout() > 0 &&
-      StaticPrefs::network_cookie_sameSite_laxByDefault() &&
-      sameSiteAttr == nsICookie::SAMESITE_LAX &&
+      aLaxByDefault && sameSiteAttr == nsICookie::SAMESITE_LAX &&
       aCookie->RawSameSite() == nsICookie::SAMESITE_NONE &&
       currentTimeInUsec - aCookie->CreationTime() <=
           (StaticPrefs::network_cookie_sameSite_laxPlusPOST_timeout() *
            PR_USEC_PER_SEC) &&
-      NS_IsSafeMethodNav(aChannel)) {
+      !NS_IsSafeMethodNav(aChannel)) {
     return true;
   }
 
@@ -2222,6 +2248,7 @@ void nsCookieService::SetCookieStringInternal(
       NotifyRejected(aHostURI, aChannel, rejectedReason, OPERATION_WRITE);
       return;  // Stop here
     case STATUS_REJECTED_WITH_ERROR:
+      NotifyRejected(aHostURI, aChannel, rejectedReason, OPERATION_WRITE);
       return;
     case STATUS_ACCEPTED:  // Fallthrough
     case STATUS_ACCEPT_SESSION:
@@ -2242,8 +2269,8 @@ void nsCookieService::SetCookieStringInternal(
 }
 
 void nsCookieService::NotifyAccepted(nsIChannel* aChannel) {
-  AntiTrackingCommon::NotifyBlockingDecision(
-      aChannel, AntiTrackingCommon::BlockingDecision::eAllow, 0);
+  ContentBlockingNotifier::OnDecision(
+      aChannel, ContentBlockingNotifier::BlockingDecision::eAllow, 0);
 }
 
 // notify observers that a cookie was rejected due to the users' prefs.
@@ -2259,8 +2286,9 @@ void nsCookieService::NotifyRejected(nsIURI* aHostURI, nsIChannel* aChannel,
     MOZ_ASSERT(aOperation == OPERATION_READ);
   }
 
-  AntiTrackingCommon::NotifyBlockingDecision(
-      aChannel, AntiTrackingCommon::BlockingDecision::eBlock, aRejectedReason);
+  ContentBlockingNotifier::OnDecision(
+      aChannel, ContentBlockingNotifier::BlockingDecision::eBlock,
+      aRejectedReason);
 }
 
 // notify observers that the cookie list changed. there are five possible
@@ -3049,6 +3077,11 @@ void nsCookieService::GetCookiesForURI(
   nsCookieEntry* entry = mDBState->hostTable.GetEntry(key);
   if (!entry) return;
 
+  bool laxByDefault =
+      StaticPrefs::network_cookie_sameSite_laxByDefault() &&
+      !nsContentUtils::IsURIInPrefList(
+          aHostURI, "network.cookie.sameSite.laxByDefault.disabledHosts");
+
   // iterate the cookies!
   const nsCookieEntry::ArrayType& cookies = entry->GetCookies();
   for (nsCookieEntry::IndexType i = 0; i < cookies.Length(); ++i) {
@@ -3060,8 +3093,9 @@ void nsCookieService::GetCookiesForURI(
     // if the cookie is secure and the host scheme isn't, we can't send it
     if (cookie->IsSecure() && !potentiallyTurstworthy) continue;
 
-    if (aIsSameSiteForeign && !ProcessSameSiteCookieForForeignRequest(
-                                  aChannel, cookie, aIsSafeTopLevelNav)) {
+    if (aIsSameSiteForeign &&
+        !ProcessSameSiteCookieForForeignRequest(
+            aChannel, cookie, aIsSafeTopLevelNav, laxByDefault)) {
       continue;
     }
 
@@ -3197,8 +3231,9 @@ bool nsCookieService::CanSetCookie(nsIURI* aHostURI, const nsCookieKey& aKey,
   nsAutoCString expires;
   nsAutoCString maxage;
   bool acceptedByParser = false;
-  bool newCookie = ParseAttributes(aCookieHeader, aCookieData, expires, maxage,
-                                   acceptedByParser);
+  bool newCookie =
+      ParseAttributes(aChannel, aHostURI, aCookieHeader, aCookieData, expires,
+                      maxage, acceptedByParser);
   if (!acceptedByParser) {
     return newCookie;
   }
@@ -3212,32 +3247,6 @@ bool nsCookieService::CanSetCookie(nsIURI* aHostURI, const nsCookieKey& aKey,
   // 3 = secure and "https:"
   bool potentiallyTurstworthy =
       nsMixedContentBlocker::IsPotentiallyTrustworthyOrigin(aHostURI);
-  Telemetry::Accumulate(Telemetry::COOKIE_SCHEME_SECURITY,
-                        ((aCookieData.isSecure()) ? 0x02 : 0x00) |
-                            ((potentiallyTurstworthy) ? 0x01 : 0x00));
-
-  // Collect telemetry on how often are first- and third-party cookies set
-  // from HTTPS origins:
-  //
-  // 0 (000) = first-party and "http:"
-  // 1 (001) = first-party and "http:" with bogus Secure cookie flag?!
-  // 2 (010) = first-party and "https:"
-  // 3 (011) = first-party and "https:" with Secure cookie flag
-  // 4 (100) = third-party and "http:"
-  // 5 (101) = third-party and "http:" with bogus Secure cookie flag?!
-  // 6 (110) = third-party and "https:"
-  // 7 (111) = third-party and "https:" with Secure cookie flag
-  if (aThirdPartyUtil) {
-    bool isThirdParty = true;
-
-    if (aChannel) {
-      aThirdPartyUtil->IsThirdPartyChannel(aChannel, aHostURI, &isThirdParty);
-    }
-    Telemetry::Accumulate(Telemetry::COOKIE_SCHEME_HTTPS,
-                          (isThirdParty ? 0x04 : 0x00) |
-                              (potentiallyTurstworthy ? 0x02 : 0x00) |
-                              (aCookieData.isSecure() ? 0x01 : 0x00));
-  }
 
   int64_t currentTimeInUsec = PR_Now();
 
@@ -3256,6 +3265,17 @@ bool nsCookieService::CanSetCookie(nsIURI* aHostURI, const nsCookieKey& aKey,
       kMaxBytesPerCookie) {
     COOKIE_LOGFAILURE(SET_COOKIE, aHostURI, savedCookieHeader,
                       "cookie too big (> 4kb)");
+
+    AutoTArray<nsString, 2> params = {
+        NS_ConvertUTF8toUTF16(aCookieData.name())};
+
+    nsString size;
+    size.AppendInt(kMaxBytesPerCookie);
+    params.AppendElement(size);
+
+    LogMessageToConsole(aChannel, aHostURI, nsIScriptError::warningFlag,
+                        CONSOLE_GENERIC_CATEGORY,
+                        NS_LITERAL_CSTRING("CookieOversize"), params);
     return newCookie;
   }
 
@@ -3278,7 +3298,7 @@ bool nsCookieService::CanSetCookie(nsIURI* aHostURI, const nsCookieKey& aKey,
     return newCookie;
   }
 
-  if (!CheckPath(aCookieData, aHostURI)) {
+  if (!CheckPath(aCookieData, aChannel, aHostURI)) {
     COOKIE_LOGFAILURE(SET_COOKIE, aHostURI, savedCookieHeader,
                       "failed the path tests");
     return newCookie;
@@ -3744,7 +3764,8 @@ bool nsCookieService::GetTokenValue(nsACString::const_char_iterator& aIter,
 // Parses attributes from cookie header. expires/max-age attributes aren't
 // folded into the cookie struct here, because we don't know which one to use
 // until we've parsed the header.
-bool nsCookieService::ParseAttributes(nsCString& aCookieHeader,
+bool nsCookieService::ParseAttributes(nsIChannel* aChannel, nsIURI* aHostURI,
+                                      nsCString& aCookieHeader,
                                       CookieStruct& aCookieData,
                                       nsACString& aExpires, nsACString& aMaxage,
                                       bool& aAcceptedByParser) {
@@ -3771,7 +3792,12 @@ bool nsCookieService::ParseAttributes(nsCString& aCookieHeader,
   aCookieData.sameSite() = nsICookie::SAMESITE_NONE;
   aCookieData.rawSameSite() = nsICookie::SAMESITE_NONE;
 
-  if (StaticPrefs::network_cookie_sameSite_laxByDefault()) {
+  bool laxByDefault =
+      StaticPrefs::network_cookie_sameSite_laxByDefault() &&
+      !nsContentUtils::IsURIInPrefList(
+          aHostURI, "network.cookie.sameSite.laxByDefault.disabledHosts");
+
+  if (laxByDefault) {
     aCookieData.sameSite() = nsICookie::SAMESITE_LAX;
   }
 
@@ -3840,6 +3866,12 @@ bool nsCookieService::ParseAttributes(nsCString& aCookieHeader,
         aCookieData.sameSite() = nsICookie::SAMESITE_NONE;
         aCookieData.rawSameSite() = nsICookie::SAMESITE_NONE;
         sameSiteSet = true;
+      } else {
+        LogMessageToConsole(
+            aChannel, aHostURI, nsIScriptError::infoFlag,
+            CONSOLE_GENERIC_CATEGORY,
+            NS_LITERAL_CSTRING("CookieSameSiteValueInvalid"),
+            AutoTArray<nsString, 1>{NS_ConvertUTF8toUTF16(aCookieData.name())});
       }
     }
   }
@@ -3852,11 +3884,42 @@ bool nsCookieService::ParseAttributes(nsCString& aCookieHeader,
 
   // If same-site is set to 'none' but this is not a secure context, let's abort
   // the parsing.
-  if (StaticPrefs::network_cookie_sameSite_laxByDefault() &&
-      StaticPrefs::network_cookie_sameSite_noneRequiresSecure() &&
-      !aCookieData.isSecure() &&
+  if (!aCookieData.isSecure() &&
       aCookieData.sameSite() == nsICookie::SAMESITE_NONE) {
-    return newCookie;
+    if (laxByDefault &&
+        StaticPrefs::network_cookie_sameSite_noneRequiresSecure()) {
+      LogMessageToConsole(
+          aChannel, aHostURI, nsIScriptError::infoFlag,
+          CONSOLE_SAMESITE_CATEGORY,
+          NS_LITERAL_CSTRING("CookieRejectedNonRequiresSecure"),
+          AutoTArray<nsString, 1>{NS_ConvertUTF8toUTF16(aCookieData.name())});
+      return newCookie;
+    }
+
+    // if sameSite=lax by default is disabled, we want to warn the user.
+    LogMessageToConsole(
+        aChannel, aHostURI, nsIScriptError::warningFlag,
+        CONSOLE_SAMESITE_CATEGORY,
+        NS_LITERAL_CSTRING("CookieRejectedNonRequiresSecureForBeta"),
+        AutoTArray<nsString, 2>{NS_ConvertUTF8toUTF16(aCookieData.name()),
+                                SAMESITE_MDN_URL});
+  }
+
+  if (aCookieData.rawSameSite() == nsICookie::SAMESITE_NONE &&
+      aCookieData.sameSite() == nsICookie::SAMESITE_LAX) {
+    if (laxByDefault) {
+      LogMessageToConsole(
+          aChannel, aHostURI, nsIScriptError::infoFlag,
+          CONSOLE_SAMESITE_CATEGORY, NS_LITERAL_CSTRING("CookieLaxForced"),
+          AutoTArray<nsString, 1>{NS_ConvertUTF8toUTF16(aCookieData.name())});
+    } else {
+      LogMessageToConsole(
+          aChannel, aHostURI, nsIScriptError::warningFlag,
+          CONSOLE_SAMESITE_CATEGORY,
+          NS_LITERAL_CSTRING("CookieLaxForcedForBeta"),
+          AutoTArray<nsString, 2>{NS_ConvertUTF8toUTF16(aCookieData.name()),
+                                  SAMESITE_MDN_URL});
+    }
   }
 
   // Cookie accepted.
@@ -3864,6 +3927,30 @@ bool nsCookieService::ParseAttributes(nsCString& aCookieHeader,
 
   MOZ_ASSERT(nsCookie::ValidateRawSame(aCookieData));
   return newCookie;
+}
+
+// static
+void nsCookieService::LogMessageToConsole(nsIChannel* aChannel, nsIURI* aURI,
+                                          uint32_t aErrorFlags,
+                                          const nsACString& aCategory,
+                                          const nsACString& aMsg,
+                                          const nsTArray<nsString>& aParams) {
+  MOZ_ASSERT(aURI);
+
+  nsCOMPtr<HttpBaseChannel> httpChannel = do_QueryInterface(aChannel);
+  if (!httpChannel) {
+    return;
+  }
+
+  nsAutoCString uri;
+  nsresult rv = aURI->GetSpec(uri);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+
+  httpChannel->AddConsoleReport(aErrorFlags, aCategory,
+                                nsContentUtils::eNECKO_PROPERTIES, uri, 0, 0,
+                                aMsg, aParams);
 }
 
 /******************************************************************************
@@ -4014,20 +4101,21 @@ CookieStatus nsCookieService::CheckPrefs(
     }
   }
 
-  // No cookies allowed if this request comes from a tracker, in a 3rd party
+  // No cookies allowed if this request comes from a resource in a 3rd party
   // context, when anti-tracking protection is enabled and when we don't have
   // access to the first-party cookie jar.
   if (aIsForeign && aIsThirdPartyTrackingResource &&
       !aFirstPartyStorageAccessGranted &&
-      aCookieJarSettings->GetRejectThirdPartyTrackers()) {
-    // Explicitly pass nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER
-    // here to ensure that we are testing the partitioning configuration only
-    // for the nsICookieService::BEHAVIOR_REJECT_TRACKER configuration.
-    // When partitioning for BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN, we
-    // don't want to give a free pass to tracker cookies here!
-    if (StoragePartitioningEnabled(
-            nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER,
-            aCookieJarSettings)) {
+      aCookieJarSettings->GetRejectThirdPartyContexts()) {
+    bool rejectThirdPartyWithExceptions =
+        CookieJarSettings::IsRejectThirdPartyWithExceptions(
+            aCookieJarSettings->GetCookieBehavior());
+
+    uint32_t rejectReason =
+        rejectThirdPartyWithExceptions
+            ? nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN
+            : nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER;
+    if (StoragePartitioningEnabled(rejectReason, aCookieJarSettings)) {
       MOZ_ASSERT(!aOriginAttrs.mFirstPartyDomain.IsEmpty(),
                  "We must have a StoragePrincipal here!");
       return STATUS_ACCEPTED;
@@ -4039,6 +4127,8 @@ CookieStatus nsCookieService::CheckPrefs(
     if (aIsThirdPartySocialTrackingResource) {
       *aRejectedReason =
           nsIWebProgressListener::STATE_COOKIES_BLOCKED_SOCIALTRACKER;
+    } else if (rejectThirdPartyWithExceptions) {
+      *aRejectedReason = nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN;
     } else {
       *aRejectedReason = nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER;
     }
@@ -4176,7 +4266,8 @@ nsAutoCString nsCookieService::GetPathFromURI(nsIURI* aHostURI) {
   return path;
 }
 
-bool nsCookieService::CheckPath(CookieStruct& aCookieData, nsIURI* aHostURI) {
+bool nsCookieService::CheckPath(CookieStruct& aCookieData, nsIChannel* aChannel,
+                                nsIURI* aHostURI) {
   // if a path is given, check the host has permission
   if (aCookieData.path().IsEmpty() || aCookieData.path().First() != '/') {
     aCookieData.path() = GetPathFromURI(aHostURI);
@@ -4198,9 +4289,23 @@ bool nsCookieService::CheckPath(CookieStruct& aCookieData, nsIURI* aHostURI) {
 #endif
   }
 
-  if (aCookieData.path().Length() > kMaxBytesPerPath ||
-      aCookieData.path().Contains('\t'))
+  if (aCookieData.path().Length() > kMaxBytesPerPath) {
+    AutoTArray<nsString, 2> params = {
+        NS_ConvertUTF8toUTF16(aCookieData.name())};
+
+    nsString size;
+    size.AppendInt(kMaxBytesPerPath);
+    params.AppendElement(size);
+
+    LogMessageToConsole(aChannel, aHostURI, nsIScriptError::warningFlag,
+                        CONSOLE_GENERIC_CATEGORY,
+                        NS_LITERAL_CSTRING("CookiePathOversize"), params);
     return false;
+  }
+
+  if (aCookieData.path().Contains('\t')) {
+    return false;
+  }
 
   return true;
 }

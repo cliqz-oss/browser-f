@@ -10,6 +10,8 @@
 
 #include <atomic>
 #include <tuple>
+#include <type_traits>
+#include <utility>
 #include <vector>
 #include "mozilla/ipc/SharedMemoryBasic.h"
 #include "mozilla/Assertions.h"
@@ -17,7 +19,6 @@
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/Logging.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/TypeTraits.h"
 #include "nsString.h"
 #include "CrossProcessSemaphore.h"
 
@@ -108,13 +109,13 @@ inline bool IsSuccess(PcqStatus status) { return status == PcqStatus::Success; }
 
 template <typename T>
 struct RemoveCVR {
-  typedef typename RemoveReference<typename RemoveCV<T>::Type>::Type Type;
+  using Type = std::remove_reference_t<std::remove_cv_t<T>>;
 };
 
 template <typename T>
 struct IsTriviallySerializable
-    : public IntegralConstant<bool, std::is_enum<T>::value ||
-                                        std::is_arithmetic<T>::value> {};
+    : public std::integral_constant<bool, std::is_enum<T>::value ||
+                                              std::is_arithmetic<T>::value> {};
 
 struct ProducerConsumerQueue;
 class Producer;
@@ -1167,7 +1168,7 @@ class Consumer : public detail::PcqBase {
   template <typename Arg>
   PcqStatus TryCopyOrSkipItem(ConsumerView& aView, Arg* aArg) {
     return PcqParamTraits<typename RemoveCVR<Arg>::Type>::Read(
-        aView, const_cast<typename RemoveCV<Arg>::Type*>(aArg));
+        aView, const_cast<std::remove_cv_t<Arg>*>(aArg));
   }
 
   template <typename Arg>
@@ -1578,7 +1579,7 @@ struct PcqParamTraits {
 // ---------------------------------------------------------------
 
 template <>
-struct IsTriviallySerializable<PcqStatus> : TrueType {};
+struct IsTriviallySerializable<PcqStatus> : std::true_type {};
 
 // ---------------------------------------------------------------
 
@@ -1984,23 +1985,23 @@ struct PcqParamTraits<Maybe<Variant<T, Ts...>>> {
 // ---------------------------------------------------------------
 
 template <typename TypeA, typename TypeB>
-struct PcqParamTraits<Pair<TypeA, TypeB>> {
-  using ParamType = Pair<TypeA, TypeB>;
+struct PcqParamTraits<std::pair<TypeA, TypeB>> {
+  using ParamType = std::pair<TypeA, TypeB>;
 
   static PcqStatus Write(ProducerView& aProducerView, const ParamType& aArg) {
-    aProducerView.WriteParam(aArg.first());
-    return aProducerView.WriteParam(aArg.second());
+    aProducerView.WriteParam(aArg.first);
+    return aProducerView.WriteParam(aArg.second);
   }
 
   static PcqStatus Read(ConsumerView& aConsumerView, ParamType* aArg) {
-    aConsumerView.ReadParam(aArg ? (&aArg->first()) : nullptr);
-    return aConsumerView.ReadParam(aArg ? (&aArg->second()) : nullptr);
+    aConsumerView.ReadParam(aArg ? (&aArg->first) : nullptr);
+    return aConsumerView.ReadParam(aArg ? (&aArg->second) : nullptr);
   }
 
   template <typename View>
   static size_t MinSize(View& aView, const ParamType* aArg) {
-    return aView.MinSizeParam(aArg ? aArg->first() : nullptr) +
-           aView.MinSizeParam(aArg ? aArg->second() : nullptr);
+    return aView.MinSizeParam(aArg ? aArg->first : nullptr) +
+           aView.MinSizeParam(aArg ? aArg->second : nullptr);
   }
 };
 
@@ -2059,7 +2060,7 @@ struct PcqParamTraits<UniquePtr<T>> {
 // it use FileDescriptor::auto_close.
 #if defined(OS_WIN)
 template <>
-struct IsTriviallySerializable<base::SharedMemoryHandle> : TrueType {};
+struct IsTriviallySerializable<base::SharedMemoryHandle> : std::true_type {};
 #elif defined(OS_POSIX)
 // SharedMemoryHandle is typedefed to base::FileDescriptor
 template <>

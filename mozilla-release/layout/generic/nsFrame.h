@@ -226,9 +226,10 @@ class nsFrame : public nsBox {
    * @param aPunctAfter true if the next character is punctuation
    * @param aWhitespaceAfter true if the next character is whitespace
    */
-  bool BreakWordBetweenPunctuation(const PeekWordState* aState, bool aForward,
-                                   bool aPunctAfter, bool aWhitespaceAfter,
-                                   bool aIsKeyboardSelect);
+  static bool BreakWordBetweenPunctuation(const PeekWordState* aState,
+                                          bool aForward, bool aPunctAfter,
+                                          bool aWhitespaceAfter,
+                                          bool aIsKeyboardSelect);
 
   nsresult CheckVisibility(nsPresContext* aContext, int32_t aStartIndex,
                            int32_t aEndIndex, bool aRecurse, bool* aFinished,
@@ -585,8 +586,10 @@ class nsFrame : public nsBox {
       nsDisplayListBuilder* aBuilder, nsDisplayList* aList,
       uint16_t aContentType = nsISelectionDisplay::DISPLAY_FRAMES);
 
-  int16_t DisplaySelection(nsPresContext* aPresContext,
-                           bool isOkToTurnOn = false);
+  /**
+   * @return see nsISelectionController.idl's `getDisplaySelection`.
+   */
+  int16_t DetermineDisplaySelection();
 
   // Style post processing hook
   void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;

@@ -16,6 +16,8 @@
 
 #include "mozilla/Maybe.h"
 
+#include <type_traits>
+
 #include "frontend/BCEParserHandle.h"
 #include "frontend/BinASTEnum.h"
 #include "frontend/BinASTParserBase.h"
@@ -69,7 +71,6 @@ class BinASTParserPerTokenizer : public BinASTParserBase,
                            const JS::ReadOnlyCompileOptions& options,
                            HandleScriptSourceObject sourceObject,
                            Handle<BaseScript*> lazyScript = nullptr);
-  ~BinASTParserPerTokenizer() {}
 
   /**
    * Parse a buffer, returning a node (which may be nullptr) in case of success
@@ -203,10 +204,10 @@ class BinASTParserPerTokenizer : public BinASTParserBase,
   // This is used to avoid generating unnecessary branches for more
   // optimized format.
   static constexpr bool isInvalidKindPossible() {
-    return mozilla::IsSame<Tok, BinASTTokenReaderMultipart>::value;
+    return std::is_same_v<Tok, BinASTTokenReaderMultipart>;
   }
   static constexpr bool isInvalidVariantPossible() {
-    return mozilla::IsSame<Tok, BinASTTokenReaderMultipart>::value;
+    return std::is_same_v<Tok, BinASTTokenReaderMultipart>;
   }
 
  protected:
@@ -228,28 +229,6 @@ class BinASTParserPerTokenizer : public BinASTParserBase,
   void doTrace(JSTracer* trc) final;
 
  public:
-  virtual ObjectBox* newObjectBox(JSObject* obj) override {
-    MOZ_ASSERT(obj);
-
-    /*
-     * We use JSContext.tempLifoAlloc to allocate parsed objects and place them
-     * on a list in this Parser to ensure GC safety. Thus the tempLifoAlloc
-     * arenas containing the entries must be alive until we are done with
-     * scanning, parsing and code generation for the whole script or top-level
-     * function.
-     */
-
-    ObjectBox* objbox = alloc_.new_<ObjectBox>(obj, traceListHead_);
-    if (MOZ_UNLIKELY(!objbox)) {
-      ReportOutOfMemory(cx_);
-      return nullptr;
-    }
-
-    traceListHead_ = objbox;
-
-    return objbox;
-  }
-
   virtual ErrorReporter& errorReporter() override { return *this; }
   virtual const ErrorReporter& errorReporter() const override { return *this; }
 
@@ -333,7 +312,13 @@ class BinASTParserPerTokenizer : public BinASTParserBase,
         *reflags |= JS::RegExpFlag::IgnoreCase;
       } else if (c == 'm' && !reflags->multiline()) {
         *reflags |= JS::RegExpFlag::Multiline;
-      } else if (c == 'u' && !reflags->unicode()) {
+      }
+#ifdef ENABLE_NEW_REGEXP
+      else if (c == 's' && !reflags->dotAll()) {
+        *reflags |= JS::RegExpFlag::DotAll;
+      }
+#endif
+      else if (c == 'u' && !reflags->unicode()) {
         *reflags |= JS::RegExpFlag::Unicode;
       } else if (c == 'y' && !reflags->sticky()) {
         *reflags |= JS::RegExpFlag::Sticky;

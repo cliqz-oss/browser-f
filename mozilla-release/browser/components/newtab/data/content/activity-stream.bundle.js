@@ -750,6 +750,7 @@ const Base = Object(react_redux__WEBPACK_IMPORTED_MODULE_4__["connect"])(state =
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* WEBPACK VAR INJECTION */(function(global) {/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "ToggleStoryButton", function() { return ToggleStoryButton; });
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "ToggleMessageJSON", function() { return ToggleMessageJSON; });
 /* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "TogglePrefCheckbox", function() { return TogglePrefCheckbox; });
 /* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "Personalization", function() { return Personalization; });
 /* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "DiscoveryStreamAdmin", function() { return DiscoveryStreamAdmin; });
@@ -821,6 +822,27 @@ class ToggleStoryButton extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pur
     return react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
       onClick: this.handleClick
     }, "collapse/open");
+  }
+
+}
+class ToggleMessageJSON extends react__WEBPACK_IMPORTED_MODULE_4___default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.handleClick = this.handleClick.bind(this);
+  }
+
+  handleClick() {
+    this.props.toggleJSON(this.props.msgId);
+  }
+
+  render() {
+    let iconName = this.props.isCollapsed ? "icon icon-arrowhead-forward-small" : "icon icon-arrowhead-down-small";
+    return react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
+      className: "clearButton",
+      onClick: this.handleClick
+    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", {
+      className: iconName
+    }));
   }
 
 }
@@ -1125,9 +1147,12 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     this.handleUpdateWNMessages = this.handleUpdateWNMessages.bind(this);
     this.handleForceWNP = this.handleForceWNP.bind(this);
     this.pushWNMessage = this.pushWNMessage.bind(this);
+    this.toggleJSON = this.toggleJSON.bind(this);
+    this.toggleAllMessages = this.toggleAllMessages.bind(this);
     this.state = {
       messageFilter: "all",
       WNMessages: [],
+      collapsedMessages: [],
       evaluationStatus: {},
       trailhead: {},
       stringTargetingParameters: null,
@@ -1435,6 +1460,19 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     }
   }
 
+  toggleJSON(msgId) {
+    if (this.state.collapsedMessages.includes(msgId)) {
+      let index = this.state.collapsedMessages.indexOf(msgId);
+      this.setState(prevState => ({
+        collapsedMessages: [...prevState.collapsedMessages.slice(0, index), ...prevState.collapsedMessages.slice(index + 1)]
+      }));
+    } else {
+      this.setState(prevState => ({
+        collapsedMessages: prevState.collapsedMessages.concat(msgId)
+      }));
+    }
+  }
+
   renderMessageItem(msg) {
     const isBlockedByGroup = this.state.groups.filter(group => msg.groups.includes(group.id)).some(group => !group.enabled);
     const msgProvider = this.state.providers.find(provider => provider.id === msg.provider);
@@ -1442,6 +1480,7 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     const isMessageBlocked = this.state.messageBlockList.includes(msg.id) || this.state.messageBlockList.includes(msg.campaign);
     const isBlocked = isMessageBlocked || isBlockedByGroup || isProviderExcluded;
     const impressions = this.state.messageImpressions[msg.id] ? this.state.messageImpressions[msg.id].length : 0;
+    const isCollapsed = this.state.collapsedMessages.includes(msg.id);
     let itemClassName = "message-item";
 
     if (isBlocked) {
@@ -1453,7 +1492,13 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
       key: `${msg.id}-${msg.provider}`
     }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", {
       className: "message-id"
-    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", null, msg.id, " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null))), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
+    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", null, msg.id, " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null))), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement(ToggleMessageJSON, {
+      msgId: `${msg.id}`,
+      toggleJSON: this.toggleJSON,
+      isCollapsed: isCollapsed
+    })), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", {
+      className: "button-column"
+    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
       className: `button ${isBlocked ? "" : " primary"}`,
       onClick: isBlocked ? this.handleUnblock(msg) : this.handleBlock(msg)
     }, isBlocked ? "Unblock" : "Block"), isBlocked ? null : react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
@@ -1461,7 +1506,9 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
       onClick: this.handleOverride(msg.id)
     }, "Show"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null), "(", impressions, " impressions)"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", {
       className: "message-summary"
-    }, isBlocked && react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("tr", null, "Block reason:", isBlockedByGroup && " Blocked by group", isProviderExcluded && " Excluded by provider", isMessageBlocked && " Message blocked"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("tr", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("pre", null, JSON.stringify(msg, null, 2)))));
+    }, isBlocked && react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("tr", null, "Block reason:", isBlockedByGroup && " Blocked by group", isProviderExcluded && " Excluded by provider", isMessageBlocked && " Message blocked"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("tr", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("pre", {
+      className: isCollapsed ? "collapsed" : "expanded"
+    }, JSON.stringify(msg, null, 2)))));
   }
 
   pushWNMessage(event, msg) {
@@ -1485,6 +1532,7 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
   renderWNMessageItem(msg) {
     const isBlocked = this.state.messageBlockList.includes(msg.id) || this.state.messageBlockList.includes(msg.campaign);
     const impressions = this.state.messageImpressions[msg.id] ? this.state.messageImpressions[msg.id].length : 0;
+    const isCollapsed = this.state.collapsedMessages.includes(msg.id);
     let itemClassName = "message-item";
 
     if (isBlocked) {
@@ -1496,15 +1544,35 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
       key: `${msg.id}-${msg.provider}`
     }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", {
       className: "message-id"
-    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", null, msg.id, " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null), "(", impressions, " impressions)")), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("input", {
+    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", null, msg.id, " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null), "(", impressions, " impressions)")), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement(ToggleMessageJSON, {
+      msgId: `${msg.id}`,
+      toggleJSON: this.toggleJSON,
+      isCollapsed: isCollapsed
+    })), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("input", {
       type: "checkbox",
       id: `${msg.id} checkbox`,
       name: `${msg.id} checkbox` // eslint-disable-next-line react/jsx-no-bind
       ,
       onClick: e => this.pushWNMessage(e, msg.id)
     })), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", {
-      className: "message-summary"
-    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("pre", null, JSON.stringify(msg, null, 2))));
+      className: `message-summary`
+    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("pre", {
+      className: isCollapsed ? "collapsed" : "expanded"
+    }, JSON.stringify(msg, null, 2))));
+  }
+
+  toggleAllMessages(messagesToShow) {
+    if (this.state.collapsedMessages.length) {
+      this.setState({
+        collapsedMessages: []
+      });
+    } else {
+      Array.prototype.forEach.call(messagesToShow, msg => {
+        this.setState(prevState => ({
+          collapsedMessages: prevState.collapsedMessages.concat(msg.id)
+        }));
+      });
+    }
   }
 
   renderMessages() {
@@ -1513,7 +1581,11 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     }
 
     const messagesToShow = this.state.messageFilter === "all" ? this.state.messages : this.state.messages.filter(message => message.provider === this.state.messageFilter);
-    return react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("table", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("tbody", null, messagesToShow.map(msg => this.renderMessageItem(msg))));
+    return react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("div", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
+      className: "ASRouterButton slim button" // eslint-disable-next-line react/jsx-no-bind
+      ,
+      onClick: e => this.toggleAllMessages(messagesToShow)
+    }, "Collapse/Expand All"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("table", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("tbody", null, messagesToShow.map(msg => this.renderMessageItem(msg)))));
   }
 
   renderWNMessages() {
@@ -1820,6 +1892,11 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
   }
 
   renderWNPTests() {
+    if (!this.state.messages) {
+      return null;
+    }
+
+    let messagesToShow = this.state.messages.filter(message => message.provider === "whats-new-panel");
     return react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("div", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("p", {
       className: "helpLink"
     }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", {
@@ -1830,7 +1907,11 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     }, "Open What's New Panel"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
       className: "ASRouterButton secondary button",
       onClick: this.handleUpdateWNMessages
-    }, "Render Selected Messages"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("h2", null, "Messages"), this.renderWNMessages()));
+    }, "Render Selected Messages"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("h2", null, "Messages"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
+      className: "ASRouterButton slim button" // eslint-disable-next-line react/jsx-no-bind
+      ,
+      onClick: e => this.toggleAllMessages(messagesToShow)
+    }, "Collapse/Expand All"), this.renderWNMessages()));
   }
 
   getSection() {
@@ -2595,39 +2676,47 @@ const messageMiddleware = store => next => action => {
   }
 };
 
-const rehydrationMiddleware = store => next => action => {
-  if (store._didRehydrate) {
+const rehydrationMiddleware = ({
+  getState
+}) => {
+  // NB: The parameter here is MiddlewareAPI which looks like a Store and shares
+  // the same getState, so attached properties are accessible from the store.
+  getState.didRehydrate = false;
+  getState.didRequestInitialState = false;
+  return next => action => {
+    if (getState.didRehydrate) {
+      return next(action);
+    }
+
+    const isMergeStoreAction = action.type === MERGE_STORE_ACTION;
+    const isRehydrationRequest = action.type === common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionTypes"].NEW_TAB_STATE_REQUEST;
+
+    if (isRehydrationRequest) {
+      getState.didRequestInitialState = true;
+      return next(action);
+    }
+
+    if (isMergeStoreAction) {
+      getState.didRehydrate = true;
+      return next(action);
+    } // If init happened after our request was made, we need to re-request
+
+
+    if (getState.didRequestInitialState && action.type === common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionTypes"].INIT) {
+      return next(common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionCreators"].AlsoToMain({
+        type: common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionTypes"].NEW_TAB_STATE_REQUEST
+      }));
+    }
+
+    if (common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionUtils"].isBroadcastToContent(action) || common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionUtils"].isSendToOneContent(action) || common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionUtils"].isSendToPreloaded(action)) {
+      // Note that actions received before didRehydrate will not be dispatched
+      // because this could negatively affect preloading and the the state
+      // will be replaced by rehydration anyway.
+      return null;
+    }
+
     return next(action);
-  }
-
-  const isMergeStoreAction = action.type === MERGE_STORE_ACTION;
-  const isRehydrationRequest = action.type === common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionTypes"].NEW_TAB_STATE_REQUEST;
-
-  if (isRehydrationRequest) {
-    store._didRequestInitialState = true;
-    return next(action);
-  }
-
-  if (isMergeStoreAction) {
-    store._didRehydrate = true;
-    return next(action);
-  } // If init happened after our request was made, we need to re-request
-
-
-  if (store._didRequestInitialState && action.type === common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionTypes"].INIT) {
-    return next(common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionCreators"].AlsoToMain({
-      type: common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionTypes"].NEW_TAB_STATE_REQUEST
-    }));
-  }
-
-  if (common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionUtils"].isBroadcastToContent(action) || common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionUtils"].isSendToOneContent(action) || common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionUtils"].isSendToPreloaded(action)) {
-    // Note that actions received before didRehydrate will not be dispatched
-    // because this could negatively affect preloading and the the state
-    // will be replaced by rehydration anyway.
-    return null;
-  }
-
-  return next(action);
+  };
 };
 /**
  * This middleware queues up all the EARLY_QUEUED_ACTIONS until it receives
@@ -2637,26 +2726,29 @@ const rehydrationMiddleware = store => next => action => {
  * actions allowed early are accepted to be ignorable or re-sendable.
  */
 
-const queueEarlyMessageMiddleware = store => next => action => {
-  if (store._receivedFromMain) {
-    next(action);
-  } else if (common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionUtils"].isFromMain(action)) {
-    next(action);
-    store._receivedFromMain = true; // Sending out all the early actions as main is ready now
+const queueEarlyMessageMiddleware = ({
+  getState
+}) => {
+  // NB: The parameter here is MiddlewareAPI which looks like a Store and shares
+  // the same getState, so attached properties are accessible from the store.
+  getState.earlyActionQueue = [];
+  getState.receivedFromMain = false;
+  return next => action => {
+    if (getState.receivedFromMain) {
+      next(action);
+    } else if (common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionUtils"].isFromMain(action)) {
+      next(action);
+      getState.receivedFromMain = true; // Sending out all the early actions as main is ready now
 
-    if (store._earlyActionQueue) {
-      store._earlyActionQueue.forEach(next);
-
-      store._earlyActionQueue = [];
+      getState.earlyActionQueue.forEach(next);
+      getState.earlyActionQueue.length = 0;
+    } else if (EARLY_QUEUED_ACTIONS.includes(action.type)) {
+      getState.earlyActionQueue.push(action);
+    } else {
+      // Let any other type of action go through
+      next(action);
     }
-  } else if (EARLY_QUEUED_ACTIONS.includes(action.type)) {
-    store._earlyActionQueue = store._earlyActionQueue || [];
-
-    store._earlyActionQueue.push(action);
-  } else {
-    // Let any other type of action go through
-    next(action);
-  }
+  };
 };
 /**
  * initStore - Create a store and listen for incoming actions
@@ -2668,8 +2760,6 @@ const queueEarlyMessageMiddleware = store => next => action => {
 
 function initStore(reducers) {
   const store = Object(redux__WEBPACK_IMPORTED_MODULE_1__["createStore"])(mergeStateReducer(Object(redux__WEBPACK_IMPORTED_MODULE_1__["combineReducers"])(reducers)), global.RPMAddMessageListener && Object(redux__WEBPACK_IMPORTED_MODULE_1__["applyMiddleware"])(rehydrationMiddleware, queueEarlyMessageMiddleware, messageMiddleware));
-  store._didRehydrate = false;
-  store._didRequestInitialState = false;
 
   if (global.RPMAddMessageListener) {
     global.RPMAddMessageListener(INCOMING_MESSAGE_NAME, msg => {
@@ -6470,12 +6560,11 @@ class DSDismiss extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureCompone
       className: className
     }, this.props.children, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("button", {
       className: "ds-dismiss-button",
+      "data-l10n-id": "newtab-dismiss-button-tooltip",
       onHover: this.onHover,
       onClick: this.onDismissClick,
       onMouseEnter: this.onHover,
-      onMouseLeave: this.offHover,
-      "aria-label": "dismiss",
-      title: "Remove"
+      onMouseLeave: this.offHover
     }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("span", {
       className: "icon icon-dismiss"
     })));
@@ -10343,7 +10432,7 @@ const selectLayoutRender = ({
   }
 
   const positions = {};
-  const DS_COMPONENTS = ["Message", "TextPromo", "SectionTitle", "Navigation", "CardGrid", "Hero", "HorizontalRule", "List"];
+  const DS_COMPONENTS = ["Message", "TextPromo", "SectionTitle", "Navigation", "CardGrid", "CollectionCardGrid", "Hero", "HorizontalRule", "List"];
   const filterArray = [];
 
   if (!prefs["feeds.topsites"]) {

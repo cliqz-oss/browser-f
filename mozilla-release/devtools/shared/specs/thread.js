@@ -57,8 +57,6 @@ const threadSpec = generateActorSpec({
       why: Option(0, "paused-reason"),
       poppedFrames: Option(0, "nullable:json"),
       error: Option(0, "nullable:json"),
-      recordingEndpoint: Option(0, "nullable:json"),
-      executionPoint: Option(0, "nullable:json"),
     },
     resumed: {},
     detached: {},
@@ -73,7 +71,7 @@ const threadSpec = generateActorSpec({
       request: {
         options: Arg(0, "json"),
       },
-      response: RetVal("nullable:json"),
+      response: {},
     },
     detach: {
       request: {},

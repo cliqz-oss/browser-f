@@ -21,9 +21,20 @@ ChromeUtils.defineModuleGetter(
 );
 ChromeUtils.defineModuleGetter(
   this,
+  "OSKeyStore",
+  "resource://gre/modules/OSKeyStore.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
   "SiteDataManager",
   "resource:///modules/SiteDataManager.jsm"
 );
+XPCOMUtils.defineLazyGetter(this, "L10n", () => {
+  return new Localization([
+    "branding/brand.ftl",
+    "browser/preferences/preferences.ftl",
+  ]);
+});
 
 var { PrivateBrowsingUtils } = ChromeUtils.import(
   "resource://gre/modules/PrivateBrowsingUtils.jsm"
@@ -74,6 +85,13 @@ XPCOMUtils.defineLazyServiceGetter(
   "listManager",
   "@mozilla.org/url-classifier/listmanager;1",
   "nsIUrlListManager"
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "OS_AUTH_ENABLED",
+  "signon.management.page.os-auth.enabled",
+  true
 );
 
 Preferences.addAll([
@@ -2045,7 +2063,7 @@ var gPrivacyPane = {
    * "use master password" checkbox, and prompts for master password removal if
    * one is set.
    */
-  updateMasterPasswordButton() {
+  async updateMasterPasswordButton() {
     var checkbox = document.getElementById("useMasterPassword");
     var button = document.getElementById("changeMasterPassword");
     button.disabled = !checkbox.checked;
@@ -2056,9 +2074,9 @@ var gPrivacyPane = {
     // design), and it would be extremely odd to pop up that dialog when the
     // user closes the prefwindow and saves his settings
     if (!checkbox.checked) {
-      this._removeMasterPassword();
+      await this._removeMasterPassword();
     } else {
-      this.changeMasterPassword();
+      await this.changeMasterPassword();
     }
 
     this._initMasterPasswordUI();
@@ -2069,7 +2087,7 @@ var gPrivacyPane = {
    * the current master password.  When the dialog is dismissed, master password
    * UI is automatically updated.
    */
-  _removeMasterPassword() {
+  async _removeMasterPassword() {
     var secmodDB = Cc["@mozilla.org/security/pkcs11moduledb;1"].getService(
       Ci.nsIPKCS11ModuleDB
     );
@@ -2091,7 +2109,34 @@ var gPrivacyPane = {
   /**
    * Displays a dialog in which the master password may be changed.
    */
-  changeMasterPassword() {
+  async changeMasterPassword() {
+    // Require OS authentication before the user can set a Master Password
+    if (!LoginHelper.isMasterPasswordSet() && OS_AUTH_ENABLED) {
+      let messageId = "master-password-os-auth-dialog-message";
+      if (AppConstants.platform == "macosx") {
+        // MacOS requires a special format of this dialog string.
+        // See preferences.ftl for more information.
+        messageId += "-macosx";
+      }
+      let [messageText, captionText] = await L10n.formatMessages([
+        {
+          id: messageId,
+        },
+        {
+          id: "master-password-os-auth-dialog-caption",
+        },
+      ]);
+      let loggedIn = await OSKeyStore.ensureLoggedIn(
+        messageText.value,
+        captionText.value,
+        window,
+        false
+      );
+      if (!loggedIn.authenticated) {
+        return;
+      }
+    }
+
     gSubDialog.open(
       "chrome://mozapps/content/preferences/changemp.xhtml",
       "resizable=no",

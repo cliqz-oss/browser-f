@@ -11,7 +11,105 @@ namespace webgpu {
 
 const uint64_t POLL_TIME_MS = 100;
 
-WebGPUParent::WebGPUParent() : mContext(ffi::wgpu_server_new()) {
+static void FreeAdapter(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeAdapter(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeDevice(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeDevice(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeSwapChain(RawId id, void* param) {
+  Unused << id;
+  Unused << param;
+}
+static void FreePipelineLayout(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreePipelineLayout(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeShaderModule(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeShaderModule(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeBindGroupLayout(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeBindGroupLayout(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeBindGroup(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeBindGroup(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeCommandBuffer(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeCommandBuffer(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeRenderPipeline(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeRenderPipeline(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeComputePipeline(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeComputePipeline(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeBuffer(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeBuffer(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeTexture(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeTexture(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeTextureView(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeTextureView(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeSampler(RawId id, void* param) {
+  if (!static_cast<WebGPUParent*>(param)->SendFreeSampler(id)) {
+    MOZ_CRASH("IPC failure");
+  }
+}
+static void FreeSurface(RawId id, void* param) {
+  Unused << id;
+  Unused << param;
+}
+
+static ffi::WGPUIdentityRecyclerFactory MakeFactory(void* param) {
+  // Note: careful about the order here!
+  const ffi::WGPUIdentityRecyclerFactory factory = {
+      param,
+      FreeAdapter,
+      FreeDevice,
+      FreeSwapChain,
+      FreePipelineLayout,
+      FreeShaderModule,
+      FreeBindGroupLayout,
+      FreeBindGroup,
+      FreeCommandBuffer,
+      FreeRenderPipeline,
+      FreeComputePipeline,
+      FreeBuffer,
+      FreeTexture,
+      FreeTextureView,
+      FreeSampler,
+      FreeSurface,
+  };
+  return factory;
+}
+
+WebGPUParent::WebGPUParent()
+    : mContext(ffi::wgpu_server_new(MakeFactory(this))) {
   mTimer.Start(base::TimeDelta::FromMilliseconds(POLL_TIME_MS), this,
                &WebGPUParent::MaintainDevices);
 }
@@ -39,6 +137,13 @@ ipc::IPCResult WebGPUParent::RecvInstanceRequestAdapter(
     resolver(aTargetIds[index]);
   } else {
     resolver(0);
+  }
+
+  // free the unused IDs
+  for (size_t i = 0; i < aTargetIds.Length(); ++i) {
+    if (static_cast<int8_t>(i) != index && !SendFreeAdapter(aTargetIds[i])) {
+      MOZ_CRASH("IPC failure");
+    }
   }
   return IPC_OK();
 }
@@ -143,8 +248,23 @@ ipc::IPCResult WebGPUParent::RecvTextureViewDestroy(RawId aSelfId) {
 }
 
 ipc::IPCResult WebGPUParent::RecvDeviceCreateSampler(
-    RawId aSelfId, const ffi::WGPUSamplerDescriptor& aDesc, RawId aNewId) {
-  ffi::wgpu_server_device_create_sampler(mContext, aSelfId, &aDesc, aNewId);
+    RawId aSelfId, const dom::GPUSamplerDescriptor& aDesc, RawId aNewId) {
+  ffi::WGPUSamplerDescriptor desc = {};
+  desc.address_mode_u = ffi::WGPUAddressMode(aDesc.mAddressModeU);
+  desc.address_mode_v = ffi::WGPUAddressMode(aDesc.mAddressModeV);
+  desc.address_mode_w = ffi::WGPUAddressMode(aDesc.mAddressModeW);
+  desc.mag_filter = ffi::WGPUFilterMode(aDesc.mMagFilter);
+  desc.min_filter = ffi::WGPUFilterMode(aDesc.mMinFilter);
+  desc.mipmap_filter = ffi::WGPUFilterMode(aDesc.mMipmapFilter);
+  desc.lod_min_clamp = aDesc.mLodMinClamp;
+  desc.lod_max_clamp = aDesc.mLodMaxClamp;
+  ffi::WGPUCompareFunction compare;
+  if (aDesc.mCompare.WasPassed()) {
+    compare = ffi::WGPUCompareFunction(aDesc.mCompare.Value());
+    desc.compare = &compare;
+  }
+
+  ffi::wgpu_server_device_create_sampler(mContext, aSelfId, &desc, aNewId);
   return IPC_OK();
 }
 
@@ -214,8 +334,8 @@ ipc::IPCResult WebGPUParent::RecvQueueSubmit(
 ipc::IPCResult WebGPUParent::RecvDeviceCreateBindGroupLayout(
     RawId aSelfId, const SerialBindGroupLayoutDescriptor& aDesc, RawId aNewId) {
   ffi::WGPUBindGroupLayoutDescriptor desc = {};
-  desc.bindings = aDesc.mBindings.Elements();
-  desc.bindings_length = aDesc.mBindings.Length();
+  desc.entries = aDesc.mEntries.Elements();
+  desc.entries_length = aDesc.mEntries.Length();
   ffi::wgpu_server_device_create_bind_group_layout(mContext, aSelfId, &desc,
                                                    aNewId);
   return IPC_OK();
@@ -243,34 +363,34 @@ ipc::IPCResult WebGPUParent::RecvPipelineLayoutDestroy(RawId aSelfId) {
 
 ipc::IPCResult WebGPUParent::RecvDeviceCreateBindGroup(
     RawId aSelfId, const SerialBindGroupDescriptor& aDesc, RawId aNewId) {
-  nsTArray<ffi::WGPUBindGroupBinding> ffiBindings(aDesc.mBindings.Length());
-  for (const auto& binding : aDesc.mBindings) {
-    ffi::WGPUBindGroupBinding bgb = {};
-    bgb.binding = binding.mBinding;
-    switch (binding.mType) {
-      case SerialBindGroupBindingType::Buffer:
+  nsTArray<ffi::WGPUBindGroupEntry> ffiEntries(aDesc.mEntries.Length());
+  for (const auto& entry : aDesc.mEntries) {
+    ffi::WGPUBindGroupEntry bgb = {};
+    bgb.binding = entry.mBinding;
+    switch (entry.mType) {
+      case SerialBindGroupEntryType::Buffer:
         bgb.resource.tag = ffi::WGPUBindingResource_Buffer;
-        bgb.resource.buffer._0.buffer = binding.mValue;
-        bgb.resource.buffer._0.offset = binding.mBufferOffset;
-        bgb.resource.buffer._0.size = binding.mBufferSize;
+        bgb.resource.buffer._0.buffer = entry.mValue;
+        bgb.resource.buffer._0.offset = entry.mBufferOffset;
+        bgb.resource.buffer._0.size = entry.mBufferSize;
         break;
-      case SerialBindGroupBindingType::Texture:
+      case SerialBindGroupEntryType::Texture:
         bgb.resource.tag = ffi::WGPUBindingResource_TextureView;
-        bgb.resource.texture_view._0 = binding.mValue;
+        bgb.resource.texture_view._0 = entry.mValue;
         break;
-      case SerialBindGroupBindingType::Sampler:
+      case SerialBindGroupEntryType::Sampler:
         bgb.resource.tag = ffi::WGPUBindingResource_Sampler;
-        bgb.resource.sampler._0 = binding.mValue;
+        bgb.resource.sampler._0 = entry.mValue;
         break;
       default:
         MOZ_CRASH("unreachable");
     }
-    ffiBindings.AppendElement(bgb);
+    ffiEntries.AppendElement(bgb);
   }
   ffi::WGPUBindGroupDescriptor desc = {};
   desc.layout = aDesc.mLayout;
-  desc.bindings = ffiBindings.Elements();
-  desc.bindings_length = ffiBindings.Length();
+  desc.entries = ffiEntries.Elements();
+  desc.entries_length = ffiEntries.Length();
   ffi::wgpu_server_device_create_bind_group(mContext, aSelfId, &desc, aNewId);
   return IPC_OK();
 }
@@ -319,11 +439,11 @@ ipc::IPCResult WebGPUParent::RecvDeviceCreateRenderPipeline(
   const NS_LossyConvertUTF16toASCII fsEntryPoint(
       aDesc.mFragmentStage.mEntryPoint);
   size_t totalAttributes = 0;
-  for (const auto& vertexBuffer : aDesc.mVertexInput.mVertexBuffers) {
-    totalAttributes += vertexBuffer.mAttributes.Length();
+  for (const auto& vertexBuffer : aDesc.mVertexState.mVertexBuffers) {
+    totalAttributes += vertexBuffer.mAttributeSet.Length();
   }
-  nsTArray<ffi::WGPUVertexBufferDescriptor> vertexBuffers(
-      aDesc.mVertexInput.mVertexBuffers.Length());
+  nsTArray<ffi::WGPUVertexBufferLayoutDescriptor> vertexBuffers(
+      aDesc.mVertexState.mVertexBuffers.Length());
   nsTArray<ffi::WGPUVertexAttributeDescriptor> vertexAttributes(
       totalAttributes);
 
@@ -347,20 +467,20 @@ ipc::IPCResult WebGPUParent::RecvDeviceCreateRenderPipeline(
     desc.depth_stencil_state = aDesc.mDepthStencilState.ptr();
   }
   totalAttributes = 0;
-  for (const auto& vertexBuffer : aDesc.mVertexInput.mVertexBuffers) {
-    ffi::WGPUVertexBufferDescriptor vb = {};
-    vb.stride = vertexBuffer.mStride;
+  for (const auto& vertexBuffer : aDesc.mVertexState.mVertexBuffers) {
+    ffi::WGPUVertexBufferLayoutDescriptor vb = {};
+    vb.array_stride = vertexBuffer.mArrayStride;
     vb.step_mode = vertexBuffer.mStepMode;
     vb.attributes = vertexAttributes.Elements() + totalAttributes;
-    vb.attributes_length = vertexBuffer.mAttributes.Length();
-    for (const auto& attribute : vertexBuffer.mAttributes) {
+    vb.attributes_length = vertexBuffer.mAttributeSet.Length();
+    for (const auto& attribute : vertexBuffer.mAttributeSet) {
       vertexAttributes.AppendElement(attribute);
     }
     vertexBuffers.AppendElement(vb);
   }
-  desc.vertex_input.index_format = aDesc.mVertexInput.mIndexFormat;
-  desc.vertex_input.vertex_buffers = vertexBuffers.Elements();
-  desc.vertex_input.vertex_buffers_length = vertexBuffers.Length();
+  desc.vertex_state.index_format = aDesc.mVertexState.mIndexFormat;
+  desc.vertex_state.vertex_buffers = vertexBuffers.Elements();
+  desc.vertex_state.vertex_buffers_length = vertexBuffers.Length();
   desc.sample_count = aDesc.mSampleCount;
   desc.sample_mask = aDesc.mSampleMask;
   desc.alpha_to_coverage_enabled = aDesc.mAlphaToCoverageEnabled;

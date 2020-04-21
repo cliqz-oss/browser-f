@@ -7,6 +7,8 @@
 #ifndef frontend_NameAnalysisTypes_h
 #define frontend_NameAnalysisTypes_h
 
+#include <type_traits>
+
 #include "vm/BytecodeUtil.h"
 #include "vm/Scope.h"
 
@@ -327,7 +329,7 @@ class NameLocation {
   }
 };
 
-// These types are declared here for LazyScript::Create.
+// These types are declared here for BaseScript::CreateLazy.
 using AtomVector = Vector<JSAtom*, 24, SystemAllocPolicy>;
 
 class FunctionBox;
@@ -341,10 +343,10 @@ using FunctionBoxVector = Vector<const FunctionBox*, 8>;
 namespace mozilla {
 
 template <>
-struct IsPod<js::frontend::DeclaredNameInfo> : TrueType {};
+struct IsPod<js::frontend::DeclaredNameInfo> : std::true_type {};
 
 template <>
-struct IsPod<js::frontend::NameLocation> : TrueType {};
+struct IsPod<js::frontend::NameLocation> : std::true_type {};
 
 }  // namespace mozilla
 

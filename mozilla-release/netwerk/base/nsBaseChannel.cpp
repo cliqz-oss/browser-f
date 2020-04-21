@@ -466,8 +466,8 @@ nsBaseChannel::SetLoadGroup(nsILoadGroup* aLoadGroup) {
 
 NS_IMETHODIMP
 nsBaseChannel::GetOriginalURI(nsIURI** aURI) {
-  *aURI = OriginalURI();
-  NS_ADDREF(*aURI);
+  RefPtr<nsIURI> uri = OriginalURI();
+  uri.forget(aURI);
   return NS_OK;
 }
 
@@ -667,7 +667,7 @@ nsBaseChannel::AsyncOpen(nsIStreamListener* aListener) {
   }
 
   MOZ_ASSERT(
-      !mLoadInfo || mLoadInfo->GetSecurityMode() == 0 ||
+      mLoadInfo->GetSecurityMode() == 0 ||
           mLoadInfo->GetInitialSecurityCheckDone() ||
           (mLoadInfo->GetSecurityMode() ==
                nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL &&
@@ -757,12 +757,12 @@ nsBaseChannel::OnTransportStatus(nsITransport* transport, nsresult status,
   if (!HasLoadFlag(LOAD_BACKGROUND)) {
     nsAutoString statusArg;
     if (GetStatusArg(status, statusArg)) {
-      mProgressSink->OnStatus(this, nullptr, status, statusArg.get());
+      mProgressSink->OnStatus(this, status, statusArg.get());
     }
   }
 
   if (progress) {
-    mProgressSink->OnProgress(this, nullptr, progress, progressMax);
+    mProgressSink->OnProgress(this, progress, progressMax);
   }
 
   return NS_OK;

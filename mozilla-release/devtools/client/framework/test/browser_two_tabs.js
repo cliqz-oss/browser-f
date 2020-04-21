@@ -6,7 +6,7 @@
  */
 
 var { DevToolsServer } = require("devtools/server/devtools-server");
-var { DevToolsClient } = require("devtools/shared/client/devtools-client");
+var { DevToolsClient } = require("devtools/client/devtools-client");
 
 const TAB_URL_1 = "data:text/html;charset=utf-8,foo";
 const TAB_URL_2 = "data:text/html;charset=utf-8,bar";
@@ -66,7 +66,8 @@ async function checkGetTabFailures(client) {
   } catch (error) {
     is(
       error.message,
-      "Protocol error (noTab): Unable to find tab with tabId '-999'"
+      "Protocol error (noTab): Unable to find tab with tabId '-999' from: " +
+        client.mainRoot.actorID
     );
   }
 
@@ -76,7 +77,8 @@ async function checkGetTabFailures(client) {
   } catch (error) {
     is(
       error.message,
-      "Protocol error (noTab): Unable to find tab with outerWindowID '-999'"
+      "Protocol error (noTab): Unable to find tab with outerWindowID '-999' from: " +
+        client.mainRoot.actorID
     );
   }
 }

@@ -13,7 +13,7 @@ add_task(async function() {
     set: [["devtools.netmonitor.features.webSockets", true]],
   });
 
-  const { monitor } = await initNetMonitor(SIMPLE_URL);
+  const { monitor } = await initNetMonitor(SIMPLE_URL, { requestCount: 1 });
 
   info("Starting test... ");
 
@@ -53,7 +53,7 @@ add_task(async function() {
   await waitForDOMIfNeeded(
     document,
     "#messages-panel .ws-frames-list-table .ws-frame-list-item",
-    4
+    2
   );
 
   // Check the payload of the first frame.

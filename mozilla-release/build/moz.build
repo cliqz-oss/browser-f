@@ -6,8 +6,6 @@
 
 with Files('**'):
     BUG_COMPONENT = ('Firefox Build System', 'General')
-with Files("mobile/**"):
-    BUG_COMPONENT = ("Firefox for Android", "Testing")
 
 # This cannot be named "build" because of bug 922191.
 SPHINX_TREES['buildsystem'] = 'docs'
@@ -81,7 +79,7 @@ if CONFIG['MOZ_APP_BASENAME']:
     if CONFIG['MOZ_APP_PROFILE']:
         appini_defines['MOZ_APP_PROFILE'] = CONFIG['MOZ_APP_PROFILE']
 
-    for var in ('MOZ_CRASHREPORTER', 'MOZ_PROFILE_MIGRATOR'):
+    for var in ('MOZ_CRASHREPORTER', 'MOZ_PROFILE_MIGRATOR', 'MOZ_UPDATER'):
         if CONFIG[var]:
             appini_defines[var] = True
 
@@ -91,7 +89,7 @@ if CONFIG['MOZ_APP_BASENAME']:
         entry_point='generate',
         inputs=['application.ini.in'],
         flags=['-D%s=%s' % (k, '1' if v is True else v)
-               for k, v in appini_defines.items()])
+               for k, v in sorted(appini_defines.items(), key=lambda t: t[0])])
     
     FINAL_TARGET_FILES += ['!application.ini']
     if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android' and CONFIG['MOZ_UPDATER']:
@@ -99,18 +97,6 @@ if CONFIG['MOZ_APP_BASENAME']:
 
     GeneratedFile('application.ini.h', script='appini_header.py',
                   inputs=['!application.ini'])
-
-if CONFIG['ENABLE_TESTS']:
-    GeneratedFile('automation.py', script='gen_automation.py',
-                  inputs=['automation.py.in'])
-
-    TEST_HARNESS_FILES.reftest += [
-        '!automation.py',
-    ]
-
-    TEST_HARNESS_FILES.testing.mochitest += [
-        '!automation.py',
-    ]
 
 # NOTE: Keep .gdbinit in the topsrcdir for people who run gdb from the topsrcdir.
 OBJDIR_FILES += ['/.gdbinit']

@@ -12,7 +12,6 @@
 #include "mozilla/layers/StackingContextHelper.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/layers/AnimationInfo.h"
-#include "mozilla/layers/RenderRootBoundary.h"
 #include "mozilla/dom/RemoteBrowser.h"
 #include "mozilla/UniquePtr.h"
 #include "nsIFrame.h"
@@ -84,7 +83,6 @@ class WebRenderUserData {
     eRemote,
     eGroup,
     eMask,
-    eRenderRoot,
   };
 
   virtual UserDataType GetType() = 0;
@@ -285,21 +283,6 @@ class WebRenderRemoteData : public WebRenderUserData {
 
  protected:
   RefPtr<dom::RemoteBrowser> mRemoteBrowser;
-};
-
-class WebRenderRenderRootData : public WebRenderUserData {
- public:
-  WebRenderRenderRootData(RenderRootStateManager* aManager,
-                          nsDisplayItem* aItem);
-  virtual ~WebRenderRenderRootData();
-
-  UserDataType GetType() override { return UserDataType::eRenderRoot; }
-  static UserDataType Type() { return UserDataType::eRenderRoot; }
-
-  RenderRootBoundary& EnsureHasBoundary(wr::RenderRoot aChildType);
-
- protected:
-  Maybe<RenderRootBoundary> mBoundary;
 };
 
 extern void DestroyWebRenderUserDataTable(WebRenderUserDataTable* aTable);

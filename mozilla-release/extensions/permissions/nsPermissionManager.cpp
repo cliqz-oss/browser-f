@@ -5,12 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/Attributes.h"
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/ContentBlockingUserInteraction.h"
 #include "mozilla/ContentPrincipal.h"
 #include "mozilla/DebugOnly.h"
-#include "mozilla/Pair.h"
 #include "mozilla/Services.h"
 #include "mozilla/SystemGroup.h"
 #include "nsPermissionManager.h"
@@ -101,8 +100,7 @@ static const nsLiteralCString kPreloadPermissions[] = {
     // interception when a user has disabled storage for a specific site.  Once
     // service worker interception moves to the parent process this should be
     // removed.  See bug 1428130.
-    NS_LITERAL_CSTRING("cookie"), NS_LITERAL_CSTRING("trackingprotection"),
-    NS_LITERAL_CSTRING("trackingprotection-pb"),
+    NS_LITERAL_CSTRING("cookie"),
 
     USER_INTERACTION_PERM};
 
@@ -3279,21 +3277,21 @@ void nsPermissionManager::GetKeyForPermission(nsIPrincipal* aPrincipal,
 }
 
 /* static */
-nsTArray<Pair<nsCString, nsCString>>
+nsTArray<std::pair<nsCString, nsCString>>
 nsPermissionManager::GetAllKeysForPrincipal(nsIPrincipal* aPrincipal) {
   MOZ_ASSERT(aPrincipal);
 
-  nsTArray<Pair<nsCString, nsCString>> pairs;
+  nsTArray<std::pair<nsCString, nsCString>> pairs;
   nsCOMPtr<nsIPrincipal> prin = aPrincipal;
   while (prin) {
     // Add the pair to the list
-    Pair<nsCString, nsCString>* pair =
-        pairs.AppendElement(MakePair(EmptyCString(), EmptyCString()));
+    std::pair<nsCString, nsCString>* pair =
+        pairs.AppendElement(std::make_pair(EmptyCString(), EmptyCString()));
     // We can't check for individual OA strip perms here.
     // Don't force strip origin attributes.
-    GetKeyForPrincipal(prin, false, pair->first());
+    GetKeyForPrincipal(prin, false, pair->first);
 
-    Unused << GetOriginFromPrincipal(prin, false, pair->second());
+    Unused << GetOriginFromPrincipal(prin, false, pair->second);
 
     // Get the next subdomain principal and loop back around.
     prin = GetNextSubDomainPrincipal(prin);
@@ -3353,13 +3351,13 @@ void nsPermissionManager::WhenPermissionsAvailable(nsIPrincipal* aPrincipal,
   nsTArray<RefPtr<GenericNonExclusivePromise>> promises;
   for (auto& pair : GetAllKeysForPrincipal(aPrincipal)) {
     RefPtr<GenericNonExclusivePromise::Private> promise;
-    if (!mPermissionKeyPromiseMap.Get(pair.first(), getter_AddRefs(promise))) {
+    if (!mPermissionKeyPromiseMap.Get(pair.first, getter_AddRefs(promise))) {
       // In this case we have found a permission which isn't available in the
       // content process and hasn't been requested yet. We need to create a new
       // promise, and send the request to the parent (if we have not already
       // done so).
       promise = new GenericNonExclusivePromise::Private(__func__);
-      mPermissionKeyPromiseMap.Put(pair.first(), RefPtr{promise});
+      mPermissionKeyPromiseMap.Put(pair.first, RefPtr{promise});
     }
 
     if (promise) {

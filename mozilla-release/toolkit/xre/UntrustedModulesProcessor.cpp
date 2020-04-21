@@ -104,16 +104,12 @@ bool UntrustedModulesProcessor::IsSupportedProcessType() {
 
 /* static */
 RefPtr<UntrustedModulesProcessor> UntrustedModulesProcessor::Create() {
-#if defined(EARLY_BETA_OR_EARLIER)
   if (!IsSupportedProcessType()) {
     return nullptr;
   }
 
   RefPtr<UntrustedModulesProcessor> result(new UntrustedModulesProcessor());
   return result.forget();
-#else
-  return nullptr;
-#endif  // defined(EARLY_BETA_OR_EARLIER)
 }
 
 NS_IMPL_ISUPPORTS(UntrustedModulesProcessor, nsIObserver)
@@ -380,8 +376,6 @@ RefPtr<UntrustedModulesPromise> UntrustedModulesProcessor::GetAllProcessedData(
   result.Swap(mProcessedModuleLoads);
 
   result.mElapsed = TimeStamp::Now() - TimeStamp::ProcessCreation();
-
-  result.VerifyConsistency();
 
   return UntrustedModulesPromise::CreateAndResolve(
       Some(UntrustedModulesData(std::move(result))), aSource);
@@ -877,12 +871,6 @@ void UntrustedModulesProcessor::CompleteProcessing(
         return;
       }
 
-      // Trusted modules should have been eliminated by GetModulesTrustInternal
-      // in the browser process
-      if (mProcessedModuleLoads.mIsDiagnosticsAssertEnabled) {
-        MOZ_DIAGNOSTIC_ASSERT(!event.IsTrusted());
-      }
-
       Telemetry::ProcessedStack processedStack =
           stackProcessor.GetStackAndModules(backtrace);
 
@@ -903,9 +891,6 @@ void UntrustedModulesProcessor::CompleteProcessing(
 
   mProcessedModuleLoads.AddNewLoads(modules, std::move(processedEvents),
                                     std::move(processedStacks));
-
-  mProcessedModuleLoads.VerifyConsistency();
-
   if (maybeXulLoadDuration) {
     MOZ_ASSERT(!mProcessedModuleLoads.mXULLoadDurationMS);
     mProcessedModuleLoads.mXULLoadDurationMS = maybeXulLoadDuration;

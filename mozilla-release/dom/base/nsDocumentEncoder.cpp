@@ -421,7 +421,7 @@ nsresult nsDocumentEncoder::SerializeSelection() {
   NS_ENSURE_TRUE(mEncodingScope.mSelection, NS_ERROR_FAILURE);
 
   nsresult rv = NS_OK;
-  Selection* selection = mEncodingScope.mSelection;
+  const Selection* selection = mEncodingScope.mSelection;
   uint32_t count = selection->RangeCount();
 
   nsCOMPtr<nsINode> node;
@@ -1378,7 +1378,7 @@ nsHTMLCopyEncoder::SetSelection(Selection* aSelection) {
   // there's no Clone() for selection! fix...
   // nsresult rv = aSelection->Clone(getter_AddRefs(mSelection);
   // NS_ENSURE_SUCCESS(rv, rv);
-  mEncodingScope.mSelection = new Selection(nullptr);
+  mEncodingScope.mSelection = new Selection(SelectionType::eNormal, nullptr);
 
   // loop thru the ranges in the selection
   for (uint32_t rangeIdx = 0; rangeIdx < rangeCount; ++rangeIdx) {

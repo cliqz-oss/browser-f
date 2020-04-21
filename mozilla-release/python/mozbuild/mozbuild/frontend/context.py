@@ -305,7 +305,25 @@ class InitializedDefines(ContextDerivedValue, OrderedDict):
         for define in context.config.substs.get('MOZ_DEBUG_DEFINES', ()):
             self[define] = 1
         if value:
+            if not isinstance(value, OrderedDict):
+                raise ValueError('Can only initialize with another OrderedDict')
             self.update(value)
+
+    def update(self, *other, **kwargs):
+        # Since iteration over non-ordered dicts is non-deterministic, this dict
+        # will be populated in an unpredictable order unless the argument to
+        # update() is also ordered. (It's important that we maintain this
+        # invariant so we can be sure that running `./mach build-backend` twice
+        # in a row without updating any files in the workspace generates exactly
+        # the same output.)
+        if kwargs:
+            raise ValueError('Cannot call update() with kwargs')
+        if other:
+            if not isinstance(other[0], OrderedDict):
+                raise ValueError(
+                    'Can only call update() with another OrderedDict')
+            return super(InitializedDefines, self).update(*other, **kwargs)
+        raise ValueError('No arguments passed to update()')
 
 
 class BaseCompileFlags(ContextDerivedValue, dict):
@@ -548,6 +566,8 @@ class CompileFlags(TargetCompileFlags):
             ('MOZBUILD_CFLAGS', None, ('CFLAGS',)),
             ('MOZBUILD_CXXFLAGS', None, ('CXXFLAGS',)),
             ('COVERAGE', context.config.substs.get('COVERAGE_CFLAGS'), ('CXXFLAGS', 'CFLAGS')),
+            ('NEWPM', context.config.substs.get('MOZ_NEW_PASS_MANAGER_FLAGS'),
+             ('CXXFLAGS', 'CFLAGS')),
         )
 
         TargetCompileFlags.__init__(self, context)
@@ -1472,14 +1492,7 @@ VARIABLES = {
 
         This will result in the compiler flags ``-DNS_NO_XPCOM``,
         ``-DMOZ_EXTENSIONS_DB_SCHEMA=15``, and ``-DDLL_SUFFIX='".so"'``,
-        respectively. These could also be combined into a single
-        update::
-
-           DEFINES.update({
-               'NS_NO_XPCOM': True,
-               'MOZ_EXTENSIONS_DB_SCHEMA': 15,
-               'DLL_SUFFIX': '".so"',
-           })
+        respectively.
         """
         ),
 
@@ -2346,11 +2359,6 @@ VARIABLES = {
     'NO_EXPAND_LIBS': (bool, bool,
                        """Forces to build a real static library, and no corresponding fake
            library.
-        """),
-
-    'NO_COMPONENTS_MANIFEST': (bool, bool,
-                               """Do not create a binary-component manifest entry for the
-        corresponding XPCOMBinaryComponent.
         """),
 
     'USE_NASM': (bool, bool,

@@ -361,10 +361,18 @@ class AliasSet {
     WasmGlobalCell = 1 << 10,           // A wasm global cell
     WasmTableElement = 1 << 11,         // An element of a wasm table
     WasmStackResult = 1 << 12,  // A stack result from the current function
-    Last = WasmStackResult,
+
+    // JSContext's exception state. This is used on instructions like MThrow
+    // that throw exceptions (other than OOM) but have no other side effect, to
+    // ensure that they get their own up-to-date resume point. (This resume
+    // point will be used when constructing the Baseline frame during exception
+    // bailouts.)
+    ExceptionState = 1 << 13,
+
+    Last = ExceptionState,
     Any = Last | (Last - 1),
 
-    NumCategories = 13,
+    NumCategories = 14,
 
     // Indicates load or store.
     Store_ = 1 << 31
@@ -1974,17 +1982,16 @@ class MReturn : public MAryControlInstruction<1, 0>,
   AliasSet getAliasSet() const override { return AliasSet::None(); }
 };
 
-class MThrow : public MAryControlInstruction<1, 0>,
-               public BoxInputsPolicy::Data {
-  explicit MThrow(MDefinition* ins) : MAryControlInstruction(classOpcode) {
-    initOperand(0, ins);
-  }
+class MThrow : public MUnaryInstruction, public BoxInputsPolicy::Data {
+  explicit MThrow(MDefinition* ins) : MUnaryInstruction(classOpcode, ins) {}
 
  public:
   INSTRUCTION_HEADER(Throw)
   TRIVIAL_NEW_WRAPPERS
 
-  virtual AliasSet getAliasSet() const override { return AliasSet::None(); }
+  virtual AliasSet getAliasSet() const override {
+    return AliasSet::Store(AliasSet::ExceptionState);
+  }
   bool possiblyCalls() const override { return true; }
 };
 
@@ -2079,8 +2086,10 @@ class MNewArrayCopyOnWrite : public MUnaryInstruction,
         initialHeap_(initialHeap) {
     MOZ_ASSERT(!templateObject()->isSingleton());
     setResultType(MIRType::Object);
-    setResultTypeSet(
-        MakeSingletonTypeSet(alloc, constraints, templateObject()));
+    if (!JitOptions.warpBuilder) {
+      setResultTypeSet(
+          MakeSingletonTypeSet(alloc, constraints, templateObject()));
+    }
   }
 
  public:
@@ -3552,8 +3561,11 @@ class MCreateThis : public MBinaryInstruction,
   TRIVIAL_NEW_WRAPPERS
   NAMED_OPERANDS((0, getCallee), (1, getNewTarget))
 
-  // Although creation of |this| modifies global state, it is safely repeatable.
-  AliasSet getAliasSet() const override { return AliasSet::None(); }
+  // Performs a property read from |newTarget| iff |newTarget| is a JSFunction
+  // with an own |.prototype| property.
+  AliasSet getAliasSet() const override {
+    return AliasSet::Load(AliasSet::Any);
+  }
   bool possiblyCalls() const override { return true; }
 };
 
@@ -4058,6 +4070,21 @@ class MToNumeric : public MUnaryInstruction, public BoxInputsPolicy::Data {
   ALLOW_CLONE(MToNumeric)
 };
 
+// This corresponds to JS::ToNumber(value).
+class MToNumber : public MUnaryInstruction, public BoxInputsPolicy::Data {
+  explicit MToNumber(MDefinition* arg) : MUnaryInstruction(classOpcode, arg) {
+    // Note: this returns a Value instead of double to prevent unnecessary int32
+    // to double conversions.
+    setResultType(MIRType::Value);
+  }
+
+ public:
+  INSTRUCTION_HEADER(ToNumber)
+  TRIVIAL_NEW_WRAPPERS
+
+  ALLOW_CLONE(MToNumber)
+};
+
 // Applies ECMA's ToNumber on a primitive (either typed or untyped) and expects
 // the result to be precisely representable as an Int32, otherwise bails.
 //
@@ -4230,20 +4257,24 @@ class MToString : public MUnaryInstruction, public ToStringPolicy::Data {
       : MUnaryInstruction(classOpcode, def), sideEffects_(sideEffects) {
     setResultType(MIRType::String);
 
-    if (input()->mightBeType(MIRType::Object) ||
-        input()->mightBeType(MIRType::Symbol)) {
+    if (JitOptions.warpBuilder) {
       mightHaveSideEffects_ = true;
-    }
+    } else {
+      if (input()->mightBeType(MIRType::Object) ||
+          input()->mightBeType(MIRType::Symbol)) {
+        mightHaveSideEffects_ = true;
+      }
 
-    // If this instruction is not effectful, mark it as movable and set the
-    // Guard flag if needed. If the operation is effectful it won't be optimized
-    // anyway so there's no need to set any flags.
-    if (!isEffectful()) {
-      setMovable();
-      // Objects might override toString; Symbol throws. We bailout in those
-      // cases and run side-effects in baseline instead.
-      if (mightHaveSideEffects_) {
-        setGuard();
+      // If this instruction is not effectful, mark it as movable and set the
+      // Guard flag if needed. If the operation is effectful it won't be
+      // optimized anyway so there's no need to set any flags.
+      if (!isEffectful()) {
+        setMovable();
+        // Objects might override toString; Symbol throws. We bailout in those
+        // cases and run side-effects in baseline instead.
+        if (mightHaveSideEffects_) {
+          setGuard();
+        }
       }
     }
   }
@@ -5988,6 +6019,8 @@ class MArrowNewTarget : public MUnaryInstruction,
 // then used to set UseRemoved flags on the inputs of such Phi instructions.
 enum class PhiUsage : uint8_t { Unknown, Unused, Used };
 
+using PhiVector = Vector<MPhi*, 4, JitAllocPolicy>;
+
 class MPhi final : public MDefinition,
                    public InlineListNode<MPhi>,
                    public NoTypePolicy::Data {
@@ -6102,6 +6135,10 @@ class MPhi final : public MDefinition,
   // via a loop backedge.
   MOZ_MUST_USE bool addBackedgeType(TempAllocator& alloc, MIRType type,
                                     TemporaryTypeSet* typeSet);
+
+  // Mark all phis in |iterators|, and the phis they flow into, as having
+  // implicit uses.
+  static MOZ_MUST_USE bool markIteratorPhis(const PhiVector& iterators);
 
   // Initializes the operands vector to the given capacity,
   // permitting use of addInput() instead of addInputSlow().
@@ -6330,7 +6367,7 @@ class MUnaryCache : public MUnaryInstruction, public BoxPolicy<0>::Data {
 
 // Check the current frame for over-recursion past the global stack limit.
 class MCheckOverRecursed : public MNullaryInstruction {
-  MCheckOverRecursed() : MNullaryInstruction(classOpcode) {}
+  MCheckOverRecursed() : MNullaryInstruction(classOpcode) { setGuard(); }
 
  public:
   INSTRUCTION_HEADER(CheckOverRecursed)
@@ -6436,7 +6473,9 @@ class MThrowRuntimeLexicalError : public MNullaryInstruction {
 
   unsigned errorNumber() const { return errorNumber_; }
 
-  AliasSet getAliasSet() const override { return AliasSet::None(); }
+  AliasSet getAliasSet() const override {
+    return AliasSet::Store(AliasSet::ExceptionState);
+  }
 };
 
 // In the prologues of global and eval scripts, check for redeclarations.
@@ -6498,7 +6537,9 @@ class MRegExp : public MNullaryInstruction {
         source_(source),
         hasShared_(hasShared) {
     setResultType(MIRType::Object);
-    setResultTypeSet(MakeSingletonTypeSet(alloc, constraints, source));
+    if (!JitOptions.warpBuilder) {
+      setResultTypeSet(MakeSingletonTypeSet(alloc, constraints, source));
+    }
   }
 
  public:
@@ -6784,27 +6825,29 @@ struct LambdaFunctionInfo {
   CompilerFunction fun_;
 
  public:
-  uint16_t flags;
+  js::BaseScript* baseScript;
+  js::FunctionFlags flags;
   uint16_t nargs;
-  gc::Cell* scriptOrLazyScript;
   bool singletonType;
   bool useSingletonForClone;
 
-  explicit LambdaFunctionInfo(JSFunction* fun)
+  LambdaFunctionInfo(JSFunction* fun, BaseScript* baseScript,
+                     FunctionFlags flags, uint16_t nargs, bool singletonType,
+                     bool useSingletonForClone)
       : fun_(fun),
-        flags(fun->flags().toRaw()),
-        nargs(fun->nargs()),
-        scriptOrLazyScript(fun->baseScript()),
-        singletonType(fun->isSingleton()),
-        useSingletonForClone(ObjectGroup::useSingletonForClone(fun)) {
-    // If this assert fails, make sure CodeGenerator::visitLambda does the
-    // right thing. We can't assert this off-thread in CodeGenerator,
-    // because fun->isAsync() accesses the script/lazyScript and can race
-    // with delazification on the main thread.
-    MOZ_ASSERT_IF(flags & FunctionFlags::EXTENDED,
-                  fun->isArrow() || fun->allowSuperProperty() ||
-                      fun->isSelfHostedBuiltin());
-  }
+        baseScript(baseScript),
+        flags(flags),
+        nargs(nargs),
+        singletonType(singletonType),
+        useSingletonForClone(useSingletonForClone) {}
+
+  LambdaFunctionInfo(const LambdaFunctionInfo& other)
+      : fun_(static_cast<JSFunction*>(other.fun_)),
+        baseScript(other.baseScript),
+        flags(other.flags),
+        nargs(other.nargs),
+        singletonType(other.singletonType),
+        useSingletonForClone(other.useSingletonForClone) {}
 
   // Be careful when calling this off-thread. Don't call any JSFunction*
   // methods that depend on script/lazyScript - this can race with
@@ -6815,11 +6858,10 @@ struct LambdaFunctionInfo {
     if (!roots.append(fun_)) {
       return false;
     }
-    return roots.append(fun_->baseScript());
+    return roots.append(baseScript);
   }
 
  private:
-  LambdaFunctionInfo(const LambdaFunctionInfo&) = delete;
   void operator=(const LambdaFunctionInfo&) = delete;
 };
 
@@ -6827,13 +6869,14 @@ class MLambda : public MBinaryInstruction, public SingleObjectPolicy::Data {
   const LambdaFunctionInfo info_;
 
   MLambda(TempAllocator& alloc, CompilerConstraintList* constraints,
-          MDefinition* envChain, MConstant* cst)
-      : MBinaryInstruction(classOpcode, envChain, cst),
-        info_(&cst->toObject().as<JSFunction>()) {
+          MDefinition* envChain, MConstant* cst, const LambdaFunctionInfo& info)
+      : MBinaryInstruction(classOpcode, envChain, cst), info_(info) {
     setResultType(MIRType::Object);
-    JSFunction* fun = info().funUnsafe();
-    if (!fun->isSingleton() && !ObjectGroup::useSingletonForClone(fun)) {
-      setResultTypeSet(MakeSingletonTypeSet(alloc, constraints, fun));
+    if (!JitOptions.warpBuilder) {
+      JSFunction* fun = info.funUnsafe();
+      if (!info.singletonType && !info.useSingletonForClone) {
+        setResultTypeSet(MakeSingletonTypeSet(alloc, constraints, fun));
+      }
     }
   }
 
@@ -6858,14 +6901,17 @@ class MLambdaArrow
   const LambdaFunctionInfo info_;
 
   MLambdaArrow(TempAllocator& alloc, CompilerConstraintList* constraints,
-               MDefinition* envChain, MDefinition* newTarget, MConstant* cst)
+               MDefinition* envChain, MDefinition* newTarget, MConstant* cst,
+               const LambdaFunctionInfo& info)
       : MTernaryInstruction(classOpcode, envChain, newTarget, cst),
-        info_(&cst->toObject().as<JSFunction>()) {
+        info_(info) {
     setResultType(MIRType::Object);
-    JSFunction* fun = info().funUnsafe();
-    MOZ_ASSERT(!ObjectGroup::useSingletonForClone(fun));
-    if (!fun->isSingleton()) {
-      setResultTypeSet(MakeSingletonTypeSet(alloc, constraints, fun));
+    if (!JitOptions.warpBuilder) {
+      JSFunction* fun = info.funUnsafe();
+      MOZ_ASSERT(!info.useSingletonForClone);
+      if (!info.singletonType) {
+        setResultTypeSet(MakeSingletonTypeSet(alloc, constraints, fun));
+      }
     }
   }
 
@@ -6887,12 +6933,12 @@ class MLambdaArrow
 class MFunctionWithProto : public MTernaryInstruction,
                            public MixPolicy<ObjectPolicy<0>, ObjectPolicy<1>,
                                             ObjectPolicy<2>>::Data {
-  const LambdaFunctionInfo info_;
+  CompilerFunction fun_;
 
   MFunctionWithProto(MDefinition* envChain, MDefinition* prototype,
                      MConstant* cst)
       : MTernaryInstruction(classOpcode, envChain, prototype, cst),
-        info_(&cst->toObject().as<JSFunction>()) {
+        fun_(&cst->toObject().as<JSFunction>()) {
     setResultType(MIRType::Object);
   }
 
@@ -6902,12 +6948,12 @@ class MFunctionWithProto : public MTernaryInstruction,
   NAMED_OPERANDS((0, environmentChain), (1, prototype))
 
   MConstant* functionOperand() const { return getOperand(2)->toConstant(); }
-  const LambdaFunctionInfo& info() const { return info_; }
+  JSFunction* function() const { return fun_; }
   MOZ_MUST_USE bool writeRecoverData(
       CompactBufferWriter& writer) const override;
   bool canRecoverOnBailout() const override { return true; }
   bool appendRoots(MRootList& roots) const override {
-    return info_.appendRoots(roots);
+    return roots.append(fun_);
   }
 
   bool possiblyCalls() const override { return true; }
@@ -8799,16 +8845,8 @@ class MFunctionDispatch : public MDispatchInstruction {
 
 class MBindNameCache : public MUnaryInstruction,
                        public SingleObjectPolicy::Data {
-  CompilerPropertyName name_;
-  CompilerScript script_;
-  jsbytecode* pc_;
-
-  MBindNameCache(MDefinition* envChain, PropertyName* name, JSScript* script,
-                 jsbytecode* pc)
-      : MUnaryInstruction(classOpcode, envChain),
-        name_(name),
-        script_(script),
-        pc_(pc) {
+  explicit MBindNameCache(MDefinition* envChain)
+      : MUnaryInstruction(classOpcode, envChain) {
     setResultType(MIRType::Object);
   }
 
@@ -8816,14 +8854,6 @@ class MBindNameCache : public MUnaryInstruction,
   INSTRUCTION_HEADER(BindNameCache)
   TRIVIAL_NEW_WRAPPERS
   NAMED_OPERANDS((0, environmentChain))
-
-  PropertyName* name() const { return name_; }
-  JSScript* script() const { return script_; }
-  jsbytecode* pc() const { return pc_; }
-  bool appendRoots(MRootList& roots) const override {
-    // Don't append the script, all scripts are added anyway.
-    return roots.append(name_);
-  }
 };
 
 class MCallBindVar : public MUnaryInstruction, public SingleObjectPolicy::Data {
@@ -10038,35 +10068,30 @@ class MNewTarget : public MNullaryInstruction {
   AliasSet getAliasSet() const override { return AliasSet::None(); }
 };
 
-class MRestCommon {
+class MRest : public MUnaryInstruction, public UnboxedInt32Policy<0>::Data {
   unsigned numFormals_;
   CompilerGCPointer<ArrayObject*> templateObject_;
 
- protected:
-  MRestCommon(unsigned numFormals, ArrayObject* templateObject)
-      : numFormals_(numFormals), templateObject_(templateObject) {}
-
- public:
-  unsigned numFormals() const { return numFormals_; }
-  ArrayObject* templateObject() const { return templateObject_; }
-};
-
-class MRest : public MUnaryInstruction,
-              public MRestCommon,
-              public UnboxedInt32Policy<0>::Data {
   MRest(TempAllocator& alloc, CompilerConstraintList* constraints,
         MDefinition* numActuals, unsigned numFormals,
         ArrayObject* templateObject)
       : MUnaryInstruction(classOpcode, numActuals),
-        MRestCommon(numFormals, templateObject) {
+        numFormals_(numFormals),
+        templateObject_(templateObject) {
     setResultType(MIRType::Object);
-    setResultTypeSet(MakeSingletonTypeSet(alloc, constraints, templateObject));
+    if (!JitOptions.warpBuilder) {
+      setResultTypeSet(
+          MakeSingletonTypeSet(alloc, constraints, templateObject));
+    }
   }
 
  public:
   INSTRUCTION_HEADER(Rest)
   TRIVIAL_NEW_WRAPPERS_WITH_ALLOC
   NAMED_OPERANDS((0, numActuals))
+
+  unsigned numFormals() const { return numFormals_; }
+  ArrayObject* templateObject() const { return templateObject_; }
 
   AliasSet getAliasSet() const override { return AliasSet::None(); }
   bool possiblyCalls() const override { return true; }
@@ -11068,19 +11093,14 @@ class MObjectWithProto : public MUnaryInstruction,
   bool possiblyCalls() const override { return true; }
 };
 
-class MBuiltinProto : public MNullaryInstruction {
-  jsbytecode* pc_;
-
-  explicit MBuiltinProto(jsbytecode* pc)
-      : MNullaryInstruction(classOpcode), pc_(pc) {
+class MFunctionProto : public MNullaryInstruction {
+  explicit MFunctionProto() : MNullaryInstruction(classOpcode) {
     setResultType(MIRType::Object);
   }
 
  public:
-  INSTRUCTION_HEADER(BuiltinProto)
+  INSTRUCTION_HEADER(FunctionProto)
   TRIVIAL_NEW_WRAPPERS
-
-  jsbytecode* pc() const { return pc_; }
 
   bool possiblyCalls() const override { return true; }
 };
@@ -11807,7 +11827,8 @@ class MWasmDerivedPointer : public MUnaryInstruction,
   AliasSet getAliasSet() const override { return AliasSet::None(); }
 
   bool congruentTo(const MDefinition* ins) const override {
-    return congruentIfOperandsEqual(ins);
+    return congruentIfOperandsEqual(ins) &&
+           ins->toWasmDerivedPointer()->offset() == offset();
   }
 
   ALLOW_CLONE(MWasmDerivedPointer)

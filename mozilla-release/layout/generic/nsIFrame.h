@@ -851,6 +851,9 @@ class nsIFrame : public nsQueryFrame {
   virtual void SetAdditionalComputedStyle(int32_t aIndex,
                                           ComputedStyle* aComputedStyle) = 0;
 
+  /**
+   * @param aSelectionStatus nsISelectionController::getDisplaySelection.
+   */
   already_AddRefed<ComputedStyle> ComputeSelectionStyle(
       int16_t aSelectionStatus) const;
 
@@ -858,6 +861,8 @@ class nsIFrame : public nsQueryFrame {
    * Accessor functions for geometric parent.
    */
   nsContainerFrame* GetParent() const { return mParent; }
+
+  bool CanBeDynamicReflowRoot() const;
 
   /**
    * Gets the parent of a frame, using the parent of the placeholder for
@@ -954,6 +959,17 @@ class nsIFrame : public nsQueryFrame {
   nsRect GetRectRelativeToSelf() const {
     return nsRect(nsPoint(0, 0), mRect.Size());
   }
+
+  /**
+   * Like the frame's rect (see |GetRect|), which is the border rect,
+   * other rectangles of the frame, in app units, relative to the parent.
+   */
+  nsRect GetPaddingRect() const;
+  nsRect GetPaddingRectRelativeToSelf() const;
+  nsRect GetContentRect() const;
+  nsRect GetContentRectRelativeToSelf() const;
+  nsRect GetMarginRectRelativeToSelf() const;
+
   /**
    * Dimensions and position in logical coordinates in the frame's writing mode
    *  or another writing mode
@@ -1000,11 +1016,17 @@ class nsIFrame : public nsQueryFrame {
   nscoord BSize(mozilla::WritingMode aWritingMode) const {
     return GetLogicalSize(aWritingMode).BSize(aWritingMode);
   }
-  nscoord ContentBSize() const { return ContentBSize(GetWritingMode()); }
-  nscoord ContentBSize(mozilla::WritingMode aWritingMode) const {
+  mozilla::LogicalSize ContentSize() const {
+    return ContentSize(GetWritingMode());
+  }
+  mozilla::LogicalSize ContentSize(mozilla::WritingMode aWritingMode) const {
     auto bp = GetLogicalUsedBorderAndPadding(aWritingMode);
     bp.ApplySkipSides(GetLogicalSkipSides());
-    return std::max(0, BSize(aWritingMode) - bp.BStartEnd(aWritingMode));
+    const auto size = GetLogicalSize(aWritingMode);
+    return mozilla::LogicalSize(
+        aWritingMode,
+        std::max(0, size.ISize(aWritingMode) - bp.IStartEnd(aWritingMode)),
+        std::max(0, size.BSize(aWritingMode) - bp.BStartEnd(aWritingMode)));
   }
 
   /**
@@ -1322,16 +1344,6 @@ class nsIFrame : public nsQueryFrame {
       mozilla::WritingMode aWritingMode) const {
     return mozilla::LogicalMargin(aWritingMode, GetUsedBorderAndPadding());
   }
-
-  /**
-   * Like the frame's rect (see |GetRect|), which is the border rect,
-   * other rectangles of the frame, in app units, relative to the parent.
-   */
-  nsRect GetPaddingRect() const;
-  nsRect GetPaddingRectRelativeToSelf() const;
-  nsRect GetContentRect() const;
-  nsRect GetContentRectRelativeToSelf() const;
-  nsRect GetMarginRectRelativeToSelf() const;
 
   /**
    * The area to paint box-shadows around.  The default is the border rect.
@@ -2122,6 +2134,8 @@ class nsIFrame : public nsQueryFrame {
   bool IsPrimaryFrame() const { return mIsPrimaryFrame; }
 
   void SetIsPrimaryFrame(bool aIsPrimary) { mIsPrimaryFrame = aIsPrimary; }
+
+  bool IsPrimaryFrameOfRootOrBodyElement() const;
 
   /**
    * This call is invoked on the primary frame for a character data content
@@ -3369,9 +3383,8 @@ class nsIFrame : public nsQueryFrame {
    * @returns true if this frame is selected.
    */
   bool IsSelected() const {
-    return (GetContent() && GetContent()->IsSelectionDescendant())
-               ? IsFrameSelected()
-               : false;
+    return (GetContent() && GetContent()->IsMaybeSelected()) ? IsFrameSelected()
+                                                             : false;
   }
 
   /**
@@ -3394,6 +3407,12 @@ class nsIFrame : public nsQueryFrame {
    * user-select: none)
    */
   bool IsSelectable(mozilla::StyleUserSelect* aSelectStyle) const;
+
+  /**
+   * Returns whether this frame should have the content-block-size of a line,
+   * even if empty.
+   */
+  bool ShouldHaveLineIfEmpty() const;
 
   /**
    * Called to retrieve the SelectionController associated with the frame.

@@ -99,7 +99,7 @@ void FallbackICSpew(JSContext* cx, ICFallbackStub* stub, const char* fmt, ...) {
 
     JitSpew(
         JitSpew_BaselineICFallback,
-        "Fallback hit for (%s:%u:%u) (pc=%zu,line=%d,uses=%d,stubs=%zu): %s",
+        "Fallback hit for (%s:%u:%u) (pc=%zu,line=%u,uses=%u,stubs=%zu): %s",
         script->filename(), script->lineno(), script->column(),
         script->pcToOffset(pc), PCToLineNumber(script, pc),
         script->getWarmUpCount(), stub->numOptimizedStubs(), fmtbuf);
@@ -120,7 +120,7 @@ void TypeFallbackICSpew(JSContext* cx, ICTypeMonitor_Fallback* stub,
 
     JitSpew(JitSpew_BaselineICFallback,
             "Type monitor fallback hit for (%s:%u:%u) "
-            "(pc=%zu,line=%d,uses=%d,stubs=%d): %s",
+            "(pc=%zu,line=%u,uses=%u,stubs=%d): %s",
             script->filename(), script->lineno(), script->column(),
             script->pcToOffset(pc), PCToLineNumber(script, pc),
             script->getWarmUpCount(), (int)stub->numOptimizedMonitorStubs(),
@@ -2725,8 +2725,7 @@ bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
 
     ObjectOpResult result;
     if (!SetProperty(cx, obj, id, rhs, lhs, result) ||
-        !result.checkStrictErrorOrWarning(cx, obj, id,
-                                          op == JSOp::StrictSetProp)) {
+        !result.checkStrictModeError(cx, obj, id, op == JSOp::StrictSetProp)) {
       return false;
     }
   }
@@ -2860,9 +2859,7 @@ bool DoCallFallback(JSContext* cx, BaselineFrame* frame, ICCall_Fallback* stub,
   // Handle funapply with JSOp::Arguments
   if (op == JSOp::FunApply && argc == 2 &&
       callArgs[1].isMagic(JS_OPTIMIZED_ARGUMENTS)) {
-    if (!GuardFunApplyArgumentsOptimization(cx, frame, callArgs)) {
-      return false;
-    }
+    GuardFunApplyArgumentsOptimization(cx, frame, callArgs);
   }
 
   // Transition stub state to megamorphic or generic if warranted.

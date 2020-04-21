@@ -14,6 +14,8 @@ include protocol PChildToParentStream;
 include protocol PParentToChildStream;
 include protocol PInputChannelThrottleQueue;
 include protocol PBackground;
+include protocol PAltService;
+include protocol PAltSvcTransaction;
 
 include MemoryReportTypes;
 include NeckoChannelParams;
@@ -44,6 +46,8 @@ protocol PSocketProcess
   manages PChildToParentStream;
   manages PParentToChildStream;
   manages PInputChannelThrottleQueue;
+  manages PAltService;
+  manages PAltSvcTransaction;
 
 parent:
   async InitCrashReporter(Shmem shmem, NativeThreadId threadId);
@@ -69,6 +73,7 @@ parent:
                             uint64_t aExtraSizeData,
                             nsCString aExtraStringData);
   async InitBackground(Endpoint<PBackgroundParent> aEndpoint);
+  async PAltService();
 
 child:
   async PreferenceUpdate(Pref pref);
@@ -77,6 +82,7 @@ child:
                             bool minimizeMemoryUsage,
                             FileDescriptor? DMDFile);
   async SetOffline(bool offline);
+  async InitLinuxSandbox(FileDescriptor? sandboxBroker);
   async InitSocketProcessBridgeParent(ProcessId processId, Endpoint<PSocketProcessBridgeParent> endpoint);
   async InitProfiler(Endpoint<PProfilerChild> aEndpoint);
   // test-only
@@ -89,6 +95,8 @@ child:
   async OnHttpActivityDistributorActivated(bool aIsActivated);
   async PInputChannelThrottleQueue(uint32_t meanBytesPerSecond,
                                    uint32_t maxBytesPerSecond);
+  async PAltSvcTransaction(HttpConnectionInfoCloneArgs aConnInfo,
+                           uint32_t aCaps);
 
 both:
   async PFileDescriptorSet(FileDescriptor fd);

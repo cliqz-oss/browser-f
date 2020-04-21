@@ -10,6 +10,7 @@ const {
   PureComponent,
 } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 loader.lazyRequireGetter(
   this,
@@ -24,6 +25,10 @@ const UnsupportedBrowserList = createFactory(
 
 const Types = require("devtools/client/inspector/compatibility/types");
 
+const NodePane = createFactory(
+  require("devtools/client/inspector/compatibility/components/NodePane")
+);
+
 // For test
 loader.lazyRequireGetter(
   this,
@@ -36,6 +41,9 @@ class IssueItem extends PureComponent {
   static get propTypes() {
     return {
       ...Types.issue,
+      hideBoxModelHighlighter: PropTypes.func.isRequired,
+      setSelectedNode: PropTypes.func.isRequired,
+      showBoxModelHighlighterForNode: PropTypes.func.isRequired,
     };
   }
 
@@ -57,6 +65,9 @@ class IssueItem extends PureComponent {
 
     if (Services.prefs.getBoolPref("devtools.testing", false)) {
       for (const [key, value] of Object.entries(this.props)) {
+        if (key === "nodes") {
+          continue;
+        }
         const datasetKey = `data-qa-${toSnakeCase(key)}`;
         testDataSet[datasetKey] = JSON.stringify(value);
       }
@@ -86,15 +97,7 @@ class IssueItem extends PureComponent {
       : null;
   }
 
-  _renderUnsupportedBrowserList() {
-    const { unsupportedBrowsers } = this.props;
-
-    return unsupportedBrowsers.length
-      ? UnsupportedBrowserList({ browsers: unsupportedBrowsers })
-      : null;
-  }
-
-  render() {
+  _renderDescription() {
     const {
       deprecated,
       experimental,
@@ -103,25 +106,23 @@ class IssueItem extends PureComponent {
       url,
     } = this.props;
 
-    const classes = ["compatibility-issue-item"];
+    const classes = ["compatibility-issue-item__description"];
 
     if (deprecated) {
-      classes.push("compatibility-issue-item--deprecated");
+      classes.push("compatibility-issue-item__description--deprecated");
     }
 
     if (experimental) {
-      classes.push("compatibility-issue-item--experimental");
+      classes.push("compatibility-issue-item__description--experimental");
     }
 
     if (unsupportedBrowsers.length) {
-      classes.push("compatibility-issue-item--unsupported");
+      classes.push("compatibility-issue-item__description--unsupported");
     }
 
-    return dom.li(
+    return dom.div(
       {
         className: classes.join(" "),
-        key: property,
-        ...this._getTestDataAttributes(),
       },
       dom.a(
         {
@@ -134,6 +135,49 @@ class IssueItem extends PureComponent {
       ),
       this._renderCauses(),
       this._renderUnsupportedBrowserList()
+    );
+  }
+
+  _renderNodeList() {
+    const { nodes } = this.props;
+
+    if (!nodes) {
+      return null;
+    }
+
+    const {
+      hideBoxModelHighlighter,
+      setSelectedNode,
+      showBoxModelHighlighterForNode,
+    } = this.props;
+
+    return NodePane({
+      nodes,
+      hideBoxModelHighlighter,
+      setSelectedNode,
+      showBoxModelHighlighterForNode,
+    });
+  }
+
+  _renderUnsupportedBrowserList() {
+    const { unsupportedBrowsers } = this.props;
+
+    return unsupportedBrowsers.length
+      ? UnsupportedBrowserList({ browsers: unsupportedBrowsers })
+      : null;
+  }
+
+  render() {
+    const { property } = this.props;
+
+    return dom.li(
+      {
+        className: "compatibility-issue-item",
+        key: property,
+        ...this._getTestDataAttributes(),
+      },
+      this._renderDescription(),
+      this._renderNodeList()
     );
   }
 }

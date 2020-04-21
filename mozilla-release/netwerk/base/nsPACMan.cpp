@@ -20,6 +20,7 @@
 #include "nsThreadUtils.h"
 #include "mozilla/Result.h"
 #include "mozilla/ResultExtensions.h"
+#include "mozilla/Telemetry.h"
 
 //-----------------------------------------------------------------------------
 
@@ -630,6 +631,14 @@ void nsPACMan::ContinueLoadingAfterPACUriKnown() {
 
       // NOTE: This results in GetProxyForURI being called
       if (pacURI) {
+        if (pacURI->SchemeIs("ftp")) {
+          Telemetry::AccumulateCategorical(
+              Telemetry::LABELS_NETWORK_PAC_URL_SCHEME::ftp);
+        } else {
+          Telemetry::AccumulateCategorical(
+              Telemetry::LABELS_NETWORK_PAC_URL_SCHEME::other);
+        }
+
         nsresult rv = pacURI->GetSpec(mNormalPACURISpec);
         MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
         NS_NewChannel(getter_AddRefs(channel), pacURI,
@@ -850,8 +859,13 @@ nsPACMan::GetInterface(const nsIID& iid, void** result) {
   if (iid.Equals(NS_GET_IID(nsIAuthPrompt))) {
     nsCOMPtr<nsIPromptFactory> promptFac =
         do_GetService("@mozilla.org/prompter;1");
-    NS_ENSURE_TRUE(promptFac, NS_ERROR_FAILURE);
-    return promptFac->GetPrompt(nullptr, iid, reinterpret_cast<void**>(result));
+    NS_ENSURE_TRUE(promptFac, NS_ERROR_NO_INTERFACE);
+    nsresult rv =
+        promptFac->GetPrompt(nullptr, iid, reinterpret_cast<void**>(result));
+    if (NS_FAILED(rv)) {
+      return NS_ERROR_NO_INTERFACE;
+    }
+    return NS_OK;
   }
 
   // In case loading the PAC file results in a redirect.

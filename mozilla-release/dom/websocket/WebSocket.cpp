@@ -19,6 +19,7 @@
 #include "mozilla/dom/MessageEventBinding.h"
 #include "mozilla/dom/nsCSPContext.h"
 #include "mozilla/dom/nsCSPUtils.h"
+#include "mozilla/dom/nsHTTPSOnlyUtils.h"
 #include "mozilla/dom/nsMixedContentBlocker.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/SerializedStackHolder.h"
@@ -26,7 +27,7 @@
 #include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/WorkerRunnable.h"
 #include "mozilla/dom/WorkerScope.h"
-#include "nsAutoPtr.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/LoadInfo.h"
 #include "nsGlobalWindow.h"
 #include "nsIScriptGlobalObject.h"
@@ -886,7 +887,7 @@ WebSocket::WebSocket(nsIGlobalObject* aGlobal)
   mIsMainThread = mImpl->mIsMainThread;
 }
 
-WebSocket::~WebSocket() {}
+WebSocket::~WebSocket() = default;
 
 JSObject* WebSocket::WrapObject(JSContext* cx,
                                 JS::Handle<JSObject*> aGivenProto) {
@@ -1578,6 +1579,26 @@ nsresult WebSocketImpl::Init(JSContext* aCx, nsIPrincipal* aLoadingPrincipal,
     }
   }
 
+  // If the HTTPS-Only mode is enabled, we need to upgrade the websocket
+  // connection from ws:// to wss:// and mark it as secure.
+  if (!mIsServerSide && !mSecure &&
+      StaticPrefs::dom_security_https_only_mode()) {
+    // let's use the old specification before the upgrade for logging
+    AutoTArray<nsString, 2> params;
+    CopyUTF8toUTF16(mURI, *params.AppendElement());
+
+    mURI.ReplaceSubstring("ws://", "wss://");
+    if (NS_WARN_IF(mURI.Find("wss://") != 0)) {
+      return NS_OK;
+    }
+    mSecure = true;
+
+    params.AppendElement(NS_LITERAL_STRING("wss"));
+    nsHTTPSOnlyUtils::LogLocalizedString("HTTPSOnlyUpgradeInsecureRequest",
+                                         params, nsIScriptError::warningFlag,
+                                         mInnerWindowID, mPrivateBrowsing);
+  }
+
   // Potentially the page uses the CSP directive 'upgrade-insecure-requests'.
   // In such a case we have to upgrade ws: to wss: and also update mSecure
   // to reflect that upgrade. Please note that we can not upgrade from ws:
@@ -1646,8 +1667,10 @@ nsresult WebSocketImpl::AsyncOpen(
   MOZ_ASSERT_IF(!aTransportProvider, aNegotiatedExtensions.IsEmpty());
 
   nsCString asciiOrigin;
-  nsresult rv = nsContentUtils::GetASCIIOrigin(aPrincipal, asciiOrigin);
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsresult rv = aPrincipal->GetAsciiOrigin(asciiOrigin);
+  if (NS_FAILED(rv)) {
+    asciiOrigin.AssignLiteral("null");
+  }
 
   if (aTransportProvider) {
     rv = mChannel->SetServerParameters(aTransportProvider,

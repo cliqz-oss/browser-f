@@ -15,7 +15,6 @@
 const {
   connectToFrame,
 } = require("devtools/server/connectors/frame-connector");
-
 loader.lazyImporter(
   this,
   "PlacesUtils",
@@ -33,22 +32,30 @@ const { AppConstants } = require("resource://gre/modules/AppConstants.jsm");
  *
  * @param connection The main RDP connection.
  * @param browser <xul:browser> or <iframe mozbrowser> element to connect to.
- * @param options
- *        - {Boolean} favicons: true if the form should include the favicon for the tab.
  */
 const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
-  initialize(connection, browser, options = {}) {
+  initialize(connection, browser) {
     Actor.prototype.initialize.call(this, connection);
     this._conn = connection;
     this._browser = browser;
     this._form = null;
     this.exited = false;
-    this.options = options;
 
     // The update request could timeout if the descriptor is destroyed while an
     // update is pending. This property will hold a reject callback that can be
     // used to reject the current update promise and avoid blocking the client.
     this._formUpdateReject = null;
+  },
+
+  form() {
+    return {
+      actor: this.actorID,
+      traits: {
+        // Backward compatibility for FF75 or older.
+        // Remove when FF76 is on the release channel.
+        getFavicon: true,
+      },
+    };
   },
 
   async getTarget() {
@@ -87,10 +94,6 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
         );
 
         const form = this._createTargetForm(connectForm);
-        if (this.options.favicons) {
-          form.favicon = await this.getFaviconData();
-        }
-
         this._form = form;
         resolve(form);
       } catch (e) {
@@ -117,7 +120,7 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     );
   },
 
-  async getFaviconData() {
+  async getFavicon() {
     if (!AppConstants.MOZ_PLACES) {
       // PlacesUtils is not supported
       return null;
@@ -132,25 +135,13 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     }
   },
 
-  /**
-   * @param {Object} options
-   *        See TabDescriptorActor constructor.
-   */
-  async update(options = {}) {
-    // Update the TabDescriptorActor options.
-    this.options = options;
-
+  async update() {
     // If the child happens to be crashed/close/detach, it won't have _form set,
     // so only request form update if some code is still listening on the other
     // side.
-    if (this.exited) {
-      return this.getTarget();
+    if (!this._form) {
+      return;
     }
-
-    // This function may be called if we are inspecting tabs and the actor proxy
-    // has already been generated. In that case we need to unzombify tabs.
-    // If we are not inspecting tabs then this will be a no-op.
-    await this._unzombifyIfNeeded();
 
     const form = await new Promise((resolve, reject) => {
       this._formUpdateReject = reject;
@@ -170,11 +161,6 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     });
 
     this._form = form;
-    if (this.options.favicons) {
-      this._form.favicon = await this.getFaviconData();
-    }
-
-    return this;
   },
 
   _isZombieTab() {
@@ -186,7 +172,7 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     // Check for other.
     const tabbrowser = this._tabbrowser;
     const tab = tabbrowser ? tabbrowser.getTabForBrowser(this._browser) : null;
-    return tab && tab.hasAttribute && tab.hasAttribute("pending");
+    return tab?.hasAttribute && tab.hasAttribute("pending");
   },
 
   /**
@@ -231,7 +217,7 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
   },
 
   async _unzombifyIfNeeded() {
-    if (!this.options.forceUnzombify || !this._isZombieTab()) {
+    if (!this._isZombieTab()) {
       return;
     }
 

@@ -61,9 +61,11 @@ toolchain_run_schema = Schema({
     # Path to the artifact produced by the toolchain job
     Required('toolchain-artifact'): text_type,
 
-    # An alias that can be used instead of the real toolchain job name in
-    # the toolchains list for build jobs.
-    Optional('toolchain-alias'): text_type,
+    Optional(
+        "toolchain-alias",
+        description="An alias that can be used instead of the real toolchain job name in "
+        "fetch stanzas for jobs.",
+    ): text_type,
 
     # Base work directory used to set up the task.
     Required('workdir'): text_type,
@@ -173,10 +175,12 @@ def windows_toolchain(config, job, taskdesc):
 
     worker = taskdesc['worker'] = job['worker']
 
-    worker['artifacts'] = [{
+    # Allow the job to specify where artifacts come from.
+    worker.setdefault('artifacts', [{
         'path': r'public\build',
         'type': 'directory',
-    }]
+    }])
+
     worker['chain-of-trust'] = True
 
     # There were no caches on generic-worker before bug 1519472, and they cause
@@ -184,7 +188,7 @@ def windows_toolchain(config, job, taskdesc):
     # tasks are ready.
     run['use-caches'] = False
 
-    env = worker['env']
+    env = worker.setdefault('env', {})
     env.update({
         'MOZ_BUILD_DATE': config.params['moz_build_date'],
         'MOZ_SCM_LEVEL': config.params['level'],

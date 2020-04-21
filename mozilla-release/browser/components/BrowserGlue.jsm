@@ -33,12 +33,22 @@ ChromeUtils.defineModuleGetter(
   "resource:///modules/CustomizableUI.jsm"
 );
 
+<<<<<<< HEAD
 ChromeUtils.defineModuleGetter(
   this,
   "FileUtils",
   "resource://gre/modules/FileUtils.jsm"
 );
 
+||||||| merged common ancestors
+=======
+ChromeUtils.defineModuleGetter(
+  this,
+  "AboutNewTab",
+  "resource:///modules/AboutNewTab.jsm"
+);
+
+>>>>>>> origin/upstream-betas
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "PushService",
@@ -790,7 +800,9 @@ const listeners = {
     "AboutLogins:Subscribe": ["AboutLoginsParent"],
     "AboutLogins:SyncEnable": ["AboutLoginsParent"],
     "AboutLogins:SyncOptions": ["AboutLoginsParent"],
+    "AboutLogins:TestOnlyResetOSAuth": ["AboutLoginsParent"],
     "AboutLogins:UpdateLogin": ["AboutLoginsParent"],
+    "AboutLogins:VulnerableLogins": ["AboutLoginsParent"],
     ContentSearch: ["ContentSearch"],
     "Reader:FaviconRequest": ["ReaderParent"],
     "Reader:UpdateReaderButton": ["ReaderParent"],
@@ -1313,7 +1325,12 @@ BrowserGlue.prototype = {
 
 #if 0
     SaveToPocket.init();
+<<<<<<< HEAD
 #endif
+||||||| merged common ancestors
+=======
+
+>>>>>>> origin/upstream-betas
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
 
     if (AppConstants.platform == "win") {
@@ -1682,6 +1699,8 @@ BrowserGlue.prototype = {
 
   // the first browser window has finished initializing
   _onFirstWindowLoaded: function BG__onFirstWindowLoaded(aWindow) {
+    AboutNewTab.init();
+
     TabCrashHandler.init();
 
     ProcessHangMonitor.init();
@@ -2336,13 +2355,6 @@ BrowserGlue.prototype = {
         },
       },
 
-      {
-        condition: Services.prefs.getBoolPref("corroborator.enabled", false),
-        task: () => {
-          Corroborate.init().catch(Cu.reportError);
-        },
-      },
-
       // request startup of Chromium remote debugging protocol
       // (observer will only be notified when --remote-debugger is passed)
       {
@@ -2410,11 +2422,13 @@ BrowserGlue.prototype = {
       ChromeUtils.idleDispatch(
         () => {
           if (!Services.startup.shuttingDown) {
-            Services.profiler.AddMarker("startupIdleTask");
+            let startTime = Cu.now();
             try {
               task.task();
             } catch (ex) {
               Cu.reportError(ex);
+            } finally {
+              ChromeUtils.addProfilerMarker("startupIdleTask", startTime);
             }
           }
         },
@@ -2476,16 +2490,24 @@ BrowserGlue.prototype = {
       () => {
         RemoteSecuritySettings.init();
       },
+
+      () => {
+        if (Services.prefs.getBoolPref("corroborator.enabled", false)) {
+          Corroborate.init().catch(Cu.reportError);
+        }
+      },
     ];
 
     for (let task of idleTasks) {
       ChromeUtils.idleDispatch(() => {
         if (!Services.startup.shuttingDown) {
-          Services.profiler.AddMarker("startupLateIdleTask");
+          let startTime = Cu.now();
           try {
             task();
           } catch (ex) {
             Cu.reportError(ex);
+          } finally {
+            ChromeUtils.addProfilerMarker("startupLateIdleTask", startTime);
           }
         }
       });
@@ -3062,7 +3084,13 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
+<<<<<<< HEAD
     const UI_VERSION = 93;
+||||||| merged common ancestors
+    const UI_VERSION = 92;
+=======
+    const UI_VERSION = 94;
+>>>>>>> origin/upstream-betas
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
@@ -3153,8 +3181,8 @@ BrowserGlue.prototype = {
         // attempting to reset their settings.
         if (
           currentEngine._extensionID ||
-          currentEngine._isDefault ||
-          !Services.search.originalDefaultEngine.wrappedJSObject._isDefault
+          currentEngine.isAppProvided ||
+          !Services.search.originalDefaultEngine.isAppProvided
         ) {
           return;
         }
@@ -3571,6 +3599,74 @@ BrowserGlue.prototype = {
       }
     }
 
+    if (currentUIVersion < 93) {
+      // The Gecko Profiler Addon is now an internal component. Remove the old
+      // addon, and enable the new UI.
+
+      function enableProfilerButton(wasAddonActive) {
+        // Enable the feature pref. This will add it to the customization palette,
+        // but not to the the navbar.
+        Services.prefs.setBoolPref(
+          "devtools.performance.popup.feature-flag",
+          true
+        );
+
+        if (wasAddonActive) {
+          const { ProfilerMenuButton } = ChromeUtils.import(
+            "resource://devtools/client/performance-new/popup/menu-button.jsm.js"
+          );
+          if (!ProfilerMenuButton.isInNavbar()) {
+            // The profiler menu button is not enabled. Turn it on now.
+            const win = BrowserWindowTracker.getTopWindow();
+            if (win && win.document) {
+              ProfilerMenuButton.addToNavbar(win.document);
+            }
+          }
+        }
+      }
+
+      let addonPromise;
+      try {
+        addonPromise = AddonManager.getAddonByID("geckoprofiler@mozilla.com");
+      } catch (error) {
+        Cu.reportError(
+          "Could not access the AddonManager to upgrade the profile. This is most " +
+            "likely because the upgrader is being run from an xpcshell test where " +
+            "the AddonManager is not initialized."
+        );
+      }
+      Promise.resolve(addonPromise).then(addon => {
+        if (!addon) {
+          // Either the addon wasn't installed, or the call to getAddonByID failed.
+          return;
+        }
+        // Remove the old addon.
+        const wasAddonActive = addon.isActive;
+        addon
+          .uninstall()
+          .catch(Cu.reportError)
+          .then(() => enableProfilerButton(wasAddonActive))
+          .catch(Cu.reportError);
+      }, Cu.reportError);
+    }
+
+    // Clear unused socks proxy backup values - see bug 1625773.
+    if (currentUIVersion < 94) {
+      let backup = Services.prefs.getCharPref("network.proxy.backup.socks", "");
+      let backupPort = Services.prefs.getIntPref(
+        "network.proxy.backup.socks_port",
+        0
+      );
+      let socksProxy = Services.prefs.getCharPref("network.proxy.socks", "");
+      let socksPort = Services.prefs.getIntPref("network.proxy.socks_port", 0);
+      if (backup == socksProxy) {
+        Services.prefs.clearUserPref("network.proxy.backup.socks");
+      }
+      if (backupPort == socksPort) {
+        Services.prefs.clearUserPref("network.proxy.backup.socks_port");
+      }
+    }
+
     // Update the migration version.
     Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
   },
@@ -3656,7 +3752,12 @@ BrowserGlue.prototype = {
     // the pref was "suggestion:4,general:5" (modulo whitespace), we're done.
     if (prefValue) {
       let buckets = PlacesUtils.convertMatchBucketsStringToArray(prefValue);
-      if (ObjectUtils.deepEqual(buckets, [["suggestion", 4], ["general", 5]])) {
+      if (
+        ObjectUtils.deepEqual(buckets, [
+          ["suggestion", 4],
+          ["general", 5],
+        ])
+      ) {
         return;
       }
     }

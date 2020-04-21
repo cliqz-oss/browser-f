@@ -575,6 +575,26 @@ browser.usage:
       - 'main'
       - 'content'
 
+browser.input:
+  touch_event_count:
+    bug_numbers:
+      - 1626099
+    description: >-
+      Windows only.
+      Counts occurrences of touch events,
+      measured when user starts a touch event.
+    expires: "90"
+    kind: uint
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - ktaeleman@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+      - 'content'
+
 gecko:
   version:
     bug_numbers:
@@ -622,69 +642,6 @@ extensions.updates:
     keyed: true
     notification_emails:
       - addons-dev-internal@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-      - 'geckoview'
-    record_in_processes:
-      - main
-
-# This section is for probes used to measure use of the Webextensions storage.sync API.
-storage.sync.api.usage:
-  extensions_using:
-    bug_numbers:
-      - 1328974
-    description: >
-      The count of webextensions that have data stored in the chrome.storage.sync API.
-      This includes extensions that have not used the storage.sync API this session.
-      This includes items that were not stored this session.
-      This scalar is collected after every sync.
-    expires: "64"
-    kind: uint
-    keyed: false
-    notification_emails:
-      - eglassercamp@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-      - 'geckoview'
-    record_in_processes:
-      - main
-  items_stored:
-    bug_numbers:
-      - 1328974
-    description: >
-      The count of items in storage.sync storage, broken down by extension ID.
-      This includes extensions that have not used the storage.sync API this session.
-      This includes items that were not stored this session.
-      This scalar is collected after every sync.
-    expires: "64"
-    kind: uint
-    keyed: true
-    notification_emails:
-      - eglassercamp@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-      - 'geckoview'
-    record_in_processes:
-      - main
-  storage_consumed:
-    bug_numbers:
-      - 1328974
-    description: >
-      The count of bytes used in storage.sync, broken down by extension ID.
-      This includes extensions that have not used the storage.sync API this session.
-      This includes items that were not stored this session.
-      This scalar is collected after every sync.
-    expires: "64"
-    kind: uint
-    keyed: true
-    notification_emails:
-      - eglassercamp@mozilla.com
-    release_channel_collection: opt-out
     products:
       - 'firefox'
       - 'fennec'
@@ -896,7 +853,7 @@ datasanitization:
       - 1589753
       - 1617241
     description: >
-      This scalar reports the value of the network.cookie.lifetimePolicy pref.      
+      This scalar reports the value of the network.cookie.lifetimePolicy pref.
     expires: "80"
     kind: uint
     notification_emails:
@@ -1329,83 +1286,6 @@ preferences:
       - 'geckoview'
     record_in_processes:
       - 'main'
-
-webrtc.hostnameobfuscation:
-  disabled_failed:
-    bug_numbers:
-      - 1569250
-    description: >
-      The number of times the connection failed with hostname obfuscation
-      disabled. Hostname obfuscation uses mDNS addresses to prevent browser
-      fingerprinting by using WebRTC to collect local IP addresses.
-    expires: "77"
-    kind: uint
-    notification_emails:
-      - dminor@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'geckoview'
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-  disabled_succeeded:
-    bug_numbers:
-      - 1569250
-    description: >
-      The number of times the connection succeeded with hostname obfuscation
-      disabled. Hostname obfuscation uses mDNS addresses to prevent browser
-      fingerprinting by using WebRTC to collect local IP addresses.
-    expires: "77"
-    kind: uint
-    notification_emails:
-      - dminor@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'geckoview'
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-  enabled_failed:
-    bug_numbers:
-      - 1569250
-    description: >
-      The number of times the connection failed with hostname obfuscation
-      enabled. Hostname obfuscation uses mDNS addresses to prevent browser
-      fingerprinting by using WebRTC to collect local IP addresses.
-    expires: "77"
-    kind: uint
-    notification_emails:
-      - dminor@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'geckoview'
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-  enabled_succeeded:
-    bug_numbers:
-      - 1569250
-    description: >
-      The number of times the connection succeeded with hostname obfuscation
-      enabled. Hostname obfuscation uses mDNS addresses to prevent browser
-      fingerprinting by using WebRTC to collect local IP addresses.
-    expires: "77"
-    kind: uint
-    notification_emails:
-      - dminor@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'geckoview'
-    record_in_processes:
-      - 'main'
-      - 'content'
 
 webrtc.video:
   recv_codec_used:
@@ -3442,6 +3322,41 @@ pdf.viewer:
       - 'main'
       - 'content'
 
+# The following section contains scalars for printing.
+printing:
+  error:
+    bug_numbers:
+      - 1630105
+    description: >
+      A counter incremented every time the user encounters an error printing.
+      The result is split into keys which represent the values of
+      error codes related to printing. Possible values are listed in 'keys'.
+      "FAILURE" is a catch-all code for an error we don't recognize.
+    keyed: true
+    keys:
+      - 'GFX_PRINTER_NO_PRINTER_AVAILABLE'
+      - 'GFX_PRINTER_NAME_NOT_FOUND'
+      - 'GFX_PRINTER_COULD_NOT_OPEN_FILE'
+      - 'GFX_PRINTER_STARTDOC'
+      - 'GFX_PRINTER_ENDDOC'
+      - 'GFX_PRINTER_STARTPAGE'
+      - 'GFX_PRINTER_DOC_IS_BUSY'
+      - 'ABORT'
+      - 'NOT_AVAILABLE'
+      - 'NOT_IMPLEMENTED'
+      - 'OUT_OF_MEMORY'
+      - 'UNEXPECTED'
+      - 'FAILURE'
+    expires: never
+    kind: uint
+    notification_emails:
+      - jaws@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+
 # The following section contains probes that record timestamps.
 timestamps:
   first_paint:
@@ -3820,9 +3735,10 @@ browser.searchinit:
   engines_cache_corrupted:
     bug_numbers:
       - 1578807
+      - 1621610
     description: >-
           Whether the list of engines in the search cache was found to be corrupt during initialization.
-    expires: "77"
+    expires: "85"
     kind: boolean
     notification_emails:
       - fx-search@mozilla.com
@@ -3860,6 +3776,7 @@ startup:
     bug_numbers:
       - 1522934
       - 1570652
+      - 1623406
     description: >
       How the profile was selected during startup. One of the following reasons:
         unknown:
@@ -3892,12 +3809,15 @@ startup:
           A first run of the application created a new profile to use.
         default:
           The default profile was selected as normal.
-    expires: "77"
+    expires: "88"
     keyed: false
     kind: string
     notification_emails:
       - dtownsend@mozilla.com
       - rtestard@mozilla.com
+      - gkaberere@mozilla.com
+      - jhollek@mozilla.com
+      - echo@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -3935,7 +3855,7 @@ script.preloader:
     description:
       How many times we ended up recompiling a script from the script preloader
       on the main thread.
-    expires: "77"
+    expires: "81"
     keyed: false
     kind: uint
     notification_emails:
@@ -3960,6 +3880,7 @@ networking:
       - 1550756
       - 1572666
       - 1590124
+      - 1621800
     description: >
       How many KB of HTTP data transferred by type, there are some categories
       separated by keys based on 5 parameters:
@@ -3994,7 +3915,7 @@ networking:
         "Y21_P3FpLead",
         "Y22_P3FpBg",
         "Y23_P3FpOth"
-    expires: "77"
+    expires: "84"
     keyed: true
     kind: uint
     notification_emails:
@@ -4095,29 +4016,6 @@ networking:
     release_channel_collection: opt-out
 
 blocklist:
-  lastModified_xml:
-    bug_numbers:
-      - 1572711
-      - 1607744
-    description: >
-      Keep track of the lastupdate datetime from a successfully loaded xml blocklist,
-      set to "Invalid Date" or "Missing Date" when the timestamp is invalid or missing.
-      (based on the lastupdate attribute set on the XML document element,
-      converted from a milliseconds timestamp into a datetime string in UTC format).
-    expires: "77"
-    kind: string
-    release_channel_collection: opt-out
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-      - lgreco@mozilla.com
-      - awagner@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-      - 'thunderbird'
-    record_in_processes:
-      - main
-
   lastModified_rs_addons:
     bug_numbers:
       - 1572711
@@ -4157,27 +4055,6 @@ blocklist:
       - awagner@mozilla.com
     products:
       - 'firefox'
-      - 'thunderbird'
-    record_in_processes:
-      - main
-
-  useXML:
-    bug_numbers:
-      - 1572711
-      - 1607744
-    description: >
-      Keep track of the currently enabled blocklist engine (set to false if the
-      remote settings blocklist is the one enabled).
-    expires: "77"
-    kind: boolean
-    release_channel_collection: opt-out
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-      - lgreco@mozilla.com
-      - awagner@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
       - 'thunderbird'
     record_in_processes:
       - main

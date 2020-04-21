@@ -321,8 +321,6 @@
 
       this._lastSearchString = null;
 
-      this._controller = null;
-
       this._remoteWebNavigation = null;
 
       this._remoteWebProgress = null;
@@ -338,8 +336,6 @@
       this._contentPrincipal = null;
 
       this._contentStoragePrincipal = null;
-
-      this._contentBlockingAllowListPrincipal = null;
 
       this._csp = null;
 
@@ -360,12 +356,6 @@
       this._audioMuted = false;
 
       this._hasAnyPlayingMediaBeenBlocked = false;
-
-      /**
-       * Only send the message "Browser:UnselectedTabHover" when someone requests
-       * for the message, which can reduce non-necessary communication.
-       */
-      this._shouldSendUnselectedTabHover = false;
 
       this._unselectedTabHoverMessageListenerCount = 0;
 
@@ -777,9 +767,12 @@
     }
 
     get contentBlockingAllowListPrincipal() {
-      return this.isRemoteBrowser
-        ? this._contentBlockingAllowListPrincipal
-        : this.contentDocument.contentBlockingAllowListPrincipal;
+      if (!this.isRemoteBrowser) {
+        return this.contentDocument.contentBlockingAllowListPrincipal;
+      }
+
+      return this.browsingContext.currentWindowGlobal
+        .contentBlockingAllowListPrincipal;
     }
 
     get csp() {
@@ -876,7 +869,11 @@
     }
 
     get shouldHandleUnselectedTabHover() {
-      return this._shouldSendUnselectedTabHover;
+      return this._unselectedTabHoverMessageListenerCount > 0;
+    }
+
+    set shouldHandleUnselectedTabHover(value) {
+      this._unselectedTabHoverMessageListenerCount += value ? 1 : -1;
     }
 
     get securityUI() {
@@ -1160,12 +1157,17 @@
     }
 
     unselectedTabHover(hovered) {
-      if (!this._shouldSendUnselectedTabHover) {
+      if (!this.shouldHandleUnselectedTabHover) {
         return;
       }
-      this.messageManager.sendAsyncMessage("Browser:UnselectedTabHover", {
-        hovered,
-      });
+      this.sendMessageToActor(
+        "Browser:UnselectedTabHover",
+        {
+          hovered,
+        },
+        "UnselectedTabHover",
+        "roots"
+      );
     }
 
     didStartLoadSinceLastUserTyping() {
@@ -1234,12 +1236,6 @@
             true
           );
         }
-
-        const { RemoteController } = ChromeUtils.import(
-          "resource://gre/modules/RemoteController.jsm"
-        );
-        this._controller = new RemoteController(this);
-        this.controllers.appendController(this._controller);
       }
 
       try {
@@ -1294,13 +1290,6 @@
 
         this.addEventListener("pagehide", this.onPageHide, true);
       }
-
-      if (this.messageManager) {
-        this.messageManager.addMessageListener(
-          "UnselectedTabHover:Toggle",
-          this
-        );
-      }
     }
 
     /**
@@ -1319,17 +1308,6 @@
           let resourcePath = "resource://gre/actors/SelectParent.jsm";
           let { SelectParentHelper } = ChromeUtils.import(resourcePath);
           SelectParentHelper.hide(menulist, this);
-        }
-      }
-
-      // All controllers are released upon browser element removal, but not
-      // when destruction is triggered before element removal in tabbrowser.
-      // Release the controller in the latter case.
-      if (this._controller && this.controllers.getControllerCount()) {
-        try {
-          this.controllers.removeController(this._controller);
-        } catch (ex) {
-          Cu.reportError(ex);
         }
       }
 
@@ -1352,52 +1330,19 @@
       }
     }
 
-    /**
-     * We call this _receiveMessage (and alias receiveMessage to it) so that
-     * bindings that inherit from this one can delegate to it.
-     */
-    _receiveMessage(aMessage) {
-      let data = aMessage.data;
-      switch (aMessage.name) {
-        case "UnselectedTabHover:Toggle":
-          this._shouldSendUnselectedTabHover = data.enable
-            ? ++this._unselectedTabHoverMessageListenerCount > 0
-            : --this._unselectedTabHoverMessageListenerCount == 0;
-          break;
-      }
-      return undefined;
-    }
-
     receiveMessage(aMessage) {
-      if (!this.isRemoteBrowser) {
-        return this._receiveMessage(aMessage);
-      }
-
-      let data = aMessage.data;
-      switch (aMessage.name) {
-        case "Browser:Init":
-          this._outerWindowID = data.outerWindowID;
-          break;
-        case "DOMTitleChanged":
-          this._contentTitle = data.title;
-          break;
-        default:
-          return this._receiveMessage(aMessage);
-      }
-      return undefined;
-    }
-
-    enableDisableCommandsRemoteOnly(
-      aAction,
-      aEnabledCommands,
-      aDisabledCommands
-    ) {
-      if (this._controller) {
-        this._controller.enableDisableCommands(
-          aAction,
-          aEnabledCommands,
-          aDisabledCommands
-        );
+      if (this.isRemoteBrowser) {
+        const data = aMessage.data;
+        switch (aMessage.name) {
+          case "Browser:Init":
+            this._outerWindowID = data.outerWindowID;
+            break;
+          case "DOMTitleChanged":
+            this._contentTitle = data.title;
+            break;
+          default:
+            break;
+        }
       }
     }
 
@@ -1447,7 +1392,6 @@
       aTitle,
       aContentPrincipal,
       aContentStoragePrincipal,
-      aContentBlockingAllowListPrincipal,
       aCSP,
       aReferrerInfo,
       aIsSynthetic,
@@ -1472,7 +1416,6 @@
         this._contentTitle = aTitle;
         this._contentPrincipal = aContentPrincipal;
         this._contentStoragePrincipal = aContentStoragePrincipal;
-        this._contentBlockingAllowListPrincipal = aContentBlockingAllowListPrincipal;
         this._csp = aCSP;
         this._referrerInfo = aReferrerInfo;
         this._isSyntheticDocument = aIsSynthetic;
@@ -1732,7 +1675,8 @@
             if (
               x > this._AUTOSCROLL_SNAP ||
               x < -this._AUTOSCROLL_SNAP ||
-              (y > this._AUTOSCROLL_SNAP || y < -this._AUTOSCROLL_SNAP)
+              y > this._AUTOSCROLL_SNAP ||
+              y < -this._AUTOSCROLL_SNAP
             ) {
               this._ignoreMouseEvents = false;
             }
@@ -1870,7 +1814,6 @@
             "_charsetAutodetected",
             "_contentPrincipal",
             "_contentStoragePrincipal",
-            "_contentBlockingAllowListPrincipal",
             "_fullZoom",
             "_textZoom",
             "_isSyntheticDocument",

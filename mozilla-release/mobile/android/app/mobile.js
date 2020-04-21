@@ -151,7 +151,6 @@ pref("signon.expireMasterPassword", false);
 pref("signon.debug", false);
 
 /* form helper (scroll to and optionally zoom into editable fields)  */
-pref("formhelper.mode", 2);  // 0 = disabled, 1 = enabled, 2 = dynamic depending on screen size
 pref("formhelper.autozoom", true);
 
 /* find helper */
@@ -342,13 +341,6 @@ pref("devtools.debugger.unix-domain-socket", "@ANDROID_PACKAGE_NAME@/firefox-deb
 pref("devtools.remote.usb.enabled", false);
 pref("devtools.remote.wifi.enabled", false);
 
-// Preference for the new performance panel.
-// Profiler feature set. See tools/profiler/core/platform.cpp for features and
-// explanations. Android additionally has "java" feature but other features must
-// be the same. If you intend to change the default value of this pref, please
-// don't forget to change the all.js accordingly.
-pref("devtools.performance.recording.features", "[\"js\",\"leaf\",\"stackwalk\",\"java\"]");
-
 pref("ui.touch.radius.enabled", false);
 pref("ui.touch.radius.leftmm", 3);
 pref("ui.touch.radius.topmm", 5);
@@ -399,9 +391,6 @@ pref("app.channelURL", "https://www.mozilla.org/%LOCALE%/firefox/channel/");
 pref("security.alternate_certificate_error_page", "certerror");
 
 pref("security.warn_viewing_mixed", false); // Warning is disabled.  See Bug 616712.
-
-// Block insecure active content on https pages
-pref("security.mixed_content.block_active_content", true);
 
 // Enable pinning
 pref("security.cert_pinning.enforcement_level", 1);
@@ -743,23 +732,7 @@ pref("dom.serviceWorkers.disable_open_click_delay", 5000);
 pref("dom.push.debug", false);
 pref("dom.push.maxRecentMessageIDsPerSubscription", 0);
 
-// The remote content URL where FxAccountsWebChannel messages originate.  Must use HTTPS.
-pref("identity.fxaccounts.remote.webchannel.uri", "https://accounts.firefox.com");
-
-// The remote URL of the Firefox Account profile server.
-pref("identity.fxaccounts.remote.profile.uri", "https://profile.accounts.firefox.com/v1");
-
-// The remote URL of the Firefox Account oauth server.
-pref("identity.fxaccounts.remote.oauth.uri", "https://oauth.accounts.firefox.com/v1");
-
-// Token server used by Firefox Account-authenticated Sync.
-pref("identity.sync.tokenserver.uri", "https://token.services.mozilla.com/1.0/sync/1.5");
-
 pref("dom.audiochannel.mediaControl", true);
-
-// Space separated list of URLS that are allowed to send objects (instead of
-// only strings) through webchannels. This list is duplicated in browser/app/profile/firefox.js
-pref("webchannel.allowObject.urlWhitelist", "https://accounts.firefox.com https://content.cdn.mozilla.net https://support.mozilla.org https://install.mozilla.org");
 
 pref("media.openUnsupportedTypeWithExternalApp", true);
 

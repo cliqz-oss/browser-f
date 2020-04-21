@@ -8,7 +8,6 @@
 #include "mozilla/gfx/Helpers.h"
 #include "nsXULElement.h"
 
-#include "nsAutoPtr.h"
 #include "nsMathUtils.h"
 #include "SVGImageContext.h"
 
@@ -234,7 +233,7 @@ bool CanvasRenderingContext2D::PatternIsOpaque(
       // TODO: for gradient patterns we could check that all stops are opaque
       // colors.
       // it's a color pattern.
-      opaque = Color::FromABGR(state.colorStyles[aStyle]).a >= 1.0;
+      opaque = sRGBColor::FromABGR(state.colorStyles[aStyle]).a >= 1.0;
       color = true;
     }
   }
@@ -524,7 +523,7 @@ class AdjustedTargetForShadow {
 
     mFinalTarget->DrawSurfaceWithShadow(
         snapshot, mTempRect.TopLeft(),
-        Color::FromABGR(mCtx->CurrentState().shadowColor),
+        ToDeviceColor(mCtx->CurrentState().shadowColor),
         mCtx->CurrentState().shadowOffset, mSigma, mCompositionOp);
   }
 
@@ -730,7 +729,7 @@ void CanvasGradient::AddColorStop(float aOffset, const nsACString& aColorstr,
   GradientStop newStop;
 
   newStop.offset = aOffset;
-  newStop.color = Color::FromABGR(color);
+  newStop.color = ToDeviceColor(color);
 
   mRawStops.AppendElement(newStop);
 }
@@ -1296,7 +1295,7 @@ bool CanvasRenderingContext2D::EnsureTarget(const gfx::Rect* aCoveredRect,
       RestoreClipsAndTransformToTarget();
     }
 
-    if (mTarget) {
+    if (mTarget && mTarget->IsValid()) {
       return true;
     }
   }
@@ -2407,6 +2406,7 @@ class CanvasUserSpaceMetrics : public UserSpaceMetricsWithSize {
     params.language = mFontLanguage;
     params.explicitLanguage = mExplicitLanguage;
     params.textPerf = mPresContext->GetTextPerfMetrics();
+    params.fontStats = mPresContext->GetFontMatchingStats();
     params.featureValueLookup = mPresContext->GetFontFeatureValuesLookup();
     RefPtr<nsFontMetrics> fontMetrics = dc->GetMetricsFor(mFont, params);
     return NSAppUnitsToFloatPixels(fontMetrics->XHeight(),
@@ -2423,6 +2423,18 @@ class CanvasUserSpaceMetrics : public UserSpaceMetricsWithSize {
   nsPresContext* mPresContext;
 };
 
+// The filter might reference an SVG filter that is declared inside this
+// document. Flush frames so that we'll have an nsSVGFilterFrame to work
+// with.
+static bool FiltersNeedFrameFlush(Span<const StyleFilter> aFilters) {
+  for (const auto& filter : aFilters) {
+    if (filter.IsUrl()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void CanvasRenderingContext2D::UpdateFilter() {
   RefPtr<PresShell> presShell = GetPresShell();
   if (!presShell || presShell->IsDestroying()) {
@@ -2430,21 +2442,21 @@ void CanvasRenderingContext2D::UpdateFilter() {
     // reflect the current "taint" status of the canvas
     CurrentState().filter = FilterDescription();
     CurrentState().filterSourceGraphicTainted =
-        (mCanvasElement && mCanvasElement->IsWriteOnly());
+        mCanvasElement && mCanvasElement->IsWriteOnly();
     return;
   }
 
-  // The filter might reference an SVG filter that is declared inside this
-  // document. Flush frames so that we'll have an nsSVGFilterFrame to work
-  // with.
-  presShell->FlushPendingNotifications(FlushType::Frames);
+  if (FiltersNeedFrameFlush(CurrentState().filterChain.AsSpan())) {
+    presShell->FlushPendingNotifications(FlushType::Frames);
+  }
+
   MOZ_RELEASE_ASSERT(!mStyleStack.IsEmpty());
   if (MOZ_UNLIKELY(presShell->IsDestroying())) {
     return;
   }
 
-  bool sourceGraphicIsTainted =
-      (mCanvasElement && mCanvasElement->IsWriteOnly());
+  const bool sourceGraphicIsTainted =
+      mCanvasElement && mCanvasElement->IsWriteOnly();
 
   CurrentState().filter = nsFilterInstance::GetFilterDescription(
       mCanvasElement, CurrentState().filterChain.AsSpan(),
@@ -3254,6 +3266,7 @@ bool CanvasRenderingContext2D::SetFontInternal(const nsAString& aFont,
   params.explicitLanguage = fontStyle->mExplicitLanguage;
   params.userFontSet = c->GetUserFontSet();
   params.textPerf = c->GetTextPerfMetrics();
+  params.fontStats = c->GetFontMatchingStats();
   RefPtr<nsFontMetrics> metrics =
       c->DeviceContext()->GetMetricsFor(resizedFont, params);
 
@@ -3484,7 +3497,7 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor
         mTextRunFlags(),
         mDoMeasureBoundingBox(false) {
     if (Preferences::GetBool(GFX_MISSING_FONTS_NOTIFY_PREF)) {
-      mMissingFonts = new gfxMissingFontRecorder();
+      mMissingFonts = MakeUnique<gfxMissingFontRecorder>();
     }
   }
 
@@ -3510,7 +3523,7 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor
     mTextRun = mFontgrp->MakeTextRun(
         aText, aLength, mDrawTarget, mAppUnitsPerDevPixel, flags,
         nsTextFrameUtils::Flags::DontSkipDrawingForPendingUserFonts,
-        mMissingFonts);
+        mMissingFonts.get());
   }
 
   virtual nscoord GetWidth() override {
@@ -3641,7 +3654,7 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor
     if (state->StyleIsColor(style)) {  // Color
       nscolor fontColor = state->colorStyles[style];
       if (style == Style::FILL) {
-        params.context->SetColor(Color::FromABGR(fontColor));
+        params.context->SetColor(sRGBColor::FromABGR(fontColor));
       } else {
         params.textStrokeColor = fontColor;
       }
@@ -3705,7 +3718,7 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor
 
   // to record any unsupported characters found in the text,
   // and notify front-end if it is interested
-  nsAutoPtr<gfxMissingFontRecorder> mMissingFonts;
+  UniquePtr<gfxMissingFontRecorder> mMissingFonts;
 
   // dev pixel conversion factor
   int32_t mAppUnitsPerDevPixel;
@@ -4029,15 +4042,17 @@ gfxFontGroup* CanvasRenderingContext2D::GetCurrentFontStyle() {
       gfxFontStyle style;
       style.size = kDefaultFontSize;
       gfxTextPerfMetrics* tp = nullptr;
+      FontMatchingStats* fontStats = nullptr;
       if (presShell && !presShell->IsDestroying()) {
         tp = presShell->GetPresContext()->GetTextPerfMetrics();
+        fontStats = presShell->GetPresContext()->GetFontMatchingStats();
       }
       int32_t perDevPixel, perCSSPixel;
       GetAppUnitsValues(&perDevPixel, &perCSSPixel);
       gfxFloat devToCssSize = gfxFloat(perDevPixel) / gfxFloat(perCSSPixel);
       CurrentState().fontGroup = gfxPlatform::GetPlatform()->CreateFontGroup(
           FontFamilyList(StyleGenericFontFamily::SansSerif), &style, tp,
-          nullptr, devToCssSize);
+          fontStats, nullptr, devToCssSize);
       if (CurrentState().fontGroup) {
         CurrentState().font = kDefaultFontStyle;
       } else {
@@ -4651,6 +4666,8 @@ void CanvasRenderingContext2D::DrawDirectlyToCanvas(
       contextMatrix
           .PreScale(1.0 / contextScale.width, 1.0 / contextScale.height)
           .PreTranslate(aDest.x - aSrc.x, aDest.y - aSrc.y));
+
+  context->SetOp(UsedOperation());
 
   // FLAG_CLAMP is added for increased performance, since we never tile here.
   uint32_t modifiedFlags = aImage.mDrawingFlags | imgIContainer::FLAG_CLAMP;

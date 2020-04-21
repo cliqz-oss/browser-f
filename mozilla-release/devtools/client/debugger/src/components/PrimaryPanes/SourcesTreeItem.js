@@ -37,8 +37,8 @@ import { features } from "../../utils/prefs";
 import { downloadFile } from "../../utils/utils";
 import { isFulfilled } from "../../utils/async-value";
 
-import type { TreeNode } from "../../utils/sources-tree/types";
-import type { Source, Context, Thread, SourceContent } from "../../types";
+import type { TreeNode, SourcesGroups } from "../../utils/sources-tree/types";
+import type { Source, Context, Thread, SourceContent, URL } from "../../types";
 
 type OwnProps = {|
   item: TreeNode,
@@ -50,16 +50,17 @@ type OwnProps = {|
   focusItem: TreeNode => void,
   selectItem: TreeNode => void,
   source: ?Source,
-  debuggeeUrl: string,
+  debuggeeUrl: URL,
   projectRoot: string,
   setExpanded: (TreeNode, boolean, boolean) => void,
+  getSourcesGroups: TreeNode => SourcesGroups,
 |};
 type Props = {
   source: ?Source,
   item: TreeNode,
   autoExpand: ?boolean,
   cx: Context,
-  debuggeeUrl: string,
+  debuggeeUrl: URL,
   projectRoot: string,
   extensionName: string | null,
   sourceContent: ?SourceContent,
@@ -78,15 +79,18 @@ type Props = {
   setProjectDirectoryRoot: typeof actions.setProjectDirectoryRoot,
   toggleBlackBox: typeof actions.toggleBlackBox,
   loadSourceText: typeof actions.loadSourceText,
+  blackBoxSources: typeof actions.blackBoxSources,
+  getSourcesGroups: TreeNode => SourcesGroups,
 };
 
 type State = {};
 
 type MenuOption = {
   id: string,
-  label: string,
-  disabled: boolean,
-  click: () => any,
+  label: ?string,
+  disabled?: boolean,
+  click?: () => any,
+  submenu?: MenuOption[],
 };
 
 type ContextMenu = Array<MenuOption>;
@@ -182,6 +186,8 @@ class SourceTreeItem extends Component<Props, State> {
           });
         }
       }
+
+      this.addBlackboxAllOption(menuOptions, item);
     }
 
     showMenu(event, menuOptions);
@@ -200,6 +206,74 @@ class SourceTreeItem extends Component<Props, State> {
       return;
     }
     downloadFile(data, item.name);
+  };
+
+  addBlackboxAllOption = (menuOptions: ContextMenu, item: TreeNode) => {
+    const { cx, depth, projectRoot } = this.props;
+    const { sourcesInside, sourcesOuside } = this.props.getSourcesGroups(item);
+    const allInsideBlackBoxed = sourcesInside.every(
+      source => source.isBlackBoxed
+    );
+    const allOusideBlackBoxed = sourcesOuside.every(
+      source => source.isBlackBoxed
+    );
+
+    let blackBoxInsideMenuItemLabel;
+    let blackBoxOutsideMenuItemLabel;
+    if (depth === 0 || (depth === 1 && projectRoot === "")) {
+      blackBoxInsideMenuItemLabel = allInsideBlackBoxed
+        ? L10N.getStr("unblackBoxAllInGroup.label")
+        : L10N.getStr("blackBoxAllInGroup.label");
+      if (sourcesOuside.length > 0) {
+        blackBoxOutsideMenuItemLabel = allOusideBlackBoxed
+          ? L10N.getStr("unblackBoxAllOutsideGroup.label")
+          : L10N.getStr("blackBoxAllOutsideGroup.label");
+      }
+    } else {
+      blackBoxInsideMenuItemLabel = allInsideBlackBoxed
+        ? L10N.getStr("unblackBoxAllInDir.label")
+        : L10N.getStr("blackBoxAllInDir.label");
+      if (sourcesOuside.length > 0) {
+        blackBoxOutsideMenuItemLabel = allOusideBlackBoxed
+          ? L10N.getStr("unblackBoxAllOutsideDir.label")
+          : L10N.getStr("blackBoxAllOutsideDir.label");
+      }
+    }
+
+    const blackBoxInsideMenuItem = {
+      id: allInsideBlackBoxed
+        ? "node-unblackbox-all-inside"
+        : "node-blackbox-all-inside",
+      label: blackBoxInsideMenuItemLabel,
+      disabled: false,
+      click: () =>
+        this.props.blackBoxSources(cx, sourcesInside, !allInsideBlackBoxed),
+    };
+
+    if (sourcesOuside.length > 0) {
+      menuOptions.push({
+        id: "node-blackbox-all",
+        label: L10N.getStr("blackBoxAll.label"),
+        submenu: [
+          blackBoxInsideMenuItem,
+          {
+            id: allOusideBlackBoxed
+              ? "node-unblackbox-all-outside"
+              : "node-blackbox-all-outside",
+            label: blackBoxOutsideMenuItemLabel,
+            disabled: false,
+            click: () =>
+              this.props.blackBoxSources(
+                cx,
+                sourcesOuside,
+                !allOusideBlackBoxed
+              ),
+          },
+        ],
+      });
+    } else {
+      menuOptions.push(blackBoxInsideMenuItem);
+    }
   };
 
   addCollapseExpandAllOptions = (menuOptions: ContextMenu, item: TreeNode) => {
@@ -273,7 +347,7 @@ class SourceTreeItem extends Component<Props, State> {
       return <AccessibleImage className="folder" />;
     }
 
-    if (source && source.isBlackBoxed) {
+    if (source?.isBlackBoxed) {
       return <AccessibleImage className="blackBox" />;
     }
 
@@ -283,7 +357,10 @@ class SourceTreeItem extends Component<Props, State> {
 
     if (source) {
       return (
-        <SourceIcon source={source} shouldHide={icon => icon === "extension"} />
+        <SourceIcon
+          source={source}
+          modifier={icon => (icon === "extension" ? "javascript" : icon)}
+        />
       );
     }
 
@@ -405,12 +482,11 @@ const mapStateToProps = (state, props: OwnProps) => {
   };
 };
 
-export default connect<Props, OwnProps, _, _, _, _>(
-  mapStateToProps,
-  {
-    setProjectDirectoryRoot: actions.setProjectDirectoryRoot,
-    clearProjectDirectoryRoot: actions.clearProjectDirectoryRoot,
-    toggleBlackBox: actions.toggleBlackBox,
-    loadSourceText: actions.loadSourceText,
-  }
-)(SourceTreeItem);
+export default connect<Props, OwnProps, _, _, _, _>(mapStateToProps, {
+  setProjectDirectoryRoot: actions.setProjectDirectoryRoot,
+  clearProjectDirectoryRoot: actions.clearProjectDirectoryRoot,
+  toggleBlackBox: actions.toggleBlackBox,
+  loadSourceText: actions.loadSourceText,
+  blackBoxSources: actions.blackBoxSources,
+  setBlackBoxAllOutside: actions.setBlackBoxAllOutside,
+})(SourceTreeItem);

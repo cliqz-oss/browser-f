@@ -568,11 +568,13 @@ var snapshotFormatters = {
       apzInfo.length
         ? [
             new Text(
-              (await document.l10n.formatValues(
-                apzInfo.map(id => {
-                  return { id };
-                })
-              )).join("; ")
+              (
+                await document.l10n.formatValues(
+                  apzInfo.map(id => {
+                    return { id };
+                  })
+                )
+              ).join("; ")
             ),
           ]
         : "apz-none"
@@ -955,6 +957,14 @@ var snapshotFormatters = {
     if (a11yInstantiator) {
       a11yInstantiator.textContent = data.instantiator;
     }
+  },
+
+  startupCache(data) {
+    $("startup-cache-disk-cache-path").textContent = data.DiskCachePath;
+    $("startup-cache-ignore-disk-cache").textContent = data.IgnoreDiskCache;
+    $("startup-cache-found-disk-cache-on-init").textContent =
+      data.FoundDiskCacheOnInit;
+    $("startup-cache-wrote-to-disk-cache").textContent = data.WroteToDiskCache;
   },
 
   libraryVersions(data) {

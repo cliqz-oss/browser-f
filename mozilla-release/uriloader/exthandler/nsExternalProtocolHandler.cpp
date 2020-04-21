@@ -209,7 +209,7 @@ NS_IMETHODIMP nsExtProtocolChannel::AsyncOpen(nsIStreamListener* aListener) {
   }
 
   MOZ_ASSERT(
-      !mLoadInfo || mLoadInfo->GetSecurityMode() == 0 ||
+      mLoadInfo->GetSecurityMode() == 0 ||
           mLoadInfo->GetInitialSecurityCheckDone() ||
           (mLoadInfo->GetSecurityMode() ==
                nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL &&
@@ -374,7 +374,7 @@ NS_IMETHODIMP nsExtProtocolChannel::ConnectParent(uint32_t registrarId) {
 }
 
 NS_IMETHODIMP nsExtProtocolChannel::CompleteRedirectSetup(
-    nsIStreamListener* listener, nsISupports* context) {
+    nsIStreamListener* listener) {
   // For redirects to external protocols we AsyncOpen on the child
   // (not the parent) because child channel has the right docshell
   // (which is needed for the select dialog).

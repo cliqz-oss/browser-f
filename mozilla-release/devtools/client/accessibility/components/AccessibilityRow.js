@@ -227,7 +227,7 @@ class AccessibilityRow extends Component {
       return;
     }
 
-    const accessibleWalkerFront = accessibleFront.parent();
+    const accessibleWalkerFront = accessibleFront.getParent();
     if (!accessibleWalkerFront) {
       return;
     }
@@ -249,7 +249,7 @@ class AccessibilityRow extends Component {
       return;
     }
 
-    const accessibleWalkerFront = accessibleFront.parent();
+    const accessibleWalkerFront = accessibleFront.getParent();
     if (!accessibleWalkerFront) {
       return;
     }
@@ -325,9 +325,6 @@ const mapStateToProps = ({
   scrollContentNodeIntoView,
 });
 
-module.exports = connect(
-  mapStateToProps,
-  null,
-  null,
-  { withRef: true }
-)(AccessibilityRow);
+module.exports = connect(mapStateToProps, null, null, { withRef: true })(
+  AccessibilityRow
+);

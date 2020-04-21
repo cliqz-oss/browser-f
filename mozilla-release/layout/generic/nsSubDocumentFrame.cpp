@@ -976,6 +976,7 @@ nsFrameLoader* nsSubDocumentFrame::FrameLoader() const {
 
 void nsSubDocumentFrame::ResetFrameLoader() {
   mFrameLoader = nullptr;
+  ClearDisplayItems();
   nsContentUtils::AddScriptRunner(new AsyncFrameInit(this));
 }
 
@@ -1001,7 +1002,7 @@ static void DestroyDisplayItemDataForFrames(nsIFrame* aFrame) {
   }
 }
 
-static CallState BeginSwapDocShellsForDocument(Document& aDocument, void*) {
+static CallState BeginSwapDocShellsForDocument(Document& aDocument) {
   if (PresShell* presShell = aDocument.GetPresShell()) {
     // Disable painting while the views are detached, see bug 946929.
     presShell->SetNeverPainting(true);
@@ -1010,9 +1011,8 @@ static CallState BeginSwapDocShellsForDocument(Document& aDocument, void*) {
       ::DestroyDisplayItemDataForFrames(rootFrame);
     }
   }
-  aDocument.EnumerateActivityObservers(nsPluginFrame::BeginSwapDocShells,
-                                       nullptr);
-  aDocument.EnumerateSubDocuments(BeginSwapDocShellsForDocument, nullptr);
+  aDocument.EnumerateActivityObservers(nsPluginFrame::BeginSwapDocShells);
+  aDocument.EnumerateSubDocuments(BeginSwapDocShellsForDocument);
   return CallState::Continue;
 }
 
@@ -1021,7 +1021,7 @@ static nsView* BeginSwapDocShellsForViews(nsView* aSibling) {
   nsView* removedViews = nullptr;
   while (aSibling) {
     if (Document* doc = ::GetDocumentFromView(aSibling)) {
-      ::BeginSwapDocShellsForDocument(*doc, nullptr);
+      ::BeginSwapDocShellsForDocument(*doc);
     }
     nsView* next = aSibling->GetNextSibling();
     aSibling->GetViewManager()->RemoveChild(aSibling);
@@ -1074,7 +1074,7 @@ nsresult nsSubDocumentFrame::BeginSwapDocShells(nsIFrame* aOther) {
   return NS_OK;
 }
 
-static CallState EndSwapDocShellsForDocument(Document& aDocument, void*) {
+static CallState EndSwapDocShellsForDocument(Document& aDocument) {
   // Our docshell and view trees have been updated for the new hierarchy.
   // Now also update all nsDeviceContext::mWidget to that of the
   // container view in the new hierarchy.
@@ -1095,16 +1095,15 @@ static CallState EndSwapDocShellsForDocument(Document& aDocument, void*) {
     }
   }
 
-  aDocument.EnumerateActivityObservers(nsPluginFrame::EndSwapDocShells,
-                                       nullptr);
-  aDocument.EnumerateSubDocuments(EndSwapDocShellsForDocument, nullptr);
+  aDocument.EnumerateActivityObservers(nsPluginFrame::EndSwapDocShells);
+  aDocument.EnumerateSubDocuments(EndSwapDocShellsForDocument);
   return CallState::Continue;
 }
 
 static void EndSwapDocShellsForViews(nsView* aSibling) {
   for (; aSibling; aSibling = aSibling->GetNextSibling()) {
     if (Document* doc = ::GetDocumentFromView(aSibling)) {
-      ::EndSwapDocShellsForDocument(*doc, nullptr);
+      ::EndSwapDocShellsForDocument(*doc);
     }
     nsIFrame* frame = aSibling->GetFrame();
     if (frame) {

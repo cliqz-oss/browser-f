@@ -842,6 +842,45 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
         CHECK(iter.readReturn(&nothings));
       case uint16_t(Op::Unreachable):
         CHECK(iter.readUnreachable());
+#ifdef ENABLE_WASM_GC
+      case uint16_t(Op::GcPrefix): {
+        switch (op.b1) {
+          case uint32_t(GcOp::StructNew): {
+            if (!env.gcTypesEnabled()) {
+              return iter.unrecognizedOpcode(&op);
+            }
+            uint32_t unusedUint;
+            NothingVector unusedArgs;
+            CHECK(iter.readStructNew(&unusedUint, &unusedArgs));
+          }
+          case uint32_t(GcOp::StructGet): {
+            if (!env.gcTypesEnabled()) {
+              return iter.unrecognizedOpcode(&op);
+            }
+            uint32_t unusedUint1, unusedUint2;
+            CHECK(iter.readStructGet(&unusedUint1, &unusedUint2, &nothing));
+          }
+          case uint32_t(GcOp::StructSet): {
+            if (!env.gcTypesEnabled()) {
+              return iter.unrecognizedOpcode(&op);
+            }
+            uint32_t unusedUint1, unusedUint2;
+            CHECK(iter.readStructSet(&unusedUint1, &unusedUint2, &nothing,
+                                     &nothing));
+          }
+          case uint32_t(GcOp::StructNarrow): {
+            if (!env.gcTypesEnabled()) {
+              return iter.unrecognizedOpcode(&op);
+            }
+            ValType unusedTy, unusedTy2;
+            CHECK(iter.readStructNarrow(&unusedTy, &unusedTy2, &nothing));
+          }
+          default:
+            return iter.unrecognizedOpcode(&op);
+        }
+        break;
+      }
+#endif
       case uint16_t(Op::MiscPrefix): {
         switch (op.b1) {
           case uint32_t(MiscOp::I32TruncSSatF32):
@@ -958,38 +997,6 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
             }
             uint32_t unusedTableIndex;
             CHECK(iter.readTableSize(&unusedTableIndex));
-          }
-#endif
-#ifdef ENABLE_WASM_GC
-          case uint32_t(MiscOp::StructNew): {
-            if (!env.gcTypesEnabled()) {
-              return iter.unrecognizedOpcode(&op);
-            }
-            uint32_t unusedUint;
-            NothingVector unusedArgs;
-            CHECK(iter.readStructNew(&unusedUint, &unusedArgs));
-          }
-          case uint32_t(MiscOp::StructGet): {
-            if (!env.gcTypesEnabled()) {
-              return iter.unrecognizedOpcode(&op);
-            }
-            uint32_t unusedUint1, unusedUint2;
-            CHECK(iter.readStructGet(&unusedUint1, &unusedUint2, &nothing));
-          }
-          case uint32_t(MiscOp::StructSet): {
-            if (!env.gcTypesEnabled()) {
-              return iter.unrecognizedOpcode(&op);
-            }
-            uint32_t unusedUint1, unusedUint2;
-            CHECK(iter.readStructSet(&unusedUint1, &unusedUint2, &nothing,
-                                     &nothing));
-          }
-          case uint32_t(MiscOp::StructNarrow): {
-            if (!env.gcTypesEnabled()) {
-              return iter.unrecognizedOpcode(&op);
-            }
-            ValType unusedTy, unusedTy2;
-            CHECK(iter.readStructNarrow(&unusedTy, &unusedTy2, &nothing));
           }
 #endif
           default:
@@ -1214,8 +1221,6 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
 bool wasm::ValidateFunctionBody(const ModuleEnvironment& env,
                                 uint32_t funcIndex, uint32_t bodySize,
                                 Decoder& d) {
-  MOZ_ASSERT(env.funcTypes[funcIndex]->results().length() <= MaxFuncResults);
-
   ValTypeVector locals;
   if (!locals.appendAll(env.funcTypes[funcIndex]->args())) {
     return false;
@@ -1368,6 +1373,11 @@ static bool DecodeStructType(Decoder& d, ModuleEnvironment* env,
 
   StructMetaTypeDescr::Layout layout;
   for (uint32_t i = 0; i < numFields; i++) {
+    if (!d.readValType(env->types.length(), env->refTypesEnabled(),
+                       env->gcTypesEnabled(), &fields[i].type)) {
+      return false;
+    }
+
     uint8_t flags;
     if (!d.readFixedU8(&flags)) {
       return d.fail("expected flag");
@@ -1376,10 +1386,7 @@ static bool DecodeStructType(Decoder& d, ModuleEnvironment* env,
       return d.fail("garbage flag bits");
     }
     fields[i].isMutable = flags & uint8_t(FieldFlags::Mutable);
-    if (!d.readValType(env->types.length(), env->refTypesEnabled(),
-                       env->gcTypesEnabled(), &fields[i].type)) {
-      return false;
-    }
+
     if (!ValidateTypeState(d, typeState, fields[i].type)) {
       return false;
     }
@@ -1442,55 +1449,6 @@ static bool DecodeStructType(Decoder& d, ModuleEnvironment* env,
 
   return true;
 }
-
-#ifdef ENABLE_WASM_GC
-static bool DecodeGCFeatureOptInSection(Decoder& d, ModuleEnvironment* env) {
-  MaybeSectionRange range;
-  if (!d.startSection(SectionId::GcFeatureOptIn, env, &range,
-                      "gcfeatureoptin")) {
-    return false;
-  }
-  if (!range) {
-    return true;
-  }
-
-  uint32_t version;
-  if (!d.readVarU32(&version)) {
-    return d.fail("expected gc feature version");
-  }
-
-  // For documentation of what's in the various versions, see
-  // https://github.com/lars-t-hansen/moz-gc-experiments
-  //
-  // Version 1 is complete and obsolete.
-  // Version 2 is incomplete but obsolete.
-  // Version 3 is in progress.
-
-  switch (version) {
-    case 1:
-    case 2:
-      return d.fail(
-          "Wasm GC feature versions 1 and 2 are no longer supported by this "
-          "engine.\n"
-          "The current version is 3, which is not backward-compatible with "
-          "earlier\n"
-          "versions:\n"
-          " - The v1 encoding of ref.null is no longer accepted.\n"
-          " - The v2 encodings of ref.eq, table.get, table.set, and "
-          "table.size\n"
-          "   are no longer accepted.\n");
-    case 3:
-      break;
-    default:
-      return d.fail(
-          "The specified Wasm GC feature version is unknown.\n"
-          "The current version is 3.");
-  }
-
-  env->gcFeatureOptIn = true;
-  return d.finishSection(*range, "gcfeatureoptin");
-}
-#endif
 
 static bool DecodeTypeSection(Decoder& d, ModuleEnvironment* env) {
   MaybeSectionRange range;
@@ -1590,12 +1548,6 @@ static bool DecodeSignatureIndex(Decoder& d, const TypeDefVector& types,
     return d.fail("signature index references non-signature");
   }
 
-  // FIXME: Remove this check when full multi-value function returns land.
-  // Bug 1585909.
-  if (def.funcType().results().length() > MaxFuncResults) {
-    return d.fail("too many returns in signature");
-  }
-
   return true;
 }
 
@@ -1612,7 +1564,7 @@ static bool DecodeLimits(Decoder& d, Limits* limits,
 
   if (flags & ~uint8_t(mask)) {
     return d.failf("unexpected bits set in flags: %" PRIu32,
-                   (flags & ~uint8_t(mask)));
+                   uint32_t(flags & ~uint8_t(mask)));
   }
 
   if (!d.readVarU32(&limits->initial)) {
@@ -2523,10 +2475,6 @@ static bool DecodeElemSection(Decoder& d, ModuleEnvironment* env) {
             initType = RefType::func();
             break;
           case uint16_t(Op::RefNull):
-            if (kind == ElemSegmentKind::Declared) {
-              return d.fail(
-                  "declared element segments cannot contain ref.null");
-            }
             initType = RefType::null();
             needIndex = false;
             break;
@@ -2633,16 +2581,7 @@ bool wasm::DecodeModuleEnvironment(Decoder& d, ModuleEnvironment* env) {
     return false;
   }
 
-#ifdef ENABLE_WASM_GC
-  if (!DecodeGCFeatureOptInSection(d, env)) {
-    return false;
-  }
-  bool gcFeatureOptIn = env->gcFeatureOptIn;
-#else
-  bool gcFeatureOptIn = false;
-#endif
-
-  env->compilerEnv->computeParameters(d, gcFeatureOptIn);
+  env->compilerEnv->computeParameters(d);
 
   if (!DecodeTypeSection(d, env)) {
     return false;
@@ -2986,11 +2925,11 @@ bool wasm::Validate(JSContext* cx, const ShareableBytes& bytecode,
                     UniqueChars* error) {
   Decoder d(bytecode.bytes, 0, error);
 
-  bool gcTypesConfigured = HasGcSupport(cx);
-  bool refTypesConfigured = HasReftypesSupport(cx);
-  bool multiValueConfigured = HasMultiValueSupport(cx);
+  bool gcTypesConfigured = GcTypesAvailable(cx);
+  bool refTypesConfigured = ReftypesAvailable(cx);
+  bool multiValueConfigured = MultiValuesAvailable(cx);
   bool hugeMemory = false;
-  bool bigIntConfigured = HasI64BigIntSupport(cx);
+  bool bigIntConfigured = I64BigIntConversionAvailable(cx);
 
   CompilerEnvironment compilerEnv(
       CompileMode::Once, Tier::Optimized, OptimizedBackend::Ion,

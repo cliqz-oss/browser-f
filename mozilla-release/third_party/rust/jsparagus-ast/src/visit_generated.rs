@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 use crate::arena;
+use crate::source_atom_set::SourceAtomSetIndex;
 use crate::types::*;
 
 pub trait Pass<'alloc> {
@@ -84,48 +85,48 @@ pub trait Pass<'alloc> {
     fn leave_arguments(&mut self, ast: &mut Arguments<'alloc>) {
     }
 
-    fn visit_identifier(&mut self, ast: &mut Identifier<'alloc>) {
+    fn visit_identifier(&mut self, ast: &mut Identifier) {
         self.enter_identifier(ast);
         self.leave_identifier(ast);
     }
 
-    fn enter_identifier(&mut self, ast: &mut Identifier<'alloc>) {
+    fn enter_identifier(&mut self, ast: &mut Identifier) {
     }
 
-    fn leave_identifier(&mut self, ast: &mut Identifier<'alloc>) {
+    fn leave_identifier(&mut self, ast: &mut Identifier) {
     }
 
-    fn visit_identifier_name(&mut self, ast: &mut IdentifierName<'alloc>) {
+    fn visit_identifier_name(&mut self, ast: &mut IdentifierName) {
         self.enter_identifier_name(ast);
         self.leave_identifier_name(ast);
     }
 
-    fn enter_identifier_name(&mut self, ast: &mut IdentifierName<'alloc>) {
+    fn enter_identifier_name(&mut self, ast: &mut IdentifierName) {
     }
 
-    fn leave_identifier_name(&mut self, ast: &mut IdentifierName<'alloc>) {
+    fn leave_identifier_name(&mut self, ast: &mut IdentifierName) {
     }
 
-    fn visit_private_identifier(&mut self, ast: &mut PrivateIdentifier<'alloc>) {
+    fn visit_private_identifier(&mut self, ast: &mut PrivateIdentifier) {
         self.enter_private_identifier(ast);
         self.leave_private_identifier(ast);
     }
 
-    fn enter_private_identifier(&mut self, ast: &mut PrivateIdentifier<'alloc>) {
+    fn enter_private_identifier(&mut self, ast: &mut PrivateIdentifier) {
     }
 
-    fn leave_private_identifier(&mut self, ast: &mut PrivateIdentifier<'alloc>) {
+    fn leave_private_identifier(&mut self, ast: &mut PrivateIdentifier) {
     }
 
-    fn visit_label(&mut self, ast: &mut Label<'alloc>) {
+    fn visit_label(&mut self, ast: &mut Label) {
         self.enter_label(ast);
         self.leave_label(ast);
     }
 
-    fn enter_label(&mut self, ast: &mut Label<'alloc>) {
+    fn enter_label(&mut self, ast: &mut Label) {
     }
 
-    fn leave_label(&mut self, ast: &mut Label<'alloc>) {
+    fn leave_label(&mut self, ast: &mut Label) {
     }
 
     fn visit_variable_declaration_kind(&mut self, ast: &mut VariableDeclarationKind) {
@@ -745,7 +746,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_statement_variant_break_statement(
         &mut self,
-        label: &mut Option<Label<'alloc>>,
+        label: &mut Option<Label>,
     ) {
         self.enter_enum_statement_variant_break_statement(
             label,
@@ -760,19 +761,19 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_statement_variant_break_statement(
         &mut self,
-        label: &mut Option<Label<'alloc>>,
+        label: &mut Option<Label>,
     ) {
     }
 
     fn leave_enum_statement_variant_break_statement(
         &mut self,
-        label: &mut Option<Label<'alloc>>,
+        label: &mut Option<Label>,
     ) {
     }
 
     fn visit_enum_statement_variant_continue_statement(
         &mut self,
-        label: &mut Option<Label<'alloc>>,
+        label: &mut Option<Label>,
     ) {
         self.enter_enum_statement_variant_continue_statement(
             label,
@@ -787,13 +788,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_statement_variant_continue_statement(
         &mut self,
-        label: &mut Option<Label<'alloc>>,
+        label: &mut Option<Label>,
     ) {
     }
 
     fn leave_enum_statement_variant_continue_statement(
         &mut self,
-        label: &mut Option<Label<'alloc>>,
+        label: &mut Option<Label>,
     ) {
     }
 
@@ -1001,7 +1002,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_statement_variant_labeled_statement(
         &mut self,
-        label: &mut Label<'alloc>,
+        label: &mut Label,
         body: &mut arena::Box<'alloc, Statement<'alloc>>,
     ) {
         self.enter_enum_statement_variant_labeled_statement(
@@ -1018,14 +1019,14 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_statement_variant_labeled_statement(
         &mut self,
-        label: &mut Label<'alloc>,
+        label: &mut Label,
         body: &mut arena::Box<'alloc, Statement<'alloc>>,
     ) {
     }
 
     fn leave_enum_statement_variant_labeled_statement(
         &mut self,
-        label: &mut Label<'alloc>,
+        label: &mut Label,
         body: &mut arena::Box<'alloc, Statement<'alloc>>,
     ) {
     }
@@ -1377,10 +1378,8 @@ pub trait Pass<'alloc> {
             Expression::LiteralNullExpression { .. } => {
                 self.visit_enum_expression_variant_literal_null_expression()
             }
-            Expression::LiteralNumericExpression { value, .. } => {
-                self.visit_enum_expression_variant_literal_numeric_expression(
-                    value,
-                )
+            Expression::LiteralNumericExpression(ast) => {
+                self.visit_enum_expression_variant_literal_numeric_expression(ast)
             }
             Expression::LiteralRegExpExpression { pattern, global, ignore_case, multi_line, sticky, unicode, .. } => {
                 self.visit_enum_expression_variant_literal_reg_exp_expression(
@@ -1587,31 +1586,28 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_expression_variant_literal_numeric_expression(
         &mut self,
-        value: &mut f64,
+        ast: &mut NumericLiteral,
     ) {
-        self.enter_enum_expression_variant_literal_numeric_expression(
-            value,
-        );
-        self.leave_enum_expression_variant_literal_numeric_expression(
-            value,
-        );
+        self.enter_enum_expression_variant_literal_numeric_expression(ast);
+        self.visit_numeric_literal(ast);
+        self.leave_enum_expression_variant_literal_numeric_expression(ast);
     }
 
     fn enter_enum_expression_variant_literal_numeric_expression(
         &mut self,
-        value: &mut f64,
+        ast: &mut NumericLiteral,
     ) {
     }
 
     fn leave_enum_expression_variant_literal_numeric_expression(
         &mut self,
-        value: &mut f64,
+        ast: &mut NumericLiteral,
     ) {
     }
 
     fn visit_enum_expression_variant_literal_reg_exp_expression(
         &mut self,
-        pattern: &mut &'alloc str,
+        pattern: &mut SourceAtomSetIndex,
         global: &mut bool,
         ignore_case: &mut bool,
         multi_line: &mut bool,
@@ -1638,7 +1634,7 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_expression_variant_literal_reg_exp_expression(
         &mut self,
-        pattern: &mut &'alloc str,
+        pattern: &mut SourceAtomSetIndex,
         global: &mut bool,
         ignore_case: &mut bool,
         multi_line: &mut bool,
@@ -1649,7 +1645,7 @@ pub trait Pass<'alloc> {
 
     fn leave_enum_expression_variant_literal_reg_exp_expression(
         &mut self,
-        pattern: &mut &'alloc str,
+        pattern: &mut SourceAtomSetIndex,
         global: &mut bool,
         ignore_case: &mut bool,
         multi_line: &mut bool,
@@ -1660,7 +1656,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_expression_variant_literal_string_expression(
         &mut self,
-        value: &mut &'alloc str,
+        value: &mut SourceAtomSetIndex,
     ) {
         self.enter_enum_expression_variant_literal_string_expression(
             value,
@@ -1672,13 +1668,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_expression_variant_literal_string_expression(
         &mut self,
-        value: &mut &'alloc str,
+        value: &mut SourceAtomSetIndex,
     ) {
     }
 
     fn leave_enum_expression_variant_literal_string_expression(
         &mut self,
-        value: &mut &'alloc str,
+        value: &mut SourceAtomSetIndex,
     ) {
     }
 
@@ -1925,7 +1921,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_expression_variant_identifier_expression(
         &mut self,
-        ast: &mut IdentifierExpression<'alloc>,
+        ast: &mut IdentifierExpression,
     ) {
         self.enter_enum_expression_variant_identifier_expression(ast);
         self.visit_identifier_expression(ast);
@@ -1934,13 +1930,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_expression_variant_identifier_expression(
         &mut self,
-        ast: &mut IdentifierExpression<'alloc>,
+        ast: &mut IdentifierExpression,
     ) {
     }
 
     fn leave_enum_expression_variant_identifier_expression(
         &mut self,
-        ast: &mut IdentifierExpression<'alloc>,
+        ast: &mut IdentifierExpression,
     ) {
     }
 
@@ -2393,7 +2389,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_optional_chain_variant_static_member_expression_tail(
         &mut self,
-        property: &mut IdentifierName<'alloc>,
+        property: &mut IdentifierName,
     ) {
         self.enter_enum_optional_chain_variant_static_member_expression_tail(
             property,
@@ -2406,13 +2402,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_optional_chain_variant_static_member_expression_tail(
         &mut self,
-        property: &mut IdentifierName<'alloc>,
+        property: &mut IdentifierName,
     ) {
     }
 
     fn leave_enum_optional_chain_variant_static_member_expression_tail(
         &mut self,
-        property: &mut IdentifierName<'alloc>,
+        property: &mut IdentifierName,
     ) {
     }
 
@@ -2513,6 +2509,9 @@ pub trait Pass<'alloc> {
             PropertyName::StaticPropertyName(ast) => {
                 self.visit_enum_property_name_variant_static_property_name(ast)
             }
+            PropertyName::StaticNumericPropertyName(ast) => {
+                self.visit_enum_property_name_variant_static_numeric_property_name(ast)
+            }
         }
         self.leave_property_name(ast);
     }
@@ -2546,7 +2545,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_property_name_variant_static_property_name(
         &mut self,
-        ast: &mut StaticPropertyName<'alloc>,
+        ast: &mut StaticPropertyName,
     ) {
         self.enter_enum_property_name_variant_static_property_name(ast);
         self.visit_static_property_name(ast);
@@ -2555,13 +2554,34 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_property_name_variant_static_property_name(
         &mut self,
-        ast: &mut StaticPropertyName<'alloc>,
+        ast: &mut StaticPropertyName,
     ) {
     }
 
     fn leave_enum_property_name_variant_static_property_name(
         &mut self,
-        ast: &mut StaticPropertyName<'alloc>,
+        ast: &mut StaticPropertyName,
+    ) {
+    }
+
+    fn visit_enum_property_name_variant_static_numeric_property_name(
+        &mut self,
+        ast: &mut NumericLiteral,
+    ) {
+        self.enter_enum_property_name_variant_static_numeric_property_name(ast);
+        self.visit_numeric_literal(ast);
+        self.leave_enum_property_name_variant_static_numeric_property_name(ast);
+    }
+
+    fn enter_enum_property_name_variant_static_numeric_property_name(
+        &mut self,
+        ast: &mut NumericLiteral,
+    ) {
+    }
+
+    fn leave_enum_property_name_variant_static_numeric_property_name(
+        &mut self,
+        ast: &mut NumericLiteral,
     ) {
     }
 
@@ -2586,6 +2606,9 @@ pub trait Pass<'alloc> {
             }
             ClassElementName::StaticPropertyName(ast) => {
                 self.visit_enum_class_element_name_variant_static_property_name(ast)
+            }
+            ClassElementName::StaticNumericPropertyName(ast) => {
+                self.visit_enum_class_element_name_variant_static_numeric_property_name(ast)
             }
             ClassElementName::PrivateFieldName(ast) => {
                 self.visit_enum_class_element_name_variant_private_field_name(ast)
@@ -2623,7 +2646,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_class_element_name_variant_static_property_name(
         &mut self,
-        ast: &mut StaticPropertyName<'alloc>,
+        ast: &mut StaticPropertyName,
     ) {
         self.enter_enum_class_element_name_variant_static_property_name(ast);
         self.visit_static_property_name(ast);
@@ -2632,19 +2655,40 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_class_element_name_variant_static_property_name(
         &mut self,
-        ast: &mut StaticPropertyName<'alloc>,
+        ast: &mut StaticPropertyName,
     ) {
     }
 
     fn leave_enum_class_element_name_variant_static_property_name(
         &mut self,
-        ast: &mut StaticPropertyName<'alloc>,
+        ast: &mut StaticPropertyName,
+    ) {
+    }
+
+    fn visit_enum_class_element_name_variant_static_numeric_property_name(
+        &mut self,
+        ast: &mut NumericLiteral,
+    ) {
+        self.enter_enum_class_element_name_variant_static_numeric_property_name(ast);
+        self.visit_numeric_literal(ast);
+        self.leave_enum_class_element_name_variant_static_numeric_property_name(ast);
+    }
+
+    fn enter_enum_class_element_name_variant_static_numeric_property_name(
+        &mut self,
+        ast: &mut NumericLiteral,
+    ) {
+    }
+
+    fn leave_enum_class_element_name_variant_static_numeric_property_name(
+        &mut self,
+        ast: &mut NumericLiteral,
     ) {
     }
 
     fn visit_enum_class_element_name_variant_private_field_name(
         &mut self,
-        ast: &mut PrivateIdentifier<'alloc>,
+        ast: &mut PrivateIdentifier,
     ) {
         self.enter_enum_class_element_name_variant_private_field_name(ast);
         self.visit_private_identifier(ast);
@@ -2653,13 +2697,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_class_element_name_variant_private_field_name(
         &mut self,
-        ast: &mut PrivateIdentifier<'alloc>,
+        ast: &mut PrivateIdentifier,
     ) {
     }
 
     fn leave_enum_class_element_name_variant_private_field_name(
         &mut self,
-        ast: &mut PrivateIdentifier<'alloc>,
+        ast: &mut PrivateIdentifier,
     ) {
     }
 
@@ -2708,7 +2752,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_object_property_variant_shorthand_property(
         &mut self,
-        ast: &mut ShorthandProperty<'alloc>,
+        ast: &mut ShorthandProperty,
     ) {
         self.enter_enum_object_property_variant_shorthand_property(ast);
         self.visit_shorthand_property(ast);
@@ -2717,13 +2761,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_object_property_variant_shorthand_property(
         &mut self,
-        ast: &mut ShorthandProperty<'alloc>,
+        ast: &mut ShorthandProperty,
     ) {
     }
 
     fn leave_enum_object_property_variant_shorthand_property(
         &mut self,
-        ast: &mut ShorthandProperty<'alloc>,
+        ast: &mut ShorthandProperty,
     ) {
     }
 
@@ -2936,7 +2980,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_import_declaration_variant_import_namespace(
         &mut self,
-        ast: &mut ImportNamespace<'alloc>,
+        ast: &mut ImportNamespace,
     ) {
         self.enter_enum_import_declaration_variant_import_namespace(ast);
         self.visit_import_namespace(ast);
@@ -2945,13 +2989,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_import_declaration_variant_import_namespace(
         &mut self,
-        ast: &mut ImportNamespace<'alloc>,
+        ast: &mut ImportNamespace,
     ) {
     }
 
     fn leave_enum_import_declaration_variant_import_namespace(
         &mut self,
-        ast: &mut ImportNamespace<'alloc>,
+        ast: &mut ImportNamespace,
     ) {
     }
 
@@ -2985,7 +3029,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_export_declaration_variant_export_all_from(
         &mut self,
-        ast: &mut ExportAllFrom<'alloc>,
+        ast: &mut ExportAllFrom,
     ) {
         self.enter_enum_export_declaration_variant_export_all_from(ast);
         self.visit_export_all_from(ast);
@@ -2994,13 +3038,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_export_declaration_variant_export_all_from(
         &mut self,
-        ast: &mut ExportAllFrom<'alloc>,
+        ast: &mut ExportAllFrom,
     ) {
     }
 
     fn leave_enum_export_declaration_variant_export_all_from(
         &mut self,
-        ast: &mut ExportAllFrom<'alloc>,
+        ast: &mut ExportAllFrom,
     ) {
     }
 
@@ -3088,7 +3132,7 @@ pub trait Pass<'alloc> {
     ) {
     }
 
-    fn visit_variable_reference(&mut self, ast: &mut VariableReference<'alloc>) {
+    fn visit_variable_reference(&mut self, ast: &mut VariableReference) {
         self.enter_variable_reference(ast);
         match ast {
             VariableReference::BindingIdentifier(ast) => {
@@ -3101,15 +3145,15 @@ pub trait Pass<'alloc> {
         self.leave_variable_reference(ast);
     }
 
-    fn enter_variable_reference(&mut self, ast: &mut VariableReference<'alloc>) {
+    fn enter_variable_reference(&mut self, ast: &mut VariableReference) {
     }
 
-    fn leave_variable_reference(&mut self, ast: &mut VariableReference<'alloc>) {
+    fn leave_variable_reference(&mut self, ast: &mut VariableReference) {
     }
 
     fn visit_enum_variable_reference_variant_binding_identifier(
         &mut self,
-        ast: &mut BindingIdentifier<'alloc>,
+        ast: &mut BindingIdentifier,
     ) {
         self.enter_enum_variable_reference_variant_binding_identifier(ast);
         self.visit_binding_identifier(ast);
@@ -3118,19 +3162,19 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_variable_reference_variant_binding_identifier(
         &mut self,
-        ast: &mut BindingIdentifier<'alloc>,
+        ast: &mut BindingIdentifier,
     ) {
     }
 
     fn leave_enum_variable_reference_variant_binding_identifier(
         &mut self,
-        ast: &mut BindingIdentifier<'alloc>,
+        ast: &mut BindingIdentifier,
     ) {
     }
 
     fn visit_enum_variable_reference_variant_assignment_target_identifier(
         &mut self,
-        ast: &mut AssignmentTargetIdentifier<'alloc>,
+        ast: &mut AssignmentTargetIdentifier,
     ) {
         self.enter_enum_variable_reference_variant_assignment_target_identifier(ast);
         self.visit_assignment_target_identifier(ast);
@@ -3139,13 +3183,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_variable_reference_variant_assignment_target_identifier(
         &mut self,
-        ast: &mut AssignmentTargetIdentifier<'alloc>,
+        ast: &mut AssignmentTargetIdentifier,
     ) {
     }
 
     fn leave_enum_variable_reference_variant_assignment_target_identifier(
         &mut self,
-        ast: &mut AssignmentTargetIdentifier<'alloc>,
+        ast: &mut AssignmentTargetIdentifier,
     ) {
     }
 
@@ -3252,7 +3296,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_binding_variant_binding_identifier(
         &mut self,
-        ast: &mut BindingIdentifier<'alloc>,
+        ast: &mut BindingIdentifier,
     ) {
         self.enter_enum_binding_variant_binding_identifier(ast);
         self.visit_binding_identifier(ast);
@@ -3261,13 +3305,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_binding_variant_binding_identifier(
         &mut self,
-        ast: &mut BindingIdentifier<'alloc>,
+        ast: &mut BindingIdentifier,
     ) {
     }
 
     fn leave_enum_binding_variant_binding_identifier(
         &mut self,
-        ast: &mut BindingIdentifier<'alloc>,
+        ast: &mut BindingIdentifier,
     ) {
     }
 
@@ -3292,7 +3336,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_simple_assignment_target_variant_assignment_target_identifier(
         &mut self,
-        ast: &mut AssignmentTargetIdentifier<'alloc>,
+        ast: &mut AssignmentTargetIdentifier,
     ) {
         self.enter_enum_simple_assignment_target_variant_assignment_target_identifier(ast);
         self.visit_assignment_target_identifier(ast);
@@ -3301,13 +3345,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_simple_assignment_target_variant_assignment_target_identifier(
         &mut self,
-        ast: &mut AssignmentTargetIdentifier<'alloc>,
+        ast: &mut AssignmentTargetIdentifier,
     ) {
     }
 
     fn leave_enum_simple_assignment_target_variant_assignment_target_identifier(
         &mut self,
-        ast: &mut AssignmentTargetIdentifier<'alloc>,
+        ast: &mut AssignmentTargetIdentifier,
     ) {
     }
 
@@ -3528,28 +3572,28 @@ pub trait Pass<'alloc> {
     fn leave_binding_with_default(&mut self, ast: &mut BindingWithDefault<'alloc>) {
     }
 
-    fn visit_binding_identifier(&mut self, ast: &mut BindingIdentifier<'alloc>) {
+    fn visit_binding_identifier(&mut self, ast: &mut BindingIdentifier) {
         self.enter_binding_identifier(ast);
         self.visit_identifier(&mut ast.name);
         self.leave_binding_identifier(ast);
     }
 
-    fn enter_binding_identifier(&mut self, ast: &mut BindingIdentifier<'alloc>) {
+    fn enter_binding_identifier(&mut self, ast: &mut BindingIdentifier) {
     }
 
-    fn leave_binding_identifier(&mut self, ast: &mut BindingIdentifier<'alloc>) {
+    fn leave_binding_identifier(&mut self, ast: &mut BindingIdentifier) {
     }
 
-    fn visit_assignment_target_identifier(&mut self, ast: &mut AssignmentTargetIdentifier<'alloc>) {
+    fn visit_assignment_target_identifier(&mut self, ast: &mut AssignmentTargetIdentifier) {
         self.enter_assignment_target_identifier(ast);
         self.visit_identifier(&mut ast.name);
         self.leave_assignment_target_identifier(ast);
     }
 
-    fn enter_assignment_target_identifier(&mut self, ast: &mut AssignmentTargetIdentifier<'alloc>) {
+    fn enter_assignment_target_identifier(&mut self, ast: &mut AssignmentTargetIdentifier) {
     }
 
-    fn leave_assignment_target_identifier(&mut self, ast: &mut AssignmentTargetIdentifier<'alloc>) {
+    fn leave_assignment_target_identifier(&mut self, ast: &mut AssignmentTargetIdentifier) {
     }
 
     fn visit_expression_or_super(&mut self, ast: &mut ExpressionOrSuper<'alloc>) {
@@ -4251,7 +4295,7 @@ pub trait Pass<'alloc> {
     fn leave_import(&mut self, ast: &mut Import<'alloc>) {
     }
 
-    fn visit_import_namespace(&mut self, ast: &mut ImportNamespace<'alloc>) {
+    fn visit_import_namespace(&mut self, ast: &mut ImportNamespace) {
         self.enter_import_namespace(ast);
         if let Some(item) = &mut ast.default_binding {
             self.visit_binding_identifier(item);
@@ -4260,13 +4304,13 @@ pub trait Pass<'alloc> {
         self.leave_import_namespace(ast);
     }
 
-    fn enter_import_namespace(&mut self, ast: &mut ImportNamespace<'alloc>) {
+    fn enter_import_namespace(&mut self, ast: &mut ImportNamespace) {
     }
 
-    fn leave_import_namespace(&mut self, ast: &mut ImportNamespace<'alloc>) {
+    fn leave_import_namespace(&mut self, ast: &mut ImportNamespace) {
     }
 
-    fn visit_import_specifier(&mut self, ast: &mut ImportSpecifier<'alloc>) {
+    fn visit_import_specifier(&mut self, ast: &mut ImportSpecifier) {
         self.enter_import_specifier(ast);
         if let Some(item) = &mut ast.name {
             self.visit_identifier_name(item);
@@ -4275,21 +4319,21 @@ pub trait Pass<'alloc> {
         self.leave_import_specifier(ast);
     }
 
-    fn enter_import_specifier(&mut self, ast: &mut ImportSpecifier<'alloc>) {
+    fn enter_import_specifier(&mut self, ast: &mut ImportSpecifier) {
     }
 
-    fn leave_import_specifier(&mut self, ast: &mut ImportSpecifier<'alloc>) {
+    fn leave_import_specifier(&mut self, ast: &mut ImportSpecifier) {
     }
 
-    fn visit_export_all_from(&mut self, ast: &mut ExportAllFrom<'alloc>) {
+    fn visit_export_all_from(&mut self, ast: &mut ExportAllFrom) {
         self.enter_export_all_from(ast);
         self.leave_export_all_from(ast);
     }
 
-    fn enter_export_all_from(&mut self, ast: &mut ExportAllFrom<'alloc>) {
+    fn enter_export_all_from(&mut self, ast: &mut ExportAllFrom) {
     }
 
-    fn leave_export_all_from(&mut self, ast: &mut ExportAllFrom<'alloc>) {
+    fn leave_export_all_from(&mut self, ast: &mut ExportAllFrom) {
     }
 
     fn visit_export_from(&mut self, ast: &mut ExportFrom<'alloc>) {
@@ -4490,7 +4534,7 @@ pub trait Pass<'alloc> {
     ) {
     }
 
-    fn visit_export_from_specifier(&mut self, ast: &mut ExportFromSpecifier<'alloc>) {
+    fn visit_export_from_specifier(&mut self, ast: &mut ExportFromSpecifier) {
         self.enter_export_from_specifier(ast);
         self.visit_identifier_name(&mut ast.name);
         if let Some(item) = &mut ast.exported_name {
@@ -4499,13 +4543,13 @@ pub trait Pass<'alloc> {
         self.leave_export_from_specifier(ast);
     }
 
-    fn enter_export_from_specifier(&mut self, ast: &mut ExportFromSpecifier<'alloc>) {
+    fn enter_export_from_specifier(&mut self, ast: &mut ExportFromSpecifier) {
     }
 
-    fn leave_export_from_specifier(&mut self, ast: &mut ExportFromSpecifier<'alloc>) {
+    fn leave_export_from_specifier(&mut self, ast: &mut ExportFromSpecifier) {
     }
 
-    fn visit_export_local_specifier(&mut self, ast: &mut ExportLocalSpecifier<'alloc>) {
+    fn visit_export_local_specifier(&mut self, ast: &mut ExportLocalSpecifier) {
         self.enter_export_local_specifier(ast);
         self.visit_identifier_expression(&mut ast.name);
         if let Some(item) = &mut ast.exported_name {
@@ -4514,10 +4558,10 @@ pub trait Pass<'alloc> {
         self.leave_export_local_specifier(ast);
     }
 
-    fn enter_export_local_specifier(&mut self, ast: &mut ExportLocalSpecifier<'alloc>) {
+    fn enter_export_local_specifier(&mut self, ast: &mut ExportLocalSpecifier) {
     }
 
-    fn leave_export_local_specifier(&mut self, ast: &mut ExportLocalSpecifier<'alloc>) {
+    fn leave_export_local_specifier(&mut self, ast: &mut ExportLocalSpecifier) {
     }
 
     fn visit_method(&mut self, ast: &mut Method<'alloc>) {
@@ -4574,16 +4618,16 @@ pub trait Pass<'alloc> {
     fn leave_data_property(&mut self, ast: &mut DataProperty<'alloc>) {
     }
 
-    fn visit_shorthand_property(&mut self, ast: &mut ShorthandProperty<'alloc>) {
+    fn visit_shorthand_property(&mut self, ast: &mut ShorthandProperty) {
         self.enter_shorthand_property(ast);
         self.visit_identifier_expression(&mut ast.name);
         self.leave_shorthand_property(ast);
     }
 
-    fn enter_shorthand_property(&mut self, ast: &mut ShorthandProperty<'alloc>) {
+    fn enter_shorthand_property(&mut self, ast: &mut ShorthandProperty) {
     }
 
-    fn leave_shorthand_property(&mut self, ast: &mut ShorthandProperty<'alloc>) {
+    fn leave_shorthand_property(&mut self, ast: &mut ShorthandProperty) {
     }
 
     fn visit_computed_property_name(&mut self, ast: &mut ComputedPropertyName<'alloc>) {
@@ -4598,15 +4642,26 @@ pub trait Pass<'alloc> {
     fn leave_computed_property_name(&mut self, ast: &mut ComputedPropertyName<'alloc>) {
     }
 
-    fn visit_static_property_name(&mut self, ast: &mut StaticPropertyName<'alloc>) {
+    fn visit_static_property_name(&mut self, ast: &mut StaticPropertyName) {
         self.enter_static_property_name(ast);
         self.leave_static_property_name(ast);
     }
 
-    fn enter_static_property_name(&mut self, ast: &mut StaticPropertyName<'alloc>) {
+    fn enter_static_property_name(&mut self, ast: &mut StaticPropertyName) {
     }
 
-    fn leave_static_property_name(&mut self, ast: &mut StaticPropertyName<'alloc>) {
+    fn leave_static_property_name(&mut self, ast: &mut StaticPropertyName) {
+    }
+
+    fn visit_numeric_literal(&mut self, ast: &mut NumericLiteral) {
+        self.enter_numeric_literal(ast);
+        self.leave_numeric_literal(ast);
+    }
+
+    fn enter_numeric_literal(&mut self, ast: &mut NumericLiteral) {
+    }
+
+    fn leave_numeric_literal(&mut self, ast: &mut NumericLiteral) {
     }
 
     fn visit_array_expression_element(&mut self, ast: &mut ArrayExpressionElement<'alloc>) {
@@ -4764,16 +4819,16 @@ pub trait Pass<'alloc> {
     fn leave_computed_member_expression(&mut self, ast: &mut ComputedMemberExpression<'alloc>) {
     }
 
-    fn visit_identifier_expression(&mut self, ast: &mut IdentifierExpression<'alloc>) {
+    fn visit_identifier_expression(&mut self, ast: &mut IdentifierExpression) {
         self.enter_identifier_expression(ast);
         self.visit_identifier(&mut ast.name);
         self.leave_identifier_expression(ast);
     }
 
-    fn enter_identifier_expression(&mut self, ast: &mut IdentifierExpression<'alloc>) {
+    fn enter_identifier_expression(&mut self, ast: &mut IdentifierExpression) {
     }
 
-    fn leave_identifier_expression(&mut self, ast: &mut IdentifierExpression<'alloc>) {
+    fn leave_identifier_expression(&mut self, ast: &mut IdentifierExpression) {
     }
 
     fn visit_object_expression(&mut self, ast: &mut ObjectExpression<'alloc>) {
@@ -4858,7 +4913,7 @@ pub trait Pass<'alloc> {
 
     fn visit_enum_template_expression_element_variant_template_element(
         &mut self,
-        ast: &mut TemplateElement<'alloc>,
+        ast: &mut TemplateElement,
     ) {
         self.enter_enum_template_expression_element_variant_template_element(ast);
         self.visit_template_element(ast);
@@ -4867,13 +4922,13 @@ pub trait Pass<'alloc> {
 
     fn enter_enum_template_expression_element_variant_template_element(
         &mut self,
-        ast: &mut TemplateElement<'alloc>,
+        ast: &mut TemplateElement,
     ) {
     }
 
     fn leave_enum_template_expression_element_variant_template_element(
         &mut self,
-        ast: &mut TemplateElement<'alloc>,
+        ast: &mut TemplateElement,
     ) {
     }
 
@@ -5049,15 +5104,15 @@ pub trait Pass<'alloc> {
     fn leave_catch_clause(&mut self, ast: &mut CatchClause<'alloc>) {
     }
 
-    fn visit_directive(&mut self, ast: &mut Directive<'alloc>) {
+    fn visit_directive(&mut self, ast: &mut Directive) {
         self.enter_directive(ast);
         self.leave_directive(ast);
     }
 
-    fn enter_directive(&mut self, ast: &mut Directive<'alloc>) {
+    fn enter_directive(&mut self, ast: &mut Directive) {
     }
 
-    fn leave_directive(&mut self, ast: &mut Directive<'alloc>) {
+    fn leave_directive(&mut self, ast: &mut Directive) {
     }
 
     fn visit_formal_parameters(&mut self, ast: &mut FormalParameters<'alloc>) {
@@ -5140,15 +5195,15 @@ pub trait Pass<'alloc> {
     fn leave_switch_default(&mut self, ast: &mut SwitchDefault<'alloc>) {
     }
 
-    fn visit_template_element(&mut self, ast: &mut TemplateElement<'alloc>) {
+    fn visit_template_element(&mut self, ast: &mut TemplateElement) {
         self.enter_template_element(ast);
         self.leave_template_element(ast);
     }
 
-    fn enter_template_element(&mut self, ast: &mut TemplateElement<'alloc>) {
+    fn enter_template_element(&mut self, ast: &mut TemplateElement) {
     }
 
-    fn leave_template_element(&mut self, ast: &mut TemplateElement<'alloc>) {
+    fn leave_template_element(&mut self, ast: &mut TemplateElement) {
     }
 
     fn visit_variable_declaration(&mut self, ast: &mut VariableDeclaration<'alloc>) {

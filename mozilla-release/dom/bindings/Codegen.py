@@ -518,7 +518,7 @@ def DOMClass(descriptor):
     return fill(
         """
           { ${protoChain} },
-          std::is_base_of<nsISupports, ${nativeType} >::value,
+          std::is_base_of_v<nsISupports, ${nativeType}>,
           ${hooks},
           FindAssociatedGlobalForNative<${nativeType}>::Get,
           GetProtoObjectHandle,
@@ -1381,7 +1381,13 @@ class CGHeaders(CGWrapper):
 
         # Let the machinery do its thing.
         def _includeString(includes):
-            return ''.join(['#include "%s"\n' % i for i in includes]) + '\n'
+            def headerName(include):
+                # System headers are specified inside angle brackets.
+                if include.startswith("<"):
+                    return include
+                # Non-system headers need to be placed in quotes.
+                return '"%s"' % include
+            return ''.join(['#include %s\n' % headerName(i) for i in includes]) + '\n'
         CGWrapper.__init__(self, child,
                            declarePre=_includeString(sorted(declareIncludes)),
                            definePre=_includeString(sorted(set(defineIncludes) |
@@ -3993,7 +3999,7 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
 
         return fill(
             """
-            static_assert(!std::is_base_of<NonRefcountedDOMObject, ${nativeType}>::value,
+            static_assert(!std::is_base_of_v<NonRefcountedDOMObject, ${nativeType}>,
                           "Shouldn't have wrappercached things that are not refcounted.");
             $*{assertInheritance}
             MOZ_ASSERT_IF(aGivenProto, js::IsObjectInContextCompartment(aGivenProto, aCx));
@@ -7724,8 +7730,8 @@ class CGCallGenerator(CGThing):
                 CGWrapper(
                     call,
                     pre=("// NOTE: This assert does NOT call the function.\n"
-                         "static_assert(mozilla::IsVoid<decltype("),
-                    post=')>::value, "Should be returning void here");'),
+                         "static_assert(std::is_void_v<decltype("),
+                    post=')>, "Should be returning void here");'),
                 call], "\n")
         elif resultConversion is not None:
             call = CGList([resultConversion, CGWrapper(call, pre="(", post=")")])
@@ -12448,7 +12454,7 @@ class CGDOMJSProxyHandler_defineProperty(ClassMethod):
                 Argument('JS::Handle<jsid>', 'id'),
                 Argument('JS::Handle<JS::PropertyDescriptor>', 'desc'),
                 Argument('JS::ObjectOpResult&', 'opresult'),
-                Argument('bool*', 'defined')]
+                Argument('bool*', 'done')]
         ClassMethod.__init__(self, "defineProperty", "bool", args, virtual=True, override=True, const=True)
         self.descriptor = descriptor
 
@@ -12475,7 +12481,7 @@ class CGDOMJSProxyHandler_defineProperty(ClassMethod):
                 uint32_t index = GetArrayIndexFromId(id);
                 if (IsArrayIndex(index)) {
                   $*{cxDecl}
-                  *defined = true;
+                  *done = true;
                   // https://heycam.github.io/webidl/#legacy-platform-object-defineownproperty
                   // Step 1.1.  The no-indexed-setter case is handled by step 1.2.
                   if (!desc.isDataDescriptor()) {
@@ -12497,7 +12503,7 @@ class CGDOMJSProxyHandler_defineProperty(ClassMethod):
             set += dedent(
                 """
                 if (IsArrayIndex(GetArrayIndexFromId(id))) {
-                  *defined = true;
+                  *done = true;
                   return opresult.failNoIndexedSetter();
                 }
                 """)
@@ -12523,7 +12529,7 @@ class CGDOMJSProxyHandler_defineProperty(ClassMethod):
                                 "should work!")
             tailCode = dedent(
                 """
-                *defined = true;
+                *done = true;
                 return opresult.succeed();
                 """)
             set += CGProxyNamedSetter(self.descriptor, tailCode).define()
@@ -12541,7 +12547,7 @@ class CGDOMJSProxyHandler_defineProperty(ClassMethod):
                     $*{presenceChecker}
 
                     if (found) {
-                      *defined = true;
+                      *done = true;
                       return opresult.failNoNamedSetter();
                     }
                     """,
@@ -13895,7 +13901,7 @@ class CGDescriptor(CGThing):
             if descriptor.proxy:
                 cgThings.append(CGGeneric(fill(
                     """
-                    static_assert(std::is_base_of<nsISupports, ${nativeType} >::value,
+                    static_assert(std::is_base_of_v<nsISupports, ${nativeType}>,
                                       "We don't support non-nsISupports native classes for "
                                       "proxy-based bindings yet");
 
@@ -15524,7 +15530,7 @@ class CGBindingRoot(CGThing):
                    callbacks)
         bindingHeaders["mozilla/dom/BindingUtils.h"] = hasCode
         bindingHeaders["mozilla/OwningNonNull.h"] = hasCode
-        bindingHeaders["mozilla/TypeTraits.h"] = hasCode
+        bindingHeaders["<type_traits>"] = hasCode
         bindingHeaders["mozilla/dom/BindingDeclarations.h"] = (
             not hasCode and enums)
 
@@ -18565,7 +18571,7 @@ class GlobalGenRoots():
         idEnum = CGList([idEnum])
 
         def fieldSizeAssert(amount, jitInfoField, message):
-            maxFieldValue = "(uint64_t(1) << (sizeof(((JSJitInfo*)nullptr)->%s) * 8))" % jitInfoField
+            maxFieldValue = "(uint64_t(1) << (sizeof(std::declval<JSJitInfo>().%s) * 8))" % jitInfoField
             return CGGeneric(define="static_assert(%s < %s, \"%s\");\n\n"
                              % (amount, maxFieldValue, message))
 
@@ -18577,7 +18583,8 @@ class GlobalGenRoots():
                                    CGWrapper(idEnum, pre='\n'))
         idEnum = CGWrapper(idEnum, post='\n')
 
-        curr = CGList([CGGeneric(define="#include <stdint.h>\n\n"),
+        curr = CGList([CGGeneric(define="#include <stdint.h>\n"),
+                       CGGeneric(define="#include <type_traits>\n\n"),
                        CGGeneric(define='#include "jsfriendapi.h"\n\n'),
                        CGGeneric(define='#include "mozilla/dom/PrototypeList.h"\n\n'),
                        idEnum])

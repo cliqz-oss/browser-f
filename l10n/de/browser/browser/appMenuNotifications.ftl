@@ -39,3 +39,41 @@ appmenu-addon-post-install-message = Die Add-ons lassen sich durch Klicken auf <
 appmenu-addon-post-install-incognito-checkbox =
     .label = Ausführen der Erweiterung in privaten Fenstern erlauben
     .accesskey = e
+<<<<<<< HEAD
+||||||| merged common ancestors
+appmenu-addon-private-browsing =
+    .label = Änderung an der Ausführung von Erweiterungen in privaten Fenstern
+    .buttonlabel = Erweiterungen verwalten
+    .buttonaccesskey = E
+    .secondarybuttonlabel = OK
+    .secondarybuttonaccesskey = O
+appmenu-addon-private-browsing-message = Neu in { -brand-shorter-name } installierte Erweiterungen sind in privaten Fenstern nicht verfügbar, bis sie durch Sie für die privaten Fenster freigegeben werden.
+appmenu-addon-private-browsing-learn-more = Weitere Informationen zur Verwaltung von Erweiterungseinstellungen
+=======
+appmenu-addon-private-browsing =
+    .label = Änderung an der Ausführung von Erweiterungen in privaten Fenstern
+    .buttonlabel = Erweiterungen verwalten
+    .buttonaccesskey = E
+    .secondarybuttonlabel = OK
+    .secondarybuttonaccesskey = O
+appmenu-addon-private-browsing-message = Neu in { -brand-shorter-name } installierte Erweiterungen sind in privaten Fenstern nicht verfügbar, bis sie durch Sie für die privaten Fenster freigegeben werden.
+appmenu-addon-private-browsing-learn-more = Weitere Informationen zur Verwaltung von Erweiterungseinstellungen
+appmenu-new-tab-controlled =
+    .label = Startseite neuer Tabs wurde geändert
+    .buttonlabel = Änderung beibehalten
+    .buttonaccesskey = b
+    .secondarybuttonlabel = Erweiterung deaktivieren
+    .secondarybuttonaccesskey = d
+appmenu-homepage-controlled =
+    .label = Ihre Startseite hat sich geändert.
+    .buttonlabel = Änderungen behalten
+    .buttonaccesskey = b
+    .secondarybuttonlabel = Erweiterung deaktivieren
+    .secondarybuttonaccesskey = d
+appmenu-tab-hide-controlled =
+    .label = Auf ausgeblendete Tabs zugreifen
+    .buttonlabel = Tabs ausgeblendet belassen
+    .buttonaccesskey = a
+    .secondarybuttonlabel = Erweiterung deaktivieren
+    .secondarybuttonaccesskey = d
+>>>>>>> origin/upstream-betas

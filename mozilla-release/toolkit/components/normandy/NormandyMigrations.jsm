@@ -28,8 +28,8 @@ const BOOTSTRAP_LOGGER_NAME = "app.normandy.bootstrap";
 
 const PREF_PREFIX = "app.normandy";
 const LEGACY_PREF_PREFIX = "extensions.shield-recipe-client";
-const PREF_LOGGING_LEVEL = `${PREF_PREFIX}.logging.level`;
-const PREF_MIGRATIONS_APPLIED = `${PREF_PREFIX}.migrationsApplied`;
+const PREF_LOGGING_LEVEL = "app.normandy.logging.level";
+const PREF_MIGRATIONS_APPLIED = "app.normandy.migrationsApplied";
 const PREF_OPTOUTSTUDIES_ENABLED = "app.shield.optoutstudies.enabled";
 
 // Logging
@@ -60,12 +60,14 @@ const NormandyMigrations = {
   migrations: [
     migrateShieldPrefs,
     migrateStudiesEnabledWithoutHealthReporting,
-    AddonStudies.migrateAddonStudyFieldsToSlugAndUserFacingFields,
+    AddonStudies.migrations
+      .migration01AddonStudyFieldsToSlugAndUserFacingFields,
     PreferenceExperiments.migrations.migration01MoveExperiments,
     PreferenceExperiments.migrations.migration02MultiPreference,
     PreferenceExperiments.migrations.migration03AddActionName,
     PreferenceExperiments.migrations.migration04RenameNameToSlug,
     RecipeRunner.migrations.migration01RemoveOldRecipesCollection,
+    AddonStudies.migrations.migration02RemoveOldAddonStudyAction,
   ],
 };
 

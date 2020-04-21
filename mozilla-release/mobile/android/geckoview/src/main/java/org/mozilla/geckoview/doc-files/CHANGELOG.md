@@ -13,6 +13,20 @@ exclude: true
 
 ⚠️  breaking change
 
+## v76
+- Added [`GeckoSession.PermissionDelegate.PERMISSION_MEDIA_KEY_SYSTEM_ACCESS`][76.1] to control EME media key access.
+- [`RuntimeTelemetry#getSnapshots`][68.10] is deprecated and will be removed
+  in 79. Use Glean to handle Gecko telemetry.
+  ([bug 1620395]({{bugzilla}}1620395))
+- Added [`LoadRequest.isDirectNavigation`] to know when calls to
+  [`onLoadRequest`][76.3] originate from a direct navigation made by the app
+  itself.
+  ([bug 1624675]({{bugzilla}}1624675))
+
+[76.1]: {{javadoc_uri}}/GeckoSession.PermissionDelegate.html#PERMISSION_MEDIA_KEY_SYSTEM_ACCESS
+[76.2]: {{javadoc_uri}}/GeckoSession.NavigationDelegate.LoadRequest.html#isDirectNavigation
+[76.3]: {{javadoc_uri}}/GeckoSession.NavigationDelegate.html#onLoadRequest-org.mozilla.geckoview.GeckoSession-org.mozilla.geckoview.GeckoSession.NavigationDelegate.LoadRequest-
+
 ## v75
 - ⚠️ Remove `GeckoRuntimeSettings.Builder#useContentProcessHint`. The content
   process is now preloaded by default if
@@ -653,4 +667,4 @@ exclude: true
 [65.24]: {{javadoc_uri}}/CrashReporter.html#sendCrashReport-android.content.Context-android.os.Bundle-java.lang.String-
 [65.25]: {{javadoc_uri}}/GeckoResult.html
 
-[api-version]: 6b0849430f800a3e2226c1a87d26830d1cbe73ee
+[api-version]: d1e459d9f40b32fed4859a0bc3a848e2908b50c1

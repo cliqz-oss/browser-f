@@ -22,13 +22,18 @@ class PBrowserBridgeParent;
 }  // namespace dom
 
 class WidgetPointerEvent;
+}  // namespace mozilla
+
+MOZ_DECLARE_COPY_CONSTRUCTIBLE(mozilla::WidgetPointerEvent)
+
+namespace mozilla {
 class WidgetPointerEventHolder final {
  public:
   nsTArray<WidgetPointerEvent> mEvents;
   NS_INLINE_DECL_REFCOUNTING(WidgetPointerEventHolder)
 
  private:
-  virtual ~WidgetPointerEventHolder() {}
+  virtual ~WidgetPointerEventHolder() = default;
 };
 
 /******************************************************************************
@@ -62,14 +67,7 @@ class WidgetPointerHelper {
         tangentialPressure(aTangentialPressure),
         convertToPointer(true) {}
 
-  explicit WidgetPointerHelper(const WidgetPointerHelper& aHelper)
-      : pointerId(aHelper.pointerId),
-        tiltX(aHelper.tiltX),
-        tiltY(aHelper.tiltY),
-        twist(aHelper.twist),
-        tangentialPressure(aHelper.tangentialPressure),
-        convertToPointer(aHelper.convertToPointer),
-        mCoalescedWidgetEvents(aHelper.mCoalescedWidgetEvents) {}
+  explicit WidgetPointerHelper(const WidgetPointerHelper& aHelper) = default;
 
   void AssignPointerHelperData(const WidgetPointerHelper& aEvent,
                                bool aCopyCoalescedEvents = false) {

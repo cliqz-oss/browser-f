@@ -313,9 +313,36 @@ register_strategy('test-try', args=('skip-unless-schedules',))(Alias)
 register_strategy('fuzzing-builds', args=('skip-unless-schedules', 'seta'))(Either)
 
 
-# Experimental strategies that run in 'shadow-scheduler' tasks.
+class experimental(object):
+    """Experimental strategies either under development or used as benchmarks.
 
-# Runs task containing tests in the same directories as modified files.
-relevant_tests = {
-    'test': Either('skip-unless-schedules', 'skip-unless-has-relevant-tests'),
-}
+    These run as "shadow-schedulers" on each autoland push (tier 3) and/or can be used
+    with `./mach try auto`.  E.g:
+
+        ./mach try auto --strategy relevant_tests
+    """
+
+    relevant_tests = {
+        'test': Either('skip-unless-schedules', 'skip-unless-has-relevant-tests'),
+    }
+    """Runs task containing tests in the same directories as modified files."""
+
+    seta = {
+        'test': Either('skip-unless-schedules', 'seta'),
+    }
+    """Provides a stable history of SETA's performance in the event we make it
+    non-default in the future. Only useful as a benchmark."""
+
+    class bugbug(object):
+        """Strategies that query the bugbug push schedules endpoint which uses machine
+        learning to determine which tasks to run."""
+
+        all = {
+            'test': Either('skip-unless-schedules', 'bugbug-all'),
+        }
+        """Doesn't limit platforms."""
+
+        debug = {
+            'test': Either('skip-unless-schedules', 'bugbug-debug'),
+        }
+        """Restricts tests to debug platforms."""

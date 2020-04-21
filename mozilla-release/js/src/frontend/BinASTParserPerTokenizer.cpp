@@ -278,10 +278,16 @@ JS::Result<FunctionBox*> BinASTParserPerTokenizer<Tok>::buildFunctionBox(
     directives.emplace(lazyScript_->strict());
   }
 
+  size_t index = this->getCompilationInfo().funcData.length();
+  if (!this->getCompilationInfo().funcData.emplaceBack(
+          mozilla::AsVariant(fun.get()))) {
+    return nullptr;
+  }
+
   auto* funbox = alloc_.new_<FunctionBox>(
-      cx_, traceListHead_, fun, /* toStringStart = */ 0, getCompilationInfo(),
-      *directives,
-      /* extraWarning = */ false, generatorKind, functionAsyncKind);
+      cx_, traceListHead_, /* toStringStart = */ 0, getCompilationInfo(),
+      *directives, generatorKind, functionAsyncKind, fun->displayAtom(),
+      fun->flags(), index);
   if (MOZ_UNLIKELY(!funbox)) {
     return raiseOOM();
   }
@@ -300,7 +306,7 @@ template <typename Tok>
 JS::Result<FunctionNode*> BinASTParserPerTokenizer<Tok>::makeEmptyFunctionNode(
     const size_t start, const FunctionSyntaxKind syntaxKind,
     FunctionBox* funbox) {
-  // LazyScript compilation requires basically none of the fields filled out.
+  // Lazy script compilation requires basically none of the fields filled out.
   TokenPos pos = tokenizer_->pos(start);
 
   BINJS_TRY_DECL(result, handler_.newFunction(syntaxKind, pos));
@@ -373,10 +379,11 @@ JS::Result<Ok> BinASTParserPerTokenizer<Tok>::finishLazyFunction(
 
   SourceExtent extent(start, end, start, end,
                       /* lineno = */ 0, start);
-  BINJS_TRY_DECL(lazy,
-                 LazyScript::Create(cx_, fun, sourceObject_,
-                                    pc_->closedOverBindingsForLazy(),
-                                    pc_->innerFunctionBoxesForLazy, extent));
+  BINJS_TRY_DECL(lazy, BaseScript::CreateLazy(
+                           cx_, this->getCompilationInfo(), fun, sourceObject_,
+                           pc_->closedOverBindingsForLazy(),
+                           pc_->innerFunctionIndexesForLazy, extent,
+                           funbox->immutableFlags()));
 
   if (funbox->strict()) {
     lazy->setStrict();

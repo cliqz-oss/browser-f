@@ -10,6 +10,11 @@ const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
 
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ExperimentAPI:
+    "resource://activity-stream/aboutwelcome/lib/AboutWelcomeExperimentAPI.jsm",
+});
+
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   const { AboutWelcomeLog } = ChromeUtils.import(
     "resource://activity-stream/aboutwelcome/lib/AboutWelcomeLog.jsm"
@@ -20,6 +25,30 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
 class AboutWelcomeChild extends JSWindowActorChild {
   actorCreated() {
     this.exportFunctions();
+    this.initWebProgressListener();
+  }
+
+  initWebProgressListener() {
+    const webProgress = this.manager.browsingContext.top.docShell
+      .QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsIWebProgress);
+
+    const listener = {
+      QueryInterface: ChromeUtils.generateQI([
+        Ci.nsIWebProgressListener,
+        Ci.nsISupportsWeakReference,
+      ]),
+    };
+
+    listener.onLocationChange = (aWebProgress, aRequest, aLocation, aFlags) => {
+      log.debug(`onLocationChange handled: ${aWebProgress.DOMWindow}`);
+      this.AWSendToParent("LOCATION_CHANGED");
+    };
+
+    webProgress.addProgressListener(
+      listener,
+      Ci.nsIWebProgress.NOTIFY_LOCATION
+    );
   }
 
   /**
@@ -69,7 +98,9 @@ class AboutWelcomeChild extends JSWindowActorChild {
    */
   AWGetStartupData() {
     // TODO: Fetch this from Experiments
-    const experimentData = {};
+    const experimentData = ExperimentAPI.getExperiment({
+      group: "aboutwelcome",
+    });
     return Cu.cloneInto(experimentData, this.contentWindow);
   }
 

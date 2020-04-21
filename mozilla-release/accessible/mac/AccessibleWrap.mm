@@ -14,6 +14,7 @@
 #import "mozAccessible.h"
 #import "mozActionElements.h"
 #import "mozHTMLAccessible.h"
+#import "mozSelectableElements.h"
 #import "mozTableAccessible.h"
 #import "mozTextAccessible.h"
 
@@ -95,24 +96,57 @@ nsresult AccessibleWrap::HandleAccEvent(AccEvent* aEvent) {
 
   uint32_t eventType = aEvent->GetEventType();
 
-  // ignore everything but focus-changed, value-changed, caret, selection
-  // and document load complete events for now.
-  if (eventType != nsIAccessibleEvent::EVENT_FOCUS &&
-      eventType != nsIAccessibleEvent::EVENT_VALUE_CHANGE &&
-      eventType != nsIAccessibleEvent::EVENT_TEXT_VALUE_CHANGE &&
-      eventType != nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED &&
-      eventType != nsIAccessibleEvent::EVENT_TEXT_SELECTION_CHANGED &&
-      eventType != nsIAccessibleEvent::EVENT_DOCUMENT_LOAD_COMPLETE)
-    return NS_OK;
-
-  Accessible* accessible = aEvent->GetAccessible();
-  NS_ENSURE_STATE(accessible);
-
   mozAccessible* nativeAcc = nil;
-  accessible->GetNativeInterface((void**)&nativeAcc);
-  if (!nativeAcc) return NS_ERROR_FAILURE;
 
-  FireNativeEvent(nativeAcc, eventType);
+  switch (eventType) {
+    case nsIAccessibleEvent::EVENT_FOCUS:
+    case nsIAccessibleEvent::EVENT_VALUE_CHANGE:
+    case nsIAccessibleEvent::EVENT_TEXT_VALUE_CHANGE:
+    case nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED:
+    case nsIAccessibleEvent::EVENT_TEXT_SELECTION_CHANGED:
+    case nsIAccessibleEvent::EVENT_DOCUMENT_LOAD_COMPLETE:
+    case nsIAccessibleEvent::EVENT_MENUPOPUP_START:
+    case nsIAccessibleEvent::EVENT_MENUPOPUP_END:
+      if (Accessible* accessible = aEvent->GetAccessible()) {
+        accessible->GetNativeInterface((void**)&nativeAcc);
+        if (!nativeAcc) {
+          return NS_ERROR_FAILURE;
+        }
+      }
+      break;
+    case nsIAccessibleEvent::EVENT_SELECTION:
+    case nsIAccessibleEvent::EVENT_SELECTION_ADD:
+    case nsIAccessibleEvent::EVENT_SELECTION_REMOVE: {
+      AccSelChangeEvent* selEvent = downcast_accEvent(aEvent);
+      // The "widget" is the selected widget's container. In OSX
+      // it is the target of the selection changed event.
+      if (Accessible* accessible = selEvent->Widget()) {
+        accessible->GetNativeInterface((void**)&nativeAcc);
+        if (!nativeAcc) {
+          return NS_ERROR_FAILURE;
+        }
+      }
+      break;
+    }
+    case nsIAccessibleEvent::EVENT_STATE_CHANGE:
+      if (Accessible* accessible = aEvent->GetAccessible()) {
+        accessible->GetNativeInterface((void**)&nativeAcc);
+        if (nativeAcc) {
+          AccStateChangeEvent* event = downcast_accEvent(aEvent);
+          [nativeAcc stateChanged:event->GetState() isEnabled:event->IsStateEnabled()];
+          return NS_OK;
+        } else {
+          return NS_ERROR_FAILURE;
+        }
+      }
+      break;
+    default:
+      break;
+  }
+
+  if (nativeAcc) {
+    [nativeAcc firePlatformEvent:eventType];
+  }
 
   return NS_OK;
 
@@ -156,57 +190,32 @@ bool AccessibleWrap::AncestorIsFlat() {
   return false;
 }
 
-void a11y::FireNativeEvent(mozAccessible* aNativeAcc, uint32_t aEventType) {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  // Under headless mode we don't have access to a native window, so we skip
-  // dispatching native events.
-  if (gfxPlatform::IsHeadless()) {
-    return;
-  }
-
-  switch (aEventType) {
-    case nsIAccessibleEvent::EVENT_FOCUS:
-      [aNativeAcc didReceiveFocus];
-      break;
-    case nsIAccessibleEvent::EVENT_VALUE_CHANGE:
-    case nsIAccessibleEvent::EVENT_TEXT_VALUE_CHANGE:
-      [aNativeAcc valueDidChange];
-      break;
-    case nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED:
-    case nsIAccessibleEvent::EVENT_TEXT_SELECTION_CHANGED:
-      [aNativeAcc selectedTextDidChange];
-      break;
-    case nsIAccessibleEvent::EVENT_DOCUMENT_LOAD_COMPLETE:
-      [aNativeAcc documentLoadComplete];
-      break;
-  }
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
 Class a11y::GetTypeFromRole(roles::Role aRole) {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
   switch (aRole) {
     case roles::COMBOBOX:
     case roles::PUSHBUTTON:
-    case roles::SPLITBUTTON:
-    case roles::TOGGLE_BUTTON: {
+    case roles::SPLITBUTTON: {
       return [mozButtonAccessible class];
     }
 
     case roles::PAGETAB:
-      return [mozButtonAccessible class];
+      return [mozTabAccessible class];
 
     case roles::CHECKBUTTON:
+    case roles::TOGGLE_BUTTON:
+    case roles::RADIOBUTTON:
       return [mozCheckboxAccessible class];
+
+    case roles::SLIDER:
+      return [mozSliderAccessible class];
 
     case roles::HEADING:
       return [mozHeadingAccessible class];
 
     case roles::PAGETABLIST:
-      return [mozTabsAccessible class];
+      return [mozTabGroupAccessible class];
 
     case roles::ENTRY:
     case roles::STATICTEXT:

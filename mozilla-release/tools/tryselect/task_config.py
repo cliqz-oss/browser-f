@@ -20,6 +20,8 @@ from textwrap import dedent
 
 import mozpack.path as mozpath
 from mozbuild.base import BuildEnvironmentNotFoundException, MozbuildObject
+from taskgraph.util.python_path import find_object
+
 from .tasks import resolve_tests_by_suite
 
 here = os.path.abspath(os.path.dirname(__file__))
@@ -233,6 +235,28 @@ class Rebuild(TryConfig):
         }
 
 
+class Routes(TryConfig):
+    arguments = [
+        [
+            ["--route"],
+            {
+                "action": "append",
+                "dest": "routes",
+                "help": (
+                    "Additional route to add to the tasks "
+                    "(note: these will not be added to the decision task)"
+                ),
+            },
+        ],
+    ]
+
+    def try_config(self, routes, **kwargs):
+        if routes:
+            return {
+                'routes': routes,
+            }
+
+
 class ChemspillPrio(TryConfig):
 
     arguments = [
@@ -277,6 +301,37 @@ class GeckoProfile(TryConfig):
         if profile:
             return {
                 'gecko-profile': True,
+            }
+
+
+class OptimizeStrategies(TryConfig):
+
+    arguments = [
+        [['--strategy'],
+         {'default': None,
+          'help': 'Override the default optimization strategy. Valid values '
+                  'are the experimental strategies defined at the bottom of '
+                  '`taskcluster/taskgraph/optimize/__init__.py`.'
+          }],
+    ]
+
+    def try_config(self, strategy, **kwargs):
+        if strategy:
+            if ':' not in strategy:
+                strategy = "taskgraph.optimize:experimental.{}".format(strategy)
+
+            try:
+                obj = find_object(strategy)
+            except (ImportError, AttributeError):
+                print("error: invalid module path '{}'".format(strategy))
+                sys.exit(1)
+
+            if not isinstance(obj, dict):
+                print("error: object at '{}' must be a dict".format(strategy))
+                sys.exit(1)
+
+            return {
+                'optimize-strategies': strategy,
             }
 
 
@@ -395,5 +450,7 @@ all_task_configs = {
     'path': Path,
     'pernosco': Pernosco,
     'rebuild': Rebuild,
+    'routes': Routes,
+    'strategy': OptimizeStrategies,
     'worker-overrides': WorkerOverrides,
 }

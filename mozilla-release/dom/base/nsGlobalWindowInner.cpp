@@ -1770,6 +1770,10 @@ nsresult nsGlobalWindowInner::EnsureClientSource() {
     DocGroup* docGroup = GetDocGroup();
     MOZ_DIAGNOSTIC_ASSERT(docGroup);
     mClientSource->SetAgentClusterId(docGroup->AgentClusterId());
+
+    if (mWindowGlobalChild) {
+      mWindowGlobalChild->SendSetClientInfo(mClientSource->Info().ToIPC());
+    }
   }
 
   // Its possible that we got a client just after being frozen in
@@ -1885,7 +1889,7 @@ bool nsGlobalWindowInner::DialogsAreBeingAbused() {
   return false;
 }
 
-void nsGlobalWindowInner::FireFrameLoadEvent(bool aIsTrusted) {
+void nsGlobalWindowInner::FireFrameLoadEvent() {
   // If we're not in a content frame, or are at a BrowsingContext tree boundary,
   // such as the content-chrome boundary, don't fire the "load" event.
   if (GetBrowsingContext()->IsTopContent() ||
@@ -1900,7 +1904,7 @@ void nsGlobalWindowInner::FireFrameLoadEvent(bool aIsTrusted) {
   RefPtr<Element> element = GetBrowsingContext()->GetEmbedderElement();
   if (element) {
     nsEventStatus status = nsEventStatus_eIgnore;
-    WidgetEvent event(aIsTrusted, eLoad);
+    WidgetEvent event(/* aIsTrusted = */ true, eLoad);
     event.mFlags.mBubbles = false;
     event.mFlags.mCancelable = false;
 
@@ -1938,7 +1942,7 @@ void nsGlobalWindowInner::FireFrameLoadEvent(bool aIsTrusted) {
     }
 
     mozilla::Unused << browserChild->SendMaybeFireEmbedderLoadEvents(
-        aIsTrusted, /*aFireLoadAtEmbeddingElement*/ true);
+        /*aFireLoadAtEmbeddingElement*/ true);
   }
 }
 
@@ -1997,7 +2001,8 @@ nsresult nsGlobalWindowInner::PostHandleEvent(EventChainPostVisitor& aVisitor) {
 
     mTimeoutManager->OnDocumentLoaded();
 
-    FireFrameLoadEvent(aVisitor.mEvent->IsTrusted());
+    MOZ_ASSERT(aVisitor.mEvent->IsTrusted());
+    FireFrameLoadEvent();
 
     if (mVREventObserver) {
       mVREventObserver->NotifyAfterLoad();
@@ -2808,14 +2813,7 @@ bool nsGlobalWindowInner::DoResolve(
   // We support a cut-down Components.interfaces in case websites are
   // using Components.interfaces.nsIFoo.CONSTANT_NAME for the ones
   // that have constants.
-  static bool watchingComponentsPref = false;
-  static bool useComponentsShim = false;
-  if (!watchingComponentsPref) {
-    watchingComponentsPref = true;
-    Preferences::AddBoolVarCache(&useComponentsShim, "dom.use_components_shim",
-                                 true);
-  }
-  if (useComponentsShim &&
+  if (StaticPrefs::dom_use_components_shim() &&
       aId == XPCJSRuntime::Get()->GetStringID(XPCJSContext::IDX_COMPONENTS)) {
     return ResolveComponentsShim(aCx, aObj, aDesc);
   }
@@ -4238,8 +4236,6 @@ nsresult nsGlobalWindowInner::FireHashchange(const nsAString& aOldURL,
   NS_ENSURE_STATE(IsCurrentInnerWindow());
 
   HashChangeEventInit init;
-  init.mBubbles = true;
-  init.mCancelable = false;
   init.mNewURL = aNewURL;
   init.mOldURL = aOldURL;
 
@@ -4279,8 +4275,6 @@ nsresult nsGlobalWindowInner::DispatchSyncPopState() {
   NS_ENSURE_TRUE(result, NS_ERROR_FAILURE);
 
   RootedDictionary<PopStateEventInit> init(cx);
-  init.mBubbles = true;
-  init.mCancelable = false;
   init.mState = stateJSValue;
 
   RefPtr<PopStateEvent> event =
@@ -4400,8 +4394,8 @@ Storage* nsGlobalWindowInner::GetSessionStorage(ErrorResult& aError) {
     // it may be okay to provide SessionStorage even when we receive a value of
     // eDeny.
     //
-    // AntiTrackingCommon::IsFirstPartyStorageAccessGranted will return false
-    // for 3 main reasons.
+    // ContentBlocking::ShouldAllowAccessFor will return false for 3 main
+    // reasons.
     //
     // 1. Cookies are entirely blocked due to a per-origin permission
     // (nsICookiePermission::ACCESS_DENY for the top-level principal or this
@@ -4631,7 +4625,12 @@ Storage* nsGlobalWindowInner::GetLocalStorage(ErrorResult& aError) {
 IDBFactory* nsGlobalWindowInner::GetIndexedDB(ErrorResult& aError) {
   if (!mIndexedDB) {
     // This may keep mIndexedDB null without setting an error.
-    aError = IDBFactory::CreateForWindow(this, getter_AddRefs(mIndexedDB));
+    auto res = IDBFactory::CreateForWindow(this);
+    if (res.isErr()) {
+      aError = res.unwrapErr();
+    } else {
+      mIndexedDB = res.unwrap();
+    }
   }
 
   return mIndexedDB;
@@ -7288,6 +7287,10 @@ nsIPrincipal* nsPIDOMWindowInner::GetDocumentContentBlockingAllowListPrincipal()
     const {
   return mDoc ? mDoc->GetContentBlockingAllowListPrincipal()
               : mDocContentBlockingAllowListPrincipal.get();
+}
+
+mozilla::dom::WindowContext* nsPIDOMWindowInner::GetWindowContext() const {
+  return mWindowGlobalChild ? mWindowGlobalChild->WindowContext() : nullptr;
 }
 
 void nsPIDOMWindowInner::MaybeCreateDoc() {

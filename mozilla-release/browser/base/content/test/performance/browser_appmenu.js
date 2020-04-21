@@ -59,12 +59,14 @@ add_task(async function() {
     filter: rects =>
       rects.filter(
         r =>
-          !// We expect the menu button to get into the active state.
-          (
-            r.y1 >= menuButtonRect.top &&
-            r.y2 <= menuButtonRect.bottom &&
-            r.x1 >= menuButtonRect.left &&
-            r.x2 <= menuButtonRect.right
+          !(
+            // We expect the menu button to get into the active state.
+            (
+              r.y1 >= menuButtonRect.top &&
+              r.y2 <= menuButtonRect.bottom &&
+              r.x1 >= menuButtonRect.left &&
+              r.x2 <= menuButtonRect.right
+            )
           )
         // XXX For some reason the menu panel isn't in our screenshots,
         // but that's where we actually expect many changes.
@@ -134,7 +136,7 @@ add_task(async function() {
           let container = PanelUI.multiView.querySelector(
             ".panel-viewcontainer"
           );
-          await BrowserTestUtils.waitForCondition(() => {
+          await TestUtils.waitForCondition(() => {
             return !container.hasAttribute("width");
           });
 
@@ -148,7 +150,7 @@ add_task(async function() {
           await promiseViewShown;
 
           // Workaround until bug 1363756 is fixed, then this can be removed.
-          await BrowserTestUtils.waitForCondition(() => {
+          await TestUtils.waitForCondition(() => {
             return !container.hasAttribute("width");
           });
         }

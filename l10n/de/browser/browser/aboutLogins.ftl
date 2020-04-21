@@ -24,8 +24,6 @@ fxaccounts-avatar-button =
 
 menu =
     .title = Menü öffnen
-# This menuitem is only visible on Windows
-menu-menuitem-import = Passwörter importieren…
 # This menuitem is only visible on Windows and macOS
 about-logins-menu-menuitem-import-from-another-browser = Daten aus anderem Browser importieren…
 menu-menuitem-preferences =
@@ -151,10 +149,22 @@ confirm-discard-changes-dialog-confirm-button = Verwerfen
 
 ## Breach Alert notification
 
+about-logins-breach-alert-title = Datenleck einer Website
 breach-alert-text = Passwörter dieser Website wurden veröffentlicht oder gestohlen, seit Sie Ihre Zugangsdaten zuletzt aktualisiert haben. Ändern Sie Ihr Passwort, um Ihr Konto zu schützen.
 breach-alert-link = Weitere Informationen über dieses Datenleck
 breach-alert-dismiss =
     .title = Alarm schließen
+# Variables:
+#   $hostname (String) - The hostname of the website associated with the login, e.g. "example.com"
+about-logins-breach-alert-link = { $hostname } aufrufen
+about-logins-breach-alert-learn-more-link = Weitere Informationen
+
+## Vulnerable Password notification
+
+# Variables:
+#   $hostname (String) - The hostname of the website associated with the login, e.g. "example.com"
+about-logins-vulnerable-alert-link = { $hostname } aufrufen
+about-logins-vulnerable-alert-learn-more-link = Weitere Informationen
 
 ## Error Messages
 

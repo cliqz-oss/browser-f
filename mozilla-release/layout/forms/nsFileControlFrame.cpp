@@ -220,8 +220,8 @@ static already_AddRefed<Element> MakeAnonButton(Document* aDoc,
 
   // Set the browse button text. It's a bit of a pain to do because we want to
   // make sure we are not notifying.
-  RefPtr<nsTextNode> textContent =
-      new nsTextNode(button->NodeInfo()->NodeInfoManager());
+  RefPtr<nsTextNode> textContent = new (button->NodeInfo()->NodeInfoManager())
+      nsTextNode(button->NodeInfo()->NodeInfoManager());
 
   textContent->SetText(buttonTxt, false);
 
@@ -232,9 +232,7 @@ static already_AddRefed<Element> MakeAnonButton(Document* aDoc,
 
   // Make sure access key and tab order for the element actually redirect to the
   // file picking button.
-  RefPtr<HTMLButtonElement> buttonElement =
-      HTMLButtonElement::FromNodeOrNull(button);
-
+  auto* buttonElement = HTMLButtonElement::FromNode(button);
   if (!aAccessKey.IsEmpty()) {
     buttonElement->SetAccessKey(aAccessKey, IgnoreErrors());
   }
@@ -267,7 +265,8 @@ nsresult nsFileControlFrame::CreateAnonymousContent(
   // NOTE: SetIsNativeAnonymousRoot() has to be called before setting any
   // attribute.
   mTextContent->SetIsNativeAnonymousRoot();
-  RefPtr<nsTextNode> text = new nsTextNode(doc->NodeInfoManager());
+  RefPtr<nsTextNode> text =
+      new (doc->NodeInfoManager()) nsTextNode(doc->NodeInfoManager());
   mTextContent->AppendChildTo(text, false);
 
   // Update the displayed text to reflect the current element's value.
@@ -542,22 +541,6 @@ void nsFileControlFrame::SyncDisabledState() {
   } else {
     mBrowseFilesOrDirs->UnsetAttr(kNameSpaceID_None, nsGkAtoms::disabled, true);
   }
-}
-
-nsresult nsFileControlFrame::AttributeChanged(int32_t aNameSpaceID,
-                                              nsAtom* aAttribute,
-                                              int32_t aModType) {
-  if (aNameSpaceID == kNameSpaceID_None && aAttribute == nsGkAtoms::tabindex) {
-    if (aModType == MutationEvent_Binding::REMOVAL) {
-      mBrowseFilesOrDirs->UnsetAttr(aNameSpaceID, aAttribute, true);
-    } else {
-      nsAutoString value;
-      mContent->AsElement()->GetAttr(aNameSpaceID, aAttribute, value);
-      mBrowseFilesOrDirs->SetAttr(aNameSpaceID, aAttribute, value, true);
-    }
-  }
-
-  return nsBlockFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);
 }
 
 void nsFileControlFrame::ContentStatesChanged(EventStates aStates) {

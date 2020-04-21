@@ -9,18 +9,30 @@ def main(request, response):
     """
     test_file = request.GET.first("test")
 
+    expected_ids = request.GET.first("expectedIds")
+
     response.headers.set("Origin-Policy", "allowed=(latest)")
     response.headers.set("Content-Type", "text/html")
 
-    return """
+    ret_val = """
     <!DOCTYPE html>
     <meta charset="utf-8">
     <title>Origin policy subframe</title>
 
     <script src="/resources/testharness.js"></script>
-    <script src="/resources/testharnessreport.js"></script>
 
     <div id="log"></div>
 
     <script type="module" src="%s"></script>
   """ % test_file
+
+    if expected_ids != "undefined":
+      ret_val += """
+      <script type="module">
+        test(() => {
+          assert_array_equals(originPolicyIds, %s);
+        }, "Expected originPolicyIDs check");
+      </script>
+      """ % expected_ids
+
+    return ret_val

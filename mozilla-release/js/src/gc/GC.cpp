@@ -197,7 +197,6 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/TextUtils.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/TypeTraits.h"
 #include "mozilla/Unused.h"
 
 #include <algorithm>
@@ -213,7 +212,7 @@
 #include "jsfriendapi.h"
 #include "jstypes.h"
 
-#include "builtin/FinalizationGroupObject.h"
+#include "builtin/FinalizationRegistryObject.h"
 #include "debugger/DebugAPI.h"
 #include "gc/FindSCCs.h"
 #include "gc/FreeOp.h"
@@ -287,12 +286,15 @@ const AllocKind gc::slotsToThingKind[] = {
 
 // Check that reserved bits of a Cell are compatible with our typical allocators
 // since most derived classes will store a pointer in the first word.
-static_assert(js::detail::LIFO_ALLOC_ALIGN > BitMask(Cell::ReservedBits),
-              "Cell::ReservedBits should support LifoAlloc");
-static_assert(CellAlignBytes > BitMask(Cell::ReservedBits),
-              "Cell::ReservedBits should support gc::Cell");
-static_assert(js::jit::CodeAlignment > BitMask(Cell::ReservedBits),
-              "Cell::ReservedBits should support JIT code");
+static const size_t MinFirstWordAlignment = 1u << CellFlagBitsReservedForGC;
+static_assert(js::detail::LIFO_ALLOC_ALIGN >= MinFirstWordAlignment,
+              "CellFlagBitsReservedForGC should support LifoAlloc");
+static_assert(CellAlignBytes >= MinFirstWordAlignment,
+              "CellFlagBitsReservedForGC should support gc::Cell");
+static_assert(js::jit::CodeAlignment >= MinFirstWordAlignment,
+              "CellFlagBitsReservedForGC should support JIT code");
+static_assert(js::gc::JSClassAlignBytes >= MinFirstWordAlignment,
+              "CellFlagBitsReservedForGC should support JSClass pointers");
 
 static_assert(mozilla::ArrayLength(slotsToThingKind) ==
                   SLOTS_TO_THING_KIND_LIMIT,
@@ -415,21 +417,19 @@ void Arena::checkNoMarkedFreeCells() {
 /* static */
 void Arena::staticAsserts() {
   static_assert(size_t(AllocKind::LIMIT) <= 255,
-                "We must be able to fit the allockind into uint8_t.");
-  static_assert(mozilla::ArrayLength(ThingSizes) == size_t(AllocKind::LIMIT),
+                "All AllocKinds and AllocKind::LIMIT must fit in a uint8_t.");
+  static_assert(mozilla::ArrayLength(ThingSizes) == AllocKindCount,
                 "We haven't defined all thing sizes.");
-  static_assert(
-      mozilla::ArrayLength(FirstThingOffsets) == size_t(AllocKind::LIMIT),
-      "We haven't defined all offsets.");
-  static_assert(
-      mozilla::ArrayLength(ThingsPerArena) == size_t(AllocKind::LIMIT),
-      "We haven't defined all counts.");
+  static_assert(mozilla::ArrayLength(FirstThingOffsets) == AllocKindCount,
+                "We haven't defined all offsets.");
+  static_assert(mozilla::ArrayLength(ThingsPerArena) == AllocKindCount,
+                "We haven't defined all counts.");
 }
 
 /* static */
 inline void Arena::checkLookupTables() {
 #ifdef DEBUG
-  for (size_t i = 0; i < size_t(AllocKind::LIMIT); i++) {
+  for (size_t i = 0; i < AllocKindCount; i++) {
     MOZ_ASSERT(
         FirstThingOffsets[i] + ThingsPerArena[i] * ThingSizes[i] == ArenaSize,
         "Inconsistent arena lookup table data");
@@ -1185,7 +1185,7 @@ const char* js::gc::AllocKindName(AllocKind kind) {
       FOR_EACH_ALLOCKIND(EXPAND_THING_NAME)
 #  undef EXPAND_THING_NAME
   };
-  static_assert(ArrayLength(names) == size_t(AllocKind::LIMIT),
+  static_assert(ArrayLength(names) == AllocKindCount,
                 "names array should have an entry for every AllocKind");
 
   size_t i = size_t(kind);
@@ -1567,17 +1567,17 @@ void GCRuntime::callFinalizeCallbacks(JSFreeOp* fop,
   }
 }
 
-void GCRuntime::setHostCleanupFinalizationGroupCallback(
-    JSHostCleanupFinalizationGroupCallback callback, void* data) {
-  hostCleanupFinalizationGroupCallback.ref() = {callback, data};
+void GCRuntime::setHostCleanupFinalizationRegistryCallback(
+    JSHostCleanupFinalizationRegistryCallback callback, void* data) {
+  hostCleanupFinalizationRegistryCallback.ref() = {callback, data};
 }
 
-void GCRuntime::callHostCleanupFinalizationGroupCallback(
-    FinalizationGroupObject* group) {
+void GCRuntime::callHostCleanupFinalizationRegistryCallback(
+    FinalizationRegistryObject* registry) {
   JS::AutoSuppressGCAnalysis nogc;
-  const auto& callback = hostCleanupFinalizationGroupCallback.ref();
+  const auto& callback = hostCleanupFinalizationRegistryCallback.ref();
   if (callback.op) {
-    callback.op(group, callback.data);
+    callback.op(registry, callback.data);
   }
 }
 
@@ -2126,12 +2126,10 @@ void GCRuntime::sweepTypesAfterCompacting(Zone* zone) {
 
   for (auto base = zone->cellIterUnsafe<BaseScript>(); !base.done();
        base.next()) {
-    if (base->isLazyScript()) {
+    if (!base->hasJitScript()) {
       continue;
     }
-    JSScript* script = base->asJSScript();
-
-    AutoSweepJitScript sweep(script);
+    AutoSweepJitScript sweep(base->asJSScript());
   }
   for (auto group = zone->cellIterUnsafe<ObjectGroup>(); !group.done();
        group.next()) {
@@ -2144,7 +2142,7 @@ void GCRuntime::sweepTypesAfterCompacting(Zone* zone) {
 void GCRuntime::sweepZoneAfterCompacting(MovingTracer* trc, Zone* zone) {
   MOZ_ASSERT(zone->isCollecting());
   sweepTypesAfterCompacting(zone);
-  sweepFinalizationGroups(zone);
+  sweepFinalizationRegistries(zone);
   zone->weakRefMap().sweep();
   zone->sweepWeakMaps();
   for (auto* cache : zone->weakCaches()) {
@@ -2187,11 +2185,24 @@ static void UpdateArenaPointersTyped(MovingTracer* trc, Arena* arena) {
   }
 }
 
+static bool CanUpdateKindInBackground(AllocKind kind) {
+  // We try to update as many GC things in parallel as we can, but there are
+  // kinds for which this might not be safe:
+  //  - we assume JSObjects that are foreground finalized are not safe to
+  //    update in parallel
+  //  - updating a shape touches child shapes in fixupShapeTreeAfterMovingGC()
+  return js::gc::IsBackgroundFinalized(kind) && !IsShapeAllocKind(kind) &&
+         kind != AllocKind::BASE_SHAPE;
+}
+
 /*
  * Update the internal pointers for all cells in an arena.
  */
 static void UpdateArenaPointers(MovingTracer* trc, Arena* arena) {
   AllocKind kind = arena->getAllocKind();
+
+  MOZ_ASSERT_IF(!CanUpdateKindInBackground(kind),
+                CurrentThreadCanAccessRuntime(trc->runtime()));
 
   switch (kind) {
 #define EXPAND_CASE(allocKind, traceKind, type, sizedType, bgFinal, nursery, \
@@ -2315,28 +2326,6 @@ void ArenasToUpdate::next() {
   settle();
 }
 
-static size_t CellUpdateBackgroundTaskCount() {
-  if (!CanUseExtraThreads()) {
-    return 1;  // GCRuntime::startTask will run the work on the main thread.
-  }
-
-  size_t targetTaskCount = HelperThreadState().cpuCount / 2;
-  return std::min(std::max(targetTaskCount, size_t(1)), MaxParallelWorkers);
-}
-
-static bool CanUpdateKindInBackground(AllocKind kind) {
-  // We try to update as many GC things in parallel as we can, but there are
-  // kinds for which this might not be safe:
-  //  - we assume JSObjects that are foreground finalized are not safe to
-  //    update in parallel
-  //  - updating a shape touches child shapes in fixupShapeTreeAfterMovingGC()
-  if (!js::gc::IsBackgroundFinalized(kind) || IsShapeAllocKind(kind)) {
-    return false;
-  }
-
-  return true;
-}
-
 static AllocKinds ForegroundUpdateKinds(AllocKinds kinds) {
   AllocKinds result;
   for (AllocKind kind : kinds) {
@@ -2349,15 +2338,17 @@ static AllocKinds ForegroundUpdateKinds(AllocKinds kinds) {
 
 void GCRuntime::updateTypeDescrObjects(MovingTracer* trc, Zone* zone) {
   // We need to update each type descriptor object and any objects stored in
-  // its slots, since some of these contain array objects which also need to
-  // be updated.
+  // its reserved slots, since some of these contain array objects that also
+  // need to be updated. Do not update any non-reserved slots, since they might
+  // point back to unprocessed descriptor objects.
 
   zone->typeDescrObjects().sweep();
 
   for (auto r = zone->typeDescrObjects().all(); !r.empty(); r.popFront()) {
     NativeObject* obj = &r.front()->as<NativeObject>();
     UpdateCellPointers(trc, obj);
-    for (size_t i = 0; i < obj->slotSpan(); i++) {
+    MOZ_ASSERT(JSCLASS_RESERVED_SLOTS(obj->getClass()) == JS_DESCR_SLOTS);
+    for (size_t i = 0; i < JS_DESCR_SLOTS; i++) {
       Value value = obj->getSlot(i);
       if (value.isObject()) {
         UpdateCellPointers(trc, &value.toObject());
@@ -2366,9 +2357,8 @@ void GCRuntime::updateTypeDescrObjects(MovingTracer* trc, Zone* zone) {
   }
 }
 
-void GCRuntime::updateCellPointers(Zone* zone, AllocKinds kinds,
-                                   size_t bgTaskCount) {
-  AllocKinds fgKinds = bgTaskCount == 0 ? kinds : ForegroundUpdateKinds(kinds);
+void GCRuntime::updateCellPointers(Zone* zone, AllocKinds kinds) {
+  AllocKinds fgKinds = ForegroundUpdateKinds(kinds);
   AllocKinds bgKinds = kinds - fgKinds;
 
   ArenasToUpdate fgArenas(zone, fgKinds);
@@ -2378,8 +2368,7 @@ void GCRuntime::updateCellPointers(Zone* zone, AllocKinds kinds,
 
   AutoRunParallelWork bgTasks(this, UpdateArenaListSegmentPointers,
                               gcstats::PhaseKind::COMPACT_UPDATE_CELLS,
-                              bgArenas, bgTaskCount, SliceBudget::unlimited(),
-                              lock);
+                              bgArenas, SliceBudget::unlimited(), lock);
 
   ParallelWorker fgTask(this, UpdateArenaListSegmentPointers, fgArenas,
                         SliceBudget::unlimited(), lock);
@@ -2414,7 +2403,7 @@ void GCRuntime::updateCellPointers(Zone* zone, AllocKinds kinds,
 // Also, there can be data races calling IsForwarded() on the new location of a
 // cell that is being updated in parallel on another thread. This can be avoided
 // by updating some kinds of cells in different phases. This is done for
-// JSScripts and LazyScripts, and JSScripts and Scopes.
+// BaseScripts and Scopes.
 //
 // Since we want to minimize the number of phases, arrange kinds into three
 // arbitrary phases.
@@ -2447,15 +2436,13 @@ static constexpr AllocKinds UpdatePhaseThree{AllocKind::SCOPE,
                                              AllocKind::OBJECT16_BACKGROUND};
 
 void GCRuntime::updateAllCellPointers(MovingTracer* trc, Zone* zone) {
-  size_t bgTaskCount = CellUpdateBackgroundTaskCount();
-
-  updateCellPointers(zone, UpdatePhaseOne, bgTaskCount);
+  updateCellPointers(zone, UpdatePhaseOne);
 
   // UpdatePhaseTwo: Update TypeDescrs before all other objects as typed
   // objects access these objects when we trace them.
   updateTypeDescrObjects(trc, zone);
 
-  updateCellPointers(zone, UpdatePhaseThree, bgTaskCount);
+  updateCellPointers(zone, UpdatePhaseThree);
 }
 
 /*
@@ -4000,14 +3987,6 @@ static size_t UnmarkArenaListSegment(GCRuntime* gc,
   return count * 256;
 }
 
-void GCRuntime::unmarkCollectedZones() {
-  ArenasToUnmark work(this);
-  AutoLockHelperThreadState lock;
-  AutoRunParallelWork unmark(
-      this, UnmarkArenaListSegment, gcstats::PhaseKind::UNMARK, work,
-      CellUpdateBackgroundTaskCount(), SliceBudget::unlimited(), lock);
-}
-
 void GCRuntime::unmarkWeakMaps() {
   for (GCZonesIter zone(this); !zone.done(); zone.next()) {
     /* Unmark all weak maps in the zones being collected. */
@@ -4053,14 +4032,17 @@ bool GCRuntime::beginMarkPhase(JS::GCReason reason, AutoGCSession& session) {
   {
     gcstats::AutoPhase ap1(stats(), gcstats::PhaseKind::PREPARE);
 
+    AutoLockHelperThreadState helperLock;
+
     /*
      * Clear all mark state for the zones we are collecting. This is linear in
      * the size of the heap we are collecting and so can be slow. Do this in
-     * parallel across multiple helper threads before any other processing.
+     * parallel across multiple helper threads.
      */
-    unmarkCollectedZones();
-
-    AutoLockHelperThreadState helperLock;
+    ArenasToUnmark unmarkingWork(this);
+    AutoRunParallelWork unmarkCollectedZones(
+        this, UnmarkArenaListSegment, gcstats::PhaseKind::UNMARK, unmarkingWork,
+        SliceBudget::unlimited(), helperLock);
 
     /* Clear mark state for WeakMaps in parallel with other work. */
     AutoRunParallelTask unmarkWeakMaps(this, &GCRuntime::unmarkWeakMaps,
@@ -4948,22 +4930,6 @@ void GCRuntime::sweepCompressionTasks() {
   }
 }
 
-void GCRuntime::sweepLazyScripts() {
-  for (SweepGroupZonesIter zone(this); !zone.done(); zone.next()) {
-    AutoSetThreadIsSweeping threadIsSweeping(zone);
-    for (auto iter = zone->cellIter<BaseScript>(); !iter.done(); iter.next()) {
-      BaseScript* base = iter.unbarrieredGet();
-      if (!base->isLazyScript()) {
-        continue;
-      }
-      WeakHeapPtrScript* edge = base->getLazyScriptScriptEdgeForTracing();
-      if (*edge && IsAboutToBeFinalized(edge)) {
-        *edge = nullptr;
-      }
-    }
-  }
-}
-
 void GCRuntime::sweepWeakMaps() {
   AutoSetThreadIsSweeping threadIsSweeping;  // This may touch any zone.
   for (SweepGroupZonesIter zone(this); !zone.done(); zone.next()) {
@@ -4991,12 +4957,14 @@ void GCRuntime::sweepWeakRefs() {
   }
 }
 
-void GCRuntime::sweepFinalizationGroupsOnMainThread() {
+void GCRuntime::sweepFinalizationRegistriesOnMainThread() {
   // This calls back into the browser which expects to be called from the main
   // thread.
-  gcstats::AutoPhase ap(stats(), gcstats::PhaseKind::SWEEP_FINALIZATION_GROUPS);
+  gcstats::AutoPhase ap1(stats(), gcstats::PhaseKind::SWEEP_COMPARTMENTS);
+  gcstats::AutoPhase ap2(stats(),
+                         gcstats::PhaseKind::SWEEP_FINALIZATION_REGISTRIES);
   for (SweepGroupZonesIter zone(this); !zone.done(); zone.next()) {
-    sweepFinalizationGroups(zone);
+    sweepFinalizationRegistries(zone);
   }
 }
 
@@ -5258,8 +5226,6 @@ IncrementalProgress GCRuntime::beginSweepingSweepGroup(JSFreeOp* fop,
                                   PhaseKind::SWEEP_MISC, lock);
     AutoRunParallelTask sweepCompTasks(this, &GCRuntime::sweepCompressionTasks,
                                        PhaseKind::SWEEP_COMPRESSION, lock);
-    AutoRunParallelTask sweepLazyScripts(this, &GCRuntime::sweepLazyScripts,
-                                         PhaseKind::SWEEP_LAZYSCRIPTS, lock);
     AutoRunParallelTask sweepWeakMaps(this, &GCRuntime::sweepWeakMaps,
                                       PhaseKind::SWEEP_WEAKMAPS, lock);
     AutoRunParallelTask sweepUniqueIds(this, &GCRuntime::sweepUniqueIds,
@@ -5281,7 +5247,6 @@ IncrementalProgress GCRuntime::beginSweepingSweepGroup(JSFreeOp* fop,
     {
       AutoUnlockHelperThreadState unlock(lock);
       sweepJitDataOnMainThread(fop);
-      sweepFinalizationGroupsOnMainThread();
     }
 
     for (auto& task : sweepCacheTasks) {
@@ -5292,6 +5257,10 @@ IncrementalProgress GCRuntime::beginSweepingSweepGroup(JSFreeOp* fop,
   if (sweepingAtoms) {
     startSweepingAtomsTable();
   }
+
+  // FinalizationRegistry sweeping touches weak maps and so must not run in
+  // parallel with that.
+  sweepFinalizationRegistriesOnMainThread();
 
   // Queue all GC things in all zones for sweeping, either on the foreground
   // or on the background thread.
@@ -5652,15 +5621,6 @@ void WeakCacheSweepIterator::settle() {
              (sweepCache && sweepCache->needsIncrementalBarrier()));
 }
 
-static size_t WeakCacheSweepTaskCount() {
-  if (!CanUseExtraThreads()) {
-    return 1;
-  }
-
-  size_t targetTaskCount = HelperThreadState().cpuCount;
-  return std::min(targetTaskCount, MaxParallelWorkers);
-}
-
 IncrementalProgress GCRuntime::sweepWeakCaches(JSFreeOp* fop,
                                                SliceBudget& budget) {
   if (weakCachesToSweep.ref().isNothing()) {
@@ -5676,7 +5636,8 @@ IncrementalProgress GCRuntime::sweepWeakCaches(JSFreeOp* fop,
   {
     AutoRunParallelWork runWork(this, IncrementalSweepWeakCache,
                                 gcstats::PhaseKind::SWEEP_WEAK_CACHES, work,
-                                WeakCacheSweepTaskCount(), budget, lock);
+                                budget, lock);
+    AutoUnlockHelperThreadState unlock(lock);
   }
 
   if (work.done()) {
@@ -5731,8 +5692,8 @@ IncrementalProgress GCRuntime::sweepShapeTree(JSFreeOp* fop,
 // interface. This iterator provides a done()/get()/next() style interface.
 template <typename Container>
 class ContainerIter {
-  using Iter = decltype(mozilla::DeclVal<const Container>().begin());
-  using Elem = decltype(*mozilla::DeclVal<Iter>());
+  using Iter = decltype(std::declval<const Container>().begin());
+  using Elem = decltype(*std::declval<Iter>());
 
   Iter iter;
   const Iter end;
@@ -5758,7 +5719,7 @@ class ContainerIter {
 template <typename Iter>
 struct IncrementalIter {
   using State = Maybe<Iter>;
-  using Elem = decltype(mozilla::DeclVal<Iter>().get());
+  using Elem = decltype(std::declval<Iter>().get());
 
  private:
   State& maybeIter;
@@ -5904,7 +5865,7 @@ class SweepActionSequence final : public SweepAction {
 
 template <typename Iter, typename Init>
 class SweepActionForEach final : public SweepAction {
-  using Elem = decltype(mozilla::DeclVal<Iter>().get());
+  using Elem = decltype(std::declval<Iter>().get());
   using IncrIter = IncrementalIter<Iter>;
 
   Init iterInit;
@@ -7606,9 +7567,9 @@ void GCRuntime::mergeRealms(Realm* source, Realm* target) {
   source->zone()->clearTables();
   source->unsetIsDebuggee();
 
-  // The delazification flag indicates the presence of LazyScripts in a
-  // realm for the Debugger API, so if the source realm created LazyScripts,
-  // the flag must be propagated to the target realm.
+  // The delazification flag indicates the presence of lazy scripts in a realm
+  // for the Debugger API, so if the source realm created lazy scripts, the flag
+  // must be propagated to the target realm.
   if (source->needsDelazificationForDebugger()) {
     target->scheduleDelazificationForDebugger();
   }

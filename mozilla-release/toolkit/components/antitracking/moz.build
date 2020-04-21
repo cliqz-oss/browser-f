@@ -31,25 +31,37 @@ XPCOM_MANIFESTS += [
 ]
 
 EXPORTS.mozilla = [
-    'AntiTrackingCommon.h',
     'AntiTrackingIPCUtils.h',
+    'AntiTrackingRedirectHeuristic.h',
+    'AntiTrackingUtils.h',
+    'ContentBlocking.h',
     'ContentBlockingAllowList.h',
+    'ContentBlockingLog.h',
+    'ContentBlockingNotifier.h',
+    'ContentBlockingUserInteraction.h',
     'StorageAccess.h',
     'StoragePrincipalHelper.h',
     'URLDecorationStripper.h',
 ]
 
 UNIFIED_SOURCES += [
-    'AntiTrackingCommon.cpp',
+    'AntiTrackingRedirectHeuristic.cpp',
+    'AntiTrackingUtils.cpp',
+    'ContentBlocking.cpp',
     'ContentBlockingAllowList.cpp',
+    'ContentBlockingLog.cpp',
+    'ContentBlockingNotifier.cpp',
+    'ContentBlockingUserInteraction.cpp',
     'SettingsChangeObserver.cpp',
     'StorageAccess.cpp',
     'StoragePrincipalHelper.cpp',
+    'TemporaryAccessGrantObserver.cpp',
     'URLDecorationStripper.cpp',
 ]
 
 LOCAL_INCLUDES += [
     '/extensions/permissions',
+    '/netwerk/base',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')

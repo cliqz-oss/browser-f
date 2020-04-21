@@ -173,7 +173,9 @@
 
 #include "mozilla/Array.h"
 #include "mozilla/Maybe.h"
-#include "mozilla/TypeTraits.h"
+
+#include <type_traits>
+#include <utility>
 
 #include "jspubtd.h"
 
@@ -208,7 +210,7 @@ class SourceParseContext : public ParseContext {
                      Directives* newDirectives)
       : ParseContext(prs->cx_, prs->pc_, sc, prs->tokenStream,
                      prs->getCompilationInfo(), newDirectives,
-                     mozilla::IsSame<ParseHandler, FullParseHandler>::value) {}
+                     std::is_same_v<ParseHandler, FullParseHandler>) {}
 };
 
 enum VarContext { HoistVars, DontHoistVars };
@@ -256,8 +258,8 @@ class MOZ_STACK_CLASS ParserSharedBase : private JS::AutoGCRooter {
   // Information for parsing with a lifetime longer than the parser itself.
   CompilationInfo& compilationInfo_;
 
-  // list of parsed objects and BigInts for GC tracing
-  TraceListNode* traceListHead_;
+  // List of parsed functions for GC tracing.
+  FunctionBox* traceListHead_;
 
   // innermost parse context (stack-allocated)
   ParseContext* pc_;
@@ -277,21 +279,8 @@ class MOZ_STACK_CLASS ParserSharedBase : private JS::AutoGCRooter {
                                               JS::AutoGCRooter* parser);
 #endif  // JS_BUILD_BINAST
 
- private:
-  // Create a new traceable node and store it into the trace list.
-  template <typename BoxT, typename ArgT>
-  BoxT* newTraceListNode(ArgT* arg);
-
-  void cleanupTraceList();
-
  public:
   CompilationInfo& getCompilationInfo() { return compilationInfo_; }
-
-  // Create a new JSObject and store it into the trace list.
-  ObjectBox* newObjectBox(JSObject* obj);
-
-  // Create a new BigInt and store it into the trace list.
-  BigIntBox* newBigIntBox(BigInt* val);
 };
 
 class MOZ_STACK_CLASS ParserBase : public ParserSharedBase,
@@ -382,12 +371,6 @@ class MOZ_STACK_CLASS ParserBase : public ParserSharedBase,
   using Base::errorWithNotes;
   using Base::errorWithNotesAt;
   using Base::errorWithNotesNoOffset;
-  using Base::extraWarning;
-  using Base::extraWarningAt;
-  using Base::extraWarningNoOffset;
-  using Base::extraWarningWithNotes;
-  using Base::extraWarningWithNotesAt;
-  using Base::extraWarningWithNotesNoOffset;
   using Base::strictModeError;
   using Base::strictModeErrorAt;
   using Base::strictModeErrorNoOffset;
@@ -422,7 +405,7 @@ class MOZ_STACK_CLASS ParserBase : public ParserSharedBase,
   class Mark {
     friend class ParserBase;
     LifoAlloc::Mark mark;
-    TraceListNode* traceListHead;
+    FunctionBox* traceListHead;
   };
   Mark mark() const {
     Mark m;
@@ -468,11 +451,6 @@ class MOZ_STACK_CLASS ParserBase : public ParserSharedBase,
   MOZ_MUST_USE bool setSourceMapInfo();
 
   void setFunctionEndFromCurrentToken(FunctionBox* funbox) const;
-};
-
-enum FunctionCallBehavior {
-  PermitAssignmentToFunctionCalls,
-  ForbidAssignmentToFunctionCalls
 };
 
 template <class ParseHandler>
@@ -525,14 +503,9 @@ class MOZ_STACK_CLASS PerHandlerParser : public ParserBase {
                    GeneralParser<SyntaxParseHandler, Unit>* syntaxParser,
                    BaseScript* lazyOuterFunction,
                    ScriptSourceObject* sourceObject)
-      : PerHandlerParser(
-            cx, options, foldConstants, compilationInfo, lazyOuterFunction,
-            sourceObject,
-            // JSOPTION_EXTRA_WARNINGS adds extra warnings not
-            // generated when functions are parsed lazily.
-            // ("use strict" doesn't inhibit lazy parsing.)
-            static_cast<void*>(options.extraWarningsOption ? nullptr
-                                                           : syntaxParser)) {}
+      : PerHandlerParser(cx, options, foldConstants, compilationInfo,
+                         lazyOuterFunction, sourceObject,
+                         static_cast<void*>(syntaxParser)) {}
 
   static typename ParseHandler::NullNode null() { return ParseHandler::null(); }
 
@@ -544,9 +517,8 @@ class MOZ_STACK_CLASS PerHandlerParser : public ParserBase {
                                                  Node destruct);
 
   bool noteUsedName(HandlePropertyName name) {
-    // If the we are delazifying, the LazyScript already has all the
-    // closed-over info for bindings and there's no need to track used
-    // names.
+    // If the we are delazifying, the BaseScript already has all the closed-over
+    // info for bindings and there's no need to track used names.
     if (handler_.canSkipLazyClosedOverBindings()) {
       return true;
     }
@@ -607,10 +579,6 @@ class MOZ_STACK_CLASS PerHandlerParser : public ParserBase {
   inline void clearAbortedSyntaxParse();
 
  public:
-  bool isValidSimpleAssignmentTarget(
-      Node node,
-      FunctionCallBehavior behavior = ForbidAssignmentToFunctionCalls);
-
   NameNodeType newPropertyName(PropertyName* key, const TokenPos& pos) {
     return handler_.newPropertyName(key, pos);
   }
@@ -639,12 +607,6 @@ class MOZ_STACK_CLASS PerHandlerParser : public ParserBase {
   using Base::errorWithNotes;
   using Base::errorWithNotesAt;
   using Base::errorWithNotesNoOffset;
-  using Base::extraWarning;
-  using Base::extraWarningAt;
-  using Base::extraWarningNoOffset;
-  using Base::extraWarningWithNotes;
-  using Base::extraWarningWithNotesAt;
-  using Base::extraWarningWithNotesNoOffset;
   using Base::strictModeError;
   using Base::strictModeErrorAt;
   using Base::strictModeErrorNoOffset;
@@ -796,12 +758,6 @@ class MOZ_STACK_CLASS GeneralParser : public PerHandlerParser<ParseHandler> {
   using Base::errorWithNotes;
   using Base::errorWithNotesAt;
   using Base::errorWithNotesNoOffset;
-  using Base::extraWarning;
-  using Base::extraWarningAt;
-  using Base::extraWarningNoOffset;
-  using Base::extraWarningWithNotes;
-  using Base::extraWarningWithNotesAt;
-  using Base::extraWarningWithNotesNoOffset;
   using Base::strictModeError;
   using Base::strictModeErrorAt;
   using Base::strictModeErrorNoOffset;
@@ -819,7 +775,6 @@ class MOZ_STACK_CLASS GeneralParser : public PerHandlerParser<ParseHandler> {
   using Base::anyChars;
   using Base::cx_;
   using Base::handler_;
-  using Base::isValidSimpleAssignmentTarget;
   using Base::pc_;
   using Base::usedNames_;
 
@@ -927,10 +882,6 @@ class MOZ_STACK_CLASS GeneralParser : public PerHandlerParser<ParseHandler> {
     // If there is a pending error, report it and return false, otherwise
     // return true.
     MOZ_MUST_USE bool checkForError(ErrorKind kind);
-
-    // If there is a pending warning, report it and return either false or
-    // true depending on the werror option, otherwise return true.
-    MOZ_MUST_USE bool checkForWarning(ErrorKind kind);
 
     // Transfer an existing error to another instance.
     void transferErrorTo(ErrorKind kind, PossibleError* other);
@@ -1379,10 +1330,6 @@ class MOZ_STACK_CLASS GeneralParser : public PerHandlerParser<ParseHandler> {
                                      bool disallowDuplicateParams,
                                      bool* duplicatedParam);
 
-  bool checkLexicalDeclarationDirectlyWithinBlock(ParseContext::Statement& stmt,
-                                                  DeclarationKind kind,
-                                                  TokenPos pos);
-
   enum PropertyNameContext {
     PropertyNameInLiteral,
     PropertyNameInPattern,
@@ -1541,12 +1488,6 @@ class MOZ_STACK_CLASS Parser<SyntaxParseHandler, Unit> final
   using Base::errorWithNotes;
   using Base::errorWithNotesAt;
   using Base::errorWithNotesNoOffset;
-  using Base::extraWarning;
-  using Base::extraWarningAt;
-  using Base::extraWarningNoOffset;
-  using Base::extraWarningWithNotes;
-  using Base::extraWarningWithNotesAt;
-  using Base::extraWarningWithNotesNoOffset;
   using Base::strictModeError;
   using Base::strictModeErrorAt;
   using Base::strictModeErrorNoOffset;
@@ -1689,12 +1630,6 @@ class MOZ_STACK_CLASS Parser<FullParseHandler, Unit> final
   using Base::errorWithNotes;
   using Base::errorWithNotesAt;
   using Base::errorWithNotesNoOffset;
-  using Base::extraWarning;
-  using Base::extraWarningAt;
-  using Base::extraWarningNoOffset;
-  using Base::extraWarningWithNotes;
-  using Base::extraWarningWithNotesAt;
-  using Base::extraWarningWithNotesNoOffset;
   using Base::strictModeError;
   using Base::strictModeErrorAt;
   using Base::strictModeErrorNoOffset;
@@ -1856,11 +1791,9 @@ ParserAnyCharsAccess<Parser>::anyChars(const GeneralTokenStreamChars* ts) {
 
   auto tssAddr = reinterpret_cast<uintptr_t>(tss);
 
-  using ActualTokenStreamType =
-      decltype(static_cast<Parser*>(nullptr)->tokenStream);
-  static_assert(
-      mozilla::IsSame<ActualTokenStreamType, TokenStreamSpecific>::value,
-      "Parser::tokenStream must have type TokenStreamSpecific");
+  using ActualTokenStreamType = decltype(std::declval<Parser>().tokenStream);
+  static_assert(std::is_same_v<ActualTokenStreamType, TokenStreamSpecific>,
+                "Parser::tokenStream must have type TokenStreamSpecific");
 
   uintptr_t parserAddr = tssAddr - offsetof(Parser, tokenStream);
 
@@ -1919,10 +1852,11 @@ class MOZ_STACK_CLASS AutoInParametersOfAsyncFunction {
   }
 };
 
-template <typename Scope>
-extern typename Scope::Data* NewEmptyBindingData(JSContext* cx,
-                                                 LifoAlloc& alloc,
-                                                 uint32_t numBindings);
+GlobalScope::Data* NewEmptyGlobalScopeData(JSContext* cx, LifoAlloc& alloc,
+                                           uint32_t numBindings);
+
+LexicalScope::Data* NewEmptyLexicalScopeData(JSContext* cx, LifoAlloc& alloc,
+                                             uint32_t numBindings);
 
 mozilla::Maybe<GlobalScope::Data*> NewGlobalScopeData(
     JSContext* context, ParseContext::Scope& scope, LifoAlloc& alloc,

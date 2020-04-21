@@ -15,6 +15,7 @@
 #include "nsTArray.h"
 #include "base/message_loop.h"  // for MessageLoop
 #include "base/task.h"          // for NewRunnableMethod, etc
+#include "mozilla/StaticPrefs_widget.h"
 
 #include <sys/mman.h>
 #include <fcntl.h>
@@ -444,7 +445,7 @@ WindowBackBufferDMABuf::WindowBackBufferDMABuf(
        (void*)this, aWidth, aHeight));
 }
 
-WindowBackBufferDMABuf::~WindowBackBufferDMABuf() {}
+WindowBackBufferDMABuf::~WindowBackBufferDMABuf() = default;
 
 already_AddRefed<gfx::DrawTarget> WindowBackBufferDMABuf::Lock() {
   LOGWAYLAND(
@@ -522,14 +523,12 @@ WindowSurfaceWayland::WindowSurfaceWayland(nsWindow* aWindow)
       mBufferPendingCommit(false),
       mBufferCommitAllowed(false),
       mBufferNeedsClear(false),
+      mSmoothRendering(StaticPrefs::widget_wayland_smooth_rendering()),
       mIsMainThread(NS_IsMainThread()) {
   for (int i = 0; i < BACK_BUFFER_NUM; i++) {
     mShmBackupBuffer[i] = nullptr;
     mDMABackupBuffer[i] = nullptr;
   }
-  mRenderingCacheMode = static_cast<RenderingCacheMode>(
-      mWaylandDisplay->GetRenderingCacheModePref());
-  LOGWAYLAND(("WindowSurfaceWayland Cache mode %d\n", mRenderingCacheMode));
 }
 
 WindowSurfaceWayland::~WindowSurfaceWayland() {
@@ -650,14 +649,14 @@ WindowBackBuffer* WindowSurfaceWayland::SetNewWaylandBuffer(
   LOGWAYLAND(
       ("WindowSurfaceWayland::NewWaylandBuffer [%p] Requested buffer [%d "
        "x %d] DMABuf %d\n",
-       (void*)this, mBufferScreenRect.width, mBufferScreenRect.height,
+       (void*)this, mWLBufferRect.width, mWLBufferRect.height,
        aUseDMABufBackend));
 
   mWaylandBuffer = WaylandBufferFindAvailable(
-      mBufferScreenRect.width, mBufferScreenRect.height, aUseDMABufBackend);
+      mWLBufferRect.width, mWLBufferRect.height, aUseDMABufBackend);
   if (!mWaylandBuffer) {
     mWaylandBuffer = CreateWaylandBuffer(
-        mBufferScreenRect.width, mBufferScreenRect.height, aUseDMABufBackend);
+        mWLBufferRect.width, mWLBufferRect.height, aUseDMABufBackend);
   }
 
   return mWaylandBuffer;
@@ -667,7 +666,7 @@ WindowBackBuffer* WindowSurfaceWayland::GetWaylandBufferRecent() {
   LOGWAYLAND(
       ("WindowSurfaceWayland::GetWaylandBufferRecent [%p] Requested buffer [%d "
        "x %d]\n",
-       (void*)this, mBufferScreenRect.width, mBufferScreenRect.height));
+       (void*)this, mWLBufferRect.width, mWLBufferRect.height));
 
   // There's no buffer created yet, create a new one for partial screen updates.
   if (!mWaylandBuffer) {
@@ -679,10 +678,10 @@ WindowBackBuffer* WindowSurfaceWayland::GetWaylandBufferRecent() {
     return nullptr;
   }
 
-  if (mWaylandBuffer->IsMatchingSize(mBufferScreenRect.width,
-                                     mBufferScreenRect.height)) {
+  if (mWaylandBuffer->IsMatchingSize(mWLBufferRect.width,
+                                     mWLBufferRect.height)) {
     LOGWAYLAND(("    Size is ok, use the buffer [%d x %d]\n",
-                mBufferScreenRect.width, mBufferScreenRect.height));
+                mWLBufferRect.width, mWLBufferRect.height));
     return mWaylandBuffer;
   }
 
@@ -697,7 +696,7 @@ WindowBackBuffer* WindowSurfaceWayland::GetWaylandBufferWithSwitch() {
   LOGWAYLAND(
       ("WindowSurfaceWayland::GetWaylandBufferWithSwitch [%p] Requested buffer "
        "[%d x %d]\n",
-       (void*)this, mBufferScreenRect.width, mBufferScreenRect.height));
+       (void*)this, mWLBufferRect.width, mWLBufferRect.height));
 
   // There's no buffer created yet or actual buffer is attached, get a new one.
   // Use DMABuf for fullscreen updates only.
@@ -706,18 +705,22 @@ WindowBackBuffer* WindowSurfaceWayland::GetWaylandBufferWithSwitch() {
   }
 
   // Reuse existing buffer
-  LOGWAYLAND(("    Reuse buffer with resize [%d x %d]\n",
-              mBufferScreenRect.width, mBufferScreenRect.height));
+  LOGWAYLAND(("    Reuse buffer with resize [%d x %d]\n", mWLBufferRect.width,
+              mWLBufferRect.height));
 
   // OOM here, just return null to skip this frame.
-  if (!mWaylandBuffer->Resize(mBufferScreenRect.width,
-                              mBufferScreenRect.height)) {
+  if (!mWaylandBuffer->Resize(mWLBufferRect.width, mWLBufferRect.height)) {
     return nullptr;
   }
   return mWaylandBuffer;
 }
 
 already_AddRefed<gfx::DrawTarget> WindowSurfaceWayland::LockWaylandBuffer() {
+  // Allocated wayland buffer can't be bigger than mozilla widget size.
+  LayoutDeviceIntRegion region;
+  region.And(mLockedScreenRect, mWindow->GetMozContainerSize());
+  mWLBufferRect = LayoutDeviceIntRect(region.GetBounds());
+
   // mCanSwitchWaylandBuffer set means we're getting buffer for fullscreen
   // update. We can use DMABuf and we can get a new buffer for drawing.
   WindowBackBuffer* buffer = mCanSwitchWaylandBuffer
@@ -858,12 +861,12 @@ already_AddRefed<gfx::DrawTarget> WindowSurfaceWayland::Lock(
   LOGWAYLAND(("   windowRedraw = %d\n", windowRedraw));
 
 #if MOZ_LOGGING
-  if (!(mBufferScreenRect == lockedScreenRect)) {
+  if (!(mLockedScreenRect == lockedScreenRect)) {
     LOGWAYLAND(("   screen size changed\n"));
   }
 #endif
 
-  if (!(mBufferScreenRect == lockedScreenRect)) {
+  if (!(mLockedScreenRect == lockedScreenRect)) {
     // Screen (window) size changed and we still have some painting pending
     // for the last window size. That can happen when window is resized.
     // We can't commit them any more as they're for former window size, so
@@ -878,17 +881,22 @@ already_AddRefed<gfx::DrawTarget> WindowSurfaceWayland::Lock(
       // as it produces artifacts.
       return nullptr;
     }
-    mBufferScreenRect = lockedScreenRect;
+    mLockedScreenRect = lockedScreenRect;
   }
 
-  if (mRenderingCacheMode == CACHE_ALL) {
-    mDrawToWaylandBufferDirectly = windowRedraw;
-  } else if (mRenderingCacheMode == CACHE_MISSING) {
+  // We can draw directly only when widget has the same size as wl_buffer
+  LayoutDeviceIntRect size = mWindow->GetMozContainerSize();
+  mDrawToWaylandBufferDirectly = (size.width >= mLockedScreenRect.width &&
+                                  size.height >= mLockedScreenRect.height);
+
+  // We can draw directly only when we redraw significant part of the window
+  // to avoid flickering or do only fullscreen updates in smooth mode.
+  if (mDrawToWaylandBufferDirectly) {
     mDrawToWaylandBufferDirectly =
-        windowRedraw || (lockSize.width * 3 > lockedScreenRect.width &&
-                         lockSize.height * 3 > lockedScreenRect.height);
-  } else {
-    mDrawToWaylandBufferDirectly = true;
+        mSmoothRendering
+            ? windowRedraw
+            : (windowRedraw || (lockSize.width * 2 > lockedScreenRect.width &&
+                                lockSize.height * 2 > lockedScreenRect.height));
   }
 
   if (mDrawToWaylandBufferDirectly) {
@@ -901,11 +909,6 @@ already_AddRefed<gfx::DrawTarget> WindowSurfaceWayland::Lock(
       mBufferPendingCommit = true;
       return dt.forget();
     }
-  }
-
-  // Any caching is disabled and we don't have any back buffer available.
-  if (mRenderingCacheMode == CACHE_NONE) {
-    return nullptr;
   }
 
   // We do indirect drawing because there isn't any front buffer available.
@@ -1151,7 +1154,7 @@ void WindowSurfaceWayland::Commit(const LayoutDeviceIntRegion& aInvalidRegion) {
         ("WindowSurfaceWayland::Commit [%p] damage size [%d, %d] -> [%d x %d]"
          "screenSize [%d x %d]\n",
          (void*)this, lockSize.x, lockSize.y, lockSize.width, lockSize.height,
-         mBufferScreenRect.width, mBufferScreenRect.height));
+         mLockedScreenRect.width, mLockedScreenRect.height));
     LOGWAYLAND(("    mDrawToWaylandBufferDirectly = %d\n",
                 mDrawToWaylandBufferDirectly));
   }

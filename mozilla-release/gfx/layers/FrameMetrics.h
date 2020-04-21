@@ -217,7 +217,7 @@ struct FrameMetrics {
    * Calculate the composition bounds of this frame in the CSS pixels of
    * the content surrounding the scroll frame. (This can be thought of as
    * "parent CSS" pixels).
-   * Note that it does not make to ask for the composition bounds in the
+   * Note that it does not make sense to ask for the composition bounds in the
    * CSS pixels of the scrolled content (that is, regular CSS pixels),
    * because the origin of the composition bounds is not meaningful in that
    * coordinate space. (The size is, use CalculateCompositedSizeInCssPixels()
@@ -554,7 +554,9 @@ struct FrameMetrics {
   // change during zooming).
   //
   // The origin of the composition bounds is relative to the layer tree origin.
-  // Unlike the scroll port's origin, it does not change during scrolling.
+  // Unlike the scroll port's origin, it does not change during scrolling of
+  // the scrollable layer to which it is associated. However, it may change due
+  // to scrolling of ancestor layers.
   //
   // This value is provided by Gecko at layout/paint time.
   ParentLayerRect mCompositionBounds;
@@ -924,10 +926,10 @@ struct ScrollMetadata {
   ViewID GetScrollParentId() const { return mScrollParentId; }
 
   void SetScrollParentId(ViewID aParentId) { mScrollParentId = aParentId; }
-  const gfx::Color& GetBackgroundColor() const { return mBackgroundColor; }
-  void SetBackgroundColor(const gfx::Color& aBackgroundColor) {
-    mBackgroundColor = aBackgroundColor;
+  const gfx::DeviceColor& GetBackgroundColor() const {
+    return mBackgroundColor;
   }
+  void SetBackgroundColor(const gfx::sRGBColor& aBackgroundColor);
   const nsCString& GetContentDescription() const { return mContentDescription; }
   void SetContentDescription(const nsCString& aContentDescription) {
     mContentDescription = aContentDescription;
@@ -1005,7 +1007,7 @@ struct ScrollMetadata {
   ViewID mScrollParentId;
 
   // The background color to use when overscrolling.
-  gfx::Color mBackgroundColor;
+  gfx::DeviceColor mBackgroundColor;
 
   // A description of the content element corresponding to this frame.
   // This is empty unless this is a scrollable layer and the

@@ -29,8 +29,8 @@
 #include "nsHTMLTags.h"
 #include "nsIDOMGlobalPropertyInitializer.h"
 #include "nsINode.h"
+#include "nsIOService.h"
 #include "nsIPrincipal.h"
-#include "nsIURIFixup.h"
 #include "nsIXPConnect.h"
 #include "nsUTF8Utils.h"
 #include "WorkerPrivate.h"
@@ -142,34 +142,24 @@ void binding_detail::ThrowErrorMessage(JSContext* aCx,
   // end.  See also the behavior of
   // TErrorResult::SetPendingExceptionWithMessage, which this is mirroring for
   // exceptions that are thrown directly, not via an ErrorResult.
-  //
-  // XXXbz Once bug 1619087 is fixed, we can avoid the conversions to UTF-16
-  // here.
-  const char16_t* args[JS::MaxNumErrorArguments + 1];
+  const char* args[JS::MaxNumErrorArguments + 1];
   size_t argCount = GetErrorArgCount(static_cast<ErrNum>(aErrorNumber));
   MOZ_ASSERT(argCount > 0, "We have a context arg!");
-  // We statically assert that all these arg counts are smaller than
-  // JS::MaxNumErrorArguments already.
-  nsTArray<nsString> argHolders(argCount);
+  nsAutoCString firstArg;
 
   for (size_t i = 0; i < argCount; ++i) {
-    const char* arg = va_arg(ap, const char*);
+    args[i] = va_arg(ap, const char*);
     if (i == 0) {
-      if (!arg || !*arg) {
-        // Append an empty string
-        argHolders.AppendElement();
-      } else {
-        argHolders.AppendElement(NS_ConvertUTF8toUTF16(arg));
-        argHolders[0].AppendLiteral(": ");
+      if (args[0] && *args[0]) {
+        firstArg.Append(args[0]);
+        firstArg.AppendLiteral(": ");
       }
-    } else {
-      argHolders.AppendElement(NS_ConvertUTF8toUTF16(arg));
+      args[0] = firstArg.get();
     }
-    args[i] = argHolders[i].get();
   }
 
-  JS_ReportErrorNumberUCArray(aCx, GetErrorMessage, nullptr, aErrorNumber,
-                              args);
+  JS_ReportErrorNumberUTF8Array(aCx, GetErrorMessage, nullptr, aErrorNumber,
+                                args);
   va_end(ap);
 }
 
@@ -1764,11 +1754,11 @@ static bool ResolvePrototypeOrConstructor(
 bool XrayDefineProperty(JSContext* cx, JS::Handle<JSObject*> wrapper,
                         JS::Handle<JSObject*> obj, JS::Handle<jsid> id,
                         JS::Handle<JS::PropertyDescriptor> desc,
-                        JS::ObjectOpResult& result, bool* defined) {
+                        JS::ObjectOpResult& result, bool* done) {
   if (!js::IsProxy(obj)) return true;
 
   const DOMProxyHandler* handler = GetDOMProxyHandler(obj);
-  return handler->defineProperty(cx, wrapper, id, desc, result, defined);
+  return handler->defineProperty(cx, wrapper, id, desc, result, done);
 }
 
 template <typename SpecType>
@@ -3984,20 +3974,9 @@ void ReportDeprecation(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
   // Anonymize the URL.
   // Strip the URL of any possible username/password and make it ready to be
   // presented in the UI.
-  nsCOMPtr<nsIURIFixup> urifixup = services::GetURIFixup();
-  if (NS_WARN_IF(!urifixup)) {
-    return;
-  }
-
-  nsCOMPtr<nsIURI> exposableURI;
-  nsresult rv =
-      urifixup->CreateExposableURI(aURI, getter_AddRefs(exposableURI));
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
+  nsCOMPtr<nsIURI> exposableURI = net::nsIOService::CreateExposableURI(aURI);
   nsAutoCString spec;
-  rv = exposableURI->GetSpec(spec);
+  nsresult rv = exposableURI->GetSpec(spec);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }

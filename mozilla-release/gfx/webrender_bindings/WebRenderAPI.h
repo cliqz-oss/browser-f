@@ -25,6 +25,7 @@
 #include "Units.h"
 
 class nsDisplayItem;
+class nsPaintedDisplayItem;
 class nsDisplayTransform;
 
 #undef None
@@ -39,6 +40,7 @@ class CompositorWidget;
 
 namespace layers {
 class CompositorBridgeParent;
+class DisplayItemCache;
 class WebRenderBridgeParent;
 class RenderRootStateManager;
 struct RenderRootDisplayListData;
@@ -91,7 +93,7 @@ class TransactionBuilder final {
 
   void RemovePipeline(PipelineId aPipelineId);
 
-  void SetDisplayList(gfx::Color aBgColor, Epoch aEpoch,
+  void SetDisplayList(const gfx::DeviceColor& aBgColor, Epoch aEpoch,
                       const wr::LayoutSize& aViewportSize,
                       wr::WrPipelineId pipeline_id,
                       const wr::LayoutSize& content_size,
@@ -233,9 +235,14 @@ class WebRenderAPI final {
 
   wr::WindowId GetId() const { return mId; }
 
+  /// Do a non-blocking hit-testing query on a shared hit-testing information.
   bool HitTest(const wr::WorldPoint& aPoint, wr::WrPipelineId& aOutPipelineId,
                layers::ScrollableLayerGuid::ViewID& aOutScrollId,
                gfx::CompositorHitTestInfo& aOutHitInfo, SideBits& aOutSideBits);
+
+  /// Do a non-blocking hit-testing query on a shared version of the hit testing
+  /// information.
+  ///
 
   void SendTransaction(TransactionBuilder& aTxn);
 
@@ -395,6 +402,7 @@ class DisplayListBuilder final {
  public:
   DisplayListBuilder(wr::PipelineId aId, const wr::LayoutSize& aContentSize,
                      size_t aCapacity = 0,
+                     layers::DisplayItemCache* aCache = nullptr,
                      RenderRoot aRenderRoot = RenderRoot::Default);
   DisplayListBuilder(DisplayListBuilder&&) = default;
 
@@ -416,20 +424,11 @@ class DisplayListBuilder final {
   bool HasSubBuilder(RenderRoot aRenderRoot);
   DisplayListBuilder& CreateSubBuilder(const wr::LayoutSize& aContentSize,
                                        size_t aCapacity,
+                                       layers::DisplayItemCache* aCache,
                                        RenderRoot aRenderRoot);
   DisplayListBuilder& SubBuilder(RenderRoot aRenderRoot);
 
-  bool GetSendSubBuilderDisplayList(RenderRoot aRenderRoot) {
-    if (aRenderRoot == RenderRoot::Default) {
-      return true;
-    }
-    return mSubBuilders[aRenderRoot] &&
-           mSubBuilders[aRenderRoot]->mSendSubBuilderDisplayList;
-  }
-
-  void SetSendSubBuilderDisplayList(RenderRoot aRenderRoot) {
-    mSubBuilders[aRenderRoot]->mSendSubBuilderDisplayList = true;
-  }
+  bool GetSendSubBuilderDisplayList(RenderRoot aRenderRoot) { return true; }
 
   Maybe<wr::WrSpatialId> PushStackingContext(
       const StackingContextParams& aParams, const wr::LayoutRect& aBounds,
@@ -511,7 +510,8 @@ class DisplayListBuilder final {
   void PushImage(const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
                  bool aIsBackfaceVisible, wr::ImageRendering aFilter,
                  wr::ImageKey aImage, bool aPremultipliedAlpha = true,
-                 const wr::ColorF& aColor = wr::ColorF{1.0f, 1.0f, 1.0f, 1.0f});
+                 const wr::ColorF& aColor = wr::ColorF{1.0f, 1.0f, 1.0f, 1.0f},
+                 bool aPreferCompositorSurface = false);
 
   void PushRepeatingImage(
       const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
@@ -525,19 +525,22 @@ class DisplayListBuilder final {
       bool aIsBackfaceVisible, wr::ImageKey aImageChannel0,
       wr::ImageKey aImageChannel1, wr::ImageKey aImageChannel2,
       wr::WrColorDepth aColorDepth, wr::WrYuvColorSpace aColorSpace,
-      wr::WrColorRange aColorRange, wr::ImageRendering aFilter);
+      wr::WrColorRange aColorRange, wr::ImageRendering aFilter,
+      bool aPreferCompositorSurface = false);
 
   void PushNV12Image(const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
                      bool aIsBackfaceVisible, wr::ImageKey aImageChannel0,
                      wr::ImageKey aImageChannel1, wr::WrColorDepth aColorDepth,
                      wr::WrYuvColorSpace aColorSpace,
-                     wr::WrColorRange aColorRange, wr::ImageRendering aFilter);
+                     wr::WrColorRange aColorRange, wr::ImageRendering aFilter,
+                     bool aPreferCompositorSurface = false);
 
   void PushYCbCrInterleavedImage(
       const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
       bool aIsBackfaceVisible, wr::ImageKey aImageChannel0,
       wr::WrColorDepth aColorDepth, wr::WrYuvColorSpace aColorSpace,
-      wr::WrColorRange aColorRange, wr::ImageRendering aFilter);
+      wr::WrColorRange aColorRange, wr::ImageRendering aFilter,
+      bool aPreferCompositorSurface = false);
 
   void PushIFrame(const wr::LayoutRect& aBounds, bool aIsBackfaceVisible,
                   wr::PipelineId aPipeline, bool aIgnoreMissingPipeline);
@@ -602,10 +605,30 @@ class DisplayListBuilder final {
                      const wr::BorderRadius& aBorderRadius,
                      const wr::BoxShadowClipMode& aClipMode);
 
-  void StartCachedItem(wr::ItemKey aKey);
-  bool EndCachedItem(wr::ItemKey aKey);
-  void ReuseItem(wr::ItemKey aKey);
-  void SetDisplayListCacheSize(const size_t aCacheSize);
+  /**
+   * Notifies the DisplayListBuilder that it can group together WR display items
+   * that are pushed until |CancelGroup()| or |FinishGroup()| call.
+   */
+  void StartGroup(nsPaintedDisplayItem* aItem);
+
+  /**
+   * Cancels grouping of the display items and discards all the display items
+   * pushed between the |StartGroup()| and |CancelGroup()| calls.
+   */
+  void CancelGroup();
+
+  /**
+   * Finishes the display item group. The group is stored in WebRender backend,
+   * and can be reused with |ReuseItem()|, if the Gecko display item is reused.
+   */
+  void FinishGroup();
+
+  /**
+   * Try to reuse the previously created WebRender display items for the given
+   * Gecko display item |aItem|.
+   * Returns true if the items were reused, otherwise returns false.
+   */
+  bool ReuseItem(nsPaintedDisplayItem* aItem);
 
   uint64_t CurrentClipChainId() const {
     return mCurrentSpaceAndClipChain.clip_chain;
@@ -704,13 +727,14 @@ class DisplayListBuilder final {
 
   FixedPosScrollTargetTracker* mActiveFixedPosTracker;
 
-  NonDefaultRenderRootArray<UniquePtr<DisplayListBuilder>> mSubBuilders;
   wr::PipelineId mPipelineId;
   wr::LayoutSize mContentSize;
 
   nsTArray<wr::PipelineId> mRemotePipelineIds;
   RenderRoot mRenderRoot;
-  bool mSendSubBuilderDisplayList;
+
+  layers::DisplayItemCache* mDisplayItemCache;
+  Maybe<uint16_t> mCurrentCacheSlot;
 
   friend class WebRenderAPI;
   friend class SpaceAndClipChainHelper;

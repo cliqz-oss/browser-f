@@ -146,10 +146,15 @@
 @BINPATH@/@DLL_PREFIX@mozavutil@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
 #endif
+<<<<<<< HEAD
 @RESPATH@/browser/blocklist.xml
 #if CQZ_ADULT_DOMAINS_BF
 @RESPATH@/browser/adult-domains.bin
 #endif  ; CQZ_ADULT_DOMAINS_BF
+||||||| merged common ancestors
+@RESPATH@/browser/blocklist.xml
+=======
+>>>>>>> origin/upstream-betas
 #ifdef XP_WIN
 #ifdef _AMD64_
 @BINPATH@/@DLL_PREFIX@qipcap64@DLL_SUFFIX@
@@ -408,6 +413,11 @@ bin/libfreebl_64int_3.so
 #ifdef MOZ_MAINTENANCE_SERVICE
 @BINPATH@/maintenanceservice.exe
 @BINPATH@/maintenanceservice_installer.exe
+#endif
+
+; [Background Update Agent]
+#ifdef MOZ_UPDATE_AGENT
+@BINPATH@/updateagent@BIN_SUFFIX@
 #endif
 
 ; [Crash Reporter]

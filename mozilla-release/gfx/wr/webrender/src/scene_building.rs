@@ -1194,9 +1194,9 @@ impl<'a> SceneBuilder<'a> {
                 );
             }
             DisplayItem::Rectangle(ref info) => {
-                let (layout, _, clip_and_scroll) = self.process_common_properties(
+                let (layout, _, clip_and_scroll) = self.process_common_properties_with_bounds(
                     &info.common,
-                    None,
+                    &info.bounds,
                     apply_pipeline_clip,
                 );
 
@@ -1220,9 +1220,9 @@ impl<'a> SceneBuilder<'a> {
                 );
             }
             DisplayItem::ClearRectangle(ref info) => {
-                let (layout, _, clip_and_scroll) = self.process_common_properties(
+                let (layout, _, clip_and_scroll) = self.process_common_properties_with_bounds(
                     &info.common,
-                    None,
+                    &info.bounds,
                     apply_pipeline_clip,
                 );
 
@@ -1511,8 +1511,9 @@ impl<'a> SceneBuilder<'a> {
                 unreachable!("Should have returned in parent method.")
             }
 
-            DisplayItem::ReuseItem(..) => {
-                unreachable!("Iterator logic error")
+            DisplayItem::ReuseItems(key) |
+            DisplayItem::RetainedItems(key) => {
+                unreachable!("Iterator logic error: {:?}", key);
             }
 
             DisplayItem::PushShadow(info) => {
@@ -2567,8 +2568,7 @@ impl<'a> SceneBuilder<'a> {
                         // blur radius is 0, the code in Picture::prepare_for_render will
                         // detect this and mark the picture to be drawn directly into the
                         // parent picture, which avoids an intermediate surface and blur.
-                        let mut blur_filter = Filter::Blur(std_deviation);
-                        blur_filter.sanitize();
+                        let blur_filter = Filter::Blur(std_deviation);
                         let composite_mode = PictureCompositeMode::Filter(blur_filter);
                         let composite_mode_key = Some(composite_mode.clone()).into();
 
@@ -3475,8 +3475,6 @@ impl<'a> SceneBuilder<'a> {
         // For each filter, create a new image with that composite mode.
         let mut current_filter_data_index = 0;
         for filter in &mut filter_ops {
-            filter.sanitize();
-
             let composite_mode = Some(match *filter {
                 Filter::ComponentTransfer => {
                     let filter_data =

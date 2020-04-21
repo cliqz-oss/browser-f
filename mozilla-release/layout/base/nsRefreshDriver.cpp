@@ -178,7 +178,7 @@ namespace mozilla {
  */
 class RefreshDriverTimer {
  public:
-  RefreshDriverTimer() {}
+  RefreshDriverTimer() = default;
 
   NS_INLINE_DECL_REFCOUNTING(RefreshDriverTimer)
 
@@ -467,6 +467,9 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
     mVsyncRate = mVsyncChild->GetVsyncRate();
   }
 
+  // Constructor for when we have a local vsync source. As it is local, we do
+  // not have to worry about it being re-inited by gfxPlatform on frame rate
+  // change on the global source.
   explicit VsyncRefreshDriverTimer(const RefPtr<gfx::VsyncSource>& aVsyncSource)
       : mVsyncChild(nullptr) {
     MOZ_ASSERT(XRE_IsParentProcess());
@@ -545,7 +548,7 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
       }
 
      private:
-      ~ParentProcessVsyncNotifier() {}
+      ~ParentProcessVsyncNotifier() = default;
       RefPtr<RefreshDriverVsyncObserver> mObserver;
       static mozilla::Atomic<bool> sHighPriorityEnabled;
     };
@@ -738,7 +741,7 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
       // before use.
       if (mVsyncRefreshDriverTimer) {
         timeForOutsideTick = TimeDuration::FromMilliseconds(
-            mVsyncRefreshDriverTimer->GetTimerRate().ToMilliseconds() / 10.0f);
+            mVsyncRefreshDriverTimer->GetTimerRate().ToMilliseconds() / 100.0f);
         RefPtr<VsyncRefreshDriverTimer> timer = mVsyncRefreshDriverTimer;
         timer->RunRefreshDrivers(aId, aVsyncTimestamp);
         // Note: mVsyncRefreshDriverTimer might be null now.
@@ -825,8 +828,10 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
     Tick(aId, aTimeStamp);
   }
 
-  // Used to hold external vsync sources alive. Must be destroyed *after*
-  // mVsyncDispatcher.
+  // When using local vsync source, we keep a strong ref to it here to ensure
+  // that the weak ref in the vsync dispatcher does not end up dangling.
+  // As this is a local vsync source, it is not affected by gfxPlatform vsync
+  // source reinit.
   RefPtr<gfx::VsyncSource> mVsyncSource;
   RefPtr<RefreshDriverVsyncObserver> mVsyncObserver;
   // Used for parent process.
@@ -1815,12 +1820,13 @@ void nsRefreshDriver::CancelIdleRunnable(nsIRunnable* aRunnable) {
   }
 }
 
-static CallState ReduceAnimations(Document& aDocument, void* aData) {
-  if (aDocument.GetPresContext() &&
-      aDocument.GetPresContext()->EffectCompositor()->NeedsReducing()) {
-    aDocument.GetPresContext()->EffectCompositor()->ReduceAnimations();
+static CallState ReduceAnimations(Document& aDocument) {
+  if (nsPresContext* pc = aDocument.GetPresContext()) {
+    if (pc->EffectCompositor()->NeedsReducing()) {
+      pc->EffectCompositor()->ReduceAnimations();
+    }
   }
-  aDocument.EnumerateSubDocuments(ReduceAnimations, nullptr);
+  aDocument.EnumerateSubDocuments(ReduceAnimations);
   return CallState::Continue;
 }
 
@@ -2000,7 +2006,7 @@ void nsRefreshDriver::Tick(VsyncId aId, TimeStamp aNowTime) {
     // https://drafts.csswg.org/web-animations-1/#update-animations-and-send-events
     if (i == 1) {
       nsAutoMicroTask mt;
-      ReduceAnimations(*mPresContext->Document(), nullptr);
+      ReduceAnimations(*mPresContext->Document());
     }
 
     // Check if running the microtask checkpoint caused the pres context to

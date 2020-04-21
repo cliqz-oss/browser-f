@@ -9,9 +9,7 @@
 #include "mozilla/EventStates.h"  // for EventStates
 #include "mozilla/FlushType.h"    // for enum
 #include "mozilla/MozPromise.h"   // for MozPromise
-#include "mozilla/Pair.h"         // for Pair
-#include "mozilla/Saturate.h"     // for SaturateUint32
-#include "nsAutoPtr.h"            // for member
+#include "mozilla/FunctionRef.h"  // for FunctionRef
 #include "nsCOMArray.h"           // for member
 #include "nsCompatibility.h"      // for member
 #include "nsCOMPtr.h"             // for member
@@ -48,11 +46,11 @@
 #include "nsContentListDeclarations.h"
 #include "nsExpirationTracker.h"
 #include "nsClassHashtable.h"
+#include "nsWindowSizes.h"
 #include "ReferrerInfo.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/CallState.h"
 #include "mozilla/CORSMode.h"
-#include "mozilla/dom/ContentBlockingLog.h"
 #include "mozilla/dom/DispatcherTrait.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
 #include "mozilla/dom/ViewportMetaData.h"
@@ -248,6 +246,7 @@ enum BFCacheStatus {
   HAS_ACTIVE_SPEECH_SYNTHESIS = 1 << 9,  // Status 9
   HAS_USED_VR = 1 << 10,                 // Status 10
   CONTAINS_REMOTE_SUBFRAMES = 1 << 11,   // Status 11
+  NOT_ONLY_TOPLEVEL_IN_BCG = 1 << 12     // Status 12
 };
 
 }  // namespace dom
@@ -296,7 +295,7 @@ class DocHeaderData {
 };
 
 class ExternalResourceMap {
-  typedef CallState (*SubDocEnumFunc)(Document& aDocument, void* aData);
+  using SubDocEnumFunc = FunctionRef<CallState(Document&)>;
 
  public:
   /**
@@ -339,7 +338,7 @@ class ExternalResourceMap {
    * Enumerate the resource documents.  See
    * Document::EnumerateExternalResources.
    */
-  void EnumerateResources(SubDocEnumFunc aCallback, void* aData);
+  void EnumerateResources(SubDocEnumFunc aCallback);
 
   /**
    * Traverse ourselves for cycle-collection
@@ -488,6 +487,12 @@ class Document : public nsINode,
  public:
   typedef dom::ExternalResourceMap::ExternalResourceLoad ExternalResourceLoad;
   typedef dom::ReferrerPolicy ReferrerPolicyEnum;
+  using AdoptedStyleSheetCloneCache =
+      nsRefPtrHashtable<nsPtrHashKey<const StyleSheet>, StyleSheet>;
+
+  // nsINode overrides the new operator for DOM Arena allocation.
+  // to use the default one, we need to bring it back again
+  void* operator new(size_t aSize) { return ::operator new(aSize); }
 
   /**
    * Called when XPCOM shutdown.
@@ -1016,9 +1021,6 @@ class Document : public nsINode,
   void SetIsInitialDocument(bool aIsInitialDocument);
 
   void SetLoadedAsData(bool aLoadedAsData) { mLoadedAsData = aLoadedAsData; }
-  void SetLoadedAsInteractiveData(bool aLoadedAsInteractiveData) {
-    mLoadedAsInteractiveData = aLoadedAsInteractiveData;
-  }
 
   /**
    * Normally we assert if a runnable labeled with one DocGroup touches data
@@ -1422,8 +1424,15 @@ class Document : public nsINode,
   // flag.
   bool StorageAccessSandboxed() const;
 
+  // Helper method that returns true if storage access API is enabled and
+  // the passed flag has storage-access sandbox flag.
+  static bool StorageAccessSandboxed(uint32_t aSandboxFlags);
+
   // Returns the cookie jar settings for this and sub contexts.
   nsICookieJarSettings* CookieJarSettings();
+
+  // Returns whether this document has the storage permission.
+  bool HasStoragePermission() { return mHasStoragePermission; }
 
   // Increments the document generation.
   inline void Changed() { ++mGeneration; }
@@ -2147,9 +2156,7 @@ class Document : public nsINode,
   bool IsHTMLOrXHTML() const { return mType == eHTML || mType == eXHTML; }
   bool IsXMLDocument() const { return !IsHTMLDocument(); }
   bool IsSVGDocument() const { return mType == eSVG; }
-  bool IsUnstyledDocument() {
-    return IsLoadedAsData() || IsLoadedAsInteractiveData();
-  }
+  bool IsUnstyledDocument() { return IsLoadedAsData(); }
   bool LoadsFullXULStyleSheetUpFront() {
     if (IsSVGDocument()) {
       return false;
@@ -2273,8 +2280,8 @@ class Document : public nsINode,
    * enumerating, or CallState::Stop to stop.  This will never get passed a null
    * aDocument.
    */
-  typedef CallState (*SubDocEnumFunc)(Document&, void* aData);
-  void EnumerateSubDocuments(SubDocEnumFunc aCallback, void* aData);
+  using SubDocEnumFunc = FunctionRef<CallState(Document&)>;
+  void EnumerateSubDocuments(SubDocEnumFunc aCallback);
 
   /**
    * Collect all the descendant documents for which |aCalback| returns true.
@@ -2489,8 +2496,6 @@ class Document : public nsINode,
 
   bool IsLoadedAsData() { return mLoadedAsData; }
 
-  bool IsLoadedAsInteractiveData() { return mLoadedAsInteractiveData; }
-
   bool MayStartLayout() { return mMayStartLayout; }
 
   void SetMayStartLayout(bool aMayStartLayout);
@@ -2589,7 +2594,7 @@ class Document : public nsINode,
    * enumerating, or CallState::Stop to stop.  This callback will never get
    * passed a null aDocument.
    */
-  void EnumerateExternalResources(SubDocEnumFunc aCallback, void* aData);
+  void EnumerateExternalResources(SubDocEnumFunc aCallback);
 
   dom::ExternalResourceMap& ExternalResourceMap() {
     return mExternalResourceMap;
@@ -2657,9 +2662,8 @@ class Document : public nsINode,
   void RegisterActivityObserver(nsISupports* aSupports);
   bool UnregisterActivityObserver(nsISupports* aSupports);
   // Enumerate all the observers in mActivityObservers by the aEnumerator.
-  typedef void (*ActivityObserverEnumerator)(nsISupports*, void*);
-  void EnumerateActivityObservers(ActivityObserverEnumerator aEnumerator,
-                                  void* aData);
+  using ActivityObserverEnumerator = FunctionRef<void(nsISupports*)>;
+  void EnumerateActivityObservers(ActivityObserverEnumerator aEnumerator);
 
   // Indicates whether mAnimationController has been (lazily) initialized.
   // If this returns true, we're promising that GetAnimationController()
@@ -2807,7 +2811,7 @@ class Document : public nsINode,
    * Note that static documents are also "loaded as data" (if this method
    * returns true, IsLoadedAsData() will also return true).
    */
-  bool IsStaticDocument() { return mIsStaticDocument; }
+  bool IsStaticDocument() const { return mIsStaticDocument; }
 
   /**
    * Clones the document along with any subdocuments, stylesheet, etc.
@@ -3296,6 +3300,7 @@ class Document : public nsINode,
                mozilla::ErrorResult& rv);
   Nullable<WindowProxyHolder> GetDefaultView() const;
   Element* GetActiveElement();
+  nsIContent* GetUnretargetedFocusedContent() const;
   bool HasFocus(ErrorResult& rv) const;
   void GetDesignMode(nsAString& aDesignMode);
   void SetDesignMode(const nsAString& aDesignMode,
@@ -3527,14 +3532,6 @@ class Document : public nsINode,
   void PropagateUseCountersToPage();
   void PropagateUseCounters(Document* aParentDocument);
 
-  void AddToVisibleContentHeuristic(uint32_t aNumber) {
-    mVisibleContentHeuristic += aNumber;
-  }
-
-  uint32_t GetVisibleContentHeuristic() const {
-    return mVisibleContentHeuristic.value();
-  }
-
   // Called to track whether this document has had any interaction.
   // This is used to track whether we should permit "beforeunload".
   void SetUserHasInteracted();
@@ -3588,6 +3585,8 @@ class Document : public nsINode,
 #endif
     return mDocGroup;
   }
+
+  DocGroup* GetDocGroupOrCreate();
 
   /**
    * If we're a sub-document, the parent document's layout can affect our style
@@ -4178,9 +4177,10 @@ class Document : public nsINode,
   already_AddRefed<nsIChannel> CreateDummyChannelForCookies(
       nsIURI* aContentURI);
 
-  void AddToplevelLoadingDocument(Document* aDoc);
-  void RemoveToplevelLoadingDocument(Document* aDoc);
+  static void AddToplevelLoadingDocument(Document* aDoc);
+  static void RemoveToplevelLoadingDocument(Document* aDoc);
   static AutoTArray<Document*, 8>* sLoadingForegroundTopLevelContentDocument;
+  friend class cycleCollection;
 
   nsCOMPtr<nsIReferrerInfo> mPreloadReferrerInfo;
   nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
@@ -4248,7 +4248,7 @@ class Document : public nsINode,
   //
   // These are non-owning pointers, the elements are responsible for removing
   // themselves when they go away.
-  nsAutoPtr<nsTHashtable<nsPtrHashKey<nsISupports>>> mActivityObservers;
+  UniquePtr<nsTHashtable<nsPtrHashKey<nsISupports>>> mActivityObservers;
 
   // A hashtable of styled links keyed by address pointer.
   nsTHashtable<nsPtrHashKey<Link>> mStyledLinks;
@@ -4324,11 +4324,6 @@ class Document : public nsINode,
   // True if we're loaded as data and therefor has any dangerous stuff, such
   // as scripts and plugins, disabled.
   bool mLoadedAsData : 1;
-
-  // This flag is only set in XMLDocument, for e.g. documents used in XBL. We
-  // don't want animations to play in such documents, so we need to store the
-  // flag here so that we can check it in Document::GetAnimationController.
-  bool mLoadedAsInteractiveData : 1;
 
   // If true, whoever is creating the document has gotten it to the
   // point where it's safe to start layout on it.
@@ -4816,16 +4811,6 @@ class Document : public nsINode,
   // The CSS property use counters.
   UniquePtr<StyleUseCounters> mStyleUseCounters;
 
-  // An ever-increasing heuristic number that is higher the more content is
-  // likely to be visible in the page.
-  //
-  // Right now it effectively measures amount of text content that has ever been
-  // connected to the document in some way, and is not under a <script> or
-  // <style>.
-  //
-  // Note that this is only measured during load.
-  SaturateUint32 mVisibleContentHeuristic{0};
-
   // Whether the user has interacted with the document or not:
   bool mUserHasInteracted;
 
@@ -5055,6 +5040,8 @@ class Document : public nsINode,
   bool mPendingInitialTranslation;
 
   nsCOMPtr<nsICookieJarSettings> mCookieJarSettings;
+
+  bool mHasStoragePermission;
 
   // Document generation. Gets incremented everytime it changes.
   int32_t mGeneration;

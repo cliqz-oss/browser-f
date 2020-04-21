@@ -82,7 +82,7 @@ pub fn register_prim_chase_id(id: PrimitiveDebugId) {
 pub fn register_prim_chase_id(_: PrimitiveDebugId) {
 }
 
-const MIN_BRUSH_SPLIT_AREA: f32 = 256.0 * 256.0;
+const MIN_BRUSH_SPLIT_AREA: f32 = 128.0 * 128.0;
 pub const VECS_PER_SEGMENT: usize = 2;
 
 #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq)]
@@ -312,7 +312,7 @@ impl<F, T> SpaceMapper<F, T> where F: fmt::Debug {
     pub fn unmap(&self, rect: &Rect<f32, T>) -> Option<Rect<f32, F>> {
         match self.kind {
             CoordinateSpaceMapping::Local => {
-                Some(Rect::from_untyped(&rect.to_untyped()))
+                Some(rect.cast_unit())
             }
             CoordinateSpaceMapping::ScaleOffset(ref scale_offset) => {
                 Some(scale_offset.unmap_rect(rect))
@@ -326,7 +326,7 @@ impl<F, T> SpaceMapper<F, T> where F: fmt::Debug {
     pub fn map(&self, rect: &Rect<f32, F>) -> Option<Rect<f32, T>> {
         match self.kind {
             CoordinateSpaceMapping::Local => {
-                Some(Rect::from_untyped(&rect.to_untyped()))
+                Some(rect.cast_unit())
             }
             CoordinateSpaceMapping::ScaleOffset(ref scale_offset) => {
                 Some(scale_offset.map_rect(rect))
@@ -341,6 +341,20 @@ impl<F, T> SpaceMapper<F, T> where F: fmt::Debug {
                         None
                     }
                 }
+            }
+        }
+    }
+
+    pub fn map_vector(&self, v: Vector2D<f32, F>) -> Vector2D<f32, T> {
+        match self.kind {
+            CoordinateSpaceMapping::Local => {
+                v.cast_unit()
+            }
+            CoordinateSpaceMapping::ScaleOffset(ref scale_offset) => {
+                scale_offset.map_vector(&v)
+            }
+            CoordinateSpaceMapping::Transform(ref transform) => {
+                transform.transform_vector2d(v)
             }
         }
     }
@@ -1519,6 +1533,20 @@ impl PrimitiveVisibilityMask {
     pub const MAX_DIRTY_REGIONS: usize = 8 * mem::size_of::<PrimitiveVisibilityMask>();
 }
 
+bitflags! {
+    /// A set of bitflags that can be set in the visibility information
+    /// for a primitive instance. This can be used to control how primitives
+    /// are treated during batching.
+    // TODO(gw): We should also move `is_compositor_surface` to be part of
+    //           this flags struct.
+    #[cfg_attr(feature = "capture", derive(Serialize))]
+    pub struct PrimitiveVisibilityFlags: u16 {
+        /// Implies that this primitive covers the entire picture cache slice,
+        /// and can thus be dropped during batching and drawn with clear color.
+        const IS_BACKDROP = 1;
+    }
+}
+
 /// Information stored for a visible primitive about the visible
 /// rect and associated clip information.
 #[cfg_attr(feature = "capture", derive(Serialize))]
@@ -1538,6 +1566,10 @@ pub struct PrimitiveVisibility {
     /// global clip mask task for this primitive, or the first of
     /// a list of clip task ids (one per segment).
     pub clip_task_index: ClipTaskIndex,
+
+    /// A set of flags that define how this primitive should be handled
+    /// during batching of visibile primitives.
+    pub flags: PrimitiveVisibilityFlags,
 
     /// A mask defining which of the dirty regions this primitive is visible in.
     pub visibility_mask: PrimitiveVisibilityMask,
@@ -1930,7 +1962,7 @@ impl PrimitiveStore {
                     // relative transforms have changed, which means we need to
                     // re-map the dependencies of any child primitives.
                     world_culling_rect = tile_cache.pre_update(
-                        PictureRect::from_untyped(&pic.estimated_local_rect.to_untyped()),
+                        layout_rect_as_picture_rect(&pic.estimated_local_rect),
                         surface_index,
                         frame_context,
                         frame_state,
@@ -2095,6 +2127,7 @@ impl PrimitiveStore {
                             clip_task_index: ClipTaskIndex::INVALID,
                             combined_local_clip_rect: LayoutRect::zero(),
                             visibility_mask: PrimitiveVisibilityMask::empty(),
+                            flags: PrimitiveVisibilityFlags::empty(),
                         }
                     );
 
@@ -2137,7 +2170,7 @@ impl PrimitiveStore {
                         cluster.spatial_node_index,
                         frame_state.clip_chain_stack.current_clips_array(),
                         &frame_context.spatial_tree,
-                        &mut frame_state.data_stores.clip,
+                        &frame_state.data_stores.clip,
                     );
 
                     let clip_chain = frame_state
@@ -2156,11 +2189,16 @@ impl PrimitiveStore {
                             prim_instance.is_chased(),
                         );
 
+                    // Primitive visibility flags default to empty, but may be supplied
+                    // by the `update_prim_dependencies` method below when picture caching
+                    // is active.
+                    let mut vis_flags = PrimitiveVisibilityFlags::empty();
+
                     if let Some(ref mut tile_cache) = frame_state.tile_cache {
                         // TODO(gw): Refactor how tile_cache is stored in frame_state
                         //           so that we can pass frame_state directly to
                         //           update_prim_dependencies, rather than splitting borrows.
-                        if !tile_cache.update_prim_dependencies(
+                        match tile_cache.update_prim_dependencies(
                             prim_instance,
                             cluster.spatial_node_index,
                             clip_chain.as_ref(),
@@ -2176,11 +2214,16 @@ impl PrimitiveStore {
                             &frame_state.surface_stack,
                             &mut frame_state.composite_state,
                         ) {
-                            prim_instance.visibility_info = PrimitiveVisibilityIndex::INVALID;
-                            // Ensure the primitive clip is popped - perhaps we can use
-                            // some kind of scope to do this automatically in future.
-                            frame_state.clip_chain_stack.pop_clip();
-                            continue;
+                            Some(flags) => {
+                                vis_flags = flags;
+                            }
+                            None => {
+                                prim_instance.visibility_info = PrimitiveVisibilityIndex::INVALID;
+                                // Ensure the primitive clip is popped - perhaps we can use
+                                // some kind of scope to do this automatically in future.
+                                frame_state.clip_chain_stack.pop_clip();
+                                continue;
+                            }
                         }
                     }
 
@@ -2308,6 +2351,7 @@ impl PrimitiveStore {
                             clip_task_index: ClipTaskIndex::INVALID,
                             combined_local_clip_rect,
                             visibility_mask: PrimitiveVisibilityMask::empty(),
+                            flags: vis_flags,
                         }
                     );
 
@@ -2354,7 +2398,8 @@ impl PrimitiveStore {
                     surface.device_pixel_scale,
                     frame_context.spatial_tree,
                 );
-                surface_rect = rc.composite_mode.inflate_picture_rect(surface_rect, surface.inflation_factor);
+
+                surface_rect = rc.composite_mode.inflate_picture_rect(surface_rect, surface.scale_factors);
                 surface_rect = snap_pic_to_raster.snap_rect(&surface_rect);
             }
 
@@ -3666,17 +3711,11 @@ impl<'a> GpuDataRequest<'a> {
         clip_store: &ClipStore,
         data_stores: &DataStores,
     ) -> bool {
-        // If the brush is small, we generally want to skip building segments
-        // and just draw it as a single primitive with clip mask. However,
-        // if the clips are purely rectangles that have no per-fragment
-        // clip masks, we will segment anyway. This allows us to completely
-        // skip allocating a clip mask in these cases.
-        let is_large = prim_local_rect.size.area() > MIN_BRUSH_SPLIT_AREA;
-
-        // TODO(gw): We should probably detect and store this on each
-        //           ClipSources instance, to avoid having to iterate
-        //           the clip sources here.
-        let mut rect_clips_only = true;
+        // If the brush is small, we want to skip building segments
+        // and just draw it as a single primitive with clip mask.
+        if prim_local_rect.size.area() < MIN_BRUSH_SPLIT_AREA {
+            return false;
+        }
 
         segment_builder.initialize(
             prim_local_rect,
@@ -3685,7 +3724,6 @@ impl<'a> GpuDataRequest<'a> {
         );
 
         // Segment the primitive on all the local-space clip sources that we can.
-        let mut local_clip_count = 0;
         for i in 0 .. clip_chain.clips_range.count {
             let clip_instance = clip_store
                 .get_instance_from_range(&clip_chain.clips_range, i);
@@ -3700,19 +3738,14 @@ impl<'a> GpuDataRequest<'a> {
                 continue;
             }
 
-            local_clip_count += 1;
-
             let (local_clip_rect, radius, mode) = match clip_node.item.kind {
                 ClipItemKind::RoundedRectangle { rect, radius, mode } => {
-                    rect_clips_only = false;
                     (rect, Some(radius), mode)
                 }
                 ClipItemKind::Rectangle { rect, mode } => {
                     (rect, None, mode)
                 }
                 ClipItemKind::BoxShadow { ref source } => {
-                    rect_clips_only = false;
-
                     // For inset box shadows, we can clip out any
                     // pixels that are inside the shadow region
                     // and are beyond the inner rect, as they can't
@@ -3751,43 +3784,7 @@ impl<'a> GpuDataRequest<'a> {
             segment_builder.push_clip_rect(local_clip_rect, radius, mode);
         }
 
-        if is_large || rect_clips_only {
-            // If there were no local clips, then we will subdivide the primitive into
-            // a uniform grid (up to 8x8 segments). This will typically result in
-            // a significant number of those segments either being completely clipped,
-            // or determined to not need a clip mask for that segment.
-            if local_clip_count == 0 && clip_chain.clips_range.count > 0 {
-                let x_clip_count = cmp::min(8, (prim_local_rect.size.width / 128.0).ceil() as i32);
-                let y_clip_count = cmp::min(8, (prim_local_rect.size.height / 128.0).ceil() as i32);
-
-                for y in 0 .. y_clip_count {
-                    let y0 = prim_local_rect.size.height * y as f32 / y_clip_count as f32;
-                    let y1 = prim_local_rect.size.height * (y+1) as f32 / y_clip_count as f32;
-
-                    for x in 0 .. x_clip_count {
-                        let x0 = prim_local_rect.size.width * x as f32 / x_clip_count as f32;
-                        let x1 = prim_local_rect.size.width * (x+1) as f32 / x_clip_count as f32;
-
-                        let rect = LayoutRect::new(
-                            LayoutPoint::new(
-                                x0 + prim_local_rect.origin.x,
-                                y0 + prim_local_rect.origin.y,
-                            ),
-                            LayoutSize::new(
-                                x1 - x0,
-                                y1 - y0,
-                            ),
-                        );
-
-                        segment_builder.push_mask_region(rect, LayoutRect::zero(), None);
-                    }
-                }
-            }
-
-            return true
-        }
-
-        false
+        true
     }
 
 impl PrimitiveInstance {
@@ -4233,7 +4230,8 @@ fn get_clipped_device_rect(
     let unclipped_raster_rect = {
         let world_rect = *unclipped * Scale::new(1.0);
         let raster_rect = world_rect * device_pixel_scale.inv();
-        Rect::from_untyped(&raster_rect.to_untyped())
+
+        raster_rect.cast_unit()
     };
 
     let unclipped_world_rect = map_to_world.map(&unclipped_raster_rect)?;

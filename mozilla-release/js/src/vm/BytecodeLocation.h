@@ -7,8 +7,12 @@
 #ifndef vm_BytecodeLocation_h
 #define vm_BytecodeLocation_h
 
+#include "frontend/NameAnalysisTypes.h"
 #include "js/TypeDecls.h"
 #include "vm/BytecodeUtil.h"
+#include "vm/CheckIsCallableKind.h"  // CheckIsCallableKind
+#include "vm/CheckIsObjectKind.h"    // CheckIsObjectKind
+#include "vm/FunctionPrefixKind.h"   // FunctionPrefixKind
 #include "vm/StringType.h"
 
 namespace js {
@@ -16,6 +20,7 @@ namespace js {
 using RawBytecodeLocationOffset = uint32_t;
 
 class PropertyName;
+class RegExpObject;
 
 class BytecodeLocationOffset {
   RawBytecodeLocationOffset rawOffset_;
@@ -82,6 +87,10 @@ class BytecodeLocation {
 
   uint32_t getTableSwitchDefaultOffset(const JSScript* script) const;
 
+  inline BytecodeLocation getTableSwitchDefaultTarget() const;
+  inline BytecodeLocation getTableSwitchCaseTarget(const JSScript* script,
+                                                   uint32_t caseIndex) const;
+
   uint32_t useCount() const;
 
   uint32_t defCount() const;
@@ -89,7 +98,18 @@ class BytecodeLocation {
   int32_t jumpOffset() const { return GET_JUMP_OFFSET(rawBytecode_); }
   int32_t codeOffset() const { return GET_CODE_OFFSET(rawBytecode_); }
 
-  PropertyName* getPropertyName(const JSScript* script) const;
+  inline JSAtom* getAtom(const JSScript* script) const;
+  inline PropertyName* getPropertyName(const JSScript* script) const;
+  inline JS::BigInt* getBigInt(const JSScript* script) const;
+  inline JSObject* getObject(const JSScript* script) const;
+  inline JSFunction* getFunction(const JSScript* script) const;
+  inline js::RegExpObject* getRegExp(const JSScript* script) const;
+  inline js::Scope* getScope(const JSScript* script) const;
+
+  uint32_t getSymbolIndex() const {
+    MOZ_ASSERT(is(JSOp::Symbol));
+    return GET_UINT8(rawBytecode_);
+  }
 
   Scope* innermostScope(const JSScript* script) const;
 
@@ -172,18 +192,28 @@ class BytecodeLocation {
 
   bool isStrictEqualityOp() const { return IsStrictEqualityOp(getOp()); }
 
-  bool isDetectingOp() const { return IsDetecting(getOp()); }
+  bool isStrictSetOp() const { return IsStrictSetPC(rawBytecode_); }
 
   bool isNameOp() const { return IsNameOp(getOp()); }
+
+  bool resultIsPopped() const {
+    MOZ_ASSERT(StackDefs(rawBytecode_) == 1);
+    return BytecodeIsPopped(rawBytecode_);
+  }
 
   // Accessors:
   JSOp getOp() const { return JSOp(*rawBytecode_); }
 
   BytecodeLocation getJumpTarget() const {
-    // The default target of a JSOp::TableSwitch also follows this format.
-    MOZ_ASSERT(isJump() || is(JSOp::TableSwitch));
+    MOZ_ASSERT(isJump());
     return BytecodeLocation(*this,
                             rawBytecode_ + GET_JUMP_OFFSET(rawBytecode_));
+  }
+
+  BytecodeLocation getEndOfTryLocation() const {
+    MOZ_ASSERT(is(JSOp::Try));
+    return BytecodeLocation(*this,
+                            rawBytecode_ + GET_CODE_OFFSET(rawBytecode_));
   }
 
   // Return the 'low' parameter to the tableswitch opcode
@@ -215,6 +245,49 @@ class BytecodeLocation {
   uint8_t getUnpickDepth() const {
     MOZ_ASSERT(is(JSOp::Unpick));
     return GET_UINT8(rawBytecode_);
+  }
+
+  uint32_t getEnvCalleeNumHops() const {
+    MOZ_ASSERT(is(JSOp::EnvCallee));
+    return GET_UINT8(rawBytecode_);
+  }
+
+  EnvironmentCoordinate getEnvironmentCoordinate() const {
+    MOZ_ASSERT(JOF_OPTYPE(getOp()) == JOF_ENVCOORD);
+    return EnvironmentCoordinate(rawBytecode_);
+  }
+
+  uint32_t getCallArgc() const {
+    MOZ_ASSERT(JOF_OPTYPE(getOp()) == JOF_ARGC);
+    return GET_ARGC(rawBytecode_);
+  }
+
+  uint32_t getInitElemArrayIndex() const {
+    MOZ_ASSERT(is(JSOp::InitElemArray));
+    uint32_t index = GET_UINT32(rawBytecode_);
+    MOZ_ASSERT(index <= INT32_MAX,
+               "the bytecode emitter must never generate JSOp::InitElemArray "
+               "with an index exceeding int32_t range");
+    return index;
+  }
+
+  FunctionPrefixKind getFunctionPrefixKind() const {
+    MOZ_ASSERT(is(JSOp::SetFunName));
+    return FunctionPrefixKind(GET_UINT8(rawBytecode_));
+  }
+
+  CheckIsObjectKind getCheckIsObjectKind() const {
+    MOZ_ASSERT(is(JSOp::CheckIsObj));
+    return CheckIsObjectKind(GET_UINT8(rawBytecode_));
+  }
+  CheckIsCallableKind getCheckIsCallableKind() const {
+    MOZ_ASSERT(is(JSOp::CheckIsCallable));
+    return CheckIsCallableKind(GET_UINT8(rawBytecode_));
+  }
+
+  uint32_t getNewArrayLength() const {
+    MOZ_ASSERT(is(JSOp::NewArray));
+    return GET_UINT32(rawBytecode_);
   }
 
   int8_t getInt8() const {

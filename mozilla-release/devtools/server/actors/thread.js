@@ -4,10 +4,14 @@
 
 "use strict";
 
+// protocol.js uses objects as exceptions in order to define
+// error packets.
+/* eslint-disable no-throw-literal */
+
 const DebuggerNotificationObserver = require("DebuggerNotificationObserver");
 const Services = require("Services");
 const { Cr, Ci } = require("chrome");
-const { ActorPool } = require("devtools/server/actors/common");
+const { Pool } = require("devtools/shared/protocol/Pool");
 const { createValueGrip } = require("devtools/server/actors/object/utils");
 const { ActorClassWithSpec, Actor } = require("devtools/shared/protocol");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
@@ -209,8 +213,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
 
   get threadLifetimePool() {
     if (!this._threadLifetimePool) {
-      this._threadLifetimePool = new ActorPool(this.conn, "thread");
-      this.conn.addActorPool(this._threadLifetimePool);
+      this._threadLifetimePool = new Pool(this.conn, "thread");
       this._threadLifetimePool.objectActors = new WeakMap();
     }
     return this._threadLifetimePool;
@@ -317,9 +320,12 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
 
     this.sources.off("newSource", this.onNewSourceEvent);
     this.clearDebuggees();
-    this.conn.removeActorPool(this._threadLifetimePool);
+    this._threadLifetimePool.destroy();
     this._threadLifetimePool = null;
     this._dbg = null;
+    // Note: here we don't call Actor.prototype.destroy.call(this)
+    // because the real "destroy" method is `exit()`, where
+    // Actor.prototype.destroy.call(this) will be called.
   },
 
   /**
@@ -341,14 +347,14 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
   // Request handlers
   onAttach: function({ options }) {
     if (this.state === "exited") {
-      return {
+      throw {
         error: "exited",
         message: "threadActor has exited",
       };
     }
 
     if (this.state !== "detached") {
-      return {
+      throw {
         error: "wrongState",
         message: "Current state is " + this.state,
       };
@@ -395,7 +401,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
       // Put ourselves in the paused state.
       const packet = this._paused();
       if (!packet) {
-        return {
+        throw {
           error: "notAttached",
           message: "cannot attach, could not create pause packet",
         };
@@ -411,12 +417,12 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
       // Start a nested event loop.
       this._pushThreadPause();
 
-      // We already sent a response to this request, don't send one
-      // now
-      return null;
+      // We already sent a response to this request via this.conn.send(),
+      // don't send one now. But protocol.js probably still emits a second
+      // empty packet.
     } catch (e) {
       reportException("DBG-SERVER", e);
-      return {
+      throw {
         error: "notAttached",
         message: e.toString(),
       };
@@ -490,9 +496,24 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     );
   },
 
+  // We clear the priorPause field when a breakpoint is added or removed
+  // at the same location because we are no longer worried about pausing twice
+  // at that location (e.g. debugger statement, stepping).
+  _maybeClearPriorPause(location) {
+    if (!this._priorPause) {
+      return;
+    }
+
+    const { where } = this._priorPause.frame;
+    if (where.line === location.line && where.column === location.column) {
+      this._priorPause = null;
+    }
+  },
+
   setBreakpoint: async function(location, options) {
     const actor = this.breakpointActorMap.getOrCreateBreakpointActor(location);
     actor.setOptions(options);
+    this._maybeClearPriorPause(location);
 
     if (location.sourceUrl) {
       // There can be multiple source actors for a URL if there are multiple
@@ -513,6 +534,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
 
   removeBreakpoint(location) {
     const actor = this.breakpointActorMap.getOrCreateBreakpointActor(location);
+    this._maybeClearPriorPause(location);
     actor.delete();
   },
 
@@ -1056,7 +1078,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
    */
   _clearSteppingHooks: function() {
     let frame = this.youngestFrame;
-    if (frame && frame.onStack) {
+    if (frame?.onStack) {
       while (frame) {
         frame.onStep = undefined;
         frame.onPop = undefined;
@@ -1125,7 +1147,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     this._state = "running";
 
     // Drop the actors in the pause actor pool.
-    this.conn.removeActorPool(this._pausePool);
+    this._pausePool.destroy();
 
     this._pausePool = null;
     this._pauseActor = null;
@@ -1443,8 +1465,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     // Create the actor pool that will hold the pause actor and its
     // children.
     assert(!this._pausePool, "No pause pool should exist yet");
-    this._pausePool = new ActorPool(this.conn, "pause");
-    this.conn.addActorPool(this._pausePool);
+    this._pausePool = new Pool(this.conn, "pause");
 
     // Give children of the pause pool a quick link back to the
     // thread...
@@ -1453,7 +1474,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     // Create the pause actor itself...
     assert(!this._pauseActor, "No pause actor should exist yet");
     this._pauseActor = new PauseActor(this._pausePool);
-    this._pausePool.addActor(this._pauseActor);
+    this._pausePool.manage(this._pauseActor);
 
     // Update the list of frames.
     const poppedFrames = this._updateFrames();
@@ -1483,12 +1504,12 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     const popped = [];
 
     // Create the actor pool that will hold the still-living frames.
-    const framesPool = new ActorPool(this.conn, "frames");
+    const framesPool = new Pool(this.conn, "frames");
     const frameList = [];
 
     for (const frameActor of this._frameActors) {
       if (frameActor.frame.onStack) {
-        framesPool.addActor(frameActor);
+        framesPool.manage(frameActor);
         frameList.push(frameActor);
       } else {
         popped.push(frameActor.actorID);
@@ -1498,12 +1519,11 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     // Remove the old frame actor pool, this will expire
     // any actors that weren't added to the new pool.
     if (this._framesPool) {
-      this.conn.removeActorPool(this._framesPool);
+      this._framesPool.destroy();
     }
 
     this._frameActors = frameList;
     this._framesPool = framesPool;
-    this.conn.addActorPool(framesPool);
 
     return popped;
   },
@@ -1513,7 +1533,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     if (!actor) {
       actor = new FrameActor(frame, this, depth);
       this._frameActors.push(actor);
-      this._framesPool.addActor(actor);
+      this._framesPool.manage(actor);
 
       this._frameActorMap.set(frame, actor);
     }
@@ -1540,7 +1560,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     }
 
     const actor = new EnvironmentActor(environment, this);
-    pool.addActor(actor);
+    pool.manage(actor);
     environment.actor = actor;
 
     return actor;
@@ -1551,7 +1571,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
    *
    * @param value Debugger.Object
    *        The debuggee object value.
-   * @param pool ActorPool
+   * @param pool Pool
    *        The actor pool where the new object actor will be added.
    */
   objectGrip: function(value, pool) {
@@ -1585,11 +1605,11 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
         createEnvironmentActor: (e, p) => this.createEnvironmentActor(e, p),
         promote: () => this.threadObjectGrip(actor),
         isThreadLifetimePool: () =>
-          actor.registeredPool !== this.threadLifetimePool,
+          actor.getParent() !== this.threadLifetimePool,
       },
       this.conn
     );
-    pool.addActor(actor);
+    pool.manage(actor);
     pool.objectActors.set(value, actor);
     return actor.form();
   },
@@ -1617,9 +1637,9 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
   threadObjectGrip: function(actor) {
     // Save the reference for when we need to demote the object
     // back to its original registered pool
-    actor.originalRegisteredPool = actor.registeredPool;
+    actor.originalRegisteredPool = actor.getParent();
 
-    this.threadLifetimePool.addActor(actor);
+    this.threadLifetimePool.manage(actor);
     this.threadLifetimePool.objectActors.set(actor.obj, actor);
   },
 
@@ -2051,15 +2071,14 @@ exports.ThreadActor = ThreadActor;
  * PauseActors exist for the lifetime of a given debuggee pause.  Used to
  * scope pause-lifetime grips.
  *
- * @param ActorPool aPool
- *        The actor pool created for this pause.
+ * @param {Pool} pool: The actor pool created for this pause.
  */
 function PauseActor(pool) {
   this.pool = pool;
 }
 
 PauseActor.prototype = {
-  actorPrefix: "pause",
+  typeName: "pause",
 };
 
 // Utility functions.

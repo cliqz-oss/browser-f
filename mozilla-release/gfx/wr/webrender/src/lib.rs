@@ -70,7 +70,7 @@ extern crate malloc_size_of_derive;
 #[macro_use]
 extern crate serde;
 #[macro_use]
-extern crate thread_profiler;
+extern crate tracy_rs;
 
 extern crate malloc_size_of;
 extern crate svg_fmt;
@@ -184,7 +184,6 @@ extern crate rayon;
 extern crate ron;
 #[cfg(feature = "debugger")]
 extern crate serde_json;
-extern crate sha2;
 #[macro_use]
 extern crate smallvec;
 extern crate time;
@@ -218,6 +217,8 @@ pub use crate::renderer::{
     RendererStats, SceneBuilderHooks, ThreadListener, ShaderPrecacheFlags,
     MAX_VERTEX_TEXTURE_WIDTH,
 };
+pub use crate::hit_test::SharedHitTester;
+pub use crate::internal_types::FastHashMap;
 pub use crate::screen_capture::{AsyncScreenshotHandle, RecordedFrameHandle};
 pub use crate::shade::{Shaders, WrShaders};
 pub use api as webrender_api;

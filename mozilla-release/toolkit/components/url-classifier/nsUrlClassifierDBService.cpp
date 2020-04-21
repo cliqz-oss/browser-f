@@ -1038,16 +1038,15 @@ nsresult nsUrlClassifierDBServiceWorker::CacheResultToTableUpdate(
 
     if (result->miss) {
       return tuV2->NewMissPrefix(result->prefix);
-    } else {
-      LOG(("CacheCompletion hash %X, Addchunk %d",
-           result->completion.ToUint32(), result->addChunk));
-
-      nsresult rv = tuV2->NewAddComplete(result->addChunk, result->completion);
-      if (NS_FAILED(rv)) {
-        return rv;
-      }
-      return tuV2->NewAddChunk(result->addChunk);
     }
+    LOG(("CacheCompletion hash %X, Addchunk %d", result->completion.ToUint32(),
+         result->addChunk));
+
+    nsresult rv = tuV2->NewAddComplete(result->addChunk, result->completion);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    return tuV2->NewAddChunk(result->addChunk);
   }
 
   RefPtr<TableUpdateV4> tuV4 = TableUpdate::Cast<TableUpdateV4>(aUpdate);
@@ -1495,7 +1494,7 @@ class nsUrlClassifierClassifyCallback final
     nsresult errorCode;
   };
 
-  ~nsUrlClassifierClassifyCallback(){};
+  ~nsUrlClassifierClassifyCallback() = default;
 
   nsCOMPtr<nsIURIClassifierCallback> mCallback;
   nsTArray<ClassifyMatchedInfo> mMatchedArray;
@@ -2446,9 +2445,6 @@ nsUrlClassifierDBService::AsyncClassifyLocalWithFeatures(
         mozilla::SystemGroup::EventTargetFor(mozilla::TaskCategory::Other);
     content->SetEventTargetForActor(actor, systemGroupEventTarget);
 
-    URIParams uri;
-    SerializeURI(aURI, uri);
-
     nsTArray<IPCURLClassifierFeature> ipcFeatures;
     for (nsIUrlClassifierFeature* feature : aFeatures) {
       nsAutoCString name;
@@ -2473,7 +2469,8 @@ nsUrlClassifierDBService::AsyncClassifyLocalWithFeatures(
           IPCURLClassifierFeature(name, tables, skipHostList));
     }
 
-    if (!content->SendPURLClassifierLocalConstructor(actor, uri, ipcFeatures)) {
+    if (!content->SendPURLClassifierLocalConstructor(actor, aURI,
+                                                     ipcFeatures)) {
       return NS_ERROR_FAILURE;
     }
 

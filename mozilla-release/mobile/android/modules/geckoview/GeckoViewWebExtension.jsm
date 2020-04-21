@@ -34,6 +34,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.jsm",
   GeckoViewTabBridge: "resource://gre/modules/GeckoViewTab.jsm",
   Management: "resource://gre/modules/Extension.jsm",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -308,13 +309,50 @@ function exportExtension(aAddon, aPermissions, aSourceURI) {
 }
 
 class ExtensionInstallListener {
-  constructor(aResolve) {
-    this.resolve = aResolve;
+  constructor(aResolve, aInstall, aInstallId) {
+    this.install = aInstall;
+    this.installId = aInstallId;
+    this.resolve = result => {
+      aResolve(result);
+      EventDispatcher.instance.unregisterListener(this, [
+        "GeckoView:WebExtension:CancelInstall",
+      ]);
+    };
+    EventDispatcher.instance.registerListener(this, [
+      "GeckoView:WebExtension:CancelInstall",
+    ]);
+  }
+
+  async onEvent(aEvent, aData, aCallback) {
+    debug`onEvent ${aEvent} ${aData}`;
+
+    switch (aEvent) {
+      case "GeckoView:WebExtension:CancelInstall": {
+        const { installId } = aData;
+        if (this.installId !== installId) {
+          return;
+        }
+        this.cancelling = true;
+        let cancelled = false;
+        try {
+          this.install.cancel();
+          cancelled = true;
+        } catch (_) {
+          // install may have already failed or been cancelled
+        }
+        aCallback.onSuccess({ cancelled });
+        break;
+      }
+    }
   }
 
   onDownloadCancelled(aInstall) {
-    const { error: installError, state } = aInstall;
-    this.resolve({ installError, state });
+    // Do not resolve we were told to CancelInstall,
+    // to prevent racing with that handler.
+    if (!this.cancelling) {
+      const { error: installError, state } = aInstall;
+      this.resolve({ installError, state });
+    }
   }
 
   onDownloadFailed(aInstall) {
@@ -327,8 +365,12 @@ class ExtensionInstallListener {
   }
 
   onInstallCancelled(aInstall) {
-    const { error: installError, state } = aInstall;
-    this.resolve({ installError, state });
+    // Do not resolve we were told to CancelInstall,
+    // to prevent racing with that handler.
+    if (!this.cancelling) {
+      const { error: installError, state } = aInstall;
+      this.resolve({ installError, state });
+    }
   }
 
   onInstallFailed(aInstall) {
@@ -401,6 +443,7 @@ class MobileWindowTracker extends EventEmitter {
   constructor() {
     super();
     this._topWindow = null;
+    this._topNonPBWindow = null;
   }
 
   get topWindow() {
@@ -410,15 +453,28 @@ class MobileWindowTracker extends EventEmitter {
     return null;
   }
 
+  get topNonPBWindow() {
+    if (this._topNonPBWindow) {
+      return this._topNonPBWindow.get();
+    }
+    return null;
+  }
+
   setTabActive(aWindow, aActive) {
-    const tab = aWindow.BrowserApp.selectedTab;
+    const { browser, BrowserApp, windowUtils } = aWindow;
+    const tab = BrowserApp.selectedTab;
     tab.active = aActive;
 
     if (aActive) {
       this._topWindow = Cu.getWeakReference(aWindow);
+      const isPrivate = PrivateBrowsingUtils.isBrowserPrivate(browser);
+      if (!isPrivate) {
+        this._topNonPBWindow = this._topWindow;
+      }
       this.emit("tab-activated", {
-        windowId: aWindow.windowUtils.outerWindowID,
+        windowId: windowUtils.outerWindowID,
         tabId: tab.id,
+        isPrivate,
       });
     }
   }
@@ -534,10 +590,16 @@ var GeckoViewWebExtension = {
     return scope.extension;
   },
 
-  async installWebExtension(aUri) {
-    const install = await AddonManager.getInstallForURL(aUri.spec);
+  async installWebExtension(aInstallId, aUri) {
+    const install = await AddonManager.getInstallForURL(aUri.spec, {
+      telemetryInfo: {
+        source: "geckoview-app",
+      },
+    });
     const promise = new Promise(resolve => {
-      install.addListener(new ExtensionInstallListener(resolve));
+      install.addListener(
+        new ExtensionInstallListener(resolve, install, aInstallId)
+      );
     });
 
     const systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
@@ -790,14 +852,15 @@ var GeckoViewWebExtension = {
       }
 
       case "GeckoView:WebExtension:Install": {
-        const uri = Services.io.newURI(aData.locationUri);
+        const { locationUri, installId } = aData;
+        const uri = Services.io.newURI(locationUri);
         if (uri == null) {
-          aCallback.onError(`Could not parse uri: ${uri}`);
+          aCallback.onError(`Could not parse uri: ${locationUri}`);
           return;
         }
 
         try {
-          const result = await this.installWebExtension(uri);
+          const result = await this.installWebExtension(installId, uri);
           if (result.extension) {
             aCallback.onSuccess(result);
           } else {

@@ -14,8 +14,6 @@
 #include "nsContainerFrame.h"
 
 namespace mozilla {
-template <class T>
-class LinkedList;
 class LogicalPoint;
 class PresShell;
 }  // namespace mozilla
@@ -105,7 +103,8 @@ class nsFlexContainerFrame final : public nsContainerFrame {
   class FlexLine;
   class FlexboxAxisTracker;
   struct StrutInfo;
-  class CachedMeasuringReflowResult;
+  class CachedBAxisMeasurement;
+  class CachedFlexItemData;
 
   // nsIFrame overrides
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
@@ -116,7 +115,7 @@ class nsFlexContainerFrame final : public nsContainerFrame {
 
   void MarkIntrinsicISizesDirty() override;
 
-  void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+  void Reflow(nsPresContext* aPresContext, ReflowOutput& aReflowOutput,
               const ReflowInput& aReflowInput,
               nsReflowStatus& aStatus) override;
 
@@ -201,26 +200,6 @@ class nsFlexContainerFrame final : public nsContainerFrame {
   }
 
   /**
-   * This function creates a new ComputedFlexContainerInfo or clear the existing
-   * one.
-   */
-  void CreateOrClearFlexContainerInfo();
-
-  /**
-   * Helpers for DoFlexLayout to computed fields in ComputedFlexContainerInfo.
-   */
-  static void CreateFlexLineAndFlexItemInfo(
-      ComputedFlexContainerInfo& aContainerInfo,
-      const mozilla::LinkedList<FlexLine>& aLines);
-
-  static void ComputeFlexDirections(ComputedFlexContainerInfo& aContainerInfo,
-                                    const FlexboxAxisTracker& aAxisTracker);
-
-  static void UpdateFlexLineAndItemInfo(
-      ComputedFlexContainerInfo& aContainerInfo,
-      const mozilla::LinkedList<FlexLine>& aLines);
-
-  /**
    * Return aFrame as a flex frame after ensuring it has computed flex info.
    * @return nullptr if aFrame is null or doesn't have a flex frame
    *         as its content insertion frame.
@@ -268,6 +247,8 @@ class nsFlexContainerFrame final : public nsContainerFrame {
 
   virtual ~nsFlexContainerFrame();
 
+  // Protected flex-container-specific methods / member-vars
+
   /*
    * This method does the bulk of the flex layout, implementing the algorithm
    * described at:
@@ -278,36 +259,62 @@ class nsFlexContainerFrame final : public nsContainerFrame {
    * as follows: DoFlexLayout() begins at the step that we have to jump back
    * to, if we find any visibility:collapse children, and Reflow() does
    * everything before that point.)
+   *
+   * @param aContentBoxMainSize [in/out] initially, the "tentative" content-box
+   *                            main-size of the flex container; "tentative"
+   *                            because it may be unconstrained or may run off
+   *                            the page. In those cases, this method will
+   *                            resolve it to a final value before returning.
+   * @param aContentBoxCrossSize [out] the final content-box cross-size of the
+   *                             flex container.
+   * @param aFlexContainerAscent [out] the flex container's ascent, derived from
+   *                             any baseline-aligned flex items in the first
+   *                             flex line, if any such items exist. Otherwise,
+   *                             nscoord_MIN.
    */
-  void DoFlexLayout(ReflowOutput& aDesiredSize, const ReflowInput& aReflowInput,
-                    nsReflowStatus& aStatus, nscoord aContentBoxMainSize,
+  void DoFlexLayout(const ReflowInput& aReflowInput, nsReflowStatus& aStatus,
+                    nscoord& aContentBoxMainSize, nscoord& aContentBoxCrossSize,
+                    nscoord& aFlexContainerAscent,
                     nscoord aAvailableBSizeForContent,
-                    nsTArray<StrutInfo>& aStruts,
+                    nsTArray<FlexLine>& aLines, nsTArray<StrutInfo>& aStruts,
+                    nsTArray<nsIFrame*>& aPlaceholders,
                     const FlexboxAxisTracker& aAxisTracker,
                     nscoord aMainGapSize, nscoord aCrossGapSize,
-                    bool aHasLineClampEllipsis);
+                    bool aHasLineClampEllipsis,
+                    ComputedFlexContainerInfo* const aContainerInfo);
 
   /**
-   * Checks whether our child-frame list "mFrames" is sorted, using the given
-   * IsLessThanOrEqual function, and sorts it if it's not already sorted.
+   * If our devtools have requested a ComputedFlexContainerInfo for this flex
+   * container, this method ensures that we have one (and if one already exists,
+   * this method reinitializes it to look like a freshly-created one).
    *
-   * XXXdholbert Once we support pagination, we need to make this function
-   * check our continuations as well (or wrap it in a function that does).
-   *
-   * @return true if we had to sort mFrames, false if it was already sorted.
+   * @return the pointer to a freshly created or reinitialized
+   *         ComputedFlexContainerInfo if our devtools have requested it;
+   *         otherwise nullptr.
    */
-  template <bool IsLessThanOrEqual(nsIFrame*, nsIFrame*)>
-  bool SortChildrenIfNeeded();
+  ComputedFlexContainerInfo* CreateOrClearFlexContainerInfo();
 
-  // Protected flex-container-specific methods / member-vars
+  /**
+   * Helpers for DoFlexLayout to computed fields in ComputedFlexContainerInfo.
+   */
+  static void CreateFlexLineAndFlexItemInfo(
+      ComputedFlexContainerInfo& aContainerInfo,
+      const nsTArray<FlexLine>& aLines);
+
+  static void ComputeFlexDirections(ComputedFlexContainerInfo& aContainerInfo,
+                                    const FlexboxAxisTracker& aAxisTracker);
+
+  static void UpdateFlexLineAndItemInfo(
+      ComputedFlexContainerInfo& aContainerInfo,
+      const nsTArray<FlexLine>& aLines);
+
 #ifdef DEBUG
   void SanityCheckAnonymousFlexItems() const;
 #endif  // DEBUG
 
-  /*
-   * Returns a new FlexItem for the given child frame, allocated on the heap.
-   * Guaranteed to return non-null. Caller is responsible for managing the
-   * FlexItem's lifetime.
+  /**
+   * Returns a new FlexItem for the given child frame, directly constructed at
+   * the end of aLine. Guaranteed to return non-null.
    *
    * Before returning, this method also processes the FlexItem to resolve its
    * flex basis (including e.g. auto-height) as well as to resolve
@@ -315,19 +322,26 @@ class nsFlexContainerFrame final : public nsContainerFrame {
    * returned FlexItem will be ready to participate in the "Resolve the
    * Flexible Lengths" step of the Flex Layout Algorithm.)
    * https://drafts.csswg.org/css-flexbox-1/#algo-flex
+   *
+   * Note that this method **does not** update aLine's main-size bookkeeping to
+   * account for the newly-constructed flex item. The caller is responsible for
+   * determining whether this line is a good fit for the new item. If so,
+   * updating aLine's bookkeeping (via FlexLine::AddLastItemToMainSizeTotals),
+   * or moving the new item to a new line otherwise.
    */
-  mozilla::UniquePtr<FlexItem> GenerateFlexItemForChild(
-      nsIFrame* aChildFrame, const ReflowInput& aParentReflowInput,
-      const FlexboxAxisTracker& aAxisTracker, bool aHasLineClampEllipsis);
+  FlexItem* GenerateFlexItemForChild(FlexLine& aLine, nsIFrame* aChildFrame,
+                                     const ReflowInput& aParentReflowInput,
+                                     const FlexboxAxisTracker& aAxisTracker,
+                                     bool aHasLineClampEllipsis);
 
   /**
-   * This method gets a cached measuring reflow for a flex item, or does it and
-   * caches it.
+   * This method looks up cached block-axis measurements for a flex item, or
+   * does a measuring reflow and caches those measurements.
    *
-   * This avoids exponential reflows, see the comment on
-   * CachedMeasuringReflowResult.
+   * This avoids exponential reflows - see the comment above the
+   * CachedBAxisMeasurement struct.
    */
-  const CachedMeasuringReflowResult& MeasureAscentAndBSizeForFlexItem(
+  const CachedBAxisMeasurement& MeasureAscentAndBSizeForFlexItem(
       FlexItem& aItem, ReflowInput& aChildReflowInput);
 
   /**
@@ -382,18 +396,83 @@ class nsFlexContainerFrame final : public nsContainerFrame {
                          const FlexboxAxisTracker& aAxisTracker,
                          nscoord aMainGapSize, bool aHasLineClampEllipsis,
                          nsTArray<nsIFrame*>& aPlaceholders,
-                         mozilla::LinkedList<FlexLine>& aLines);
+                         nsTArray<FlexLine>& aLines);
 
   nscoord GetMainSizeFromReflowInput(const ReflowInput& aReflowInput,
                                      const FlexboxAxisTracker& aAxisTracker);
+
+  /**
+   * Resolves the content-box main-size of a flex container frame,
+   * primarily based on:
+   * - the "tentative" main size, taken from the reflow input ("tentative"
+   *    because it may be unconstrained or may run off the page).
+   * - the available BSize (needed if the main axis is the block axis).
+   * - the sizes of our lines of flex items.
+   *
+   * Guaranteed to return a definite length, i.e. not NS_UNCONSTRAINEDSIZE,
+   * aside from cases with huge lengths which happen to compute to that value.
+   *
+   * This corresponds to "Determine the main size of the flex container" step in
+   * the spec. https://drafts.csswg.org/css-flexbox-1/#algo-main-container
+   *
+   * (Note: This function should be structurally similar to
+   * 'ComputeCrossSize()', except that here, the caller has already grabbed the
+   * tentative size from the reflow input.)
+   */
+  nscoord ComputeMainSize(const ReflowInput& aReflowInput,
+                          const FlexboxAxisTracker& aAxisTracker,
+                          nscoord aTentativeMainSize,
+                          nscoord aAvailableBSizeForContent,
+                          nsTArray<FlexLine>& aLines,
+                          nsReflowStatus& aStatus) const;
 
   nscoord ComputeCrossSize(const ReflowInput& aReflowInput,
                            const FlexboxAxisTracker& aAxisTracker,
                            nscoord aSumLineCrossSizes,
                            nscoord aAvailableBSizeForContent, bool* aIsDefinite,
-                           nsReflowStatus& aStatus);
+                           nsReflowStatus& aStatus) const;
 
   void SizeItemInCrossAxis(ReflowInput& aChildReflowInput, FlexItem& aItem);
+
+  /**
+   * This method computes flex container's final size and baseline.
+   *
+   * @param aContentBoxMainSize the final content-box main-size of the flex
+   *                            container.
+   * @param aContentBoxCrossSize the final content-box cross-size of the flex
+   *                             container.
+   * @param aFlexContainerAscent the flex container's ascent, if one has been
+   *                             determined from its children. (If there are no
+   *                             children, pass nscoord_MIN to synthesize a
+   *                             value from the flex container itself).
+   */
+  void ComputeFinalSize(
+      ReflowOutput& aReflowOutput, const ReflowInput& aReflowInput,
+      nsReflowStatus& aStatus, const nscoord aContentBoxMainSize,
+      const nscoord aContentBoxCrossSize, nscoord aFlexContainerAscent,
+      nsTArray<FlexLine>& aLines, const FlexboxAxisTracker& aAxisTracker);
+
+  /**
+   * Perform a final Reflow for our child frames.
+   *
+   * @param aContentBoxMainSize the final content-box main-size of the flex
+   *                            container.
+   * @param aContentBoxCrossSize the final content-box cross-size of the flex
+   *                             container.
+   * @param aFlexContainerAscent [in/out] initially, the "tentative" flex
+   *                             container ascent computed in DoFlexLayout; or,
+   *                             nscoord_MIN if the ascent hasn't been
+   *                             established yet. If the latter, this will be
+   *                             updated with an ascent derived from the first
+   *                             flex item (if there are any flex items).
+   */
+  void ReflowChildren(const ReflowInput& aReflowInput,
+                      const nscoord aContentBoxMainSize,
+                      const nscoord aContentBoxCrossSize,
+                      nscoord& aFlexContainerAscent, nsTArray<FlexLine>& aLines,
+                      nsTArray<nsIFrame*>& aPlaceholders,
+                      const FlexboxAxisTracker& aAxisTracker,
+                      bool aHasLineClampEllipsis);
 
   /**
    * Moves the given flex item's frame to the given LogicalPosition (modulo any

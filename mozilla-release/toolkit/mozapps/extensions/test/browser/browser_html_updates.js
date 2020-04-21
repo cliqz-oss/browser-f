@@ -6,6 +6,11 @@ const { AddonTestUtils } = ChromeUtils.import(
 
 AddonTestUtils.initMochitest(this);
 
+const initialAutoUpdate = AddonManager.autoUpdateDefault;
+registerCleanupFunction(() => {
+  AddonManager.autoUpdateDefault = initialAutoUpdate;
+});
+
 add_task(async function setup() {
   Services.telemetry.clearEvents();
 });
@@ -252,6 +257,16 @@ function installUpdate(card, expected) {
   return Promise.all([updateInstalled, updated]);
 }
 
+async function findUpdatesForAddonId(id) {
+  let addon = await AddonManager.getAddonByID(id);
+  await new Promise(resolve => {
+    addon.findUpdates(
+      { onUpdateAvailable: resolve },
+      AddonManager.UPDATE_WHEN_USER_REQUESTED
+    );
+  });
+}
+
 function assertUpdateState({
   card,
   shown,
@@ -399,7 +414,7 @@ add_task(async function testReleaseNotesLoad() {
 
   info("Switch away and back to release notes");
   // Load details view.
-  let detailsBtn = tabGroup.querySelector('named-deck-button[name="details"]');
+  let detailsBtn = tabGroup.querySelector('.tab-button[name="details"]');
   let viewChanged = BrowserTestUtils.waitForEvent(deck, "view-changed");
   detailsBtn.click();
   await viewChanged;
@@ -506,7 +521,7 @@ add_task(async function testReleaseNotesError() {
 
   info("Switch away and back to release notes");
   // Load details view.
-  let detailsBtn = tabGroup.querySelector('named-deck-button[name="details"]');
+  let detailsBtn = tabGroup.querySelector('.tab-button[name="details"]');
   let viewChanged = BrowserTestUtils.waitForEvent(deck, "view-changed");
   detailsBtn.click();
   await viewChanged;
@@ -576,17 +591,40 @@ add_task(async function testAvailableUpdates() {
 
   let win = await loadInitialView("extension");
   let doc = win.document;
+  let updatesMessage = doc.getElementById("updates-message");
+  let categoryUtils = new CategoryUtilities(win.managerWindow);
 
-  let { gCategories } = win.managerWindow;
-  let availableCat = gCategories.get("addons://updates/available");
+  let availableCat = categoryUtils.get("available-updates");
 
   ok(availableCat.hidden, "Available updates is hidden");
   is(availableCat.badgeCount, 0, "There are no updates");
+  ok(updatesMessage, "There is an updates message");
+  is_element_hidden(updatesMessage, "The message is hidden");
+  ok(!updatesMessage.message.textContent, "The message is empty");
+  ok(!updatesMessage.button.textContent, "The button is empty");
 
   // Check for all updates.
   let updatesFound = TestUtils.topicObserved("EM-update-check-finished");
   doc.querySelector('#page-options [action="check-for-updates"]').click();
+
+  is_element_visible(updatesMessage, "The message is visible");
+  ok(!updatesMessage.message.textContent, "The message is empty");
+  ok(updatesMessage.button.hidden, "The view updates button is hidden");
+
+  // Make sure the message gets populated by fluent.
+  await TestUtils.waitForCondition(
+    () => updatesMessage.message.textContent,
+    "wait for message text"
+  );
+
   await updatesFound;
+
+  // The button should be visible, and should get some text from fluent.
+  ok(!updatesMessage.button.hidden, "The view updates button is visible");
+  await TestUtils.waitForCondition(
+    () => updatesMessage.button.textContent,
+    "wait for button text"
+  );
 
   // Wait for the available updates count to finalize, it's async.
   await BrowserTestUtils.waitForCondition(() => availableCat.badgeCount == 3);
@@ -612,7 +650,7 @@ add_task(async function testAvailableUpdates() {
   // Check the detail page for the first add-on.
   await loadDetailView(win, ids[0]);
   is(
-    gCategories.selected,
+    categoryUtils.getSelectedViewId(),
     "addons://list/extension",
     "The extensions category is selected"
   );
@@ -624,7 +662,7 @@ add_task(async function testAvailableUpdates() {
 
   // We're back on the updates view.
   is(
-    gCategories.selected,
+    categoryUtils.getSelectedViewId(),
     "addons://updates/available",
     "The available updates category is selected"
   );
@@ -664,4 +702,49 @@ add_task(async function testAvailableUpdates() {
 
   await closeView(win);
   await Promise.all(addons.map(addon => addon.unload()));
+});
+
+add_task(async function testUpdatesShownOnLoad() {
+  let id = "has-update@mochi.test";
+  let addon = await setupExtensionWithUpdate(id);
+
+  // Find the update for our addon.
+  AddonManager.autoUpdateDefault = false;
+  await findUpdatesForAddonId(id);
+
+  let win = await loadInitialView("extension");
+  let categoryUtils = new CategoryUtilities(win.managerWindow);
+  let updatesButton = categoryUtils.get("available-updates");
+
+  ok(!updatesButton.hidden, "The updates button is shown");
+  is(updatesButton.badgeCount, 1, "There is an update");
+
+  let loaded = waitForViewLoad(win);
+  updatesButton.click();
+  await loaded;
+
+  let cards = win.document.querySelectorAll("addon-card");
+
+  is(cards.length, 1, "There is one update card");
+
+  let card = cards[0];
+  is(card.addon.id, id, "The update is for the expected add-on");
+
+  await installUpdate(card, "update-installed");
+
+  ok(!updatesButton.hidden, "The updates button is still shown");
+  is(updatesButton.badgeCount, 0, "There are no more updates");
+
+  info("Check that the updates section is hidden when re-opened");
+  await closeView(win);
+  win = await loadInitialView("extension");
+  categoryUtils = new CategoryUtilities(win.managerWindow);
+  updatesButton = categoryUtils.get("available-updates");
+
+  ok(updatesButton.hidden, "Available updates is hidden");
+  is(updatesButton.badgeCount, 0, "There are no updates");
+
+  AddonManager.autoUpdateDefault = true;
+  await closeView(win);
+  await addon.unload();
 });

@@ -13,19 +13,19 @@
   },
   "Identifier": {
     "_type": "struct",
-    "value": "String"
+    "value": "SourceAtomSetIndex"
   },
   "IdentifierName": {
     "_type": "struct",
-    "value": "String"
+    "value": "SourceAtomSetIndex"
   },
   "PrivateIdentifier": {
     "_type": "struct",
-    "value": "String"
+    "value": "SourceAtomSetIndex"
   },
   "Label": {
     "_type": "struct",
-    "value": "String"
+    "value": "SourceAtomSetIndex"
   },
   "VariableDeclarationKind": {
     "_type": "enum",
@@ -196,11 +196,9 @@
     },
     "LiteralInfinityExpression": null,
     "LiteralNullExpression": null,
-    "LiteralNumericExpression": {
-      "value": "f64"
-    },
+    "LiteralNumericExpression": "NumericLiteral",
     "LiteralRegExpExpression": {
-      "pattern": "String",
+      "pattern": "SourceAtomSetIndex",
       "global": "bool",
       "ignore_case": "bool",
       "multi_line": "bool",
@@ -208,7 +206,7 @@
       "unicode": "bool"
     },
     "LiteralStringExpression": {
-      "value": "String"
+      "value": "SourceAtomSetIndex"
     },
     "ArrayExpression": "ArrayExpression",
     "ArrowExpression": {
@@ -297,7 +295,8 @@
   "PropertyName": {
     "_type": "enum",
     "ComputedPropertyName": "ComputedPropertyName",
-    "StaticPropertyName": "StaticPropertyName"
+    "StaticPropertyName": "StaticPropertyName",
+    "StaticNumericPropertyName": "NumericLiteral"
   },
   "CallExpression": {
     "_type": "struct",
@@ -308,6 +307,7 @@
     "_type": "enum",
     "ComputedPropertyName": "ComputedPropertyName",
     "StaticPropertyName": "StaticPropertyName",
+    "StaticNumericPropertyName": "NumericLiteral",
     "PrivateFieldName": "PrivateIdentifier"
   },
   "ObjectProperty": {
@@ -504,13 +504,13 @@
   },
   "Import": {
     "_type": "struct",
-    "module_specifier": "String",
+    "module_specifier": "SourceAtomSetIndex",
     "default_binding": "Option<BindingIdentifier>",
     "named_imports": "Vec<ImportSpecifier>"
   },
   "ImportNamespace": {
     "_type": "struct",
-    "module_specifier": "String",
+    "module_specifier": "SourceAtomSetIndex",
     "default_binding": "Option<BindingIdentifier>",
     "namespace_binding": "BindingIdentifier"
   },
@@ -521,12 +521,12 @@
   },
   "ExportAllFrom": {
     "_type": "struct",
-    "module_specifier": "String"
+    "module_specifier": "SourceAtomSetIndex"
   },
   "ExportFrom": {
     "_type": "struct",
     "named_exports": "Vec<ExportFromSpecifier>",
-    "module_specifier": "String"
+    "module_specifier": "SourceAtomSetIndex"
   },
   "ExportLocals": {
     "_type": "struct",
@@ -588,7 +588,11 @@
   },
   "StaticPropertyName": {
     "_type": "struct",
-    "value": "String"
+    "value": "SourceAtomSetIndex"
+  },
+  "NumericLiteral": {
+    "_type": "struct",
+    "value": "f64"
   },
   "ArrayExpressionElement": {
     "_type": "enum",
@@ -651,7 +655,7 @@
   "Block": {
     "_type": "struct",
     "statements": "Vec<Statement>",
-    "declarations": "Option<Vec<String>>"
+    "declarations": "Option<Vec<SourceAtomSetIndex>>"
   },
   "CatchClause": {
     "_type": "struct",
@@ -660,7 +664,7 @@
   },
   "Directive": {
     "_type": "struct",
-    "raw_value": "String"
+    "raw_value": "SourceAtomSetIndex"
   },
   "FormalParameters": {
     "_type": "struct",
@@ -688,7 +692,7 @@
   },
   "TemplateElement": {
     "_type": "struct",
-    "raw_value": "String"
+    "raw_value": "SourceAtomSetIndex"
   },
   "VariableDeclaration": {
     "_type": "struct",

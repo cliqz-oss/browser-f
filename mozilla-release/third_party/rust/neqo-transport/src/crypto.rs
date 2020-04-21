@@ -21,7 +21,7 @@ use neqo_crypto::{
 };
 
 use crate::connection::Role;
-use crate::frame::{Frame, TxMode};
+use crate::frame::Frame;
 use crate::packet::PacketNumber;
 use crate::recovery::RecoveryToken;
 use crate::recv_stream::RxStreamOrderer;
@@ -183,9 +183,11 @@ impl Crypto {
         self.streams.lost(token);
     }
 
-    pub fn discard(&mut self, space: PNSpace) {
-        self.states.discard(space);
+    /// Discard state for a packet number space and return true
+    /// if something was discarded.
+    pub fn discard(&mut self, space: PNSpace) -> bool {
         self.streams.discard(space);
+        self.states.discard(space)
     }
 }
 
@@ -588,10 +590,11 @@ impl CryptoStates {
         self.zero_rtt = Some(CryptoDxState::new(dir, TLS_EPOCH_ZERO_RTT, secret, cipher));
     }
 
-    pub fn discard(&mut self, space: PNSpace) {
+    /// Discard keys and return true if that happened.
+    pub fn discard(&mut self, space: PNSpace) -> bool {
         match space {
-            PNSpace::Initial => self.initial = None,
-            PNSpace::Handshake => self.handshake = None,
+            PNSpace::Initial => self.initial.take().is_some(),
+            PNSpace::Handshake => self.handshake.take().is_some(),
             PNSpace::ApplicationData => panic!("Can't drop application data keys"),
         }
     }
@@ -838,21 +841,17 @@ impl CryptoStreams {
                     ..
                 } = self
                 {
-                    // TODO: Use mem::take instead of mem::replace once 1.40+ is
-                    // usable in Firefox builds.
-                    let tmp_h = mem::replace(handshake, CryptoStream::default());
-                    let tmp_a = mem::replace(application, CryptoStream::default());
                     *self = Self::Handshake {
-                        handshake: tmp_h,
-                        application: tmp_a,
+                        handshake: mem::take(handshake),
+                        application: mem::take(application),
                     };
                 }
             }
             PNSpace::Handshake => {
                 if let Self::Handshake { application, .. } = self {
-                    // TODO: Same as above
-                    let tmp_a = mem::replace(application, CryptoStream::default());
-                    *self = Self::ApplicationData { application: tmp_a };
+                    *self = Self::ApplicationData {
+                        application: mem::take(application),
+                    };
                 } else if matches!(self, Self::Initial {..}) {
                     panic!("Discarding handshake before initial discarded");
                 }
@@ -862,50 +861,84 @@ impl CryptoStreams {
     }
 
     pub fn send(&mut self, space: PNSpace, data: &[u8]) {
-        self[space].tx.send(data);
+        self.get_mut(space).unwrap().tx.send(data);
     }
 
     pub fn inbound_frame(&mut self, space: PNSpace, offset: u64, data: Vec<u8>) -> Res<()> {
-        self[space].rx.inbound_frame(offset, data)
+        self.get_mut(space).unwrap().rx.inbound_frame(offset, data)
     }
 
     pub fn data_ready(&self, space: PNSpace) -> bool {
-        self[space].rx.data_ready()
+        self.get(space).map_or(false, |cs| cs.rx.data_ready())
     }
 
     pub fn read_to_end(&mut self, space: PNSpace, buf: &mut Vec<u8>) -> Res<u64> {
-        self[space].rx.read_to_end(buf)
+        self.get_mut(space).unwrap().rx.read_to_end(buf)
     }
 
     pub fn acked(&mut self, token: CryptoRecoveryToken) {
-        self[token.space]
+        self.get_mut(token.space)
+            .unwrap()
             .tx
             .mark_as_acked(token.offset, token.length)
     }
 
     pub fn lost(&mut self, token: &CryptoRecoveryToken) {
-        self[token.space]
-            .tx
-            .mark_as_lost(token.offset, token.length)
+        // See BZ 1624800, ignore lost packets in spaces we've dropped keys
+        if let Some(cs) = self.get_mut(token.space) {
+            cs.tx.mark_as_lost(token.offset, token.length)
+        }
     }
 
-    pub fn sent(&mut self, space: PNSpace, offset: u64, length: usize) {
-        self[space].tx.mark_as_sent(offset, length)
+    fn get(&self, space: PNSpace) -> Option<&CryptoStream> {
+        let (initial, hs, app) = match self {
+            Self::Initial {
+                initial,
+                handshake,
+                application,
+            } => (Some(initial), Some(handshake), Some(application)),
+            Self::Handshake {
+                handshake,
+                application,
+            } => (None, Some(handshake), Some(application)),
+            Self::ApplicationData { application } => (None, None, Some(application)),
+        };
+        match space {
+            PNSpace::Initial => initial,
+            PNSpace::Handshake => hs,
+            PNSpace::ApplicationData => app,
+        }
     }
 
-    pub fn next_bytes(&self, space: PNSpace, mode: TxMode) -> Option<(u64, &[u8])> {
-        self[space].tx.next_bytes(mode)
+    fn get_mut(&mut self, space: PNSpace) -> Option<&mut CryptoStream> {
+        let (initial, hs, app) = match self {
+            Self::Initial {
+                initial,
+                handshake,
+                application,
+            } => (Some(initial), Some(handshake), Some(application)),
+            Self::Handshake {
+                handshake,
+                application,
+            } => (None, Some(handshake), Some(application)),
+            Self::ApplicationData { application } => (None, None, Some(application)),
+        };
+        match space {
+            PNSpace::Initial => initial,
+            PNSpace::Handshake => hs,
+            PNSpace::ApplicationData => app,
+        }
     }
 
     pub fn get_frame(
         &mut self,
         space: PNSpace,
-        mode: TxMode,
         remaining: usize,
     ) -> Option<(Frame, Option<RecoveryToken>)> {
-        if let Some((offset, data)) = self.next_bytes(space, mode) {
+        let cs = self.get_mut(space).unwrap();
+        if let Some((offset, data)) = cs.tx.next_bytes() {
             let (frame, length) = Frame::new_crypto(offset, data, remaining);
-            self.sent(space, offset, length);
+            cs.tx.mark_as_sent(offset, length);
 
             qdebug!(
                 "Emitting crypto frame space={}, offset={}, len={}",
@@ -933,51 +966,6 @@ impl Default for CryptoStreams {
             initial: CryptoStream::default(),
             handshake: CryptoStream::default(),
             application: CryptoStream::default(),
-        }
-    }
-}
-
-impl Index<PNSpace> for CryptoStreams {
-    type Output = CryptoStream;
-    fn index(&self, space: PNSpace) -> &Self::Output {
-        let (initial, hs, app) = match self {
-            Self::Initial {
-                initial,
-                handshake,
-                application,
-            } => (Some(initial), Some(handshake), application),
-            Self::Handshake {
-                handshake,
-                application,
-            } => (None, Some(handshake), application),
-            Self::ApplicationData { application } => (None, None, application),
-        };
-        match space {
-            PNSpace::Initial => initial.expect("Initial state dropped!"),
-            PNSpace::Handshake => hs.expect("Handshake state dropped!"),
-            PNSpace::ApplicationData => app,
-        }
-    }
-}
-
-impl IndexMut<PNSpace> for CryptoStreams {
-    fn index_mut(&mut self, space: PNSpace) -> &mut Self::Output {
-        let (initial, hs, app) = match self {
-            Self::Initial {
-                initial,
-                handshake,
-                application,
-            } => (Some(initial), Some(handshake), application),
-            Self::Handshake {
-                handshake,
-                application,
-            } => (None, Some(handshake), application),
-            Self::ApplicationData { application } => (None, None, application),
-        };
-        match space {
-            PNSpace::Initial => initial.expect("Initial state dropped!"),
-            PNSpace::Handshake => hs.expect("Handshake state dropped!"),
-            PNSpace::ApplicationData => app,
         }
     }
 }

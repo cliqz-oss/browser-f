@@ -29,7 +29,7 @@ class AutoAccessAtomsZone;
 class AutoLockGC;
 class AutoLockGCBgAlloc;
 class AutoLockHelperThreadState;
-class FinalizationGroupObject;
+class FinalizationRegistryObject;
 class VerifyPreTracer;
 class WeakRefObject;
 class ZoneAllocator;
@@ -59,7 +59,7 @@ struct SweepAction {
     SliceBudget& budget;
   };
 
-  virtual ~SweepAction() {}
+  virtual ~SweepAction() = default;
   virtual IncrementalProgress run(Args& state) = 0;
   virtual void assertFinished() const = 0;
   virtual bool shouldSkip() { return false; }
@@ -419,9 +419,10 @@ class GCRuntime {
   MOZ_MUST_USE bool addFinalizeCallback(JSFinalizeCallback callback,
                                         void* data);
   void removeFinalizeCallback(JSFinalizeCallback func);
-  void setHostCleanupFinalizationGroupCallback(
-      JSHostCleanupFinalizationGroupCallback callback, void* data);
-  void callHostCleanupFinalizationGroupCallback(FinalizationGroupObject* group);
+  void setHostCleanupFinalizationRegistryCallback(
+      JSHostCleanupFinalizationRegistryCallback callback, void* data);
+  void callHostCleanupFinalizationRegistryCallback(
+      FinalizationRegistryObject* registry);
   MOZ_MUST_USE bool addWeakPointerZonesCallback(
       JSWeakPointerZonesCallback callback, void* data);
   void removeWeakPointerZonesCallback(JSWeakPointerZonesCallback callback);
@@ -435,10 +436,12 @@ class GCRuntime {
   JS::DoCycleCollectionCallback setDoCycleCollectionCallback(
       JS::DoCycleCollectionCallback callback);
 
-  bool registerWithFinalizationGroup(JSContext* cx, HandleObject target,
-                                     HandleObject record);
-  bool cleanupQueuedFinalizationGroup(JSContext* cx,
-                                      Handle<FinalizationGroupObject*> group);
+  bool addFinalizationRegistry(JSContext* cx,
+                               FinalizationRegistryObject* registry);
+  bool registerWithFinalizationRegistry(JSContext* cx, HandleObject target,
+                                        HandleObject record);
+  bool cleanupQueuedFinalizationRegistry(
+      JSContext* cx, Handle<FinalizationRegistryObject*> registry);
 
   void setFullCompartmentChecks(bool enable);
 
@@ -673,7 +676,6 @@ class GCRuntime {
   MOZ_MUST_USE bool beginMarkPhase(JS::GCReason reason, AutoGCSession& session);
   bool prepareZonesForCollection(JS::GCReason reason, bool* isFullOut);
   void bufferGrayRoots();
-  void unmarkCollectedZones();
   void unmarkWeakMaps();
   bool shouldPreserveJITCode(JS::Realm* realm,
                              const mozilla::TimeStamp& currentTime,
@@ -689,7 +691,7 @@ class GCRuntime {
   void traceRuntimeCommon(JSTracer* trc, TraceOrMarkRuntime traceOrMark);
   void traceEmbeddingBlackRoots(JSTracer* trc);
   void traceEmbeddingGrayRoots(JSTracer* trc);
-  void markFinalizationGroupRoots(JSTracer* trc);
+  void markFinalizationRegistryRoots(JSTracer* trc);
   void checkNoRuntimeRoots(AutoGCSession& session);
   void maybeDoCycleCollection();
   void findDeadCompartments();
@@ -724,14 +726,14 @@ class GCRuntime {
   void sweepObjectGroups();
   void sweepMisc();
   void sweepCompressionTasks();
-  void sweepLazyScripts();
   void sweepWeakMaps();
   void sweepUniqueIds();
   void sweepDebuggerOnMainThread(JSFreeOp* fop);
   void sweepJitDataOnMainThread(JSFreeOp* fop);
-  void sweepFinalizationGroupsOnMainThread();
-  void sweepFinalizationGroups(Zone* zone);
-  void queueFinalizationGroupForCleanup(FinalizationGroupObject* group);
+  void sweepFinalizationRegistriesOnMainThread();
+  void sweepFinalizationRegistries(Zone* zone);
+  void queueFinalizationRegistryForCleanup(
+      FinalizationRegistryObject* registry);
   void sweepWeakRefs();
   IncrementalProgress endSweepingSweepGroup(JSFreeOp* fop, SliceBudget& budget);
   IncrementalProgress performSweepActions(SliceBudget& sliceBudget);
@@ -767,7 +769,7 @@ class GCRuntime {
                                    Arena*& relocatedListOut,
                                    SliceBudget& sliceBudget);
   void updateTypeDescrObjects(MovingTracer* trc, Zone* zone);
-  void updateCellPointers(Zone* zone, AllocKinds kinds, size_t bgTaskCount);
+  void updateCellPointers(Zone* zone, AllocKinds kinds);
   void updateAllCellPointers(MovingTracer* trc, Zone* zone);
   void updateZonePointersToRelocatedCells(Zone* zone);
   void updateRuntimePointersToRelocatedCells(AutoGCSession& session);
@@ -1098,8 +1100,8 @@ class GCRuntime {
       gcDoCycleCollectionCallback;
   MainThreadData<Callback<JSObjectsTenuredCallback>> tenuredCallback;
   MainThreadData<CallbackVector<JSFinalizeCallback>> finalizeCallbacks;
-  MainThreadOrGCTaskData<Callback<JSHostCleanupFinalizationGroupCallback>>
-      hostCleanupFinalizationGroupCallback;
+  MainThreadOrGCTaskData<Callback<JSHostCleanupFinalizationRegistryCallback>>
+      hostCleanupFinalizationRegistryCallback;
   MainThreadData<CallbackVector<JSWeakPointerZonesCallback>>
       updateWeakPointerZonesCallbacks;
   MainThreadData<CallbackVector<JSWeakPointerCompartmentCallback>>

@@ -123,7 +123,7 @@ struct DisplayPortMarginsPropertyData {
 }  // namespace mozilla
 
 // For GetDisplayPort
-enum class RelativeTo { ScrollPort, ScrollFrame };
+enum class DisplayportRelativeTo { ScrollPort, ScrollFrame };
 
 // Flags to customize the behavior of nsLayoutUtils::DrawString.
 enum class DrawStringFlags {
@@ -148,7 +148,7 @@ class nsLayoutUtils {
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
   typedef mozilla::IntrinsicSize IntrinsicSize;
   typedef mozilla::gfx::SourceSurface SourceSurface;
-  typedef mozilla::gfx::Color Color;
+  typedef mozilla::gfx::sRGBColor sRGBColor;
   typedef mozilla::gfx::DrawTarget DrawTarget;
   typedef mozilla::gfx::ExtendMode ExtendMode;
   typedef mozilla::gfx::SamplingFilter SamplingFilter;
@@ -215,9 +215,10 @@ class nsLayoutUtils {
    * Get display port for the given element, relative to the specified entity,
    * defaulting to the scrollport.
    */
-  static bool GetDisplayPort(nsIContent* aContent, nsRect* aResult,
-                             RelativeTo aRelativeTo = RelativeTo::ScrollPort,
-                             bool* aOutPainted = nullptr);
+  static bool GetDisplayPort(
+      nsIContent* aContent, nsRect* aResult,
+      DisplayportRelativeTo aRelativeTo = DisplayportRelativeTo::ScrollPort,
+      bool* aOutPainted = nullptr);
 
   /**
    * Check whether the given element has a displayport.
@@ -269,7 +270,7 @@ class nsLayoutUtils {
    */
   static bool GetDisplayPortForVisibilityTesting(
       nsIContent* aContent, nsRect* aResult,
-      RelativeTo aRelativeTo = RelativeTo::ScrollPort);
+      DisplayportRelativeTo aRelativeTo = DisplayportRelativeTo::ScrollPort);
 
   enum class RepaintMode : uint8_t { Repaint, DoNotRepaint };
 
@@ -584,8 +585,8 @@ class nsLayoutUtils {
    * aFrame == aAncestorFrame.
    */
   static bool IsProperAncestorFrameCrossDoc(
-      nsIFrame* aAncestorFrame, nsIFrame* aFrame,
-      nsIFrame* aCommonAncestor = nullptr);
+      const nsIFrame* aAncestorFrame, const nsIFrame* aFrame,
+      const nsIFrame* aCommonAncestor = nullptr);
 
   /**
    * IsAncestorFrameCrossDoc checks whether aAncestorFrame is an ancestor
@@ -951,8 +952,8 @@ class nsLayoutUtils {
    * Find the nearest common ancestor frame for aFrame1 and aFrame2. The
    * ancestor frame could be cross-doc.
    */
-  static nsIFrame* FindNearestCommonAncestorFrame(nsIFrame* aFrame1,
-                                                  nsIFrame* aFrame2);
+  static const nsIFrame* FindNearestCommonAncestorFrame(
+      const nsIFrame* aFrame1, const nsIFrame* aFrame2);
 
   /**
    * Transforms a list of CSSPoints from aFromFrame to aToFrame, taking into
@@ -978,16 +979,17 @@ class nsLayoutUtils {
    * Same as above function, but transform points in app units and
    * handle 1 point per call.
    */
-  static TransformResult TransformPoint(nsIFrame* aFromFrame,
-                                        nsIFrame* aToFrame, nsPoint& aPoint);
+  static TransformResult TransformPoint(const nsIFrame* aFromFrame,
+                                        const nsIFrame* aToFrame,
+                                        nsPoint& aPoint);
 
   /**
    * Transforms a rect from aFromFrame to aToFrame. In app units.
    * Returns the bounds of the actual rect if the transform requires rotation
    * or anything complex like that.
    */
-  static TransformResult TransformRect(nsIFrame* aFromFrame, nsIFrame* aToFrame,
-                                       nsRect& aRect);
+  static TransformResult TransformRect(const nsIFrame* aFromFrame,
+                                       const nsIFrame* aToFrame, nsRect& aRect);
 
   /**
    * Converts app units to pixels (with optional snapping) and appends as a
@@ -2953,7 +2955,8 @@ class nsLayoutUtils {
 
   // Return the default value to be used for -moz-control-character-visibility,
   // from preferences.
-  static uint8_t ControlCharVisibilityDefault();
+  static mozilla::StyleControlCharacterVisibility
+  ControlCharVisibilityDefault();
 
   // Callers are responsible to ensure the user-font-set is up-to-date if
   // aUseUserFontSet is true.

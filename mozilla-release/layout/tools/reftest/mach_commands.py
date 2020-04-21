@@ -68,7 +68,7 @@ class ReftestRunner(MozbuildObject):
         }
 
         args.extraProfileFiles.append(os.path.join(self.topobjdir, "dist", "plugins"))
-        args.symbolsPath = os.path.join(self.topobjdir, "crashreporter-symbols")
+        args.symbolsPath = os.path.join(self.topobjdir, "dist", "crashreporter-symbols")
         args.sandboxReadWhitelist.extend([self.topsrcdir, self.topobjdir])
 
         if not args.tests:
@@ -230,7 +230,7 @@ class MachCommands(MachCommandBase):
         reftest.log_manager.enable_unstructured()
         if conditions.is_android(self):
             from mozrunner.devices.android_device import (verify_android_device, InstallIntent)
-            install = InstallIntent.NO if kwargs.get('no_install') else InstallIntent.PROMPT
+            install = InstallIntent.NO if kwargs.get('no_install') else InstallIntent.YES
             verify_android_device(self, install=install, xre=True, network=True,
                                   app=kwargs["app"], device_serial=kwargs["deviceSerial"])
             return reftest.run_android_test(**kwargs)

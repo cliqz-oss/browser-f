@@ -18,8 +18,20 @@
 // Please indent all prefs defined within #ifdef/#ifndef conditions. This
 // improves readability, particular for conditional blocks that exceed a single
 // screen.
+<<<<<<< HEAD
 // CLIQZ-SPECIAL: temporary use version 1 (FF also uses 1 now instead of 3)
 pref("security.tls.version.min", 1);
+||||||| merged common ancestors
+
+pref("security.tls.version.min", 1);
+=======
+
+#if MOZ_UPDATE_CHANNEL == release || MOZ_UPDATE_CHANNEL == esr
+  pref("security.tls.version.min", 1);
+#else
+  pref("security.tls.version.min", 3);
+#endif
+>>>>>>> origin/upstream-betas
 pref("security.tls.version.max", 4);
 pref("security.tls.version.enable-deprecated", false);
 pref("security.tls.version.fallback-limit", 4);
@@ -422,14 +434,14 @@ pref("media.decoder-doctor.new-issue-endpoint", "https://webcompat.com/issues/ne
 
 pref("media.videocontrols.picture-in-picture.enabled", false);
 pref("media.videocontrols.picture-in-picture.video-toggle.enabled", false);
-pref("media.videocontrols.picture-in-picture.video-toggle.flyout-enabled", false);
-pref("media.videocontrols.picture-in-picture.video-toggle.flyout-wait-ms", 5000);
 pref("media.videocontrols.picture-in-picture.video-toggle.always-show", false);
+pref("media.videocontrols.picture-in-picture.video-toggle.min-video-secs", 45);
 
 #ifdef MOZ_WEBRTC
   pref("media.navigator.video.enabled", true);
   pref("media.navigator.video.default_fps",30);
   pref("media.navigator.video.use_remb", true);
+  pref("media.navigator.video.use_transport_cc", false);
   pref("media.navigator.video.use_tmmbr", false);
   pref("media.navigator.audio.use_fec", true);
   pref("media.navigator.video.red_ulpfec_enabled", false);
@@ -531,6 +543,7 @@ pref("media.videocontrols.picture-in-picture.video-toggle.always-show", false);
   pref("media.getusermedia.noise", 1); // kModerate
   pref("media.getusermedia.agc_enabled", true);
   pref("media.getusermedia.agc", 1); // kAdaptiveDigital
+  pref("media.getusermedia.hpf_enabled", true);
   // full_duplex: enable cubeb full-duplex capture/playback
   pref("media.navigator.audio.full_duplex", true);
 #endif // MOZ_WEBRTC
@@ -587,6 +600,8 @@ pref("media.audiograph.single_thread.enabled", true);
 // gfx/layers/apz/src/AsyncPanZoomController.cpp.
 pref("apz.overscroll.stop_velocity_threshold", "0.01");
 pref("apz.overscroll.stretch_factor", "0.35");
+
+pref("apz.zoom-to-focused-input.enabled", true);
 
 #ifdef XP_MACOSX
   // Whether to run in native HiDPI mode on machines with "Retina"/HiDPI
@@ -815,7 +830,11 @@ pref("toolkit.telemetry.unified", true);
 #else
   // ASan and TSan builds can be considerably slower. Extend the grace period
   // of both asyncshutdown and the terminator.
-  pref("toolkit.asyncshutdown.crash_timeout", 180000); // 3 minutes
+  #if defined(MOZ_TSAN)
+    pref("toolkit.asyncshutdown.crash_timeout", 360000); // 6 minutes
+  #else
+    pref("toolkit.asyncshutdown.crash_timeout", 180000); // 3 minutes
+  #endif
 #endif // !defined(MOZ_ASAN) && !defined(MOZ_TSAN)
 // Extra logging for AsyncShutdown barriers and phases
 pref("toolkit.asyncshutdown.log", false);
@@ -840,35 +859,59 @@ pref("devtools.console.stdout.content", false, sticky);
 // Controls whether EventEmitter module throws dump message on each emit
 pref("toolkit.dump.emit", false);
 
-// Preferences for the new performance panel.
+// Preferences for the new performance panel. Note that some preferences are duplicated
+// with a ".remote" postfix. This is because we have one set of preference for local
+// profiling, and a second set for remote profiling.
+
 // This pref configures the base URL for the profiler.firefox.com instance to
 // use. This is useful so that a developer can change it while working on
 // profiler.firefox.com, or in tests. This isn't exposed directly to the user.
 pref("devtools.performance.recording.ui-base-url", "https://profiler.firefox.com");
-
+// The popup is only enabled by default on Nightly, Dev Edition, and debug buildsd since
+// it's a developer focused item. It can still be enabled by going to profiler.firefox.com,
+// but by default it is off on Release and Beta. Note that this only adds it to the
+// the customization palette, not to the navbar.
+#if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION) || defined(DEBUG)
+  pref("devtools.performance.popup.feature-flag", true);
+#else
+  pref("devtools.performance.popup.feature-flag", false);
+#endif
 // The preset to use for the recording settings. If set to "custom" then the pref
 // values below will be used.
-pref("devtools.performance.recording.preset", "web-developer");
+#if defined(NIGHTLY_BUILD) || !defined(MOZILLA_OFFICIAL)
+  // Use a more advanced preset on Nightly and local builds.
+  pref("devtools.performance.recording.preset", "firefox-platform");
+  pref("devtools.performance.recording.preset.remote", "firefox-platform");
+#else
+  pref("devtools.performance.recording.preset", "web-developer");
+  pref("devtools.performance.recording.preset.remote", "web-developer");
+#endif
 // Profiler buffer size. It is the maximum number of 8-bytes entries in the
 // profiler's buffer. 10000000 is ~80mb.
 pref("devtools.performance.recording.entries", 10000000);
+pref("devtools.performance.recording.entries.remote", 10000000);
 // Profiler interval in microseconds. 1000µs is 1ms
 pref("devtools.performance.recording.interval", 1000);
+pref("devtools.performance.recording.interval.remote", 1000);
 // Profiler duration of entries in the profiler's buffer in seconds.
 // `0` means no time limit for the markers, they roll off naturally from the
 // circular buffer.
 pref("devtools.performance.recording.duration", 0);
+pref("devtools.performance.recording.duration.remote", 0);
 // Profiler feature set. See tools/profiler/core/platform.cpp for features and
-// explanations. Android additionally has "java" feature but other features must
-// be the same. If you intend to change the default value of this pref, please
-// don't forget to change the mobile/android/app/mobile.js accordingly.
-pref("devtools.performance.recording.features", "[\"js\",\"leaf\",\"stackwalk\"]");
+// explanations. Remote profiling also includes the java feature by default.
+// If the remote debuggee isn't an Android phone, then this feature will
+// be ignored.
+pref("devtools.performance.recording.features", "[\"js\",\"leaf\",\"stackwalk\",\"screenshots\"]");
+pref("devtools.performance.recording.features.remote", "[\"js\",\"leaf\",\"stackwalk\",\"screenshots\",\"java\"]");
 // Threads to be captured by the profiler.
 pref("devtools.performance.recording.threads", "[\"GeckoMain\",\"Compositor\",\"Renderer\"]");
+pref("devtools.performance.recording.threads.remote", "[\"GeckoMain\",\"Compositor\",\"Renderer\"]");
 // A JSON array of strings, where each string is a file path to an objdir on
 // the host machine. This is used in order to look up symbol information from
 // build artifacts of local builds.
 pref("devtools.performance.recording.objdirs", "[]");
+pref("devtools.performance.recording.objdirs.remote", "[]");
 // The popup will display some introductory text the first time it is displayed.
 pref("devtools.performance.popup.intro-displayed", false);
 
@@ -1035,13 +1078,6 @@ pref("dom.select_popup_in_parent.enabled", false);
 
 pref("dom.cycle_collector.incremental", true);
 
-// Whether to shim a Components object on untrusted windows.
-#ifdef NIGHTLY_BUILD
-  pref("dom.use_components_shim", false);
-#else // NIGHTLY_BUILD
-  pref("dom.use_components_shim", true);
-#endif // NIGHTLY_BUILD
-
 // Disable popups from plugins by default
 //   0 = openAllowed
 //   1 = openControlled
@@ -1079,16 +1115,13 @@ pref("privacy.purge_trackers.enabled", false);
 #endif
 // Allowable amount of cookies to purge in a batch.
 pref("privacy.purge_trackers.max_purge_count", 100);
+pref("privacy.purge_trackers.logging.level", "Warn");
 
 
 pref("dom.event.contextmenu.enabled",       true);
 pref("dom.event.coalesce_mouse_move",       true);
 
 pref("javascript.enabled",                  true);
-pref("javascript.options.strict",           false);
-#ifdef DEBUG
-  pref("javascript.options.strict.debug",     false);
-#endif
 pref("javascript.options.blinterp",         true);
 // Duplicated in JitOptions - ensure both match.
 pref("javascript.options.blinterp.threshold", 10);
@@ -1112,6 +1145,9 @@ pref("javascript.options.wasm_baselinejit",       true);
 #endif
 #ifdef ENABLE_WASM_REFTYPES
   pref("javascript.options.wasm_gc",              false);
+#endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+  pref("javascript.options.wasm_multi_value",     true);
 #endif
 pref("javascript.options.native_regexp",    true);
 pref("javascript.options.parallel_parsing", true);
@@ -1979,6 +2015,13 @@ pref("network.online",                      true); //online/offline
 // Set to 0 to disable moving the cookies.
 pref("network.cookie.move.interval_sec",    10);
 
+// This pref contains the list of hostnames (such as
+// "mozilla.org,example.net"). For these hosts, firefox will treat
+// sameSite=none if nothing else is specified, even if
+// network.cookie.sameSite.laxByDefault if set to true.
+// To know the correct syntax, see nsContentUtils::IsURIInList()
+pref("network.cookie.sameSite.laxByDefault.disabledHosts", "");
+
 pref("network.cookie.maxNumber", 3000);
 pref("network.cookie.maxPerHost", 180);
 // Cookies quota for each host. If cookies exceed the limit maxPerHost,
@@ -2003,7 +2046,11 @@ pref("network.stricttransportsecurity.preloadlist", true);
 pref("network.mdns.use_js_fallback", false);
 
 // Cache SSL resumption tokens in necko
-pref("network.ssl_tokens_cache_enabled", false);
+#ifdef NIGHTLY_BUILD
+  pref("network.ssl_tokens_cache_enabled", true);
+#else
+  pref("network.ssl_tokens_cache_enabled", false);
+#endif
 // Capacity of the cache in kilobytes
 pref("network.ssl_tokens_cache_capacity", 2048);
 
@@ -2031,19 +2078,6 @@ pref("intl.regional_prefs.use_os_locales",  false);
 pref("intl.fallbackCharsetList.ISO-8859-1", "windows-1252");
 pref("font.language.group",                 "chrome://global/locale/intl.properties");
 pref("font.cjk_pref_fallback_order",        "zh-cn,zh-hk,zh-tw,ja,ko");
-
-// Android-specific pref to control if keydown and keyup events are fired even
-// in during composition.  Note that those prefs are ignored if
-// "dom.keyboardevent.dispatch_during_composition" is false.
-#ifdef MOZ_WIDGET_ANDROID
-  // If true and intl.ime.hack.on_any_apps.fire_key_events_for_composition is
-  // false, dispatch the keydown and keyup events only on IME-unaware web apps.
-  // So, this supports web apps which listen to only keydown or keyup events
-  // to get a change to do something at every text input.
-  pref("intl.ime.hack.on_ime_unaware_apps.fire_key_events_for_composition", true);
-#else
-  pref("intl.ime.hack.on_ime_unaware_apps.fire_key_events_for_composition", false);
-#endif // MOZ_WIDGET_ANDROID
 
 // If you use legacy Chinese IME which puts an ideographic space to composition
 // string as placeholder, this pref might be useful.  If this is true and when
@@ -2282,16 +2316,6 @@ pref("security.notification_enable_delay", 500);
   pref("security.disallow_non_local_systemprincipal_in_tests", false);
 #endif
 
-// Mixed content blocking
-pref("security.mixed_content.block_active_content", false);
-pref("security.mixed_content.block_display_content", false);
-
-// Upgrade mixed display content before it's blocked
-pref("security.mixed_content.upgrade_display_content", false);
-
-// Block sub requests that happen within an object
-pref("security.mixed_content.block_object_subrequest", false);
-
 // Sub-resource integrity
 pref("security.sri.enable", true);
 
@@ -2319,6 +2343,7 @@ pref("security.cert_pinning.process_headers_from_non_builtin_roots", false);
 pref("security.cert_pinning.hpkp.enabled", false);
 
 // Remote settings preferences
+// Note: if you change this, make sure to also review security.onecrl.maximum_staleness_in_seconds
 pref("services.settings.poll_interval", 86400); // 24H
 pref("services.settings.server", "https://firefox.settings.services.mozilla.com/v1");
 pref("services.settings.default_bucket", "main");
@@ -2345,15 +2370,16 @@ pref("extensions.abuseReport.amoDetailsURL", "https://services.addons.mozilla.or
 
 // Blocklist preferences
 pref("extensions.blocklist.enabled", true);
-// OneCRL freshness checking depends on this value, so if you change it,
-// please also update security.onecrl.maximum_staleness_in_seconds.
-pref("extensions.blocklist.interval", 86400);
-// Whether to use the XML backend (true) or the remotesettings one (false).
-pref("extensions.blocklist.useXML", false);
-// Required blocklist freshness for OneCRL OCSP bypass
-// (default is 1.25x extensions.blocklist.interval, or 30 hours)
+// Required blocklist freshness for OneCRL OCSP bypass (default is 30 hours)
+// Note that this needs to exceed the interval at which we update OneCRL data,
+// configured in services.settings.poll_interval .
 pref("security.onecrl.maximum_staleness_in_seconds", 108000);
+<<<<<<< HEAD
 pref("extensions.blocklist.url", "https://settings.cliqz.com/blocklist.xml");
+||||||| merged common ancestors
+pref("extensions.blocklist.url", "https://blocklists.settings.services.mozilla.com/v1/blocklist/3/%APP_ID%/%APP_VERSION%/%PRODUCT%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/%PING_COUNT%/%TOTAL_PING_COUNT%/%DAYS_SINCE_LAST_PING%/");
+=======
+>>>>>>> origin/upstream-betas
 pref("extensions.blocklist.detailsURL", "https://blocked.cdn.mozilla.net/");
 pref("extensions.blocklist.itemURL", "https://blocked.cdn.mozilla.net/%blockID%.html");
 // Controls what level the blocklist switches from warning about items to forcibly
@@ -2576,9 +2602,6 @@ pref("layout.testing.overlay-scrollbars.always-visible", false);
 // pref to control whether layout warnings that are hit quite often are enabled
 pref("layout.spammy_warnings.enabled", false);
 
-// Pref to throttle offsreen animations
-pref("dom.animations.offscreen-throttling", true);
-
 // if true, allow plug-ins to override internal imglib decoder mime types in full-page mode
 pref("plugin.override_internal_types", false);
 
@@ -2697,7 +2720,8 @@ pref("dom.ipc.processCount.privilegedabout", 1);
 pref("dom.ipc.processCount.privilegedmozilla", 1);
 
 // Isolated content processes are always one-per-origin.
-pref("dom.ipc.processCount.webIsolated", 1);
+// Changing this pref will break fission completely, so it is locked.
+pref("dom.ipc.processCount.webIsolated", 1, locked);
 
 // Keep a single privileged about process alive for performance reasons.
 // e.g. we do not want to throw content processes out every time we navigate
@@ -2743,13 +2767,8 @@ pref("browser.tabs.remote.dataUriInDefaultWebProcess", false);
 // sorts of pages, which we have to do when we run them in the normal web
 // content process, causes compatibility issues.
 //
-// This is going away and for now is disabled on nightly because document
-// channel is enabled there.
-#ifdef NIGHTLY_BUILD
+// This is going away and for now is disabled.
 pref("browser.tabs.remote.allowLinkedWebInFileUriProcess", false);
-#else
-pref("browser.tabs.remote.allowLinkedWebInFileUriProcess", true);
-#endif
 
 // This pref will cause assertions when a remoteType triggers a process switch
 // to a new remoteType it should not be able to trigger.
@@ -3932,6 +3951,8 @@ pref("signon.autofillForms.http",           false);
 pref("signon.autologin.proxy",              false);
 pref("signon.formlessCapture.enabled",      true);
 pref("signon.generation.available",               true);
+// A value of "-1" disables new-password heuristics. Can be updated once Bug 1618058 is resolved.
+pref("signon.generation.confidenceThreshold",     "-1");
 pref("signon.generation.enabled",                 true);
 pref("signon.passwordEditCapture.enabled",        false);
 pref("signon.privateBrowsingCapture.enabled",     true);
@@ -4176,10 +4197,6 @@ pref("full-screen-api.warning.delay", 500);
 // time for the warning box stays on the screen before sliding out, unit: ms
 pref("pointer-lock-api.warning.timeout", 3000);
 
-pref("dom.vibrator.enabled", true);
-pref("dom.vibrator.max_vibrate_ms", 10000);
-pref("dom.vibrator.max_vibrate_list_len", 128);
-
 // Push
 
 pref("dom.push.loglevel", "Error");
@@ -4220,9 +4237,6 @@ pref("dom.push.requestTimeout", 10000);
 pref("dom.push.http2.reset_retry_count_after_ms", 60000);
 pref("dom.push.http2.maxRetries", 2);
 pref("dom.push.http2.retryInterval", 5000);
-
-// W3C pointer events draft
-pref("dom.w3c_pointer_events.implicit_capture", false);
 
 // W3C MediaDevices devicechange fake event
 pref("media.ondevicechange.fakeDeviceChangeEvent.enabled", false);
@@ -4411,9 +4425,19 @@ pref("browser.safebrowsing.provider.google.pver", "2.2");
 pref("browser.safebrowsing.provider.google.lists", "goog-badbinurl-shavar,goog-downloadwhite-digest256,goog-phish-shavar,googpub-phish-shavar,goog-malware-shavar,goog-unwanted-shavar");
 pref("browser.safebrowsing.provider.google.updateURL", "https://safebrowsing.google.com/safebrowsing/downloads?client=SAFEBROWSING_ID&appver=%MAJOR_VERSION%&pver=2.2&key=%GOOGLE_SAFEBROWSING_API_KEY%");
 pref("browser.safebrowsing.provider.google.gethashURL", "https://safebrowsing.google.com/safebrowsing/gethash?client=SAFEBROWSING_ID&appver=%MAJOR_VERSION%&pver=2.2");
+<<<<<<< HEAD
 pref("browser.safebrowsing.provider.google.reportURL", "https://cliqz.com/report-url");
 pref("browser.safebrowsing.provider.google.reportPhishMistakeURL", "https://cliqz.com/report-url");
 pref("browser.safebrowsing.provider.google.reportMalwareMistakeURL", "https://cliqz.com/report-url");
+||||||| merged common ancestors
+pref("browser.safebrowsing.provider.google.reportURL", "https://safebrowsing.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");
+pref("browser.safebrowsing.provider.google.reportPhishMistakeURL", "https://%LOCALE%.phish-error.mozilla.com/?hl=%LOCALE%&url=");
+pref("browser.safebrowsing.provider.google.reportMalwareMistakeURL", "https://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%&url=");
+=======
+pref("browser.safebrowsing.provider.google.reportURL", "https://safebrowsing.google.com/safebrowsing/diagnostic?client=%NAME%&site=");
+pref("browser.safebrowsing.provider.google.reportPhishMistakeURL", "https://%LOCALE%.phish-error.mozilla.com/?url=");
+pref("browser.safebrowsing.provider.google.reportMalwareMistakeURL", "https://%LOCALE%.malware-error.mozilla.com/?url=");
+>>>>>>> origin/upstream-betas
 pref("browser.safebrowsing.provider.google.advisoryURL", "https://developers.google.com/safe-browsing/v4/advisory");
 pref("browser.safebrowsing.provider.google.advisoryName", "Google Safe Browsing");
 
@@ -4422,15 +4446,31 @@ pref("browser.safebrowsing.provider.google4.pver", "4");
 pref("browser.safebrowsing.provider.google4.lists", "goog-badbinurl-proto,goog-downloadwhite-proto,goog-phish-proto,googpub-phish-proto,goog-malware-proto,goog-unwanted-proto,goog-harmful-proto,goog-passwordwhite-proto");
 pref("browser.safebrowsing.provider.google4.updateURL", "https://safebrowsing.googleapis.com/v4/threatListUpdates:fetch?$ct=application/x-protobuf&key=%GOOGLE_SAFEBROWSING_API_KEY%&$httpMethod=POST");
 pref("browser.safebrowsing.provider.google4.gethashURL", "https://safebrowsing.googleapis.com/v4/fullHashes:find?$ct=application/x-protobuf&key=%GOOGLE_SAFEBROWSING_API_KEY%&$httpMethod=POST");
+<<<<<<< HEAD
 pref("browser.safebrowsing.provider.google4.reportURL", "https://cliqz.com/report-url");
 pref("browser.safebrowsing.provider.google4.reportPhishMistakeURL", "https://cliqz.com/report-url");
 pref("browser.safebrowsing.provider.google4.reportMalwareMistakeURL", "https://cliqz.com/report-url");
+||||||| merged common ancestors
+pref("browser.safebrowsing.provider.google4.reportURL", "https://safebrowsing.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");
+pref("browser.safebrowsing.provider.google4.reportPhishMistakeURL", "https://%LOCALE%.phish-error.mozilla.com/?hl=%LOCALE%&url=");
+pref("browser.safebrowsing.provider.google4.reportMalwareMistakeURL", "https://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%&url=");
+=======
+pref("browser.safebrowsing.provider.google4.reportURL", "https://safebrowsing.google.com/safebrowsing/diagnostic?client=%NAME%&site=");
+pref("browser.safebrowsing.provider.google4.reportPhishMistakeURL", "https://%LOCALE%.phish-error.mozilla.com/?url=");
+pref("browser.safebrowsing.provider.google4.reportMalwareMistakeURL", "https://%LOCALE%.malware-error.mozilla.com/?url=");
+>>>>>>> origin/upstream-betas
 pref("browser.safebrowsing.provider.google4.advisoryURL", "https://developers.google.com/safe-browsing/v4/advisory");
 pref("browser.safebrowsing.provider.google4.advisoryName", "Google Safe Browsing");
 pref("browser.safebrowsing.provider.google4.dataSharingURL", "https://safebrowsing.googleapis.com/v4/threatHits?$ct=application/x-protobuf&key=%GOOGLE_SAFEBROWSING_API_KEY%&$httpMethod=POST");
 pref("browser.safebrowsing.provider.google4.dataSharing.enabled", false);
 
+<<<<<<< HEAD
 pref("browser.safebrowsing.reportPhishURL", "https://cliqz.com/report-url");
+||||||| merged common ancestors
+pref("browser.safebrowsing.reportPhishURL", "https://%LOCALE%.phish-report.mozilla.com/?hl=%LOCALE%&url=");
+=======
+pref("browser.safebrowsing.reportPhishURL", "https://%LOCALE%.phish-report.mozilla.com/?url=");
+>>>>>>> origin/upstream-betas
 
 // Mozilla Safe Browsing provider (for tracking protection and plugin blocking)
 pref("browser.safebrowsing.provider.mozilla.pver", "2.2");
@@ -4460,9 +4500,6 @@ pref("snav.enabled", false);
 
 // Wakelock is disabled by default.
 pref("dom.wakelock.enabled", false);
-
-// The URL of the Firefox Accounts auth server backend
-pref("identity.fxaccounts.auth.uri", "https://api.accounts.firefox.com/v1");
 
 // Presentation Device
 pref("dom.presentation.tcp_server.debug", false);
@@ -4631,13 +4668,6 @@ pref("dom.maxHardwareConcurrency", 16);
   pref("osfile.reset_worker_delay", 30000);
 #endif
 
-// TODO: Bug 1324406: Treat 'data:' documents as unique, opaque origins
-// If true, data: URIs will be treated as unique opaque origins, hence will use
-// a NullPrincipal as the security context.
-// Otherwise it will inherit the origin from parent node, this is the legacy
-// behavior of Firefox.
-pref("security.data_uri.unique_opaque_origin", true);
-
 // If true, all toplevel data: URI navigations will be blocked.
 // Please note that manually entering a data: URI in the
 // URL-Bar will not be blocked when flipping this pref.
@@ -4706,12 +4736,6 @@ pref("dom.noopener.newprocess.enabled", true);
 // a content to view.  This is mostly intended to prevent infinite
 // loops with faulty converters involved.
 pref("general.document_open_conversion_depth_limit", 20);
-
-// Should only be enabled in tests
-pref("dom.events.testing.asyncClipboard", false);
-
-// Disable moz* APIs in DataTransfer
-pref("dom.datatransfer.mozAtAPIs", false);
 
 pref("fission.rebuild_frameloaders_on_remoteness_change", true);
 

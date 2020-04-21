@@ -1325,12 +1325,21 @@ def build_treescript_payload(config, task, task_def):
         task_def['payload']['l10n_bump_info'] = [l10n_bump_info]
         actions.append('l10n_bump')
 
-    if worker.get('merge-info'):
-        merge_info = {}
-        for k, v in worker['merge-info'].items():
-            merge_info[k.replace('-', '_')] = worker['merge-info'][k]
-        task_def['payload']['merge_info'] = merge_info
-        actions.append('merge_day')
+    if worker.get("merge-info"):
+        merge_info = {
+            merge_param_name.replace("-", "_"): merge_param_value
+            for merge_param_name, merge_param_value in worker["merge-info"].items()
+            if merge_param_name != "version-files"
+        }
+        merge_info["version_files"] = [
+            {
+                file_param_name.replace("-", "_"): file_param_value
+                for file_param_name, file_param_value in file_entry.items()
+            }
+            for file_entry in worker["merge-info"]["version-files"]
+        ]
+        task_def["payload"]["merge_info"] = merge_info
+        actions.append("merge_day")
 
     if worker['push']:
         actions.append('push')
@@ -1461,7 +1470,7 @@ def set_defaults(config, tasks):
         if worker['implementation'] in ('docker-worker',):
             worker.setdefault('chain-of-trust', False)
             worker.setdefault('taskcluster-proxy', False)
-            worker.setdefault('allow-ptrace', False)
+            worker.setdefault('allow-ptrace', True)
             worker.setdefault('loopback-video', False)
             worker.setdefault('loopback-audio', False)
             worker.setdefault('docker-in-docker', False)
@@ -1827,6 +1836,17 @@ def try_task_config_chemspill_prio(config, tasks):
     for task in tasks:
         if chemspill_prio and task['priority'] in ('lowest', 'very-low'):
             task['priority'] = 'low'
+        yield task
+
+
+@transforms.add
+def try_task_config_routes(config, tasks):
+    """Set routes in the task."""
+    routes = config.params['try_task_config'].get('routes')
+    for task in tasks:
+        if routes:
+            task_routes = task.setdefault('routes', [])
+            task_routes.extend(routes)
         yield task
 
 

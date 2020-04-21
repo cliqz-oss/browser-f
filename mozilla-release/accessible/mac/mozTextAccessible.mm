@@ -108,7 +108,30 @@ inline NSString* ToNSString(id aValue) {
     }
 
     if ([attribute isEqualToString:@"AXInvalid"]) {
-      return [NSNumber numberWithBool:!!(accWrap->State() & states::INVALID)];
+      if (accWrap->State() & states::INVALID) {
+        // If the attribute exists, it has one of four values: true, false,
+        // grammar, or spelling. We query the attribute value here in order
+        // to find the correct string to return.
+        HyperTextAccessible* text = accWrap->AsHyperText();
+        if (!text || !text->IsTextRole()) {
+          // we can't get the attribute, but we should still respect the
+          // invalid state flag
+          return @"true";
+        }
+        nsAutoString invalidStr;
+        nsCOMPtr<nsIPersistentProperties> attributes = text->DefaultTextAttributes();
+        nsAccUtils::GetAccAttr(attributes, nsGkAtoms::invalid, invalidStr);
+        if (invalidStr.IsEmpty()) {
+          // if the attribute had no value, we should still respect the
+          // invalid state flag.
+          return @"true";
+        }
+        return nsCocoaUtils::ToNSString(invalidStr);
+      }
+      // If the flag is not set, we return false.
+      return @"false";
+    } else {
+      // if the attribute does not exist, we assume
     }
   } else if (ProxyAccessible* proxy = [self getProxyAccessible]) {
     if ([attribute isEqualToString:@"AXRequired"]) {
@@ -116,7 +139,26 @@ inline NSString* ToNSString(id aValue) {
     }
 
     if ([attribute isEqualToString:@"AXInvalid"]) {
-      return [NSNumber numberWithBool:!!(proxy->State() & states::INVALID)];
+      if (proxy->State() & states::INVALID) {
+        // Similar to the accWrap case above, we iterate through our attributes
+        // to find the value for `invalid`.
+        AutoTArray<Attribute, 10> attrs;
+        proxy->DefaultTextAttributes(&attrs);
+        for (size_t i = 0; i < attrs.Length(); i++) {
+          if (attrs.ElementAt(i).Name() == "invalid") {
+            nsString invalidStr = attrs.ElementAt(i).Value();
+            if (invalidStr.IsEmpty()) {
+              break;
+            }
+            return nsCocoaUtils::ToNSString(invalidStr);
+          }
+        }
+        // if we iterated through our attributes and didn't find `invalid`,
+        // or if the invalid attribute had no value, we should still respect
+        // the invalid flag and return true.
+        return @"true";
+      }
+      return @"false";
     }
   }
 
@@ -482,18 +524,20 @@ inline NSString* ToNSString(id aValue) {
       valueWithRange:NSMakeRange(0, textAcc ? textAcc->CharacterCount() : proxy->CharacterCount())];
 }
 
-- (void)valueDidChange {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  NSAccessibilityPostNotification(GetObjectOrRepresentedView(self),
-                                  NSAccessibilityValueChangedNotification);
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
-- (void)selectedTextDidChange {
-  NSAccessibilityPostNotification(GetObjectOrRepresentedView(self),
-                                  NSAccessibilitySelectedTextChangedNotification);
+- (void)firePlatformEvent:(uint32_t)eventType {
+  switch (eventType) {
+    case nsIAccessibleEvent::EVENT_VALUE_CHANGE:
+    case nsIAccessibleEvent::EVENT_TEXT_VALUE_CHANGE:
+      [self postNotification:NSAccessibilityValueChangedNotification];
+      break;
+    case nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED:
+    case nsIAccessibleEvent::EVENT_TEXT_SELECTION_CHANGED:
+      [self postNotification:NSAccessibilitySelectedTextChangedNotification];
+      break;
+    default:
+      [super firePlatformEvent:eventType];
+      break;
+  }
 }
 
 - (NSString*)stringFromRange:(NSRange*)range {
@@ -523,6 +567,9 @@ inline NSString* ToNSString(id aValue) {
   if (!supportedAttributes) {
     supportedAttributes = [[super accessibilityAttributeNames] mutableCopy];
     [supportedAttributes removeObject:NSAccessibilityChildrenAttribute];
+    // We remove our AXTitleUIElement here to avoid an IPC call in the
+    // parent class when locating values for our attributes.
+    [supportedAttributes removeObject:NSAccessibilityTitleUIElementAttribute];
   }
 
   return supportedAttributes;
@@ -562,6 +609,10 @@ inline NSString* ToNSString(id aValue) {
   }
 
   return 0;
+}
+
+- (NSString*)accessibilityLabel {
+  return nil;
 }
 
 @end

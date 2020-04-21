@@ -26,19 +26,19 @@ namespace dom {
 #define LOG_ENABLED() \
   MOZ_LOG_TEST(ScriptLoader::gScriptLoaderLog, mozilla::LogLevel::Debug)
 
-ScriptLoadHandler::ScriptLoadHandler(ScriptLoader* aScriptLoader,
-                                     ScriptLoadRequest* aRequest,
-                                     SRICheckDataVerifier* aSRIDataVerifier)
+ScriptLoadHandler::ScriptLoadHandler(
+    ScriptLoader* aScriptLoader, ScriptLoadRequest* aRequest,
+    UniquePtr<SRICheckDataVerifier>&& aSRIDataVerifier)
     : mScriptLoader(aScriptLoader),
       mRequest(aRequest),
-      mSRIDataVerifier(aSRIDataVerifier),
+      mSRIDataVerifier(std::move(aSRIDataVerifier)),
       mSRIStatus(NS_OK),
       mDecoder() {
   MOZ_ASSERT(mRequest->IsUnknownDataType());
   MOZ_ASSERT(mRequest->IsLoading());
 }
 
-ScriptLoadHandler::~ScriptLoadHandler() {}
+ScriptLoadHandler::~ScriptLoadHandler() = default;
 
 NS_IMPL_ISUPPORTS(ScriptLoadHandler, nsIIncrementalStreamLoaderObserver)
 
@@ -403,7 +403,7 @@ ScriptLoadHandler::OnStreamComplete(nsIIncrementalStreamLoader* aLoader,
 
   // we have to mediate and use mRequest.
   rv = mScriptLoader->OnStreamComplete(aLoader, mRequest, aStatus, mSRIStatus,
-                                       mSRIDataVerifier);
+                                       mSRIDataVerifier.get());
 
   // In case of failure, clear the mCacheInfoChannel to avoid keeping it alive.
   if (NS_FAILED(rv)) {

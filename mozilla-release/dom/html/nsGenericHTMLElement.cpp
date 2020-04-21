@@ -2814,8 +2814,8 @@ void nsGenericHTMLElement::SetInnerText(const nsAString& aValue) {
     }
     if (s == end || *s == '\r' || *s == '\n') {
       if (!str.IsEmpty()) {
-        RefPtr<nsTextNode> textContent =
-            new nsTextNode(NodeInfo()->NodeInfoManager());
+        RefPtr<nsTextNode> textContent = new (NodeInfo()->NodeInfoManager())
+            nsTextNode(NodeInfo()->NodeInfoManager());
         textContent->SetText(str, true);
         AppendChildTo(textContent, true);
       }
@@ -2826,7 +2826,8 @@ void nsGenericHTMLElement::SetInnerText(const nsAString& aValue) {
       RefPtr<mozilla::dom::NodeInfo> ni =
           NodeInfo()->NodeInfoManager()->GetNodeInfo(
               nsGkAtoms::br, nullptr, kNameSpaceID_XHTML, ELEMENT_NODE);
-      RefPtr<HTMLBRElement> br = new HTMLBRElement(ni.forget());
+      auto* nim = ni->NodeInfoManager();
+      RefPtr<HTMLBRElement> br = new (nim) HTMLBRElement(ni.forget());
       AppendChildTo(br, true);
     } else {
       str.Append(*s);

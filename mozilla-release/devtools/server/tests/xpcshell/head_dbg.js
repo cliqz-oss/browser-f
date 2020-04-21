@@ -42,9 +42,9 @@ const { DevToolsServer } = require("devtools/server/devtools-server");
 const { DevToolsServer: WorkerDevToolsServer } = worker.require(
   "devtools/server/devtools-server"
 );
-const { DevToolsClient } = require("devtools/shared/client/devtools-client");
-const { ObjectFront } = require("devtools/shared/fronts/object");
-const { LongStringFront } = require("devtools/shared/fronts/string");
+const { DevToolsClient } = require("devtools/client/devtools-client");
+const { ObjectFront } = require("devtools/client/fronts/object");
+const { LongStringFront } = require("devtools/client/fronts/string");
 const { TargetFactory } = require("devtools/client/framework/target");
 
 const { addDebuggerToGlobal } = ChromeUtils.import(
@@ -211,6 +211,15 @@ function resume(threadFront) {
   return threadFront.resume();
 }
 
+async function addWatchpoint(threadFront, frame, variable, property, type) {
+  const path = `${variable}.${property}`;
+  info(`Add an ${path} ${type} watchpoint`);
+  const environment = await frame.getEnvironment();
+  const obj = environment.bindings.variables[variable];
+  const objFront = threadFront.pauseGrip(obj.value);
+  return objFront.addWatchpoint(property, path, type);
+}
+
 function getSources(threadFront) {
   dump("Getting sources.\n");
   return threadFront.getSources();
@@ -265,23 +274,17 @@ function testExceptionHook(ex) {
   return undefined;
 }
 
-// Convert an nsIScriptError 'flags' value into an appropriate string.
-function scriptErrorFlagsToKind(flags) {
-  let kind;
-  if (flags & Ci.nsIScriptError.warningFlag) {
-    kind = "warning";
+// Convert an nsIScriptError 'logLevel' value into an appropriate string.
+function scriptErrorLogLevel(message) {
+  switch (message.logLevel) {
+    case Ci.nsIConsoleMessage.info:
+      return "info";
+    case Ci.nsIConsoleMessage.warn:
+      return "warning";
+    default:
+      Assert.equal(message.logLevel, Ci.nsIConsoleMessage.error);
+      return "error";
   }
-  if (flags & Ci.nsIScriptError.exceptionFlag) {
-    kind = "exception";
-  } else {
-    kind = "error";
-  }
-
-  if (flags & Ci.nsIScriptError.strictFlag) {
-    kind = "strict " + kind;
-  }
-
-  return kind;
 }
 
 // Register a console listener, so console messages don't just disappear
@@ -301,7 +304,7 @@ var listener = {
             ":" +
             message.lineNumber +
             ": " +
-            scriptErrorFlagsToKind(message.flags) +
+            scriptErrorLogLevel(message) +
             ": " +
             message.errorMessage
         );
@@ -791,7 +794,7 @@ async function setupTestFromUrl(url) {
   const targetFront = findTab(tabs, "test");
   await targetFront.attach();
 
-  const [, threadFront] = await attachThread(targetFront);
+  const threadFront = await attachThread(targetFront);
   await resume(threadFront);
 
   const sourceUrl = getFileUrl(url);
@@ -861,8 +864,23 @@ function threadFrontTest(test, options = {}) {
       scriptName
     );
 
+    // Cross the client/server boundary to retrieve the target actor & thread
+    // actor instances, used by some tests.
+    const rootActor = client.transport._serverConnection.rootActor;
+    const targetActor = rootActor._parameters.tabList.getTargetActorForTab(
+      "debuggee.js"
+    );
+    const { threadActor } = targetActor;
+
     // Run the test function
-    const args = { threadFront, debuggee, client, server, targetFront };
+    const args = {
+      threadActor,
+      threadFront,
+      debuggee,
+      client,
+      server,
+      targetFront,
+    };
     if (waitForFinish) {
       // Use dispatchToMainThread so that the test function does not have to
       // finish executing before the test itself finishes.

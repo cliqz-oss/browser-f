@@ -281,6 +281,7 @@ typedef struct sslOptionsStr {
     unsigned int enableV2CompatibleHello : 1;
     unsigned int enablePostHandshakeAuth : 1;
     unsigned int enableDelegatedCredentials : 1;
+    unsigned int enableDtls13VersionCompat : 1;
 } sslOptions;
 
 typedef enum { sslHandshakingUndetermined = 0,
@@ -1684,6 +1685,12 @@ SECStatus ssl_ReadCertificateStatus(sslSocket *ss, PRUint8 *b,
                                     PRUint32 length);
 SECStatus ssl3_EncodeSigAlgs(const sslSocket *ss, PRUint16 minVersion,
                              sslBuffer *buf);
+SECStatus ssl3_EncodeFilteredSigAlgs(const sslSocket *ss,
+                                     const SSLSignatureScheme *schemes,
+                                     PRUint32 numSchemes, sslBuffer *buf);
+SECStatus ssl3_FilterSigAlgs(const sslSocket *ss, PRUint16 minVersion, PRBool disableRsae,
+                             unsigned int maxSchemes, SSLSignatureScheme *filteredSchemes,
+                             unsigned int *numFilteredSchemes);
 SECStatus ssl_GetCertificateRequestCAs(const sslSocket *ss,
                                        unsigned int *calenp,
                                        const SECItem **namesp,
@@ -1860,6 +1867,8 @@ SSLExp_HkdfVariantExpandLabelWithMech(PRUint16 version, PRUint16 cipherSuite, PK
                                       const char *label, unsigned int labelLen,
                                       CK_MECHANISM_TYPE mech, unsigned int keySize,
                                       SSLProtocolVariant variant, PK11SymKey **keyp);
+
+SECStatus SSLExp_SetDtls13VersionWorkaround(PRFileDesc *fd, PRBool enabled);
 
 SECStatus SSLExp_SetTimeFunc(PRFileDesc *fd, SSLTimeFunc f, void *arg);
 

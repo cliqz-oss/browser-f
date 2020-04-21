@@ -2,16 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use crate::identity::IdentityRecyclerFactory;
+
 use core::{gfx_select, id};
 
 use std::slice;
 
-pub type Global = core::hub::Global<()>;
+
+pub type Global = core::hub::Global<IdentityRecyclerFactory>;
 
 #[no_mangle]
-pub extern "C" fn wgpu_server_new() -> *mut Global {
+pub extern "C" fn wgpu_server_new(factory: IdentityRecyclerFactory) -> *mut Global {
     log::info!("Initializing WGPU server");
-    Box::into_raw(Box::new(Global::new("wgpu")))
+    Box::into_raw(Box::new(Global::new("wgpu", factory)))
 }
 
 /// # Safety
@@ -43,7 +46,7 @@ pub extern "C" fn wgpu_server_poll_all_devices(global: &Global, force_wait: bool
 #[no_mangle]
 pub unsafe extern "C" fn wgpu_server_instance_request_adapter(
     global: &Global,
-    desc: &core::instance::RequestAdapterOptions,
+    desc: &wgt::RequestAdapterOptions,
     ids: *const id::AdapterId,
     id_length: usize,
 ) -> i8 {
@@ -61,7 +64,7 @@ pub unsafe extern "C" fn wgpu_server_instance_request_adapter(
 pub extern "C" fn wgpu_server_adapter_request_device(
     global: &Global,
     self_id: id::AdapterId,
-    desc: &core::instance::DeviceDescriptor,
+    desc: &wgt::DeviceDescriptor,
     new_id: id::DeviceId,
 ) {
     gfx_select!(self_id => global.adapter_request_device(self_id, desc, new_id));
@@ -84,7 +87,7 @@ pub extern "C" fn wgpu_server_device_destroy(global: &Global, self_id: id::Devic
 pub extern "C" fn wgpu_server_device_create_buffer(
     global: &Global,
     self_id: id::DeviceId,
-    desc: &core::resource::BufferDescriptor,
+    desc: &wgt::BufferDescriptor,
     new_id: id::BufferId,
 ) {
     gfx_select!(self_id => global.device_create_buffer(self_id, desc, new_id));
@@ -99,9 +102,9 @@ pub unsafe extern "C" fn wgpu_server_device_set_buffer_sub_data(
     global: &Global,
     self_id: id::DeviceId,
     buffer_id: id::BufferId,
-    offset: core::BufferAddress,
+    offset: wgt::BufferAddress,
     data: *const u8,
-    size: core::BufferAddress,
+    size: wgt::BufferAddress,
 ) {
     let slice = slice::from_raw_parts(data, size as usize);
     gfx_select!(self_id => global.device_set_buffer_sub_data(self_id, buffer_id, offset, slice));
@@ -115,8 +118,8 @@ pub unsafe extern "C" fn wgpu_server_device_set_buffer_sub_data(
 pub extern "C" fn wgpu_server_buffer_map_read(
     global: &Global,
     buffer_id: id::BufferId,
-    start: core::BufferAddress,
-    size: core::BufferAddress,
+    start: wgt::BufferAddress,
+    size: wgt::BufferAddress,
     callback: core::device::BufferMapReadCallback,
     userdata: *mut u8,
 ) {
@@ -127,7 +130,7 @@ pub extern "C" fn wgpu_server_buffer_map_read(
     );
     gfx_select!(buffer_id => global.buffer_map_async(
         buffer_id,
-        core::resource::BufferUsage::MAP_READ,
+        wgt::BufferUsage::MAP_READ,
         start .. start + size,
         operation
     ));
@@ -142,7 +145,7 @@ pub extern "C" fn wgpu_server_buffer_destroy(global: &Global, self_id: id::Buffe
 pub extern "C" fn wgpu_server_device_create_encoder(
     global: &Global,
     self_id: id::DeviceId,
-    desc: &core::command::CommandEncoderDescriptor,
+    desc: &wgt::CommandEncoderDescriptor,
     new_id: id::CommandEncoderId,
 ) {
     gfx_select!(self_id => global.device_create_command_encoder(self_id, &desc, new_id));
@@ -182,12 +185,34 @@ pub unsafe extern "C" fn wgpu_server_encoder_copy_buffer_to_buffer(
     global: &Global,
     self_id: id::CommandEncoderId,
     source_id: id::BufferId,
-    source_offset: core::BufferAddress,
+    source_offset: wgt::BufferAddress,
     destination_id: id::BufferId,
-    destination_offset: core::BufferAddress,
-    size: core::BufferAddress,
+    destination_offset: wgt::BufferAddress,
+    size: wgt::BufferAddress,
 ) {
     gfx_select!(self_id => global.command_encoder_copy_buffer_to_buffer(self_id, source_id, source_offset, destination_id, destination_offset, size));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wgpu_server_encoder_copy_texture_to_buffer(
+    global: &Global,
+    self_id: id::CommandEncoderId,
+    source: &core::command::TextureCopyView,
+    destination: &core::command::BufferCopyView,
+    size: core::Extent3d,
+) {
+    gfx_select!(self_id => global.command_encoder_copy_texture_to_buffer(self_id, source, destination, size));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wgpu_server_encoder_copy_buffer_to_texture(
+    global: &Global,
+    self_id: id::CommandEncoderId,
+    source: &core::command::BufferCopyView,
+    destination: &core::command::TextureCopyView,
+    size: core::Extent3d,
+) {
+    gfx_select!(self_id => global.command_encoder_copy_buffer_to_texture(self_id, source, destination, size));
 }
 
 /// # Safety

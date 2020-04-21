@@ -1,5 +1,4 @@
 . "$topsrcdir/build/mozconfig.win-common"
-MOZ_AUTOMATION_L10N_CHECK=0
 . "$topsrcdir/browser/config/mozconfigs/common"
 . "$topsrcdir/browser/config/mozconfigs/win64/common-win64"
 
@@ -25,5 +24,5 @@ fi
 
 export RUSTFLAGS="-Ccodegen-units=1 -Zprofile -Zno-landing-pads -Clink-dead-code -Coverflow-checks=off"
 
-. "$topsrcdir/build/mozconfig.common.override"
 . "$topsrcdir/build/mozconfig.clang-cl"
+. "$topsrcdir/build/mozconfig.common.override"

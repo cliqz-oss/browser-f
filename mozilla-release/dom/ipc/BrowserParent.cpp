@@ -61,6 +61,7 @@
 #include "nsFrameManager.h"
 #include "nsIBaseWindow.h"
 #include "nsIBrowser.h"
+#include "nsIBrowserController.h"
 #include "nsIContent.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeOwner.h"
@@ -223,7 +224,7 @@ BrowserParent::BrowserParent(ContentParent* aManager, const TabId& aTabId,
       mHasPresented(false),
       mIsReadyToHandleInputEvents(false),
       mIsMouseEnterIntoWidgetEventSuppressed(false),
-      mIsDestroyingForProcessSwitch(false) {
+      mSuspendedProgressEvents(false) {
   MOZ_ASSERT(aManager);
   // When the input event queue is disabled, we don't need to handle the case
   // that some input events are dispatched before PBrowserConstructor.
@@ -1866,10 +1867,9 @@ void BrowserParent::SendRealTouchEvent(WidgetTouchEvent& aEvent) {
     }
   }
 
-  ScrollableLayerGuid guid;
-  uint64_t blockId;
-  nsEventStatus apzResponse;
-  ApzAwareEventRoutingToChild(&guid, &blockId, &apzResponse);
+  APZData apzData;
+  ApzAwareEventRoutingToChild(&apzData.guid, &apzData.blockId,
+                              &apzData.apzResponse);
 
   if (mIsDestroyed) {
     return;
@@ -1880,28 +1880,121 @@ void BrowserParent::SendRealTouchEvent(WidgetTouchEvent& aEvent) {
         TransformParentToChild(aEvent.mTouches[i]->mRefPoint);
   }
 
-  bool inputPriorityEventEnabled = Manager()->IsInputPriorityEventEnabled();
-
+  static uint32_t sConsecutiveTouchMoveCount = 0;
   if (aEvent.mMessage == eTouchMove) {
-    DebugOnly<bool> ret =
-        inputPriorityEventEnabled
-            ? PBrowserParent::SendRealTouchMoveEvent(aEvent, guid, blockId,
-                                                     apzResponse)
-            : PBrowserParent::SendNormalPriorityRealTouchMoveEvent(
-                  aEvent, guid, blockId, apzResponse);
-
-    NS_WARNING_ASSERTION(ret,
-                         "PBrowserParent::SendRealTouchMoveEvent() failed");
-    MOZ_ASSERT(!ret || aEvent.HasBeenPostedToRemoteProcess());
+    ++sConsecutiveTouchMoveCount;
+    SendRealTouchMoveEvent(aEvent, apzData, sConsecutiveTouchMoveCount);
     return;
   }
-  DebugOnly<bool> ret = inputPriorityEventEnabled
-                            ? PBrowserParent::SendRealTouchEvent(
-                                  aEvent, guid, blockId, apzResponse)
-                            : PBrowserParent::SendNormalPriorityRealTouchEvent(
-                                  aEvent, guid, blockId, apzResponse);
+
+  sConsecutiveTouchMoveCount = 0;
+  DebugOnly<bool> ret =
+      Manager()->IsInputPriorityEventEnabled()
+          ? PBrowserParent::SendRealTouchEvent(
+                aEvent, apzData.guid, apzData.blockId, apzData.apzResponse)
+          : PBrowserParent::SendNormalPriorityRealTouchEvent(
+                aEvent, apzData.guid, apzData.blockId, apzData.apzResponse);
 
   NS_WARNING_ASSERTION(ret, "PBrowserParent::SendRealTouchEvent() failed");
+  MOZ_ASSERT(!ret || aEvent.HasBeenPostedToRemoteProcess());
+}
+
+void BrowserParent::SendRealTouchMoveEvent(
+    WidgetTouchEvent& aEvent, APZData& aAPZData,
+    uint32_t aConsecutiveTouchMoveCount) {
+  // Touchmove handling is complicated, since IPC compression should be used
+  // only when there are consecutive touch objects for the same touch on the
+  // same BrowserParent. IPC compression can be disabled by switching to
+  // different IPC message.
+  static bool sIPCMessageType1 = true;
+  static TabId sLastTargetBrowserParent(0);
+  static Maybe<APZData> sPreviousAPZData;
+  // Artificially limit max touch points to 10. That should be in practise
+  // more than enough.
+  const uint32_t kMaxTouchMoveIdentifiers = 10;
+  static Maybe<int32_t> sLastTouchMoveIdentifiers[kMaxTouchMoveIdentifiers];
+
+  // Returns true if aIdentifiers contains all the touches in
+  // sLastTouchMoveIdentifiers.
+  auto LastTouchMoveIdentifiersContainedIn =
+      [&](const nsTArray<int32_t>& aIdentifiers) -> bool {
+    for (Maybe<int32_t>& entry : sLastTouchMoveIdentifiers) {
+      if (entry.isSome() && !aIdentifiers.Contains(entry.value())) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // Cache touch identifiers in sLastTouchMoveIdentifiers array to be used
+  // when checking whether compression can be done for the next touchmove.
+  auto SetLastTouchMoveIdentifiers =
+      [&](const nsTArray<int32_t>& aIdentifiers) {
+        for (Maybe<int32_t>& entry : sLastTouchMoveIdentifiers) {
+          entry.reset();
+        }
+
+        MOZ_ASSERT(aIdentifiers.Length() <= kMaxTouchMoveIdentifiers);
+        for (uint32_t j = 0; j < aIdentifiers.Length(); ++j) {
+          sLastTouchMoveIdentifiers[j].emplace(aIdentifiers[j]);
+        }
+      };
+
+  AutoTArray<int32_t, kMaxTouchMoveIdentifiers> changedTouches;
+  bool preventCompression = !StaticPrefs::dom_events_compress_touchmove() ||
+                            // Ensure the very first touchmove isn't overridden
+                            // by the second one, so that web pages can get
+                            // accurate coordinates for the first touchmove.
+                            aConsecutiveTouchMoveCount < 3 ||
+                            sPreviousAPZData.isNothing() ||
+                            sPreviousAPZData.value() != aAPZData ||
+                            sLastTargetBrowserParent != GetTabId() ||
+                            aEvent.mTouches.Length() > kMaxTouchMoveIdentifiers;
+
+  if (!preventCompression) {
+    for (RefPtr<Touch>& touch : aEvent.mTouches) {
+      if (touch->mChanged) {
+        changedTouches.AppendElement(touch->mIdentifier);
+      }
+    }
+
+    // Prevent compression if the new event has fewer or different touches
+    // than the old one.
+    preventCompression = !LastTouchMoveIdentifiersContainedIn(changedTouches);
+  }
+
+  if (preventCompression) {
+    sIPCMessageType1 = !sIPCMessageType1;
+  }
+
+  // Update the last touch move identifiers always, so that when the next
+  // event comes in, the new identifiers can be compared to the old ones.
+  // If the pref is disabled, this just does a quick small loop.
+  SetLastTouchMoveIdentifiers(changedTouches);
+  sPreviousAPZData.reset();
+  sPreviousAPZData.emplace(aAPZData);
+  sLastTargetBrowserParent = GetTabId();
+
+  DebugOnly<bool> ret = true;
+  if (sIPCMessageType1) {
+    ret =
+        Manager()->IsInputPriorityEventEnabled()
+            ? PBrowserParent::SendRealTouchMoveEvent(
+                  aEvent, aAPZData.guid, aAPZData.blockId, aAPZData.apzResponse)
+            : PBrowserParent::SendNormalPriorityRealTouchMoveEvent(
+                  aEvent, aAPZData.guid, aAPZData.blockId,
+                  aAPZData.apzResponse);
+  } else {
+    ret =
+        Manager()->IsInputPriorityEventEnabled()
+            ? PBrowserParent::SendRealTouchMoveEvent2(
+                  aEvent, aAPZData.guid, aAPZData.blockId, aAPZData.apzResponse)
+            : PBrowserParent::SendNormalPriorityRealTouchMoveEvent2(
+                  aEvent, aAPZData.guid, aAPZData.blockId,
+                  aAPZData.apzResponse);
+  }
+
+  NS_WARNING_ASSERTION(ret, "PBrowserParent::SendRealTouchMoveEvent() failed");
   MOZ_ASSERT(!ret || aEvent.HasBeenPostedToRemoteProcess());
 }
 
@@ -2248,16 +2341,17 @@ mozilla::ipc::IPCResult BrowserParent::RecvRequestFocus(
 }
 
 mozilla::ipc::IPCResult BrowserParent::RecvEnableDisableCommands(
-    const nsString& aAction, nsTArray<nsCString>&& aEnabledCommands,
+    const MaybeDiscarded<BrowsingContext>& aContext, const nsString& aAction,
+    nsTArray<nsCString>&& aEnabledCommands,
     nsTArray<nsCString>&& aDisabledCommands) {
-  nsCOMPtr<nsIBrowser> browser =
-      mFrameElement ? mFrameElement->AsBrowser() : nullptr;
-  bool isRemoteBrowser = false;
-  if (browser) {
-    browser->GetIsRemoteBrowser(&isRemoteBrowser);
+  if (aContext.IsNullOrDiscarded()) {
+    return IPC_OK();
   }
-  if (isRemoteBrowser) {
-    browser->EnableDisableCommandsRemoteOnly(aAction, aEnabledCommands,
+
+  nsCOMPtr<nsIBrowserController> browserController =
+      do_QueryActor(u"Controllers", aContext.get_canonical());
+  if (browserController) {
+    browserController->EnableDisableCommands(aAction, aEnabledCommands,
                                              aDisabledCommands);
   }
 
@@ -2505,14 +2599,22 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnStateChange(
     const RequestData& aRequestData, const uint32_t aStateFlags,
     const nsresult aStatus,
     const Maybe<WebProgressStateChangeData>& aStateChangeData) {
-  // If we're being destroyed because we're swapping to a new process,
-  // then suppress the generated STATE_STOP state changes, since from
-  // the parent process' perspective we aren't really stop, just changing
-  // where the load is happening.
-  uint32_t stopFlags = nsIWebProgressListener::STATE_STOP |
-                       nsIWebProgressListener::STATE_IS_WINDOW |
-                       nsIWebProgressListener::STATE_IS_NETWORK;
-  if (mIsDestroyingForProcessSwitch && (aStateFlags & stopFlags) == stopFlags) {
+  if (mSuspendedProgressEvents) {
+    nsCOMPtr<nsIURI> uri = aRequestData.requestURI();
+    const uint32_t startDocumentFlags =
+        nsIWebProgressListener::STATE_START |
+        nsIWebProgressListener::STATE_IS_DOCUMENT |
+        nsIWebProgressListener::STATE_IS_REQUEST |
+        nsIWebProgressListener::STATE_IS_WINDOW |
+        nsIWebProgressListener::STATE_IS_NETWORK;
+    // Once we get a load start from something that isn't the initial
+    // about:blank, we should stop blocking future state changes.
+    if ((aStateFlags & startDocumentFlags) == startDocumentFlags &&
+        (aWebProgressData && aWebProgressData->isTopLevel()) &&
+        (!uri || !NS_IsAboutBlank(uri))) {
+      mSuspendedProgressEvents = false;
+    }
+
     return IPC_OK();
   }
 
@@ -2557,6 +2659,10 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnProgressChange(
     const RequestData& aRequestData, const int32_t aCurSelfProgress,
     const int32_t aMaxSelfProgress, const int32_t aCurTotalProgress,
     const int32_t aMaxTotalProgress) {
+  if (mSuspendedProgressEvents) {
+    return IPC_OK();
+  }
+
   nsCOMPtr<nsIBrowser> browser;
   nsCOMPtr<nsIWebProgress> manager;
   nsCOMPtr<nsIWebProgressListener> managerAsListener;
@@ -2583,6 +2689,10 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnLocationChange(
     const RequestData& aRequestData, nsIURI* aLocation, const uint32_t aFlags,
     const bool aCanGoBack, const bool aCanGoForward,
     const Maybe<WebProgressLocationChangeData>& aLocationChangeData) {
+  if (mSuspendedProgressEvents) {
+    return IPC_OK();
+  }
+
   nsCOMPtr<nsIBrowser> browser;
   nsCOMPtr<nsIWebProgress> manager;
   nsCOMPtr<nsIWebProgressListener> managerAsListener;
@@ -2611,7 +2721,6 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnLocationChange(
         aLocationChangeData->documentURI(), aLocationChangeData->title(),
         aLocationChangeData->contentPrincipal(),
         aLocationChangeData->contentStoragePrincipal(),
-        aLocationChangeData->contentBlockingAllowListPrincipal(),
         aLocationChangeData->csp(), aLocationChangeData->referrerInfo(),
         aLocationChangeData->isSyntheticDocument(),
         aWebProgressData->innerDOMWindowID(),
@@ -2630,6 +2739,10 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnStatusChange(
     const Maybe<WebProgressData>& aWebProgressData,
     const RequestData& aRequestData, const nsresult aStatus,
     const nsString& aMessage) {
+  if (mSuspendedProgressEvents) {
+    return IPC_OK();
+  }
+
   nsCOMPtr<nsIBrowser> browser;
   nsCOMPtr<nsIWebProgress> manager;
   nsCOMPtr<nsIWebProgressListener> managerAsListener;
@@ -2695,7 +2808,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyContentBlockingEvent(
     const uint32_t& aEvent, const RequestData& aRequestData,
     const bool aBlocked, const nsACString& aTrackingOrigin,
     nsTArray<nsCString>&& aTrackingFullHashes,
-    const Maybe<mozilla::AntiTrackingCommon::StorageAccessGrantedReason>&
+    const Maybe<mozilla::ContentBlockingNotifier::StorageAccessGrantedReason>&
         aReason) {
   MOZ_ASSERT(aRequestData.elapsedLoadTimeMS().isNothing());
 
@@ -2811,7 +2924,8 @@ mozilla::ipc::IPCResult BrowserParent::RecvSessionStoreUpdate(
     const nsTArray<CollectedInputDataValue>& aXPathVals,
     nsTArray<nsCString>&& aOrigins, nsTArray<nsString>&& aKeys,
     nsTArray<nsString>&& aValues, const bool aIsFullStorage,
-    const uint32_t& aFlushId, const bool& aIsFinal, const uint32_t& aEpoch) {
+    const bool aNeedCollectSHistory, const uint32_t& aFlushId,
+    const bool& aIsFinal, const uint32_t& aEpoch) {
   UpdateSessionStoreData data;
   if (aDocShellCaps.isSome()) {
     data.mDocShellCaps.Construct() = aDocShellCaps.value();
@@ -2868,8 +2982,8 @@ mozilla::ipc::IPCResult BrowserParent::RecvSessionStoreUpdate(
   bool ok = ToJSValue(jsapi.cx(), data, &dataVal);
   NS_ENSURE_TRUE(ok, IPC_OK());
 
-  nsresult rv = funcs->UpdateSessionStore(mFrameElement, aFlushId, aIsFinal,
-                                          aEpoch, dataVal);
+  nsresult rv = funcs->UpdateSessionStore(
+      mFrameElement, aFlushId, aIsFinal, aEpoch, dataVal, aNeedCollectSHistory);
   NS_ENSURE_SUCCESS(rv, IPC_OK());
 
   return IPC_OK();
@@ -3442,8 +3556,7 @@ bool BrowserParent::StartApzAutoscroll(float aAnchorX, float aAnchorY,
   if (mRemoteLayerTreeOwner.IsInitialized()) {
     layers::LayersId layersId = mRemoteLayerTreeOwner.GetLayersId();
     if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
-      SLGuidAndRenderRoot guid(layersId, aPresShellId, aScrollId,
-                               gfxUtils::GetContentRenderRoot());
+      ScrollableLayerGuid guid(layersId, aPresShellId, aScrollId);
 
       // The anchor coordinates that are passed in are relative to the origin
       // of the screen, but we are sending them to APZ which only knows about
@@ -3471,8 +3584,7 @@ void BrowserParent::StopApzAutoscroll(nsViewID aScrollId,
   if (mRemoteLayerTreeOwner.IsInitialized()) {
     layers::LayersId layersId = mRemoteLayerTreeOwner.GetLayersId();
     if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
-      SLGuidAndRenderRoot guid(layersId, aPresShellId, aScrollId,
-                               gfxUtils::GetContentRenderRoot());
+      ScrollableLayerGuid guid(layersId, aPresShellId, aScrollId);
 
       widget->StopAsyncAutoscroll(guid);
     }
@@ -3502,6 +3614,16 @@ void BrowserParent::NavigateByKey(bool aForward, bool aForDocumentNavigation) {
 
 void BrowserParent::LayerTreeUpdate(const LayersObserverEpoch& aEpoch,
                                     bool aActive) {
+  // Ignore updates if we're an out-of-process iframe. For oop iframes, our
+  // |mFrameElement| is that of the top-level document, and so AsyncTabSwitcher
+  // will treat MozLayerTreeReady / MozLayerTreeCleared events as if they came
+  // from the top-level tab, which is wrong.
+  //
+  // XXX: Should we still be updating |mHasLayers|?
+  if (GetBrowserBridgeParent()) {
+    return;
+  }
+
   // Ignore updates from old epochs. They might tell us that layers are
   // available when we've already sent a message to clear them. We can't trust
   // the update in that case since layers could disappear anytime after that.
@@ -3858,27 +3980,25 @@ mozilla::ipc::IPCResult BrowserParent::RecvShowCanvasPermissionPrompt(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult BrowserParent::RecvVisitURI(
-    const URIParams& aURI, const Maybe<URIParams>& aLastVisitedURI,
-    const uint32_t& aFlags) {
-  nsCOMPtr<nsIURI> ourURI = DeserializeURI(aURI);
-  if (!ourURI) {
+mozilla::ipc::IPCResult BrowserParent::RecvVisitURI(nsIURI* aURI,
+                                                    nsIURI* aLastVisitedURI,
+                                                    const uint32_t& aFlags) {
+  if (!aURI) {
     return IPC_FAIL_NO_REASON(this);
   }
-  nsCOMPtr<nsIURI> ourLastVisitedURI = DeserializeURI(aLastVisitedURI);
   RefPtr<nsIWidget> widget = GetWidget();
   if (NS_WARN_IF(!widget)) {
     return IPC_OK();
   }
   nsCOMPtr<IHistory> history = services::GetHistoryService();
   if (history) {
-    Unused << history->VisitURI(widget, ourURI, ourLastVisitedURI, aFlags);
+    Unused << history->VisitURI(widget, aURI, aLastVisitedURI, aFlags);
   }
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult BrowserParent::RecvQueryVisitedState(
-    nsTArray<URIParams>&& aURIs) {
+    const nsTArray<RefPtr<nsIURI>>&& aURIs) {
 #ifdef MOZ_ANDROID_HISTORY
   nsCOMPtr<IHistory> history = services::GetHistoryService();
   if (NS_WARN_IF(!history)) {
@@ -3889,17 +4009,14 @@ mozilla::ipc::IPCResult BrowserParent::RecvQueryVisitedState(
     return IPC_OK();
   }
 
-  nsTArray<nsCOMPtr<nsIURI>> uris(aURIs.Length());
   for (size_t i = 0; i < aURIs.Length(); ++i) {
-    nsCOMPtr<nsIURI> uri = DeserializeURI(aURIs[i]);
-    if (NS_WARN_IF(!uri)) {
-      continue;
+    if (!aURIs[i]) {
+      return IPC_FAIL(this, "Received null URI");
     }
-    uris.AppendElement(uri);
   }
 
   GeckoViewHistory* gvHistory = static_cast<GeckoViewHistory*>(history.get());
-  gvHistory->QueryVisitedState(widget, uris);
+  gvHistory->QueryVisitedState(widget, std::move(aURIs));
 
   return IPC_OK();
 #else
@@ -3945,7 +4062,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvGetSystemFont(nsCString* aFontName) {
 }
 
 mozilla::ipc::IPCResult BrowserParent::RecvMaybeFireEmbedderLoadEvents(
-    bool aIsTrusted, bool aFireLoadAtEmbeddingElement) {
+    bool aFireLoadAtEmbeddingElement) {
   BrowserBridgeParent* bridge = GetBrowserBridgeParent();
   if (!bridge) {
     NS_WARNING("Received `load` event on unbridged BrowserParent!");
@@ -3953,7 +4070,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvMaybeFireEmbedderLoadEvents(
   }
 
   Unused << bridge->SendMaybeFireEmbedderLoadEvents(
-      aIsTrusted, aFireLoadAtEmbeddingElement);
+      aFireLoadAtEmbeddingElement);
   return IPC_OK();
 }
 

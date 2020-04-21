@@ -230,7 +230,6 @@ void moz_container_init(MozContainer* container) {
   container->subsurface_dy = 0;
   container->surface_position_needs_update = 0;
   container->initial_draw_cbs.clear();
-  container->is_accelerated = false;
 #endif
 
   LOG(("%s [%p]\n", __FUNCTION__, (void*)container));
@@ -596,6 +595,22 @@ static void moz_container_set_opaque_region(MozContainer* container) {
   container->opaque_region_needs_update = false;
 }
 
+static int moz_gtk_widget_get_scale_factor(MozContainer* container) {
+  static auto sGtkWidgetGetScaleFactor =
+      (gint(*)(GtkWidget*))dlsym(RTLD_DEFAULT, "gtk_widget_get_scale_factor");
+  return sGtkWidgetGetScaleFactor
+             ? sGtkWidgetGetScaleFactor(GTK_WIDGET(container))
+             : 1;
+}
+
+void moz_container_set_scale_factor(MozContainer* container) {
+  if (!container->surface) {
+    return;
+  }
+  wl_surface_set_buffer_scale(container->surface,
+                              moz_gtk_widget_get_scale_factor(container));
+}
+
 struct wl_surface* moz_container_get_wl_surface(MozContainer* container) {
   LOGWAYLAND(("%s [%p] surface %p ready_to_draw %d\n", __FUNCTION__,
               (void*)container, (void*)container->surface,
@@ -654,6 +669,8 @@ struct wl_surface* moz_container_get_wl_surface(MozContainer* container) {
   }
 
   moz_container_set_opaque_region(container);
+  moz_container_set_scale_factor(container);
+
   return container->surface;
 }
 
@@ -668,7 +685,6 @@ struct wl_egl_window* moz_container_get_wl_egl_window(MozContainer* container,
   if (!surface) {
     return nullptr;
   }
-  wl_surface_set_buffer_scale(surface, scale);
   if (!container->eglwindow) {
     GdkWindow* window = gtk_widget_get_window(GTK_WIDGET(container));
     container->eglwindow =
@@ -702,13 +718,9 @@ void moz_container_update_opaque_region(MozContainer* container,
   // When GL compositor / WebRender is used,
   // moz_container_get_wl_egl_window() is called only once when window
   // is created or resized so update opaque region now.
-  if (container->is_accelerated) {
+  if (moz_container_has_wl_egl_window(container)) {
     moz_container_set_opaque_region(container);
   }
-}
-
-void moz_container_set_accelerated(MozContainer* container) {
-  container->is_accelerated = true;
 }
 #endif
 

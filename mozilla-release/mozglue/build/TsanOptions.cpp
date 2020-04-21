@@ -4,25 +4,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/Attributes.h"
+#include "mozilla/TsanOptions.h"
 
 #ifndef _MSC_VER  // Not supported by clang-cl yet
-
-//
-// When running with ThreadSanitizer, we need to explicitly set some
-// options specific to our codebase to prevent errors during runtime.
-// To override these, set the TSAN_OPTIONS environment variable.
-//
-// Currently, these are:
-//
-//   abort_on_error=1 - Causes TSan to abort instead of using exit().
-//   halt_on_error=1 - Causes TSan to stop on the first race detected.
-//
-//   report_signal_unsafe=0 - Required to avoid TSan deadlocks when
-//   receiving external signals (e.g. SIGINT manually on console).
-//
-extern "C" const char* __tsan_default_options() {
-  return "halt_on_error=1:abort_on_error=1:report_signal_unsafe=0";
-}
 
 //
 // When running with ThreadSanitizer, we sometimes need to suppress existing
@@ -46,50 +30,12 @@ extern "C" const char* __tsan_default_options() {
 // symbolize one of the two traces and this can cause suppressed races to
 // show up intermittently.
 //
+// clang-format off
 extern "C" const char* __tsan_default_suppressions() {
   return "# Add your suppressions below\n"
 
          // External uninstrumented libraries
-         "called_from_lib:libatk-1\n"
-         "called_from_lib:libcairo.so\n"
-         "called_from_lib:libcairo-gobject\n"
-         "called_from_lib:libgdk-3\n"
-         "called_from_lib:libgdk_pixbuf\n"
-         "called_from_lib:libgdk-x11\n"
-         "called_from_lib:libgio-2\n"
-         "called_from_lib:libglib-1\n"
-         "called_from_lib:libglib-2\n"
-         "called_from_lib:libgobject\n"
-         "called_from_lib:libgtk-3\n"
-         "called_from_lib:libgtk-x11\n"
-         "called_from_lib:libgvfscommon\n"
-         "called_from_lib:libgvfsdbus\n"
-         "called_from_lib:libibus-1\n"
-         "called_from_lib:libogg.so\n"
-         "called_from_lib:libpangocairo\n"
-         "called_from_lib:libpangoft2\n"
-         "called_from_lib:pango-basic-fc\n"
-         "called_from_lib:libpixman-1\n"
-         "called_from_lib:libpulse.so\n"
-         "called_from_lib:libpulsecommon\n"
-         "called_from_lib:libsecret-1\n"
-         "called_from_lib:libunity-gtk3-parser\n"
-         "called_from_lib:libvorbis.so\n"
-         "called_from_lib:libvorbisfile\n"
-         "called_from_lib:libX11.so\n"
-         "called_from_lib:libX11-xcb\n"
-         "called_from_lib:libXau\n"
-         "called_from_lib:libxcb.so\n"
-         "called_from_lib:libXcomposite\n"
-         "called_from_lib:libXcursor\n"
-         "called_from_lib:libXdamage\n"
-         "called_from_lib:libXdmcp\n"
-         "called_from_lib:libXext\n"
-         "called_from_lib:libXfixes\n"
-         "called_from_lib:libXi.so\n"
-         "called_from_lib:libXrandr\n"
-         "called_from_lib:libXrender\n"
-         "called_from_lib:libXss\n"
+         MOZ_TSAN_DEFAULT_EXTLIB_SUPPRESSIONS
 
          // These libraries are uninstrumented and cause mutex false positives.
          // However, they can be unloaded by GTK early which we cannot avoid.
@@ -179,6 +125,7 @@ extern "C" const char* __tsan_default_suppressions() {
          "race:js::gc::MovingTracer::onBaseShapeEdge\n"
          "race:js::gc::MovingTracer::onScopeEdge\n"
          "race:js::gc::MovingTracer::onShapeEdge\n"
+         "race:fixupShapeTreeAfterMovingGC\n"
 
          // Bug 1601286
          "race:setFlagBit\n"
@@ -286,6 +233,10 @@ extern "C" const char* __tsan_default_suppressions() {
          // Bug 1607762
          "race:nsHtml5OwningUTF16Buffer::Release\n"
 
+         // Bug 1608068
+         "race:makeOwnBaseShape\n"
+         "race:numDynamicSlots\n"
+
          // Bug 1608357
          "race:nsHtml5ExecutorFlusher::Run\n"
          "race:geckoservo::glue::traverse_subtree\n"
@@ -365,4 +316,5 @@ extern "C" const char* __tsan_default_suppressions() {
       // End of suppressions.
       ;  // Please keep this semicolon.
 }
+// clang-format on
 #endif  // _MSC_VER

@@ -47,12 +47,14 @@ add_task(async function() {
     filter: rects =>
       rects.filter(
         r =>
-          !// We expect plenty of changed rects within the tab strip.
-          (
-            r.y1 >= tabStripRect.top &&
-            r.y2 <= tabStripRect.bottom &&
-            r.x1 >= tabStripRect.left &&
-            r.x2 <= tabStripRect.right
+          !(
+            // We expect plenty of changed rects within the tab strip.
+            (
+              r.y1 >= tabStripRect.top &&
+              r.y2 <= tabStripRect.bottom &&
+              r.x1 >= tabStripRect.left &&
+              r.x2 <= tabStripRect.right
+            )
           )
       ),
     exceptions: [
@@ -92,7 +94,7 @@ add_task(async function() {
         "TabAnimationEnd"
       );
       await switchDone;
-      await BrowserTestUtils.waitForCondition(() => {
+      await TestUtils.waitForCondition(() => {
         return gBrowser.tabContainer.arrowScrollbox.hasAttribute(
           "scrolledtoend"
         );
@@ -113,7 +115,7 @@ add_task(async function() {
       let switchDone = BrowserTestUtils.waitForEvent(window, "TabSwitchDone");
       BrowserOpenTab();
       await switchDone;
-      await BrowserTestUtils.waitForCondition(() => {
+      await TestUtils.waitForCondition(() => {
         return gBrowser.tabContainer.arrowScrollbox.hasAttribute(
           "scrolledtoend"
         );
@@ -149,7 +151,7 @@ add_task(async function() {
     async function() {
       let firstTab = gBrowser.tabs[0];
       await BrowserTestUtils.switchTab(gBrowser, firstTab);
-      await BrowserTestUtils.waitForCondition(() => {
+      await TestUtils.waitForCondition(() => {
         return gBrowser.tabContainer.arrowScrollbox.hasAttribute(
           "scrolledtostart"
         );
@@ -183,7 +185,7 @@ add_task(async function() {
         let switchDone = BrowserTestUtils.waitForEvent(window, "TabSwitchDone");
         BrowserTestUtils.removeTab(lastTab, { animate: true });
         await switchDone;
-        await BrowserTestUtils.waitForCondition(() => !lastTab.isConnected);
+        await TestUtils.waitForCondition(() => !lastTab.isConnected);
       },
       {
         expectedReflows: EXPECTED_UNDERFLOW_REFLOWS,

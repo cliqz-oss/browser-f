@@ -36,9 +36,11 @@
 #include "builtin/SelfHostingDefines.h"
 #ifdef DEBUG
 #  include "frontend/TokenStream.h"
-#  include "irregexp/RegExpAST.h"
-#  include "irregexp/RegExpEngine.h"
-#  include "irregexp/RegExpParser.h"
+#  ifndef ENABLE_NEW_REGEP
+#    include "irregexp/RegExpAST.h"
+#    include "irregexp/RegExpEngine.h"
+#    include "irregexp/RegExpParser.h"
+#  endif
 #endif
 #include "gc/Allocator.h"
 #include "gc/Zone.h"
@@ -85,11 +87,12 @@
 #include "vm/TraceLogging.h"
 #include "wasm/AsmJS.h"
 #include "wasm/WasmBaselineCompile.h"
+#include "wasm/WasmCraneliftCompile.h"
 #include "wasm/WasmInstance.h"
+#include "wasm/WasmIonCompile.h"
 #include "wasm/WasmJS.h"
 #include "wasm/WasmModule.h"
 #include "wasm/WasmSignalHandlers.h"
-#include "wasm/WasmTextToBinary.h"
 #include "wasm/WasmTypes.h"
 
 #include "debugger/DebugAPI-inl.h"
@@ -672,28 +675,26 @@ static bool GCParameter(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static void SetAllowRelazification(JSContext* cx, bool allow) {
-  JSRuntime* rt = cx->runtime();
-  MOZ_ASSERT(rt->allowRelazificationForTesting != allow);
-  rt->allowRelazificationForTesting = allow;
-
-  for (AllScriptFramesIter i(cx); !i.done(); ++i) {
-    i.script()->setDoNotRelazify(allow);
-  }
-}
-
 static bool RelazifyFunctions(JSContext* cx, unsigned argc, Value* vp) {
   // Relazifying functions on GC is usually only done for compartments that are
   // not active. To aid fuzzing, this testing function allows us to relazify
   // even if the compartment is active.
 
   CallArgs args = CallArgsFromVp(argc, vp);
-  SetAllowRelazification(cx, true);
+
+  // Disable relazification of all scripts on stack. It is a pervasive
+  // assumption in the engine that running scripts still have bytecode.
+  for (AllScriptFramesIter i(cx); !i.done(); ++i) {
+    i.script()->clearAllowRelazify();
+  }
+
+  cx->runtime()->allowRelazificationForTesting = true;
 
   JS::PrepareForFullGC(cx);
   JS::NonIncrementalGC(cx, GC_SHRINK, JS::GCReason::API);
 
-  SetAllowRelazification(cx, false);
+  cx->runtime()->allowRelazificationForTesting = false;
+
   args.rval().setUndefined();
   return true;
 }
@@ -720,25 +721,25 @@ static bool WasmIsSupported(JSContext* cx, unsigned argc, Value* vp) {
 
 static bool WasmIsSupportedByHardware(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::HasCompilerSupport(cx));
+  args.rval().setBoolean(wasm::HasPlatformSupport(cx));
   return true;
 }
 
 static bool WasmDebuggingIsSupported(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::HasSupport(cx) && cx->options().wasmBaseline());
+  args.rval().setBoolean(wasm::HasSupport(cx) && wasm::BaselineAvailable(cx));
   return true;
 }
 
 static bool WasmStreamingIsSupported(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::HasStreamingSupport(cx));
+  args.rval().setBoolean(wasm::StreamingCompilationAvailable(cx));
   return true;
 }
 
 static bool WasmCachingIsSupported(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::HasCachingSupport(cx));
+  args.rval().setBoolean(wasm::CodeCachingAvailable(cx));
   return true;
 }
 
@@ -752,26 +753,9 @@ static bool WasmHugeMemoryIsSupported(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static bool WasmUsesCranelift(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-#ifdef ENABLE_WASM_CRANELIFT
-  bool usesCranelift = cx->options().wasmCranelift();
-#else
-  bool usesCranelift = false;
-#endif
-  args.rval().setBoolean(usesCranelift);
-  return true;
-}
-
 static bool WasmThreadsSupported(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  bool isSupported = wasm::HasSupport(cx);
-#ifdef ENABLE_WASM_CRANELIFT
-  if (cx->options().wasmCranelift()) {
-    isSupported = false;
-  }
-#endif
-  args.rval().setBoolean(isSupported);
+  args.rval().setBoolean(wasm::ThreadsAvailable(cx));
   return true;
 }
 
@@ -789,47 +773,69 @@ static bool WasmBulkMemSupported(JSContext* cx, unsigned argc, Value* vp) {
 
 static bool WasmReftypesEnabled(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::HasReftypesSupport(cx));
+  args.rval().setBoolean(wasm::ReftypesAvailable(cx));
   return true;
 }
 
 static bool WasmGcEnabled(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::HasGcSupport(cx));
+  args.rval().setBoolean(wasm::GcTypesAvailable(cx));
   return true;
 }
 
 static bool WasmMultiValueEnabled(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::HasMultiValueSupport(cx));
+  args.rval().setBoolean(wasm::MultiValuesAvailable(cx));
   return true;
 }
 
 static bool WasmBigIntEnabled(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::HasI64BigIntSupport(cx));
+  args.rval().setBoolean(wasm::I64BigIntConversionAvailable(cx));
   return true;
 }
 
-static bool WasmDebugSupport(JSContext* cx, unsigned argc, Value* vp) {
+static bool WasmCompilersPresent(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(cx->options().wasmBaseline() &&
-                         wasm::BaselineCanCompile());
+
+  char buf[256];
+  *buf = 0;
+  if (wasm::BaselinePlatformSupport()) {
+    strcat(buf, "baseline");
+  }
+  if (wasm::IonPlatformSupport()) {
+    if (*buf) {
+      strcat(buf, ",");
+    }
+    strcat(buf, "ion");
+  }
+  if (wasm::CraneliftPlatformSupport()) {
+    if (*buf) {
+      strcat(buf, ",");
+    }
+    strcat(buf, "cranelift");
+  }
+
+  JSString* result = JS_NewStringCopyZ(cx, buf);
+  if (!result) {
+    return false;
+  }
+
+  args.rval().setString(result);
   return true;
 }
 
 static bool WasmCompileMode(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
-  bool baseline = cx->options().wasmBaseline();
-  bool ion = cx->options().wasmIon();
-#ifdef ENABLE_WASM_CRANELIFT
-  bool cranelift = cx->options().wasmCranelift();
-#else
-  bool cranelift = false;
-#endif
+  // This triplet of predicates will select zero or one baseline compiler and
+  // zero or one optimizing compiler.
+  bool baseline = wasm::BaselineAvailable(cx);
+  bool ion = wasm::IonAvailable(cx);
+  bool cranelift = wasm::CraneliftAvailable(cx);
 
-  // We default to ion if nothing is enabled, as does the Wasm compiler.
+  MOZ_ASSERT(!(ion && cranelift));
+
   JSString* result;
   if (!wasm::HasSupport(cx)) {
     result = JS_NewStringCopyZ(cx, "none");
@@ -853,88 +859,42 @@ static bool WasmCompileMode(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static bool WasmTextToBinary(JSContext* cx, unsigned argc, Value* vp) {
+static bool WasmCraneliftDisabledByFeatures(JSContext* cx, unsigned argc,
+                                            Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  RootedObject callee(cx, &args.callee());
-
-  if (!args.requireAtLeast(cx, "wasmTextToBinary", 1)) {
+  bool isDisabled = false;
+  JSStringBuilder reason(cx);
+  if (!wasm::CraneliftDisabledByFeatures(cx, &isDisabled, &reason)) {
     return false;
   }
-
-  if (!args[0].isString()) {
-    ReportUsageErrorASCII(cx, callee, "First argument must be a String");
-    return false;
-  }
-
-  size_t textLen = args[0].toString()->length();
-
-  AutoStableStringChars twoByteChars(cx);
-  if (!twoByteChars.initTwoByte(cx, args[0].toString())) {
-    return false;
-  }
-
-  bool withOffsets = false;
-  if (args.hasDefined(1)) {
-    if (!args[1].isBoolean()) {
-      ReportUsageErrorASCII(cx, callee,
-                            "Second argument, if present, must be a boolean");
+  if (isDisabled) {
+    JSString* result = reason.finishString();
+    if (!result) {
       return false;
     }
-    withOffsets = ToBoolean(args[1]);
+    args.rval().setString(result);
+  } else {
+    args.rval().setBoolean(false);
   }
+  return true;
+}
 
-  uintptr_t stackLimit = GetNativeStackLimit(cx);
-
-  wasm::Bytes bytes;
-  UniqueChars error;
-  wasm::Uint32Vector offsets;
-  if (!wasm::TextToBinary(twoByteChars.twoByteChars(), textLen, stackLimit,
-                          &bytes, &offsets, &error)) {
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_WASM_TEXT_FAIL,
-                              error.get() ? error.get() : "out of memory");
+static bool WasmIonDisabledByFeatures(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  bool isDisabled = false;
+  JSStringBuilder reason(cx);
+  if (!wasm::IonDisabledByFeatures(cx, &isDisabled, &reason)) {
     return false;
   }
-
-  RootedObject binary(cx, JS_NewUint8Array(cx, bytes.length()));
-  if (!binary) {
-    return false;
-  }
-
-  memcpy(binary->as<TypedArrayObject>().dataPointerUnshared(), bytes.begin(),
-         bytes.length());
-
-  if (!withOffsets) {
-    args.rval().setObject(*binary);
-    return true;
-  }
-
-  RootedObject obj(cx, JS_NewPlainObject(cx));
-  if (!obj) {
-    return false;
-  }
-
-  constexpr unsigned propAttrs = JSPROP_ENUMERATE;
-  if (!JS_DefineProperty(cx, obj, "binary", binary, propAttrs)) {
-    return false;
-  }
-
-  RootedObject jsOffsets(cx, JS::NewArrayObject(cx, offsets.length()));
-  if (!jsOffsets) {
-    return false;
-  }
-  for (size_t i = 0; i < offsets.length(); i++) {
-    uint32_t offset = offsets[i];
-    RootedValue offsetVal(cx, NumberValue(offset));
-    if (!JS_SetElement(cx, jsOffsets, i, offsetVal)) {
+  if (isDisabled) {
+    JSString* result = reason.finishString();
+    if (!result) {
       return false;
     }
+    args.rval().setString(result);
+  } else {
+    args.rval().setBoolean(false);
   }
-  if (!JS_DefineProperty(cx, obj, "offsets", jsOffsets, propAttrs)) {
-    return false;
-  }
-
-  args.rval().setObject(*obj);
   return true;
 }
 
@@ -1124,8 +1084,7 @@ static bool IsRelazifiableFunction(JSContext* cx, unsigned argc, Value* vp) {
 
   JSFunction* fun = &args[0].toObject().as<JSFunction>();
   args.rval().setBoolean(fun->hasBytecode() &&
-                         fun->nonLazyScript()->maybeLazyScript() &&
-                         fun->nonLazyScript()->isRelazifiable());
+                         fun->nonLazyScript()->allowRelazify());
   return true;
 }
 
@@ -2194,14 +2153,14 @@ bool RunIterativeFailureTest(JSContext* cx,
   for (unsigned thread = params.threadStart; thread <= params.threadEnd;
        thread++) {
     if (params.verbose) {
-      fprintf(stderr, "thread %d\n", thread);
+      fprintf(stderr, "thread %u\n", thread);
     }
 
     unsigned iteration = 1;
     bool failureWasSimulated;
     do {
       if (params.verbose) {
-        fprintf(stderr, "  iteration %d\n", iteration);
+        fprintf(stderr, "  iteration %u\n", iteration);
       }
 
       MOZ_ASSERT(!cx->isExceptionPending());
@@ -2265,7 +2224,7 @@ bool RunIterativeFailureTest(JSContext* cx,
     } while (failureWasSimulated);
 
     if (params.verbose) {
-      fprintf(stderr, "  finished after %d iterations\n", iteration - 1);
+      fprintf(stderr, "  finished after %u iterations\n", iteration - 1);
       if (!exception.isUndefined()) {
         RootedString str(cx, JS::ToString(cx, exception));
         if (!str) {
@@ -4977,7 +4936,7 @@ static bool GetModuleEnvironmentValue(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) && !defined(ENABLE_NEW_REGEXP)
 static const char* AssertionTypeToString(
     irregexp::RegExpAssertion::AssertionType type) {
   switch (type) {
@@ -5389,7 +5348,7 @@ static bool DisRegExp(JSContext* cx, unsigned argc, Value* vp) {
   args.rval().setUndefined();
   return true;
 }
-#endif  // DEBUG
+#endif  // DEBUG && !ENABLE_NEW_REGEXP
 
 static bool GetTimeZone(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
@@ -6632,12 +6591,6 @@ gc::ZealModeHelpText),
 "  Returns a boolean indicating whether WebAssembly supports using a large"
 "  virtual memory reservation in order to elide bounds checks on this platform."),
 
-    JS_FN_HELP("wasmUsesCranelift", WasmUsesCranelift, 0, 0,
-"wasmUsesCranelift()",
-"  Returns a boolean indicating whether Cranelift is currently enabled for backend\n"
-"  compilation. This doesn't necessarily mean a module will be compiled with \n"
-"  Cranelift (e.g. when baseline is also enabled)."),
-
     JS_FN_HELP("wasmThreadsSupported", WasmThreadsSupported, 0, 0,
 "wasmThreadsSupported()",
 "  Returns a boolean indicating whether the WebAssembly threads proposal is\n"
@@ -6648,14 +6601,31 @@ gc::ZealModeHelpText),
 "  Returns a boolean indicating whether the WebAssembly bulk memory proposal is\n"
 "  supported on the current device."),
 
+    JS_FN_HELP("wasmCompilersPresent", WasmCompilersPresent, 0, 0,
+"wasmCompilersPresent()",
+"  Returns a string indicating the present wasm compilers: a comma-separated list\n"
+"  of 'baseline', 'ion', and 'cranelift'.  A compiler is present in the executable\n"
+"  if it is compiled in and can generate code for the current architecture."),
+
     JS_FN_HELP("wasmCompileMode", WasmCompileMode, 0, 0,
 "wasmCompileMode()",
-"  Returns a string indicating the available compile policy: 'baseline', 'ion',\n"
-"  'baseline-or-ion', or 'disabled' (if wasm is not available at all)."),
+"  Returns a string indicating the available wasm compilers: 'baseline', 'ion',\n"
+"  'cranelift', 'baseline+ion', 'baseline+cranelift', or 'none'.  A compiler is\n"
+"  available if it is present in the executable and not disabled by switches\n"
+"  or runtime conditions.  At most one baseline and one optimizing compiler can\n"
+"  be available."),
 
-    JS_FN_HELP("wasmTextToBinary", WasmTextToBinary, 1, 0,
-"wasmTextToBinary(str)",
-"  Translates the given text wasm module into its binary encoding."),
+    JS_FN_HELP("wasmCraneliftDisabledByFeatures", WasmCraneliftDisabledByFeatures, 0, 0,
+"wasmCraneliftDisabledByFeatures()",
+"  If some feature is enabled at compile-time or run-time that prevents Cranelift\n"
+"  from being used then this returns a truthy string describing the features that\n."
+"  are disabling it.  Otherwise it returns false."),
+
+    JS_FN_HELP("wasmIonDisabledByFeatures", WasmIonDisabledByFeatures, 0, 0,
+"wasmIonDisabledByFeatures()",
+"  If some feature is enabled at compile-time or run-time that prevents Ion\n"
+"  from being used then this returns a truthy string describing the features that\n."
+"  are disabling it.  Otherwise it returns false."),
 
     JS_FN_HELP("wasmExtractCode", WasmExtractCode, 1, 0,
 "wasmExtractCode(module[, tier])",
@@ -6695,10 +6665,6 @@ gc::ZealModeHelpText),
     JS_FN_HELP("wasmBigIntEnabled", WasmBigIntEnabled, 1, 0,
 "wasmBigIntEnabled()",
 "  Returns a boolean indicating whether the WebAssembly I64 to BigInt proposal is enabled."),
-
-    JS_FN_HELP("wasmDebugSupport", WasmDebugSupport, 1, 0,
-"wasmDebugSupport()",
-"  Returns a boolean indicating whether the WebAssembly compilers support debugging."),
 
     JS_FN_HELP("isLazyFunction", IsLazyFunction, 1, 0,
 "isLazyFunction(fun)",
@@ -7095,7 +7061,7 @@ gc::ZealModeHelpText),
 
 // clang-format off
 static const JSFunctionSpecWithHelp FuzzingUnsafeTestingFunctions[] = {
-#ifdef DEBUG
+#if defined(DEBUG) && !defined(ENABLE_NEW_REGEXP)
     JS_FN_HELP("parseRegExp", ParseRegExp, 3, 0,
 "parseRegExp(pattern[, flags[, match_only])",
 "  Parses a RegExp pattern and returns a tree, potentially throwing."),

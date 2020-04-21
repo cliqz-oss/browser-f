@@ -89,7 +89,7 @@ class txStylesheetSink final : public nsIXMLContentSink,
   bool mCheckedForXML;
 
  protected:
-  ~txStylesheetSink() {}
+  ~txStylesheetSink() = default;
 
   // This exists solely to suppress a warning from nsDerivedSafe
   txStylesheetSink();
@@ -343,7 +343,7 @@ class txCompileObserver final : public txACompileObserver {
   txCompileObserver();
 
   // Private destructor, to discourage deletion outside of Release():
-  ~txCompileObserver() {}
+  ~txCompileObserver() = default;
 };
 
 txCompileObserver::txCompileObserver(txMozillaXSLTProcessor* aProcessor,
@@ -408,12 +408,10 @@ nsresult txCompileObserver::startLoad(nsIURI* aUri,
 
   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(channel));
   if (httpChannel) {
-    nsCOMPtr<nsIURI> referrerURI;
-    aReferrerPrincipal->GetURI(getter_AddRefs(referrerURI));
-    if (referrerURI) {
-      DebugOnly<nsresult> rv;
-      nsCOMPtr<nsIReferrerInfo> referrerInfo =
-          new dom::ReferrerInfo(referrerURI, aReferrerPolicy);
+    nsCOMPtr<nsIReferrerInfo> referrerInfo;
+    nsresult rv = aReferrerPrincipal->CreateReferrerInfo(
+        aReferrerPolicy, getter_AddRefs(referrerInfo));
+    if (NS_SUCCEEDED(rv)) {
       rv = httpChannel->SetReferrerInfoWithoutClone(referrerInfo);
       MOZ_ASSERT(NS_SUCCEEDED(rv));
     }
@@ -521,7 +519,7 @@ class txSyncCompileObserver final : public txACompileObserver {
 
  private:
   // Private destructor, to discourage deletion outside of Release():
-  ~txSyncCompileObserver() {}
+  ~txSyncCompileObserver() = default;
 
   RefPtr<txMozillaXSLTProcessor> mProcessor;
 };

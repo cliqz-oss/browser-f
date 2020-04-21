@@ -639,6 +639,7 @@ static void ReportDataCloneError(JSContext* cx,
     MOZ_RELEASE_ASSERT(!cx->isExceptionPending());
 
     JSErrorReport report;
+    report.errorNumber = errorNumber;
     // Get js error message if it's possible and propagate it through callback.
     if (JS_ExpandErrorArgumentsASCII(cx, GetErrorMessage, errorNumber, &report,
                                      std::forward<Args>(aArgs)...) &&
@@ -1632,6 +1633,11 @@ bool JSStructuredCloneWriter::traverseSavedFrame(HandleObject obj) {
   // queued on objs for further traversal.
 
   RootedValue val(context());
+
+  val = BooleanValue(savedFrame->getMutedErrors());
+  if (!startWrite(val)) {
+    return false;
+  }
 
   context()->markAtom(savedFrame->getSource());
   val = StringValue(savedFrame->getSource());
@@ -2911,12 +2917,36 @@ JSObject* JSStructuredCloneReader::readSavedFrame(uint32_t principalsTag) {
                               "bad SavedFrame principals");
     return nullptr;
   }
-  savedFrame->initPrincipalsAlreadyHeld(principals);
 
+  RootedValue mutedErrors(context());
   RootedValue source(context());
-  if (!startRead(&source) || !source.isString()) {
-    return nullptr;
+  {
+    // Read a |mutedErrors| boolean followed by a |source| string.
+    // The |mutedErrors| boolean is present in all new structured-clone data,
+    // but in older data it will be absent and only the |source| string will be
+    // found.
+    if (!startRead(&mutedErrors)) {
+      return nullptr;
+    }
+
+    if (mutedErrors.isBoolean()) {
+      if (!startRead(&source) || !source.isString()) {
+        return nullptr;
+      }
+    } else if (mutedErrors.isString()) {
+      // Backwards compatibility: Handle missing |mutedErrors| boolean,
+      // this is actually just a |source| string.
+      source = mutedErrors;
+      mutedErrors.setBoolean(true);  // Safe default value.
+    } else {
+      // Invalid type.
+      return nullptr;
+    }
   }
+
+  savedFrame->initPrincipalsAlreadyHeldAndMutedErrors(principals,
+                                                      mutedErrors.toBoolean());
+
   auto atomSource = AtomizeString(context(), source.toString());
   if (!atomSource) {
     return nullptr;

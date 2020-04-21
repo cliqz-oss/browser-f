@@ -5,7 +5,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "necko-config.h"
 #include "nsHttp.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ContentPrincipal.h"
@@ -429,10 +428,8 @@ NeckoParent::AllocPDocumentChannelParent(
   if (error) {
     return nullptr;
   }
-  PBOverrideStatus overrideStatus =
-      PBOverrideStatusFromLoadContext(aSerialized);
   RefPtr<DocumentChannelParent> p =
-      new DocumentChannelParent(context, loadContext, overrideStatus);
+      new DocumentChannelParent(context, loadContext);
   return p.forget();
 }
 
@@ -631,15 +628,17 @@ mozilla::ipc::IPCResult NeckoParent::RecvPDNSRequestConstructor(
 }
 
 mozilla::ipc::IPCResult NeckoParent::RecvSpeculativeConnect(
-    const URIParams& aURI, nsIPrincipal* aPrincipal, const bool& aAnonymous) {
+    nsIURI* aURI, nsIPrincipal* aPrincipal, const bool& aAnonymous) {
   nsCOMPtr<nsISpeculativeConnect> speculator(gIOService);
-  nsCOMPtr<nsIURI> uri = DeserializeURI(aURI);
   nsCOMPtr<nsIPrincipal> principal(aPrincipal);
-  if (uri && speculator) {
+  if (!aURI) {
+    return IPC_FAIL(this, "aURI must not be null");
+  }
+  if (aURI && speculator) {
     if (aAnonymous) {
-      speculator->SpeculativeAnonymousConnect(uri, principal, nullptr);
+      speculator->SpeculativeAnonymousConnect(aURI, principal, nullptr);
     } else {
-      speculator->SpeculativeConnect(uri, principal, nullptr);
+      speculator->SpeculativeConnect(aURI, principal, nullptr);
     }
   }
   return IPC_OK();
@@ -854,10 +853,9 @@ mozilla::ipc::IPCResult NeckoParent::RecvRemoveRequestContext(
 }
 
 mozilla::ipc::IPCResult NeckoParent::RecvGetExtensionStream(
-    const URIParams& aURI, GetExtensionStreamResolver&& aResolve) {
-  nsCOMPtr<nsIURI> deserializedURI = DeserializeURI(aURI);
-  if (!deserializedURI) {
-    return IPC_FAIL_NO_REASON(this);
+    nsIURI* aURI, GetExtensionStreamResolver&& aResolve) {
+  if (!aURI) {
+    return IPC_FAIL(this, "aURI must not be null");
   }
 
   RefPtr<ExtensionProtocolHandler> ph(ExtensionProtocolHandler::GetSingleton());
@@ -873,7 +871,7 @@ mozilla::ipc::IPCResult NeckoParent::RecvGetExtensionStream(
   // accepted.
   nsCOMPtr<nsIInputStream> inputStream;
   bool terminateSender = true;
-  auto inputStreamOrReason = ph->NewStream(deserializedURI, &terminateSender);
+  auto inputStreamOrReason = ph->NewStream(aURI, &terminateSender);
   if (inputStreamOrReason.isOk()) {
     inputStream = inputStreamOrReason.unwrap();
   }
@@ -890,10 +888,9 @@ mozilla::ipc::IPCResult NeckoParent::RecvGetExtensionStream(
 }
 
 mozilla::ipc::IPCResult NeckoParent::RecvGetExtensionFD(
-    const URIParams& aURI, GetExtensionFDResolver&& aResolve) {
-  nsCOMPtr<nsIURI> deserializedURI = DeserializeURI(aURI);
-  if (!deserializedURI) {
-    return IPC_FAIL_NO_REASON(this);
+    nsIURI* aURI, GetExtensionFDResolver&& aResolve) {
+  if (!aURI) {
+    return IPC_FAIL(this, "aURI must not be null");
   }
 
   RefPtr<ExtensionProtocolHandler> ph(ExtensionProtocolHandler::GetSingleton());
@@ -908,7 +905,7 @@ mozilla::ipc::IPCResult NeckoParent::RecvGetExtensionFD(
   // an extension is allowed to access via moz-extension URI's should be
   // accepted.
   bool terminateSender = true;
-  auto result = ph->NewFD(deserializedURI, &terminateSender, aResolve);
+  auto result = ph->NewFD(aURI, &terminateSender, aResolve);
 
   if (result.isErr() && terminateSender) {
     return IPC_FAIL_NO_REASON(this);
@@ -923,16 +920,14 @@ mozilla::ipc::IPCResult NeckoParent::RecvGetExtensionFD(
 }
 
 PClassifierDummyChannelParent* NeckoParent::AllocPClassifierDummyChannelParent(
-    nsIURI* aURI, nsIURI* aTopWindowURI,
-    nsIPrincipal* aContentBlockingAllowListPrincipal,
-    const nsresult& aTopWindowURIResult, const Maybe<LoadInfoArgs>& aLoadInfo) {
+    nsIURI* aURI, nsIURI* aTopWindowURI, const nsresult& aTopWindowURIResult,
+    const Maybe<LoadInfoArgs>& aLoadInfo) {
   RefPtr<ClassifierDummyChannelParent> c = new ClassifierDummyChannelParent();
   return c.forget().take();
 }
 
 mozilla::ipc::IPCResult NeckoParent::RecvPClassifierDummyChannelConstructor(
     PClassifierDummyChannelParent* aActor, nsIURI* aURI, nsIURI* aTopWindowURI,
-    nsIPrincipal* aContentBlockingAllowListPrincipal,
     const nsresult& aTopWindowURIResult, const Maybe<LoadInfoArgs>& aLoadInfo) {
   ClassifierDummyChannelParent* p =
       static_cast<ClassifierDummyChannelParent*>(aActor);
@@ -947,8 +942,7 @@ mozilla::ipc::IPCResult NeckoParent::RecvPClassifierDummyChannelConstructor(
     return IPC_FAIL_NO_REASON(this);
   }
 
-  p->Init(aURI, aTopWindowURI, aContentBlockingAllowListPrincipal,
-          aTopWindowURIResult, loadInfo);
+  p->Init(aURI, aTopWindowURI, aTopWindowURIResult, loadInfo);
   return IPC_OK();
 }
 

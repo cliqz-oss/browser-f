@@ -65,16 +65,12 @@ class DocumentLoadListener : public nsIInterfaceRequestor,
  public:
   explicit DocumentLoadListener(dom::CanonicalBrowsingContext* aBrowsingContext,
                                 nsILoadContext* aLoadContext,
-                                PBOverrideStatus aOverrideStatus,
                                 ADocumentChannelBridge* aBridge);
 
   // Creates the channel, and then calls AsyncOpen on it.
-  bool Open(nsDocShellLoadState* aLoadState, class LoadInfo* aLoadInfo,
-            nsLoadFlags aLoadFlags, uint32_t aLoadType, uint32_t aCacheKey,
-            bool aIsActive, bool aIsTopLevelDoc,
-            bool aHasNonEmptySandboxingFlags, const uint64_t& aChannelId,
-            const TimeStamp& aAsyncOpenTime,
-            const Maybe<uint32_t>& aDocumentOpenFlags, bool aPluginsAllowed,
+  bool Open(nsDocShellLoadState* aLoadState, LoadInfo* aLoadInfo,
+            nsLoadFlags aLoadFlags, uint32_t aCacheKey,
+            const uint64_t& aChannelId, const TimeStamp& aAsyncOpenTime,
             nsDOMNavigationTiming* aTiming, Maybe<dom::ClientInfo>&& aInfo,
             uint64_t aOuterWindowId, nsresult* aRv);
 
@@ -191,8 +187,6 @@ class DocumentLoadListener : public nsIInterfaceRequestor,
   RedirectToRealChannel(uint32_t aRedirectFlags, uint32_t aLoadFlags,
                         const Maybe<uint64_t>& aDestinationProcess);
 
-  dom::CanonicalBrowsingContext* GetBrowsingContext();
-
   // Construct a LoadInfo object to use for the internal channel.
   // TODO: This currently only supports creating top window TYPE_DOCUMENT
   // LoadInfos
@@ -305,8 +299,6 @@ class DocumentLoadListener : public nsIInterfaceRequestor,
   RefPtr<ADocumentChannelBridge> mDocumentChannelBridge;
 
   nsCOMPtr<nsILoadContext> mLoadContext;
-
-  PBOverrideStatus mPBOverride;
 
   // The original URI of the current channel. If there are redirects,
   // then the value on the channel gets overwritten with the original

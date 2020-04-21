@@ -409,8 +409,12 @@ NetworkObserver.prototype = {
 
       response.status = channel.responseStatus;
       response.statusText = channel.responseStatusText;
-      response.httpVersion =
-        "HTTP/" + httpVersionMaj.value + "." + httpVersionMin.value;
+      if (httpVersionMaj.value > 1) {
+        response.httpVersion = "HTTP/" + httpVersionMaj.value;
+      } else {
+        response.httpVersion =
+          "HTTP/" + httpVersionMaj.value + "." + httpVersionMin.value;
+      }
 
       this.openResponses.set(channel, response);
     }
@@ -683,7 +687,7 @@ NetworkObserver.prototype = {
     if (channel.loadInfo) {
       causeType = channel.loadInfo.externalContentPolicyType;
       const { loadingPrincipal } = channel.loadInfo;
-      if (loadingPrincipal && loadingPrincipal.URI) {
+      if (loadingPrincipal?.URI) {
         causeUri = loadingPrincipal.URI.spec;
       }
     }

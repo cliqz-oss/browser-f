@@ -25,7 +25,6 @@
 #include "js/ContextOptions.h"
 #include "js/LocaleSensitive.h"
 #include "mozilla/AbstractThread.h"
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
@@ -274,7 +273,11 @@ void LoadContextOptions(const char* aPrefName, void* /* aClosure */) {
 
   // Context options.
   JS::ContextOptions contextOptions;
-  contextOptions.setAsmJS(GetWorkerPref<bool>(NS_LITERAL_CSTRING("asmjs")))
+  contextOptions
+      .setAsmJS(GetWorkerPref<bool>(NS_LITERAL_CSTRING("asmjs")))
+#ifdef FUZZING
+      .setFuzzing(GetWorkerPref<bool>(NS_LITERAL_CSTRING("fuzzing.enabled")))
+#endif
       .setWasm(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm")))
       .setWasmForTrustedPrinciples(
           GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_trustedprincipals")))
@@ -285,18 +288,17 @@ void LoadContextOptions(const char* aPrefName, void* /* aClosure */) {
       .setWasmCranelift(
           GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_cranelift")))
 #endif
+#ifdef ENABLE_WASM_MULTI_VALUE
+      .setWasmMultiValue(
+          GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_multi_value")))
+#endif
 #ifdef ENABLE_WASM_REFTYPES
       .setWasmGc(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_gc")))
 #endif
       .setWasmVerbose(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_verbose")))
       .setThrowOnAsmJSValidationFailure(GetWorkerPref<bool>(
           NS_LITERAL_CSTRING("throw_on_asmjs_validation_failure")))
-      .setAsyncStack(GetWorkerPref<bool>(NS_LITERAL_CSTRING("asyncstack")))
-      .setWerror(GetWorkerPref<bool>(NS_LITERAL_CSTRING("werror")))
-#ifdef FUZZING
-      .setFuzzing(GetWorkerPref<bool>(NS_LITERAL_CSTRING("fuzzing.enabled")))
-#endif
-      .setExtraWarnings(GetWorkerPref<bool>(NS_LITERAL_CSTRING("strict")));
+      .setAsyncStack(GetWorkerPref<bool>(NS_LITERAL_CSTRING("asyncstack")));
 
   nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
   if (xr) {
@@ -1099,11 +1101,6 @@ void PlatformOverrideChanged(const char* /* aPrefName */,
 }
 
 } /* anonymous namespace */
-
-struct RuntimeService::IdleThreadInfo {
-  RefPtr<WorkerThread> mThread;
-  mozilla::TimeStamp mExpirationTime;
-};
 
 // This is only touched on the main thread. Initialized in Init() below.
 JSSettings RuntimeService::sDefaultJSSettings;
@@ -2000,7 +1997,7 @@ void RuntimeService::PropagateFirstPartyStorageAccessGranted(
   MOZ_ASSERT(aWindow);
   MOZ_ASSERT_IF(aWindow->GetExtantDoc(), aWindow->GetExtantDoc()
                                              ->CookieJarSettings()
-                                             ->GetRejectThirdPartyTrackers());
+                                             ->GetRejectThirdPartyContexts());
 
   nsTArray<WorkerPrivate*> workers;
   GetWorkersForWindow(aWindow, workers);
@@ -2229,15 +2226,6 @@ WorkerThreadPrimaryRunnable::Run() {
 
   using mozilla::ipc::BackgroundChild;
 
-  // Note: GetOrCreateForCurrentThread() must be called prior to
-  //       mWorkerPrivate->SetThread() in order to avoid accidentally consuming
-  //       worker messages here.
-  bool ipcReady = true;
-  if (NS_WARN_IF(!BackgroundChild::GetOrCreateForCurrentThread())) {
-    // Let's report the error only after SetThread().
-    ipcReady = false;
-  }
-
   class MOZ_STACK_CLASS SetThreadHelper final {
     // Raw pointer: this class is on the stack.
     WorkerPrivate* mWorkerPrivate;
@@ -2271,7 +2259,12 @@ WorkerThreadPrimaryRunnable::Run() {
 
   mWorkerPrivate->AssertIsOnWorkerThread();
 
-  if (!ipcReady) {
+  // These need to be initialized on the worker thread before being used on
+  // the main thread.
+  mWorkerPrivate->EnsurePerformanceStorage();
+  mWorkerPrivate->EnsurePerformanceCounter();
+
+  if (NS_WARN_IF(!BackgroundChild::GetOrCreateForCurrentThread())) {
     WorkerErrorReport::CreateAndDispatchGenericErrorRunnableToParent(
         mWorkerPrivate);
     return NS_ERROR_FAILURE;
@@ -2417,7 +2410,7 @@ void PropagateFirstPartyStorageAccessGrantedToWorkers(
   AssertIsOnMainThread();
   MOZ_ASSERT_IF(aWindow->GetExtantDoc(), aWindow->GetExtantDoc()
                                              ->CookieJarSettings()
-                                             ->GetRejectThirdPartyTrackers());
+                                             ->GetRejectThirdPartyContexts());
 
   RuntimeService* runtime = RuntimeService::GetService();
   if (runtime) {

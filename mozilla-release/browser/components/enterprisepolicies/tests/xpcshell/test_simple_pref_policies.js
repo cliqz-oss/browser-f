@@ -600,6 +600,73 @@ const POLICIES_TESTS = [
       "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features": false,
     },
   },
+
+  // POLICY: Permissions->Autoplay
+  {
+    policies: {
+      Permissions: {
+        Autoplay: {
+          Default: "allow-audio-video",
+          Locked: true,
+        },
+      },
+    },
+    lockedPrefs: {
+      "media.autoplay.default": 0,
+    },
+  },
+
+  {
+    policies: {
+      Permissions: {
+        Autoplay: {
+          Default: "block-audio",
+        },
+      },
+    },
+    unlockedPrefs: {
+      "media.autoplay.default": 1,
+    },
+  },
+
+  {
+    policies: {
+      Permissions: {
+        Autoplay: {
+          Default: "block-audio-video",
+        },
+      },
+    },
+    unlockedPrefs: {
+      "media.autoplay.default": 5,
+    },
+  },
+
+  // POLICY: LegacySameSiteCookieBehaviorEnabled
+
+  {
+    policies: {
+      LegacySameSiteCookieBehaviorEnabled: true,
+    },
+    unlockedPrefs: {
+      "network.cookie.sameSite.laxByDefault": false,
+    },
+  },
+
+  // POLICY: LegacySameSiteCookieBehaviorEnabledForDomainList
+
+  {
+    policies: {
+      LegacySameSiteCookieBehaviorEnabledForDomainList: [
+        "example.com",
+        "example.org",
+      ],
+    },
+    unlockedPrefs: {
+      "network.cookie.sameSite.laxByDefault.disabledHosts":
+        "example.com,example.org",
+    },
+  },
 ];
 
 add_task(async function test_policy_simple_prefs() {

@@ -32,9 +32,11 @@ this.TippyTopProvider = class TippyTopProvider {
   async init() {
     // Load the Tippy Top sites from the json manifest.
     try {
-      for (const site of await (await fetch(TIPPYTOP_JSON_PATH, {
-        credentials: "omit",
-      })).json()) {
+      for (const site of await (
+        await fetch(TIPPYTOP_JSON_PATH, {
+          credentials: "omit",
+        })
+      ).json()) {
         // The tippy top manifest can have a url property (string) or a
         // urls property (array of strings)
         for (const url of site.url ? [site.url] : site.urls || []) {
@@ -51,7 +53,7 @@ this.TippyTopProvider = class TippyTopProvider {
     const tippyTop = this._sitesByDomain.get(getDomain(site.url));
     if (tippyTop) {
       site.tippyTopIcon = TIPPYTOP_PATH + tippyTop.image_url;
-      site.favicon = TIPPYTOP_PATH + tippyTop.favicon_url;
+      site.smallFavicon = TIPPYTOP_PATH + tippyTop.favicon_url;
       site.backgroundColor = tippyTop.background_color;
     }
     return site;

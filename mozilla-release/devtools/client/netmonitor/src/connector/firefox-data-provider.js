@@ -5,7 +5,10 @@
 
 "use strict";
 
-const { EVENTS } = require("devtools/client/netmonitor/src/constants");
+const {
+  EVENTS,
+  TEST_EVENTS,
+} = require("devtools/client/netmonitor/src/constants");
 const { CurlUtils } = require("devtools/client/shared/curl");
 const {
   fetchHeaders,
@@ -177,7 +180,7 @@ class FirefoxDataProvider {
 
   async fetchResponseContent(responseContent) {
     const payload = {};
-    if (responseContent && responseContent.content) {
+    if (responseContent?.content) {
       const { text } = responseContent.content;
       const response = await this.getLongString(text);
       responseContent.content.text = response;
@@ -188,11 +191,7 @@ class FirefoxDataProvider {
 
   async fetchRequestHeaders(requestHeaders) {
     const payload = {};
-    if (
-      requestHeaders &&
-      requestHeaders.headers &&
-      requestHeaders.headers.length
-    ) {
+    if (requestHeaders?.headers?.length) {
       const headers = await fetchHeaders(requestHeaders, this.getLongString);
       if (headers) {
         payload.requestHeaders = headers;
@@ -203,11 +202,7 @@ class FirefoxDataProvider {
 
   async fetchResponseHeaders(responseHeaders) {
     const payload = {};
-    if (
-      responseHeaders &&
-      responseHeaders.headers &&
-      responseHeaders.headers.length
-    ) {
+    if (responseHeaders?.headers?.length) {
       const headers = await fetchHeaders(responseHeaders, this.getLongString);
       if (headers) {
         payload.responseHeaders = headers;
@@ -218,7 +213,7 @@ class FirefoxDataProvider {
 
   async fetchPostData(requestPostData) {
     const payload = {};
-    if (requestPostData && requestPostData.postData) {
+    if (requestPostData?.postData) {
       const { text } = requestPostData.postData;
       const postData = await this.getLongString(text);
       const headers = CurlUtils.getHeadersFromMultipartText(postData);
@@ -344,7 +339,7 @@ class FirefoxDataProvider {
    */
   getLongString(stringGrip) {
     return this.webConsoleFront.getString(stringGrip).then(payload => {
-      this.emitForTests(EVENTS.LONGSTRING_RESOLVED, { payload });
+      this.emitForTests(TEST_EVENTS.LONGSTRING_RESOLVED, { payload });
       return payload;
     });
   }
@@ -383,7 +378,7 @@ class FirefoxDataProvider {
       channelId,
     });
 
-    this.emitForTests(EVENTS.NETWORK_EVENT, actor);
+    this.emitForTests(TEST_EVENTS.NETWORK_EVENT, actor);
   }
 
   /**
@@ -413,7 +408,7 @@ class FirefoxDataProvider {
           statusText: networkInfo.response.statusText,
           headersSize: networkInfo.response.headersSize,
         });
-        this.emitForTests(EVENTS.STARTED_RECEIVING_RESPONSE, actor);
+        this.emitForTests(TEST_EVENTS.STARTED_RECEIVING_RESPONSE, actor);
         break;
       case "responseContent":
         this.pushRequestToQueue(actor, {
@@ -439,7 +434,7 @@ class FirefoxDataProvider {
 
     this.onPayloadDataReceived(actor);
 
-    this.emitForTests(EVENTS.NETWORK_EVENT_UPDATED, actor);
+    this.emitForTests(TEST_EVENTS.NETWORK_EVENT_UPDATED, actor);
   }
 
   /**
@@ -658,7 +653,7 @@ class FirefoxDataProvider {
     const payload = await this.updateRequest(response.from, {
       requestHeaders: response,
     });
-    this.emitForTests(EVENTS.RECEIVED_REQUEST_HEADERS, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_REQUEST_HEADERS, response.from);
     return payload.requestHeaders;
   }
 
@@ -671,7 +666,7 @@ class FirefoxDataProvider {
     const payload = await this.updateRequest(response.from, {
       responseHeaders: response,
     });
-    this.emitForTests(EVENTS.RECEIVED_RESPONSE_HEADERS, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_RESPONSE_HEADERS, response.from);
     return payload.responseHeaders;
   }
 
@@ -684,7 +679,7 @@ class FirefoxDataProvider {
     const payload = await this.updateRequest(response.from, {
       requestCookies: response,
     });
-    this.emitForTests(EVENTS.RECEIVED_REQUEST_COOKIES, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_REQUEST_COOKIES, response.from);
     return payload.requestCookies;
   }
 
@@ -697,7 +692,7 @@ class FirefoxDataProvider {
     const payload = await this.updateRequest(response.from, {
       requestPostData: response,
     });
-    this.emitForTests(EVENTS.RECEIVED_REQUEST_POST_DATA, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_REQUEST_POST_DATA, response.from);
     return payload.requestPostData;
   }
 
@@ -710,7 +705,7 @@ class FirefoxDataProvider {
     const payload = await this.updateRequest(response.from, {
       securityInfo: response.securityInfo,
     });
-    this.emitForTests(EVENTS.RECEIVED_SECURITY_INFO, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_SECURITY_INFO, response.from);
     return payload.securityInfo;
   }
 
@@ -723,7 +718,7 @@ class FirefoxDataProvider {
     const payload = await this.updateRequest(response.from, {
       responseCookies: response,
     });
-    this.emitForTests(EVENTS.RECEIVED_RESPONSE_COOKIES, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_RESPONSE_COOKIES, response.from);
     return payload.responseCookies;
   }
 
@@ -735,7 +730,7 @@ class FirefoxDataProvider {
     const payload = await this.updateRequest(response.from, {
       responseCache: response,
     });
-    this.emitForTests(EVENTS.RECEIVED_RESPONSE_CACHE, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_RESPONSE_CACHE, response.from);
     return payload.responseCache;
   }
 
@@ -752,7 +747,7 @@ class FirefoxDataProvider {
       mimeType: response.content.mimeType,
       responseContent: response,
     });
-    this.emitForTests(EVENTS.RECEIVED_RESPONSE_CONTENT, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_RESPONSE_CONTENT, response.from);
     return payload.responseContent;
   }
 
@@ -783,7 +778,7 @@ class FirefoxDataProvider {
     const payload = await this.updateRequest(response.from, {
       stacktrace: response.stacktrace,
     });
-    this.emitForTests(EVENTS.RECEIVED_EVENT_STACKTRACE, response.from);
+    this.emitForTests(TEST_EVENTS.RECEIVED_EVENT_STACKTRACE, response.from);
     return payload.stacktrace;
   }
 

@@ -20,6 +20,7 @@
 #include "mozilla/net/CookieJarSettings.h"
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/StaticPrefs_network.h"
+#include "mozilla/StaticPrefs_security.h"
 #include "mozIThirdPartyUtil.h"
 #include "nsFrameLoader.h"
 #include "nsFrameLoaderOwner.h"
@@ -102,6 +103,8 @@ LoadInfo::LoadInfo(
       mDocumentHasLoaded(false),
       mAllowListFutureDocumentsCreatedFromThisRedirectChain(false),
       mSkipContentSniffing(false),
+      mHttpsOnlyStatus(nsILoadInfo::HTTPS_ONLY_UNINITIALIZED),
+      mHasStoragePermission(false),
       mIsFromProcessingFrameAttributes(false) {
   MOZ_ASSERT(mLoadingPrincipal);
   MOZ_ASSERT(mTriggeringPrincipal);
@@ -277,7 +280,7 @@ LoadInfo::LoadInfo(
 
     if (nsContentUtils::IsUpgradableDisplayType(externalType)) {
       if (mLoadingPrincipal->SchemeIs("https")) {
-        if (nsMixedContentBlocker::ShouldUpgradeMixedDisplayContent()) {
+        if (StaticPrefs::security_mixed_content_upgrade_display_content()) {
           mBrowserUpgradeInsecureRequests = true;
         } else {
           mBrowserWouldUpgradeInsecureRequests = true;
@@ -364,6 +367,8 @@ LoadInfo::LoadInfo(nsPIDOMWindowOuter* aOuterWindow,
       mDocumentHasLoaded(false),
       mAllowListFutureDocumentsCreatedFromThisRedirectChain(false),
       mSkipContentSniffing(false),
+      mHttpsOnlyStatus(nsILoadInfo::HTTPS_ONLY_UNINITIALIZED),
+      mHasStoragePermission(false),
       mIsFromProcessingFrameAttributes(false) {
   // Top-level loads are never third-party
   // Grab the information we can out of the window.
@@ -464,6 +469,8 @@ LoadInfo::LoadInfo(dom::CanonicalBrowsingContext* aBrowsingContext,
       mDocumentHasLoaded(false),
       mAllowListFutureDocumentsCreatedFromThisRedirectChain(false),
       mSkipContentSniffing(false),
+      mHttpsOnlyStatus(nsILoadInfo::HTTPS_ONLY_UNINITIALIZED),
+      mHasStoragePermission(false),
       mIsFromProcessingFrameAttributes(false) {
   // Top-level loads are never third-party
   // Grab the information we can out of the window.
@@ -564,6 +571,8 @@ LoadInfo::LoadInfo(const LoadInfo& rhs)
           rhs.mAllowListFutureDocumentsCreatedFromThisRedirectChain),
       mCspNonce(rhs.mCspNonce),
       mSkipContentSniffing(rhs.mSkipContentSniffing),
+      mHttpsOnlyStatus(rhs.mHttpsOnlyStatus),
+      mHasStoragePermission(rhs.mHasStoragePermission),
       mIsFromProcessingFrameAttributes(rhs.mIsFromProcessingFrameAttributes) {}
 
 LoadInfo::LoadInfo(
@@ -601,6 +610,7 @@ LoadInfo::LoadInfo(
     bool aDocumentHasLoaded,
     bool aAllowListFutureDocumentsCreatedFromThisRedirectChain,
     const nsAString& aCspNonce, bool aSkipContentSniffing,
+    uint32_t aHttpsOnlyStatus, bool aHasStoragePermission,
     uint32_t aRequestBlockingReason, nsINode* aLoadingContext)
     : mLoadingPrincipal(aLoadingPrincipal),
       mTriggeringPrincipal(aTriggeringPrincipal),
@@ -657,6 +667,8 @@ LoadInfo::LoadInfo(
           aAllowListFutureDocumentsCreatedFromThisRedirectChain),
       mCspNonce(aCspNonce),
       mSkipContentSniffing(aSkipContentSniffing),
+      mHttpsOnlyStatus(aHttpsOnlyStatus),
+      mHasStoragePermission(aHasStoragePermission),
       mIsFromProcessingFrameAttributes(false) {
   // Only top level TYPE_DOCUMENT loads can have a null loadingPrincipal
   MOZ_ASSERT(mLoadingPrincipal ||
@@ -720,7 +732,7 @@ nsIPrincipal* LoadInfo::LoadingPrincipal() { return mLoadingPrincipal; }
 
 NS_IMETHODIMP
 LoadInfo::GetTriggeringPrincipal(nsIPrincipal** aTriggeringPrincipal) {
-  NS_ADDREF(*aTriggeringPrincipal = mTriggeringPrincipal);
+  *aTriggeringPrincipal = do_AddRef(mTriggeringPrincipal).take();
   return NS_OK;
 }
 
@@ -903,6 +915,18 @@ LoadInfo::SetCookieJarSettings(nsICookieJarSettings* aCookieJarSettings) {
   MOZ_ASSERT(aCookieJarSettings);
   // We allow the overwrite of CookieJarSettings.
   mCookieJarSettings = aCookieJarSettings;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::GetHasStoragePermission(bool* aHasStoragePermission) {
+  *aHasStoragePermission = mHasStoragePermission;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::SetHasStoragePermission(bool aHasStoragePermission) {
+  mHasStoragePermission = aHasStoragePermission;
   return NS_OK;
 }
 
@@ -1463,6 +1487,18 @@ LoadInfo::SetSkipContentSniffing(bool aSkipContentSniffing) {
 }
 
 NS_IMETHODIMP
+LoadInfo::GetHttpsOnlyStatus(uint32_t* aHttpsOnlyStatus) {
+  *aHttpsOnlyStatus = mHttpsOnlyStatus;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::SetHttpsOnlyStatus(uint32_t aHttpsOnlyStatus) {
+  mHttpsOnlyStatus = aHttpsOnlyStatus;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 LoadInfo::GetIsTopLevelLoad(bool* aResult) {
   *aResult = mFrameOuterWindowID ? mFrameOuterWindowID == mOuterWindowID
                                  : mParentOuterWindowID == mOuterWindowID;
@@ -1625,6 +1661,12 @@ LoadInfo::GetCspEventListener(nsICSPEventListener** aCSPEventListener) {
 NS_IMETHODIMP
 LoadInfo::SetCspEventListener(nsICSPEventListener* aCSPEventListener) {
   mCSPEventListener = aCSPEventListener;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+LoadInfo::GetInternalContentPolicyType(nsContentPolicyType* aResult) {
+  *aResult = mInternalContentPolicyType;
   return NS_OK;
 }
 

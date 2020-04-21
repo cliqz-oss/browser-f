@@ -47,8 +47,10 @@
 #  include "mozilla/Atomics.h"
 #  include "mozilla/AutoProfilerLabel.h"
 #  include "mozilla/BaseProfilerDetail.h"
+#  include "mozilla/DoubleConversion.h"
 #  include "mozilla/Printf.h"
 #  include "mozilla/Services.h"
+#  include "mozilla/Span.h"
 #  include "mozilla/StackWalk.h"
 #  include "mozilla/StaticPtr.h"
 #  include "mozilla/ThreadLocal.h"
@@ -148,7 +150,7 @@ namespace baseprofiler {
 
 using detail::RacyFeatures;
 
-bool BaseProfilerLogTest(int aLevelToTest) {
+bool LogTest(int aLevelToTest) {
   static const int maxLevel =
       getenv("MOZ_BASE_PROFILER_VERBOSE_LOGGING")
           ? 5
@@ -156,6 +158,17 @@ bool BaseProfilerLogTest(int aLevelToTest) {
                 ? 4
                 : getenv("MOZ_BASE_PROFILER_LOGGING") ? 3 : 0;
   return aLevelToTest <= maxLevel;
+}
+
+void PrintToConsole(const char* aFmt, ...) {
+  va_list args;
+  va_start(args, aFmt);
+#  if defined(ANDROID)
+  __android_log_vprint(ANDROID_LOG_INFO, "Gecko", aFmt, args);
+#  else
+  vfprintf(stderr, aFmt, args);
+#  endif
+  va_end(args);
 }
 
 // Return all features that are available on this platform.
@@ -680,27 +693,27 @@ class ActivePS {
   // The returned array is sorted by thread register time.
   // Do not hold on to the return value across thread registration or profiler
   // restarts.
-  static Vector<Pair<RegisteredThread*, ProfiledThreadData*>> ProfiledThreads(
-      PSLockRef) {
+  static Vector<std::pair<RegisteredThread*, ProfiledThreadData*>>
+  ProfiledThreads(PSLockRef) {
     MOZ_ASSERT(sInstance);
-    Vector<Pair<RegisteredThread*, ProfiledThreadData*>> array;
+    Vector<std::pair<RegisteredThread*, ProfiledThreadData*>> array;
     MOZ_RELEASE_ASSERT(
         array.initCapacity(sInstance->mLiveProfiledThreads.length() +
                            sInstance->mDeadProfiledThreads.length()));
     for (auto& t : sInstance->mLiveProfiledThreads) {
       MOZ_RELEASE_ASSERT(array.append(
-          MakePair(t.mRegisteredThread, t.mProfiledThreadData.get())));
+          std::make_pair(t.mRegisteredThread, t.mProfiledThreadData.get())));
     }
     for (auto& t : sInstance->mDeadProfiledThreads) {
       MOZ_RELEASE_ASSERT(
-          array.append(MakePair((RegisteredThread*)nullptr, t.get())));
+          array.append(std::make_pair((RegisteredThread*)nullptr, t.get())));
     }
 
     std::sort(array.begin(), array.end(),
-              [](const Pair<RegisteredThread*, ProfiledThreadData*>& a,
-                 const Pair<RegisteredThread*, ProfiledThreadData*>& b) {
-                return a.second()->Info()->RegisterTime() <
-                       b.second()->Info()->RegisterTime();
+              [](const std::pair<RegisteredThread*, ProfiledThreadData*>& a,
+                 const std::pair<RegisteredThread*, ProfiledThreadData*>& b) {
+                return a.second->Info()->RegisterTime() <
+                       b.second->Info()->RegisterTime();
               });
     return array;
   }
@@ -1278,9 +1291,6 @@ static void DoEHABIBacktrace(PSLockRef aLock,
   //          cannot rely on ActivePS.
 
   const mcontext_t* mcontext = &aRegs.mContext->uc_mcontext;
-  mcontext_t savedContext;
-  const ProfilingStack& profilingStack =
-      aRegisteredThread.RacyRegisteredThread().ProfilingStack();
 
   // Now unwind whatever's left (starting from the original registers).
   aNativeStack.mCount +=
@@ -1728,10 +1738,10 @@ static void locked_profiler_stream_json_for_this_process(
   // if aOnlyThreads is true, the only output will be the threads array items.
   {
     ActivePS::DiscardExpiredDeadProfiledThreads(aLock);
-    Vector<Pair<RegisteredThread*, ProfiledThreadData*>> threads =
+    Vector<std::pair<RegisteredThread*, ProfiledThreadData*>> threads =
         ActivePS::ProfiledThreads(aLock);
     for (auto& thread : threads) {
-      ProfiledThreadData* profiledThreadData = thread.second();
+      ProfiledThreadData* profiledThreadData = thread.second;
       profiledThreadData->StreamJSON(buffer, aWriter,
                                      CorePS::ProcessName(aLock),
                                      CorePS::ProcessStartTime(), aSinceTime);
@@ -1801,7 +1811,7 @@ static char FeatureCategory(uint32_t aFeature) {
 }
 
 static void PrintUsageThenExit(int aExitCode) {
-  printf(
+  PrintToConsole(
       "\n"
       "Profiler environment variable usage:\n"
       "\n"
@@ -1859,16 +1869,16 @@ static void PrintUsageThenExit(int aExitCode) {
       unsigned(BASE_PROFILER_DEFAULT_ENTRIES.Value() * 8),
       unsigned(BASE_PROFILER_DEFAULT_STARTUP_ENTRIES.Value() * 8));
 
-#  define PRINT_FEATURE(n_, str_, Name_, desc_)                             \
-    printf("    %c %5u: \"%s\" (%s)\n",                                     \
-           FeatureCategory(ProfilerFeature::Name_), ProfilerFeature::Name_, \
-           str_, desc_);
+#  define PRINT_FEATURE(n_, str_, Name_, desc_)             \
+    PrintToConsole("    %c %5u: \"%s\" (%s)\n",             \
+                   FeatureCategory(ProfilerFeature::Name_), \
+                   ProfilerFeature::Name_, str_, desc_);
 
   BASE_PROFILER_FOR_EACH_FEATURE(PRINT_FEATURE)
 
 #  undef PRINT_FEATURE
 
-  printf(
+  PrintToConsole(
       "    -        \"default\" (All above D+S defaults)\n"
       "\n"
       "  MOZ_BASE_PROFILER_STARTUP_FILTERS=<Filters>\n"
@@ -2254,7 +2264,7 @@ static uint32_t ParseFeature(const char* aFeature, bool aIsStartup) {
 
 #  undef PARSE_FEATURE_BIT
 
-  printf("\nUnrecognized feature \"%s\".\n\n", aFeature);
+  PrintToConsole("\nUnrecognized feature \"%s\".\n\n", aFeature);
   PrintUsageThenExit(1);
   return 0;
 }
@@ -2414,7 +2424,8 @@ void profiler_init(void* aStackTop) {
         LOG("- MOZ_BASE_PROFILER_STARTUP_ENTRIES = %u",
             unsigned(capacity.Value()));
       } else {
-        LOG("- MOZ_BASE_PROFILER_STARTUP_ENTRIES not a valid integer: %s",
+        PrintToConsole(
+            "- MOZ_BASE_PROFILER_STARTUP_ENTRIES not a valid integer: %s",
             startupCapacity);
         PrintUsageThenExit(1);
       }
@@ -2422,35 +2433,38 @@ void profiler_init(void* aStackTop) {
 
     const char* startupDuration = getenv("MOZ_BASE_PROFILER_STARTUP_DURATION");
     if (startupDuration && startupDuration[0] != '\0') {
-      // TODO implement if needed
-      MOZ_CRASH("MOZ_BASE_PROFILER_STARTUP_DURATION unsupported");
-      // errno = 0;
-      // double durationVal = PR_strtod(startupDuration, nullptr);
-      // if (errno == 0 && durationVal >= 0.0) {
-      //   if (durationVal > 0.0) {
-      //     duration = Some(durationVal);
-      //   }
-      //   LOG("- MOZ_BASE_PROFILER_STARTUP_DURATION = %f", durationVal);
-      // } else {
-      //   LOG("- MOZ_BASE_PROFILER_STARTUP_DURATION not a valid float: %s",
-      //       startupDuration);
-      //   PrintUsageThenExit(1);
-      // }
+      // The duration is a floating point number. Use StringToDouble rather than
+      // strtod, so that "." is used as the decimal separator regardless of OS
+      // locale.
+      auto durationVal = StringToDouble(std::string(startupDuration));
+      if (durationVal && *durationVal >= 0.0) {
+        if (*durationVal > 0.0) {
+          duration = Some(*durationVal);
+        }
+        LOG("- MOZ_BASE_PROFILER_STARTUP_DURATION = %f", *durationVal);
+      } else {
+        PrintToConsole(
+            "- MOZ_BASE_PROFILER_STARTUP_DURATION not a valid float: %s",
+            startupDuration);
+        PrintUsageThenExit(1);
+      }
     }
 
     const char* startupInterval = getenv("MOZ_BASE_PROFILER_STARTUP_INTERVAL");
     if (startupInterval && startupInterval[0] != '\0') {
-      // TODO implement if needed
-      MOZ_CRASH("MOZ_BASE_PROFILER_STARTUP_INTERVAL unsupported");
-      // errno = 0;
-      // interval = PR_strtod(startupInterval, nullptr);
-      // if (errno == 0 && interval > 0.0 && interval <= 1000.0) {
-      //   LOG("- MOZ_BASE_PROFILER_STARTUP_INTERVAL = %f", interval);
-      // } else {
-      //   LOG("- MOZ_BASE_PROFILER_STARTUP_INTERVAL not a valid float: %s",
-      //       startupInterval);
-      //   PrintUsageThenExit(1);
-      // }
+      // The interval is a floating point number. Use StringToDouble rather than
+      // strtod, so that "." is used as the decimal separator regardless of OS
+      // locale.
+      auto intervalValue = StringToDouble(MakeStringSpan(startupInterval));
+      if (intervalValue && *intervalValue > 0.0 && *intervalValue <= 1000.0) {
+        interval = *intervalValue;
+        LOG("- MOZ_BASE_PROFILER_STARTUP_INTERVAL = %f", interval);
+      } else {
+        PrintToConsole(
+            "- MOZ_BASE_PROFILER_STARTUP_INTERVAL not a valid float: %s",
+            startupInterval);
+        PrintUsageThenExit(1);
+      }
     }
 
     features |= StartupExtraDefaultFeatures() & AvailableFeatures();
@@ -2463,9 +2477,9 @@ void profiler_init(void* aStackTop) {
       if (errno == 0 && features != 0) {
         LOG("- MOZ_BASE_PROFILER_STARTUP_FEATURES_BITFIELD = %d", features);
       } else {
-        LOG("- MOZ_BASE_PROFILER_STARTUP_FEATURES_BITFIELD not a valid "
-            "integer: "
-            "%s",
+        PrintToConsole(
+            "- MOZ_BASE_PROFILER_STARTUP_FEATURES_BITFIELD not a valid "
+            "integer: %s",
             startupFeaturesBitfield);
         PrintUsageThenExit(1);
       }
@@ -3301,7 +3315,7 @@ static void racy_profiler_add_marker(const char* aMarkerName,
   TimeDuration delta = origin - CorePS::ProcessStartTime();
   CorePS::CoreBlocksRingBuffer().PutObjects(
       ProfileBufferEntry::Kind::MarkerData, racyRegisteredThread->ThreadId(),
-      WrapBlocksRingBufferUnownedCString(aMarkerName),
+      WrapProfileBufferUnownedCString(aMarkerName),
       static_cast<uint32_t>(aCategoryPair), aPayload, delta.ToMilliseconds());
 }
 
@@ -3364,7 +3378,7 @@ void profiler_add_marker_for_thread(int aThreadId,
   TimeDuration delta = origin - CorePS::ProcessStartTime();
   CorePS::CoreBlocksRingBuffer().PutObjects(
       ProfileBufferEntry::Kind::MarkerData, aThreadId,
-      WrapBlocksRingBufferUnownedCString(aMarkerName),
+      WrapProfileBufferUnownedCString(aMarkerName),
       static_cast<uint32_t>(aCategoryPair), aPayload, delta.ToMilliseconds());
 }
 

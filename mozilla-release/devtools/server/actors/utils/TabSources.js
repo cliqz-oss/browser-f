@@ -139,7 +139,7 @@ TabSources.prototype = {
       contentType,
     });
 
-    this._thread.threadLifetimePool.addActor(actor);
+    this._thread.threadLifetimePool.manage(actor);
 
     if (
       this._autoBlackBox &&
@@ -417,8 +417,8 @@ TabSources.prototype = {
   },
 
   isFrameBlackBoxed: function(frame) {
-    const location = this.getFrameLocation(frame);
-    return this.isBlackBoxed(location.url);
+    const { url, line, column } = this.getFrameLocation(frame);
+    return this.isBlackBoxed(url, line, column);
   },
 
   /**

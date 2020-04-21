@@ -296,7 +296,6 @@ VarEnvironmentObject* VarEnvironmentObject::create(JSContext* cx,
   }
 
   MOZ_ASSERT(!env->inDictionaryMode());
-  MOZ_ASSERT(env->isDelegate());
 
   env->initEnclosingEnvironment(enclosing);
 
@@ -663,7 +662,7 @@ WithEnvironmentObject* WithEnvironmentObject::create(JSContext* cx,
                                                      HandleObject enclosing,
                                                      Handle<WithScope*> scope) {
   RootedShape shape(cx, EmptyEnvironmentShape(cx, &class_, JSSLOT_FREE(&class_),
-                                              BaseShape::DELEGATE));
+                                              /* baseShapeFlags = */ 0));
   if (!shape) {
     return nullptr;
   }
@@ -848,7 +847,7 @@ const JSClass WithEnvironmentObject::class_ = {
 NonSyntacticVariablesObject* NonSyntacticVariablesObject::create(
     JSContext* cx) {
   RootedShape shape(cx, EmptyEnvironmentShape(cx, &class_, JSSLOT_FREE(&class_),
-                                              BaseShape::DELEGATE));
+                                              /* baseShapeFlags = */ 0));
   if (!shape) {
     return nullptr;
   }
@@ -937,7 +936,6 @@ LexicalEnvironmentObject* LexicalEnvironmentObject::createTemplateObject(
   }
 
   MOZ_ASSERT(!env->inDictionaryMode());
-  MOZ_ASSERT(env->isDelegate());
 
   if (enclosing) {
     env->initEnclosingEnvironment(enclosing);
@@ -1103,6 +1101,10 @@ Value LexicalEnvironmentObject::thisValue() const {
   // have set this to the WindowProxy.
   MOZ_ASSERT_IF(v.isObject(), !IsWindow(&v.toObject()));
 
+  // WarpBuilder relies on the return value not being nursery-allocated for the
+  // global lexical environment.
+  MOZ_ASSERT_IF(isGlobal() && v.isGCThing(), v.toGCThing()->isTenured());
+
   return v;
 }
 
@@ -1173,7 +1175,7 @@ size_t NamedLambdaObject::lambdaSlot() {
 RuntimeLexicalErrorObject* RuntimeLexicalErrorObject::create(
     JSContext* cx, HandleObject enclosing, unsigned errorNumber) {
   RootedShape shape(cx, EmptyEnvironmentShape(cx, &class_, JSSLOT_FREE(&class_),
-                                              BaseShape::DELEGATE));
+                                              /* baseShapeFlags = */ 0));
   if (!shape) {
     return nullptr;
   }
@@ -2749,7 +2751,7 @@ void DebugEnvironments::takeFrameSnapshot(
      * Copy in formals that are not aliased via the scope chain
      * but are aliased via the arguments object.
      */
-    if (script->analyzedArgsUsage() && script->needsArgsObj() &&
+    if (!script->needsArgsAnalysis() && script->needsArgsObj() &&
         frame.hasArgsObj()) {
       for (unsigned i = 0; i < frame.numFormalArgs(); ++i) {
         if (script->formalLivesInArgumentsObject(i)) {
@@ -3691,9 +3693,14 @@ static bool CheckArgumentsRedeclaration(JSContext* cx, HandleScript script) {
 static bool CheckEvalDeclarationConflicts(JSContext* cx, HandleScript script,
                                           HandleObject scopeChain,
                                           HandleObject varObj) {
-  if (!script->bodyScope()->as<EvalScope>().hasBindings()) {
-    return true;
-  }
+  // Strict eval has its own call objects and we shouldn't end up here.
+  //
+  // Non-strict eval may introduce 'var' bindings that conflict with lexical
+  // bindings in an enclosing lexical scope.
+  MOZ_ASSERT(!script->bodyScope()->hasEnvironment());
+  MOZ_ASSERT(!script->strict());
+
+  MOZ_ASSERT(script->bodyScope()->as<EvalScope>().hasBindings());
 
   RootedObject obj(cx, scopeChain);
 
@@ -3760,15 +3767,8 @@ bool js::CheckGlobalOrEvalDeclarationConflicts(JSContext* cx,
   RootedObject varObj(cx, &GetVariablesObject(envChain));
 
   if (script->isForEval()) {
-    // Strict eval has its own call objects.
-    //
-    // Non-strict eval may introduce 'var' bindings that conflict with
-    // lexical bindings in an enclosing lexical scope.
-    if (!script->bodyScope()->hasEnvironment()) {
-      MOZ_ASSERT(!script->strict());
-      if (!CheckEvalDeclarationConflicts(cx, script, envChain, varObj)) {
-        return false;
-      }
+    if (!CheckEvalDeclarationConflicts(cx, script, envChain, varObj)) {
+      return false;
     }
   } else {
     Rooted<LexicalEnvironmentObject*> lexicalEnv(

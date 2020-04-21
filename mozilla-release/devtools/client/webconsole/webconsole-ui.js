@@ -18,7 +18,7 @@ const { BrowserLoader } = ChromeUtils.import(
 );
 const {
   getAdHocFrontOrPrimitiveGrip,
-} = require("devtools/shared/fronts/object");
+} = require("devtools/client/fronts/object");
 
 loader.lazyRequireGetter(
   this,
@@ -73,6 +73,7 @@ class WebConsoleUI {
     );
     this._onTargetAvailable = this._onTargetAvailable.bind(this);
     this._onTargetDestroyed = this._onTargetDestroyed.bind(this);
+    this._onResourceAvailable = this._onResourceAvailable.bind(this);
 
     EventEmitter.decorate(this);
   }
@@ -179,7 +180,7 @@ class WebConsoleUI {
       this.jsterm = null;
     }
 
-    const toolbox = this.hud.toolbox;
+    const { toolbox } = this.hud;
     if (toolbox) {
       toolbox.off("webconsole-selected", this._onPanelSelected);
       toolbox.off("split-console", this._onChangeSplitConsoleState);
@@ -187,12 +188,19 @@ class WebConsoleUI {
     }
 
     // Stop listening for targets
-    const targetList = this.hud.targetList;
+    const { targetList } = this.hud;
     targetList.unwatchTargets(
       targetList.ALL_TYPES,
       this._onTargetAvailable,
       this._onTargetDestroy
     );
+
+    // TODO: Re-enable as part of Bug 1627167.
+    // const resourceWatcher = this.hud.resourceWatcher;
+    // resourceWatcher.unwatch(
+    //   [resourceWatcher.TYPES.CONSOLE_MESSAGES],
+    //   this._onResourceAvailable
+    // );
 
     for (const proxy of this.getAllProxies()) {
       proxy.disconnect();
@@ -254,7 +262,7 @@ class WebConsoleUI {
   }
 
   inspectObjectActor(objectActor) {
-    const webConsoleFront = this.webConsoleFront;
+    const { webConsoleFront } = this;
     this.wrapper.dispatchMessageAdd(
       {
         helperResult: {
@@ -322,6 +330,22 @@ class WebConsoleUI {
       this._onTargetAvailable,
       this._onTargetDestroy
     );
+    // TODO: Re-enable as part of Bug 1627167.
+    // const resourceWatcher = this.hud.resourceWatcher;
+    // await resourceWatcher.watch(
+    //   [resourceWatcher.TYPES.CONSOLE_MESSAGES],
+    //   this._onResourceAvailable
+    // );
+  }
+
+  _onResourceAvailable({ resourceType, targetFront, resource }) {
+    const resourceWatcher = this.hud.resourceWatcher;
+    if (resourceType == resourceWatcher.TYPES.CONSOLE_MESSAGES) {
+      // resource is the packet sent from `ConsoleActor.getCachedMessages().messages`
+      // or via ConsoleActor's `consoleAPICall` event.
+      resource.type = "consoleAPICall";
+      this.wrapper.dispatchMessageAdd(resource);
+    }
   }
 
   /**
@@ -415,7 +439,7 @@ class WebConsoleUI {
 
     this.outputNode = this.document.getElementById("app-wrapper");
 
-    const toolbox = this.hud.toolbox;
+    const { toolbox } = this.hud;
 
     // Initialize module loader and load all the WebConsoleWrapper. The entire code-base
     // doesn't need any extra privileges and runs entirely in content scope.
@@ -466,6 +490,17 @@ class WebConsoleUI {
           if (!this.connected) {
             this.connected = true;
             syntaxHighlightNode(this);
+
+            // Highlight Again when the innerText changes
+            // We remove the listener before running codemirror mode and add
+            // it again to capture text changes
+            this.observer = new win.MutationObserver((mutations, observer) => {
+              observer.disconnect();
+              syntaxHighlightNode(this);
+              observer.observe(this, { childList: true });
+            });
+
+            this.observer.observe(this, { childList: true });
           }
         }
       }
@@ -595,26 +630,17 @@ class WebConsoleUI {
       return this.webConsoleFront;
     }
 
-    const threadFront = this.hud.toolbox.getSelectedThreadFront();
-    if (!threadFront) {
+    const targetFront = this.hud.toolbox.getSelectedTargetFront();
+    if (!targetFront) {
       return this.webConsoleFront;
     }
 
-    return threadFront.getWebconsoleFront();
+    return targetFront.getFront("console");
   }
 
-  getSelectedNodeActor() {
-    const front = this.getSelectedNodeFront();
-    return front ? front.actorID : null;
-  }
-
-  getSelectedNodeFront() {
+  getSelectedNodeActorID() {
     const inspectorSelection = this.hud.getInspectorSelection();
-    return inspectorSelection ? inspectorSelection.nodeFront : null;
-  }
-
-  onMessageHover(type, message) {
-    this.emit("message-hover", type, message);
+    return inspectorSelection?.nodeFront?.actorID;
   }
 }
 

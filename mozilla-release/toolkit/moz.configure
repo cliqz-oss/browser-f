@@ -467,8 +467,8 @@ def dav1d_asm(target, nasm_version):
         if target.cpu == 'aarch64':
             return True
         elif target.cpu in ('x86', 'x86_64'):
-            if nasm_version < '2.13':
-                die('nasm 2.13 or greater is required for AV1 support. '
+            if nasm_version < '2.14':
+                die('nasm 2.14 or greater is required for AV1 support. '
                     'Either install nasm or add --disable-av1 to your configure options.')
             return True
 
@@ -1316,6 +1316,23 @@ set_config('MOZ_MAINTENANCE_SERVICE',
            depends_if('--enable-maintenance-service',
                       when=target_is_windows)(lambda _: True))
 
+# Update agent (currently Windows only)
+# This is an independent task that runs on a schedule to
+# check for, download, and install updates.
+# ==============================================================
+
+option('--enable-update-agent',
+        when=target_is_windows, default=False,
+        help='{Enable|Disable} building update agent')
+
+set_define('MOZ_UPDATE_AGENT',
+           depends_if('--enable-update-agent',
+                      when=target_is_windows)(lambda _: True))
+
+set_config('MOZ_UPDATE_AGENT',
+           depends_if('--enable-update-agent',
+                      when=target_is_windows)(lambda _: True))
+
 # BITS download (Windows only)
 # ==============================================================
 
@@ -1961,16 +1978,16 @@ set_config('MOZ_NEW_NOTIFICATION_STORE', True, when=new_notification_store)
 set_define('MOZ_NEW_NOTIFICATION_STORE', True, when=new_notification_store)
 
 
-# FOGotype prototype Glean SDK Integration Crate
+# Glean SDK Integration Crate
 # ==============================================================
 
 @depends(milestone)
-def fogotype(milestone):
+def glean(milestone):
     if milestone.is_nightly:
         return True
 
-set_config('MOZ_FOGOTYPE', True, when=fogotype)
-set_define('MOZ_FOGOTYPE', True, when=fogotype)
+set_config('MOZ_GLEAN', True, when=glean)
+set_define('MOZ_GLEAN', True, when=glean)
 
 # dump_syms
 # ==============================================================
@@ -1978,6 +1995,20 @@ set_define('MOZ_FOGOTYPE', True, when=fogotype)
 check_prog('DUMP_SYMS', ['dump_syms'], allow_missing=True, paths=toolchain_search_path,
            when=compile_environment & target_is_windows)
 
+
+check_prog('PDBSTR', ['pdbstr.exe'], allow_missing=True, paths=toolchain_search_path,
+           when=compile_environment & target_is_windows)
+
+@depends('MOZ_AUTOMATION', c_compiler)
+def allow_missing_winchecksec(automation, c_compiler):
+    if not automation:
+        return True
+    if c_compiler and c_compiler.type != 'clang-cl':
+        return True
+
+check_prog('WINCHECKSEC', ['winchecksec.exe'], paths=toolchain_search_path,
+           allow_missing=allow_missing_winchecksec,
+           when=compile_environment & target_is_windows)
 
 # Fork server
 @depends(target, build_project)
@@ -2007,6 +2038,15 @@ option('--disable-new-cert-storage', env='MOZ_NEW_CERT_STORAGE',
 
 set_config('MOZ_NEW_CERT_STORAGE', True, when='--enable-new-cert-storage')
 set_define('MOZ_NEW_CERT_STORAGE', True, when='--enable-new-cert-storage')
+
+# Crash Reporter
+# ==============================================================
+
+with only_when(compile_environment & target_is_linux):
+    # Check if we need to use the breakpad_getcontext fallback.
+    getcontext = check_symbol('getcontext')
+    set_config('HAVE_GETCONTEXT', getcontext)
+    set_define('HAVE_GETCONTEXT', getcontext)
 
 
 # Enable or disable the default browser agent, which monitors the user's default

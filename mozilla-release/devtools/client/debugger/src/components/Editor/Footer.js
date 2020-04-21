@@ -134,7 +134,7 @@ class SourceFooter extends PureComponent<Props, State> {
 
   blackBoxButton() {
     const { cx, selectedSource, toggleBlackBox } = this.props;
-    const sourceLoaded = selectedSource && selectedSource.content;
+    const sourceLoaded = selectedSource?.content;
 
     if (!selectedSource) {
       return;
@@ -287,12 +287,9 @@ const mapStateToProps = state => {
   };
 };
 
-export default connect<Props, OwnProps, _, _, _, _>(
-  mapStateToProps,
-  {
-    togglePrettyPrint: actions.togglePrettyPrint,
-    toggleBlackBox: actions.toggleBlackBox,
-    jumpToMappedLocation: actions.jumpToMappedLocation,
-    togglePaneCollapse: actions.togglePaneCollapse,
-  }
-)(SourceFooter);
+export default connect<Props, OwnProps, _, _, _, _>(mapStateToProps, {
+  togglePrettyPrint: actions.togglePrettyPrint,
+  toggleBlackBox: actions.toggleBlackBox,
+  jumpToMappedLocation: actions.jumpToMappedLocation,
+  togglePaneCollapse: actions.togglePaneCollapse,
+})(SourceFooter);

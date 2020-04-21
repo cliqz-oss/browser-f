@@ -87,7 +87,7 @@ def main(output, *args):
 
         listing["system"] = [os.path.splitext(it)[0] for it in sorted(features)]
 
-    json.dump(listing, output)
+    json.dump(listing, output, sort_keys=True)
 
     return inputs
 

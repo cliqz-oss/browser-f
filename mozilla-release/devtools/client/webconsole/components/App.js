@@ -115,7 +115,7 @@ class App extends Component {
       filterBarDisplayMode: PropTypes.oneOf([
         ...Object.values(FILTERBAR_DISPLAY_MODES),
       ]).isRequired,
-      showEvaluationSelector: PropTypes.bool,
+      showEvaluationContextSelector: PropTypes.bool,
     };
   }
 
@@ -205,7 +205,7 @@ class App extends Component {
       return;
     }
 
-    if (webConsoleUI && webConsoleUI.jsterm) {
+    if (webConsoleUI?.jsterm) {
       webConsoleUI.jsterm.focus();
     }
   }
@@ -256,7 +256,7 @@ class App extends Component {
 
     // Remove notification automatically when the user types "allow pasting".
     const pasteKeyUpHandler = e => {
-      const value = e.target.value;
+      const { value } = e.target;
       if (value.includes(SELF_XSS_OK)) {
         dispatch(actions.removeNotification("selfxss-notification"));
         input.removeEventListener("keyup", pasteKeyUpHandler);
@@ -293,7 +293,7 @@ class App extends Component {
       reverseSearchInputVisible,
       serviceContainer,
       webConsoleUI,
-      showEvaluationSelector,
+      showEvaluationContextSelector,
     } = this.props;
 
     return editorMode
@@ -303,7 +303,7 @@ class App extends Component {
           dispatch,
           reverseSearchInputVisible,
           serviceContainer,
-          showEvaluationSelector,
+          showEvaluationContextSelector,
           webConsoleUI,
         })
       : null;
@@ -396,7 +396,7 @@ class App extends Component {
   }
 
   renderRootElement(children) {
-    const { editorMode, serviceContainer, sidebarVisible } = this.props;
+    const { editorMode, sidebarVisible } = this.props;
 
     const classNames = ["webconsole-app"];
     if (sidebarVisible) {
@@ -404,9 +404,6 @@ class App extends Component {
     }
     if (editorMode) {
       classNames.push("jsterm-editor");
-    }
-    if (serviceContainer.canRewind()) {
-      classNames.push("can-rewind");
     }
 
     if (this.props.eagerEvaluationEnabled) {
@@ -476,14 +473,11 @@ const mapStateToProps = state => ({
   filterBarDisplayMode: state.ui.filterBarDisplayMode,
   eagerEvaluationEnabled: state.prefs.eagerEvaluation,
   autocomplete: state.prefs.autocomplete,
-  showEvaluationSelector: state.ui.showEvaluationSelector,
+  showEvaluationContextSelector: state.ui.showEvaluationContextSelector,
 });
 
 const mapDispatchToProps = dispatch => ({
   dispatch,
 });
 
-module.exports = connect(
-  mapStateToProps,
-  mapDispatchToProps
-)(App);
+module.exports = connect(mapStateToProps, mapDispatchToProps)(App);

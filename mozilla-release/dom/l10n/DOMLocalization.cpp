@@ -132,7 +132,7 @@ void DOMLocalization::SetAttributes(
     nsAutoString data;
     JS::Rooted<JS::Value> val(aCx, JS::ObjectValue(*aArgs.Value()));
     if (!nsContentUtils::StringifyJSON(aCx, &val, data)) {
-      aRv.Throw(NS_ERROR_DOM_SYNTAX_ERR);
+      aRv.NoteJSContextException(aCx);
       return;
     }
     if (!aElement.AttrValueIs(kNameSpaceID_None, nsGkAtoms::datal10nargs, data,
@@ -150,7 +150,7 @@ void DOMLocalization::GetAttributes(JSContext* aCx, Element& aElement,
   nsAutoString l10nArgs;
 
   if (aElement.GetAttr(kNameSpaceID_None, nsGkAtoms::datal10nid, l10nId)) {
-    aResult.mId = l10nId;
+    aResult.mId = NS_ConvertUTF16toUTF8(l10nId);
   }
 
   if (aElement.GetAttr(kNameSpaceID_None, nsGkAtoms::datal10nargs, l10nArgs)) {

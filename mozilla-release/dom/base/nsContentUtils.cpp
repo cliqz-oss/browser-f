@@ -33,7 +33,6 @@
 #include "gfxDrawable.h"
 #include "ImageOps.h"
 #include "mozAutoDocUpdate.h"
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/net/UrlClassifierCommon.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
@@ -466,6 +465,11 @@ namespace {
 static NS_DEFINE_CID(kCParserCID, NS_PARSER_CID);
 
 static PLDHashTable* sEventListenerManagersHash;
+
+// A global hashtable to for keeping the arena alive for cross docGroup node
+// adoption.
+static nsRefPtrHashtable<nsPtrHashKey<const nsINode>, mozilla::dom::DOMArena>*
+    sDOMArenaHashtable;
 
 class DOMEventListenerManagersHashReporter final : public nsIMemoryReporter {
   MOZ_DEFINE_MALLOC_SIZE_OF(MallocSizeOf)
@@ -1715,8 +1719,8 @@ bool nsContentUtils::OfflineAppAllowed(nsIPrincipal* aPrincipal) {
   nsresult rv = updateService->OfflineAppAllowed(aPrincipal, &allowed);
   return NS_SUCCEEDED(rv) && allowed;
 }
-
-static bool IsErrorPage(nsIURI* aURI) {
+// Static
+bool nsContentUtils::IsErrorPage(nsIURI* aURI) {
   if (!aURI) {
     return false;
   }
@@ -1731,45 +1735,6 @@ static bool IsErrorPage(nsIURI* aURI) {
 
   return name.EqualsLiteral("certerror") || name.EqualsLiteral("neterror") ||
          name.EqualsLiteral("blocked");
-}
-
-/* static */
-bool nsContentUtils::PrincipalAllowsL10n(nsIPrincipal& aPrincipal,
-                                         nsIURI* aDocumentURI) {
-  if (IsErrorPage(aDocumentURI)) {
-    return true;
-  }
-
-  // The system principal is always allowed.
-  if (aPrincipal.IsSystemPrincipal()) {
-    return true;
-  }
-
-  nsCOMPtr<nsIURI> uri;
-  nsresult rv = aPrincipal.GetURI(getter_AddRefs(uri));
-  NS_ENSURE_SUCCESS(rv, false);
-
-  bool hasFlags;
-
-  // Allow access to uris that cannot be loaded by web content.
-  rv = NS_URIChainHasFlags(uri, nsIProtocolHandler::URI_DANGEROUS_TO_LOAD,
-                           &hasFlags);
-  NS_ENSURE_SUCCESS(rv, false);
-  if (hasFlags) {
-    return true;
-  }
-
-  // UI resources also get access.
-  rv = NS_URIChainHasFlags(uri, nsIProtocolHandler::URI_IS_UI_RESOURCE,
-                           &hasFlags);
-  NS_ENSURE_SUCCESS(rv, false);
-  if (hasFlags) {
-    return true;
-  }
-
-  auto& principal = BasePrincipal::Cast(aPrincipal);
-  auto policy = principal.AddonPolicy();
-  return (policy && policy->IsPrivileged());
 }
 
 // static
@@ -1819,6 +1784,13 @@ void nsContentUtils::Shutdown() {
       delete sEventListenerManagersHash;
       sEventListenerManagersHash = nullptr;
     }
+  }
+
+  if (sDOMArenaHashtable) {
+    MOZ_ASSERT(sDOMArenaHashtable->Count() == 0);
+    MOZ_ASSERT(StaticPrefs::dom_arena_allocator_enabled_AtStartup());
+    delete sDOMArenaHashtable;
+    sDOMArenaHashtable = nullptr;
   }
 
   NS_ASSERTION(!sBlockedScriptRunners || sBlockedScriptRunners->Length() == 0,
@@ -3753,18 +3725,19 @@ nsresult nsContentUtils::FormatLocalizedString(
 
 /* static */
 void nsContentUtils::LogSimpleConsoleError(const nsAString& aErrorText,
-                                           const char* classification,
+                                           const char* aCategory,
                                            bool aFromPrivateWindow,
-                                           bool aFromChromeContext) {
+                                           bool aFromChromeContext,
+                                           uint32_t aErrorFlags) {
   nsCOMPtr<nsIScriptError> scriptError =
       do_CreateInstance(NS_SCRIPTERROR_CONTRACTID);
   if (scriptError) {
     nsCOMPtr<nsIConsoleService> console =
         do_GetService(NS_CONSOLESERVICE_CONTRACTID);
-    if (console && NS_SUCCEEDED(scriptError->Init(
-                       aErrorText, EmptyString(), EmptyString(), 0, 0,
-                       nsIScriptError::errorFlag, classification,
-                       aFromPrivateWindow, aFromChromeContext))) {
+    if (console &&
+        NS_SUCCEEDED(scriptError->Init(
+            aErrorText, EmptyString(), EmptyString(), 0, 0, aErrorFlags,
+            aCategory, aFromPrivateWindow, aFromChromeContext))) {
       console->LogMessage(scriptError);
     }
   }
@@ -4613,6 +4586,26 @@ EventListenerManager* nsContentUtils::GetExistingListenerManagerForNode(
   return nullptr;
 }
 
+void nsContentUtils::AddEntryToDOMArenaTable(nsINode* aNode,
+                                             DOMArena* aDOMArena) {
+  MOZ_ASSERT(StaticPrefs::dom_arena_allocator_enabled_AtStartup());
+  if (!sDOMArenaHashtable) {
+    sDOMArenaHashtable =
+        new nsRefPtrHashtable<nsPtrHashKey<const nsINode>, dom::DOMArena>();
+  }
+  aNode->SetFlags(NODE_KEEPS_DOMARENA);
+  sDOMArenaHashtable->Put(aNode, RefPtr<DOMArena>(aDOMArena));
+}
+
+already_AddRefed<DOMArena> nsContentUtils::TakeEntryFromDOMArenaTable(
+    const nsINode* aNode) {
+  MOZ_ASSERT(sDOMArenaHashtable->Contains(aNode));
+  MOZ_ASSERT(StaticPrefs::dom_arena_allocator_enabled_AtStartup());
+  RefPtr<DOMArena> arena;
+  sDOMArenaHashtable->Remove(aNode, getter_AddRefs(arena));
+  return arena.forget();
+}
+
 /* static */
 void nsContentUtils::RemoveListenerManager(nsINode* aNode) {
   if (sEventListenerManagersHash) {
@@ -4678,8 +4671,8 @@ already_AddRefed<DocumentFragment> nsContentUtils::CreateContextualFragment(
   bool isHTML = document->IsHTMLDocument();
 
   if (isHTML) {
-    RefPtr<DocumentFragment> frag =
-        new DocumentFragment(document->NodeInfoManager());
+    RefPtr<DocumentFragment> frag = new (document->NodeInfoManager())
+        DocumentFragment(document->NodeInfoManager());
 
     Element* element = aContextNode->GetAsElementOrParentElement();
     if (element && !element->IsHTMLElement(nsGkAtoms::html)) {
@@ -4857,8 +4850,8 @@ nsresult nsContentUtils::ParseFragmentHTML(
                         nodePrincipal->SchemeIs("about") || aFlags >= 0;
   if (shouldSanitize) {
     if (!AllowsUnsanitizedContentForAboutNewTab(nodePrincipal)) {
-      fragment =
-          new DocumentFragment(aTargetNode->OwnerDoc()->NodeInfoManager());
+      fragment = new (aTargetNode->OwnerDoc()->NodeInfoManager())
+          DocumentFragment(aTargetNode->OwnerDoc()->NodeInfoManager());
       target = fragment;
     }
   }
@@ -5089,8 +5082,8 @@ nsresult nsContentUtils::SetNodeTextContent(nsIContent* aContent,
     return NS_OK;
   }
 
-  RefPtr<nsTextNode> textContent =
-      new nsTextNode(aContent->NodeInfo()->NodeInfoManager());
+  RefPtr<nsTextNode> textContent = new (aContent->NodeInfo()->NodeInfoManager())
+      nsTextNode(aContent->NodeInfo()->NodeInfoManager());
 
   textContent->SetText(aValue, true);
 
@@ -5859,26 +5852,6 @@ SameOriginCheckerImpl::GetInterface(const nsIID& aIID, void** aResult) {
 }
 
 /* static */
-nsresult nsContentUtils::GetASCIIOrigin(nsIPrincipal* aPrincipal,
-                                        nsACString& aOrigin) {
-  MOZ_ASSERT(aPrincipal, "missing principal");
-
-  aOrigin.Truncate();
-
-  nsCOMPtr<nsIURI> uri;
-  nsresult rv = aPrincipal->GetURI(getter_AddRefs(uri));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (uri) {
-    return GetASCIIOrigin(uri, aOrigin);
-  }
-
-  aOrigin.AssignLiteral("null");
-
-  return NS_OK;
-}
-
-/* static */
 nsresult nsContentUtils::GetASCIIOrigin(nsIURI* aURI, nsACString& aOrigin) {
   MOZ_ASSERT(aURI, "missing uri");
 
@@ -5935,8 +5908,10 @@ nsresult nsContentUtils::GetUTFOrigin(nsIPrincipal* aPrincipal,
   aOrigin.Truncate();
   nsAutoCString asciiOrigin;
 
-  nsresult rv = GetASCIIOrigin(aPrincipal, asciiOrigin);
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsresult rv = aPrincipal->GetAsciiOrigin(asciiOrigin);
+  if (NS_FAILED(rv)) {
+    asciiOrigin.AssignLiteral("null");
+  }
 
   aOrigin = NS_ConvertUTF8toUTF16(asciiOrigin);
   return NS_OK;
@@ -6417,10 +6392,10 @@ bool nsContentUtils::IsPDFJS(nsIPrincipal* aPrincipal) {
   if (!aPrincipal) {
     return false;
   }
-  nsCOMPtr<nsIURI> uri;
-  aPrincipal->GetURI(getter_AddRefs(uri));
-  return uri && uri->GetSpecOrDefault().EqualsLiteral(
-                    "resource://pdf.js/web/viewer.html");
+  nsAutoCString spec;
+  nsresult rv = aPrincipal->GetAsciiSpec(spec);
+  NS_ENSURE_SUCCESS(rv, false);
+  return spec.EqualsLiteral("resource://pdf.js/web/viewer.html");
 }
 
 already_AddRefed<nsIDocumentLoaderFactory>
@@ -8374,7 +8349,8 @@ class StringBuilder {
       return false;
     }
 
-    for (StringBuilder* current = this; current; current = current->mNext) {
+    for (StringBuilder* current = this; current;
+         current = current->mNext.get()) {
       uint32_t len = current->mUnits.Length();
       for (uint32_t i = 0; i < len; ++i) {
         Unit& u = current->mUnits[i];
@@ -8430,7 +8406,7 @@ class StringBuilder {
 
   explicit StringBuilder(StringBuilder* aFirst) : mLast(nullptr), mLength(0) {
     MOZ_COUNT_CTOR(StringBuilder);
-    aFirst->mLast->mNext = this;
+    aFirst->mLast->mNext = WrapUnique(this);
     aFirst->mLast = this;
   }
 
@@ -8501,7 +8477,7 @@ class StringBuilder {
   }
 
   AutoTArray<Unit, STRING_BUFFER_UNITS> mUnits;
-  nsAutoPtr<StringBuilder> mNext;
+  mozilla::UniquePtr<StringBuilder> mNext;
   StringBuilder* mLast;
   // mLength is used only in the first StringBuilder object in the linked list.
   CheckedInt<uint32_t> mLength;
@@ -8850,20 +8826,15 @@ bool nsContentUtils::IsSpecificAboutPage(JSObject* aGlobal, const char* aUri) {
 
   nsCOMPtr<nsIPrincipal> principal = win->GetPrincipal();
   NS_ENSURE_TRUE(principal, false);
-  nsCOMPtr<nsIURI> uri;
-  principal->GetURI(getter_AddRefs(uri));
-  if (!uri) {
-    return false;
-  }
 
   // First check the scheme to avoid getting long specs in the common case.
   if (!principal->SchemeIs("about")) {
     return false;
   }
 
-  // Now check the spec itself
   nsAutoCString spec;
-  uri->GetSpecIgnoringRef(spec);
+  principal->GetAsciiSpec(spec);
+
   return spec.EqualsASCII(aUri);
 }
 
@@ -9210,8 +9181,7 @@ nsresult nsContentUtils::NewXULOrHTMLElement(
      * For the unset case which is non-synchronous only applied for
      * inner/outerHTML.
      */
-    bool synchronousCustomElements = aFromParser != dom::FROM_PARSER_FRAGMENT ||
-                                     aFromParser == dom::NOT_FROM_PARSER;
+    bool synchronousCustomElements = aFromParser != dom::FROM_PARSER_FRAGMENT;
     // Per discussion in https://github.com/w3c/webcomponents/issues/635,
     // use entry global in those places that are called from JS APIs and use the
     // node document's global object if it is called from parser.

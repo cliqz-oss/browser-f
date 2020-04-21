@@ -4,6 +4,7 @@ HANDLER_INFO_OUT = jsparagus/emit/collect_handler_info/info.json
 RS_TABLES_OUT = crates/generated_parser/src/parser_tables_generated.rs
 RS_AST_OUT = crates/ast/src/types_generated.rs \
 	crates/ast/src/type_id_generated.rs \
+	crates/ast/src/dump_generated.rs \
 	crates/ast/src/visit_generated.rs \
 	crates/ast/src/source_location_accessor_generated.rs \
 	crates/generated_parser/src/stack_value_generated.rs
@@ -26,9 +27,17 @@ init: init-venv
 ECMA262_SPEC_HTML = ../tc39/ecma262/spec.html
 STANDARD_ES_GRAMMAR_OUT = js_parser/es.esgrammar
 
+# List of files which have a grammar_extension! Rust macro. The macro content is
+# scrapped to patch the extracted grammar.
+EXTENSION_FILES = \
+
 # Incomplete list of files that contribute to the dump file.
-SOURCE_FILES = \
+SOURCE_FILES = $(EXTENSION_FILES) \
 jsparagus/gen.py \
+jsparagus/grammar.py \
+jsparagus/extension.py \
+jsparagus/utils.py \
+jsparagus/actions.py \
 jsparagus/types.py \
 js_parser/esgrammar.pgen \
 js_parser/generate_js_parser_tables.py \
@@ -44,7 +53,7 @@ jsparagus/emit/rust.py
 DUMP_FILE = js_parser/parser_generated.jsparagus_dump
 
 $(DUMP_FILE): $(SOURCE_FILES)
-	$(PYTHON) -m js_parser.generate_js_parser_tables --progress -o $@
+	$(PYTHON) -m js_parser.generate_js_parser_tables --progress -o $@ $(EXTENSION_FILES:%=--extend %)
 
 $(PY_OUT): $(EMIT_FILES) $(DUMP_FILE)
 	$(PYTHON) -m js_parser.generate_js_parser_tables --progress -o $@ $(DUMP_FILE)
@@ -64,7 +73,10 @@ $(STANDARD_ES_GRAMMAR_OUT): $(ECMA262_SPEC_HTML)
 	$(PYTHON) -m js_parser.extract_es_grammar $(ECMA262_SPEC_HTML) > $@ || rm $@
 
 rust: $(RS_AST_OUT) $(RS_TABLES_OUT)
-	cargo build
+	cargo build --features full
+
+jsparagus/parse_pgen_generated.py:
+	$(PYTHON) -m jsparagus.parse_pgen --regenerate > $@
 
 check: all
 	./test.sh
@@ -73,4 +85,8 @@ check: all
 jsdemo: $(PY_OUT)
 	$(PYTHON) -m js_parser.try_it
 
-.PHONY: all check jsdemo rust
+update-opcodes-m-u:
+	$(PYTHON) crates/emitter/scripts/update_opcodes.py \
+		../mozilla-unified ./
+
+.PHONY: all check jsdemo rust update-opcodes-m-u

@@ -140,7 +140,6 @@ using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::widget;
 using namespace mozilla::layers;
-using mozilla::gl::GLContext;
 using mozilla::gl::GLContextGLX;
 
 // Don't put more than this many rects in the dirty region, just fluff
@@ -334,6 +333,7 @@ static bool gGlobalsInitialized = false;
 static bool gRaiseWindows = true;
 static bool gUseWaylandVsync = false;
 static bool gUseWaylandUseOpaqueRegion = true;
+static bool gUseAspectRatio = true;
 static GList* gVisibleWaylandPopupWindows = nullptr;
 
 #if GTK_CHECK_VERSION(3, 4, 0)
@@ -2713,7 +2713,7 @@ gboolean nsWindow::OnConfigureEvent(GtkWidget* aWidget,
     OnSizeAllocate(&allocation);
   }
 
-  // Client offset are upated by _NET_FRAME_EXTENTS on X11 when system titlebar
+  // Client offset are updated by _NET_FRAME_EXTENTS on X11 when system titlebar
   // is enabled. In ither cases (Wayland or system titlebar is off on X11)
   // we don't get _NET_FRAME_EXTENTS X11 property notification so we derive
   // it from mContainer position.
@@ -2743,6 +2743,8 @@ void nsWindow::OnSizeAllocate(GtkAllocation* aAllocation) {
   LOG(("nsWindow::OnSizeAllocate [%p] %d,%d -> %d x %d\n", (void*)this,
        aAllocation->x, aAllocation->y, aAllocation->width,
        aAllocation->height));
+
+  mBoundsAreValid = true;
 
   LayoutDeviceIntSize size = GdkRectToDevicePixels(*aAllocation).Size();
   if (mBounds.Size() == size) {
@@ -3529,13 +3531,18 @@ void nsWindow::OnWindowStateEvent(GtkWidget* aWidget,
   // once the window is shown.
   //
   // See https://gitlab.gnome.org/GNOME/gtk/issues/1044
-  if (!mIsShown) {
-    aEvent->changed_mask = static_cast<GdkWindowState>(
-        aEvent->changed_mask & ~GDK_WINDOW_STATE_MAXIMIZED);
-  } else if (aEvent->changed_mask & GDK_WINDOW_STATE_WITHDRAWN &&
-             aEvent->new_window_state & GDK_WINDOW_STATE_MAXIMIZED) {
-    aEvent->changed_mask = static_cast<GdkWindowState>(
-        aEvent->changed_mask | GDK_WINDOW_STATE_MAXIMIZED);
+  //
+  // This may be fixed in Gtk 3.24+ but some DE still have this issue
+  // (Bug 1624199) so let's remove it for Wayland only.
+  if (mIsX11Display) {
+    if (!mIsShown) {
+      aEvent->changed_mask = static_cast<GdkWindowState>(
+          aEvent->changed_mask & ~GDK_WINDOW_STATE_MAXIMIZED);
+    } else if (aEvent->changed_mask & GDK_WINDOW_STATE_WITHDRAWN &&
+               aEvent->new_window_state & GDK_WINDOW_STATE_MAXIMIZED) {
+      aEvent->changed_mask = static_cast<GdkWindowState>(
+          aEvent->changed_mask | GDK_WINDOW_STATE_MAXIMIZED);
+    }
   }
 
   // This is a workaround for https://gitlab.gnome.org/GNOME/gtk/issues/1395
@@ -3682,6 +3689,26 @@ void nsWindow::OnScaleChanged(GtkAllocation* aAllocation) {
   // configure_event is already fired before scale-factor signal,
   // but size-allocate isn't fired by changing scale
   OnSizeAllocate(aAllocation);
+
+  // Client offset are updated by _NET_FRAME_EXTENTS on X11 when system titlebar
+  // is enabled. In ither cases (Wayland or system titlebar is off on X11)
+  // we don't get _NET_FRAME_EXTENTS X11 property notification so we derive
+  // it from mContainer position.
+  if (mCSDSupportLevel == CSD_SUPPORT_CLIENT) {
+    if (!mIsX11Display || (mIsX11Display && mDrawInTitlebar)) {
+      UpdateClientOffsetFromCSDWindow();
+    }
+  }
+
+#ifdef MOZ_WAYLAND
+  // We need to update scale and opaque region when scale of egl window
+  // is changed.
+  if (mContainer && moz_container_has_wl_egl_window(mContainer)) {
+    moz_container_set_scale_factor(mContainer);
+    LayoutDeviceIntRegion tmpRegion;
+    UpdateOpaqueRegion(tmpRegion);
+  }
+#endif
 }
 
 void nsWindow::DispatchDragEvent(EventMessage aMsg,
@@ -3934,7 +3961,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 
       if (mWindowType == eWindowType_toplevel) {
         // We enable titlebar rendering for toplevel windows only.
-        mCSDSupportLevel = GetSystemCSDSupportLevel();
+        mCSDSupportLevel = GetSystemCSDSupportLevel(mIsPIPWindow);
 
         // There's no point to configure transparency
         // on non-composited screens.
@@ -4131,7 +4158,6 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
           self->mNeedsCompositorResume = true;
           self->MaybeResumeCompositor();
         });
-        moz_container_set_accelerated(mContainer);
       }
 #endif
 
@@ -4368,8 +4394,9 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 #endif
   }
 
-  LOG(("nsWindow [%p] %s\n", (void*)this,
-       mWindowType == eWindowType_toplevel ? "Toplevel" : "Popup"));
+  LOG(("nsWindow [%p] %s %s\n", (void*)this,
+       mWindowType == eWindowType_toplevel ? "Toplevel" : "Popup",
+       mIsPIPWindow ? "PIP window" : ""));
   if (mShell) {
     LOG(("\tmShell %p mContainer %p mGdkWindow %p 0x%lx\n", mShell, mContainer,
          mGdkWindow, mIsX11Display ? gdk_x11_window_get_xid(mGdkWindow) : 0));
@@ -5692,10 +5719,20 @@ nsresult nsWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen) {
     if (mSizeMode != nsSizeMode_Fullscreen) mLastSizeMode = mSizeMode;
 
     mSizeMode = nsSizeMode_Fullscreen;
+
+    if (mIsPIPWindow) {
+      gtk_window_set_type_hint(GTK_WINDOW(mShell), GDK_WINDOW_TYPE_HINT_NORMAL);
+    }
+
     gtk_window_fullscreen(GTK_WINDOW(mShell));
   } else {
     mSizeMode = mLastSizeMode;
     gtk_window_unfullscreen(GTK_WINDOW(mShell));
+
+    if (mIsPIPWindow) {
+      gtk_window_set_type_hint(GTK_WINDOW(mShell),
+                               GDK_WINDOW_TYPE_HINT_UTILITY);
+    }
   }
 
   NS_ASSERTION(mLastSizeMode != nsSizeMode_Fullscreen,
@@ -6666,6 +6703,14 @@ static nsresult initialize_prefs(void) {
   gUseWaylandUseOpaqueRegion =
       Preferences::GetBool("widget.wayland.use-opaque-region", true);
 
+  if (Preferences::HasUserValue("widget.use-aspect-ratio")) {
+    gUseAspectRatio = Preferences::GetBool("widget.use-aspect-ratio", true);
+  } else {
+    static const char* currentDesktop = getenv("XDG_CURRENT_DESKTOP");
+    gUseAspectRatio =
+        currentDesktop ? (strstr(currentDesktop, "GNOME") != nullptr) : false;
+  }
+
   return NS_OK;
 }
 
@@ -7424,7 +7469,8 @@ nsresult nsWindow::SynthesizeNativeTouchPoint(uint32_t aPointerId,
 }
 #endif
 
-nsWindow::CSDSupportLevel nsWindow::GetSystemCSDSupportLevel() {
+nsWindow::CSDSupportLevel nsWindow::GetSystemCSDSupportLevel(
+    bool aIsPIPWindow) {
   if (sCSDSupportLevel != CSD_SUPPORT_UNKNOWN) {
     return sCSDSupportLevel;
   }
@@ -7458,10 +7504,10 @@ nsWindow::CSDSupportLevel nsWindow::GetSystemCSDSupportLevel() {
   if (currentDesktop) {
     // GNOME Flashback (fallback)
     if (strstr(currentDesktop, "GNOME-Flashback:GNOME") != nullptr) {
-      sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
+      sCSDSupportLevel = aIsPIPWindow ? CSD_SUPPORT_CLIENT : CSD_SUPPORT_SYSTEM;
       // gnome-shell
     } else if (strstr(currentDesktop, "GNOME") != nullptr) {
-      sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
+      sCSDSupportLevel = aIsPIPWindow ? CSD_SUPPORT_CLIENT : CSD_SUPPORT_SYSTEM;
     } else if (strstr(currentDesktop, "XFCE") != nullptr) {
       sCSDSupportLevel = CSD_SUPPORT_CLIENT;
     } else if (strstr(currentDesktop, "X-Cinnamon") != nullptr) {
@@ -7593,12 +7639,7 @@ void nsWindow::GetCompositorWidgetInitData(
 #ifdef MOZ_WAYLAND
 wl_surface* nsWindow::GetWaylandSurface() {
   if (mContainer) {
-    struct wl_surface* surface =
-        moz_container_get_wl_surface(MOZ_CONTAINER(mContainer));
-    if (surface != NULL) {
-      wl_surface_set_buffer_scale(surface, GdkScaleFactor());
-    }
-    return surface;
+    return moz_container_get_wl_surface(MOZ_CONTAINER(mContainer));
   }
 
   NS_WARNING(
@@ -7859,10 +7900,7 @@ GtkTextDirection nsWindow::GetTextDirection() {
 }
 
 void nsWindow::LockAspectRatio(bool aShouldLock) {
-  static const char* currentDesktop = getenv("XDG_CURRENT_DESKTOP");
-  static bool setLock =
-      currentDesktop ? (strstr(currentDesktop, "GNOME") != nullptr) : false;
-  if (!setLock) {
+  if (!gUseAspectRatio) {
     return;
   }
 
@@ -7875,6 +7913,8 @@ void nsWindow::LockAspectRatio(bool aShouldLock) {
     if (mCSDSupportLevel == CSD_SUPPORT_CLIENT) {
       GtkBorder decorationSize = GetCSDDecorationSize(
           gtk_window_get_window_type(GTK_WINDOW(mShell)) == GTK_WINDOW_POPUP);
+      LOG(("Addind decoration size l:%d t:%d r:%d b:%d\n", decorationSize.left,
+           decorationSize.top, decorationSize.right, decorationSize.bottom));
       width += decorationSize.left + decorationSize.right;
       height += decorationSize.top + decorationSize.bottom;
     }
@@ -7918,3 +7958,15 @@ void nsWindow::SetEGLNativeWindowSize(
 
 nsWindow* nsWindow::GetFocusedWindow() { return gFocusWindow; }
 #endif
+
+LayoutDeviceIntRect nsWindow::GetMozContainerSize() {
+  LayoutDeviceIntRect size(0, 0, 0, 0);
+  if (mContainer) {
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(GTK_WIDGET(mContainer), &allocation);
+    int scale = GdkScaleFactor();
+    size.width = allocation.width * scale;
+    size.height = allocation.height * scale;
+  }
+  return size;
+}

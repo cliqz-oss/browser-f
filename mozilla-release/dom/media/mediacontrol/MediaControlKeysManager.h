@@ -30,8 +30,8 @@ class MediaControlKeysManager final : public MediaControlKeysEventSource,
   bool Open() override;
   bool IsOpened() const override;
 
-  void SetPlaybackState(PlaybackState aState) override;
-  PlaybackState GetPlaybackState() const override;
+  void SetPlaybackState(MediaSessionPlaybackState aState) override;
+  MediaSessionPlaybackState GetPlaybackState() const override;
 
   // MediaControlKeysEventListener methods
   void OnKeyPressed(MediaControlKeysEvent aKeyEvent) override;
@@ -40,12 +40,15 @@ class MediaControlKeysManager final : public MediaControlKeysEventSource,
   // event.
   void ControllerAmountChanged(uint64_t aControllerAmount);
 
+  void SetMediaMetadata(const MediaMetadataBase& aMetadata) override;
+
  private:
   ~MediaControlKeysManager();
   void StartMonitoringControlKeys();
   void StopMonitoringControlKeys();
   RefPtr<MediaControlKeysEventSource> mEventSource;
   MediaEventListener mControllerAmountChangedListener;
+  MediaMetadataBase mMetadata;
 };
 
 }  // namespace dom

@@ -412,14 +412,14 @@ class LoginManagerParent extends JSWindowActorParent {
   }
 
   async doAutocompleteSearch({
-    autocompleteInfo,
     formOrigin,
     actionOrigin,
     searchString,
     previousResult,
     forcePasswordGeneration,
+    hasBeenTypePassword,
     isSecure,
-    isPasswordField,
+    isProbablyANewPasswordField,
   }) {
     // Note: previousResult is a regular object, not an
     // nsIAutoCompleteResult.
@@ -477,7 +477,7 @@ class LoginManagerParent extends JSWindowActorParent {
       // Remove results that are too short, or have different prefix.
       // Also don't offer empty usernames as possible results except
       // for on password fields.
-      if (isPasswordField) {
+      if (hasBeenTypePassword) {
         return true;
       }
       return match && match.toLowerCase().startsWith(searchStringLower);
@@ -486,10 +486,11 @@ class LoginManagerParent extends JSWindowActorParent {
     let generatedPassword = null;
     let willAutoSaveGeneratedPassword = false;
     if (
-      forcePasswordGeneration ||
-      (isPasswordField &&
-        autocompleteInfo.fieldName == "new-password" &&
-        Services.logins.getLoginSavingEnabled(formOrigin))
+      // If MP was cancelled above, don't try to offer pwgen or access storage again (causing a new MP prompt).
+      Services.logins.isLoggedIn &&
+      (forcePasswordGeneration ||
+        (isProbablyANewPasswordField &&
+          Services.logins.getLoginSavingEnabled(formOrigin)))
     ) {
       generatedPassword = this.getGeneratedPassword();
       let potentialConflictingLogins = LoginHelper.searchLoginsWithObject({
@@ -670,6 +671,8 @@ class LoginManagerParent extends JSWindowActorParent {
       usernameField ? usernameField.name : "",
       newPasswordField.name
     );
+    // we don't auto-save logins on form submit
+    let notifySaved = false;
 
     if (autoFilledLoginGuid) {
       let loginsForGuid = await Services.logins.searchLoginsAsync({
@@ -790,8 +793,9 @@ class LoginManagerParent extends JSWindowActorParent {
           existingLogin,
           formLogin,
           dismissedPrompt,
-          false, // notifySaved
-          autoSavedStorageGUID
+          notifySaved,
+          autoSavedStorageGUID,
+          autoFilledLoginGuid
         );
       } else if (!existingLogin.username && formLogin.username) {
         log("...empty username update, prompting to change.");
@@ -801,8 +805,9 @@ class LoginManagerParent extends JSWindowActorParent {
           existingLogin,
           formLogin,
           dismissedPrompt,
-          false, // notifySaved
-          autoSavedStorageGUID
+          notifySaved,
+          autoSavedStorageGUID,
+          autoFilledLoginGuid
         );
       } else {
         recordLoginUse(existingLogin);
@@ -812,7 +817,13 @@ class LoginManagerParent extends JSWindowActorParent {
     }
 
     // Prompt user to save login (via dialog or notification bar)
-    prompter.promptToSavePassword(promptBrowser, formLogin, dismissedPrompt);
+    prompter.promptToSavePassword(
+      promptBrowser,
+      formLogin,
+      dismissedPrompt,
+      notifySaved,
+      autoFilledLoginGuid
+    );
   }
 
   async _onPasswordEditedOrGenerated(
@@ -847,6 +858,11 @@ class LoginManagerParent extends JSWindowActorParent {
 
     if (!newPasswordField.value) {
       log("_onPasswordEditedOrGenerated: The password field is empty");
+      return;
+    }
+
+    if (!browser) {
+      log("_onPasswordEditedOrGenerated: The browser is gone");
       return;
     }
 
@@ -887,6 +903,7 @@ class LoginManagerParent extends JSWindowActorParent {
     let canMatchExistingLogin = true;
     let shouldAutoSaveLogin = triggeredByFillingGenerated;
     let autoSavedLogin = null;
+    let notifySaved = false;
 
     if (autoFilledLoginGuid) {
       let [matchedLogin] = await Services.logins.searchLoginsAsync({
@@ -1076,10 +1093,12 @@ class LoginManagerParent extends JSWindowActorParent {
     }
 
     if (shouldAutoSaveLogin) {
-      if (existingLogin && existingLogin == autoSavedLogin) {
-        log(
-          "_onPasswordEditedOrGenerated: updating auto-saved login with changed password"
-        );
+      if (
+        existingLogin &&
+        existingLogin == autoSavedLogin &&
+        existingLogin.password !== formLogin.password
+      ) {
+        log("_onPasswordEditedOrGenerated: updating auto-saved login");
 
         Services.logins.modifyLogin(
           existingLogin,
@@ -1087,10 +1106,11 @@ class LoginManagerParent extends JSWindowActorParent {
             password: formLogin.password,
           })
         );
+        notifySaved = true;
         // Update `existingLogin` with the new password if modifyLogin didn't
         // throw so that the prompts later uses the new password.
         existingLogin.password = formLogin.password;
-      } else {
+      } else if (!autoSavedLogin) {
         log(
           "_onPasswordEditedOrGenerated: auto-saving new login with empty username"
         );
@@ -1098,6 +1118,7 @@ class LoginManagerParent extends JSWindowActorParent {
         // Remember the GUID where we saved the generated password so we can update
         // the login if the user later edits the generated password.
         generatedPW.storageGUID = existingLogin.guid;
+        notifySaved = true;
       }
     } else {
       log("_onPasswordEditedOrGenerated: not auto-saving this login");
@@ -1132,8 +1153,9 @@ class LoginManagerParent extends JSWindowActorParent {
           existingLogin,
           formLogin,
           true, // dismissed prompt
-          shouldAutoSaveLogin, // notifySaved
-          autoSavedStorageGUID // autoSavedLoginGuid
+          notifySaved,
+          autoSavedStorageGUID, // autoSavedLoginGuid
+          autoFilledLoginGuid
         );
       } else if (!existingLogin.username && formLogin.username) {
         log("...empty username update, prompting to change.");
@@ -1142,8 +1164,9 @@ class LoginManagerParent extends JSWindowActorParent {
           existingLogin,
           formLogin,
           true, // dismissed prompt
-          shouldAutoSaveLogin, // notifySaved
-          autoSavedStorageGUID // autoSavedLoginGuid
+          notifySaved,
+          autoSavedStorageGUID, // autoSavedLoginGuid
+          autoFilledLoginGuid
         );
       } else {
         log("_onPasswordEditedOrGenerated: No change to existing login");
@@ -1160,8 +1183,9 @@ class LoginManagerParent extends JSWindowActorParent {
             existingLogin,
             formLogin,
             true, // dismissed prompt
-            false, // notifySaved
-            autoSavedStorageGUID // autoSavedLoginGuid
+            notifySaved,
+            autoSavedStorageGUID, // autoSavedLoginGuid
+            autoFilledLoginGuid
           );
         }
       }
@@ -1172,7 +1196,8 @@ class LoginManagerParent extends JSWindowActorParent {
       promptBrowser,
       formLogin,
       true, // dismissed prompt
-      shouldAutoSaveLogin // notifySaved
+      notifySaved,
+      autoFilledLoginGuid
     );
   }
 

@@ -130,6 +130,7 @@ dictionary RTCSentRtpStreamStats : RTCRtpStreamStats {
 };
 
 dictionary RTCOutboundRtpStreamStats : RTCSentRtpStreamStats {
+             unsigned long        rtxSsrc;
              DOMString            trackId;
              DOMString            mediaSourceId;
              DOMString            senderId;
@@ -329,6 +330,9 @@ dictionary RTCIceCandidatePairStats : RTCStats {
              DOMHighResTimeStamp           consentExpiredTimestamp;
              unsigned long                 packetsDiscardedOnSend;
              unsigned long long            bytesDiscardedOnSend;
+             unsigned long long            requestBytesSent;
+             unsigned long long            consentRequestBytesSent;
+             unsigned long long            responseBytesSent;
 };
 
 enum RTCStatsIceCandidatePairState {

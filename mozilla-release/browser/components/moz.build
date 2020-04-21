@@ -38,8 +38,15 @@ DIRS += [
     'downloads',
     'enterprisepolicies',
     'extensions',
+<<<<<<< HEAD
 #   'fxmonitor',
     'library',
+||||||| merged common ancestors
+    'fxmonitor',
+    'library',
+=======
+    'fxmonitor',
+>>>>>>> origin/upstream-betas
     'migration',
     'newtab',
     'originattributes',
@@ -58,7 +65,6 @@ DIRS += [
     'uitour',
     'urlbar',
     'translation',
-    'webshare',
 ]
 
 DIRS += ['build']

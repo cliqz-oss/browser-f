@@ -99,6 +99,10 @@ class PostMessageRunnable final : public CancelableRunnable {
   void DispatchMessage() const {
     NS_ASSERT_OWNINGTHREAD(Runnable);
 
+    if (NS_FAILED(mPort->CheckCurrentGlobalCorrectness())) {
+      return;
+    }
+
     nsCOMPtr<nsIGlobalObject> globalObject = mPort->GetParentObject();
 
     AutoJSAPI jsapi;
@@ -161,7 +165,7 @@ class PostMessageRunnable final : public CancelableRunnable {
   }
 
  private:
-  ~PostMessageRunnable() {}
+  ~PostMessageRunnable() = default;
 
   RefPtr<MessagePort> mPort;
   RefPtr<SharedMessageBody> mData;
@@ -204,7 +208,7 @@ MessagePort::MessagePort(nsIGlobalObject* aGlobal, State aState)
       mHasBeenTransferredOrClosed(false) {
   MOZ_ASSERT(aGlobal);
 
-  mIdentifier = new MessagePortIdentifier();
+  mIdentifier = MakeUnique<MessagePortIdentifier>();
   mIdentifier->neutered() = true;
   mIdentifier->sequenceId() = 0;
 }

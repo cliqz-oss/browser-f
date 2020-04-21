@@ -11,7 +11,6 @@ const { webconsoleSpec } = require("devtools/shared/specs/webconsole");
 const Services = require("Services");
 const { Cc, Ci, Cu } = require("chrome");
 const { DevToolsServer } = require("devtools/server/devtools-server");
-const { ActorPool } = require("devtools/server/actors/common");
 const { ThreadActor } = require("devtools/server/actors/thread");
 const { ObjectActor } = require("devtools/server/actors/object");
 const { LongStringActor } = require("devtools/server/actors/string");
@@ -184,9 +183,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
     this.conn = connection;
     this.parentActor = parentActor;
 
-    this._actorPool = new ActorPool(this.conn);
-    this.conn.addActorPool(this._actorPool);
-
     this._prefs = {};
     this.dbg = this.parentActor.dbg;
 
@@ -214,10 +210,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
     }
 
     this.traits = {};
-
-    if (this.dbg.replaying && !isWorker) {
-      this.dbg.onConsoleMessage = this.onReplayingMessage.bind(this);
-    }
   },
   /**
    * Debugger instance.
@@ -232,14 +224,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
    * @type number
    */
   _gripDepth: null,
-
-  /**
-   * Actor pool for all of the actors we send to the client.
-   * @private
-   * @type object
-   * @see ActorPool
-   */
-  _actorPool: null,
 
   /**
    * Web Console-related preferences.
@@ -447,8 +431,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       this._onChangedToplevelDocument
     );
 
-    this.conn.removeActorPool(this._actorPool);
-
     if (this.parentActor.isRootActor) {
       Services.obs.removeObserver(
         this._onObserverNotification,
@@ -456,11 +438,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       );
     }
 
-    if (this.dbg.replaying && !isWorker) {
-      this.dbg.onConsoleMessage = null;
-    }
-
-    this._actorPool = null;
     this._webConsoleCommandsCache = null;
     this._lastConsoleInputEvaluation = null;
     this._evalWindow = null;
@@ -489,7 +466,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
     }
 
     const actor = new EnvironmentActor(environment, this);
-    this._actorPool.addActor(actor);
+    this.manage(actor);
     environment.actor = actor;
 
     return actor;
@@ -502,7 +479,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
    * @return object
    */
   createValueGrip: function(value) {
-    return createValueGrip(value, this._actorPool, this.objectGrip);
+    return createValueGrip(value, this, this.objectGrip);
   },
 
   /**
@@ -517,11 +494,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
    *         Debuggee value for |value|.
    */
   makeDebuggeeValue: function(value, useObjectGlobal) {
-    if (this.dbg.replaying) {
-      // If we are replaying then any values we are operating on should already
-      // be debuggee values.
-      return value;
-    }
     if (useObjectGlobal && isObject(value)) {
       try {
         const global = Cu.getGlobalForObject(value);
@@ -542,7 +514,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
    * @param object object
    *        The object you want.
    * @param object pool
-   *        An ActorPool where the new actor instance is added.
+   *        A Pool where the new actor instance is added.
    * @param object
    *        The object grip.
    */
@@ -564,7 +536,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       },
       this.conn
     );
-    pool.addActor(actor);
+    pool.manage(actor);
     return actor.form();
   },
 
@@ -574,13 +546,13 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
    * @param string string
    *        The string you want to create the grip for.
    * @param object pool
-   *        An ActorPool where the new actor instance is added.
+   *        A Pool where the new actor instance is added.
    * @return object
    *         A LongStringActor object that wraps the given string.
    */
   longStringGrip: function(string, pool) {
     const actor = new LongStringActor(this.conn, string);
-    pool.addActor(actor);
+    pool.manage(actor);
     return actor.form();
   },
 
@@ -596,29 +568,9 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
    */
   _createStringGrip: function(string) {
     if (string && stringIsLong(string)) {
-      return this.longStringGrip(string, this._actorPool);
+      return this.longStringGrip(string, this);
     }
     return string;
-  },
-
-  /**
-   * Get an object actor by its ID.
-   *
-   * @param string actorID
-   * @return object
-   */
-  getActorByID: function(actorID) {
-    return this._actorPool.get(actorID);
-  },
-
-  /**
-   * Release an actor.
-   *
-   * @param object actor
-   *        The actor instance you want to release.
-   */
-  releaseActor: function(actor) {
-    this._actorPool.removeActor(actor);
   },
 
   /**
@@ -641,7 +593,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
    */
   preprocessDebuggerObject(dbgObj) {
     // Returns the bound target function on a bound function.
-    if (dbgObj && dbgObj.isBoundFunction && dbgObj.boundTargetFunction) {
+    if (dbgObj?.isBoundFunction && dbgObj?.boundTargetFunction) {
       return dbgObj.boundTargetFunction;
     }
 
@@ -664,11 +616,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       inspectFromAnnotation,
     });
   },
-
-  /**
-   * When using a replaying debugger, all messages we have seen so far.
-   */
-  replayingMessages: null,
 
   // Request handlers for known packet types.
 
@@ -964,23 +911,10 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
 
     const messages = [];
 
-    let replayingMessages = [];
-    if (this.dbg.replaying) {
-      replayingMessages = this.dbg.findAllConsoleMessages();
-    }
-
     while (messageTypes.length > 0) {
       const type = messageTypes.shift();
       switch (type) {
         case "ConsoleAPI": {
-          replayingMessages.forEach(msg => {
-            if (msg.messageType == "ConsoleAPI") {
-              const message = this.prepareConsoleMessageForRemote(msg);
-              message._type = type;
-              messages.push(message);
-            }
-          });
-
           if (!this.consoleAPIListener) {
             break;
           }
@@ -1011,14 +945,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
           break;
         }
         case "PageError": {
-          replayingMessages.forEach(msg => {
-            if (msg.messageType == "PageError") {
-              const message = this.preparePageErrorForRemote(msg);
-              message._type = type;
-              messages.push(message);
-            }
-          });
-
           if (!this.consoleServiceListener) {
             break;
           }
@@ -1199,8 +1125,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       if ("return" in evalResult) {
         result = evalResult.return;
         if (
-          mapped &&
-          mapped.await &&
+          mapped?.await &&
           result &&
           result.class === "Promise" &&
           typeof result.unsafeDereference === "function"
@@ -1286,7 +1211,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
 
         try {
           const notes = error.errorNotes;
-          if (notes && notes.length) {
+          if (notes?.length) {
             errorNotes = [];
             for (const note of notes) {
               errorNotes.push({
@@ -1648,22 +1573,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
   // Event handlers for various listeners.
 
   /**
-   * Handle console messages sent to us from a replaying process via the
-   * debugger.
-   */
-  onReplayingMessage: function(msg) {
-    if (msg.messageType == "ConsoleAPI") {
-      this.onConsoleAPICall(msg);
-    }
-
-    if (msg.messageType == "PageError") {
-      this.emit("pageError", {
-        pageError: this.preparePageErrorForRemote(msg),
-      });
-    }
-  },
-
-  /**
    * Handler for messages received from the ConsoleServiceListener. This method
    * sends the nsIConsoleMessage to the remote Web Console client.
    *
@@ -1739,7 +1648,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
 
     let notesArray = null;
     const notes = pageError.notes;
-    if (notes && notes.length) {
+    if (notes?.length) {
       notesArray = [];
       for (let i = 0, len = notes.length; i < len; i++) {
         const note = notes.queryElementAt(i, Ci.nsIScriptErrorNote);
@@ -1778,14 +1687,11 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       innerWindowID: pageError.innerWindowID,
       timeStamp: pageError.timeStamp,
       warning: !!(pageError.flags & pageError.warningFlag),
-      error: !!(pageError.flags & pageError.errorFlag),
-      exception: !!(pageError.flags & pageError.exceptionFlag),
-      strict: !!(pageError.flags & pageError.strictFlag),
+      error: !(pageError.flags & (pageError.warningFlag | pageError.infoFlag)),
       info: !!(pageError.flags & pageError.infoFlag),
       private: pageError.isFromPrivateWindow,
       stacktrace: stack,
       notes: notesArray,
-      executionPoint: pageError.executionPoint,
       chromeContext: pageError.isFromChromeContext,
       cssSelectors: pageError.cssSelectors,
     };
@@ -2126,7 +2032,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
     const needEntries = ["Map", "WeakMap", "Set", "WeakSet"].includes(dataType);
     const ignoreNonIndexedProperties = isArray(tableItemGrip);
 
-    const tableItemActor = this.getActorByID(tableItemGrip.actor);
+    const tableItemActor = this.actor(tableItemGrip.actor);
     if (!tableItemActor) {
       return null;
     }
@@ -2150,14 +2056,14 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
             const grip = desc[key];
 
             // We need to load sub-properties as well to render the table in a nice way.
-            const actor = grip && this.getActorByID(grip.actor);
+            const actor = grip && this.actor(grip.actor);
             if (actor) {
               const res = actor
                 .enumProperties({
                   ignoreNonIndexedProperties: isArray(grip),
                 })
                 .all();
-              if (res && res.ownProperties) {
+              if (res?.ownProperties) {
                 desc[key].ownProperties = res.ownProperties;
               }
             }

@@ -22,7 +22,7 @@ const CLASSES_TO_PRESERVE = [
   "caption",
   "emoji",
   "hidden",
-  "invisble",
+  "invisible",
   "sr-only",
   "visually-hidden",
   "visuallyhidden",
@@ -193,7 +193,7 @@ var ReaderMode = {
         return null;
       }
       try {
-        return Services.uriFixup.createExposableURI(uriObj);
+        return Services.io.createExposableURI(uriObj);
       } catch (ex) {
         return null;
       }

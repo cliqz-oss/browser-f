@@ -60,7 +60,7 @@ AddonManagerStartup& AddonManagerStartup::GetSingleton() {
   return *singleton;
 }
 
-AddonManagerStartup::AddonManagerStartup() {}
+AddonManagerStartup::AddonManagerStartup() = default;
 
 nsIFile* AddonManagerStartup::ProfileDir() {
   if (!mProfileDir) {
@@ -681,9 +681,6 @@ struct ContentEntry final {
   explicit ContentEntry(nsTArray<nsCString>& aArgs, uint8_t aFlags = 0)
       : mArgs(aArgs), mFlags(aFlags) {}
 
-  ContentEntry(const ContentEntry& other)
-      : mArgs(other.mArgs), mFlags(other.mFlags) {}
-
   AutoTArray<nsCString, 2> mArgs;
   uint8_t mFlags;
 };
@@ -691,7 +688,7 @@ struct ContentEntry final {
 };  // anonymous namespace
 };  // namespace mozilla
 
-DECLARE_USE_COPY_CONSTRUCTORS(mozilla::ContentEntry);
+MOZ_DECLARE_RELOCATE_USING_MOVE_CONSTRUCTOR(mozilla::ContentEntry);
 
 namespace mozilla {
 namespace {

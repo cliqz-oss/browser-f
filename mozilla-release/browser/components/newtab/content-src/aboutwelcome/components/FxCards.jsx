@@ -50,7 +50,7 @@ export class FxCards extends React.PureComponent {
 
   onCardAction(action) {
     let { type, data } = action;
-    let UTMTerm = "about_welcome";
+    let UTMTerm = `aboutwelcome-${this.props.utm_term}-card`;
 
     if (action.type === "OPEN_URL") {
       let url = new URL(action.data.args);
@@ -75,12 +75,12 @@ export class FxCards extends React.PureComponent {
     const { props } = this;
     return (
       <React.Fragment>
-        <div className={`trailheadCardGrid show`}>
+        <div className={`welcomeCardGrid show`}>
           {props.cards.map(card => (
             <OnboardingCard
               key={card.id}
               message={card}
-              className="trailheadCard"
+              className="welcomeCard"
               sendUserActionTelemetry={props.sendTelemetry}
               onAction={this.onCardAction}
               UISurface="ABOUT_WELCOME"

@@ -6,6 +6,8 @@
 #ifndef StartupCache_h_
 #define StartupCache_h_
 
+#include <utility>
+
 #include "nsClassHashtable.h"
 #include "nsComponentManagerUtils.h"
 #include "nsTArray.h"
@@ -20,7 +22,6 @@
 #include "mozilla/AutoMemMap.h"
 #include "mozilla/Compression.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/Pair.h"
 #include "mozilla/Result.h"
 #include "mozilla/UniquePtr.h"
 
@@ -108,14 +109,14 @@ struct StartupCacheEntry {
         mRequested(true) {}
 
   struct Comparator {
-    using Value = Pair<const nsCString*, StartupCacheEntry*>;
+    using Value = std::pair<const nsCString*, StartupCacheEntry*>;
 
     bool Equals(const Value& a, const Value& b) const {
-      return a.second()->mRequestedOrder == b.second()->mRequestedOrder;
+      return a.second->mRequestedOrder == b.second->mRequestedOrder;
     }
 
     bool LessThan(const Value& a, const Value& b) const {
-      return a.second()->mRequestedOrder < b.second()->mRequestedOrder;
+      return a.second->mRequestedOrder < b.second->mRequestedOrder;
     }
   };
 };
@@ -136,7 +137,7 @@ struct nsCStringHasher {
 // We don't want to refcount StartupCache, and ObserverService wants to
 // refcount its listeners, so we'll let it refcount this instead.
 class StartupCacheListener final : public nsIObserver {
-  ~StartupCacheListener() {}
+  ~StartupCacheListener() = default;
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIOBSERVER
 };
@@ -192,6 +193,8 @@ class StartupCache : public nsIMemoryReporter {
   StartupCache();
   virtual ~StartupCache();
 
+  friend class StartupCacheInfo;
+
   Result<Ok, nsresult> LoadArchive();
   nsresult Init();
 
@@ -237,6 +240,7 @@ class StartupCache : public nsIMemoryReporter {
   static StaticRefPtr<StartupCache> gStartupCache;
   static bool gShutdownInitiated;
   static bool gIgnoreDiskCache;
+  static bool gFoundDiskCacheOnInit;
   PRThread* mWriteThread;
   PRThread* mPrefetchThread;
   UniquePtr<Compression::LZ4FrameDecompressionContext> mDecompressionContext;
@@ -250,7 +254,7 @@ class StartupCache : public nsIMemoryReporter {
 // is a singleton.
 #ifdef DEBUG
 class StartupCacheDebugOutputStream final : public nsIObjectOutputStream {
-  ~StartupCacheDebugOutputStream() {}
+  ~StartupCacheDebugOutputStream() = default;
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBJECTOUTPUTSTREAM

@@ -1,6 +1,7 @@
 """ Data structures for representing grammars. """
 
 import collections
+import copy
 from .ordered import OrderedSet, OrderedFrozenSet
 from . import types
 
@@ -117,7 +118,22 @@ class Production:
 # used only in productions for init nonterminals, created automatically by
 # Grammar.__init__(). It's not a reduce expression, so it can't be nested.
 #
-CallMethod = collections.namedtuple("CallMethod", "method args")
+
+class CallMethod(collections.namedtuple("CallMethod", "method args trait fallible")):
+    """Express a method call, and give it a given set of arguments. A trait is
+    added as the parser should implement this trait to call this method."""
+    def __new__(cls, method, args, trait = types.Type("AstBuilder"), fallible = False):
+        if isinstance(trait, str):
+            trait = types.Type(trait)
+        self = super(CallMethod, cls).__new__(cls, method, args, trait, fallible)
+        return self
+
+    def __eq__(self, other):
+        return isinstance(other, CallMethod) and super(CallMethod, self).__eq__(other)
+
+    def __hash__(self):
+        return super(CallMethod, self).__hash__()
+
 Some = collections.namedtuple("Some", "inner")
 
 
@@ -125,9 +141,10 @@ def expr_to_str(expr):
     if isinstance(expr, int):
         return "${}".format(expr)
     elif isinstance(expr, CallMethod):
-        return "{}({})".format(
-            expr.method,
-            ', '.join(expr_to_str(arg) for arg in expr.args))
+        return "{}::{}({}){}".format(
+            expr.trait, expr.method,
+            ', '.join(expr_to_str(arg) for arg in expr.args),
+            expr.fallible and '?' or '')
     elif expr is None:
         return "None"
     elif isinstance(expr, Some):
@@ -173,7 +190,9 @@ class Grammar:
             goal_nts=None,
             variable_terminals=(),
             synthetic_terminals=None,
-            method_types=None):
+            method_types=None,
+            exec_modes=None,
+            type_to_modes=None):
 
         # This constructor supports passing in a sort of jumbled blob of
         # strings, lists, and actual objects, and normalizes it all to a more
@@ -221,7 +240,8 @@ class Grammar:
                             "unsupported: synthetic terminals can't include other "
                             "synthetic terminals; {!r} includes {!r}"
                             .format(key, t))
-        self.synthetic_terminals = synthetic_terminals
+        # self.synthetic_terminals = synthetic_terminals
+        self.synthetic_terminals = {}
 
         keys_are_nt = isinstance(next(iter(nonterminals)), Nt)
         key_type = Nt if keys_are_nt else (str, InitNt)
@@ -266,6 +286,7 @@ class Grammar:
         # validate_element on every element of the grammar populates
         # all_terminals.
         all_terminals = OrderedSet(self.variable_terminals)
+        all_terminals.add(End())
 
         def note_terminal(t):
             """Add t (and all representations of it, if synthetic) to all_terminals."""
@@ -350,10 +371,12 @@ class Grammar:
                                 "in production `grammar[{!r}][{}][{}]`"
                                 .format(arg_expr.name, nt, i, j))
                 return self.intern(e)
-            elif isinstance(e, (LookaheadRule, ErrorSymbol)):
+            elif isinstance(e, (LookaheadRule, End, ErrorSymbol)):
                 return self.intern(e)
             elif e is NoLineTerminatorHere:
                 return e
+            elif isinstance(e, CallMethod):
+                return self.intern(e)
             else:
                 raise TypeError(
                     "invalid grammar: unrecognized element in production "
@@ -411,8 +434,8 @@ class Grammar:
                     if sole_production:
                         method = nt
                     else:
-                        method = '{} {}'.format(nt, i)
-                    reducer = CallMethod(method, args=tuple(range(nargs)))
+                        method = '{}_{}'.format(nt, i)
+                    reducer = CallMethod(method, tuple(range(nargs)))
                 rhs = Production(rhs, reducer)
 
             if not isinstance(rhs, Production):
@@ -526,10 +549,13 @@ class Grammar:
                         .format(nt, nt_def))
                 rhs_list = nt_def.rhs_list
                 g = nt.goal
-                if (rhs_list != [Production([g], 'accept')]
-                        and rhs_list != [Production([Optional(g)], 'accept')]
-                        and rhs_list != [Production([], 'accept'),
-                                         Production([g], 'accept')]):
+                if (rhs_list != [Production([g], 0),
+                                 Production([Nt(nt,()), End()], 'accept')]
+                    and rhs_list != [Production([Optional(g)], 0),
+                                     Production([Nt(nt,()), End()], 'accept')]
+                    and rhs_list != [Production([End()], 'accept'),
+                                     Production([g, End()], 'accept'),
+                                     Production([Nt(nt,()), End()], 'accept')]):
                     raise ValueError(
                         "invalid grammar: grammar[{!r}] is not one of "
                         "the expected forms: got {!r}"
@@ -541,6 +567,12 @@ class Grammar:
         for nt, nt_def in nonterminals.items():
             nt, nt_def = validate_nt(nt, nt_def)
             self.nonterminals[nt] = nt_def
+        for nt, nt_def in synthetic_terminals.items():
+            nt_def = NtDef((nt,), [Production([e], 0) for e in nt_def], None)
+            nt, nt_def = validate_nt(nt, nt_def)
+            self.nonterminals[nt] = nt_def
+            # Remove synthetic terminals from the list of terminals.
+            all_terminals -= OrderedSet([nt])
 
         self.terminals = OrderedFrozenSet(all_terminals)
 
@@ -581,8 +613,29 @@ class Grammar:
                 init_key = init_nt
             if init_key not in self.nonterminals:
                 self.nonterminals[init_key] = NtDef(
-                    (), [Production([goal], 'accept')], types.NoReturnType)
+                    (), [Production([goal], 0), Production([init_nt, End()], 'accept')], types.NoReturnType)
             self.init_nts.append(init_nt)
+
+        # Add the various execution backends which would rely on the same parse table.
+        self.exec_modes = exec_modes
+        self.type_to_modes = type_to_modes
+
+    def patch(self, extensions):
+        assert self.type_to_modes is not None
+        assert self.exec_modes is not None
+        if extensions == []:
+            return
+        # Copy of nonterminals which would be mutated by the patches.
+        nonterminals = copy.copy(self.nonterminals)
+        for ext in extensions:
+            # Add the given trait to the execution mode, depending on which
+            # type it got implemented for.
+            for mode in self.type_to_modes[ext.target.for_type]:
+                self.exec_modes[mode].add(ext.target.trait)
+            # Apply grammar transformations.
+            ext.apply_patch(self, nonterminals)
+        # Replace with the modified version of nonterminals
+        self.nonterminals = nonterminals
 
     def intern(self, obj):
         """Return a shared copy of the immutable object `obj`.
@@ -632,7 +685,9 @@ class Grammar:
             goal_nts=self.goals(),
             variable_terminals=self.variable_terminals,
             synthetic_terminals=self.synthetic_terminals,
-            method_types=self.methods)
+            method_types=self.methods,
+            exec_modes=self.exec_modes,
+            type_to_modes=self.type_to_modes)
 
     # === A few methods for dumping pieces of grammar.
 
@@ -653,8 +708,12 @@ class Grammar:
                 op = "in" if e.positive else "not in"
                 s = '{' + repr(list(e.set))[1:-1] + '}'
             return "[lookahead {} {}]".format(op, s)
+        elif isinstance(e, End):
+            return "<END>"
         elif e is NoLineTerminatorHere:
             return "[no LineTerminator here]"
+        elif isinstance(e, CallMethod):
+            return "{{ {} }}".format(expr_to_str(e))
         else:
             return str(e)
 
@@ -697,7 +756,7 @@ class Grammar:
         else:
             la = [self.element_to_str(item.lookahead)]
         return "{} ::= {} >> {{{}}}".format(
-            prod.nt,
+            self.element_to_str(prod.nt),
             " ".join([self.element_to_str(e) for e in prod.rhs[:item.offset]]
                      + ["\N{MIDDLE DOT}"]
                      + la
@@ -744,6 +803,22 @@ class Grammar:
                   .format(name,
                           ", ".join(types.type_to_str(ty) for ty in mty.argument_types),
                           types.type_to_str(mty.return_type)))
+
+    def is_shifted_element(self, e):
+        if isinstance(e, Nt):
+            return True
+        elif self.is_terminal(e):
+            return True
+        elif isinstance(e, Optional):
+            return True
+        elif isinstance(e, LookaheadRule):
+            return False
+        elif isinstance(e, End):
+            return True
+        elif e is NoLineTerminatorHere:
+            return True
+        return False
+
 
 
 InitNt = collections.namedtuple("InitNt", "goal")
@@ -840,6 +915,8 @@ class Nt:
             else:
                 return name + "=" + repr(value)
 
+        if isinstance(self.name, InitNt):
+            return "Start_" + self.name.goal.pretty()
         if len(self.args) == 0:
             return self.name
         return "{}[{}]".format(self.name,
@@ -923,19 +1000,21 @@ NoLineTerminatorHere = NoLineTerminatorHereClass()
 Exclude = collections.namedtuple("Exclude", "inner exclusion_list")
 Exclude.__doc__ = """Exclude(nt1, nt2) matches if nt1 matches and nt2 does not."""
 
+# End. This is used to represent the terminal which is infinitely produced by
+# the lexer when input end is reached.
+End = collections.namedtuple("End", "")
+End.__doc__ = """End() represent the end of the input content."""
+End_default_eq = End.__eq__
+End.__eq__ = lambda x, y: x.__class__ == y.__class__ and End_default_eq(x, y)
 
-class ErrorSymbol:
-    """Special grammar symbol that can be consumed to handle a syntax error.
-
-    The error code is passed to an error-handling routine at run time which
-    decides if the error is recoverable or not.
-    """
-
-    def __init__(self, error_code):
-        self.error_code = error_code
-
-    def __str__(self):
-        return 'ErrorSymbol({})'.format(self.error_code)
+# Special grammar symbol that can be consumed to handle a syntax error.
+#
+# The error code is passed to an error-handling routine at run time which
+# decides if the error is recoverable or not.
+ErrorSymbol = collections.namedtuple("ErrorSymbol", "error_code")
+ErrorSymbol.__doc__ = """Special grammar symbol that can be consumed to handle a syntax error."""
+ErrorSymbol_default_eq = ErrorSymbol.__eq__
+ErrorSymbol.__eq__ = lambda x, y: x.__class__ == y.__class__ and ErrorSymbol_default_eq(x, y)
 
 
 class NtDef:

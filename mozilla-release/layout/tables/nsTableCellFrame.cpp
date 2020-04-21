@@ -79,7 +79,7 @@ nsTableCellFrame::nsTableCellFrame(ComputedStyle* aStyle,
   SetContentEmpty(false);
 }
 
-nsTableCellFrame::~nsTableCellFrame() {}
+nsTableCellFrame::~nsTableCellFrame() = default;
 
 NS_IMPL_FRAMEARENA_HELPERS(nsTableCellFrame)
 
@@ -267,7 +267,7 @@ void nsTableCellFrame::DecorateForSelection(DrawTarget* aDrawTarget,
   NS_ASSERTION(IsSelected(), "Should only be called for selected cells");
   int16_t displaySelection;
   nsPresContext* presContext = PresContext();
-  displaySelection = DisplaySelection(presContext);
+  displaySelection = DetermineDisplaySelection();
   if (displaySelection) {
     RefPtr<nsFrameSelection> frameSelection =
         presContext->PresShell()->FrameSelection();
@@ -1030,7 +1030,7 @@ nsBCTableCellFrame::nsBCTableCellFrame(ComputedStyle* aStyle,
   mBStartBorder = mIEndBorder = mBEndBorder = mIStartBorder = 0;
 }
 
-nsBCTableCellFrame::~nsBCTableCellFrame() {}
+nsBCTableCellFrame::~nsBCTableCellFrame() = default;
 
 /* virtual */
 nsMargin nsBCTableCellFrame::GetUsedBorder() const {
