@@ -26,6 +26,7 @@ policy-DisabledCiphers = Chiffren deaktivieren
 policy-DefaultDownloadDirectory = Standardordner für Downloads festlegen
 policy-DisableAppUpdate = Browser-Updates deaktivieren
 policy-DisableBuiltinPDFViewer = Eingebauten PDF-Betrachter von { -brand-short-name } (PDF.js) deaktivieren
+policy-DisableDefaultBrowserAgent = Aktionen des Programms zur Erkennung des Standardbrowser deaktivieren. Findet nur auf Windows Anwendung, da andere Betriebssysteme nicht über dieses Programm verfügen.
 policy-DisableDeveloperTools = Zugriff auf Entwicklerwerkzeuge deaktivieren
 policy-DisableFeedbackCommands = Feedback senden über "Hilfe"-Menü deaktivieren ("Feedback senden…" und "Betrügerische Website melden…")
 policy-DisableFirefoxAccounts = { -fxaccount-brand-name }-basierte Dienste (z.B. Sync) deaktivieren
@@ -65,6 +66,14 @@ policy-HardwareAcceleration = Hardwarebeschleunigung deaktiviert, falls false
 policy-Homepage = Startseite festlegen und optional zusätzlich unveränderbar setzen
 policy-InstallAddonsPermission = Add-on-Installation von festgelegten Websites erlauben
 policy-LegacyProfiles = Erzwingen eines eigenen Profils für jede Installation deaktivieren
+
+## Do not translate "SameSite", it's the name of a cookie attribute.
+
+policy-LegacySameSiteCookieBehaviorEnabled = Veraltetes Cookie-Verhalten "SameSite" aktivieren
+policy-LegacySameSiteCookieBehaviorEnabledForDomainList = Veraltetes Cookie-Verhalten "SameSite" auf angegebenen Websites aktivieren
+
+##
+
 policy-LocalFileLinks = Festgelegten Websites Zugriff auf lokale Dateien erlauben
 policy-NetworkPrediction = Spekulative DNS-Abfragen für noch nicht angeforderte Ressourcen ("DNS-Prefetching") aktivieren oder deaktivieren
 policy-NewTabPage = Startseite für neue Tabs aktivieren oder deaktivieren
@@ -89,5 +98,6 @@ policy-SecurityDevices = PKCS#11-Module installieren
 policy-SSLVersionMax = Höchste zu verwendende SSL-Version festlegen
 policy-SSLVersionMin = Niedrigste zu verwendende SSL-Version festlegen
 policy-SupportMenu = Benutzerdefinierten Eintrag zum Menü "Hilfe" hinzufügen
+policy-UserMessaging = Anzeige von bestimmten Nachrichten deaktivieren
 # “format” refers to the format used for the value of this policy.
 policy-WebsiteFilter = Bestimmte Website-Aufrufe blockieren. Weitere Details in der Dokumentation.

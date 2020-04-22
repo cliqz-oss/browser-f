@@ -48,6 +48,7 @@ login-list-sort-label-text = Sortieren nach:
 login-list-name-option = Name (A-Z)
 login-list-name-reverse-option = Name (Z-A)
 login-list-breached-option = Websites mit Datenlecks
+about-logins-login-list-alerts-option = Warnungen
 login-list-last-changed-option = Zuletzt geändert
 login-list-last-used-option = Zuletzt verwendet
 login-list-intro-title = Keine Zugangsdaten gefunden
@@ -59,6 +60,8 @@ login-list-item-subtitle-new-login = Zugangsdaten eingeben
 login-list-item-subtitle-missing-username = (kein Benutzername)
 about-logins-list-item-breach-icon =
     .title = Website mit Datenleck
+about-logins-list-item-vulnerable-password-icon =
+    .title = Gefährdetes Passwort
 
 ## Introduction screen
 
@@ -105,10 +108,19 @@ about-logins-os-auth-dialog-caption = { -brand-full-name }
 
 # This message can be seen by attempting to edit a login in about:logins
 about-logins-edit-login-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um die gespeicherten Zugangsdaten zu bearbeiten.
+# This message can be seen by attempting to edit a login in about:logins
+# On MacOS, only provide the reason that account verification is needed. Do not put a complete sentence here.
+about-logins-edit-login-os-auth-dialog-message-macosx = gespeicherte Zugangsdaten bearbeiten
 # This message can be seen by attempting to reveal a password in about:logins
 about-logins-reveal-password-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um das gespeicherte Passwort anzuzeigen.
+# This message can be seen by attempting to reveal a password in about:logins
+# On MacOS, only provide the reason that account verification is needed. Do not put a complete sentence here.
+about-logins-reveal-password-os-auth-dialog-message-macosx = gespeichertes Passwort anzeigen
 # This message can be seen by attempting to copy a password in about:logins
 about-logins-copy-password-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um das gespeicherte Passwort zu kopieren.
+# This message can be seen by attempting to copy a password in about:logins
+# On MacOS, only provide the reason that account verification is needed. Do not put a complete sentence here.
+about-logins-copy-password-os-auth-dialog-message-macosx = gespeichertes Passwort kopieren
 
 ## Master Password notification
 
@@ -154,6 +166,7 @@ breach-alert-text = Passwörter dieser Website wurden veröffentlicht oder gesto
 breach-alert-link = Weitere Informationen über dieses Datenleck
 breach-alert-dismiss =
     .title = Alarm schließen
+about-logins-breach-alert-date = Das Datenleck wurde am { DATETIME($date, day: "numeric", month: "long", year: "numeric") } registriert.
 # Variables:
 #   $hostname (String) - The hostname of the website associated with the login, e.g. "example.com"
 about-logins-breach-alert-link = { $hostname } aufrufen
@@ -161,6 +174,8 @@ about-logins-breach-alert-learn-more-link = Weitere Informationen
 
 ## Vulnerable Password notification
 
+about-logins-vulnerable-alert-title = Gefährdetes Passwort
+about-logins-vulnerable-alert-text2 = Dieses Passwort wurde auch für Zugangsdaten für eine andere Website verwendet und es ist wahrscheinlich von einem Datenleck dieser Website betroffen. Das Verwenden des gleichen Passworts gefährdet alle Benutzerkonten auf Websites mit dem gleichen Passwort.
 # Variables:
 #   $hostname (String) - The hostname of the website associated with the login, e.g. "example.com"
 about-logins-vulnerable-alert-link = { $hostname } aufrufen
