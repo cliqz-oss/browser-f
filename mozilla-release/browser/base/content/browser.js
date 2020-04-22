@@ -5400,7 +5400,8 @@ var XULBrowserWindow = {
     if (aWebProgress.isTopLevel) {
       if (
         (location == "about:blank" &&
-          BrowserUtils.checkEmptyPageOrigin(gBrowser.selectedBrowser)) ||
+          BrowserUtils.checkEmptyPageOrigin(gBrowser.selectedBrowser,
+            "", CliqzResources.isCliqzPage)) ||
         location == ""
       ) {
         // Second condition is for new tabs, otherwise

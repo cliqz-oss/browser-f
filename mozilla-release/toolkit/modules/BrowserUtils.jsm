@@ -70,18 +70,26 @@ var BrowserUtils = {
    * @param {nsIURI} [uri]
    *        The URI against which we're checking (the browser's currentURI
    *        if omitted).
+   * CLIQZ-SPECIAL: we pass that function in browser.js
+   * @param {function} [isCliqzPage] Optional.
+   *        The function which checks whether the url is a Cliqz freshtab.
+   *        If omitted then it will become empty function which always
+   *        returns undefined.
    *
    * @return {boolean} false if the page was opened by or is controlled by
    *         arbitrary web content, unless that content corresponds with the URI.
    *         true if the page is blank and controlled by a principal matching
    *         that URI (or the system principal if the principal has no URI)
    */
-  checkEmptyPageOrigin(browser, uri = browser.currentURI) {
+  checkEmptyPageOrigin(browser, uri = browser.currentURI, isCliqzPage) {
     // If another page opened this page with e.g. window.open, this page might
     // be controlled by its opener.
     if (browser.hasContentOpener) {
       return false;
     }
+
+    isCliqzPage = typeof isCliqzPage == "function" ? isCliqzPage : function() {};
+
     let contentPrincipal = browser.contentPrincipal;
     // Not all principals have URIs...
     if (contentPrincipal.URI) {
@@ -107,8 +115,7 @@ var BrowserUtils = {
         return true;
       }
       // CLIQZ-SPECIAL: DB-2359, compare two Cliqz uris ignoring their hash parameters.
-      if (CliqzResources.isCliqzPage(uri.spec) &&
-        CliqzResources.isCliqzPage(contentPrincipal.URI.spec)) {
+      if (isCliqzPage(uri.spec) && isCliqzPage(contentPrincipal.URI.spec)) {
           return contentPrincipal.URI.equalsExceptRef(uri);
       }
       return contentPrincipal.URI.equals(uri);
