@@ -126,6 +126,12 @@ const cliqz_shouldMakeCliqzEngineDefault = function() {
   }
 };
 
+const cliqz_lockDitributionPrefs = function() {
+  Services.prefs.lockPref("distribution.about");
+  Services.prefs.lockPref("distribution.id");
+  Services.prefs.lockPref("distribution.version");
+}
+
 /**
  * Fission-compatible JSWindowActor implementations.
  * Detailed documentation of these is in dom/docs/Fission.rst,
@@ -1330,6 +1336,8 @@ BrowserGlue.prototype = {
     }
 
     cliqz_shouldMakeCliqzEngineDefault();
+
+    cliqz_lockDitributionPrefs();
   },
 
   _checkForOldBuildUpdates() {
