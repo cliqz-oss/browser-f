@@ -578,7 +578,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(
     };
   }.bind(this);
 
-  CLIQZ-SPECIAL
+  // CLIQZ-SPECIAL
   let getAddons = async function() {
     try {
       const oldPath = OS.Path.join(sourceProfileDir.path, "extensions.json");
