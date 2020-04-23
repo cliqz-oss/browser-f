@@ -153,7 +153,10 @@ const AboutNewTab = {
   },
 
   get activityStreamEnabled() {
+    return false;
+#if 0
     return this._activityStreamEnabled;
+#endif
   },
 
   resetNewTabURL() {
@@ -171,6 +174,7 @@ const AboutNewTab = {
    * onBrowserReady - Continues the initialization of Activity Stream after browser is ready.
    */
   onBrowserReady() {
+#if 0
     return;
     if (this.activityStream && this.activityStream.initialized) {
       return;
@@ -182,6 +186,7 @@ const AboutNewTab = {
     } catch (e) {
       Cu.reportError(e);
     }
+#endif
   },
 
   /**
