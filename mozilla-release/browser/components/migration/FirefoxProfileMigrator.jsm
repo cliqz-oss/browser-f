@@ -578,18 +578,33 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(
     };
   }.bind(this);
 
+  // CLIQZ-SPECIAL
   let getAddons = async function() {
     try {
-      const oldPath = OS.Path.join(sourceProfileDir.path, "addons.json");
+      const oldPath = OS.Path.join(sourceProfileDir.path, "extensions.json");
       const exists = await OS.File.exists(oldPath);
       if (exists) {
         let raw = await OS.File.read(oldPath, {encoding: "utf-8"});
         let data = JSON.parse(raw);
         if (data && data.addons && data.addons.length > 0) {
+          // Allow import of addons only form profile
+          // this excludes built in addons, themes etc.
+          // Discard Addons which do not have a name (hypothetical, OCD for check)
+          let exportableAddons = data
+            .addons
+            .filter(a => a.location === "app-profile" && a.defaultLocale && a.defaultLocale.name)
+            .map(a => ({
+              id: a.id,
+              name: a.defaultLocale.name
+            }));
+          if (exportableAddons.length === 0) {
+            return false;
+          }
+
           return {
             name: "addons",
             type: MigrationUtils.resourceTypes.ADDONS,
-            data: data.addons,
+            data: exportableAddons,
             migrate: async aCallback => {
               try {
                 const addonsString = Services.prefs.getStringPref("browser.migrate.addons", "");
