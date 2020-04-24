@@ -1359,7 +1359,6 @@ pref("browser.newtabpage.activity-stream.discoverystream.personalization.modelKe
 pref("trailhead.firstrun.branches", "join-dynamic");
 
 // Separate about welcome
-<<<<<<< HEAD
 pref("browser.aboutwelcome.enabled", false); // ALWAYS FALSE
 // CLIQZ-SPECIAL: always make sure this remains false,
 // we do not want separate welcome page
@@ -1369,14 +1368,6 @@ pref("browser.aboutwelcome.enabled", false); // ALWAYS FALSE
 pref("browser.aboutwelcome.temp.testExperiment.slug", "");
 pref("browser.aboutwelcome.temp.testExperiment.branch", "control");
 #endif
-||||||| merged common ancestors
-pref("browser.aboutwelcome.enabled", true);
-// Temporary utility to unblock testing on about:welcome experiment variations
-pref("browser.aboutwelcome.temp.testExperiment.slug", "");
-pref("browser.aboutwelcome.temp.testExperiment.branch", "control");
-=======
-pref("browser.aboutwelcome.enabled", true);
->>>>>>> origin/upstream-betas
 // See Console.jsm LOG_LEVELS for all possible values
 pref("browser.aboutwelcome.log", "warn");
 
