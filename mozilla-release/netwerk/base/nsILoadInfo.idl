@@ -407,7 +407,6 @@ interface nsILoadInfo : nsISupports
    */
   [infallible] readonly attribute unsigned long securityMode;
 
-
   /**
    * This flag is used for any browsing context where we should not sniff
    * the content type. E.g if an iframe has the XCTO nosniff header, then
@@ -415,6 +414,39 @@ interface nsILoadInfo : nsISupports
    * context.
    */
   [infallible] attribute boolean skipContentSniffing;
+
+  /**
+   * (default) If this flag is set, it has not yet been determined if the
+   * HTTPS-Only mode will upgrade the request.
+   */
+  const unsigned long HTTPS_ONLY_UNINITIALIZED = (1 << 0);
+
+  /**
+   * Indicates that the request will get upgraded, and the HTTPS-Only
+   * StreamListener got registered.
+   */
+  const unsigned long HTTPS_ONLY_UPGRADED_LISTENER_NOT_REGISTERED = (1 << 1);
+
+  /**
+   * Indicates that this is the first time the request gets upgraded, and thus
+   * the HTTPS-Only StreamListener hasn't been registered yet. Even though there
+   * might be multiple channels per request that have to be upgraded (e.g.,
+   * because of redirects), the StreamListener only has to be attached to one
+   * channel.
+   */
+  const unsigned long HTTPS_ONLY_UPGRADED_LISTENER_REGISTERED = (1 << 2);
+
+  /**
+   * This flag can be manually set if the HTTPS-Only mode should exempt the
+   * request and not upgrade it. (e.g in the case of OCSP.
+   */
+  const unsigned long HTTPS_ONLY_EXEMPT = (1 << 3);
+
+  /**
+   * Upgrade state of HTTPS-Only Mode. The flag HTTPS_ONLY_EXEMPT can get
+   * set on requests that should be excempt from an upgrade.
+   */
+  [infallible] attribute unsigned long httpsOnlyStatus;
 
   /**
    * True if this request is embedded in a context that can't be third-party
@@ -437,6 +469,12 @@ interface nsILoadInfo : nsISupports
    * It cannot be null.
    */
   attribute nsICookieJarSettings cookieJarSettings;
+
+  /**
+   * True if the loading document has the storage permission. This value would
+   * be set during opening the channel.
+   */
+  [infallible] attribute boolean hasStoragePermission;
 
   /**
    * If forceInheritPrincipal is true, the data coming from the channel should
@@ -552,8 +590,10 @@ interface nsILoadInfo : nsISupports
    * _INTERNAL_ values.  Please use the contentPolicyType attribute above
    * for that purpose.
    */
-  [noscript, notxpcom]
-  nsContentPolicyType internalContentPolicyType();
+  [noscript, notxpcom, nostdcall, binaryname(InternalContentPolicyType)]
+  nsContentPolicyType binaryInternalContentPolicyType();
+
+  readonly attribute nsContentPolicyType internalContentPolicyType;
 
   /**
    * Returns true if document or any of the documents ancestors

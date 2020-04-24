@@ -55,8 +55,8 @@ class IonCacheIRCompiler;
   _(GuardAndGetNumberFromString)          \
   _(GuardAndGetNumberFromBoolean)         \
   _(GuardAndGetIndexFromString)           \
+  _(GuardAndGetInt32FromNumber)           \
   _(GuardIndexIsNonNegative)              \
-  _(GuardIndexGreaterThanDenseCapacity)   \
   _(GuardIndexGreaterThanArrayLength)     \
   _(GuardIndexIsValidUpdateOrAdd)         \
   _(GuardIndexGreaterThanDenseInitLength) \

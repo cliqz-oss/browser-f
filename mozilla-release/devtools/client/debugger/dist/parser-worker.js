@@ -7080,12 +7080,12 @@ const sourceOptions = {
   generated: {
     sourceType: "unambiguous",
     tokens: true,
-    plugins: ["objectRestSpread"]
+    plugins: ["objectRestSpread", "optionalChaining", "nullishCoalescingOperator"]
   },
   original: {
     sourceType: "unambiguous",
     tokens: true,
-    plugins: ["jsx", "flow", "doExpressions", "decorators-legacy", "objectRestSpread", "classProperties", "exportDefaultFrom", "exportNamespaceFrom", "asyncGenerators", "functionBind", "functionSent", "dynamicImport", "react-jsx"]
+    plugins: ["jsx", "flow", "doExpressions", "optionalChaining", "nullishCoalescingOperator", "decorators-legacy", "objectRestSpread", "classProperties", "exportDefaultFrom", "exportNamespaceFrom", "asyncGenerators", "functionBind", "functionSent", "dynamicImport", "react-jsx"]
   }
 };
 
@@ -7113,7 +7113,8 @@ function htmlParser({
   line
 }) {
   return parse(source, {
-    startLine: line
+    startLine: line,
+    ...sourceOptions.generated
   });
 }
 
@@ -9183,7 +9184,11 @@ function getSpecifiers(specifiers) {
     return [];
   }
 
-  return specifiers.map(specifier => specifier.local && specifier.local.name);
+  return specifiers.map(specifier => {
+    var _specifier$local;
+
+    return (_specifier$local = specifier.local) === null || _specifier$local === void 0 ? void 0 : _specifier$local.name;
+  });
 }
 
 function isComputedExpression(expression) {
@@ -9226,10 +9231,14 @@ function getVariables(dec) {
     // e.g. const [{a, b }] = 2
 
 
-    return dec.id.elements.filter(element => element).map(element => ({
-      name: t.isAssignmentPattern(element) ? element.left.name : element.name || element.argument && element.argument.name,
-      location: element.loc
-    })).filter(({
+    return dec.id.elements.filter(element => element).map(element => {
+      var _element$argument;
+
+      return {
+        name: t.isAssignmentPattern(element) ? element.left.name : element.name || ((_element$argument = element.argument) === null || _element$argument === void 0 ? void 0 : _element$argument.name),
+        location: element.loc
+      };
+    }).filter(({
       name
     }) => name);
   }
@@ -15643,7 +15652,7 @@ function extractSymbol(path, symbols, state) {
     });
   }
 
-  if (t.isMemberExpression(path)) {
+  if (t.isMemberExpression(path) || t.isOptionalMemberExpression(path)) {
     const {
       start,
       end
@@ -15676,7 +15685,9 @@ function extractSymbol(path, symbols, state) {
   }
 
   if (t.isCallExpression(path)) {
-    const callee = path.node.callee;
+    const {
+      callee
+    } = path.node;
     const args = path.node.arguments;
 
     if (t.isMemberExpression(callee)) {
@@ -15745,7 +15756,9 @@ function extractSymbol(path, symbols, state) {
     }
 
     if (path.node.typeAnnotation) {
-      const column = path.node.typeAnnotation.loc.start.column;
+      const {
+        column
+      } = path.node.typeAnnotation.loc.start;
       end = { ...end,
         column
       };
@@ -15823,11 +15836,14 @@ function extractSymbols(sourceId) {
 }
 
 function extendSnippet(name, expression, path, prevPath) {
-  const computed = path && path.node.computed;
-  const prevComputed = prevPath && prevPath.node.computed;
+  var _path$node$property, _path$node$property$e;
+
+  const computed = path === null || path === void 0 ? void 0 : path.node.computed;
+  const optional = path === null || path === void 0 ? void 0 : path.node.optional;
+  const prevComputed = prevPath === null || prevPath === void 0 ? void 0 : prevPath.node.computed;
   const prevArray = t.isArrayExpression(prevPath);
   const array = t.isArrayExpression(path);
-  const value = path && path.node.property && path.node.property.extra && path.node.property.extra.raw || "";
+  const value = (path === null || path === void 0 ? void 0 : (_path$node$property = path.node.property) === null || _path$node$property === void 0 ? void 0 : (_path$node$property$e = _path$node$property.extra) === null || _path$node$property$e === void 0 ? void 0 : _path$node$property$e.raw) || "";
 
   if (expression === "") {
     if (computed) {
@@ -15853,15 +15869,19 @@ function extendSnippet(name, expression, path, prevPath) {
     return `${name}${expression}`;
   }
 
+  if (optional) {
+    return `${name}?.${expression}`;
+  }
+
   return `${name}.${expression}`;
 }
 
-function getMemberSnippet(node, expression = "") {
-  if (t.isMemberExpression(node)) {
+function getMemberSnippet(node, expression = "", optional = false) {
+  if (t.isMemberExpression(node) || t.isOptionalMemberExpression(node)) {
     const name = node.property.name;
     const snippet = getMemberSnippet(node.object, extendSnippet(name, expression, {
       node
-    }));
+    }), node.optional);
     return snippet;
   }
 
@@ -15878,6 +15898,10 @@ function getMemberSnippet(node, expression = "") {
       return `${node.name}${expression}`;
     }
 
+    if (optional) {
+      return `${node.name}?.${expression}`;
+    }
+
     return `${node.name}.${expression}`;
   }
 
@@ -15889,7 +15913,9 @@ function getObjectSnippet(path, prevPath, expression = "") {
     return expression;
   }
 
-  const name = path.node.key.name;
+  const {
+    name
+  } = path.node.key;
   const extendedExpression = extendSnippet(name, expression, path, prevPath);
   const nextPrevPath = path;
   const nextPath = path.parentPath && path.parentPath.parentPath;
@@ -15915,7 +15941,9 @@ function getSnippet(path, prevPath, expression = "") {
 
   if (t.isVariableDeclaration(path)) {
     const node = path.node.declarations[0];
-    const name = node.id.name;
+    const {
+      name
+    } = node.id;
     return extendSnippet(name, expression, path, prevPath);
   }
 
@@ -15950,11 +15978,11 @@ function getSnippet(path, prevPath, expression = "") {
   }
 
   if (t.isObjectExpression(path)) {
-    const parentPath = prevPath && prevPath.parentPath;
+    const parentPath = prevPath === null || prevPath === void 0 ? void 0 : prevPath.parentPath;
     return getObjectSnippet(parentPath, prevPath, expression);
   }
 
-  if (t.isMemberExpression(path)) {
+  if (t.isMemberExpression(path) || t.isOptionalMemberExpression(path)) {
     return getMemberSnippet(path.node, expression);
   }
 
@@ -17809,7 +17837,9 @@ function getFunctionName(node, parent) {
   }) || t.isClassMethod(node, {
     computed: false
   })) {
-    const key = node.key;
+    const {
+      key
+    } = node;
 
     if (t.isIdentifier(key)) {
       return key.name;
@@ -17833,7 +17863,9 @@ function getFunctionName(node, parent) {
   t.isClassProperty(parent, {
     value: node
   }) && !parent.computed) {
-    const key = parent.key;
+    const {
+      key
+    } = parent;
 
     if (t.isIdentifier(key)) {
       return key.name;
@@ -41644,7 +41676,9 @@ function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj;
 // createClass or extend
 function fromCallExpression(callExpression) {
   const whitelist = ["extend", "createClass"];
-  const callee = callExpression.node.callee;
+  const {
+    callee
+  } = callExpression.node;
 
   if (!callee) {
     return null;
@@ -41668,7 +41702,9 @@ function fromCallExpression(callExpression) {
     return null;
   }
 
-  const left = assignment.node.left;
+  const {
+    left
+  } = assignment.node;
 
   if (left.name) {
     return name;
@@ -41684,7 +41720,9 @@ function fromCallExpression(callExpression) {
 
 
 function fromPrototype(assignment) {
-  const left = assignment.node.left;
+  const {
+    left
+  } = assignment.node;
 
   if (!left) {
     return null;
@@ -41973,7 +42011,9 @@ const scopeCollectionVisitor = {
         refs: []
       };
     } else if (t.isFunction(node)) {
-      let scope = state.scope;
+      let {
+        scope
+      } = state;
 
       if (t.isFunctionExpression(node) && isNode(node.id, "Identifier")) {
         scope = pushTempScope(state, "block", "Function Expression", {
@@ -42371,8 +42411,10 @@ function buildMetaBindings(sourceId, node, ancestors, parentIndex = ancestors.le
   const grandparent = ancestors[parentIndex - 1].node; // Consider "0, foo" to be equivalent to "foo".
 
   if (t.isSequenceExpression(parent) && parent.expressions.length === 2 && t.isNumericLiteral(parent.expressions[0]) && parent.expressions[1] === node) {
-    let start = parent.loc.start;
-    let end = parent.loc.end;
+    let {
+      start,
+      end
+    } = parent.loc;
 
     if (t.isCallExpression(grandparent, {
       callee: parent
@@ -42490,8 +42532,6 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = void 0;
 
-var _get = _interopRequireDefault(__webpack_require__(161));
-
 var _findIndex = _interopRequireDefault(__webpack_require__(354));
 
 var _findLastIndex = _interopRequireDefault(__webpack_require__(371));
@@ -42523,11 +42563,13 @@ function findSymbols(source) {
 
 
 function getLocation(func) {
+  var _func$identifier, _func$identifier$loc;
+
   const location = { ...func.location
   }; // if the function has an identifier, start the block after it so the
   // identifier is included in the "scope" of its parent
 
-  const identifierEnd = (0, _get.default)(func, "identifier.loc.end");
+  const identifierEnd = func === null || func === void 0 ? void 0 : (_func$identifier = func.identifier) === null || _func$identifier === void 0 ? void 0 : (_func$identifier$loc = _func$identifier.loc) === null || _func$identifier$loc === void 0 ? void 0 : _func$identifier$loc.end;
 
   if (identifierEnd) {
     location.start = identifierEnd;

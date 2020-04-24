@@ -10,6 +10,7 @@
 #include "base/shared_memory.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/dom/BrowserBridgeChild.h"
 #include "mozilla/dom/PBrowserOrId.h"
 #include "mozilla/dom/PContentChild.h"
@@ -19,8 +20,8 @@
 #include "mozilla/ipc/InputStreamUtils.h"
 #include "mozilla/ipc/Shmem.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
-#include "nsAutoPtr.h"
 #include "nsHashKeys.h"
+#include "nsIContentChild.h"
 #include "nsIObserver.h"
 #include "nsTHashtable.h"
 #include "nsStringFwd.h"
@@ -59,10 +60,6 @@ using mozilla::loader::PScriptCacheChild;
 bool IsDevelopmentBuild();
 #endif /* !XP_WIN */
 
-namespace ipc {
-class URIParams;
-}  // namespace ipc
-
 namespace dom {
 
 namespace ipc {
@@ -79,6 +76,7 @@ enum class MediaControlKeysEvent : uint32_t;
 
 class ContentChild final
     : public PContentChild,
+      public nsIContentChild,
       public nsIWindowProvider,
       public CPOWManagerGetter,
       public mozilla::ipc::IShmemAllocator,
@@ -86,11 +84,11 @@ class ContentChild final
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
   typedef mozilla::ipc::FileDescriptor FileDescriptor;
   typedef mozilla::ipc::PFileDescriptorSetChild PFileDescriptorSetChild;
-  typedef mozilla::ipc::URIParams URIParams;
 
   friend class PContentChild;
 
  public:
+  NS_DECL_NSICONTENTCHILD
   NS_DECL_NSIWINDOWPROVIDER
 
   ContentChild();
@@ -107,13 +105,14 @@ class ContentChild final
     nsCString ID;
     nsCString vendor;
     nsCString sourceURL;
+    nsCString updateURL;
   };
 
   nsresult ProvideWindowCommon(BrowserChild* aTabOpener,
                                mozIDOMWindowProxy* aParent, bool aIframeMoz,
                                uint32_t aChromeFlags, bool aCalledFromJS,
-                               bool aPositionSpecified, bool aSizeSpecified,
-                               nsIURI* aURI, const nsAString& aName,
+                               bool aWidthSpecified, nsIURI* aURI,
+                               const nsAString& aName,
                                const nsACString& aFeatures, bool aForceNoOpener,
                                bool aForceNoReferrer,
                                nsDocShellLoadState* aLoadState,
@@ -260,12 +259,6 @@ class ContentChild final
   PParentToChildStreamChild* AllocPParentToChildStreamChild();
   bool DeallocPParentToChildStreamChild(PParentToChildStreamChild*);
 
-  PPSMContentDownloaderChild* AllocPPSMContentDownloaderChild(
-      const uint32_t& aCertType);
-
-  bool DeallocPPSMContentDownloaderChild(
-      PPSMContentDownloaderChild* aDownloader);
-
   PMediaChild* AllocPMediaChild();
 
   bool DeallocPMediaChild(PMediaChild* aActor);
@@ -397,7 +390,7 @@ class ContentChild final
   mozilla::ipc::IPCResult RecvAppInfo(
       const nsCString& version, const nsCString& buildID, const nsCString& name,
       const nsCString& UAName, const nsCString& ID, const nsCString& vendor,
-      const nsCString& sourceURL);
+      const nsCString& sourceURL, const nsCString& updateURL);
 
   mozilla::ipc::IPCResult RecvRemoteType(const nsString& aRemoteType);
 
@@ -423,10 +416,10 @@ class ContentChild final
 
   mozilla::ipc::IPCResult RecvMinimizeMemoryUsage();
 
-  mozilla::ipc::IPCResult RecvLoadAndRegisterSheet(const URIParams& aURI,
+  mozilla::ipc::IPCResult RecvLoadAndRegisterSheet(nsIURI* aURI,
                                                    const uint32_t& aType);
 
-  mozilla::ipc::IPCResult RecvUnregisterSheet(const URIParams& aURI,
+  mozilla::ipc::IPCResult RecvUnregisterSheet(nsIURI* aURI,
                                               const uint32_t& aType);
 
   void AddIdleObserver(nsIObserver* aObserver, uint32_t aIdleTimeInS);
@@ -441,7 +434,7 @@ class ContentChild final
 
   mozilla::ipc::IPCResult RecvDomainSetChanged(const uint32_t& aSetType,
                                                const uint32_t& aChangeType,
-                                               const Maybe<URIParams>& aDomain);
+                                               nsIURI* aDomain);
 
   mozilla::ipc::IPCResult RecvShutdown();
 
@@ -529,11 +522,6 @@ class ContentChild final
   bool DeallocPContentPermissionRequestChild(
       PContentPermissionRequestChild* actor);
 
-  // Windows specific - set up audio session
-  mozilla::ipc::IPCResult RecvSetAudioSessionData(const nsID& aId,
-                                                  const nsString& aDisplayName,
-                                                  const nsString& aIconPath);
-
   // GetFiles for WebKit/Blink FileSystem API and Directory API must run on the
   // parent process.
   void CreateGetFilesRequest(const nsAString& aDirectoryPath,
@@ -608,11 +596,10 @@ class ContentChild final
 
   // PURLClassifierLocalChild
   PURLClassifierLocalChild* AllocPURLClassifierLocalChild(
-      const URIParams& aUri,
-      const nsTArray<IPCURLClassifierFeature>& aFeatures);
+      nsIURI* aUri, const nsTArray<IPCURLClassifierFeature>& aFeatures);
   bool DeallocPURLClassifierLocalChild(PURLClassifierLocalChild* aActor);
 
-  PLoginReputationChild* AllocPLoginReputationChild(const URIParams& aUri);
+  PLoginReputationChild* AllocPLoginReputationChild(nsIURI* aUri);
 
   bool DeallocPLoginReputationChild(PLoginReputationChild* aActor);
 
@@ -622,7 +609,8 @@ class ContentChild final
       PSessionStorageObserverChild* aActor);
 
   PSHEntryChild* AllocPSHEntryChild(PSHistoryChild* aSHistory,
-                                    const PSHEntryOrSharedID& aEntryOrSharedID);
+                                    uint64_t aSharedID);
+
   void DeallocPSHEntryChild(PSHEntryChild*);
 
   PSHistoryChild* AllocPSHistoryChild(
@@ -651,15 +639,6 @@ class ContentChild final
   mozilla::ipc::IPCResult RecvSetPluginList(
       const uint32_t& aPluginEpoch, nsTArray<PluginTag>&& aPluginTags,
       nsTArray<FakePluginTag>&& aFakePluginTags);
-
-  PClientOpenWindowOpChild* AllocPClientOpenWindowOpChild(
-      const ClientOpenWindowArgs& aArgs);
-
-  mozilla::ipc::IPCResult RecvPClientOpenWindowOpConstructor(
-      PClientOpenWindowOpChild* aActor,
-      const ClientOpenWindowArgs& aArgs) override;
-
-  bool DeallocPClientOpenWindowOpChild(PClientOpenWindowOpChild* aActor);
 
   mozilla::ipc::IPCResult RecvSaveRecording(const FileDescriptor& aFile);
 
@@ -695,6 +674,10 @@ class ContentChild final
       uint64_t aTopContextId, const nsACString& aOriginAttrs,
       const nsACString& aOriginKey, const nsTArray<KeyValuePair>& aDefaultData,
       const nsTArray<KeyValuePair>& aSessionData);
+
+  mozilla::ipc::IPCResult RecvUpdateSHEntriesInDocShell(
+      CrossProcessSHEntry* aOldEntry, CrossProcessSHEntry* aNewEntry,
+      const MaybeDiscarded<BrowsingContext>& aContext);
 
 #ifdef NIGHTLY_BUILD
   // Fetch the current number of pending input events.
@@ -775,6 +758,8 @@ class ContentChild final
   mozilla::ipc::IPCResult RecvSetupFocusedAndActive(
       const MaybeDiscarded<BrowsingContext>& aFocusedBrowsingContext,
       const MaybeDiscarded<BrowsingContext>& aActiveBrowsingContext);
+  mozilla::ipc::IPCResult RecvMaybeExitFullscreen(
+      const MaybeDiscarded<BrowsingContext>& aContext);
 
   mozilla::ipc::IPCResult RecvWindowPostMessage(
       const MaybeDiscarded<BrowsingContext>& aContext,
@@ -820,7 +805,7 @@ class ContentChild final
   virtual PContentChild::Result OnMessageReceived(const Message& aMsg,
                                                   Message*& aReply) override;
 
-  nsTArray<nsAutoPtr<AlertObserver>> mAlertObservers;
+  nsTArray<mozilla::UniquePtr<AlertObserver>> mAlertObservers;
   RefPtr<ConsoleListener> mConsoleListener;
 
   nsTHashtable<nsPtrHashKey<nsIObserver>> mIdleObservers;
@@ -906,6 +891,10 @@ class ContentChild final
 
   DISALLOW_EVIL_CONSTRUCTORS(ContentChild);
 };
+
+inline nsISupports* ToSupports(mozilla::dom::ContentChild* aContentChild) {
+  return static_cast<nsIContentChild*>(aContentChild);
+}
 
 }  // namespace dom
 }  // namespace mozilla

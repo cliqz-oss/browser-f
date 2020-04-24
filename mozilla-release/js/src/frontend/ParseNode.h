@@ -7,18 +7,20 @@
 #ifndef frontend_ParseNode_h
 #define frontend_ParseNode_h
 
+#include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
-#include "mozilla/Variant.h"
 
 #include <iterator>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "frontend/Stencil.h"
 #include "frontend/Token.h"
-#include "util/Text.h"
+#include "js/RootingAPI.h"
 #include "vm/BytecodeUtil.h"
-#include "vm/JSContext.h"
-#include "vm/Printer.h"
 #include "vm/Scope.h"
+#include "vm/ScopeKind.h"
+#include "vm/StringType.h"
 
 // [SMDOC] ParseNode tree lifetime information
 //
@@ -43,7 +45,17 @@
 // - Once the parser is deallocated, the `JSAtom` instances MAY be
 //   garbage-collected.
 
+struct JSContext;
+
+namespace JS {
+class BigInt;
+}
+
 namespace js {
+
+class GenericPrinter;
+class LifoAlloc;
+class RegExpObject;
 
 namespace frontend {
 
@@ -52,8 +64,6 @@ struct CompilationInfo;
 class ParserSharedBase;
 class FullParseHandler;
 class FunctionBox;
-class ObjectBox;
-class BigIntBox;
 
 #define FOR_EACH_PARSE_NODE_KIND(F)                              \
   F(EmptyStmt, NullaryNode)                                      \
@@ -367,8 +377,6 @@ inline bool IsTypeofKind(ParseNodeKind kind) {
  *   kid: returned expression, or null if none
  * ExpressionStmt (UnaryNode)
  *   kid: expr
- *   prologue: true if Directive Prologue member in original source, not
- *             introduced via constant folding or other tree rewriting
  * EmptyStmt (NullaryNode)
  *   (no fields)
  * LabelStmt (LabeledStatement)
@@ -530,7 +538,8 @@ inline bool IsTypeofKind(ParseNodeKind kind) {
  * NumberExpr (NumericLiteral)
  *   value: double value of numeric literal
  * BigIntExpr (BigIntLiteral)
- *   box: BigIntBox holding BigInt* value
+ *   compilationInfo: script compilation struct
+ *   index: index into the script compilation's |bigIntData| vector
  * TrueExpr, FalseExpr (BooleanLiteral)
  * NullExpr (NullLiteral)
  * RawUndefinedExpr (RawUndefinedLiteral)
@@ -873,11 +882,10 @@ inline bool ParseNode::isName(PropertyName* name) const {
 
 class UnaryNode : public ParseNode {
   ParseNode* kid_;
-  bool prologue; /* directive prologue member */
 
  public:
   UnaryNode(ParseNodeKind kind, const TokenPos& pos, ParseNode* kid)
-      : ParseNode(kind, pos), kid_(kid), prologue(false) {
+      : ParseNode(kind, pos), kid_(kid) {
     MOZ_ASSERT(is<UnaryNode>());
   }
 
@@ -902,11 +910,6 @@ class UnaryNode : public ParseNode {
 #endif
 
   ParseNode* kid() const { return kid_; }
-
-  /* Return true if this node appears in a Directive Prologue. */
-  bool isDirectivePrologueMember() const { return prologue; }
-
-  void setIsDirectivePrologueMember() { prologue = true; }
 
   /*
    * Non-null if this is a statement node which could be a member of a
@@ -1580,9 +1583,8 @@ class BigIntLiteral : public ParseNode {
 
   BigIntIndex index() { return index_; }
 
-  // Get the contained BigIntValue, or parse it from the creation data
-  // Can be used when deferred allocation mode is enabled.
-  BigInt* getOrCreate(JSContext* cx);
+  // Create a BigInt value of this BigInt literal.
+  BigInt* create(JSContext* cx);
 
   // Return the decimal string representation of this BigInt literal.
   JSAtom* toAtom(JSContext* cx);
@@ -1863,21 +1865,14 @@ class BooleanLiteral : public NullaryNode {
 };
 
 class RegExpLiteral : public ParseNode {
-  mozilla::Variant<ObjectBox*, RegExpIndex> data_;
+  RegExpIndex index_;
 
  public:
-  RegExpLiteral(ObjectBox* reobj, const TokenPos& pos)
-      : ParseNode(ParseNodeKind::RegExpExpr, pos), data_(reobj) {}
-
   RegExpLiteral(RegExpIndex dataIndex, const TokenPos& pos)
-      : ParseNode(ParseNodeKind::RegExpExpr, pos), data_(dataIndex) {}
+      : ParseNode(ParseNodeKind::RegExpExpr, pos), index_(dataIndex) {}
 
-  bool isDeferred() const { return data_.is<RegExpIndex>(); }
-
-  ObjectBox* objbox() const { return data_.as<ObjectBox*>(); }
-
-  RegExpObject* getOrCreate(JSContext* cx,
-                            CompilationInfo& compilationInfo) const;
+  // Create a RegExp object of this RegExp literal.
+  RegExpObject* create(JSContext* cx, CompilationInfo& compilationInfo) const;
 
 #ifdef DEBUG
   void dumpImpl(GenericPrinter& out, int indent);
@@ -1894,7 +1889,7 @@ class RegExpLiteral : public ParseNode {
     return true;
   }
 
-  RegExpIndex index() { return data_.as<RegExpIndex>(); }
+  RegExpIndex index() { return index_; }
 };
 
 class PropertyAccessBase : public BinaryNode {
@@ -2285,64 +2280,6 @@ inline bool ParseNode::isConstant() {
       return false;
   }
 }
-
-class TraceListNode {
-  friend class ParserSharedBase;
-
- protected:
-  enum NodeType { Object, BigInt, Function, LastNodeType };
-
-  js::gc::Cell* gcThing;
-  TraceListNode* traceLink;
-  NodeType type_;
-
-  TraceListNode(js::gc::Cell* gcThing, TraceListNode* traceLink, NodeType type);
-
-  bool isBigIntBox() const { return type_ == NodeType::BigInt; }
-  bool isObjectBox() const {
-    return type_ == NodeType::Object || type_ == NodeType::Function;
-  }
-
-  BigIntBox* asBigIntBox();
-  ObjectBox* asObjectBox();
-
-  virtual void trace(JSTracer* trc);
-
- public:
-  static void TraceList(JSTracer* trc, TraceListNode* listHead);
-};
-
-class BigIntBox : public TraceListNode {
- public:
-  BigIntBox(JS::BigInt* bi, TraceListNode* link);
-  JS::BigInt* value() const { return gcThing->as<JS::BigInt>(); }
-};
-
-class ObjectBox : public TraceListNode {
- protected:
-  friend struct GCThingList;
-  ObjectBox* emitLink;
-
-  ObjectBox(JSObject* obj, TraceListNode* link, TraceListNode::NodeType type);
-
- public:
-  ObjectBox(JSObject* obj, TraceListNode* link)
-      : ObjectBox(obj, link, TraceListNode::NodeType::Object) {}
-
-  bool hasObject() const { return gcThing != nullptr; }
-
-  JSObject* object() const { return gcThing->as<JSObject>(); }
-
-  bool isFunctionBox() const { return type_ == NodeType::Function; }
-  FunctionBox* asFunctionBox();
-};
-
-enum ParseReportKind {
-  ParseError,
-  ParseWarning,
-  ParseExtraWarning,
-  ParseStrictError
-};
 
 static inline ParseNode* FunctionFormalParametersList(ParseNode* fn,
                                                       unsigned* numFormals) {

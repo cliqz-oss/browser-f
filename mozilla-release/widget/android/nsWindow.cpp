@@ -9,6 +9,7 @@
 #include <android/native_window_jni.h>
 #include <math.h>
 #include <queue>
+#include <type_traits>
 #include <unistd.h>
 
 #include "mozilla/MiscEvents.h"
@@ -18,7 +19,6 @@
 #include "mozilla/StaticPrefs_android.h"
 #include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/TouchEvents.h"
-#include "mozilla/TypeTraits.h"
 #include "mozilla/Unused.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/WheelHandlingHelper.h"  // for WheelDeltaAdjustmentStrategy
@@ -172,17 +172,15 @@ class nsWindow::WindowEvent : public Runnable {
 
 namespace {
 template <class Instance, class Impl>
-typename EnableIf<jni::detail::NativePtrPicker<Impl>::value ==
-                      jni::detail::REFPTR,
-                  void>::Type
+std::enable_if_t<
+    jni::detail::NativePtrPicker<Impl>::value == jni::detail::REFPTR, void>
 CallAttachNative(Instance aInstance, Impl* aImpl) {
   Impl::AttachNative(aInstance, RefPtr<Impl>(aImpl).get());
 }
 
 template <class Instance, class Impl>
-typename EnableIf<jni::detail::NativePtrPicker<Impl>::value ==
-                      jni::detail::OWNING,
-                  void>::Type
+std::enable_if_t<
+    jni::detail::NativePtrPicker<Impl>::value == jni::detail::OWNING, void>
 CallAttachNative(Instance aInstance, Impl* aImpl) {
   Impl::AttachNative(aInstance, UniquePtr<Impl>(aImpl));
 }

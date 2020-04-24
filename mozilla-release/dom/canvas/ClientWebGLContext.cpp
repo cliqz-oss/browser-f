@@ -670,7 +670,7 @@ ClientWebGLContext::SetDimensions(const int32_t signedWidth,
 
   if (mNotLost) {
     auto& state = State();
-    state.mDrawingBufferSize = {};
+    state.mDrawingBufferSize = Nothing();
 
     Run<RPROC(Resize)>(size);
 
@@ -3181,6 +3181,14 @@ void ClientWebGLContext::RenderbufferStorageMultisample(GLenum target,
     return;
   }
 
+  if (internalFormat == LOCAL_GL_DEPTH_STENCIL && samples > 0) {
+    // While our backend supports it trivially, the spec forbids it.
+    EnqueueError(LOCAL_GL_INVALID_OPERATION,
+                 "WebGL 1's DEPTH_STENCIL format may not be multisampled. Use "
+                 "DEPTH24_STENCIL8 when `samples > 0`.");
+    return;
+  }
+
   Run<RPROC(RenderbufferStorageMultisample)>(
       rb->mId, static_cast<uint32_t>(samples), internalFormat,
       static_cast<uint32_t>(width), static_cast<uint32_t>(height));
@@ -4650,7 +4658,7 @@ void ClientWebGLContext::LinkProgram(WebGLProgramJS& prog) const {
   }
 
   prog.mResult = std::make_shared<webgl::LinkResult>();
-  prog.mUniformLocByName = {};
+  prog.mUniformLocByName = Nothing();
   prog.mUniformBlockBindings = {};
   Run<RPROC(LinkProgram)>(prog.mId);
 }

@@ -11,6 +11,7 @@
 #define nsTHashtable_h__
 
 #include <new>
+#include <type_traits>
 #include <utility>
 
 #include "PLDHashTable.h"
@@ -19,7 +20,6 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/OperatorNewExtensions.h"
 #include "mozilla/PodOperations.h"
-#include "mozilla/TypeTraits.h"
 #include "mozilla/fallible.h"
 #include "nsPointerHashKeys.h"
 
@@ -78,7 +78,7 @@
 template <class EntryType>
 class MOZ_NEEDS_NO_VTABLE_TYPE nsTHashtable {
   typedef mozilla::fallible_t fallible_t;
-  static_assert(mozilla::IsPointer<typename EntryType::KeyTypePointer>::value,
+  static_assert(std::is_pointer_v<typename EntryType::KeyTypePointer>,
                 "KeyTypePointer should be a pointer");
 
  public:
@@ -158,8 +158,7 @@ class MOZ_NEEDS_NO_VTABLE_TYPE nsTHashtable {
    * @return    pointer to the entry retrieved; nullptr only if memory can't
    *            be allocated
    */
-  MOZ_MUST_USE
-  EntryType* PutEntry(KeyType aKey, const fallible_t&) {
+  [[nodiscard]] EntryType* PutEntry(KeyType aKey, const fallible_t&) {
     return static_cast<EntryType*>(
         mTable.Add(EntryType::KeyToPointer(aKey), mozilla::fallible));
   }
@@ -173,8 +172,8 @@ class MOZ_NEEDS_NO_VTABLE_TYPE nsTHashtable {
    * @return    true if a new entry was created, or false if an existing entry
    *            was found
    */
-  MOZ_MUST_USE
-  bool EnsureInserted(KeyType aKey, EntryType** aEntry = nullptr) {
+  [[nodiscard]] bool EnsureInserted(KeyType aKey,
+                                    EntryType** aEntry = nullptr) {
     auto oldCount = Count();
     EntryType* entry = PutEntry(aKey);
     if (aEntry) {
@@ -523,14 +522,12 @@ class nsTHashtable<nsPtrHashKey<T>>
     return reinterpret_cast<EntryType*>(Base::PutEntry(aKey));
   }
 
-  MOZ_MUST_USE
-  EntryType* PutEntry(T* aKey, const mozilla::fallible_t&) {
+  [[nodiscard]] EntryType* PutEntry(T* aKey, const mozilla::fallible_t&) {
     return reinterpret_cast<EntryType*>(
         Base::PutEntry(aKey, mozilla::fallible));
   }
 
-  MOZ_MUST_USE
-  bool EnsureInserted(T* aKey, EntryType** aEntry = nullptr) {
+  [[nodiscard]] bool EnsureInserted(T* aKey, EntryType** aEntry = nullptr) {
     return Base::EnsureInserted(
         aKey, reinterpret_cast<::detail::VoidPtrHashKey**>(aEntry));
   }

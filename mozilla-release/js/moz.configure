@@ -37,8 +37,6 @@ include('../build/moz.configure/rust.configure',
         when='--enable-compile-environment')
 include('../build/moz.configure/bindgen.configure',
         when='--enable-compile-environment')
-include('../build/moz.configure/lto-pgo.configure',
-        when='--enable-compile-environment')
 
 @depends('JS_STANDALONE')
 def js_standalone(value):
@@ -474,6 +472,9 @@ set_define('MOZ_RUST_SIMD', rust_simd)
 
 
 # Experimental support for wasm code generation with Cranelift
+#
+# Note, you may have to disable features not supported by Cranelift
+# (multi-value, threads) to make Cranelift actually available
 # ==============================================================
 
 js_option('--enable-cranelift',
@@ -590,6 +591,7 @@ set_define('WASM_PRIVATE_REFTYPES', depends_if('--enable-wasm-private-reftypes')
 
 
 # Support for the WebAssembly multi-value proposal.
+# Do not remove until Cranelift supports multi-value.
 # =====================================================
 
 @depends(milestone.is_nightly, building_js)
@@ -603,6 +605,25 @@ js_option('--enable-wasm-multi-value',
 
 set_config('ENABLE_WASM_MULTI_VALUE', depends_if('--enable-wasm-multi-value')(lambda x: True))
 set_define('ENABLE_WASM_MULTI_VALUE', depends_if('--enable-wasm-multi-value')(lambda x: True))
+
+
+# Support for WebAssembly shared memory and atomics.
+#
+# This affects the JS shell only and here to allow the use of
+# Cranelift in the shell.  Once Cranelift supports shared memory
+# and atomics it can go away.
+# =====================================================
+
+js_option('--disable-shared-memory', help='Disable JS/WebAssembly shared memory and atomics')
+
+@depends('--disable-shared-memory')
+def enable_shared_memory(value):
+    if value:
+        return True
+
+set_config('ENABLE_SHARED_MEMORY', enable_shared_memory)
+set_define('ENABLE_SHARED_MEMORY', enable_shared_memory)
+
 
 # Initial support for new regexp engine
 # ==================================================

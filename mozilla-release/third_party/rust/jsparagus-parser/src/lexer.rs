@@ -1,10 +1,13 @@
 //! JavaScript lexer.
 
 use crate::parser::Parser;
+use ast::source_atom_set::SourceAtomSet;
 use ast::SourceLocation;
 use bumpalo::{collections::String, Bump};
-use generated_parser::{ParseError, Result, TerminalId, Token};
+use generated_parser::{ParseError, Result, TerminalId, Token, TokenValue};
+use std::cell::RefCell;
 use std::convert::TryFrom;
+use std::rc::Rc;
 use std::str::Chars;
 use unic_ucd_ident::{is_id_continue, is_id_start};
 
@@ -20,11 +23,17 @@ pub struct Lexer<'alloc> {
     /// True if the current position is before the first
     /// token of a line (or on a line with no tokens).
     is_on_new_line: bool,
+
+    atoms: Rc<RefCell<SourceAtomSet<'alloc>>>,
 }
 
 impl<'alloc> Lexer<'alloc> {
-    pub fn new(allocator: &'alloc Bump, chars: Chars<'alloc>) -> Lexer<'alloc> {
-        Self::with_offset(allocator, chars, 0)
+    pub fn new(
+        allocator: &'alloc Bump,
+        chars: Chars<'alloc>,
+        atoms: Rc<RefCell<SourceAtomSet<'alloc>>>,
+    ) -> Lexer<'alloc> {
+        Self::with_offset(allocator, chars, 0, atoms)
     }
 
     /// Create a lexer for a part of a JS script or module. `offset` is the
@@ -34,6 +43,7 @@ impl<'alloc> Lexer<'alloc> {
         allocator: &'alloc Bump,
         chars: Chars<'alloc>,
         offset: usize,
+        atoms: Rc<RefCell<SourceAtomSet<'alloc>>>,
     ) -> Lexer<'alloc> {
         let source_length = offset + chars.as_str().len();
         Lexer {
@@ -41,6 +51,7 @@ impl<'alloc> Lexer<'alloc> {
             source_length,
             chars,
             is_on_new_line: true,
+            atoms,
         }
     }
 
@@ -62,8 +73,26 @@ impl<'alloc> Lexer<'alloc> {
         chars.next()
     }
 
-    pub fn next<'parser>(&mut self, parser: &Parser<'parser>) -> Result<'alloc, Token<'alloc>> {
+    pub fn next<'parser>(&mut self, parser: &Parser<'parser>) -> Result<'alloc, Token> {
         let (loc, value, terminal_id) = self.advance_impl(parser)?;
+        let value = match terminal_id {
+            TerminalId::NumericLiteral => {
+                // FIXME: Not all syntax is supported yet (issue #340)
+                let n = value
+                    .unwrap()
+                    .parse::<f64>()
+                    .map_err(|_| ParseError::NotImplemented("Cannot parse numeric literal"))?;
+                TokenValue::Number(n)
+            }
+            _ => match value {
+                Some(atom) => {
+                    let index = self.atoms.borrow_mut().insert(atom);
+                    TokenValue::Atom(index)
+                }
+                None => TokenValue::None,
+            },
+        };
+
         let is_on_new_line = self.is_on_new_line;
         self.is_on_new_line = false;
         Ok(Token {
@@ -397,6 +426,7 @@ impl<'alloc> Lexer<'alloc> {
                 "delete" => TerminalId::Delete,
                 "do" => TerminalId::Do,
                 "else" => TerminalId::Else,
+                "enum" => TerminalId::Enum,
                 "export" => TerminalId::Export,
                 "extends" => TerminalId::Extends,
                 "finally" => TerminalId::Finally,

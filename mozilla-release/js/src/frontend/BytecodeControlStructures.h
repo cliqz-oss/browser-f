@@ -20,6 +20,7 @@
 #include "frontend/TDZCheckCache.h"  // TDZCheckCache
 #include "gc/Rooting.h"              // RootedAtom, HandleAtom
 #include "vm/StringType.h"           // JSAtom
+#include "vm/TryNoteKind.h"          // TryNoteKind
 
 namespace js {
 namespace frontend {
@@ -132,7 +133,7 @@ class LoopControl : public BreakableControl {
                                  const mozilla::Maybe<uint32_t>& nextPos);
 
   MOZ_MUST_USE bool emitLoopEnd(BytecodeEmitter* bce, JSOp op,
-                                JSTryNoteKind tryNoteKind);
+                                TryNoteKind tryNoteKind);
 };
 template <>
 inline bool NestableControl::is<LoopControl>() const {

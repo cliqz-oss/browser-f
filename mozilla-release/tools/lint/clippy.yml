@@ -19,7 +19,6 @@ clippy:
         - media/audioipc/
         - media/mp4parse-rust/mp4parse/
         - media/mp4parse-rust/mp4parse_capi/
-        - media/mp4parse-rust/mp4parse_fallible/
         - modules/libpref/init/static_prefs/
         - mozglue/static/rust/
         - netwerk/base/mozurl/
@@ -41,7 +40,7 @@ clippy:
         - testing/mozbase/rust/mozversion/
         - testing/webdriver/
         - toolkit/components/kvstore/
-        - toolkit/components/telemetry/fog/
+        - toolkit/components/glean/
         - toolkit/components/xulstore/tests/gtest/
         - toolkit/library/rust/
         - tools/fuzzing/rust/

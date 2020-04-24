@@ -7,7 +7,7 @@
 
 #include "ClassifierDummyChannel.h"
 
-#include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/ContentBlocking.h"
 #include "mozilla/net/ClassifierDummyChannelChild.h"
 #include "mozilla/net/UrlClassifierCommon.h"
 #include "mozilla/dom/ContentChild.h"
@@ -60,8 +60,7 @@ ClassifierDummyChannel::StorageAllowed(
     return eAsyncNeeded;
   }
 
-  if (AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(httpChannel, uri,
-                                                              nullptr)) {
+  if (ContentBlocking::ShouldAllowAccessFor(httpChannel, uri, nullptr)) {
     return eStorageGranted;
   }
 
@@ -79,12 +78,11 @@ NS_INTERFACE_MAP_BEGIN(ClassifierDummyChannel)
   NS_INTERFACE_MAP_ENTRY_CONCRETE(ClassifierDummyChannel)
 NS_INTERFACE_MAP_END
 
-ClassifierDummyChannel::ClassifierDummyChannel(
-    nsIURI* aURI, nsIURI* aTopWindowURI,
-    nsIPrincipal* aContentBlockingAllowListPrincipal,
-    nsresult aTopWindowURIResult, nsILoadInfo* aLoadInfo)
+ClassifierDummyChannel::ClassifierDummyChannel(nsIURI* aURI,
+                                               nsIURI* aTopWindowURI,
+                                               nsresult aTopWindowURIResult,
+                                               nsILoadInfo* aLoadInfo)
     : mTopWindowURI(aTopWindowURI),
-      mContentBlockingAllowListPrincipal(aContentBlockingAllowListPrincipal),
       mTopWindowURIResult(aTopWindowURIResult),
       mFirstPartyClassificationFlags(0),
       mThirdPartyClassificationFlags(0) {
@@ -101,9 +99,6 @@ ClassifierDummyChannel::~ClassifierDummyChannel() {
                                     mURI.forget());
   NS_ReleaseOnMainThreadSystemGroup("ClassifierDummyChannel::mTopWindowURI",
                                     mTopWindowURI.forget());
-  NS_ReleaseOnMainThreadSystemGroup(
-      "ClassifierDummyChannel::mContentBlockingAllowListPrincipal",
-      mContentBlockingAllowListPrincipal.forget());
 }
 
 void ClassifierDummyChannel::AddClassificationFlags(
@@ -570,14 +565,6 @@ ClassifierDummyChannel::GetTopWindowURI(nsIURI** aTopWindowURI) {
   nsCOMPtr<nsIURI> topWindowURI = mTopWindowURI;
   topWindowURI.forget(aTopWindowURI);
   return mTopWindowURIResult;
-}
-
-NS_IMETHODIMP
-ClassifierDummyChannel::GetContentBlockingAllowListPrincipal(
-    nsIPrincipal** aPrincipal) {
-  nsCOMPtr<nsIPrincipal> copy = mContentBlockingAllowListPrincipal;
-  copy.forget(aPrincipal);
-  return NS_OK;
 }
 
 NS_IMETHODIMP

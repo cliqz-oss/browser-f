@@ -4215,7 +4215,8 @@ bool nsWindow::DispatchMouseEvent(EventMessage aEventMessage, WPARAM wParam,
 
   if (WinUtils::GetIsMouseFromTouch(aEventMessage)) {
     if (aEventMessage == eMouseDown) {
-      Telemetry::Accumulate(Telemetry::FX_TOUCH_USED, 1);
+      Telemetry::ScalarAdd(Telemetry::ScalarID::BROWSER_INPUT_TOUCH_EVENT_COUNT,
+                           1);
     }
 
     // Fire an observer when the user initially touches a touch screen. Front
@@ -6764,10 +6765,10 @@ bool TouchDeviceNeedsPanGestureConversion(PTOUCHINPUT aOSEvent,
   }
   HANDLE source = aOSEvent[0].hSource;
   std::string deviceName;
-  UINT dataSize;
+  UINT dataSize = 0;
   // The first call just queries how long the name string will be.
   GetRawInputDeviceInfoA(source, RIDI_DEVICENAME, nullptr, &dataSize);
-  if (!dataSize) {
+  if (!dataSize || dataSize > 0x10000) {
     return false;
   }
   deviceName.resize(dataSize);

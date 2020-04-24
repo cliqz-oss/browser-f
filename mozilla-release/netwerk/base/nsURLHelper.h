@@ -61,23 +61,6 @@ nsresult net_ParseFileURL(const nsACString& inURL, nsACString& outDirectory,
 void net_CoalesceDirs(netCoalesceFlags flags, char* path);
 
 /**
- * Resolves a relative path string containing "." and ".."
- * with respect to a base path (assumed to already be resolved).
- * For example, resolving "../../foo/./bar/../baz.html" w.r.t.
- * "/a/b/c/d/e/" yields "/a/b/c/foo/baz.html". Attempting to
- * ascend above the base results in the NS_ERROR_MALFORMED_URI
- * exception. If basePath is null, it treats it as "/".
- *
- * @param relativePath  a relative URI
- * @param basePath      a base URI
- *
- * @return a new string, representing canonical uri
- */
-nsresult net_ResolveRelativePath(const nsACString& relativePath,
-                                 const nsACString& basePath,
-                                 nsACString& result);
-
-/**
  * Check if a URL is absolute
  *
  * @param inURL     URL spec
@@ -94,11 +77,7 @@ bool net_IsAbsoluteURL(const nsACString& inURL);
 nsresult net_ExtractURLScheme(const nsACString& inURI, nsACString& scheme);
 
 /* check that the given scheme conforms to RFC 2396 */
-bool net_IsValidScheme(const char* scheme, uint32_t schemeLen);
-
-inline bool net_IsValidScheme(const nsCString& scheme) {
-  return net_IsValidScheme(scheme.get(), scheme.Length());
-}
+bool net_IsValidScheme(const nsACString& scheme);
 
 /**
  * This function strips out all C0 controls and space at the beginning and end

@@ -14,26 +14,29 @@ var EventEmitter = require("devtools/shared/event-emitter");
  * A protocol object that can manage the lifetime of other protocol
  * objects. Pools are used on both sides of the connection to help coordinate lifetimes.
  *
- * @param optional conn
- *   Either a DevToolsServerConnection or a DevToolsClient.  Must have
+ * @param {DevToolsServerConnection|DevToolsClient} [conn]
+ *   Either a DevToolsServerConnection or a DevToolsClient. Must have
  *   addActorPool, removeActorPool, and poolFor.
  *   conn can be null if the subclass provides a conn property.
+ * @param {String} [label]
+ *   An optional label for the Pool.
  * @constructor
  */
 class Pool extends EventEmitter {
-  constructor(conn) {
+  constructor(conn, label) {
     super();
 
     if (conn) {
       this.conn = conn;
     }
+    this._label = label;
     this.__poolMap = null;
   }
 
   /**
    * Return the parent pool for this client.
    */
-  parent() {
+  getParent() {
     return this.conn.poolFor(this.actorID);
   }
 
@@ -68,20 +71,26 @@ class Pool extends EventEmitter {
    */
   manage(actor) {
     if (!actor.actorID) {
-      actor.actorID = this.conn.allocID(actor.actorPrefix || actor.typeName);
+      actor.actorID = this.conn.allocID(actor.typeName);
     } else {
-      // If the actor is already registerd in a pool, remove it without destroying it.
+      // If the actor is already registered in a pool, remove it without destroying it.
       // This happens for example when an addon is reloaded. To see this behavior, take a
       // look at devtools/server/tests/xpcshell/test_addon_reload.js
 
-      // TODO: not all actors have been moved to protocol.js, so they do not all have
-      // a parent field. Remove the check for the parent once the conversion is finished
-      const parent = this.poolFor(actor.actorID);
+      const parent = actor.getParent();
       if (parent) {
         parent.unmanage(actor);
       }
     }
     this._poolMap.set(actor.actorID, actor);
+  }
+
+  unmanageChildren(FrontType) {
+    for (const front of this.poolChildren()) {
+      if (!FrontType || front instanceof FrontType) {
+        this.unmanage(front);
+      }
+    }
   }
 
   /**
@@ -133,11 +142,27 @@ class Pool extends EventEmitter {
   }
 
   /**
+   * Pools can override this method in order to opt-out of a destroy sequence.
+   *
+   * For instance, Fronts are destroyed during the toolbox destroy. However when
+   * the toolbox is destroyed, the document holding the toolbox is also
+   * destroyed. So it should not be necessary to cleanup Fronts during toolbox
+   * destroy.
+   *
+   * For the time being, Fronts (or Pools in general) which want to opt-out of
+   * toolbox destroy can override this method and check the value of
+   * `this.conn.isToolboxDestroy`.
+   */
+  skipDestroy() {
+    return false;
+  }
+
+  /**
    * Destroy this item, removing it from a parent if it has one,
    * and destroying all children if necessary.
    */
   destroy() {
-    const parent = this.parent();
+    const parent = this.getParent();
     if (parent) {
       parent.unmanage(this);
     }
@@ -149,6 +174,13 @@ class Pool extends EventEmitter {
       if (actor === this) {
         continue;
       }
+
+      // Some pool-managed values don't extend Pool and won't have skipDestroy
+      // defined. For instance, the root actor and the lazy actors.
+      if (typeof actor.skipDestroy === "function" && actor.skipDestroy()) {
+        continue;
+      }
+
       const destroy = actor.destroy;
       if (destroy) {
         // Disconnect destroy while we're destroying in case of (misbehaving)

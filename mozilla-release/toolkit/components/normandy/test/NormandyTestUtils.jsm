@@ -104,6 +104,7 @@ const NormandyTestUtils = {
           lastSeen: new Date().toJSON(),
           experimentType: "exp",
           enrollmentId: NormandyUtils.generateUuid(),
+          actionName: "PreferenceExperimentAction",
         },
         attrs,
         {
@@ -175,20 +176,21 @@ const NormandyTestUtils = {
           recipeIds.add(recipe.id);
         }
 
-        let rsCollection = await RecipeRunner._remoteSettingsClientForTesting.openCollection();
-        await rsCollection.clear();
+        let db = await RecipeRunner._remoteSettingsClientForTesting.db;
+        await db.clear();
         const fakeSig = { signature: "abc" };
 
         for (const recipe of recipes) {
-          await rsCollection.create(
-            { id: `recipe-${recipe.id}`, recipe, signature: fakeSig },
-            { synced: true }
-          );
+          await db.create({
+            id: `recipe-${recipe.id}`,
+            recipe,
+            signature: fakeSig,
+          });
         }
 
         // last modified needs to be some positive integer
-        let lastModified = await rsCollection.db.getLastModified();
-        await rsCollection.db.saveLastModified(lastModified + 1);
+        let lastModified = await db.getLastModified();
+        await db.saveLastModified(lastModified + 1);
 
         const collectionHelper = {
           async addRecipes(newRecipes) {
@@ -199,32 +201,27 @@ const NormandyTestUtils = {
                 );
               }
             }
-            rsCollection = await RecipeRunner._remoteSettingsClientForTesting.openCollection();
+            db = await RecipeRunner._remoteSettingsClientForTesting.db;
             for (const recipe of newRecipes) {
               recipeIds.add(recipe.id);
-              rsCollection.create(
-                {
-                  id: `recipe-${recipe.id}`,
-                  recipe,
-                  signature: fakeSig,
-                },
-                { synced: true }
-              );
+              await db.create({
+                id: `recipe-${recipe.id}`,
+                recipe,
+                signature: fakeSig,
+              });
             }
-            lastModified = (await rsCollection.db.getLastModified()) || 0;
-            await rsCollection.db.saveLastModified(lastModified + 1);
-            await rsCollection.db.close();
+            lastModified = (await db.getLastModified()) || 0;
+            await db.saveLastModified(lastModified + 1);
           },
         };
 
         try {
           await testFunc(...args, collectionHelper);
         } finally {
-          rsCollection = await RecipeRunner._remoteSettingsClientForTesting.openCollection();
-          rsCollection.clear();
-          lastModified = await rsCollection.db.getLastModified();
-          await rsCollection.db.saveLastModified(lastModified + 1);
-          rsCollection.db.close();
+          db = await RecipeRunner._remoteSettingsClientForTesting.db;
+          await db.clear();
+          lastModified = await db.getLastModified();
+          await db.saveLastModified(lastModified + 1);
         }
       };
     };

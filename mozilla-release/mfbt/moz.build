@@ -31,6 +31,7 @@ EXPORTS.mozilla = [
     'ChaosMode.h',
     'Char16.h',
     'CheckedInt.h',
+    'CompactPair.h',
     'Compiler.h',
     'Compression.h',
     'DbgMacro.h',
@@ -46,6 +47,7 @@ EXPORTS.mozilla = [
     'FastBernoulliTrial.h',
     'FloatingPoint.h',
     'FStream.h',
+    'FunctionRef.h',
     'FunctionTypeTraits.h',
     'GuardObjects.h',
     'HashFunctions.h',
@@ -71,7 +73,6 @@ EXPORTS.mozilla = [
     'NotNull.h',
     'Opaque.h',
     'OperatorNewExtensions.h',
-    'Pair.h',
     'Path.h',
     'PodOperations.h',
     'Poison.h',
@@ -139,6 +140,11 @@ if CONFIG['OS_ARCH'] == 'WINNT':
 elif CONFIG['OS_ARCH'] == 'Linux':
     EXPORTS.mozilla += [
         'LinuxSignal.h',
+    ]
+
+if CONFIG['MOZ_TSAN']:
+    EXPORTS.mozilla += [
+        'TsanOptions.h',
     ]
 
 UNIFIED_SOURCES += [

@@ -4,11 +4,7 @@
 
 // @flow
 
-import {
-  setupCommands,
-  setupCommandsTopTarget,
-  clientCommands,
-} from "./firefox/commands";
+import { setupCommands, clientCommands } from "./firefox/commands";
 import {
   removeEventsTopTarget,
   setupEvents,
@@ -23,7 +19,7 @@ export async function onConnect(connection: any, _actions: Object) {
   const { devToolsClient, targetList } = connection;
   actions = _actions;
 
-  setupCommands({ devToolsClient });
+  setupCommands({ devToolsClient, targetList });
   setupEvents({ actions, devToolsClient });
   await targetList.watchTargets(
     targetList.ALL_TYPES,
@@ -49,12 +45,11 @@ async function onTargetAvailable({
     // Make sure targetFront.threadFront is availabled and attached.
     await targetFront.onThreadAttached;
 
-    const threadFront = targetFront.threadFront;
+    const { threadFront } = targetFront;
     if (!threadFront) {
       return;
     }
 
-    setupCommandsTopTarget(targetFront);
     setupEventsTopTarget(targetFront);
     targetFront.on("will-navigate", actions.willNavigate);
     targetFront.on("navigate", actions.navigated);

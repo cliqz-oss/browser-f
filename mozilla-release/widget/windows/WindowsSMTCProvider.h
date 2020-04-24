@@ -50,7 +50,8 @@ class WindowsSMTCProvider final
   // Buttons)
   bool SetControlAttributes(SMTCControlAttributes aAttributes);
 
-  void SetPlaybackState(mozilla::dom::PlaybackState aState) override;
+  void SetPlaybackState(
+      mozilla::dom::MediaSessionPlaybackState aState) override;
 
   // Sets the Thumbnail for the currently playing media to the given URL.
   // Note: This method does not call update(), you need to do that manually.
@@ -62,6 +63,9 @@ class WindowsSMTCProvider final
   bool SetMusicMetadata(mozilla::Maybe<const wchar_t*> aArtist,
                         const wchar_t* aTitle,
                         mozilla::Maybe<const wchar_t*> aAlbumArtist);
+
+  void SetMediaMetadata(
+      const mozilla::dom::MediaMetadataBase& aMetadata) override;
 
  private:
   ~WindowsSMTCProvider();

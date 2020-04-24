@@ -209,16 +209,14 @@ void xpc::ErrorReport::Init(JSErrorReport* aReport, const char* aToStringResult,
   }
 
   mSourceLine.Assign(aReport->linebuf(), aReport->linebufLength());
-  const JSErrorFormatString* efs =
-      js::GetErrorMessage(nullptr, aReport->errorNumber);
 
-  if (efs == nullptr) {
-    mErrorMsgName.AssignLiteral("");
+  if (aReport->errorMessageName) {
+    mErrorMsgName.AssignASCII(aReport->errorMessageName);
   } else {
-    mErrorMsgName.AssignASCII(efs->name);
+    mErrorMsgName.Truncate();
   }
 
-  mFlags = aReport->flags;
+  mIsWarning = aReport->isWarning();
   mIsMuted = aReport->isMuted;
 
   if (aReport->notes) {
@@ -249,8 +247,6 @@ void xpc::ErrorReport::Init(JSContext* aCx, mozilla::dom::Exception* aException,
   mSourceId = aException->SourceId(aCx);
   mLineNumber = aException->LineNumber(aCx);
   mColumn = aException->ColumnNumber();
-
-  mFlags = JSREPORT_EXCEPTION;
 }
 
 static LazyLogModule gJSDiagnostics("JSDiagnostics");
@@ -283,10 +279,7 @@ void xpc::ErrorReport::LogToStderr() {
 
   nsAutoCString error;
   error.AssignLiteral("JavaScript ");
-  if (JSREPORT_IS_STRICT(mFlags)) {
-    error.AppendLiteral("strict ");
-  }
-  if (JSREPORT_IS_WARNING(mFlags)) {
+  if (IsWarning()) {
     error.AppendLiteral("warning: ");
   } else {
     error.AppendLiteral("error: ");
@@ -318,8 +311,7 @@ void xpc::ErrorReport::LogToConsoleWithStack(JS::HandleObject aStack,
 
   LogToStderr();
 
-  MOZ_LOG(gJSDiagnostics,
-          JSREPORT_IS_WARNING(mFlags) ? LogLevel::Warning : LogLevel::Error,
+  MOZ_LOG(gJSDiagnostics, IsWarning() ? LogLevel::Warning : LogLevel::Error,
           ("file %s, line %u\n%s", NS_ConvertUTF16toUTF8(mFileName).get(),
            mLineNumber, NS_ConvertUTF16toUTF8(mErrorMsg).get()));
 
@@ -342,10 +334,11 @@ void xpc::ErrorReport::LogToConsoleWithStack(JS::HandleObject aStack,
   }
   errorObject->SetErrorMessageName(mErrorMsgName);
 
+  uint32_t flags =
+      mIsWarning ? nsIScriptError::warningFlag : nsIScriptError::errorFlag;
   nsresult rv = errorObject->InitWithWindowID(
-      mErrorMsg, mFileName, mSourceLine, mLineNumber, mColumn, mFlags,
-      mCategory, mWindowID,
-      mCategory.Equals(NS_LITERAL_CSTRING("chrome javascript")));
+      mErrorMsg, mFileName, mSourceLine, mLineNumber, mColumn, flags, mCategory,
+      mWindowID, mCategory.Equals(NS_LITERAL_CSTRING("chrome javascript")));
   NS_ENSURE_SUCCESS_VOID(rv);
 
   rv = errorObject->InitSourceId(mSourceId);
@@ -378,7 +371,7 @@ void xpc::ErrorReport::ErrorReportToMessageString(JSErrorReport* aReport,
   aString.Truncate();
   if (aReport->message()) {
     // Don't prefix warnings with an often misleading name like "Error: ".
-    if (!JSREPORT_IS_WARNING(aReport->flags)) {
+    if (!aReport->isWarning()) {
       JSLinearString* name = js::GetErrorTypeName(
           CycleCollectedJSContext::Get()->Context(), aReport->exnType);
       if (name) {
@@ -484,7 +477,6 @@ JSObject* CreateGlobalObject(JSContext* cx, const JSClass* clasp,
 void InitGlobalObjectOptions(JS::RealmOptions& aOptions,
                              nsIPrincipal* aPrincipal) {
   bool shouldDiscardSystemSource = ShouldDiscardSystemSource();
-  bool extraWarningsForSystemJS = ExtraWarningsForSystemJS();
 
   bool isSystem = aPrincipal->IsSystemPrincipal();
 
@@ -500,12 +492,6 @@ void InitGlobalObjectOptions(JS::RealmOptions& aOptions,
     bool discardSource = isSystem;
 
     aOptions.behaviors().setDiscardSource(discardSource);
-  }
-
-  if (extraWarningsForSystemJS) {
-    if (isSystem) {
-      aOptions.behaviors().extraWarningsOverride().set(true);
-    }
   }
 }
 

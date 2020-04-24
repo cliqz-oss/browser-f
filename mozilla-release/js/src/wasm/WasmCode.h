@@ -239,6 +239,7 @@ class FuncExport {
 
   bool canHaveJitEntry() const {
     return !funcType_.temporarilyUnsupportedReftypeForEntry() &&
+           !funcType_.temporarilyUnsupportedResultCountForJitEntry() &&
            JitOptions.enableWasmJitEntry;
   }
 
@@ -360,7 +361,7 @@ struct Metadata : public ShareableBase<Metadata>, public MetadataCacheablePod {
 
   explicit Metadata(ModuleKind kind = ModuleKind::Wasm)
       : MetadataCacheablePod(kind), debugEnabled(false), debugHash() {}
-  virtual ~Metadata() {}
+  virtual ~Metadata() = default;
 
   MetadataCacheablePod& pod() { return *this; }
   const MetadataCacheablePod& pod() const { return *this; }

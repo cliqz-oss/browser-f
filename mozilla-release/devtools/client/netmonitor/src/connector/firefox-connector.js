@@ -8,6 +8,7 @@ const Services = require("Services");
 const {
   ACTIVITY_TYPE,
   EVENTS,
+  TEST_EVENTS,
 } = require("devtools/client/netmonitor/src/constants");
 const FirefoxDataProvider = require("devtools/client/netmonitor/src/connector/firefox-data-provider");
 const {
@@ -136,18 +137,7 @@ class FirefoxConnector {
     await this.addListeners();
 
     // Initialize Responsive Emulation front for network throttling.
-    try {
-      this.responsiveFront = await this.currentTarget.getFront("responsive");
-    } catch (e) {
-      console.error(e);
-    }
-
-    // Bug 1606852: For backwards compatibility, we need to get the emulation actor. The Responsive
-    // actor is only available in Firefox 73 or newer. We can remove this call when Firefox 73
-    // is on release.
-    if (!this.responsiveFront) {
-      this.responsiveFront = await this.currentTarget.getFront("emulation");
-    }
+    this.responsiveFront = await this.currentTarget.getFront("responsive");
 
     // Displaying cache events is only intended for the UI panel.
     if (this.actions) {
@@ -304,7 +294,7 @@ class FirefoxConnector {
       this.actions.addTimingMarker(event);
     }
 
-    this.emitForTests(EVENTS.TIMELINE_EVENT, event);
+    this.emitForTests(TEST_EVENTS.TIMELINE_EVENT, event);
   }
 
   /**
@@ -499,7 +489,7 @@ class FirefoxConnector {
       });
     }
 
-    this.emitForTests(EVENTS.THROTTLING_CHANGED, { profile });
+    this.emitForTests(TEST_EVENTS.THROTTLING_CHANGED, { profile });
   }
 
   /**

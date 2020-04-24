@@ -24,6 +24,7 @@
 #include "mozilla/dom/PBackgroundFileHandleChild.h"
 #include "mozilla/dom/PBackgroundFileRequestChild.h"
 #include "mozilla/dom/PBackgroundMutableFileChild.h"
+#include "mozilla/InitializedOnce.h"
 #include "mozilla/UniquePtr.h"
 #include "nsCOMPtr.h"
 #include "nsTArray.h"
@@ -62,7 +63,8 @@ struct CloneInfo;
 }  // namespace dom
 }  // namespace mozilla
 
-DECLARE_USE_COPY_CONSTRUCTORS(mozilla::dom::indexedDB::CloneInfo)
+MOZ_DECLARE_RELOCATE_USING_MOVE_CONSTRUCTOR(mozilla::dom::indexedDB::CloneInfo)
+MOZ_DECLARE_NON_COPY_CONSTRUCTIBLE(mozilla::dom::indexedDB::CloneInfo)
 
 namespace mozilla {
 namespace dom {
@@ -143,6 +145,10 @@ class BackgroundFactoryChild final : public PBackgroundIDBFactoryChild {
   friend class mozilla::ipc::BackgroundChildImpl;
   friend IDBFactory;
 
+  // TODO: This long-lived raw pointer is very suspicious, in particular as it
+  // is used in BackgroundDatabaseChild::EnsureDOMObject to reacquire a strong
+  // reference. What ensures it is kept alive, and why can't we store a strong
+  // reference here?
   IDBFactory* mFactory;
 
   NS_DECL_OWNINGTHREAD
@@ -152,16 +158,17 @@ class BackgroundFactoryChild final : public PBackgroundIDBFactoryChild {
     NS_ASSERT_OWNINGTHREAD(BackgroundFactoryChild);
   }
 
-  IDBFactory* GetDOMObject() const {
+  IDBFactory& GetDOMObject() const {
     AssertIsOnOwningThread();
-    return mFactory;
+    MOZ_ASSERT(mFactory);
+    return *mFactory;
   }
 
   bool SendDeleteMe() = delete;
 
  private:
   // Only created by IDBFactory.
-  explicit BackgroundFactoryChild(IDBFactory* aFactory);
+  explicit BackgroundFactoryChild(IDBFactory& aFactory);
 
   // Only destroyed by mozilla::ipc::BackgroundChildImpl.
   ~BackgroundFactoryChild();
@@ -220,7 +227,7 @@ class BackgroundFactoryRequestChild final
   friend class PermissionRequestChild;
   friend class PermissionRequestParent;
 
-  const RefPtr<IDBFactory> mFactory;
+  const SafeRefPtr<IDBFactory> mFactory;
 
   // Normally when opening of a database is successful, we receive a database
   // actor in request response, so we can use it to call ReleaseDOMObject()
@@ -243,7 +250,7 @@ class BackgroundFactoryRequestChild final
 
  private:
   // Only created by IDBFactory.
-  BackgroundFactoryRequestChild(IDBFactory* aFactory,
+  BackgroundFactoryRequestChild(SafeRefPtr<IDBFactory> aFactory,
                                 IDBOpenDBRequest* aOpenRequest,
                                 bool aIsDeleteOp, uint64_t aRequestedVersion);
 
@@ -636,7 +643,7 @@ class BackgroundCursorChildBase : public PBackgroundIDBCursorChild {
  private:
   NS_DECL_OWNINGTHREAD
  protected:
-  InitializedOnceMustBeTrue<IDBRequest* const> mRequest;
+  InitializedOnceNotNull<IDBRequest* const> mRequest;
   IDBTransaction* mTransaction;
 
   // These are only set while a request is in progress.
@@ -675,12 +682,13 @@ template <IDBCursorType CursorType>
 class BackgroundCursorChild final : public BackgroundCursorChildBase {
  public:
   using SourceType = CursorSourceType<CursorType>;
+  using ResponseType = typename CursorTypeTraits<CursorType>::ResponseType;
 
  private:
   friend class BackgroundTransactionChild;
   friend class BackgroundVersionChangeTransactionChild;
 
-  InitializedOnceMustBeTrue<SourceType* const> mSource;
+  InitializedOnceNotNull<SourceType* const> mSource;
   IDBCursorImpl<CursorType>* mCursor;
 
   std::deque<CursorData<CursorType>> mCachedResponses, mDelayedResponses;
@@ -717,16 +725,10 @@ class BackgroundCursorChild final : public BackgroundCursorChildBase {
 
   void HandleResponse(const void_t& aResponse);
 
-  void HandleResponse(nsTArray<ObjectStoreCursorResponse>&& aResponses);
+  void HandleResponse(nsTArray<ResponseType>&& aResponses);
 
-  void HandleResponse(nsTArray<ObjectStoreKeyCursorResponse>&& aResponses);
-
-  void HandleResponse(nsTArray<IndexCursorResponse>&& aResponses);
-
-  void HandleResponse(nsTArray<IndexKeyCursorResponse>&& aResponses);
-
-  template <typename T, typename Func>
-  void HandleMultipleCursorResponses(nsTArray<T>&& aResponses,
+  template <typename Func>
+  void HandleMultipleCursorResponses(nsTArray<ResponseType>&& aResponses,
                                      const Func& aHandleRecord);
 
   template <typename... Args>

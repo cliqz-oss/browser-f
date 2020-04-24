@@ -150,7 +150,7 @@ const proto = {
       return g;
     }
 
-    if (unwrapped && unwrapped.isProxy) {
+    if (unwrapped?.isProxy) {
       // Proxy objects can run traps when accessed, so just create a preview with
       // the target and the handler.
       g.class = "Proxy";
@@ -229,8 +229,7 @@ const proto = {
     let raw = this.obj.unsafeDereference();
 
     // If Cu is not defined, we are running on a worker thread, where xrays
-    // don't exist. The raw object will be null/unavailable when interacting
-    // with a replaying execution.
+    // don't exist.
     if (raw && Cu) {
       raw = Cu.unwaiveXrays(raw);
     }
@@ -484,8 +483,8 @@ const proto = {
         // by not including it as a safe getter value (see Bug 1477765).
         if (
           getterValue &&
-          (getterValue.class == "Promise" &&
-            getterValue.promiseState == "rejected")
+          getterValue.class == "Promise" &&
+          getterValue.promiseState == "rejected"
         ) {
           // Until we have a good way to handle Promise rejections through the
           // debugger API (Bug 1478076), call `catch` when it's safe to do so.
@@ -838,7 +837,7 @@ const proto = {
     const { createEnvironmentActor } = this.hooks;
     const envActor = createEnvironmentActor(
       this.obj.environment,
-      this.registeredPool
+      this.getParent()
     );
 
     if (!envActor) {

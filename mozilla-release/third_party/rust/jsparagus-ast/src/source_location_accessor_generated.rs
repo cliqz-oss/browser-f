@@ -125,7 +125,7 @@ impl<'alloc> SourceLocationAccessor for AssignmentTarget<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for AssignmentTargetIdentifier<'alloc> {
+impl<'alloc> SourceLocationAccessor for AssignmentTargetIdentifier {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -427,7 +427,7 @@ impl<'alloc> SourceLocationAccessor for Binding<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for BindingIdentifier<'alloc> {
+impl<'alloc> SourceLocationAccessor for BindingIdentifier {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -578,6 +578,7 @@ impl<'alloc> SourceLocationAccessor for ClassElementName<'alloc> {
         match self {
             ClassElementName::ComputedPropertyName(content) => { content.set_loc(start, end) }
             ClassElementName::StaticPropertyName(content) => { content.set_loc(start, end) }
+            ClassElementName::StaticNumericPropertyName(content) => { content.set_loc(start, end) }
             ClassElementName::PrivateFieldName(content) => { content.set_loc(start, end) }
         }
     }
@@ -586,6 +587,7 @@ impl<'alloc> SourceLocationAccessor for ClassElementName<'alloc> {
         match self {
             ClassElementName::ComputedPropertyName(content) => { content.get_loc() }
             ClassElementName::StaticPropertyName(content) => { content.get_loc() }
+            ClassElementName::StaticNumericPropertyName(content) => { content.get_loc() }
             ClassElementName::PrivateFieldName(content) => { content.get_loc() }
         }
     }
@@ -763,7 +765,7 @@ impl<'alloc> SourceLocationAccessor for DataProperty<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for Directive<'alloc> {
+impl<'alloc> SourceLocationAccessor for Directive {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -792,7 +794,7 @@ impl<'alloc> SourceLocationAccessor for Export<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for ExportAllFrom<'alloc> {
+impl<'alloc> SourceLocationAccessor for ExportAllFrom {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -854,7 +856,7 @@ impl<'alloc> SourceLocationAccessor for ExportFrom<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for ExportFromSpecifier<'alloc> {
+impl<'alloc> SourceLocationAccessor for ExportFromSpecifier {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -865,7 +867,7 @@ impl<'alloc> SourceLocationAccessor for ExportFromSpecifier<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for ExportLocalSpecifier<'alloc> {
+impl<'alloc> SourceLocationAccessor for ExportLocalSpecifier {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -904,10 +906,7 @@ impl<'alloc> SourceLocationAccessor for Expression<'alloc> {
                 loc.start = start.start;
                 loc.end = end.end;
             }
-            Expression::LiteralNumericExpression { mut loc, .. } => {
-                loc.start = start.start;
-                loc.end = end.end;
-            }
+            Expression::LiteralNumericExpression(content) => { content.set_loc(start, end) }
             Expression::LiteralRegExpExpression { mut loc, .. } => {
                 loc.start = start.start;
                 loc.end = end.end;
@@ -999,9 +998,7 @@ impl<'alloc> SourceLocationAccessor for Expression<'alloc> {
             Expression::LiteralNullExpression { loc } => {
                 *loc
             }
-            Expression::LiteralNumericExpression { loc, .. } => {
-                *loc
-            }
+            Expression::LiteralNumericExpression(content) => { content.get_loc() }
             Expression::LiteralRegExpExpression { loc, .. } => {
                 *loc
             }
@@ -1129,7 +1126,7 @@ impl<'alloc> SourceLocationAccessor for Getter<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for Identifier<'alloc> {
+impl<'alloc> SourceLocationAccessor for Identifier {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1140,7 +1137,7 @@ impl<'alloc> SourceLocationAccessor for Identifier<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for IdentifierExpression<'alloc> {
+impl<'alloc> SourceLocationAccessor for IdentifierExpression {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1151,7 +1148,7 @@ impl<'alloc> SourceLocationAccessor for IdentifierExpression<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for IdentifierName<'alloc> {
+impl<'alloc> SourceLocationAccessor for IdentifierName {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1200,7 +1197,7 @@ impl<'alloc> SourceLocationAccessor for ImportDeclaration<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for ImportNamespace<'alloc> {
+impl<'alloc> SourceLocationAccessor for ImportNamespace {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1211,7 +1208,7 @@ impl<'alloc> SourceLocationAccessor for ImportNamespace<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for ImportSpecifier<'alloc> {
+impl<'alloc> SourceLocationAccessor for ImportSpecifier {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1222,7 +1219,7 @@ impl<'alloc> SourceLocationAccessor for ImportSpecifier<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for Label<'alloc> {
+impl<'alloc> SourceLocationAccessor for Label {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1338,6 +1335,17 @@ impl<'alloc> SourceLocationAccessor for NamedObjectProperty<'alloc> {
             NamedObjectProperty::MethodDefinition(content) => { content.get_loc() }
             NamedObjectProperty::DataProperty(content) => { content.get_loc() }
         }
+    }
+}
+
+impl<'alloc> SourceLocationAccessor for NumericLiteral {
+    fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
+        self.loc.start = start.start;
+        self.loc.end = end.end;
+    }
+
+    fn get_loc(&self) -> SourceLocation {
+        self.loc
     }
 }
 
@@ -1458,7 +1466,7 @@ impl<'alloc> SourceLocationAccessor for PrivateFieldExpression<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for PrivateIdentifier<'alloc> {
+impl<'alloc> SourceLocationAccessor for PrivateIdentifier {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1490,6 +1498,7 @@ impl<'alloc> SourceLocationAccessor for PropertyName<'alloc> {
         match self {
             PropertyName::ComputedPropertyName(content) => { content.set_loc(start, end) }
             PropertyName::StaticPropertyName(content) => { content.set_loc(start, end) }
+            PropertyName::StaticNumericPropertyName(content) => { content.set_loc(start, end) }
         }
     }
 
@@ -1497,6 +1506,7 @@ impl<'alloc> SourceLocationAccessor for PropertyName<'alloc> {
         match self {
             PropertyName::ComputedPropertyName(content) => { content.get_loc() }
             PropertyName::StaticPropertyName(content) => { content.get_loc() }
+            PropertyName::StaticNumericPropertyName(content) => { content.get_loc() }
         }
     }
 }
@@ -1523,7 +1533,7 @@ impl<'alloc> SourceLocationAccessor for Setter<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for ShorthandProperty<'alloc> {
+impl<'alloc> SourceLocationAccessor for ShorthandProperty {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1720,7 +1730,7 @@ impl<'alloc> SourceLocationAccessor for StaticMemberExpression<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for StaticPropertyName<'alloc> {
+impl<'alloc> SourceLocationAccessor for StaticPropertyName {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1753,7 +1763,7 @@ impl<'alloc> SourceLocationAccessor for SwitchDefault<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for TemplateElement<'alloc> {
+impl<'alloc> SourceLocationAccessor for TemplateElement {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         self.loc.start = start.start;
         self.loc.end = end.end;
@@ -1965,7 +1975,7 @@ impl<'alloc> SourceLocationAccessor for VariableDeclarator<'alloc> {
     }
 }
 
-impl<'alloc> SourceLocationAccessor for VariableReference<'alloc> {
+impl<'alloc> SourceLocationAccessor for VariableReference {
     fn set_loc(&mut self, start: SourceLocation, end: SourceLocation) {
         match self {
             VariableReference::BindingIdentifier(content) => { content.set_loc(start, end) }

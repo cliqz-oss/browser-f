@@ -205,7 +205,7 @@ TEST_SUITES = {
         'aliases': ('wpt',),
         'mach_command': 'web-platform-tests',
         'kwargs': {'include': []},
-        'task_regex': ['web-platform-tests-crashtests($|.*(-1|[^0-9])$)',
+        'task_regex': ['web-platform-tests-crashtest($|.*(-1|[^0-9])$)',
                        'test-verify-wpt'],
     },
     'web-platform-tests-testharness': {
@@ -219,7 +219,7 @@ TEST_SUITES = {
         'aliases': ('wpt',),
         'mach_command': 'web-platform-tests',
         'kwargs': {'include': []},
-        'task_regex': ['web-platform-tests-reftests($|.*(-1|[^0-9])$)',
+        'task_regex': ['web-platform-tests-reftest($|.*(-1|[^0-9])$)',
                        'test-verify-wpt'],
     },
     'web-platform-tests-wdspec': {
@@ -290,7 +290,6 @@ _test_flavors = {
 
 _test_subsuites = {
     ('browser-chrome', 'devtools'): 'mochitest-devtools-chrome',
-    ('browser-chrome', 'gpu'): 'mochitest-browser-chrome-gpu',
     ('browser-chrome', 'remote'): 'mochitest-remote',
     ('browser-chrome', 'screenshots'): 'mochitest-browser-chrome-screenshots',
     ('chrome', 'gpu'): 'mochitest-chrome-gpu',
@@ -487,6 +486,7 @@ class TestResolver(MozbuildObject):
     def _reset_state(self):
         self._tests_by_path = OrderedDefaultDict(list)
         self._tests_by_flavor = defaultdict(set)
+        self._tests_by_manifest = defaultdict(list)
         self._test_dirs = set()
 
     @property
@@ -511,6 +511,14 @@ class TestResolver(MozbuildObject):
             for test in self.tests:
                 self._tests_by_flavor[test['flavor']].add(test['file_relpath'])
         return self._tests_by_flavor
+
+    @property
+    def tests_by_manifest(self):
+        if not self._tests_by_manifest:
+            for test in self.tests:
+                relpath = mozpath.relpath(test['path'], mozpath.dirname(test['manifest']))
+                self._tests_by_manifest[test['manifest_relpath']].append(relpath)
+        return self._tests_by_manifest
 
     @property
     def test_dirs(self):

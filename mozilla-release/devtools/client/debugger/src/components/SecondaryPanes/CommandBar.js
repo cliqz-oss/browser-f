@@ -93,15 +93,17 @@ type Props = {
 
 class CommandBar extends Component<Props> {
   componentWillUnmount() {
-    const shortcuts = this.context.shortcuts;
+    const { shortcuts } = this.context;
+
     COMMANDS.forEach(action => shortcuts.off(getKey(action)));
+
     if (isMacOS) {
       COMMANDS.forEach(action => shortcuts.off(getKeyForOS("WINNT", action)));
     }
   }
 
   componentDidMount() {
-    const shortcuts = this.context.shortcuts;
+    const { shortcuts } = this.context;
 
     COMMANDS.forEach(action =>
       shortcuts.on(getKey(action), (_, e) => this.handleEvent(e, action))
@@ -249,15 +251,12 @@ const mapStateToProps = state => ({
   skipPausing: getSkipPausing(state),
 });
 
-export default connect<Props, OwnProps, _, _, _, _>(
-  mapStateToProps,
-  {
-    resume: actions.resume,
-    stepIn: actions.stepIn,
-    stepOut: actions.stepOut,
-    stepOver: actions.stepOver,
-    breakOnNext: actions.breakOnNext,
-    pauseOnExceptions: actions.pauseOnExceptions,
-    toggleSkipPausing: actions.toggleSkipPausing,
-  }
-)(CommandBar);
+export default connect<Props, OwnProps, _, _, _, _>(mapStateToProps, {
+  resume: actions.resume,
+  stepIn: actions.stepIn,
+  stepOut: actions.stepOut,
+  stepOver: actions.stepOver,
+  breakOnNext: actions.breakOnNext,
+  pauseOnExceptions: actions.pauseOnExceptions,
+  toggleSkipPausing: actions.toggleSkipPausing,
+})(CommandBar);

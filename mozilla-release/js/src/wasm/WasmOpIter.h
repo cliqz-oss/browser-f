@@ -19,8 +19,10 @@
 #ifndef wasm_op_iter_h
 #define wasm_op_iter_h
 
-#include "mozilla/Pair.h"
+#include "mozilla/CompactPair.h"
 #include "mozilla/Poison.h"
+
+#include <type_traits>
 
 #include "jit/AtomicOp.h"
 #include "js/Printf.h"
@@ -491,8 +493,8 @@ struct LinearMemoryAddress {
 
 template <typename ControlItem>
 class ControlStackEntry {
-  // Use a Pair to optimize away empty ControlItem.
-  mozilla::Pair<BlockType, ControlItem> typeAndItem_;
+  // Use a pair to optimize away empty ControlItem.
+  mozilla::CompactPair<BlockType, ControlItem> typeAndItem_;
 
   // The "base" of a control stack entry is valueStack_.length() minus
   // type().params().length(), i.e., the size of the value stack "below"
@@ -532,7 +534,7 @@ class ControlStackEntry {
 template <typename Value>
 class TypeAndValueT {
   // Use a Pair to optimize away empty Value.
-  mozilla::Pair<StackType, Value> tv_;
+  mozilla::CompactPair<StackType, Value> tv_;
 
  public:
   TypeAndValueT() : tv_(StackType::bottom(), Value()) {}
@@ -1415,7 +1417,7 @@ inline bool OpIter<Policy>::checkBrTableEntry(uint32_t* relativeDepth,
                                               ResultType* type,
                                               ValueVector* branchValues) {
   if (!readVarU32(relativeDepth)) {
-    return false;
+    return fail("unable to read br_table depth");
   }
 
   Control* block = nullptr;
@@ -1580,12 +1582,12 @@ inline bool OpIter<Policy>::readMemOrTableIndex(bool isMem, uint32_t* index) {
   if (readByte) {
     uint8_t indexTmp;
     if (!readFixedU8(&indexTmp)) {
-      return false;
+      return fail("unable to read memory or table index");
     }
     *index = indexTmp;
   } else {
     if (!readVarU32(index)) {
-      return false;
+      return fail("unable to read memory or table index");
     }
   }
   return true;
@@ -1699,7 +1701,7 @@ inline bool OpIter<Policy>::readMemorySize() {
 
   uint8_t flags;
   if (!readFixedU8(&flags)) {
-    return false;
+    return fail("failed to read memory flags");
   }
 
   if (flags != uint8_t(MemoryTableFlags::Default)) {
@@ -1719,7 +1721,7 @@ inline bool OpIter<Policy>::readMemoryGrow(Value* input) {
 
   uint8_t flags;
   if (!readFixedU8(&flags)) {
-    return false;
+    return fail("failed to read memory flags");
   }
 
   if (flags != uint8_t(MemoryTableFlags::Default)) {
@@ -1805,7 +1807,7 @@ inline bool OpIter<Policy>::readGetLocal(const ValTypeVector& locals,
   MOZ_ASSERT(Classify(op_) == OpKind::GetLocal);
 
   if (!readVarU32(id)) {
-    return false;
+    return fail("unable to read local index");
   }
 
   if (*id >= locals.length()) {
@@ -1821,7 +1823,7 @@ inline bool OpIter<Policy>::readSetLocal(const ValTypeVector& locals,
   MOZ_ASSERT(Classify(op_) == OpKind::SetLocal);
 
   if (!readVarU32(id)) {
-    return false;
+    return fail("unable to read local index");
   }
 
   if (*id >= locals.length()) {
@@ -1837,7 +1839,7 @@ inline bool OpIter<Policy>::readTeeLocal(const ValTypeVector& locals,
   MOZ_ASSERT(Classify(op_) == OpKind::TeeLocal);
 
   if (!readVarU32(id)) {
-    return false;
+    return fail("unable to read local index");
   }
 
   if (*id >= locals.length()) {
@@ -1858,7 +1860,7 @@ inline bool OpIter<Policy>::readGetGlobal(uint32_t* id) {
   MOZ_ASSERT(Classify(op_) == OpKind::GetGlobal);
 
   if (!readVarU32(id)) {
-    return false;
+    return fail("unable to read global index");
   }
 
   if (*id >= env_.globals.length()) {
@@ -1873,7 +1875,7 @@ inline bool OpIter<Policy>::readSetGlobal(uint32_t* id, Value* value) {
   MOZ_ASSERT(Classify(op_) == OpKind::SetGlobal);
 
   if (!readVarU32(id)) {
-    return false;
+    return fail("unable to read global index");
   }
 
   if (*id >= env_.globals.length()) {
@@ -1892,7 +1894,7 @@ inline bool OpIter<Policy>::readTeeGlobal(uint32_t* id, Value* value) {
   MOZ_ASSERT(Classify(op_) == OpKind::TeeGlobal);
 
   if (!readVarU32(id)) {
-    return false;
+    return fail("unable to read global index");
   }
 
   if (*id >= env_.globals.length()) {
@@ -1917,28 +1919,44 @@ template <typename Policy>
 inline bool OpIter<Policy>::readI32Const(int32_t* i32) {
   MOZ_ASSERT(Classify(op_) == OpKind::I32);
 
-  return readVarS32(i32) && push(ValType::I32);
+  if (!readVarS32(i32)) {
+    return fail("failed to read I32 constant");
+  }
+
+  return push(ValType::I32);
 }
 
 template <typename Policy>
 inline bool OpIter<Policy>::readI64Const(int64_t* i64) {
   MOZ_ASSERT(Classify(op_) == OpKind::I64);
 
-  return readVarS64(i64) && push(ValType::I64);
+  if (!readVarS64(i64)) {
+    return fail("failed to read I64 constant");
+  }
+
+  return push(ValType::I64);
 }
 
 template <typename Policy>
 inline bool OpIter<Policy>::readF32Const(float* f32) {
   MOZ_ASSERT(Classify(op_) == OpKind::F32);
 
-  return readFixedF32(f32) && push(ValType::F32);
+  if (!readFixedF32(f32)) {
+    return fail("failed to read F32 constant");
+  }
+
+  return push(ValType::F32);
 }
 
 template <typename Policy>
 inline bool OpIter<Policy>::readF64Const(double* f64) {
   MOZ_ASSERT(Classify(op_) == OpKind::F64);
 
-  return readFixedF64(f64) && push(ValType::F64);
+  if (!readFixedF64(f64)) {
+    return fail("failed to read F64 constant");
+  }
+
+  return push(ValType::F64);
 }
 
 template <typename Policy>
@@ -2038,7 +2056,7 @@ inline bool OpIter<Policy>::readCallIndirect(uint32_t* funcTypeIndex,
   }
 
   if (!readVarU32(tableIndex)) {
-    return false;
+    return fail("unable to read call_indirect table index");
   }
   if (*tableIndex >= env_.tables.length()) {
     // Special case this for improved user experience.
@@ -2060,12 +2078,6 @@ inline bool OpIter<Policy>::readCallIndirect(uint32_t* funcTypeIndex,
   }
 
   const FuncType& funcType = env_.types[*funcTypeIndex].funcType();
-
-  // FIXME: Remove this check when full multi-value function returns land.
-  // Bug 1585909.
-  if (funcType.results().length() > MaxFuncResults) {
-    return fail("too many returns in signature");
-  }
 
 #ifdef WASM_PRIVATE_REFTYPES
   if (env_.tables[*tableIndex].importedOrExported &&
@@ -2130,12 +2142,6 @@ inline bool OpIter<Policy>::readOldCallIndirect(uint32_t* funcTypeIndex,
   }
 
   const FuncType& funcType = env_.types[*funcTypeIndex].funcType();
-
-  // FIXME: Remove this check when full multi-value function returns land.
-  // Bug 1585909.
-  if (funcType.results().length() > MaxFuncResults) {
-    return fail("too many returns in signature");
-  }
 
   if (!popCallArgs(funcType.args(), argValues)) {
     return false;
@@ -2362,7 +2368,7 @@ inline bool OpIter<Policy>::readDataOrElemDrop(bool isData,
   MOZ_ASSERT(Classify(op_) == OpKind::DataOrElemDrop);
 
   if (!readVarU32(segIndex)) {
-    return false;
+    return fail("unable to read segment index");
   }
 
   if (isData) {
@@ -2391,7 +2397,7 @@ inline bool OpIter<Policy>::readMemFill(Value* start, Value* val, Value* len) {
 
   uint8_t memoryIndex;
   if (!readFixedU8(&memoryIndex)) {
-    return false;
+    return fail("failed to read memory index");
   }
   if (!env_.usesMemory()) {
     return fail("can't touch memory without memory");
@@ -2436,7 +2442,7 @@ inline bool OpIter<Policy>::readMemOrTableInit(bool isMem, uint32_t* segIndex,
   }
 
   if (!readVarU32(segIndex)) {
-    return false;
+    return fail("unable to read segment index");
   }
 
   uint32_t memOrTableIndex = 0;
@@ -2480,7 +2486,7 @@ inline bool OpIter<Policy>::readTableFill(uint32_t* tableIndex, Value* start,
   MOZ_ASSERT(Classify(op_) == OpKind::TableFill);
 
   if (!readVarU32(tableIndex)) {
-    return false;
+    return fail("unable to read table index");
   }
   if (*tableIndex >= env_.tables.length()) {
     return fail("table index out of range for table.fill");
@@ -2504,7 +2510,7 @@ inline bool OpIter<Policy>::readTableGet(uint32_t* tableIndex, Value* index) {
   MOZ_ASSERT(Classify(op_) == OpKind::TableGet);
 
   if (!readVarU32(tableIndex)) {
-    return false;
+    return fail("unable to read table index");
   }
   if (*tableIndex >= env_.tables.length()) {
     return fail("table index out of range for table.get");
@@ -2524,7 +2530,7 @@ inline bool OpIter<Policy>::readTableGrow(uint32_t* tableIndex,
   MOZ_ASSERT(Classify(op_) == OpKind::TableGrow);
 
   if (!readVarU32(tableIndex)) {
-    return false;
+    return fail("unable to read table index");
   }
   if (*tableIndex >= env_.tables.length()) {
     return fail("table index out of range for table.grow");
@@ -2547,7 +2553,7 @@ inline bool OpIter<Policy>::readTableSet(uint32_t* tableIndex, Value* index,
   MOZ_ASSERT(Classify(op_) == OpKind::TableSet);
 
   if (!readVarU32(tableIndex)) {
-    return false;
+    return fail("unable to read table index");
   }
   if (*tableIndex >= env_.tables.length()) {
     return fail("table index out of range for table.set");
@@ -2570,7 +2576,7 @@ inline bool OpIter<Policy>::readTableSize(uint32_t* tableIndex) {
   *tableIndex = 0;
 
   if (!readVarU32(tableIndex)) {
-    return false;
+    return fail("unable to read table index");
   }
   if (*tableIndex >= env_.tables.length()) {
     return fail("table index out of range for table.size");
@@ -2741,9 +2747,9 @@ namespace mozilla {
 
 // Specialize IsPod for the Nothing specializations.
 template <>
-struct IsPod<js::wasm::TypeAndValueT<Nothing>> : TrueType {};
+struct IsPod<js::wasm::TypeAndValueT<Nothing>> : std::true_type {};
 template <>
-struct IsPod<js::wasm::ControlStackEntry<Nothing>> : TrueType {};
+struct IsPod<js::wasm::ControlStackEntry<Nothing>> : std::true_type {};
 
 }  // namespace mozilla
 

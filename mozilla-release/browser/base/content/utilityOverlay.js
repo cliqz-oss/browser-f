@@ -13,6 +13,7 @@ var { XPCOMUtils } = ChromeUtils.import(
 );
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  AboutNewTab: "resource:///modules/AboutNewTab.jsm",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   ContextualIdentityService:
     "resource://gre/modules/ContextualIdentityService.jsm",
@@ -20,13 +21,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
 });
-
-XPCOMUtils.defineLazyServiceGetter(
-  this,
-  "aboutNewTabService",
-  "@mozilla.org/browser/aboutnewtab-service;1",
-  "nsIAboutNewTabService"
-);
 
 XPCOMUtils.defineLazyGetter(this, "ReferrerInfo", () =>
   Components.Constructor(
@@ -39,11 +33,12 @@ XPCOMUtils.defineLazyGetter(this, "ReferrerInfo", () =>
 Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
   enumerable: true,
   get() {
-    /* CLIQZ-SPECIAL - we allow cliqz tab to load in private mode
+    // CLIQZ-SPECIAL - we allow cliqz tab to load in private mode
+#if 0
     if (PrivateBrowsingUtils.isWindowPrivate(window)) {
       if (
         !PrivateBrowsingUtils.permanentPrivateBrowsing &&
-        !aboutNewTabService.overridden
+        !AboutNewTab.newTabURLOverridden
       ) {
         return "about:privatebrowsing";
       }
@@ -62,13 +57,13 @@ Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
       if (
         !privateAllowed &&
         (extensionControlled ||
-          aboutNewTabService.newTabURL.startsWith("moz-extension://"))
+          AboutNewTab.newTabURL.startsWith("moz-extension://"))
       ) {
         return "about:privatebrowsing";
       }
     }
-    */
-    return aboutNewTabService.newTabURL;
+#endif
+    return AboutNewTab.newTabURL;
   },
 });
 
@@ -660,7 +655,7 @@ function openLinkIn(url, where, params) {
       focusUrlBar =
         !loadInBackground &&
         w.isBlankPageURL(url) &&
-        !aboutNewTabService.willNotifyUser;
+        !AboutNewTab.willNotifyUser;
 
       let tabUsedForLoad = w.gBrowser.loadOneTab(url, {
         referrerInfo: aReferrerInfo,
@@ -1104,6 +1099,8 @@ function buildHelpMenu() {
   if (typeof gSafeBrowsing != "undefined") {
     gSafeBrowsing.setReportPhishingMenu();
   }
+
+  updateImportCommandEnabledState();
 }
 
 function isElementVisible(aElement) {
@@ -1144,12 +1141,16 @@ function openPrefsHelp(aEvent) {
 }
 
 /**
- * Updates visibility of "Import From Another Browser" command depending on
- * the DisableProfileImport policy.
+ * Updates the enabled state of the "Import From Another Browser" command
+ * depending on the DisableProfileImport policy.
  */
-function updateFileMenuImportUIVisibility(id) {
+function updateImportCommandEnabledState() {
   if (!Services.policies.isAllowed("profileImport")) {
-    let command = document.getElementById(id);
-    command.setAttribute("disabled", "true");
+    document
+      .getElementById("cmd_file_importFromAnotherBrowser")
+      .setAttribute("disabled", "true");
+    document
+      .getElementById("cmd_help_importFromAnotherBrowser")
+      .setAttribute("disabled", "true");
   }
 }

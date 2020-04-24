@@ -10,6 +10,7 @@
 #include <fstream>
 #include <mutex>
 #include <prinrval.h>
+#include <type_traits>
 #ifdef _WINDOWS
 #  include <process.h>
 #  define getpid _getpid
@@ -23,7 +24,6 @@
 #include "chrome/common/ipc_message.h"
 #include "chrome/common/file_descriptor_set_posix.h"
 #include "mozilla/ipc/Faulty.h"
-#include "mozilla/TypeTraits.h"
 #include "nsComponentManagerUtils.h"
 #include "nsNetCID.h"
 #include "nsIFile.h"
@@ -53,8 +53,7 @@ using namespace mozilla::fuzzing;
  */
 template <typename T>
 void FuzzIntegralType(T* v, bool largeValues) {
-  static_assert(mozilla::IsIntegral<T>::value == true,
-                "T must be an integral type");
+  static_assert(std::is_integral_v<T> == true, "T must be an integral type");
   switch (FuzzingTraits::Random(6)) {
     case 0:
       if (largeValues) {
@@ -100,7 +99,7 @@ void FuzzIntegralType(T* v, bool largeValues) {
  */
 template <typename T>
 void FuzzFloatingPointType(T* v, bool largeValues) {
-  static_assert(mozilla::IsFloatingPoint<T>::value == true,
+  static_assert(std::is_floating_point_v<T> == true,
                 "T must be a floating point type");
   switch (FuzzingTraits::Random(6)) {
     case 0:

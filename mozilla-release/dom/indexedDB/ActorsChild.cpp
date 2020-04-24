@@ -6,6 +6,8 @@
 
 #include "ActorsChild.h"
 
+#include <type_traits>
+
 #include "BackgroundChildImpl.h"
 #include "IDBDatabase.h"
 #include "IDBEvents.h"
@@ -25,7 +27,6 @@
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/SnappyUncompressInputStream.h"
-#include "mozilla/TypeTraits.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
@@ -202,8 +203,8 @@ class MOZ_STACK_CLASS ResultHelper final : public IDBRequest::ResultCallback {
     IDBDatabase* mDatabase;
     IDBCursor* mCursor;
     IDBMutableFile* mMutableFile;
-    StructuredCloneReadInfo* mStructuredClone;
-    nsTArray<StructuredCloneReadInfo>* mStructuredCloneArray;
+    StructuredCloneReadInfoChild* mStructuredClone;
+    nsTArray<StructuredCloneReadInfoChild>* mStructuredCloneArray;
     const Key* mKey;
     const nsTArray<Key>* mKeyArray;
     const JS::Value* mJSVal;
@@ -255,7 +256,7 @@ class MOZ_STACK_CLASS ResultHelper final : public IDBRequest::ResultCallback {
   }
 
   ResultHelper(IDBRequest* aRequest, IDBTransaction* aTransaction,
-               StructuredCloneReadInfo* aResult)
+               StructuredCloneReadInfoChild* aResult)
       : mRequest(aRequest),
         mAutoTransaction(aTransaction),
         mResultType(ResultTypeStructuredClone) {
@@ -266,7 +267,7 @@ class MOZ_STACK_CLASS ResultHelper final : public IDBRequest::ResultCallback {
   }
 
   ResultHelper(IDBRequest* aRequest, IDBTransaction* aTransaction,
-               nsTArray<StructuredCloneReadInfo>* aResult)
+               nsTArray<StructuredCloneReadInfoChild>* aResult)
       : mRequest(aRequest),
         mAutoTransaction(aTransaction),
         mResultType(ResultTypeStructuredCloneArray) {
@@ -368,10 +369,10 @@ class MOZ_STACK_CLASS ResultHelper final : public IDBRequest::ResultCallback {
 
  private:
   template <class T>
-  typename EnableIf<IsSame<T, IDBDatabase>::value ||
-                        IsSame<T, IDBCursor>::value ||
-                        IsSame<T, IDBMutableFile>::value,
-                    nsresult>::Type
+  std::enable_if_t<std::is_same_v<T, IDBDatabase> ||
+                       std::is_same_v<T, IDBCursor> ||
+                       std::is_same_v<T, IDBMutableFile>,
+                   nsresult>
   GetResult(JSContext* aCx, T* aDOMObject,
             JS::MutableHandle<JS::Value> aResult) {
     if (!aDOMObject) {
@@ -388,7 +389,7 @@ class MOZ_STACK_CLASS ResultHelper final : public IDBRequest::ResultCallback {
     return NS_OK;
   }
 
-  nsresult GetResult(JSContext* aCx, StructuredCloneReadInfo&& aCloneInfo,
+  nsresult GetResult(JSContext* aCx, StructuredCloneReadInfoChild&& aCloneInfo,
                      JS::MutableHandle<JS::Value> aResult) {
     const bool ok =
         IDBObjectStore::DeserializeValue(aCx, std::move(aCloneInfo), aResult);
@@ -401,7 +402,7 @@ class MOZ_STACK_CLASS ResultHelper final : public IDBRequest::ResultCallback {
   }
 
   nsresult GetResult(JSContext* aCx,
-                     nsTArray<StructuredCloneReadInfo>&& aCloneInfos,
+                     nsTArray<StructuredCloneReadInfoChild>&& aCloneInfos,
                      JS::MutableHandle<JS::Value> aResult) {
     JS::Rooted<JSObject*> array(aCx, JS::NewArrayObject(aCx, 0));
     if (NS_WARN_IF(!array)) {
@@ -490,18 +491,18 @@ class MOZ_STACK_CLASS ResultHelper final : public IDBRequest::ResultCallback {
 
 class PermissionRequestMainProcessHelper final : public PermissionRequestBase {
   BackgroundFactoryRequestChild* mActor;
-  RefPtr<IDBFactory> mFactory;
+  SafeRefPtr<IDBFactory> mFactory;
 
  public:
   PermissionRequestMainProcessHelper(BackgroundFactoryRequestChild* aActor,
-                                     IDBFactory* aFactory,
+                                     SafeRefPtr<IDBFactory> aFactory,
                                      Element* aOwnerElement,
                                      nsIPrincipal* aPrincipal)
       : PermissionRequestBase(aOwnerElement, aPrincipal),
         mActor(aActor),
-        mFactory(aFactory) {
+        mFactory(std::move(aFactory)) {
     MOZ_ASSERT(aActor);
-    MOZ_ASSERT(aFactory);
+    MOZ_ASSERT(mFactory);
     aActor->AssertIsOnOwningThread();
   }
 
@@ -519,16 +520,17 @@ auto DeserializeStructuredCloneFiles(
   MOZ_ASSERT_IF(aForPreprocess, aSerializedFiles.Length() == 1);
 
   const auto count = aSerializedFiles.Length();
-  auto files = nsTArray<StructuredCloneFile>(count);
+  auto files = nsTArray<StructuredCloneFileChild>(count);
 
   for (const auto& serializedFile : aSerializedFiles) {
-    MOZ_ASSERT_IF(aForPreprocess, serializedFile.type() ==
-                                      StructuredCloneFile::eStructuredClone);
+    MOZ_ASSERT_IF(
+        aForPreprocess,
+        serializedFile.type() == StructuredCloneFileBase::eStructuredClone);
 
     const BlobOrMutableFile& blobOrMutableFile = serializedFile.file();
 
     switch (serializedFile.type()) {
-      case StructuredCloneFile::eBlob: {
+      case StructuredCloneFileBase::eBlob: {
         MOZ_ASSERT(blobOrMutableFile.type() == BlobOrMutableFile::TIPCBlob);
 
         const IPCBlob& ipcBlob = blobOrMutableFile.get_IPCBlob();
@@ -539,19 +541,19 @@ auto DeserializeStructuredCloneFiles(
         RefPtr<Blob> blob = Blob::Create(aDatabase->GetOwnerGlobal(), blobImpl);
         MOZ_ASSERT(blob);
 
-        files.EmplaceBack(StructuredCloneFile::eBlob, std::move(blob));
+        files.EmplaceBack(StructuredCloneFileBase::eBlob, std::move(blob));
 
         break;
       }
 
-      case StructuredCloneFile::eMutableFile: {
+      case StructuredCloneFileBase::eMutableFile: {
         MOZ_ASSERT(blobOrMutableFile.type() == BlobOrMutableFile::Tnull_t ||
                    blobOrMutableFile.type() ==
                        BlobOrMutableFile::TPBackgroundMutableFileChild);
 
         switch (blobOrMutableFile.type()) {
           case BlobOrMutableFile::Tnull_t: {
-            files.EmplaceBack(StructuredCloneFile::eMutableFile);
+            files.EmplaceBack(StructuredCloneFileBase::eMutableFile);
 
             break;
           }
@@ -581,7 +583,7 @@ auto DeserializeStructuredCloneFiles(
         break;
       }
 
-      case StructuredCloneFile::eStructuredClone: {
+      case StructuredCloneFileBase::eStructuredClone: {
         if (aForPreprocess) {
           MOZ_ASSERT(blobOrMutableFile.type() == BlobOrMutableFile::TIPCBlob);
 
@@ -594,19 +596,19 @@ auto DeserializeStructuredCloneFiles(
               Blob::Create(aDatabase->GetOwnerGlobal(), blobImpl);
           MOZ_ASSERT(blob);
 
-          files.EmplaceBack(StructuredCloneFile::eStructuredClone,
+          files.EmplaceBack(StructuredCloneFileBase::eStructuredClone,
                             std::move(blob));
         } else {
           MOZ_ASSERT(blobOrMutableFile.type() == BlobOrMutableFile::Tnull_t);
 
-          files.EmplaceBack(StructuredCloneFile::eStructuredClone);
+          files.EmplaceBack(StructuredCloneFileBase::eStructuredClone);
         }
 
         break;
       }
 
-      case StructuredCloneFile::eWasmBytecode:
-      case StructuredCloneFile::eWasmCompiled: {
+      case StructuredCloneFileBase::eWasmBytecode:
+      case StructuredCloneFileBase::eWasmCompiled: {
         MOZ_ASSERT(blobOrMutableFile.type() == BlobOrMutableFile::Tnull_t);
 
         files.EmplaceBack(serializedFile.type());
@@ -627,13 +629,23 @@ auto DeserializeStructuredCloneFiles(
   return files;
 }
 
-StructuredCloneReadInfo DeserializeStructuredCloneReadInfo(
-    SerializedStructuredCloneReadInfo&& aSerialized, IDBDatabase* aDatabase) {
-  return StructuredCloneReadInfo{
-      std::move(aSerialized.data().data),
-      DeserializeStructuredCloneFiles(aDatabase, aSerialized.files(),
-                                      /* aForPreprocess */ false),
-      aDatabase, aSerialized.hasPreprocessInfo()};
+JSStructuredCloneData PreprocessingNotSupported() {
+  MOZ_CRASH("Preprocessing not (yet) supported!");
+}
+
+template <typename PreprocessInfoAccessor>
+StructuredCloneReadInfoChild DeserializeStructuredCloneReadInfo(
+    SerializedStructuredCloneReadInfo&& aSerialized,
+    IDBDatabase* const aDatabase,
+    PreprocessInfoAccessor preprocessInfoAccessor) {
+  // XXX Make this a class invariant of SerializedStructuredCloneReadInfo.
+  MOZ_ASSERT_IF(aSerialized.hasPreprocessInfo(),
+                0 == aSerialized.data().data.Size());
+  return {aSerialized.hasPreprocessInfo() ? preprocessInfoAccessor()
+                                          : std::move(aSerialized.data().data),
+          DeserializeStructuredCloneFiles(aDatabase, aSerialized.files(),
+                                          /* aForPreprocess */ false),
+          aDatabase};
 }
 
 // TODO: Remove duplication between DispatchErrorEvent and DispatchSucessEvent.
@@ -845,16 +857,16 @@ class WorkerPermissionChallenge final : public Runnable {
  public:
   WorkerPermissionChallenge(WorkerPrivate* aWorkerPrivate,
                             BackgroundFactoryRequestChild* aActor,
-                            IDBFactory* aFactory,
+                            SafeRefPtr<IDBFactory> aFactory,
                             PrincipalInfo&& aPrincipalInfo)
       : Runnable("indexedDB::WorkerPermissionChallenge"),
         mWorkerPrivate(aWorkerPrivate),
         mActor(aActor),
-        mFactory(aFactory),
+        mFactory(std::move(aFactory)),
         mPrincipalInfo(std::move(aPrincipalInfo)) {
     MOZ_ASSERT(mWorkerPrivate);
     MOZ_ASSERT(aActor);
-    MOZ_ASSERT(aFactory);
+    MOZ_ASSERT(mFactory);
     mWorkerPrivate->AssertIsOnWorkerThread();
   }
 
@@ -896,7 +908,7 @@ class WorkerPermissionChallenge final : public Runnable {
 
     MaybeCollectGarbageOnIPCMessage();
 
-    const RefPtr<IDBFactory> factory = std::move(mFactory);
+    const SafeRefPtr<IDBFactory> factory = std::move(mFactory);
     Unused << factory;  // XXX see Bug 1605075
 
     mActor->SendPermissionRetry();
@@ -964,7 +976,7 @@ class WorkerPermissionChallenge final : public Runnable {
  private:
   WorkerPrivate* const mWorkerPrivate;
   BackgroundFactoryRequestChild* mActor;
-  RefPtr<IDBFactory> mFactory;
+  SafeRefPtr<IDBFactory> mFactory;
   const PrincipalInfo mPrincipalInfo;
 };
 
@@ -1357,7 +1369,7 @@ class BackgroundRequestChild::PreprocessHelper final
     mActor = nullptr;
   }
 
-  nsresult Init(const StructuredCloneFile& aFile);
+  nsresult Init(const StructuredCloneFileChild& aFile);
 
   nsresult Dispatch();
 
@@ -1430,11 +1442,10 @@ void BackgroundRequestChildBase::AssertIsOnOwningThread() const {
  * BackgroundFactoryChild
  ******************************************************************************/
 
-BackgroundFactoryChild::BackgroundFactoryChild(IDBFactory* aFactory)
-    : mFactory(aFactory) {
+BackgroundFactoryChild::BackgroundFactoryChild(IDBFactory& aFactory)
+    : mFactory(&aFactory) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aFactory);
-  aFactory->AssertIsOnOwningThread();
+  mFactory->AssertIsOnOwningThread();
 
   MOZ_COUNT_CTOR(indexedDB::BackgroundFactoryChild);
 }
@@ -1519,16 +1530,16 @@ BackgroundFactoryChild::RecvPBackgroundIDBDatabaseConstructor(
  ******************************************************************************/
 
 BackgroundFactoryRequestChild::BackgroundFactoryRequestChild(
-    IDBFactory* aFactory, IDBOpenDBRequest* aOpenRequest, bool aIsDeleteOp,
-    uint64_t aRequestedVersion)
+    SafeRefPtr<IDBFactory> aFactory, IDBOpenDBRequest* aOpenRequest,
+    bool aIsDeleteOp, uint64_t aRequestedVersion)
     : BackgroundRequestChildBase(aOpenRequest),
-      mFactory(aFactory),
+      mFactory(std::move(aFactory)),
       mDatabaseActor(nullptr),
       mRequestedVersion(aRequestedVersion),
       mIsDeleteOp(aIsDeleteOp) {
   // Can't assert owning thread here because IPDL has not yet set our manager!
-  MOZ_ASSERT(aFactory);
-  aFactory->AssertIsOnOwningThread();
+  MOZ_ASSERT(mFactory);
+  mFactory->AssertIsOnOwningThread();
   MOZ_ASSERT(aOpenRequest);
 
   MOZ_COUNT_CTOR(indexedDB::BackgroundFactoryRequestChild);
@@ -1690,7 +1701,7 @@ mozilla::ipc::IPCResult BackgroundFactoryRequestChild::RecvPermissionChallenge(
     workerPrivate->AssertIsOnWorkerThread();
 
     RefPtr<WorkerPermissionChallenge> challenge = new WorkerPermissionChallenge(
-        workerPrivate, this, mFactory, std::move(aPrincipalInfo));
+        workerPrivate, this, mFactory.clonePtr(), std::move(aPrincipalInfo));
     if (!challenge->Dispatch()) {
       return IPC_FAIL_NO_REASON(this);
     }
@@ -1721,8 +1732,8 @@ mozilla::ipc::IPCResult BackgroundFactoryRequestChild::RecvPermissionChallenge(
     }
 
     RefPtr<PermissionRequestMainProcessHelper> helper =
-        new PermissionRequestMainProcessHelper(this, mFactory, ownerElement,
-                                               principal);
+        new PermissionRequestMainProcessHelper(this, mFactory.clonePtr(),
+                                               ownerElement, principal);
 
     PermissionRequestBase::PermissionValue permission;
     if (NS_WARN_IF(NS_FAILED(helper->PromptIfNeeded(&permission)))) {
@@ -1842,12 +1853,15 @@ void BackgroundDatabaseChild::EnsureDOMObject() {
   auto request = mOpenRequestActor->GetOpenDBRequest();
   MOZ_ASSERT(request);
 
-  auto factory =
+  auto& factory =
       static_cast<BackgroundFactoryChild*>(Manager())->GetDOMObject();
-  MOZ_ASSERT(factory);
 
-  mTemporaryStrongDatabase =
-      IDBDatabase::Create(request, factory, this, std::move(mSpec));
+  // TODO: This AcquireStrongRefFromRawPtr looks suspicious. This should be
+  // changed or at least well explained, see also comment on
+  // BackgroundFactoryChild.
+  mTemporaryStrongDatabase = IDBDatabase::Create(
+      request, SafeRefPtr{&factory, AcquireStrongRefFromRawPtr{}}, this,
+      std::move(mSpec));
 
   MOZ_ASSERT(mTemporaryStrongDatabase);
   mTemporaryStrongDatabase->AssertIsOnOwningThread();
@@ -2668,12 +2682,8 @@ void BackgroundRequestChild::HandleResponse(
   AssertIsOnOwningThread();
 
   auto cloneReadInfo = DeserializeStructuredCloneReadInfo(
-      std::move(aResponse), mTransaction->Database());
-
-  if (cloneReadInfo.mHasPreprocessInfo) {
-    UniquePtr<JSStructuredCloneData> cloneData = GetNextCloneData();
-    cloneReadInfo.mData = std::move(*cloneData);
-  }
+      std::move(aResponse), mTransaction->Database(),
+      [this] { return std::move(*GetNextCloneData()); });
 
   ResultHelper helper(mRequest, mTransaction, &cloneReadInfo);
 
@@ -2684,7 +2694,7 @@ void BackgroundRequestChild::HandleResponse(
     nsTArray<SerializedStructuredCloneReadInfo>&& aResponse) {
   AssertIsOnOwningThread();
 
-  nsTArray<StructuredCloneReadInfo> cloneReadInfos;
+  nsTArray<StructuredCloneReadInfoChild> cloneReadInfos;
 
   if (!aResponse.IsEmpty()) {
     const uint32_t count = aResponse.Length();
@@ -2697,14 +2707,9 @@ void BackgroundRequestChild::HandleResponse(
         MakeBackInserter(cloneReadInfos),
         [database = mTransaction->Database(),
          this](SerializedStructuredCloneReadInfo&& serializedCloneInfo) {
-          auto cloneReadInfo = DeserializeStructuredCloneReadInfo(
-              std::move(serializedCloneInfo), database);
-
-          if (cloneReadInfo.mHasPreprocessInfo) {
-            cloneReadInfo.mData = std::move(*GetNextCloneData());
-          }
-
-          return cloneReadInfo;
+          return DeserializeStructuredCloneReadInfo(
+              std::move(serializedCloneInfo), database,
+              [this] { return std::move(*GetNextCloneData()); });
         });
   }
 
@@ -2940,10 +2945,10 @@ mozilla::ipc::IPCResult BackgroundRequestChild::RecvPreprocess(
 }
 
 nsresult BackgroundRequestChild::PreprocessHelper::Init(
-    const StructuredCloneFile& aFile) {
+    const StructuredCloneFileChild& aFile) {
   AssertIsOnOwningThread();
   MOZ_ASSERT(aFile.HasBlob());
-  MOZ_ASSERT(aFile.Type() == StructuredCloneFile::eStructuredClone);
+  MOZ_ASSERT(aFile.Type() == StructuredCloneFileBase::eStructuredClone);
   MOZ_ASSERT(mState == State::Initial);
 
   // The stream transport service is used for asynchronous processing. It has a
@@ -3419,12 +3424,12 @@ void BackgroundCursorChild<CursorType>::SendDeleteMeInternal() {
   MOZ_ASSERT(!mStrongRequest);
   MOZ_ASSERT(!mStrongCursor);
 
-  mRequest.reset();
+  mRequest.destroy();
   mTransaction = nullptr;
   // TODO: The things until here could be pulled up to
   // BackgroundCursorChildBase.
 
-  mSource.reset();
+  mSource.destroy();
 
   if (mCursor) {
     mCursor->ClearBackgroundActor();
@@ -3544,9 +3549,9 @@ BackgroundCursorChild<CursorType>::HandleIndividualCursorResponse(
 }
 
 template <IDBCursorType CursorType>
-template <typename T, typename Func>
+template <typename Func>
 void BackgroundCursorChild<CursorType>::HandleMultipleCursorResponses(
-    nsTArray<T>&& aResponses, const Func& aHandleRecord) {
+    nsTArray<ResponseType>&& aResponses, const Func& aHandleRecord) {
   AssertIsOnOwningThread();
   MOZ_ASSERT(mRequest);
   MOZ_ASSERT(mTransaction);
@@ -3602,66 +3607,56 @@ void BackgroundCursorChild<CursorType>::HandleMultipleCursorResponses(
 
 template <IDBCursorType CursorType>
 void BackgroundCursorChild<CursorType>::HandleResponse(
-    nsTArray<ObjectStoreCursorResponse>&& aResponses) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(mTransaction);
-
-  HandleMultipleCursorResponses(
-      std::move(aResponses), [this](const bool useAsCurrentResult,
-                                    ObjectStoreCursorResponse&& response) {
-        // TODO: Maybe move the deserialization of the clone-read-info into
-        // the cursor, so that it is only done for records actually accessed,
-        // which might not be the case for all cached records.
-        return HandleIndividualCursorResponse(
-            useAsCurrentResult, std::move(response.key()),
-            DeserializeStructuredCloneReadInfo(std::move(response.cloneInfo()),
-                                               mTransaction->Database()));
-      });
-}
-
-template <IDBCursorType CursorType>
-void BackgroundCursorChild<CursorType>::HandleResponse(
-    nsTArray<ObjectStoreKeyCursorResponse>&& aResponses) {
+    nsTArray<ResponseType>&& aResponses) {
   AssertIsOnOwningThread();
 
-  HandleMultipleCursorResponses(
-      std::move(aResponses), [this](const bool useAsCurrentResult,
-                                    ObjectStoreKeyCursorResponse&& response) {
-        return HandleIndividualCursorResponse(useAsCurrentResult,
-                                              std::move(response.key()));
-      });
-}
+  if constexpr (CursorType == IDBCursorType::ObjectStore) {
+    MOZ_ASSERT(mTransaction);
 
-template <IDBCursorType CursorType>
-void BackgroundCursorChild<CursorType>::HandleResponse(
-    nsTArray<IndexCursorResponse>&& aResponses) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(mTransaction);
+    HandleMultipleCursorResponses(
+        std::move(aResponses), [this](const bool useAsCurrentResult,
+                                      ObjectStoreCursorResponse&& response) {
+          // TODO: Maybe move the deserialization of the clone-read-info into
+          // the cursor, so that it is only done for records actually accessed,
+          // which might not be the case for all cached records.
+          return HandleIndividualCursorResponse(
+              useAsCurrentResult, std::move(response.key()),
+              DeserializeStructuredCloneReadInfo(
+                  std::move(response.cloneInfo()), mTransaction->Database(),
+                  PreprocessingNotSupported));
+        });
+  }
+  if constexpr (CursorType == IDBCursorType::ObjectStoreKey) {
+    HandleMultipleCursorResponses(
+        std::move(aResponses), [this](const bool useAsCurrentResult,
+                                      ObjectStoreKeyCursorResponse&& response) {
+          return HandleIndividualCursorResponse(useAsCurrentResult,
+                                                std::move(response.key()));
+        });
+  }
+  if constexpr (CursorType == IDBCursorType::Index) {
+    MOZ_ASSERT(mTransaction);
 
-  HandleMultipleCursorResponses(
-      std::move(aResponses),
-      [this](const bool useAsCurrentResult, IndexCursorResponse&& response) {
-        return HandleIndividualCursorResponse(
-            useAsCurrentResult, std::move(response.key()),
-            std::move(response.sortKey()), std::move(response.objectKey()),
-            DeserializeStructuredCloneReadInfo(std::move(response.cloneInfo()),
-                                               mTransaction->Database()));
-      });
-}
-
-template <IDBCursorType CursorType>
-void BackgroundCursorChild<CursorType>::HandleResponse(
-    nsTArray<IndexKeyCursorResponse>&& aResponses) {
-  AssertIsOnOwningThread();
-  static_assert(!CursorTypeTraits<CursorType>::IsObjectStoreCursor);
-
-  HandleMultipleCursorResponses(
-      std::move(aResponses),
-      [this](const bool useAsCurrentResult, IndexKeyCursorResponse&& response) {
-        return HandleIndividualCursorResponse(
-            useAsCurrentResult, std::move(response.key()),
-            std::move(response.sortKey()), std::move(response.objectKey()));
-      });
+    HandleMultipleCursorResponses(
+        std::move(aResponses),
+        [this](const bool useAsCurrentResult, IndexCursorResponse&& response) {
+          return HandleIndividualCursorResponse(
+              useAsCurrentResult, std::move(response.key()),
+              std::move(response.sortKey()), std::move(response.objectKey()),
+              DeserializeStructuredCloneReadInfo(
+                  std::move(response.cloneInfo()), mTransaction->Database(),
+                  PreprocessingNotSupported));
+        });
+  }
+  if constexpr (CursorType == IDBCursorType::IndexKey) {
+    HandleMultipleCursorResponses(
+        std::move(aResponses), [this](const bool useAsCurrentResult,
+                                      IndexKeyCursorResponse&& response) {
+          return HandleIndividualCursorResponse(
+              useAsCurrentResult, std::move(response.key()),
+              std::move(response.sortKey()), std::move(response.objectKey()));
+        });
+  }
 }
 
 template <IDBCursorType CursorType>
@@ -3685,9 +3680,9 @@ void BackgroundCursorChild<CursorType>::ActorDestroy(ActorDestroyReason aWhy) {
   }
 
 #ifdef DEBUG
-  mRequest.maybeReset();
+  mRequest.maybeDestroy();
   mTransaction = nullptr;
-  mSource.maybeReset();
+  mSource.maybeDestroy();
 #endif
 }
 
@@ -3762,6 +3757,11 @@ mozilla::ipc::IPCResult BackgroundCursorChild<CursorType>::RecvResponse(
 
   return IPC_OK();
 }
+
+template class BackgroundCursorChild<IDBCursorType::ObjectStore>;
+template class BackgroundCursorChild<IDBCursorType::ObjectStoreKey>;
+template class BackgroundCursorChild<IDBCursorType::Index>;
+template class BackgroundCursorChild<IDBCursorType::IndexKey>;
 
 template <typename T>
 NS_IMETHODIMP DelayedActionRunnable<T>::Run() {

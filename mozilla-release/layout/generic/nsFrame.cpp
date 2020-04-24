@@ -114,6 +114,7 @@
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/ServoStyleSetInlines.h"
 #include "mozilla/css/ImageLoader.h"
+#include "mozilla/dom/HTMLBodyElement.h"
 #include "mozilla/dom/SVGPathData.h"
 #include "mozilla/dom/TouchEvent.h"
 #include "mozilla/gfx/Tools.h"
@@ -568,7 +569,8 @@ static bool IsFontSizeInflationContainer(nsIFrame* aFrame,
        (content &&
         // Form controls shouldn't become inflation containers.
         (content->IsAnyOfHTMLElements(nsGkAtoms::option, nsGkAtoms::optgroup,
-                                      nsGkAtoms::select, nsGkAtoms::input)))) &&
+                                      nsGkAtoms::select, nsGkAtoms::input,
+                                      nsGkAtoms::button)))) &&
       !(aFrame->IsXULBoxFrame() && aFrame->GetParent()->IsXULBoxFrame());
   NS_ASSERTION(!aFrame->IsFrameOfType(nsIFrame::eLineParticipant) || isInline ||
                    // br frames and mathml frames report being line
@@ -611,6 +613,16 @@ static void MaybeScheduleReflowSVGNonDisplayText(nsFrame* aFrame) {
   }
 
   svgTextFrame->ScheduleReflowSVGNonDisplayText(IntrinsicDirty::StyleChange);
+}
+
+bool nsIFrame::IsPrimaryFrameOfRootOrBodyElement() const {
+  if (!IsPrimaryFrame()) {
+    return false;
+  }
+  nsIContent* content = GetContent();
+  Document* document = content->OwnerDoc();
+  return content == document->GetRootElement() ||
+         content == document->GetBodyElement();
 }
 
 void nsFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
@@ -2298,13 +2310,12 @@ static nsIFrame* GetActiveSelectionFrame(nsPresContext* aPresContext,
   return aFrame;
 }
 
-int16_t nsFrame::DisplaySelection(nsPresContext* aPresContext,
-                                  bool isOkToTurnOn) {
+int16_t nsFrame::DetermineDisplaySelection() {
   int16_t selType = nsISelectionController::SELECTION_OFF;
 
   nsCOMPtr<nsISelectionController> selCon;
   nsresult result =
-      GetSelectionController(aPresContext, getter_AddRefs(selCon));
+      GetSelectionController(PresContext(), getter_AddRefs(selCon));
   if (NS_SUCCEEDED(result) && selCon) {
     result = selCon->GetDisplaySelection(&selType);
     if (NS_SUCCEEDED(result) &&
@@ -2312,12 +2323,7 @@ int16_t nsFrame::DisplaySelection(nsPresContext* aPresContext,
       // Check whether style allows selection.
       if (!IsSelectable(nullptr)) {
         selType = nsISelectionController::SELECTION_OFF;
-        isOkToTurnOn = false;
       }
-    }
-    if (isOkToTurnOn && (selType == nsISelectionController::SELECTION_OFF)) {
-      selCon->SetDisplaySelection(nsISelectionController::SELECTION_ON);
-      selType = nsISelectionController::SELECTION_ON;
     }
   }
   return selType;
@@ -2325,6 +2331,9 @@ int16_t nsFrame::DisplaySelection(nsPresContext* aPresContext,
 
 class nsDisplaySelectionOverlay : public nsPaintedDisplayItem {
  public:
+  /**
+   * @param aSelectionValue nsISelectionController::getDisplaySelection.
+   */
   nsDisplaySelectionOverlay(nsDisplayListBuilder* aBuilder, nsFrame* aFrame,
                             int16_t aSelectionValue)
       : nsPaintedDisplayItem(aBuilder, aFrame),
@@ -2342,15 +2351,17 @@ class nsDisplaySelectionOverlay : public nsPaintedDisplayItem {
       nsDisplayListBuilder* aDisplayListBuilder) override;
   NS_DISPLAY_DECL_NAME("SelectionOverlay", TYPE_SELECTION_OVERLAY)
  private:
-  Color ComputeColor() const;
+  DeviceColor ComputeColor() const;
 
-  static Color ComputeColorFromSelectionStyle(ComputedStyle&);
-  static Color ApplyTransparencyIfNecessary(nscolor);
+  static DeviceColor ComputeColorFromSelectionStyle(ComputedStyle&);
+  static DeviceColor ApplyTransparencyIfNecessary(nscolor);
 
+  // nsISelectionController::getDisplaySelection.
   int16_t mSelectionValue;
 };
 
-Color nsDisplaySelectionOverlay::ApplyTransparencyIfNecessary(nscolor aColor) {
+DeviceColor nsDisplaySelectionOverlay::ApplyTransparencyIfNecessary(
+    nscolor aColor) {
   // If it has already alpha, leave it like that.
   if (NS_GET_A(aColor) != 255) {
     return ToDeviceColor(aColor);
@@ -2358,18 +2369,18 @@ Color nsDisplaySelectionOverlay::ApplyTransparencyIfNecessary(nscolor aColor) {
 
   // NOTE(emilio): Blink and WebKit do something slightly different here, and
   // blend the color with white instead, both for overlays and text backgrounds.
-  auto color = Color::FromABGR(aColor);
+  auto color = sRGBColor::FromABGR(aColor);
   color.a = 0.5;
   return ToDeviceColor(color);
 }
 
-Color nsDisplaySelectionOverlay::ComputeColorFromSelectionStyle(
+DeviceColor nsDisplaySelectionOverlay::ComputeColorFromSelectionStyle(
     ComputedStyle& aStyle) {
   return ApplyTransparencyIfNecessary(
       aStyle.GetVisitedDependentColor(&nsStyleBackground::mBackgroundColor));
 }
 
-Color nsDisplaySelectionOverlay::ComputeColor() const {
+DeviceColor nsDisplaySelectionOverlay::ComputeColor() const {
   LookAndFeel::ColorID colorID;
   if (RefPtr<ComputedStyle> style =
           mFrame->ComputeSelectionStyle(mSelectionValue)) {
@@ -2442,6 +2453,99 @@ already_AddRefed<ComputedStyle> nsIFrame::ComputeSelectionStyle(
   }
   return PresContext()->StyleSet()->ProbePseudoElementStyle(
       *element, PseudoStyleType::selection, Style());
+}
+
+template <typename SizeOrMaxSize>
+static inline bool IsIntrinsicKeyword(const SizeOrMaxSize& aSize) {
+  if (!aSize.IsExtremumLength()) {
+    return false;
+  }
+
+  // All of the keywords except for '-moz-available' depend on intrinsic sizes.
+  return aSize.AsExtremumLength() != StyleExtremumLength::MozAvailable;
+}
+
+bool nsIFrame::CanBeDynamicReflowRoot() const {
+  if (!StaticPrefs::layout_dynamic_reflow_roots_enabled()) {
+    return false;
+  }
+
+  auto& display = *StyleDisplay();
+  if (IsFrameOfType(nsIFrame::eLineParticipant) ||
+      nsStyleDisplay::IsRubyDisplayType(display.mDisplay) ||
+      display.DisplayOutside() == StyleDisplayOutside::InternalTable ||
+      display.DisplayInside() == StyleDisplayInside::Table ||
+      (GetParent() && GetParent()->IsXULBoxFrame())) {
+    // We have a display type where 'width' and 'height' don't actually set the
+    // width or height (i.e., the size depends on content).
+    MOZ_ASSERT(!HasAnyStateBits(NS_FRAME_DYNAMIC_REFLOW_ROOT),
+               "should not have dynamic reflow root bit");
+    return false;
+  }
+
+  // We can't serve as a dynamic reflow root if our used 'width' and 'height'
+  // might be influenced by content.
+  //
+  // FIXME: For display:block, we should probably optimize inline-size: auto.
+  // FIXME: Other flex and grid cases?
+  auto& pos = *StylePosition();
+  const auto& width = pos.mWidth;
+  const auto& height = pos.mHeight;
+  if (!width.IsLengthPercentage() || width.HasPercent() ||
+      !height.IsLengthPercentage() || height.HasPercent() ||
+      IsIntrinsicKeyword(pos.mMinWidth) || IsIntrinsicKeyword(pos.mMaxWidth) ||
+      IsIntrinsicKeyword(pos.mMinHeight) ||
+      IsIntrinsicKeyword(pos.mMaxHeight) ||
+      ((pos.mMinWidth.IsAuto() || pos.mMinHeight.IsAuto()) &&
+       IsFlexOrGridItem())) {
+    return false;
+  }
+
+  // If our flex-basis is 'auto', it'll defer to 'width' (or 'height') which
+  // we've already checked. Otherwise, it preempts them, so we need to
+  // perform the same "could-this-value-be-influenced-by-content" checks that
+  // we performed for 'width' and 'height' above.
+  if (IsFlexItem()) {
+    const auto& flexBasis = pos.mFlexBasis;
+    if (!flexBasis.IsAuto()) {
+      if (!flexBasis.IsSize() || !flexBasis.AsSize().IsLengthPercentage() ||
+          flexBasis.AsSize().HasPercent()) {
+        return false;
+      }
+    }
+  }
+
+  if (!IsFixedPosContainingBlock()) {
+    // We can't treat this frame as a reflow root, since dynamic changes
+    // to absolutely-positioned frames inside of it require that we
+    // reflow the placeholder before we reflow the absolutely positioned
+    // frame.
+    // FIXME:  Alternatively, we could sort the reflow roots in
+    // PresShell::ProcessReflowCommands by depth in the tree, from
+    // deepest to least deep.  However, for performance (FIXME) we
+    // should really be sorting them in the opposite order!
+    return false;
+  }
+
+  // If we participate in a container's block reflow context, or margins
+  // can collapse through us, we can't be a dynamic reflow root.
+  if (IsBlockFrameOrSubclass() &&
+      !HasAllStateBits(NS_BLOCK_FLOAT_MGR | NS_BLOCK_MARGIN_ROOT)) {
+    return false;
+  }
+
+  // Subgrids are never reflow roots, but 'contain:layout/paint' prevents
+  // creating a subgrid in the first place.
+  if (pos.mGridTemplateColumns.IsSubgrid() ||
+      pos.mGridTemplateRows.IsSubgrid()) {
+    // NOTE: we could check that 'display' of our parent's primary frame is
+    // '[inline-]grid' here but that's probably not worth it in practice.
+    if (!display.IsContainLayout() && !display.IsContainPaint()) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /********************************************************
@@ -2760,8 +2864,8 @@ static void PaintDebugBorder(nsIFrame* aFrame, DrawTarget* aDrawTarget,
                              const nsRect& aDirtyRect, nsPoint aPt) {
   nsRect r(aPt, aFrame->GetSize());
   int32_t appUnitsPerDevPixel = aFrame->PresContext()->AppUnitsPerDevPixel();
-  Color blueOrRed(aFrame->HasView() ? Color(0.f, 0.f, 1.f, 1.f)
-                                    : Color(1.f, 0.f, 0.f, 1.f));
+  sRGBColor blueOrRed(aFrame->HasView() ? sRGBColor(0.f, 0.f, 1.f, 1.f)
+                                        : sRGBColor(1.f, 0.f, 0.f, 1.f));
   aDrawTarget->StrokeRect(NSRectToRect(r, appUnitsPerDevPixel),
                           ColorPattern(ToDeviceColor(blueOrRed)));
 }
@@ -2770,7 +2874,7 @@ static void PaintEventTargetBorder(nsIFrame* aFrame, DrawTarget* aDrawTarget,
                                    const nsRect& aDirtyRect, nsPoint aPt) {
   nsRect r(aPt, aFrame->GetSize());
   int32_t appUnitsPerDevPixel = aFrame->PresContext()->AppUnitsPerDevPixel();
-  ColorPattern purple(ToDeviceColor(Color(.5f, 0.f, .5f, 1.f)));
+  ColorPattern purple(ToDeviceColor(sRGBColor(.5f, 0.f, .5f, 1.f)));
   aDrawTarget->StrokeRect(NSRectToRect(r, appUnitsPerDevPixel), purple);
 }
 
@@ -3182,7 +3286,7 @@ void nsIFrame::BuildDisplayListForStackingContext(
     }
   }
 
-  const bool useBlendMode = effects->mMixBlendMode != NS_STYLE_BLEND_NORMAL;
+  const bool useBlendMode = effects->mMixBlendMode != StyleBlend::Normal;
   if (useBlendMode) {
     aBuilder->SetContainsBlendMode(true);
   }
@@ -3210,20 +3314,30 @@ void nsIFrame::BuildDisplayListForStackingContext(
   bool allowAsyncAnimation = false;
   bool inTransform = aBuilder->IsInTransform();
   if (isTransformed) {
-    nsDisplayTransform::PrerenderDecision decision =
+    nsDisplayTransform::PrerenderInfo decision =
         nsDisplayTransform::ShouldPrerenderTransformedContent(aBuilder, this,
                                                               &dirtyRect);
-    switch (decision) {
-      case nsDisplayTransform::FullPrerender:
+
+    switch (decision.mDecision) {
+      case nsDisplayTransform::PrerenderDecision::Full:
         allowAsyncAnimation = true;
         visibleRect = dirtyRect;
         break;
-      case nsDisplayTransform::PartialPrerender:
+      case nsDisplayTransform::PrerenderDecision::Partial:
         allowAsyncAnimation = true;
         visibleRect = dirtyRect;
         [[fallthrough]];
-        // fall through to the NoPrerender case
-      case nsDisplayTransform::NoPrerender: {
+        // fall through to the PrerenderDecision::No case
+      case nsDisplayTransform::PrerenderDecision::No: {
+        // If we didn't prerender an animated frame in a preserve-3d context,
+        // then we want disable async animations for the rest of the preserve-3d
+        // (especially ancestors).
+        if ((extend3DContext || combines3DTransformWithAncestors) &&
+            decision.mDecision == nsDisplayTransform::PrerenderDecision::No &&
+            decision.mHasAnimations) {
+          aBuilder->SavePreserves3DAllowAsyncAnimation(false);
+        }
+
         const nsRect overflow = GetVisualOverflowRectRelativeToSelf();
         if (overflow.IsEmpty() && !extend3DContext) {
           return;
@@ -3231,8 +3345,6 @@ void nsIFrame::BuildDisplayListForStackingContext(
 
         // If we're in preserve-3d then grab the dirty rect that was given to
         // the root and transform using the combined transform.
-        // FIXME: Could we remove this after making transform animations with
-        // preserve-3d run on the compositor?
         if (combines3DTransformWithAncestors) {
           visibleRect = dirtyRect = aBuilder->GetPreserves3DRect();
         }
@@ -3702,6 +3814,22 @@ void nsIFrame::BuildDisplayListForStackingContext(
     }
     buildingDisplayList.SetReferenceFrameAndCurrentOffset(
         outerReferenceFrame, GetOffsetToCrossDoc(outerReferenceFrame));
+
+    // We would like to block async animations for ancestors of ones not
+    // prerendered in the preserve-3d tree. Now that we've finished processing
+    // all descendants, update allowAsyncAnimation to take their prerender
+    // state into account
+    // FIXME: We don't block async animations for previous siblings because
+    // their prerender decisions have been made. We may have to figure out a
+    // better way to rollback their prerender decisions.
+    // Alternatively we could not block animations for later siblings, and only
+    // block them for ancestors of a blocked one.
+    if ((extend3DContext || combines3DTransformWithAncestors) &&
+        allowAsyncAnimation) {
+      // aBuilder->GetPreserves3DAllowAsyncAnimation() means the inner or
+      // previous silbing frames are allowed/disallowed for async animations.
+      allowAsyncAnimation = aBuilder->GetPreserves3DAllowAsyncAnimation();
+    }
 
     nsDisplayTransform* transformItem = MakeDisplayItem<nsDisplayTransform>(
         aBuilder, this, &resultList, visibleRect, 0, allowAsyncAnimation);
@@ -4560,6 +4688,13 @@ bool nsIFrame::IsSelectable(StyleUserSelect* aSelectStyle) const {
   return style != StyleUserSelect::None;
 }
 
+bool nsIFrame::ShouldHaveLineIfEmpty() const {
+  if (Style()->IsPseudoOrAnonBox()) {
+    return false;
+  }
+  return IsEditingHost(this);
+}
+
 /**
  * Handles the Mouse Press Event for the frame
  */
@@ -4691,7 +4826,7 @@ nsFrame::HandlePress(nsPresContext* aPresContext, WidgetGUIEvent* aEvent,
   // starting a new selection since the user may be trying to
   // drag the selected region to some other app.
 
-  if (GetContent() && GetContent()->IsSelectionDescendant()) {
+  if (GetContent() && GetContent()->IsMaybeSelected()) {
     bool inSelection = false;
     UniquePtr<SelectionDetails> details = frameselection->LookUpSelection(
         offsets.content, 0, offsets.EndOffset(), false);
@@ -4786,8 +4921,9 @@ nsresult nsFrame::SelectByTypeAtPoint(nsPresContext* aPresContext,
   NS_ENSURE_ARG_POINTER(aPresContext);
 
   // No point in selecting if selection is turned off
-  if (DisplaySelection(aPresContext) == nsISelectionController::SELECTION_OFF)
+  if (DetermineDisplaySelection() == nsISelectionController::SELECTION_OFF) {
     return NS_OK;
+  }
 
   ContentOffsets offsets = GetContentOffsetsFromPoint(aPoint, SKIP_HIDDEN);
   if (!offsets.content) return NS_ERROR_FAILURE;
@@ -4815,7 +4951,7 @@ nsFrame::HandleMultiplePress(nsPresContext* aPresContext,
   NS_ENSURE_ARG_POINTER(aEventStatus);
 
   if (nsEventStatus_eConsumeNoDefault == *aEventStatus ||
-      DisplaySelection(aPresContext) == nsISelectionController::SELECTION_OFF) {
+      DetermineDisplaySelection() == nsISelectionController::SELECTION_OFF) {
     return NS_OK;
   }
 
@@ -4931,9 +5067,9 @@ NS_IMETHODIMP nsFrame::HandleDrag(nsPresContext* aPresContext,
     // XXX Do we really need to exclude non-selectable content here?
     // GetContentOffsetsFromPoint can handle it just fine, although some
     // other stuff might not like it.
-    // NOTE: DisplaySelection() returns SELECTION_OFF for non-selectable frames.
-    if (DisplaySelection(aPresContext) ==
-        nsISelectionController::SELECTION_OFF) {
+    // NOTE: DetermineDisplaySelection() returns SELECTION_OFF for
+    // non-selectable frames.
+    if (DetermineDisplaySelection() == nsISelectionController::SELECTION_OFF) {
       return NS_OK;
     }
   }
@@ -4953,8 +5089,11 @@ NS_IMETHODIMP nsFrame::HandleDrag(nsPresContext* aPresContext,
 
   AutoWeakFrame weakThis = this;
   if (NS_SUCCEEDED(result) && parentContent) {
-    frameselection->HandleTableSelection(parentContent, contentOffset, target,
-                                         mouseEvent);
+    result = frameselection->HandleTableSelection(parentContent, contentOffset,
+                                                  target, mouseEvent);
+    if (NS_WARN_IF(NS_FAILED(result))) {
+      return result;
+    }
   } else {
     nsPoint pt = nsLayoutUtils::GetEventCoordinatesRelativeTo(mouseEvent, this);
     frameselection->HandleDrag(this, pt);
@@ -5062,7 +5201,7 @@ NS_IMETHODIMP nsFrame::HandleRelease(nsPresContext* aPresContext,
   PresShell::ReleaseCapturingContent();
 
   bool selectionOff =
-      (DisplaySelection(aPresContext) == nsISelectionController::SELECTION_OFF);
+      (DetermineDisplaySelection() == nsISelectionController::SELECTION_OFF);
 
   RefPtr<nsFrameSelection> frameselection;
   ContentOffsets offsets;
@@ -5096,8 +5235,7 @@ NS_IMETHODIMP nsFrame::HandleRelease(nsPresContext* aPresContext,
   // Note, this may cause the current nsFrame object to be deleted, bug 336592.
   RefPtr<nsFrameSelection> frameSelection;
   if (activeFrame != this &&
-      static_cast<nsFrame*>(activeFrame)
-              ->DisplaySelection(activeFrame->PresContext()) !=
+      static_cast<nsFrame*>(activeFrame)->DetermineDisplaySelection() !=
           nsISelectionController::SELECTION_OFF) {
     frameSelection = activeFrame->GetFrameSelection();
   }
@@ -8157,7 +8295,7 @@ const nsFrameSelection* nsIFrame::GetConstFrameSelection() const {
 }
 
 bool nsIFrame::IsFrameSelected() const {
-  NS_ASSERTION(!GetContent() || GetContent()->IsSelectionDescendant(),
+  NS_ASSERTION(!GetContent() || GetContent()->IsMaybeSelected(),
                "use the public IsSelected() instead");
   return GetContent()->IsSelected(0, GetContent()->GetChildCount());
 }
@@ -9058,6 +9196,7 @@ nsIFrame::FrameSearchResult nsFrame::PeekOffsetWord(
   return CONTINUE;
 }
 
+// static
 bool nsFrame::BreakWordBetweenPunctuation(const PeekWordState* aState,
                                           bool aForward, bool aPunctAfter,
                                           bool aWhitespaceAfter,
@@ -9238,7 +9377,7 @@ nsresult nsIFrame::GetFrameFromDirection(
       bool canSkipBr = false;
       for (nsIFrame* current = traversedFrame->GetPrevSibling(); current;
            current = current->GetPrevSibling()) {
-        if (IsSelectable(current)) {
+        if (!current->IsBlockOutside() && IsSelectable(current)) {
           canSkipBr = true;
           break;
         }
@@ -10220,8 +10359,7 @@ bool nsIFrame::IsFocusable(int32_t* aTabIndex, bool aWithMouse) {
       // When clicked on, the selection position within the element
       // will be enough to make them keyboard scrollable.
       nsIScrollableFrame* scrollFrame = do_QueryFrame(this);
-      if (scrollFrame &&
-          !scrollFrame->IsForTextControlWithNoScrollbars() &&
+      if (scrollFrame && !scrollFrame->IsForTextControlWithNoScrollbars() &&
           !scrollFrame->GetScrollStyles().IsHiddenInBothDirections() &&
           !scrollFrame->GetScrollRange().IsEqualEdges(nsRect(0, 0, 0, 0))) {
         // Scroll bars will be used for overflow
@@ -11038,19 +11176,8 @@ void nsIFrame::SetParent(nsContainerFrame* aParent) {
 void nsIFrame::CreateOwnLayerIfNeeded(nsDisplayListBuilder* aBuilder,
                                       nsDisplayList* aList, uint16_t aType,
                                       bool* aCreatedContainerItem) {
-  wr::RenderRoot renderRoot =
-      gfxUtils::GetRenderRootForFrame(this).valueOr(wr::RenderRoot::Default);
-
-  if (renderRoot != wr::RenderRoot::Default) {
-    aList->AppendNewToTop<nsDisplayRenderRoot>(
-        aBuilder, this, aList, aBuilder->CurrentActiveScrolledRoot(),
-        renderRoot);
-    if (aCreatedContainerItem) {
-      *aCreatedContainerItem = true;
-    }
-  } else if (GetContent() && GetContent()->IsXULElement() &&
-             GetContent()->AsElement()->HasAttr(kNameSpaceID_None,
-                                                nsGkAtoms::layer)) {
+  if (GetContent() && GetContent()->IsXULElement() &&
+      GetContent()->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::layer)) {
     aList->AppendNewToTop<nsDisplayOwnLayer>(
         aBuilder, this, aList, aBuilder->CurrentActiveScrolledRoot(),
         nsDisplayOwnLayerFlags::None, ScrollbarData{}, true, false, aType);
@@ -11072,7 +11199,7 @@ bool nsIFrame::IsStackingContext(const nsStyleDisplay* aStyleDisplay,
          // strictly speaking, 'perspective' doesn't require visual atomicity,
          // but the spec says it acts like the rest of these
          ChildrenHavePerspective(aStyleDisplay) ||
-         aStyleEffects->mMixBlendMode != NS_STYLE_BLEND_NORMAL ||
+         aStyleEffects->mMixBlendMode != StyleBlend::Normal ||
          nsSVGIntegrationUtils::UsingEffectsForFrame(this) ||
          (aIsPositioned && (aStyleDisplay->IsPositionForcingStackingContext() ||
                             aStylePosition->mZIndex.IsInteger())) ||
@@ -11232,7 +11359,7 @@ void nsIFrame::DoAppendOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult) {
 
 nsIFrame::CaretPosition::CaretPosition() : mContentOffset(0) {}
 
-nsIFrame::CaretPosition::~CaretPosition() {}
+nsIFrame::CaretPosition::~CaretPosition() = default;
 
 bool nsFrame::HasCSSAnimations() {
   auto collection =
@@ -11655,7 +11782,22 @@ DR_init_type_cookie::~DR_init_type_cookie() {
   ReflowInput::DisplayInitFrameTypeExit(mFrame, mState, mValue);
 }
 
-struct DR_FrameTypeInfo;
+struct DR_Rule;
+
+struct DR_FrameTypeInfo {
+  DR_FrameTypeInfo(LayoutFrameType aFrameType, const char* aFrameNameAbbrev,
+                   const char* aFrameName);
+  ~DR_FrameTypeInfo();
+
+  LayoutFrameType mType;
+  char mNameAbbrev[16];
+  char mName[32];
+  nsTArray<DR_Rule*> mRules;
+
+ private:
+  DR_FrameTypeInfo& operator=(const DR_FrameTypeInfo&) = delete;
+};
+
 struct DR_FrameTreeNode;
 struct DR_Rule;
 
@@ -11737,25 +11879,13 @@ void DR_Rule::AddPart(LayoutFrameType aFrameType) {
   mLength++;
 }
 
-struct DR_FrameTypeInfo {
-  DR_FrameTypeInfo(LayoutFrameType aFrameType, const char* aFrameNameAbbrev,
-                   const char* aFrameName);
-  ~DR_FrameTypeInfo() {
-    int32_t numElements;
-    numElements = mRules.Length();
-    for (int32_t i = numElements - 1; i >= 0; i--) {
-      delete mRules.ElementAt(i);
-    }
+DR_FrameTypeInfo::~DR_FrameTypeInfo() {
+  int32_t numElements;
+  numElements = mRules.Length();
+  for (int32_t i = numElements - 1; i >= 0; i--) {
+    delete mRules.ElementAt(i);
   }
-
-  LayoutFrameType mType;
-  char mNameAbbrev[16];
-  char mName[32];
-  nsTArray<DR_Rule*> mRules;
-
- private:
-  DR_FrameTypeInfo& operator=(const DR_FrameTypeInfo&) = delete;
-};
+}
 
 DR_FrameTypeInfo::DR_FrameTypeInfo(LayoutFrameType aFrameType,
                                    const char* aFrameNameAbbrev,

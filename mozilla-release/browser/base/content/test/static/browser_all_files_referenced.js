@@ -185,15 +185,6 @@ var whitelist = [
   { file: "chrome://marionette/content/test.xhtml" },
   { file: "chrome://marionette/content/test_dialog.properties" },
   { file: "chrome://marionette/content/test_dialog.xhtml" },
-  // Bug 1348533
-  {
-    file: "chrome://mozapps/skin/downloads/buttons.png",
-    platforms: ["macosx"],
-  },
-  {
-    file: "chrome://mozapps/skin/downloads/downloadButtons.png",
-    platforms: ["linux", "win"],
-  },
   // Bug 1348559
   { file: "chrome://pippki/content/resetpassword.xhtml" },
   // Bug 1337345
@@ -806,9 +797,9 @@ add_task(async function checkAllTheFiles() {
   // read the contents.  This will populate gExtensionRoots with all
   // embedded extension APIs, and return any manifest.json files that aren't
   // webextensions.
-  let nonWebextManifests = (await Promise.all(
-    jsonManifests.map(parseJsonManifest)
-  )).filter(uri => !!uri);
+  let nonWebextManifests = (
+    await Promise.all(jsonManifests.map(parseJsonManifest))
+  ).filter(uri => !!uri);
   uris.push(...nonWebextManifests);
 
   addActorModules();

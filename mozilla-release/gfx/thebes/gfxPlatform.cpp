@@ -64,6 +64,7 @@
 
 #if defined(XP_WIN)
 #  include "gfxWindowsPlatform.h"
+#  include "DisplayConfigWindows.h"
 #elif defined(XP_MACOSX)
 #  include "gfxPlatformMac.h"
 #  include "gfxQuartzSurface.h"
@@ -186,7 +187,6 @@ static void ShutdownCMS();
 
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/SourceSurfaceCairo.h"
-using namespace mozilla::gfx;
 
 /* Class to listen for pref changes so that chrome code can dynamically
    force sRGB as an output profile. See Bug #452125. */
@@ -767,6 +767,7 @@ WebRenderMemoryReporter::CollectReports(nsIHandleReportCallback* aHandleReport,
         helper.Report(aReport.rasterized_blobs,
                       "resource-cache/rasterized-blobs");
         helper.Report(aReport.shader_cache, "shader-cache");
+        helper.Report(aReport.display_list, "display-list");
 
         WEBRENDER_FOR_EACH_INTERNER(REPORT_INTERNER);
         WEBRENDER_FOR_EACH_INTERNER(REPORT_DATA_STORE);
@@ -1216,6 +1217,23 @@ static bool IsFeatureSupported(long aFeature, bool aDefault) {
   }
   return status == nsIGfxInfo::FEATURE_STATUS_OK;
 }
+
+static void ApplyGfxInfoFeature(long aFeature, FeatureState& aFeatureState) {
+  nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
+  nsCString blockId;
+  int32_t status;
+  if (!NS_SUCCEEDED(gfxInfo->GetFeatureStatus(aFeature, blockId, &status))) {
+    aFeatureState.Disable(FeatureStatus::BlockedNoGfxInfo, "gfxInfo is broken",
+                          NS_LITERAL_CSTRING("FEATURE_FAILURE_NO_GFX_INFO"));
+
+  } else {
+    if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
+      aFeatureState.Disable(FeatureStatus::Blacklisted,
+                            "Blacklisted by gfxInfo", blockId);
+    }
+  }
+}
+
 /* static*/
 bool gfxPlatform::IsDXInterop2Blocked() {
   return !IsFeatureSupported(nsIGfxInfo::FEATURE_DX_INTEROP2, false);
@@ -1964,6 +1982,14 @@ bool gfxPlatform::IsFontFormatSupported(uint32_t aFormatFlags) {
   return true;
 }
 
+gfxFontGroup* gfxPlatform::CreateFontGroup(
+    const FontFamilyList& aFontFamilyList, const gfxFontStyle* aStyle,
+    gfxTextPerfMetrics* aTextPerf, FontMatchingStats* aFontMatchingStats,
+    gfxUserFontSet* aUserFontSet, gfxFloat aDevToCssSize) const {
+  return new gfxFontGroup(aFontFamilyList, aStyle, aTextPerf,
+                          aFontMatchingStats, aUserFontSet, aDevToCssSize);
+}
+
 gfxFontEntry* gfxPlatform::LookupLocalFont(const nsACString& aFontName,
                                            WeightRange aWeightForEntry,
                                            StretchRange aStretchForEntry,
@@ -2140,7 +2166,7 @@ eCMSMode gfxPlatform::GetCMSMode() {
 }
 
 int gfxPlatform::GetRenderingIntent() {
-  // StaticPrefs.yaml is using 0 as the default for the rendering
+  // StaticPrefList.yaml is using 0 as the default for the rendering
   // intent preference, based on that being the value for
   // QCMS_INTENT_DEFAULT.  Assert here to catch if that ever
   // changes and we can then figure out what to do about it.
@@ -2155,27 +2181,27 @@ int gfxPlatform::GetRenderingIntent() {
   return pIntent;
 }
 
-void gfxPlatform::TransformPixel(const Color& in, Color& out,
-                                 qcms_transform* transform) {
+DeviceColor gfxPlatform::TransformPixel(const sRGBColor& in,
+                                        qcms_transform* transform) {
   if (transform) {
     /* we want the bytes in RGB order */
 #ifdef IS_LITTLE_ENDIAN
     /* ABGR puts the bytes in |RGBA| order on little endian */
     uint32_t packed = in.ToABGR();
     qcms_transform_data(transform, (uint8_t*)&packed, (uint8_t*)&packed, 1);
-    out = Color::FromABGR(packed);
+    auto out = DeviceColor::FromABGR(packed);
 #else
     /* ARGB puts the bytes in |ARGB| order on big endian */
     uint32_t packed = in.UnusualToARGB();
     /* add one to move past the alpha byte */
     qcms_transform_data(transform, (uint8_t*)&packed + 1, (uint8_t*)&packed + 1,
                         1);
-    out = Color::UnusualFromARGB(packed);
+    auto out = DeviceColor::UnusualFromARGB(packed);
 #endif
+    out.a = in.a;
+    return out;
   }
-
-  else if (&out != &in)
-    out = in;
+  return DeviceColor(in.r, in.g, in.b, in.a);
 }
 
 nsTArray<uint8_t> gfxPlatform::GetPlatformCMSOutputProfileData() {
@@ -2836,6 +2862,21 @@ static FeatureState& WebRenderHardwareQualificationStatus(
       break;
   }
 
+#if !defined(NIGHTLY_BUILD) && defined(XP_WIN)
+  // Disable WebRender if we don't have DirectComposition
+  nsAutoString adapterVendorID;
+  gfxInfo->GetAdapterVendorID(adapterVendorID);
+  if (adapterVendorID == u"0x8086") {
+    bool hasBattery = false;
+    gfxInfo->GetHasBattery(&hasBattery);
+    if (hasBattery && !gfxConfig::IsEnabled(Feature::WEBRENDER_COMPOSITOR)) {
+      featureWebRenderQualified.Disable(FeatureStatus::Blocked,
+        "Battery Intel requires os compositor",
+        NS_LITERAL_CSTRING("INTEL_BATTERY_REQUIRES_DCOMP"));
+    }
+  }
+#endif
+
   return featureWebRenderQualified;
 }
 
@@ -2861,6 +2902,29 @@ void gfxPlatform::InitWebRenderConfig() {
     }
     return;
   }
+
+  // Initialize WebRender native compositor usage
+  FeatureState& featureComp =
+      gfxConfig::GetFeature(Feature::WEBRENDER_COMPOSITOR);
+  featureComp.SetDefaultFromPref("gfx.webrender.compositor", true, false);
+
+  if (StaticPrefs::gfx_webrender_compositor_force_enabled_AtStartup()) {
+    featureComp.UserForceEnable("Force enabled by pref");
+  }
+
+  ApplyGfxInfoFeature(nsIGfxInfo::FEATURE_WEBRENDER_COMPOSITOR, featureComp);
+
+#ifdef XP_WIN
+  // Disable native compositor when hardware stretching is not supported. It is
+  // for avoiding a problem like Bug 1618370.
+  // XXX Is there a better check for Bug 1618370?
+  if (!DeviceManagerDx::Get()->CheckHardwareStretchingSupport() &&
+      HasScaledResolution()) {
+    featureComp.Disable(
+        FeatureStatus::Unavailable, "No hardware stretching support",
+        NS_LITERAL_CSTRING("FEATURE_FAILURE_NO_HARDWARE_STRETCHING"));
+  }
+#endif
 
   bool guardedByQualifiedPref = true;
   FeatureState& featureWebRenderQualified =
@@ -2942,32 +3006,34 @@ void gfxPlatform::InitWebRenderConfig() {
         gfxConfig::IsEnabled(Feature::WEBRENDER));
   }
 
+  if (Preferences::GetBool("gfx.webrender.software", false)) {
+    gfxVars::SetUseSoftwareWebRender(gfxConfig::IsEnabled(Feature::WEBRENDER));
+  }
+
   // gfxFeature is not usable in the GPU process, so we use gfxVars to transmit
   // this feature
   if (gfxConfig::IsEnabled(Feature::WEBRENDER)) {
     gfxVars::SetUseWebRender(true);
     reporter.SetSuccessful();
 
-    if (XRE_IsParentProcess()) {
-      Preferences::RegisterPrefixCallbackAndCall(
-          WebRenderDebugPrefChangeCallback, WR_DEBUG_PREF);
-      Preferences::RegisterCallback(
-          WebRenderQualityPrefChangeCallback,
-          nsDependentCString(
-              StaticPrefs::
-                  GetPrefName_gfx_webrender_quality_force_disable_sacrificing_subpixel_aa()));
-      Preferences::RegisterCallback(
-          WebRenderMultithreadingPrefChangeCallback,
-          nsDependentCString(
-              StaticPrefs::GetPrefName_gfx_webrender_enable_multithreading()));
+    Preferences::RegisterPrefixCallbackAndCall(WebRenderDebugPrefChangeCallback,
+                                               WR_DEBUG_PREF);
+    Preferences::RegisterCallback(
+        WebRenderQualityPrefChangeCallback,
+        nsDependentCString(
+            StaticPrefs::
+                GetPrefName_gfx_webrender_quality_force_disable_sacrificing_subpixel_aa()));
+    Preferences::RegisterCallback(
+        WebRenderMultithreadingPrefChangeCallback,
+        nsDependentCString(
+            StaticPrefs::GetPrefName_gfx_webrender_enable_multithreading()));
 
-      Preferences::RegisterCallback(
-          WebRenderBatchingPrefChangeCallback,
-          nsDependentCString(
-              StaticPrefs::GetPrefName_gfx_webrender_batching_lookback()));
+    Preferences::RegisterCallback(
+        WebRenderBatchingPrefChangeCallback,
+        nsDependentCString(
+            StaticPrefs::GetPrefName_gfx_webrender_batching_lookback()));
 
-      UpdateAllowSacrificingSubpixelAA();
-    }
+    UpdateAllowSacrificingSubpixelAA();
   }
 #if defined(MOZ_WIDGET_GTK)
   else {
@@ -3012,44 +3078,22 @@ void gfxPlatform::InitWebRenderConfig() {
   }
 #endif
 
-  // Initialize WebRender native compositor usage
-  FeatureState& featureComp =
-      gfxConfig::GetFeature(Feature::WEBRENDER_COMPOSITOR);
-  featureComp.SetDefaultFromPref("gfx.webrender.compositor", true, false);
   if (!StaticPrefs::gfx_webrender_picture_caching()) {
     featureComp.ForceDisable(
         FeatureStatus::Unavailable, "Picture caching is disabled",
         NS_LITERAL_CSTRING("FEATURE_FAILURE_PICTURE_CACHING_DISABLED"));
   }
 
-  if (!IsFeatureSupported(nsIGfxInfo::FEATURE_WEBRENDER_COMPOSITOR, false)) {
-    featureComp.ForceDisable(FeatureStatus::Blacklisted, "Blacklisted",
-                             NS_LITERAL_CSTRING("FEATURE_FAILURE_BLACKLIST"));
-  }
-
 #ifdef XP_WIN
   if (!gfxVars::UseWebRenderDCompWin()) {
-    featureComp.ForceDisable(
+    featureComp.Disable(
         FeatureStatus::Unavailable, "No DirectComposition usage",
         NS_LITERAL_CSTRING("FEATURE_FAILURE_NO_DIRECTCOMPOSITION"));
   }
-
-  // Disable native compositor when hardware stretching is not supported. It is
-  // for avoiding a problem like Bug 1618370.
-  // XXX Is there a better check for Bug 1618370?
-  if (!DeviceManagerDx::Get()->CheckHardwareStretchingSupport()) {
-    featureComp.ForceDisable(
-        FeatureStatus::Unavailable, "No hardware stretching support",
-        NS_LITERAL_CSTRING("FEATURE_FAILURE_NO_HARDWARE_STRETCHING"));
-  }
-
 #endif
 
   if (gfx::gfxConfig::IsEnabled(gfx::Feature::WEBRENDER_COMPOSITOR)) {
     gfxVars::SetUseWebRenderCompositor(true);
-    // Call UserEnable() only for reporting to Decision Log.
-    // If feature is enabled by default. It is not reported to Decision Log.
-    featureComp.UserEnable("Enabled");
   }
 
   Telemetry::ScalarSet(
@@ -3089,6 +3133,11 @@ void gfxPlatform::InitWebRenderConfig() {
 void gfxPlatform::InitWebGPUConfig() {
   FeatureState& feature = gfxConfig::GetFeature(Feature::WEBGPU);
   feature.SetDefaultFromPref("dom.webgpu.enabled", true, false);
+#ifndef NIGHTLY_BUILD
+  feature.ForceDisable(FeatureStatus::Blocked,
+                       "WebGPU can only be enabled in nightly",
+                       NS_LITERAL_CSTRING("WEBGPU_DISABLE_NON_NIGHTLY"));
+#endif
 }
 
 void gfxPlatform::InitOMTPConfig() {

@@ -138,9 +138,11 @@ const MessageLoaderUtils = {
   async _localJsonLoader(provider) {
     let payload;
     try {
-      payload = await (await fetch(provider.location, {
-        credentials: "omit",
-      })).json();
+      payload = await (
+        await fetch(provider.location, {
+          credentials: "omit",
+        })
+      ).json();
     } catch (e) {
       return [];
     }
@@ -212,7 +214,8 @@ const MessageLoaderUtils = {
       if (
         response &&
         response.ok &&
-        (response.status >= 200 && response.status < 400)
+        response.status >= 200 &&
+        response.status < 400
       ) {
         let jsonResponse;
         try {
@@ -607,13 +610,13 @@ class _ASRouter {
       ...ASRouterPreferences.providers.filter(
         p =>
           p.enabled &&
-          (ASRouterPreferences.getUserPreference(p.id) !== false &&
-            // Provider is enabled or if provider has multiple categories
-            // check that at least one category is enabled
-            (!p.categories ||
-              p.categories.some(
-                c => ASRouterPreferences.getUserPreference(c) !== false
-              )))
+          ASRouterPreferences.getUserPreference(p.id) !== false &&
+          // Provider is enabled or if provider has multiple categories
+          // check that at least one category is enabled
+          (!p.categories ||
+            p.categories.some(
+              c => ASRouterPreferences.getUserPreference(c) !== false
+            ))
       ),
     ].map(_provider => {
       // make a copy so we don't modify the source of the pref
@@ -1914,7 +1917,12 @@ class _ASRouter {
         );
         break;
       case ra.OPEN_PREFERENCES_PAGE:
-        target.browser.ownerGlobal.openPreferences(action.data.category);
+        target.browser.ownerGlobal.openPreferences(
+          action.data.category,
+          action.data.entrypoint && {
+            urlParams: { entrypoint: action.data.entrypoint },
+          }
+        );
         break;
       case ra.OPEN_APPLICATIONS_MENU:
         UITour.showMenu(target.browser.ownerGlobal, action.data.args);

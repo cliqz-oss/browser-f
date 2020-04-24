@@ -8,7 +8,7 @@ description = "Shared Rust code for libxul"
 [dependencies]
 geckoservo = { path = "../../../../servo/ports/geckolib" }
 kvstore = { path = "../../../components/kvstore" }
-lmdb-rkv-sys = { version = "0.9.3", features = ["mdb_idl_logn_9"] }
+lmdb-rkv-sys = { version = "0.11", features = ["mdb_idl_logn_9"] }
 mp4parse_capi = { path = "../../../../media/mp4parse-rust/mp4parse_capi" }
 nserror = { path = "../../../../xpcom/rust/nserror" }
 nsstring = { path = "../../../../xpcom/rust/nsstring" }
@@ -19,13 +19,13 @@ static_prefs = { path = "../../../../modules/libpref/init/static_prefs" }
 profiler_helper = { path = "../../../../tools/profiler/rust-helper", optional = true }
 mozurl = { path = "../../../../netwerk/base/mozurl" }
 webrender_bindings = { path = "../../../../gfx/webrender_bindings", optional = true }
-cubeb-coreaudio = { git = "https://github.com/ChunMinChang/cubeb-coreaudio-rs", rev = "4acd80233efa645ac79769f37b07d495c1b42070", optional = true }
-cubeb-pulse = { git = "https://github.com/djg/cubeb-pulse-rs", rev="8069f8f4189982e0b38fa6dc8993dd4fab41f728", optional = true, features=["pulse-dlopen"] }
+cubeb-coreaudio = { git = "https://github.com/ChunMinChang/cubeb-coreaudio-rs", rev = "432259ab53295ca98a2df0c0e6c73d132b273e97", optional = true }
+cubeb-pulse = { git = "https://github.com/djg/cubeb-pulse-rs", rev="72f813a03cefbdf8e2c58c7410f3556c79429a06", optional = true, features=["pulse-dlopen"] }
 cubeb-sys = { version = "0.6", optional = true, features=["gecko-in-tree"] }
 encoding_glue = { path = "../../../../intl/encoding_glue" }
 audioipc-client = { path = "../../../../media/audioipc/client", optional = true }
 audioipc-server = { path = "../../../../media/audioipc/server", optional = true }
-authenticator = "0.2.9"
+authenticator = "0.2.10"
 gkrust_utils = { path = "../../../../xpcom/rust/gkrust_utils" }
 rsdparsa_capi = { path = "../../../../media/webrtc/signaling/src/sdp/rsdparsa_capi" }
 xulstore = { path = "../../../components/xulstore", optional = true }
@@ -47,12 +47,17 @@ rlbox_lucet_sandbox = { version = "0.1.0", optional = true }
 wgpu-remote = { path = "../../../../gfx/wgpu/wgpu-remote", optional = true }
 mapped_hyph = { git = "https://github.com/jfkthame/mapped_hyph.git", tag = "v0.3.0" }
 remote = { path = "../../../../remote", optional = true }
-fog = { path = "../../../components/telemetry/fog", optional = true }
+fog = { path = "../../../components/glean", optional = true }
 
 unic-langid = { version = "0.8", features = ["likelysubtags"] }
 unic-langid-ffi = { path = "../../../../intl/locale/rust/unic-langid-ffi" }
 fluent-langneg = { version = "0.12.1", features = ["cldr"] }
 fluent-langneg-ffi = { path = "../../../../intl/locale/rust/fluent-langneg-ffi" }
+
+fluent = { version = "0.11" , features = ["fluent-pseudo"] }
+fluent-ffi = { path = "../../../../intl/l10n/rust/fluent-ffi" }
+
+sync15-traits = { git = "https://github.com/mozilla/application-services", rev = "120e51dd5f2aab4194cf0f7e93b2a8923f4504bb" }
 
 [build-dependencies]
 rustc_version = "0.2"
@@ -84,7 +89,7 @@ webrtc = ["mdns_service"]
 wasm_library_sandboxing = ["rlbox_lucet_sandbox"]
 webgpu = ["wgpu-remote"]
 remote_agent = ["remote"]
-fogotype = ["fog"]
+glean = ["fog"]
 
 [lib]
 path = "lib.rs"

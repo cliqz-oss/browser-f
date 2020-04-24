@@ -18,7 +18,7 @@ from taskgraph.optimize import OptimizationStrategy, register_strategy
 logger = logging.getLogger(__name__)
 
 # It's a list of project name which SETA is useful on
-SETA_PROJECTS = ['autoland']
+SETA_PROJECTS = ['autoland', 'try']
 SETA_HIGH_PRIORITY = 1
 SETA_LOW_PRIORITY = 5
 
@@ -87,6 +87,13 @@ class SETA(object):
             if type(task_list) == dict and len(task_list) > 0:
                 if type(task_list.values()[0]) == list and len(task_list.values()[0]) > 0:
                     high_value_tasks = set(task_list.values()[0])
+
+            # hack seta to treat all Android Raptor tasks as low value - see Bug 1535016
+            def only_android_raptor(task):
+                return task.startswith('test-android') and 'raptor' in task
+
+            high_value_android_tasks = set(filter(only_android_raptor, high_value_tasks))
+            low_value_tasks.update(high_value_android_tasks)
 
             seta_conversions = {
                 # old: new
@@ -227,18 +234,24 @@ class SETA(object):
         if project not in SETA_PROJECTS:
             return False
 
-        # on every Nth push, want to run all tasks
-        if int(pushlog_id) % push_interval == 0:
-            return False
+        # Disable the "run all tasks" feature if we're on try (e.g pushed via `mach try auto`)
+        if project != 'try':
+            # on every Nth push, want to run all tasks
+            if int(pushlog_id) % push_interval == 0:
+                return False
 
-        # Nth push, so time to call seta based on number of pushes; however
-        # we also want to ensure we run all tasks at least once per N minutes
-        if self.minutes_between_pushes(
-                project,
-                int(pushlog_id),
-                int(push_date),
-                time_interval) >= time_interval:
-            return False
+            # Nth push, so time to call seta based on number of pushes; however
+            # we also want to ensure we run all tasks at least once per N minutes
+            if self.minutes_between_pushes(
+                    project,
+                    int(pushlog_id),
+                    int(push_date),
+                    time_interval) >= time_interval:
+                return False
+
+        else:
+            # The SETA service has a superficial check preventing try, so spoof autoland
+            project = 'autoland'
 
         # cache the low value tasks per project to avoid repeated SETA server queries
         if project not in self.low_value_tasks:

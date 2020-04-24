@@ -49,3 +49,5 @@ unset WASM_CC
 unset WASM_CXX
 unset LUCETC
 unset WASI_SYSROOT
+unset PDBSTR
+unset WINCHECKSEC

@@ -137,7 +137,7 @@ typedef PlatformSpecificStateBase
  * \page APZCPrefs APZ preferences
  *
  * The following prefs are used to control the behaviour of the APZC.
- * The default values are provided in StaticPrefs.yaml.
+ * The default values are provided in StaticPrefList.yaml.
  *
  * \li\b apz.allow_double_tap_zooming
  * Pref that allows or disallows double tap to zoom
@@ -577,27 +577,32 @@ class MOZ_STACK_CLASS StateChangeNotificationBlocker final {
  */
 class MOZ_RAII AutoApplyAsyncTestAttributes final {
  public:
-  explicit AutoApplyAsyncTestAttributes(const AsyncPanZoomController*);
+  explicit AutoApplyAsyncTestAttributes(
+      const AsyncPanZoomController*,
+      const RecursiveMutexAutoLock& aProofOfLock);
   ~AutoApplyAsyncTestAttributes();
 
  private:
   AsyncPanZoomController* mApzc;
   FrameMetrics mPrevFrameMetrics;
+  const RecursiveMutexAutoLock& mProofOfLock;
 };
 
 AutoApplyAsyncTestAttributes::AutoApplyAsyncTestAttributes(
-    const AsyncPanZoomController* aApzc)
+    const AsyncPanZoomController* aApzc,
+    const RecursiveMutexAutoLock& aProofOfLock)
     // Having to use const_cast here seems less ugly than the alternatives
     // of making several members of AsyncPanZoomController that
     // ApplyAsyncTestAttributes() modifies |mutable|, or several methods that
     // query the async transforms non-const.
     : mApzc(const_cast<AsyncPanZoomController*>(aApzc)),
-      mPrevFrameMetrics(aApzc->Metrics()) {
-  mApzc->ApplyAsyncTestAttributes();
+      mPrevFrameMetrics(aApzc->Metrics()),
+      mProofOfLock(aProofOfLock) {
+  mApzc->ApplyAsyncTestAttributes(aProofOfLock);
 }
 
 AutoApplyAsyncTestAttributes::~AutoApplyAsyncTestAttributes() {
-  mApzc->UnapplyAsyncTestAttributes(mPrevFrameMetrics);
+  mApzc->UnapplyAsyncTestAttributes(mProofOfLock, mPrevFrameMetrics);
 }
 
 class ZoomAnimation : public AsyncPanZoomAnimation {
@@ -825,10 +830,9 @@ void AsyncPanZoomController::InitializeGlobalState() {
 AsyncPanZoomController::AsyncPanZoomController(
     LayersId aLayersId, APZCTreeManager* aTreeManager,
     const RefPtr<InputQueue>& aInputQueue,
-    GeckoContentController* aGeckoContentController, wr::RenderRoot aRenderRoot,
-    GestureBehavior aGestures)
+    GeckoContentController* aGeckoContentController, GestureBehavior aGestures)
     : mLayersId(aLayersId),
-      mRenderRoot(aRenderRoot),
+      mRenderRoot(wr::RenderRoot::Default),
       mGeckoContentController(aGeckoContentController),
       mRefPtrMonitor("RefPtrMonitor"),
       // mTreeManager must be initialized before GetFrameTime() is called
@@ -4017,7 +4021,7 @@ void AsyncPanZoomController::RequestContentRepaint(
 }
 
 bool AsyncPanZoomController::UpdateAnimation(
-    const TimeStamp& aSampleTime,
+    const RecursiveMutexAutoLock& aProofOfLock, const TimeStamp& aSampleTime,
     nsTArray<RefPtr<Runnable>>* aOutDeferredTasks) {
   AssertOnSamplerThread();
 
@@ -4034,7 +4038,7 @@ bool AsyncPanZoomController::UpdateAnimation(
   // Sample the composited async transform once per composite. Note that we
   // call this after the |mLastSampleTime == aSampleTime| check, to ensure
   // it's only called once per APZC on each composite.
-  bool needComposite = SampleCompositedAsyncTransform();
+  bool needComposite = SampleCompositedAsyncTransform(aProofOfLock);
 
   TimeDuration sampleTimeDelta = aSampleTime - mLastSampleTime;
   mLastSampleTime = aSampleTime;
@@ -4097,20 +4101,17 @@ bool AsyncPanZoomController::AdvanceAnimations(const TimeStamp& aSampleTime) {
   {
     RecursiveMutexAutoLock lock(mRecursiveMutex);
     {  // scope lock
-      MutexAutoLock lock(mCheckerboardEventLock);
+      MutexAutoLock lock2(mCheckerboardEventLock);
       // Update RendertraceProperty before UpdateAnimation() call, since
       // the UpdateAnimation() updates effective ScrollOffset for next frame
       // if APZFrameDelay is enabled.
       if (mCheckerboardEvent) {
         mCheckerboardEvent->UpdateRendertraceProperty(
-            CheckerboardEvent::UserVisible,
-            CSSRect(GetEffectiveScrollOffset(
-                        AsyncPanZoomController::eForCompositing),
-                    Metrics().CalculateCompositedSizeInCssPixels()));
+            CheckerboardEvent::UserVisible, GetVisibleRect(lock));
       }
     }
 
-    requestAnimationFrame = UpdateAnimation(aSampleTime, &deferredTasks);
+    requestAnimationFrame = UpdateAnimation(lock, aSampleTime, &deferredTasks);
   }
   // Execute any deferred tasks queued up by mAnimation's Sample() (called by
   // UpdateAnimation()). This needs to be done after the monitor is released
@@ -4128,7 +4129,7 @@ bool AsyncPanZoomController::AdvanceAnimations(const TimeStamp& aSampleTime) {
 CSSRect AsyncPanZoomController::GetCurrentAsyncLayoutViewport(
     AsyncTransformConsumer aMode) const {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
-  AutoApplyAsyncTestAttributes testAttributeApplier(this);
+  AutoApplyAsyncTestAttributes testAttributeApplier(this, lock);
   MOZ_ASSERT(Metrics().IsRootContent(),
              "Only the root content APZC has a layout viewport");
   return GetEffectiveLayoutViewport(aMode);
@@ -4137,7 +4138,7 @@ CSSRect AsyncPanZoomController::GetCurrentAsyncLayoutViewport(
 ParentLayerPoint AsyncPanZoomController::GetCurrentAsyncScrollOffset(
     AsyncTransformConsumer aMode) const {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
-  AutoApplyAsyncTestAttributes testAttributeApplier(this);
+  AutoApplyAsyncTestAttributes testAttributeApplier(this, lock);
 
   return GetEffectiveScrollOffset(aMode) * GetEffectiveZoom(aMode);
 }
@@ -4145,7 +4146,7 @@ ParentLayerPoint AsyncPanZoomController::GetCurrentAsyncScrollOffset(
 CSSPoint AsyncPanZoomController::GetCurrentAsyncScrollOffsetInCssPixels(
     AsyncTransformConsumer aMode) const {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
-  AutoApplyAsyncTestAttributes testAttributeApplier(this);
+  AutoApplyAsyncTestAttributes testAttributeApplier(this, lock);
 
   return GetEffectiveScrollOffset(aMode);
 }
@@ -4153,7 +4154,7 @@ CSSPoint AsyncPanZoomController::GetCurrentAsyncScrollOffsetInCssPixels(
 AsyncTransform AsyncPanZoomController::GetCurrentAsyncTransform(
     AsyncTransformConsumer aMode, AsyncTransformComponents aComponents) const {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
-  AutoApplyAsyncTestAttributes testAttributeApplier(this);
+  AutoApplyAsyncTestAttributes testAttributeApplier(this, lock);
 
   CSSToParentLayerScale2D effectiveZoom;
   if (aComponents.contains(AsyncTransformComponent::eVisual)) {
@@ -4207,7 +4208,7 @@ AsyncPanZoomController::GetCurrentAsyncTransformWithOverscroll(
 LayoutDeviceToParentLayerScale AsyncPanZoomController::GetCurrentPinchZoomScale(
     AsyncTransformConsumer aMode) const {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
-  AutoApplyAsyncTestAttributes testAttributeApplier(this);
+  AutoApplyAsyncTestAttributes testAttributeApplier(this, lock);
   CSSToParentLayerScale2D scale = GetEffectiveZoom(aMode);
   // Note that in general the zoom might have different x- and y-scales.
   // However, this function in particular is only used on the WebRender codepath
@@ -4248,8 +4249,8 @@ CSSToParentLayerScale2D AsyncPanZoomController::GetEffectiveZoom(
   return Metrics().GetZoom();
 }
 
-bool AsyncPanZoomController::SampleCompositedAsyncTransform() {
-  RecursiveMutexAutoLock lock(mRecursiveMutex);
+bool AsyncPanZoomController::SampleCompositedAsyncTransform(
+    const RecursiveMutexAutoLock& aProofOfLock) {
   if (!mCompositedLayoutViewport.IsEqualEdges(Metrics().GetLayoutViewport()) ||
       mCompositedScrollOffset != Metrics().GetScrollOffset() ||
       mCompositedZoom != Metrics().GetZoom()) {
@@ -4265,29 +4266,29 @@ bool AsyncPanZoomController::SampleCompositedAsyncTransform() {
   return false;
 }
 
-void AsyncPanZoomController::ApplyAsyncTestAttributes() {
-  RecursiveMutexAutoLock lock(mRecursiveMutex);
+void AsyncPanZoomController::ApplyAsyncTestAttributes(
+    const RecursiveMutexAutoLock& aProofOfLock) {
   if (mTestAttributeAppliers == 0) {
     if (mTestAsyncScrollOffset != CSSPoint() ||
         mTestAsyncZoom != LayerToParentLayerScale()) {
       Metrics().ZoomBy(mTestAsyncZoom.scale);
       ScrollBy(mTestAsyncScrollOffset);
-      SampleCompositedAsyncTransform();
+      SampleCompositedAsyncTransform(aProofOfLock);
     }
   }
   ++mTestAttributeAppliers;
 }
 
 void AsyncPanZoomController::UnapplyAsyncTestAttributes(
+    const RecursiveMutexAutoLock& aProofOfLock,
     const FrameMetrics& aPrevFrameMetrics) {
-  RecursiveMutexAutoLock lock(mRecursiveMutex);
   MOZ_ASSERT(mTestAttributeAppliers >= 1);
   --mTestAttributeAppliers;
   if (mTestAttributeAppliers == 0) {
     if (mTestAsyncScrollOffset != CSSPoint() ||
         mTestAsyncZoom != LayerToParentLayerScale()) {
       Metrics() = aPrevFrameMetrics;
-      SampleCompositedAsyncTransform();
+      SampleCompositedAsyncTransform(aProofOfLock);
     }
   }
 }
@@ -4315,25 +4316,62 @@ Matrix4x4 AsyncPanZoomController::GetTransformToLastDispatchedPaint() const {
       .PostScale(zoomChange.width, zoomChange.height, 1);
 }
 
-uint32_t AsyncPanZoomController::GetCheckerboardMagnitude() const {
-  RecursiveMutexAutoLock lock(mRecursiveMutex);
-
+CSSRect AsyncPanZoomController::GetVisibleRect(
+    const RecursiveMutexAutoLock& aProofOfLock) const {
+  AutoApplyAsyncTestAttributes testAttributeApplier(this, aProofOfLock);
   CSSPoint currentScrollOffset =
-      GetEffectiveScrollOffset(AsyncPanZoomController::eForCompositing) +
-      mTestAsyncScrollOffset;
-  CSSRect painted = mLastContentPaintMetrics.GetDisplayPort() +
-                    mLastContentPaintMetrics.GetScrollOffset();
+      GetEffectiveScrollOffset(AsyncPanZoomController::eForCompositing);
   CSSRect visible = CSSRect(currentScrollOffset,
                             Metrics().CalculateCompositedSizeInCssPixels());
+  return visible;
+}
+
+uint32_t AsyncPanZoomController::GetCheckerboardMagnitude(
+    const ParentLayerRect& aClippedCompositionBounds) const {
+  RecursiveMutexAutoLock lock(mRecursiveMutex);
+
+  CSSRect painted = mLastContentPaintMetrics.GetDisplayPort() +
+                    mLastContentPaintMetrics.GetScrollOffset();
+  painted.Inflate(CSSMargin::FromAppUnits(
+      nsMargin(1, 1, 1, 1)));  // fuzz for rounding error
+
+  CSSRect visible = GetVisibleRect(lock);  // relative to scrolled frame origin
+  if (visible.IsEmpty() || painted.Contains(visible)) {
+    // early-exit if we're definitely not checkerboarding
+    return 0;
+  }
+
+  // aClippedCompositionBounds and Metrics().GetCompositionBounds() are both
+  // relative to the layer tree origin.
+  // The "*RelativeToItself*" variables are relative to the comp bounds origin
+  ParentLayerRect visiblePartOfCompBoundsRelativeToItself =
+      aClippedCompositionBounds - Metrics().GetCompositionBounds().TopLeft();
+
+  CSSRect visiblePartOfCompBoundsRelativeToItselfInCssSpace =
+      (visiblePartOfCompBoundsRelativeToItself / Metrics().GetZoom());
+
+  // This one is relative to the scrolled frame origin, same as `visible`
+  CSSRect visiblePartOfCompBoundsInCssSpace =
+      visiblePartOfCompBoundsRelativeToItselfInCssSpace + visible.TopLeft();
+
+  visible = visible.Intersect(visiblePartOfCompBoundsInCssSpace);
 
   CSSIntRegion checkerboard;
   // Round so as to minimize checkerboarding; if we're only showing fractional
   // pixels of checkerboarding it's not really worth counting
   checkerboard.Sub(RoundedIn(visible), RoundedOut(painted));
-  return checkerboard.Area();
+  uint32_t area = checkerboard.Area();
+  if (area) {
+    APZC_LOG_FM(Metrics(),
+                "%p is currently checkerboarding (painted %s visible %s)", this,
+                Stringify(painted).c_str(), Stringify(visible).c_str());
+  }
+  return area;
 }
 
-void AsyncPanZoomController::ReportCheckerboard(const TimeStamp& aSampleTime) {
+void AsyncPanZoomController::ReportCheckerboard(
+    const TimeStamp& aSampleTime,
+    const ParentLayerRect& aClippedCompositionBounds) {
   if (mLastCheckerboardReport == aSampleTime) {
     // This function will get called multiple times for each APZC on a single
     // composite (once for each layer it is attached to). Only report the
@@ -4344,7 +4382,7 @@ void AsyncPanZoomController::ReportCheckerboard(const TimeStamp& aSampleTime) {
 
   bool recordTrace = StaticPrefs::apz_record_checkerboarding();
   bool forTelemetry = Telemetry::CanRecordExtended();
-  uint32_t magnitude = GetCheckerboardMagnitude();
+  uint32_t magnitude = GetCheckerboardMagnitude(aClippedCompositionBounds);
 
   // IsInTransformingState() acquires the APZC lock and thus needs to
   // be called before acquiring mCheckerboardEventLock.
@@ -4392,30 +4430,6 @@ void AsyncPanZoomController::FlushActiveCheckerboardReport() {
   // Pretend like we got a frame with 0 pixels checkerboarded. This will
   // terminate the checkerboard event and flush it out
   UpdateCheckerboardEvent(lock, 0);
-}
-
-bool AsyncPanZoomController::IsCurrentlyCheckerboarding() const {
-  RecursiveMutexAutoLock lock(mRecursiveMutex);
-
-  if (mScrollMetadata.IsApzForceDisabled()) {
-    return false;
-  }
-
-  CSSPoint currentScrollOffset =
-      Metrics().GetScrollOffset() + mTestAsyncScrollOffset;
-  CSSRect painted = mLastContentPaintMetrics.GetDisplayPort() +
-                    mLastContentPaintMetrics.GetScrollOffset();
-  painted.Inflate(CSSMargin::FromAppUnits(
-      nsMargin(1, 1, 1, 1)));  // fuzz for rounding error
-  CSSRect visible = CSSRect(currentScrollOffset,
-                            Metrics().CalculateCompositedSizeInCssPixels());
-  if (painted.Contains(visible)) {
-    return false;
-  }
-  APZC_LOG_FM(Metrics(),
-              "%p is currently checkerboarding (painted %s visble %s)", this,
-              Stringify(painted).c_str(), Stringify(visible).c_str());
-  return true;
 }
 
 void AsyncPanZoomController::NotifyLayersUpdated(
@@ -4874,7 +4888,9 @@ void AsyncPanZoomController::ZoomToRect(CSSRect aRect, const uint32_t aFlags) {
   if (!aRect.IsFinite()) {
     NS_WARNING("ZoomToRect got called with a non-finite rect; ignoring...");
     return;
-  } else if (aRect.IsEmpty() && (aFlags & DISABLE_ZOOM_OUT)) {
+  }
+
+  if (aRect.IsEmpty() && (aFlags & DISABLE_ZOOM_OUT)) {
     // Double-tap-to-zooming uses an empty rect to mean "zoom out".
     // If zooming out is disabled, an empty rect is nonsensical
     // and will produce undesirable scrolling.
@@ -4921,6 +4937,9 @@ void AsyncPanZoomController::ZoomToRect(CSSRect aRect, const uint32_t aFlags) {
       targetZoom = CSSToParentLayerScale(
           std::min(compositionBounds.Width() / aRect.Width(),
                    compositionBounds.Height() / aRect.Height()));
+      if (aFlags & DISABLE_ZOOM_OUT) {
+        targetZoom = std::max(targetZoom, currentZoom);
+      }
     }
 
     // 1. If the rect is empty, the content-side logic for handling a double-tap

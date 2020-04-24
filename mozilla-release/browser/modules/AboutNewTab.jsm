@@ -4,7 +4,9 @@
 
 "use strict";
 
-var EXPORTED_SYMBOLS = ["AboutNewTab"];
+const { AppConstants } = ChromeUtils.import(
+  "resource://gre/modules/AppConstants.jsm"
+);
 
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
@@ -19,21 +21,30 @@ XPCOMUtils.defineLazyModuleGetters(this, {
     "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
 });
 
+const ABOUT_URL = "about:newtab";
+const PREF_ACTIVITY_STREAM_DEBUG = "browser.newtabpage.activity-stream.debug";
+const TOPIC_APP_QUIT = "quit-application-granted";
 const BROWSER_READY_NOTIFICATION = "sessionstore-windows-restored";
 
-var AboutNewTab = {
+const AboutNewTab = {
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsIObserver,
     Ci.nsISupportsWeakReference,
   ]),
 
   // AboutNewTab
+  initialized: false,
 
   pageListener: null,
+  isPageListenerOverridden: false,
+  willNotifyUser: false,
 
-  isOverridden: false,
-
+  _activityStreamEnabled: false,
   activityStream: null,
+  activityStreamDebug: false,
+
+  _newTabURL: ABOUT_URL,
+  _newTabURLOverridden: false,
 
   /**
    * init - Initializes an instance of Activity Stream if one doesn't exist already
@@ -45,7 +56,34 @@ var AboutNewTab = {
    *                             would like to re-use.
    */
   init(pageListener) {
-    if (this.isOverridden) {
+    Services.obs.addObserver(this, TOPIC_APP_QUIT);
+    if (!AppConstants.RELEASE_OR_BETA) {
+      XPCOMUtils.defineLazyPreferenceGetter(
+        this,
+        "activityStreamDebug",
+        PREF_ACTIVITY_STREAM_DEBUG,
+        false,
+        () => {
+          this.notifyChange();
+        }
+      );
+    }
+
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "privilegedAboutProcessEnabled",
+      "browser.tabs.remote.separatePrivilegedContentProcess",
+      false,
+      () => {
+        this.notifyChange();
+      }
+    );
+
+    // More initialization happens here
+    this.toggleActivityStream(true);
+    this.initialized = true;
+
+    if (this.isPageListenerOverridden) {
       return;
     }
 
@@ -62,9 +100,81 @@ var AboutNewTab = {
   },
 
   /**
+   * React to changes to the activity stream being enabled or not.
+   *
+   * This will only act if there is a change of state and if not overridden.
+   *
+   * @returns {Boolean} Returns if there has been a state change
+   *
+   * @param {Boolean}   stateEnabled    activity stream enabled state to set to
+   * @param {Boolean}   forceState      force state change
+   */
+  toggleActivityStream(stateEnabled, forceState = false) {
+    if (
+      !forceState &&
+      (this._newTabURLOverridden ||
+        stateEnabled === this._activityStreamEnabled)
+    ) {
+      // exit there is no change of state
+      return false;
+    }
+    if (stateEnabled) {
+      this._activityStreamEnabled = true;
+    } else {
+      this._activityStreamEnabled = false;
+    }
+
+    this._newTabURL = ABOUT_URL;
+    return true;
+  },
+
+  get newTabURL() {
+    return this._newTabURL;
+  },
+
+  set newTabURL(aNewTabURL) {
+    let newTabURL = aNewTabURL.trim();
+    if (newTabURL === ABOUT_URL) {
+      // avoid infinite redirects in case one sets the URL to about:newtab
+      this.resetNewTabURL();
+      return;
+    } else if (newTabURL === "") {
+      newTabURL = "about:blank";
+    }
+
+    this.toggleActivityStream(false);
+    this._newTabURL = newTabURL;
+    this._newTabURLOverridden = true;
+    this.notifyChange();
+  },
+
+  get newTabURLOverridden() {
+    return this._newTabURLOverridden;
+  },
+
+  get activityStreamEnabled() {
+    return false;
+#if 0
+    return this._activityStreamEnabled;
+#endif
+  },
+
+  resetNewTabURL() {
+    this._newTabURLOverridden = false;
+    this._newTabURL = ABOUT_URL;
+    this.toggleActivityStream(true, true);
+    this.notifyChange();
+  },
+
+  notifyChange() {
+    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
+  },
+
+  /**
    * onBrowserReady - Continues the initialization of Activity Stream after browser is ready.
    */
   onBrowserReady() {
+#if 0
     return;
     if (this.activityStream && this.activityStream.initialized) {
       return;
@@ -76,6 +186,7 @@ var AboutNewTab = {
     } catch (e) {
       Cu.reportError(e);
     }
+#endif
   },
 
   /**
@@ -92,10 +203,12 @@ var AboutNewTab = {
       this.pageListener.destroy();
       this.pageListener = null;
     }
+    this.initialized = false;
   },
 
-  override(shouldPassPageListener) {
-    this.isOverridden = true;
+  overridePageListener(shouldPassPageListener) {
+    this.isPageListenerOverridden = true;
+
     const pageListener = this.pageListener;
     if (!pageListener) {
       return null;
@@ -109,7 +222,7 @@ var AboutNewTab = {
   },
 
   reset(pageListener) {
-    this.isOverridden = false;
+    this.isPageListenerOverridden = false;
     this.init(pageListener);
   },
 
@@ -119,15 +232,44 @@ var AboutNewTab = {
       : [];
   },
 
+  // CLIQZ-SPECIAL: set it initially to true in Cliqz browser;
+  _alreadyRecordedTopsitesPainted: true,
+  _nonDefaultStartup: false,
+
+  noteNonDefaultStartup() {
+    this._nonDefaultStartup = true;
+  },
+
+  maybeRecordTopsitesPainted(timestamp) {
+    if (this._alreadyRecordedTopsitesPainted || this._nonDefaultStartup) {
+      return;
+    }
+
+    const SCALAR_KEY = "timestamps.about_home_topsites_first_paint";
+
+    let startupInfo = Services.startup.getStartupInfo();
+    let processStartTs = startupInfo.process.getTime();
+    let delta = Math.round(timestamp - processStartTs);
+    Services.telemetry.scalarSet(SCALAR_KEY, delta);
+    this._alreadyRecordedTopsitesPainted = true;
+  },
+
   // nsIObserver implementation
 
   observe(subject, topic, data) {
     switch (topic) {
-      case BROWSER_READY_NOTIFICATION:
+      case TOPIC_APP_QUIT: {
+        this.uninit();
+        break;
+      }
+      case BROWSER_READY_NOTIFICATION: {
         Services.obs.removeObserver(this, BROWSER_READY_NOTIFICATION);
         // Avoid running synchronously during this event that's used for timing
         Services.tm.dispatchToMainThread(() => this.onBrowserReady());
         break;
+      }
     }
   },
 };
+
+var EXPORTED_SYMBOLS = ["AboutNewTab"];

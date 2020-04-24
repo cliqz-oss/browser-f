@@ -22,7 +22,7 @@ use std::{
 };
 use xpcom::{
     getter_addrefs,
-    interfaces::{nsIEventTarget, nsIRunnable, nsISupports, nsIThread},
+    interfaces::{nsIEventTarget, nsIRunnable, nsISerialEventTarget, nsISupports, nsIThread},
     xpcom, xpcom_method, AtomicRefcnt, RefCounted, RefPtr, XpCom,
 };
 
@@ -42,6 +42,10 @@ extern "C" {
         doomed: *const nsISupports,
         always_proxy: bool,
     );
+    fn NS_CreateBackgroundTaskQueue(
+        name: *const libc::c_char,
+        target: *mut *const nsISerialEventTarget,
+    ) -> nsresult;
 }
 
 pub fn get_current_thread() -> Result<RefPtr<nsIThread>, nsresult> {
@@ -64,6 +68,51 @@ pub fn create_thread(name: &str) -> Result<RefPtr<nsIThread>, nsresult> {
 
 pub fn is_current_thread(thread: &nsIThread) -> bool {
     unsafe { NS_IsCurrentThread(thread.coerce()) }
+}
+
+pub fn create_background_task_queue(
+    name: &'static CStr,
+) -> Result<RefPtr<nsISerialEventTarget>, nsresult> {
+    getter_addrefs(|p| unsafe { NS_CreateBackgroundTaskQueue(name.as_ptr(), p) })
+}
+
+/// Options to control how task runnables are dispatched.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct DispatchOptions(u32);
+
+impl Default for DispatchOptions {
+    #[inline]
+    fn default() -> Self {
+        DispatchOptions(nsIEventTarget::DISPATCH_NORMAL as u32)
+    }
+}
+
+impl DispatchOptions {
+    /// Creates a blank set of options. The runnable will be dispatched using
+    /// the default mode.
+    #[inline]
+    pub fn new() -> Self {
+        DispatchOptions::default()
+    }
+
+    /// Indicates whether or not the dispatched runnable may block its target
+    /// thread by waiting on I/O. If `true`, the runnable may be dispatched to a
+    /// dedicated thread pool, leaving the main pool free for CPU-bound tasks.
+    #[inline]
+    pub fn may_block(self, may_block: bool) -> DispatchOptions {
+        const FLAG: u32 = nsIEventTarget::DISPATCH_EVENT_MAY_BLOCK as u32;
+        if may_block {
+            DispatchOptions(self.flags() | FLAG)
+        } else {
+            DispatchOptions(self.flags() & !FLAG)
+        }
+    }
+
+    /// Returns the set of bitflags to pass to `DispatchFromScript`.
+    #[inline]
+    fn flags(self) -> u32 {
+        self.0
+    }
 }
 
 /// A task represents an operation that asynchronously executes on a target
@@ -103,11 +152,17 @@ impl TaskRunnable {
         }))
     }
 
-    pub fn dispatch(&self, target_thread: &nsIThread) -> Result<(), nsresult> {
-        unsafe {
-            target_thread.DispatchFromScript(self.coerce(), nsIEventTarget::DISPATCH_NORMAL as u32)
-        }
-        .to_result()
+    #[inline]
+    pub fn dispatch(&self, target_thread: &nsIEventTarget) -> Result<(), nsresult> {
+        self.dispatch_with_options(target_thread, DispatchOptions::default())
+    }
+
+    pub fn dispatch_with_options(
+        &self,
+        target_thread: &nsIEventTarget,
+        options: DispatchOptions,
+    ) -> Result<(), nsresult> {
+        unsafe { target_thread.DispatchFromScript(self.coerce(), options.flags()) }.to_result()
     }
 
     xpcom_method!(run => Run());

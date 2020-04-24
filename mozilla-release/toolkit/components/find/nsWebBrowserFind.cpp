@@ -54,7 +54,7 @@ nsWebBrowserFind::nsWebBrowserFind()
       mSearchSubFrames(true),
       mSearchParentFrames(true) {}
 
-nsWebBrowserFind::~nsWebBrowserFind() {}
+nsWebBrowserFind::~nsWebBrowserFind() = default;
 
 NS_IMPL_ISUPPORTS(nsWebBrowserFind, nsIWebBrowserFind,
                   nsIWebBrowserFindInFrames)
@@ -344,7 +344,7 @@ void nsWebBrowserFind::SetSelectionAndScroll(nsPIDOMWindowOuter* aWindow,
     selection->AddRangeAndSelectFramesAndNotifyListeners(*aRange,
                                                          IgnoreErrors());
 
-    nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+    nsFocusManager* fm = nsFocusManager::GetFocusManager();
     if (fm) {
       if (tcFrame) {
         RefPtr<Element> newFocusedElement = Element::FromNode(content);
@@ -742,7 +742,7 @@ nsresult nsWebBrowserFind::OnFind(nsPIDOMWindowOuter* aFoundWindow) {
     ClearFrameSelection(lastFocusedWindow);
   }
 
-  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
   if (fm) {
     // get the containing frame and focus it. For top-level windows, the right
     // window should already be focused.

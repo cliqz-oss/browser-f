@@ -208,13 +208,6 @@
      */
     _windowIsClosing: false,
 
-    /**
-     * We'll use this to cache the accessor to the title element.
-     * It's important that the defualt is `undefined`, so that it
-     * can be set to `null` by the `querySelector`.
-     */
-    _titleElement: undefined,
-
     preloadedBrowser: null,
 
     /**
@@ -920,79 +913,63 @@
     },
 
     getWindowTitleForBrowser(aBrowser) {
-      let title = "";
+      var newTitle = "";
+      var docElement = document.documentElement;
+      var sep = docElement.getAttribute("titlemenuseparator");
+      let tab = this.getTabForBrowser(aBrowser);
+      let docTitle;
 
-      let docElement = document.documentElement;
+      if (tab._labelIsContentTitle) {
+        // Strip out any null bytes in the content title, since the
+        // underlying widget implementations of nsWindow::SetTitle pass
+        // null-terminated strings to system APIs.
+        docTitle = tab.getAttribute("label").replace(/\0/g, "");
+      }
+
+      if (!docTitle) {
+        docTitle = docElement.getAttribute("titledefault");
+      }
+
+      var modifier = docElement.getAttribute("titlemodifier");
+      if (docTitle) {
+        newTitle += docElement.getAttribute("titlepreface") || "";
+        newTitle += docTitle;
+        if (modifier) {
+          newTitle += sep;
+        }
+      }
+      newTitle += modifier;
 
       // If location bar is hidden and the URL type supports a host,
       // add the scheme and host to the title to prevent spoofing.
       // XXX https://bugzilla.mozilla.org/show_bug.cgi?id=22183#c239
       try {
         if (docElement.getAttribute("chromehidden").includes("location")) {
-          const uri = Services.uriFixup.createExposableURI(aBrowser.currentURI);
-          let prefix = uri.prePath;
-          if (uri.scheme == "about") {
-            prefix = uri.spec;
-          } else if (uri.scheme == "moz-extension") {
+          const uri = Services.io.createExposableURI(aBrowser.currentURI);
+          if (uri.scheme === "about") {
+            newTitle = `${uri.spec}${sep}${newTitle}`;
+          } else if (uri.scheme === "moz-extension") {
             const ext = WebExtensionPolicy.getByHostname(uri.host);
             if (ext && ext.name) {
-              let extensionLabel = document.getElementById(
-                "urlbar-label-extension"
-              );
-              prefix = `${extensionLabel.value} (${ext.name})`;
+              const prefix = document.querySelector("#urlbar-label-extension")
+                .value;
+              newTitle = `${prefix} (${ext.name})${sep}${newTitle}`;
+            } else {
+              newTitle = `${uri.prePath}${sep}${newTitle}`;
             }
+          } else {
+            newTitle = `${uri.prePath}${sep}${newTitle}`;
           }
-          title = prefix + " - ";
         }
       } catch (e) {
         // ignored
       }
 
-      if (docElement.hasAttribute("titlepreface")) {
-        title += docElement.getAttribute("titlepreface");
-      }
-
-      let tab = this.getTabForBrowser(aBrowser);
-
-      if (tab._labelIsContentTitle) {
-        // Strip out any null bytes in the content title, since the
-        // underlying widget implementations of nsWindow::SetTitle pass
-        // null-terminated strings to system APIs.
-        title += tab.getAttribute("label").replace(/\0/g, "");
-      }
-
-      let mode =
-        docElement.getAttribute("privatebrowsingmode") == "temporary"
-          ? "private"
-          : "default";
-
-      if (title) {
-        return {
-          id:
-            mode == "private"
-              ? "browser-main-window-content-title-private"
-              : "browser-main-window-content-title-default",
-          args: {
-            title,
-          },
-        };
-      }
-      return {
-        id: "browser-main-window-title",
-        args: {
-          mode,
-        },
-      };
+      return newTitle;
     },
 
-    async updateTitlebar() {
-      if (!this._titleElement) {
-        this._titleElement = document.documentElement.querySelector("title");
-      }
-
-      let { id, args } = this.getWindowTitleForBrowser(this.selectedBrowser);
-      document.l10n.setAttributes(this._titleElement, id, args);
-      await document.l10n.translateElements([this._titleElement]);
+    updateTitlebar() {
+      document.title = this.getWindowTitleForBrowser(this.selectedBrowser);
     },
 
     updateCurrentBrowser(aForceUpdate) {
@@ -1324,7 +1301,7 @@
         }
 
         if (!window.fullScreen || newTab.isEmpty) {
-          focusAndSelectUrlBar();
+          gURLBar.select();
           return;
         }
       }
@@ -1482,7 +1459,7 @@
         // See if we can use the URI as the title.
         if (browser.currentURI.displaySpec) {
           try {
-            title = Services.uriFixup.createExposableURI(browser.currentURI)
+            title = Services.io.createExposableURI(browser.currentURI)
               .displaySpec;
           } catch (ex) {
             title = browser.currentURI.displaySpec;
@@ -1872,6 +1849,7 @@
       let listener = this._tabListeners.get(tab);
       aBrowser.webProgress.removeProgressListener(filter);
       filter.removeProgressListener(listener);
+      let stateFlags = listener.mStateFlags;
 
       // We'll be creating a new listener, so destroy the old one.
       listener.destroy();
@@ -1925,6 +1903,7 @@
         aBrowser.removeAttribute("remoteType");
       }
 
+      let switchingInProgressLoad = !!redirectLoadSwitchId;
       if (!rebuildFrameLoaders) {
         parent.appendChild(aBrowser);
       } else {
@@ -1934,7 +1913,7 @@
         aBrowser.changeRemoteness({
           remoteType,
           replaceBrowsingContext,
-          switchingInProgressLoad: redirectLoadSwitchId != null,
+          switchingInProgressLoad,
         });
         // Once we have new frameloaders, this call sets the browser back up.
         //
@@ -1956,10 +1935,24 @@
       // browser window is minimized.
       aBrowser.docShellIsActive = this.shouldActivateDocShell(aBrowser);
 
+      // If we're switching an in-progress load, then we shouldn't expect
+      // notification for a new initial about:blank and we should preserve
+      // the existing stateFlags on the TabProgressListener.
+      let expectInitialAboutBlank = !switchingInProgressLoad;
+      if (expectInitialAboutBlank) {
+        stateFlags = 0;
+      }
+
       // Create a new tab progress listener for the new browser we just injected,
       // since tab progress listeners have logic for handling the initial about:blank
       // load
-      listener = new TabProgressListener(tab, aBrowser, true, false);
+      listener = new TabProgressListener(
+        tab,
+        aBrowser,
+        expectInitialAboutBlank,
+        false,
+        stateFlags
+      );
       this._tabListeners.set(tab, listener);
       filter.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_ALL);
 
@@ -2071,7 +2064,7 @@
       // Use the JSM global to create the permanentKey, so that if the
       // permanentKey is held by something after this window closes, it
       // doesn't keep the window alive.
-      b.permanentKey = new (Cu.getGlobalForObject(Services)).Object();
+      b.permanentKey = new (Cu.getGlobalForObject(Services).Object)();
 
       const defaultBrowserAttributes = {
         contextmenu: "contentAreaContextMenu",
@@ -2833,6 +2826,10 @@
           }
           if (fromExternal) {
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_FROM_EXTERNAL;
+          } else if (!triggeringPrincipal.isSystemPrincipal) {
+            // XXX this code must be reviewed and changed when bug 1616353
+            // lands.
+            flags |= Ci.nsIWebNavigation.LOAD_FLAGS_FIRST_LOAD;
           }
           if (allowMixedContent) {
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_MIXED_CONTENT;
@@ -3688,7 +3685,7 @@
         }
       } else if (!this._windowIsClosing) {
         if (aNewTab) {
-          focusAndSelectUrlBar();
+          gURLBar.select();
         }
 
         // workaround for bug 345399

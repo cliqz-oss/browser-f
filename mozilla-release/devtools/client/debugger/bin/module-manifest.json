@@ -670,7 +670,8 @@
       "../../webpack/buildin/harmony-module.js": 519,
       "../../babel-loader/lib/index.js??ref--1!../../devtools-modules/src/saveAs.js": 520,
       "../../punycode/punycode.js": 521,
-      "../../babel-loader/lib/index.js??ref--1!../../../../../shared/dom-node-constants.js": 522
+      "../../babel-loader/lib/index.js??ref--1!../../../../../shared/dom-node-constants.js": 522,
+      "external \"\\n(() => {\\n  importScripts(\\\"resource://devtools/client/shared/vendor/whatwg-url.js\\\");\\n  return { URL }\\n})()\\n\"": 523
     },
     "usedIds": {
       "0": 0,
@@ -1195,7 +1196,8 @@
       "519": 519,
       "520": 520,
       "521": 521,
-      "522": 522
+      "522": 522,
+      "523": 523
     }
   },
   "chunks": {

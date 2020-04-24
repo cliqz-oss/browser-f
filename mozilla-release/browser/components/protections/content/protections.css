@@ -113,9 +113,8 @@ h2 {
 .etp-card.custom-not-blocking #protection-details,
 #manage-protections,
 .etp-card .icon.dark,
-.mobile-app-icon.dark,
 a.hidden,
-.loading .card-body.hidden,
+.loading .card-body,
 .lockwise-card.hidden,
 #lockwise-body-content .has-logins.hidden,
 #lockwise-body-content .no-logins.hidden,
@@ -143,31 +142,22 @@ a.hidden,
   z-index: 1;
 }
 
-@supports -moz-bool-pref("browser.in-content.dark-mode") {
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --social-highlight-color: #9661FF;
-      --cookie-highlight-color: #2BA8FF;
-      --tracker-highlight-color: #39E1BC;
-      --fingerprinter-highlight-color: #FFB65E;
-      --cryptominer-highlight-color: #BEBECA;
-    }
 
-    .etp-card .icon.dark {
-      display: block;
-    }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --social-highlight-color: #9661FF;
+    --cookie-highlight-color: #2BA8FF;
+    --tracker-highlight-color: #39E1BC;
+    --fingerprinter-highlight-color: #FFB65E;
+    --cryptominer-highlight-color: #BEBECA;
+  }
 
-    .etp-card .icon.light {
-      display: none;
-    }
+  .etp-card .icon.dark {
+    display: block;
+  }
 
-    .mobile-app-icon.dark {
-      display: block;
-    }
-
-    .mobile-app-icon.light {
-      display: none;
-    }
+  .etp-card .icon.light {
+    display: none;
   }
 }
 
@@ -206,28 +196,28 @@ a.hidden,
   position: absolute;
   width: var(--exit-icon-size);
   height: var(--exit-icon-size);
+  top: var(--exit-icon-position);
+  inset-inline-end: var(--exit-icon-position);
   background-image: url(chrome://browser/skin/stop.svg);
   background-size: calc(var(--exit-icon-size) - 2px);
+  background-color: transparent;
   background-position: center;
   background-repeat: no-repeat;
-  top: var(--exit-icon-position);
   -moz-context-properties: fill;
   fill: var(--in-content-deemphasized-text);
+
+  /* Override margin, padding, min-height and min-width set in common.inc.css */
+  padding: 0;
+  margin: 0;
+  min-width: 1px;
+  min-height: 1px;
 }
 
-.exit-icon:dir(ltr) {
-  right: var(--exit-icon-position);
-}
-
-.exit-icon:dir(rtl) {
-  left: var(--exit-icon-position);
-}
-
-.exit-icon:hover {
+.exit-icon:enabled:hover {
   background-color: var(--in-content-button-background);
 }
 
-.exit-icon:hover:active {
+.exit-icon:enabled:hover:active {
   background-color: var(--in-content-button-background-hover);
 }
 
@@ -240,14 +230,14 @@ a.hidden,
 }
 
 #protection-details {
+  margin-block: 24px 0;
   padding-inline: 24px 3px;
   -moz-context-properties: fill;
   fill: currentColor;
-  background: url("chrome://browser/skin/settings.svg") no-repeat 3px 3px;
+  background: url("chrome://browser/skin/settings.svg") no-repeat 3px;
   font-size: 0.75em;
   cursor: default;
   width: max-content;
-  margin-block: 24px 0;
 }
 
 #protection-details:dir(rtl) {
@@ -602,10 +592,11 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
   grid-gap: 10px;
 }
 
-.lockwise-mobile-app-icon,
 .mobile-app-icon {
   height: 56px;
   width: auto;
+  -moz-context-properties: fill;
+  fill: currentColor;
 }
 
 #lockwise-app-links,
@@ -726,7 +717,6 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
   -moz-context-properties: fill,fill-opacity;
   fill: white;
   fill-opacity: 0.65;
-  display: block;
   padding: 5px;
   display: inline-block;
   vertical-align: middle;

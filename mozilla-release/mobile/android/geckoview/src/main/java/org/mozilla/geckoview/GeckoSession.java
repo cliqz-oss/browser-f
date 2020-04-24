@@ -476,7 +476,8 @@ public class GeckoSession implements Parcelable {
                               message.getString("triggerUri"),
                               message.getInt("where"),
                               message.getInt("flags"),
-                              message.getBoolean("hasUserGesture"));
+                              message.getBoolean("hasUserGesture"),
+                              /* isDirectNavigation */ false);
 
                     if (!IntentUtils.isUriSafeForScheme(request.uri)) {
                         callback.sendError("Blocked unsafe intent URI");
@@ -735,6 +736,8 @@ public class GeckoSession implements Parcelable {
                         type = PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE;
                     } else if ("autoplay-media-audible".equals(typeString)) {
                         type = PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE;
+                    } else if ("media-key-system-access".equals(typeString)) {
+                        type = PermissionDelegate.PERMISSION_MEDIA_KEY_SYSTEM_ACCESS;
                     } else {
                         throw new IllegalArgumentException("Unknown permission request: " + typeString);
                     }
@@ -1626,18 +1629,61 @@ public class GeckoSession implements Parcelable {
     @AnyThread
     public void loadUri(final @NonNull String uri, final @Nullable GeckoSession referrer,
                         final @LoadFlags int flags, final @Nullable Map<String, String> additionalHeaders) {
-        final GeckoBundle msg = new GeckoBundle();
-        msg.putString("uri", uri);
-        msg.putInt("flags", flags);
+        // For performance reasons we short-circuit the delegate here
+        // instead of making Gecko call it for direct loadUri calls.
+        final NavigationDelegate.LoadRequest request =
+                new NavigationDelegate.LoadRequest(
+                        uri,
+                        null, /* triggerUri */
+                        1, /* geckoTarget: OPEN_CURRENTWINDOW */
+                        0, /* flags */
+                        false, /* hasUserGesture */
+                        true /* isDirectNavigation */);
 
-        if (referrer != null) {
-            msg.putString("referrerSessionId", referrer.mId);
+        shouldLoadUri(request).accept(allowOrDeny -> {
+            if (allowOrDeny == AllowOrDeny.DENY) {
+                return;
+            }
+
+            final GeckoBundle msg = new GeckoBundle();
+            msg.putString("uri", uri);
+            msg.putInt("flags", flags);
+
+            if (referrer != null) {
+                msg.putString("referrerSessionId", referrer.mId);
+            }
+
+            if (additionalHeaders != null) {
+                msg.putStringArray("headers", additionalHeadersToStringArray(additionalHeaders));
+            }
+
+            mEventDispatcher.dispatch("GeckoView:LoadUri", msg);
+        });
+    }
+
+    private GeckoResult<AllowOrDeny> shouldLoadUri(final NavigationDelegate.LoadRequest request) {
+        final NavigationDelegate delegate = mNavigationHandler.getDelegate();
+        if (delegate == null) {
+            return GeckoResult.fromValue(AllowOrDeny.ALLOW);
         }
 
-        if (additionalHeaders != null) {
-            msg.putStringArray("headers", additionalHeadersToStringArray(additionalHeaders));
-        }
-        mEventDispatcher.dispatch("GeckoView:LoadUri", msg);
+        final GeckoResult<AllowOrDeny> result = new GeckoResult<>();
+
+        ThreadUtils.runOnUiThread(() -> {
+            final GeckoResult<AllowOrDeny> delegateResult =
+                    delegate.onLoadRequest(this, request);
+
+            if (delegateResult == null) {
+                result.complete(AllowOrDeny.ALLOW);
+            } else {
+                delegateResult.accept(
+                    allowOrDeny -> result.complete(allowOrDeny),
+                    error -> result.completeExceptionally(error)
+                );
+            }
+        });
+
+        return result;
     }
 
     /**
@@ -1954,7 +2000,7 @@ public class GeckoSession implements Parcelable {
             mEventDispatcher.dispatch("GeckoView:FlushSessionState", null);
         }
 
-        ThreadUtils.postToUiThread(
+        ThreadUtils.runOnUiThread(
             () -> getAutofillSupport().onActiveChanged(active)
         );
     }
@@ -3521,12 +3567,14 @@ public class GeckoSession implements Parcelable {
                                       @Nullable final String triggerUri,
                                       final int geckoTarget,
                                       final int flags,
-                                      final boolean hasUserGesture) {
+                                      final boolean hasUserGesture,
+                                      final boolean isDirectNavigation) {
                 this.uri = uri;
                 this.triggerUri = triggerUri;
                 this.target = convertGeckoTarget(geckoTarget);
                 this.isRedirect = (flags & LOAD_REQUEST_IS_REDIRECT) != 0;
                 this.hasUserGesture = hasUserGesture;
+                this.isDirectNavigation = isDirectNavigation;
             }
 
             /**
@@ -3538,6 +3586,7 @@ public class GeckoSession implements Parcelable {
                 target = 0;
                 isRedirect = false;
                 hasUserGesture = false;
+                isDirectNavigation = false;
             }
 
             // This needs to match nsIBrowserDOMWindow.idl
@@ -3583,6 +3632,12 @@ public class GeckoSession implements Parcelable {
              */
             public final boolean hasUserGesture;
 
+            /**
+             * This load request was initiated by a direct navigation from the
+             * application. E.g. when calling {@link GeckoSession#loadUri}.
+             */
+            public final boolean isDirectNavigation;
+
             @Override
             public String toString() {
                 final StringBuilder out = new StringBuilder("LoadRequest { ");
@@ -3592,6 +3647,7 @@ public class GeckoSession implements Parcelable {
                     .append(", target: " + target)
                     .append(", isRedirect: " + isRedirect)
                     .append(", hasUserGesture: " + hasUserGesture)
+                    .append(", fromLoadUri: " + hasUserGesture)
                     .append(" }");
                 return out.toString();
             }
@@ -5107,6 +5163,11 @@ public class GeckoSession implements Parcelable {
         int PERMISSION_AUTOPLAY_AUDIBLE = 5;
 
         /**
+         * Permission for accessing system media keys used to decode DRM media.
+         */
+        int PERMISSION_MEDIA_KEY_SYSTEM_ACCESS = 6;
+
+        /**
          * Callback interface for notifying the result of a permission request.
          */
         interface Callback {
@@ -5359,7 +5420,8 @@ public class GeckoSession implements Parcelable {
             PermissionDelegate.PERMISSION_PERSISTENT_STORAGE,
             PermissionDelegate.PERMISSION_XR,
             PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE,
-            PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE})
+            PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE,
+            PermissionDelegate.PERMISSION_MEDIA_KEY_SYSTEM_ACCESS})
     /* package */ @interface Permission {}
 
     /**
@@ -5587,12 +5649,7 @@ public class GeckoSession implements Parcelable {
 
                 // Delay calling onCompositorReady to avoid deadlock due
                 // to synchronous call to the compositor.
-                ThreadUtils.postToUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        onCompositorReady();
-                    }
-                });
+                ThreadUtils.postToUiThread(this::onCompositorReady);
                 break;
             }
 

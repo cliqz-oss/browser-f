@@ -378,7 +378,7 @@
     }
 
     _unescapeUrl(url) {
-      return Services.textToSubURI.unEscapeURIForUI("UTF-8", url);
+      return Services.textToSubURI.unEscapeURIForUI(url);
     }
 
     _reuseAcItem() {
@@ -653,11 +653,13 @@
     }
 
     _adjustAcItem() {
-      let outerBoxRect = this.parentNode.getBoundingClientRect();
-
+      const popup = this.parentNode.parentNode;
+      const minWidth = getComputedStyle(popup).minWidth.replace("px", "");
       // Make item fit in popup as XUL box could not constrain
       // item's width
-      this.firstElementChild.style.width = outerBoxRect.width + "px";
+      // popup.width is equal to the input field's width from the content process
+      this.firstElementChild.style.width =
+        Math.max(minWidth, popup.width) + "px";
     }
 
     _onOverflow() {}

@@ -67,7 +67,6 @@ struct FrameMetrics;
 class LayerManager;
 class LayerManagerComposite;
 class PLayerTransactionChild;
-struct SLGuidAndRenderRoot;
 class WebRenderBridgeChild;
 }  // namespace layers
 namespace gfx {
@@ -352,7 +351,6 @@ class nsIWidget : public nsISupports {
   typedef mozilla::layers::LayerManagerComposite LayerManagerComposite;
   typedef mozilla::layers::LayersBackend LayersBackend;
   typedef mozilla::layers::PLayerTransactionChild PLayerTransactionChild;
-  typedef mozilla::layers::SLGuidAndRenderRoot SLGuidAndRenderRoot;
   typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
   typedef mozilla::widget::IMEMessage IMEMessage;
@@ -377,6 +375,9 @@ class nsIWidget : public nsISupports {
   typedef mozilla::ScreenPoint ScreenPoint;
   typedef mozilla::CSSToScreenScale CSSToScreenScale;
   typedef mozilla::DesktopIntRect DesktopIntRect;
+  typedef mozilla::DesktopPoint DesktopPoint;
+  typedef mozilla::DesktopRect DesktopRect;
+  typedef mozilla::DesktopSize DesktopSize;
   typedef mozilla::CSSPoint CSSPoint;
   typedef mozilla::CSSRect CSSRect;
 
@@ -437,10 +438,10 @@ class nsIWidget : public nsISupports {
    * @param     aInitData     data that is used for widget initialization
    *
    */
-  virtual MOZ_MUST_USE nsresult
-  Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
-         const LayoutDeviceIntRect& aRect,
-         nsWidgetInitData* aInitData = nullptr) = 0;
+  [[nodiscard]] virtual nsresult Create(
+      nsIWidget* aParent, nsNativeWidget aNativeParent,
+      const LayoutDeviceIntRect& aRect,
+      nsWidgetInitData* aInitData = nullptr) = 0;
 
   /*
    * As above, but with aRect specified in DesktopPixel units (for top-level
@@ -450,10 +451,10 @@ class nsIWidget : public nsISupports {
    * mapping is not straightforward or the native platform needs to use the
    * desktop pixel values directly.
    */
-  virtual MOZ_MUST_USE nsresult Create(nsIWidget* aParent,
-                                       nsNativeWidget aNativeParent,
-                                       const DesktopIntRect& aRect,
-                                       nsWidgetInitData* aInitData = nullptr) {
+  [[nodiscard]] virtual nsresult Create(nsIWidget* aParent,
+                                        nsNativeWidget aNativeParent,
+                                        const DesktopIntRect& aRect,
+                                        nsWidgetInitData* aInitData = nullptr) {
     LayoutDeviceIntRect devPixRect =
         RoundedToInt(aRect * GetDesktopToDeviceScale());
     return Create(aParent, aNativeParent, devPixRect, aInitData);
@@ -725,16 +726,12 @@ class nsIWidget : public nsISupports {
   /**
    * Reposition this widget so that the client area has the given offset.
    *
-   * @param aX       the new x offset of the client area expressed as an
-   *                 offset from the origin of the client area of the parent
-   *                 widget (for root widgets and popup widgets it is in
-   *                 screen coordinates)
-   * @param aY       the new y offset of the client area expressed as an
+   * @param aOffset  the new offset of the client area expressed as an
    *                 offset from the origin of the client area of the parent
    *                 widget (for root widgets and popup widgets it is in
    *                 screen coordinates)
    **/
-  virtual void MoveClient(double aX, double aY) = 0;
+  virtual void MoveClient(const DesktopPoint& aOffset) = 0;
 
   /**
    * Resize this widget. Any size constraints set for the window by a
@@ -780,30 +777,22 @@ class nsIWidget : public nsISupports {
   /**
    * Resize the widget so that the inner client area has the given size.
    *
-   * @param aWidth   the new width of the client area.
-   * @param aHeight  the new height of the client area.
+   * @param aSize    the new size of the client area.
    * @param aRepaint whether the widget should be repainted
    */
-  virtual void ResizeClient(double aWidth, double aHeight, bool aRepaint) = 0;
+  virtual void ResizeClient(const DesktopSize& aSize, bool aRepaint) = 0;
 
   /**
    * Resize and reposition the widget so tht inner client area has the given
    * offset and size.
    *
-   * @param aX       the new x offset of the client area expressed as an
-   *                 offset from the origin of the client area of the parent
-   *                 widget (for root widgets and popup widgets it is in
-   *                 screen coordinates)
-   * @param aY       the new y offset of the client area expressed as an
-   *                 offset from the origin of the client area of the parent
-   *                 widget (for root widgets and popup widgets it is in
-   *                 screen coordinates)
-   * @param aWidth   the new width of the client area.
-   * @param aHeight  the new height of the client area.
+   * @param aRect    the new offset and size of the client area. The offset is
+   *                 expressed as an offset from the origin of the client area
+   *                 of the parent widget (for root widgets and popup widgets it
+   *                 is in screen coordinates).
    * @param aRepaint whether the widget should be repainted
    */
-  virtual void ResizeClient(double aX, double aY, double aWidth, double aHeight,
-                            bool aRepaint) = 0;
+  virtual void ResizeClient(const DesktopRect& aRect, bool aRepaint) = 0;
 
   /**
    * Sets the widget's z-index.
@@ -914,8 +903,8 @@ class nsIWidget : public nsISupports {
    * @param aRect   On return it holds the  x, y, width and height of
    *                this widget.
    */
-  virtual MOZ_MUST_USE nsresult
-  GetRestoredBounds(LayoutDeviceIntRect& aRect) = 0;
+  [[nodiscard]] virtual nsresult GetRestoredBounds(
+      LayoutDeviceIntRect& aRect) = 0;
 
   /**
    * Get this widget's client area bounds, if the window has a 3D border
@@ -1437,7 +1426,7 @@ class nsIWidget : public nsISupports {
    */
   virtual void SetConfirmedTargetAPZC(
       uint64_t aInputBlockId,
-      const nsTArray<SLGuidAndRenderRoot>& aTargets) const = 0;
+      const nsTArray<ScrollableLayerGuid>& aTargets) const = 0;
 
   /**
    * Returns true if APZ is in use, false otherwise.
@@ -1483,7 +1472,7 @@ class nsIWidget : public nsISupports {
    *                    conventions. If set to -1, cycles indefinitely until
    *                    window is brought into the foreground.
    */
-  virtual MOZ_MUST_USE nsresult GetAttention(int32_t aCycleCount) = 0;
+  [[nodiscard]] virtual nsresult GetAttention(int32_t aCycleCount) = 0;
 
   /**
    * Ask whether there user input events pending.  All input events are
@@ -1518,9 +1507,9 @@ class nsIWidget : public nsISupports {
   /**
    * Begin a window resizing drag, based on the event passed in.
    */
-  virtual MOZ_MUST_USE nsresult BeginResizeDrag(mozilla::WidgetGUIEvent* aEvent,
-                                                int32_t aHorizontal,
-                                                int32_t aVertical) = 0;
+  [[nodiscard]] virtual nsresult BeginResizeDrag(
+      mozilla::WidgetGUIEvent* aEvent, int32_t aHorizontal,
+      int32_t aVertical) = 0;
 
   enum Modifiers {
     CAPS_LOCK = 0x00000001,  // when CapsLock is active
@@ -1704,13 +1693,13 @@ class nsIWidget : public nsISupports {
    * @return true if APZ has been successfully notified
    */
   virtual bool StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
-                                    const SLGuidAndRenderRoot& aGuid) = 0;
+                                    const ScrollableLayerGuid& aGuid) = 0;
 
   /**
    * Notify APZ to stop autoscrolling.
    * @param aGuid identifies the scroll frame which is being autoscrolled.
    */
-  virtual void StopAsyncAutoscroll(const SLGuidAndRenderRoot& aGuid) = 0;
+  virtual void StopAsyncAutoscroll(const ScrollableLayerGuid& aGuid) = 0;
 
   // If this widget supports out-of-process compositing, it can override
   // this method to provide additional information to the compositor.
@@ -1824,7 +1813,7 @@ class nsIWidget : public nsISupports {
    * @param aResult - the current text selection. Is empty if no selection.
    * @return nsresult - whether or not aResult was assigned the selected text.
    */
-  virtual MOZ_MUST_USE nsresult GetSelectionAsPlaintext(nsAString& aResult) {
+  [[nodiscard]] virtual nsresult GetSelectionAsPlaintext(nsAString& aResult) {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
@@ -1845,9 +1834,9 @@ class nsIWidget : public nsISupports {
    *                    (should be just under the plugin)
    * aCommitted         The string committed during IME -- otherwise empty
    */
-  virtual MOZ_MUST_USE nsresult
-  StartPluginIME(const mozilla::WidgetKeyboardEvent& aKeyboardEvent,
-                 int32_t aPanelX, int32_t aPanelY, nsString& aCommitted) = 0;
+  [[nodiscard]] virtual nsresult StartPluginIME(
+      const mozilla::WidgetKeyboardEvent& aKeyboardEvent, int32_t aPanelX,
+      int32_t aPanelY, nsString& aCommitted) = 0;
 
   /**
    * Tells the widget whether or not a plugin (inside the widget) has the
@@ -1906,8 +1895,8 @@ class nsIWidget : public nsISupports {
    * keystrokes that trigger native key bindings (which require a native
    * event).
    */
-  virtual MOZ_MUST_USE nsresult
-  AttachNativeKeyEvent(mozilla::WidgetKeyboardEvent& aEvent) = 0;
+  [[nodiscard]] virtual nsresult AttachNativeKeyEvent(
+      mozilla::WidgetKeyboardEvent& aEvent) = 0;
 
   /**
    * Retrieve edit commands when the key combination of aEvent is used
@@ -1934,8 +1923,8 @@ class nsIWidget : public nsISupports {
    * Call this method when a dialog is opened which has a default button.
    * The button's rectangle should be supplied in aButtonRect.
    */
-  virtual MOZ_MUST_USE nsresult
-  OnDefaultButtonLoaded(const LayoutDeviceIntRect& aButtonRect) = 0;
+  [[nodiscard]] virtual nsresult OnDefaultButtonLoaded(
+      const LayoutDeviceIntRect& aButtonRect) = 0;
 
   /**
    * Return true if this process shouldn't use platform widgets, and

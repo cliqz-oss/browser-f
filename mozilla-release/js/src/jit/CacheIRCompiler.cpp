@@ -2138,6 +2138,21 @@ bool CacheIRCompiler::emitGuardAndGetIndexFromString() {
   return true;
 }
 
+bool CacheIRCompiler::emitGuardAndGetInt32FromNumber() {
+  JitSpew(JitSpew_Codegen, __FUNCTION__);
+  allocator.ensureDoubleRegister(masm, reader.numberOperandId(), FloatReg0);
+  Register output = allocator.defineRegister(masm, reader.int32OperandId());
+
+  FailurePath* failure;
+  if (!addFailurePath(&failure)) {
+    return false;
+  }
+
+  // Failure on -0 and other non-int32 doubles.
+  masm.convertDoubleToInt32(FloatReg0, output, failure->label());
+  return true;
+}
+
 bool CacheIRCompiler::emitLoadProto() {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
   Register obj = allocator.useRegister(masm, reader.objOperandId());
@@ -3092,31 +3107,6 @@ bool CacheIRCompiler::emitGuardIndexGreaterThanDenseInitLength() {
   // Ensure index >= initLength.
   Label outOfBounds;
   Address capacity(scratch, ObjectElements::offsetOfInitializedLength());
-  masm.spectreBoundsCheck32(index, capacity, spectreScratch, &outOfBounds);
-  masm.jump(failure->label());
-  masm.bind(&outOfBounds);
-
-  return true;
-}
-
-bool CacheIRCompiler::emitGuardIndexGreaterThanDenseCapacity() {
-  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
-  Register obj = allocator.useRegister(masm, reader.objOperandId());
-  Register index = allocator.useRegister(masm, reader.int32OperandId());
-  AutoScratchRegister scratch(allocator, masm);
-  AutoSpectreBoundsScratchRegister spectreScratch(allocator, masm);
-
-  FailurePath* failure;
-  if (!addFailurePath(&failure)) {
-    return false;
-  }
-
-  // Load obj->elements.
-  masm.loadPtr(Address(obj, NativeObject::offsetOfElements()), scratch);
-
-  // Ensure index >= capacity.
-  Label outOfBounds;
-  Address capacity(scratch, ObjectElements::offsetOfCapacity());
   masm.spectreBoundsCheck32(index, capacity, spectreScratch, &outOfBounds);
   masm.jump(failure->label());
   masm.bind(&outOfBounds);

@@ -64,8 +64,8 @@ const {
 } = require("devtools/client/webconsole/selectors/autocomplete");
 const actions = require("devtools/client/webconsole/actions/index");
 
-const EvaluationSelector = createFactory(
-  require("devtools/client/webconsole/components/Input/EvaluationSelector")
+const EvaluationContextSelector = createFactory(
+  require("devtools/client/webconsole/components/Input/EvaluationContextSelector")
 );
 
 // Constants used for defining the direction of JSTerm input history navigation.
@@ -115,7 +115,7 @@ class JSTerm extends Component {
       editorWidth: PropTypes.number,
       showEditorOnboarding: PropTypes.bool,
       autocomplete: PropTypes.bool,
-      showEvaluationSelector: PropTypes.bool,
+      showEvaluationContextSelector: PropTypes.bool,
       autocompletePopupPosition: PropTypes.string,
     };
   }
@@ -180,7 +180,7 @@ class JSTerm extends Component {
     };
 
     const doc = this.webConsoleUI.document;
-    const toolbox = this.webConsoleUI.wrapper.toolbox;
+    const { toolbox } = this.webConsoleUI.wrapper;
     const tooltipDoc = toolbox ? toolbox.doc : doc;
     // The popup will be attached to the toolbox document or HUD document in the case
     // such as the browser console which doesn't have a toolbox.
@@ -564,6 +564,10 @@ class JSTerm extends Component {
       } else {
         this.setEditorWidth(null);
       }
+
+      if (this.autocompletePopup.isOpen) {
+        this.autocompletePopup.hidePopup();
+      }
     }
 
     if (
@@ -746,6 +750,18 @@ class JSTerm extends Component {
     const { from, to, origin, text } = change;
     const isAddedText =
       from.line === to.line && from.ch === to.ch && origin === "+input";
+
+    // if there was no changes (hitting delete on an empty input, or suppr when at the end
+    // of the input), we bail out.
+    if (
+      !isAddedText &&
+      origin === "+delete" &&
+      from.line === to.line &&
+      from.ch === to.ch
+    ) {
+      return;
+    }
+
     const addedText = text.join("");
     const completionText = this.getAutoCompletionText();
 
@@ -1308,16 +1324,16 @@ class JSTerm extends Component {
     });
   }
 
-  renderEvaluationSelector() {
+  renderEvaluationContextSelector() {
     if (
       !this.props.webConsoleUI.wrapper.toolbox ||
       this.props.editorMode ||
-      !this.props.showEvaluationSelector
+      !this.props.showEvaluationContextSelector
     ) {
       return null;
     }
 
-    return EvaluationSelector(this.props);
+    return EvaluationContextSelector(this.props);
   }
 
   renderEditorOnboarding() {
@@ -1380,7 +1396,7 @@ class JSTerm extends Component {
       },
       dom.div(
         { className: "webconsole-input-buttons" },
-        this.renderEvaluationSelector(),
+        this.renderEvaluationContextSelector(),
         this.renderOpenEditorButton()
       ),
       this.renderEditorOnboarding()
@@ -1396,7 +1412,7 @@ function mapStateToProps(state) {
     getValueFromHistory: direction => getHistoryValue(state, direction),
     autocompleteData: getAutocompleteState(state),
     showEditorOnboarding: state.ui.showEditorOnboarding,
-    showEvaluationSelector: state.ui.showEvaluationSelector,
+    showEvaluationContextSelector: state.ui.showEvaluationContextSelector,
     autocompletePopupPosition: state.prefs.eagerEvaluation ? "top" : "bottom",
   };
 }
@@ -1417,7 +1433,4 @@ function mapDispatchToProps(dispatch) {
   };
 }
 
-module.exports = connect(
-  mapStateToProps,
-  mapDispatchToProps
-)(JSTerm);
+module.exports = connect(mapStateToProps, mapDispatchToProps)(JSTerm);

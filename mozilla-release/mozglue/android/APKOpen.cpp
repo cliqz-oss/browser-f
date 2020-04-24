@@ -29,9 +29,8 @@
 #include <sys/resource.h>
 #include <sys/prctl.h>
 #include "sqlite3.h"
-#include "SQLiteBridge.h"
-#include "NSSBridge.h"
 #include "Linker.h"
+#include "BaseProfiler.h"
 #include "application.ini.h"
 
 #include "mozilla/arm.h"
@@ -190,6 +189,29 @@ static void* dlopenLibrary(const char* libraryName) {
                        RTLD_GLOBAL | RTLD_LAZY);
 }
 
+static void EnsureBaseProfilerInitialized() {
+  // There is no single entry-point into C++ code on Android.
+  // Instead, GeckoThread and GeckoLibLoader call various functions to load
+  // libraries one-by-one.
+  // We want to capture all that library loading in the profiler, so we need to
+  // kick off the base profiler at the beginning of whichever function is called
+  // first.
+  // We currently assume that all these functions are called on the same thread.
+  static bool sInitialized = false;
+  if (sInitialized) {
+    return;
+  }
+
+#ifdef MOZ_BASE_PROFILER
+  // The stack depth we observe here will be determined by the stack of
+  // whichever caller enters this code first. In practice this means that we may
+  // miss some root-most frames, which hopefully shouldn't ruin profiling.
+  int stackBase = 5;
+  mozilla::baseprofiler::profiler_init(&stackBase);
+#endif
+  sInitialized = true;
+}
+
 static mozglueresult loadGeckoLibs() {
   TimeStamp t0 = TimeStamp::Now();
   struct rusage usage1_thread, usage1;
@@ -251,7 +273,6 @@ static mozglueresult loadSQLiteLibs() {
   }
 #endif
 
-  setup_sqlite_functions(sqlite_handle);
   return SUCCESS;
 }
 
@@ -286,12 +307,14 @@ static mozglueresult loadNSSLibs() {
   }
 #endif
 
-  return setup_nss_functions(nss_handle, nspr_handle, plc_handle);
+  return SUCCESS;
 }
 
 extern "C" APKOPEN_EXPORT void MOZ_JNICALL
 Java_org_mozilla_gecko_mozglue_GeckoLoader_loadGeckoLibsNative(
     JNIEnv* jenv, jclass jGeckoAppShellClass) {
+  EnsureBaseProfilerInitialized();
+
   jenv->GetJavaVM(&sJavaVM);
 
   int res = loadGeckoLibs();
@@ -303,6 +326,8 @@ Java_org_mozilla_gecko_mozglue_GeckoLoader_loadGeckoLibsNative(
 extern "C" APKOPEN_EXPORT void MOZ_JNICALL
 Java_org_mozilla_gecko_mozglue_GeckoLoader_loadSQLiteLibsNative(
     JNIEnv* jenv, jclass jGeckoAppShellClass) {
+  EnsureBaseProfilerInitialized();
+
   __android_log_print(ANDROID_LOG_ERROR, "GeckoLibLoad", "Load sqlite start\n");
   mozglueresult rv = loadSQLiteLibs();
   if (rv != SUCCESS) {
@@ -314,6 +339,8 @@ Java_org_mozilla_gecko_mozglue_GeckoLoader_loadSQLiteLibsNative(
 extern "C" APKOPEN_EXPORT void MOZ_JNICALL
 Java_org_mozilla_gecko_mozglue_GeckoLoader_loadNSSLibsNative(
     JNIEnv* jenv, jclass jGeckoAppShellClass) {
+  EnsureBaseProfilerInitialized();
+
   __android_log_print(ANDROID_LOG_ERROR, "GeckoLibLoad", "Load nss start\n");
   mozglueresult rv = loadNSSLibs();
   if (rv != SUCCESS) {
@@ -364,6 +391,8 @@ Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun(JNIEnv* jenv, jclass jc,
                                                      int prefsFd, int prefMapFd,
                                                      int ipcFd, int crashFd,
                                                      int crashAnnotationFd) {
+  EnsureBaseProfilerInitialized();
+
   int argc = 0;
   char** argv = CreateArgvFromObjectArray(jenv, jargs, &argc);
 
@@ -400,6 +429,8 @@ Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun(JNIEnv* jenv, jclass jc,
 
 extern "C" APKOPEN_EXPORT mozglueresult ChildProcessInit(int argc,
                                                          char* argv[]) {
+  EnsureBaseProfilerInitialized();
+
   if (loadNSSLibs() != SUCCESS) {
     return FAILURE;
   }

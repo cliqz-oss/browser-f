@@ -13,14 +13,12 @@ DIRS += [
 
 DevToolsModules(
     'accessibility.js',
-    'actor-registry.js',
     'animation.js',
     'array-buffer.js',
     'changes.js',
     'content-viewer.js',
     'css-properties.js',
     'device.js',
-    'emulation.js',
     'environment.js',
     'frame.js',
     'framerate.js',

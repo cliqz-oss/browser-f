@@ -68,13 +68,13 @@ enum class TypeCode {
   NullRef = 0x6e,  // SLEB128(-0x12)
 
   // Type constructor for reference types.
-  Ref = 0x6d,
+  OptRef = 0x6c,
 
   // Type constructor for function types
   Func = 0x60,  // SLEB128(-0x20)
 
   // Type constructor for structure types - unofficial
-  Struct = 0x50,  // SLEB128(-0x30)
+  Struct = 0x5f,  // SLEB128(-0x21)
 
   // The 'empty' case of blocktype.
   BlockVoid = 0x40,  // SLEB128(-0x40)
@@ -373,14 +373,16 @@ enum class Op {
   I64Extend16S = 0xc3,
   I64Extend32S = 0xc4,
 
-  // GC ops
+  // Reference types
   RefNull = 0xd0,
   RefIsNull = 0xd1,
   RefFunc = 0xd2,
 
-  RefEq = 0xf0,  // Unofficial + experimental
+  // GC (experimental)
+  RefEq = 0xd5,
 
-  FirstPrefix = 0xfc,
+  FirstPrefix = 0xfb,
+  GcPrefix = 0xfb,
   MiscPrefix = 0xfc,
   ThreadPrefix = 0xfe,
   MozPrefix = 0xff,
@@ -389,6 +391,17 @@ enum class Op {
 };
 
 inline bool IsPrefixByte(uint8_t b) { return b >= uint8_t(Op::FirstPrefix); }
+
+// Opcodes in the GC opcode space.
+enum class GcOp {
+  // Structure operations
+  StructNew = 0x00,
+  StructGet = 0x03,
+  StructSet = 0x06,
+  StructNarrow = 0x07,
+
+  Limit
+};
 
 // Opcodes in the "miscellaneous" opcode space.
 enum class MiscOp {
@@ -415,12 +428,6 @@ enum class MiscOp {
   TableGrow = 0x0f,
   TableSize = 0x10,
   TableFill = 0x11,
-
-  // Structure operations.  Note, these are unofficial.
-  StructNew = 0x50,
-  StructGet = 0x51,
-  StructSet = 0x52,
-  StructNarrow = 0x53,
 
   Limit
 };
@@ -602,11 +609,6 @@ static const unsigned MaxTableInitialLength = 10000000;
 static const unsigned MaxBrTableElems = 1000000;
 static const unsigned MaxMemoryInitialPages = 16384;
 static const unsigned MaxCodeSectionBytes = MaxModuleBytes;
-
-// FIXME: Temporary limit to function result counts.  Replace with MaxResults:
-// bug 1585909.
-
-static const unsigned MaxFuncResults = 1;
 
 // A magic value of the FramePointer to indicate after a return to the entry
 // stub that an exception has been caught and that we should throw.

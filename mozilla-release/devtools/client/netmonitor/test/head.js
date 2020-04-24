@@ -35,7 +35,10 @@ const {
   getUrlHost,
   getUrlScheme,
 } = require("devtools/client/netmonitor/src/utils/request-utils");
-const { EVENTS } = require("devtools/client/netmonitor/src/constants");
+const {
+  EVENTS,
+  TEST_EVENTS,
+} = require("devtools/client/netmonitor/src/constants");
 const { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 
 /* eslint-disable no-unused-vars, max-len */
@@ -209,71 +212,16 @@ function waitForTimelineMarkers(monitor) {
       info(`Got marker: ${marker.name}`);
       markers.push(marker);
       if (markers.length == 2) {
-        monitor.panelWin.api.off(EVENTS.TIMELINE_EVENT, handleTimelineEvent);
+        monitor.panelWin.api.off(
+          TEST_EVENTS.TIMELINE_EVENT,
+          handleTimelineEvent
+        );
         info("Got two timeline markers, done waiting");
         resolve(markers);
       }
     }
 
-    monitor.panelWin.api.on(EVENTS.TIMELINE_EVENT, handleTimelineEvent);
-  });
-}
-
-/**
- * Start monitoring all incoming update events about network requests and wait until
- * a complete info about all requests is received. (We wait for the timings info
- * explicitly, because that's always the last piece of information that is received.)
- *
- * This method is designed to wait for network requests that are issued during a page
- * load, when retrieving page resources (scripts, styles, images). It has certain
- * assumptions that can make it unsuitable for other types of network communication:
- * - it waits for at least one network request to start and finish before returning
- * - it waits only for request that were issued after it was called. Requests that are
- *   already in mid-flight will be ignored.
- * - the request start and end times are overlapping. If a new request starts a moment
- *   after the previous one was finished, the wait will be ended in the "interim"
- *   period.
- * @returns a promise that resolves when the wait is done.
- */
-function waitForAllRequestsFinished(monitor) {
-  const window = monitor.panelWin;
-  const { connector } = window;
-  const { getNetworkRequest } = connector;
-
-  return new Promise(resolve => {
-    // Key is the request id, value is a boolean - is request finished or not?
-    const requests = new Map();
-
-    function onRequest(id) {
-      const networkInfo = getNetworkRequest(id);
-      const { url } = networkInfo.request;
-      info(`Request ${id} for ${url} not yet done, keep waiting...`);
-      requests.set(id, false);
-    }
-
-    function onTimings(id) {
-      const networkInfo = getNetworkRequest(id);
-      const { url } = networkInfo.request;
-      info(`Request ${id} for ${url} done`);
-      requests.set(id, true);
-      maybeResolve();
-    }
-
-    function maybeResolve() {
-      // Have all the requests in the map finished yet?
-      if (![...requests.values()].every(finished => finished)) {
-        return;
-      }
-
-      // All requests are done - unsubscribe from events and resolve!
-      window.api.off(EVENTS.NETWORK_EVENT, onRequest);
-      window.api.off(EVENTS.PAYLOAD_READY, onTimings);
-      info("All requests finished");
-      resolve();
-    }
-
-    window.api.on(EVENTS.NETWORK_EVENT, onRequest);
-    window.api.on(EVENTS.PAYLOAD_READY, onTimings);
+    monitor.panelWin.api.on(TEST_EVENTS.TIMELINE_EVENT, handleTimelineEvent);
   });
 }
 
@@ -332,8 +280,15 @@ async function waitForAllNetworkUpdateEvents() {
   finishedQueue = {};
 }
 
-function initNetMonitor(url, enableCache) {
+function initNetMonitor(url, { requestCount, enableCache = false }) {
   info("Initializing a network monitor pane.");
+
+  if (!requestCount) {
+    ok(
+      false,
+      "initNetMonitor should be given a number of requests the page will perform"
+    );
+  }
 
   return (async function() {
     const tab = await addTab(url);
@@ -356,7 +311,8 @@ function initNetMonitor(url, enableCache) {
       );
 
       info("Disabling cache and reloading page.");
-      const requestsDone = waitForAllRequestsFinished(monitor);
+
+      const requestsDone = waitForNetworkEvents(monitor, requestCount);
       const markersDone = waitForTimelineMarkers(monitor);
       await toggleCache(target, true);
       await Promise.all([requestsDone, markersDone]);
@@ -384,12 +340,12 @@ function initNetMonitor(url, enableCache) {
   })();
 }
 
-function restartNetMonitor(monitor, newUrl) {
+function restartNetMonitor(monitor, { requestCount }) {
   info("Restarting the specified network monitor.");
 
   return (async function() {
     const tab = monitor.toolbox.target.localTab;
-    const url = newUrl || tab.linkedBrowser.currentURI.spec;
+    const url = tab.linkedBrowser.currentURI.spec;
 
     await waitForAllNetworkUpdateEvents();
     info("All pending requests finished.");
@@ -398,7 +354,7 @@ function restartNetMonitor(monitor, newUrl) {
     await removeTab(tab);
     await onDestroyed;
 
-    return initNetMonitor(url);
+    return initNetMonitor(url, { requestCount });
   })();
 }
 
@@ -416,12 +372,22 @@ function teardown(monitor) {
   })();
 }
 
+function isFiltering(monitor) {
+  const doc = monitor.panelWin.document;
+  return !!doc.querySelector(
+    ".requests-list-filter-buttons button[aria-pressed]"
+  );
+}
+
 function waitForNetworkEvents(monitor, getRequests) {
   return new Promise(resolve => {
     const panel = monitor.panelWin;
     const { getNetworkRequest } = panel.connector;
     let networkEvent = 0;
+    let nonBlockedNetworkEvent = 0;
     let payloadReady = 0;
+    let eventTimings = 0;
+    const filtering = isFiltering(monitor);
 
     function onNetworkEvent(actor) {
       const networkInfo = getNetworkRequest(actor);
@@ -431,7 +397,10 @@ function waitForNetworkEvents(monitor, getRequests) {
         return;
       }
       networkEvent++;
-      maybeResolve(EVENTS.NETWORK_EVENT, actor, networkInfo);
+      if (!networkInfo.blockedReason) {
+        nonBlockedNetworkEvent++;
+      }
+      maybeResolve(TEST_EVENTS.NETWORK_EVENT, actor, networkInfo);
     }
 
     function onPayloadReady(actor) {
@@ -443,6 +412,17 @@ function waitForNetworkEvents(monitor, getRequests) {
       }
       payloadReady++;
       maybeResolve(EVENTS.PAYLOAD_READY, actor, networkInfo);
+    }
+
+    function onEventTimings(actor) {
+      const networkInfo = getNetworkRequest(actor);
+      if (!networkInfo) {
+        // Must have been related to reloading document to disable cache.
+        // Ignore the event.
+        return;
+      }
+      eventTimings++;
+      maybeResolve(EVENTS.RECEIVED_EVENT_TIMINGS, actor, networkInfo);
     }
 
     function maybeResolve(event, actor, networkInfo) {
@@ -457,6 +437,10 @@ function waitForNetworkEvents(monitor, getRequests) {
           payloadReady +
           "/" +
           getRequests +
+          "EventTimings: " +
+          eventTimings +
+          "/" +
+          getRequests +
           ", " +
           "got " +
           event +
@@ -464,16 +448,29 @@ function waitForNetworkEvents(monitor, getRequests) {
           actor
       );
 
-      // Wait until networkEvent & payloadReady finish for each request.
-      if (networkEvent >= getRequests && payloadReady >= getRequests) {
-        panel.api.off(EVENTS.NETWORK_EVENT, onNetworkEvent);
+      const { document } = monitor.panelWin;
+      // Wait until networkEvent, payloadReady and event timings finish for each request.
+      // The UI won't fetch timings when:
+      // * hidden in background,
+      // * for any blocked request,
+      // * when filtering.
+      if (
+        networkEvent >= getRequests &&
+        payloadReady >= getRequests &&
+        (eventTimings >= nonBlockedNetworkEvent ||
+          document.visibilityState == "hidden" ||
+          filtering)
+      ) {
+        panel.api.off(TEST_EVENTS.NETWORK_EVENT, onNetworkEvent);
         panel.api.off(EVENTS.PAYLOAD_READY, onPayloadReady);
+        panel.api.off(EVENTS.RECEIVED_EVENT_TIMINGS, onEventTimings);
         executeSoon(resolve);
       }
     }
 
-    panel.api.on(EVENTS.NETWORK_EVENT, onNetworkEvent);
+    panel.api.on(TEST_EVENTS.NETWORK_EVENT, onNetworkEvent);
     panel.api.on(EVENTS.PAYLOAD_READY, onPayloadReady);
+    panel.api.on(EVENTS.RECEIVED_EVENT_TIMINGS, onEventTimings);
   });
 }
 
@@ -968,7 +965,7 @@ async function showColumn(monitor, column) {
 async function selectIndexAndWaitForSourceEditor(monitor, index) {
   const document = monitor.panelWin.document;
   const onResponseContent = monitor.panelWin.api.once(
-    EVENTS.RECEIVED_RESPONSE_CONTENT
+    TEST_EVENTS.RECEIVED_RESPONSE_CONTENT
   );
   // Select the request first, as it may try to fetch whatever is the current request's
   // responseContent if we select the ResponseTab first.
@@ -1188,4 +1185,17 @@ async function toggleBlockedUrl(element, monitor, store, action = "block") {
   info(`Wait for selected request to be ${action}ed`);
   await onRequestComplete;
   info(`Selected request is now ${action}ed`);
+}
+
+/**
+ * Find and click an element
+ *
+ * @param {Element} element
+ *        Target element to be clicked
+ * @param {Object} monitor
+ *        The netmonitor instance used for retrieving the window.
+ */
+
+function clickElement(element, monitor) {
+  EventUtils.synthesizeMouseAtCenter(element, {}, monitor.panelWin);
 }

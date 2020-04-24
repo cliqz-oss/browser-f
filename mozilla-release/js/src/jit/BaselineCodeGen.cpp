@@ -1150,51 +1150,28 @@ void BaselineInterpreterCodeGen::emitInitFrameFields(Register nonFunctionEnv) {
 }
 
 template <>
-template <typename F1, typename F2>
+template <typename F>
 bool BaselineCompilerCodeGen::initEnvironmentChainHelper(
-    const F1& initFunctionEnv, const F2& initGlobalOrEvalEnv,
-    Register scratch) {
+    const F& initFunctionEnv) {
   if (handler.function()) {
     return initFunctionEnv();
   }
-  if (handler.module()) {
-    return true;
-  }
-  return initGlobalOrEvalEnv();
+  return true;
 }
 
 template <>
-template <typename F1, typename F2>
+template <typename F>
 bool BaselineInterpreterCodeGen::initEnvironmentChainHelper(
-    const F1& initFunctionEnv, const F2& initGlobalOrEvalEnv,
-    Register scratch) {
-  // There are three cases:
-  //
-  // 1) Function script: use code emitted by initFunctionEnv.
-  // 2) Module script: no-op.
-  // 3) Global or eval script: use code emitted by initGlobalOrEvalEnv.
+    const F& initFunctionEnv) {
+  // For function scripts use the code emitted by initFunctionEnv. For other
+  // scripts this is a no-op.
 
-  Label notFunction, done;
-  masm.loadPtr(frame.addressOfCalleeToken(), scratch);
-  masm.branchTestPtr(Assembler::NonZero, scratch, Imm32(CalleeTokenScriptBit),
-                     &notFunction);
+  Label done;
+  masm.branchTestPtr(Assembler::NonZero, frame.addressOfCalleeToken(),
+                     Imm32(CalleeTokenScriptBit), &done);
   {
     if (!initFunctionEnv()) {
       return false;
-    }
-    masm.jump(&done);
-  }
-  masm.bind(&notFunction);
-  {
-    masm.andPtr(Imm32(uint32_t(CalleeTokenMask)), scratch);
-    masm.branchTest32(Assembler::NonZero,
-                      Address(scratch, JSScript::offsetOfImmutableFlags()),
-                      Imm32(uint32_t(JSScript::ImmutableFlags::IsModule)),
-                      &done);
-    {
-      if (!initGlobalOrEvalEnv()) {
-        return false;
-      }
     }
   }
 
@@ -1222,25 +1199,7 @@ bool BaselineCodeGen<Handler>::initEnvironmentChain() {
         initEnv, R2.scratchReg());
   };
 
-  auto initGlobalOrEvalEnv = [this]() {
-    // EnvironmentChain pointer in BaselineFrame has already been initialized
-    // in prologue, but we need to check for redeclaration errors in global and
-    // eval scripts.
-
-    prepareVMCall();
-
-    pushScriptArg();
-    masm.loadPtr(frame.addressOfEnvironmentChain(), R0.scratchReg());
-    pushArg(R0.scratchReg());
-
-    const CallVMPhase phase = CallVMPhase::BeforePushingLocals;
-
-    using Fn = bool (*)(JSContext*, HandleObject, HandleScript);
-    return callVMNonOp<Fn, js::CheckGlobalOrEvalDeclarationConflicts>(phase);
-  };
-
-  return initEnvironmentChainHelper(initFunctionEnv, initGlobalOrEvalEnv,
-                                    R2.scratchReg());
+  return initEnvironmentChainHelper(initFunctionEnv);
 }
 
 template <typename Handler>
@@ -3258,11 +3217,11 @@ bool BaselineCodeGen<Handler>::emitDelElem(bool strict) {
 
   using Fn = bool (*)(JSContext*, HandleValue, HandleValue, bool*);
   if (strict) {
-    if (!callVM<Fn, DeleteElementJit<true>>()) {
+    if (!callVM<Fn, DelElemOperation<true>>()) {
       return false;
     }
   } else {
-    if (!callVM<Fn, DeleteElementJit<false>>()) {
+    if (!callVM<Fn, DelElemOperation<false>>()) {
       return false;
     }
   }
@@ -3567,11 +3526,11 @@ bool BaselineCodeGen<Handler>::emitDelProp(bool strict) {
 
   using Fn = bool (*)(JSContext*, HandleValue, HandlePropertyName, bool*);
   if (strict) {
-    if (!callVM<Fn, DeletePropertyJit<true>>()) {
+    if (!callVM<Fn, DelPropOperation<true>>()) {
       return false;
     }
   } else {
-    if (!callVM<Fn, DeletePropertyJit<false>>()) {
+    if (!callVM<Fn, DelPropOperation<false>>()) {
       return false;
     }
   }
@@ -3898,8 +3857,6 @@ bool BaselineCompilerCodeGen::emit_GetImport() {
   Shape* shape;
   MOZ_ALWAYS_TRUE(env->lookupImport(id, &targetEnv, &shape));
 
-  EnsureTrackPropertyTypes(cx, targetEnv, shape->propid());
-
   frame.syncStack(0);
 
   uint32_t slot = shape->slot();
@@ -4046,6 +4003,20 @@ bool BaselineCodeGen<Handler>::emit_DefFun() {
 
   using Fn = bool (*)(JSContext*, HandleScript, HandleObject, HandleFunction);
   return callVM<Fn, DefFunOperation>();
+}
+
+template <typename Handler>
+bool BaselineCodeGen<Handler>::emit_CheckGlobalOrEvalDecl() {
+  frame.syncStack(0);
+
+  prepareVMCall();
+
+  pushScriptArg();
+  masm.loadPtr(frame.addressOfEnvironmentChain(), R0.scratchReg());
+  pushArg(R0.scratchReg());
+
+  using Fn = bool (*)(JSContext*, HandleObject, HandleScript);
+  return callVM<Fn, js::CheckGlobalOrEvalDeclarationConflicts>();
 }
 
 template <typename Handler>
@@ -4470,27 +4441,12 @@ bool BaselineInterpreterCodeGen::emit_NewTarget() {
 }
 
 template <typename Handler>
-bool BaselineCodeGen<Handler>::emitThrowConstAssignment() {
+bool BaselineCodeGen<Handler>::emit_ThrowSetConst() {
   prepareVMCall();
   pushArg(Imm32(JSMSG_BAD_CONST_ASSIGN));
 
   using Fn = bool (*)(JSContext*, unsigned);
   return callVM<Fn, jit::ThrowRuntimeLexicalError>();
-}
-
-template <typename Handler>
-bool BaselineCodeGen<Handler>::emit_ThrowSetConst() {
-  return emitThrowConstAssignment();
-}
-
-template <typename Handler>
-bool BaselineCodeGen<Handler>::emit_ThrowSetAliasedConst() {
-  return emitThrowConstAssignment();
-}
-
-template <typename Handler>
-bool BaselineCodeGen<Handler>::emit_ThrowSetCallee() {
-  return emitThrowConstAssignment();
 }
 
 template <typename Handler>
@@ -4512,20 +4468,16 @@ bool BaselineCodeGen<Handler>::emitUninitializedLexicalCheck(
   return true;
 }
 
-template <>
-bool BaselineCompilerCodeGen::emit_CheckLexical() {
+template <typename Handler>
+bool BaselineCodeGen<Handler>::emit_CheckLexical() {
   frame.syncStack(0);
-  masm.loadValue(frame.addressOfLocal(GET_LOCALNO(handler.pc())), R0);
+  masm.loadValue(frame.addressOfStackValue(-1), R0);
   return emitUninitializedLexicalCheck(R0);
 }
 
-template <>
-bool BaselineInterpreterCodeGen::emit_CheckLexical() {
-  Register scratch = R0.scratchReg();
-  LoadUint24Operand(masm, 0, scratch);
-  BaseValueIndex addr = ComputeAddressOfLocal(masm, scratch);
-  masm.loadValue(addr, R0);
-  return emitUninitializedLexicalCheck(R0);
+template <typename Handler>
+bool BaselineCodeGen<Handler>::emit_CheckAliasedLexical() {
+  return emit_CheckLexical();
 }
 
 template <typename Handler>
@@ -4539,13 +4491,6 @@ bool BaselineCodeGen<Handler>::emit_InitGLexical() {
   pushGlobalLexicalEnvironmentValue(R1);
   frame.push(R0);
   return emit_SetProp();
-}
-
-template <typename Handler>
-bool BaselineCodeGen<Handler>::emit_CheckAliasedLexical() {
-  frame.syncStack(0);
-  emitGetAliasedVar(R0);
-  return emitUninitializedLexicalCheck(R0);
 }
 
 template <typename Handler>
@@ -4772,7 +4717,7 @@ bool BaselineCodeGen<Handler>::emit_TypeofExpr() {
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_ThrowMsg() {
   prepareVMCall();
-  pushUint16BytecodeOperandArg(R2.scratchReg());
+  pushUint8BytecodeOperandArg(R2.scratchReg());
 
   using Fn = bool (*)(JSContext*, const unsigned);
   return callVM<Fn, js::ThrowMsgOperation>();
@@ -6071,9 +6016,7 @@ bool BaselineCodeGen<Handler>::emit_Resume() {
   masm.computeEffectiveAddress(frame.addressOfStackValue(-1), callerStackPtr);
 
   // Branch to |interpret| to resume the generator in the C++ interpreter if the
-  // script does not have a JitScript. Note that we don't relazify generator
-  // scripts (asserted in JSFunction::maybeRelazify) so the function is
-  // guaranteed to be non-lazy.
+  // script does not have a JitScript.
   Label interpret;
   Register scratch1 = regs.takeAny();
   masm.loadPtr(Address(callee, JSFunction::offsetOfScript()), scratch1);
@@ -6430,24 +6373,22 @@ bool BaselineCodeGen<Handler>::emit_InitHomeObject() {
 }
 
 template <>
-bool BaselineCompilerCodeGen::emit_BuiltinProto() {
-  // The builtin prototype is a constant for a given global.
-  JSObject* builtin = BuiltinProtoOperation(cx, handler.pc());
-  if (!builtin) {
+bool BaselineCompilerCodeGen::emit_FunctionProto() {
+  // The function prototype is a constant for a given global.
+  JSObject* funProto = FunctionProtoOperation(cx);
+  if (!funProto) {
     return false;
   }
-  frame.push(ObjectValue(*builtin));
+  frame.push(ObjectValue(*funProto));
   return true;
 }
 
 template <>
-bool BaselineInterpreterCodeGen::emit_BuiltinProto() {
+bool BaselineInterpreterCodeGen::emit_FunctionProto() {
   prepareVMCall();
 
-  pushBytecodePCArg();
-
-  using Fn = JSObject* (*)(JSContext*, jsbytecode*);
-  if (!callVM<Fn, BuiltinProtoOperation>()) {
+  using Fn = JSObject* (*)(JSContext*);
+  if (!callVM<Fn, FunctionProtoOperation>()) {
     return false;
   }
 

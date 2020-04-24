@@ -32,8 +32,84 @@ XPCOMUtils.defineLazyGetter(
 );
 
 const DID_SEE_ABOUT_WELCOME_PREF = "trailhead.firstrun.didSeeAboutWelcome";
+const AWTerminate = {
+  UNKNOWN: "unknown",
+  WINDOW_CLOSED: "welcome-window-closed",
+  TAB_CLOSED: "welcome-tab-closed",
+  APP_SHUT_DOWN: "app-shut-down",
+  ADDRESS_BAR_NAVIGATED: "address-bar-navigated",
+};
+
+class AboutWelcomeObserver {
+  constructor() {
+    Services.obs.addObserver(this, "quit-application");
+
+    this.win = Services.focus.activeWindow;
+    if (!this.win) {
+      return;
+    }
+
+    this.terminateReason = AWTerminate.UNKNOWN;
+
+    this.onWindowClose = () => {
+      this.terminateReason = AWTerminate.WINDOW_CLOSED;
+    };
+
+    this.onTabClose = () => {
+      this.terminateReason = AWTerminate.TAB_CLOSED;
+    };
+
+    this.win.addEventListener("TabClose", this.onTabClose, { once: true });
+    this.win.addEventListener("unload", this.onWindowClose, { once: true });
+  }
+
+  observe(aSubject, aTopic, aData) {
+    switch (aTopic) {
+      case "quit-application":
+        this.terminateReason = AWTerminate.APP_SHUT_DOWN;
+        break;
+    }
+  }
+
+  // Added for testing
+  get AWTerminate() {
+    return AWTerminate;
+  }
+
+  stop() {
+    log.debug(`Terminate reason is ${this.terminateReason}`);
+    Services.obs.removeObserver(this, "quit-application");
+    if (!this.win) {
+      return;
+    }
+    this.win.removeEventListener("TabClose", this.onTabClose);
+    this.win.removeEventListener("unload", this.onWindowClose);
+    this.win = null;
+  }
+}
 
 class AboutWelcomeParent extends JSWindowActorParent {
+  constructor() {
+    super();
+    this.AboutWelcomeObserver = new AboutWelcomeObserver(this);
+  }
+
+  didDestroy() {
+    if (this.AboutWelcomeObserver) {
+      this.AboutWelcomeObserver.stop();
+    }
+
+    Telemetry.sendTelemetry({
+      event: "SESSION_END",
+      event_context: {
+        reason: this.AboutWelcomeObserver.terminateReason,
+        page: "about:welcome",
+      },
+      message_id: "ABOUT_WELCOME_SESSION_END",
+      id: "ABOUT_WELCOME",
+    });
+  }
+
   /**
    * Handle messages from AboutWelcomeChild.jsm
    *
@@ -67,6 +143,10 @@ class AboutWelcomeParent extends JSWindowActorParent {
         return FxAccounts.config.promiseMetricsFlowURI("aboutwelcome");
       case "AWPage:TELEMETRY_EVENT":
         Telemetry.sendTelemetry(data);
+        break;
+      case "AWPage:LOCATION_CHANGED":
+        this.AboutWelcomeObserver.terminateReason =
+          AWTerminate.ADDRESS_BAR_NAVIGATED;
         break;
       default:
         log.debug(`Unexpected event ${type} was not handled.`);

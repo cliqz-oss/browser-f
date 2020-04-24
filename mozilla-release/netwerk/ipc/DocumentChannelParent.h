@@ -27,8 +27,7 @@ class DocumentChannelParent final : public ADocumentChannelBridge,
   NS_INLINE_DECL_REFCOUNTING(DocumentChannelParent, override);
 
   explicit DocumentChannelParent(dom::CanonicalBrowsingContext* aContext,
-                                 nsILoadContext* aLoadContext,
-                                 PBOverrideStatus aOverrideStatus);
+                                 nsILoadContext* aLoadContext);
 
   bool Init(const DocumentChannelCreationArgs& aArgs);
 
@@ -62,10 +61,12 @@ class DocumentChannelParent final : public ADocumentChannelBridge,
     }
   }
 
-  RefPtr<PDocumentChannelParent::ConfirmRedirectPromise> ConfirmRedirect(
-      const LoadInfoArgs& aLoadInfo, nsIURI* aNewURI) override {
-    return SendConfirmRedirect(aLoadInfo, aNewURI);
-  }
+  void CSPViolation(nsCSPContext* aContext, bool aIsCspToInherit,
+                    nsIURI* aBlockedURI,
+                    nsCSPContext::BlockedContentSource aBlockedContentSource,
+                    nsIURI* aOriginalURI, const nsAString& aViolatedDirective,
+                    uint32_t aViolatedPolicyIndex,
+                    const nsAString& aObserverSubject) override;
 
   virtual ProcessId OtherPid() const override { return IProtocol::OtherPid(); }
 

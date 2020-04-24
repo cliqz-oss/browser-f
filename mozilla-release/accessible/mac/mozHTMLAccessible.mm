@@ -29,14 +29,14 @@
 }
 
 - (id)value {
-  uint32_t level = 0;
+  GroupPos groupPos;
   if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
-    level = accWrap->GetLevelInternal();
+    groupPos = accWrap->GroupPosition();
   } else if (ProxyAccessible* proxy = [self getProxyAccessible]) {
-    level = proxy->GetLevelInternal();
+    groupPos = proxy->GroupPosition();
   }
 
-  return [NSNumber numberWithInt:level];
+  return [NSNumber numberWithInt:groupPos.level];
 }
 
 @end
@@ -74,25 +74,6 @@
   // Always advertise press action first.
   return [@[ NSAccessibilityPressAction ]
       arrayByAddingObjectsFromArray:[super accessibilityActionNames]];
-}
-
-- (void)accessibilityPerformAction:(NSString*)action {
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
-  if (!accWrap && !proxy) {
-    return;
-  }
-
-  if ([action isEqualToString:NSAccessibilityPressAction]) {
-    if (accWrap) {
-      accWrap->DoAction(0);
-    } else if (proxy) {
-      proxy->DoAction(0);
-    }
-    return;
-  }
-
-  [super accessibilityPerformAction:action];
 }
 
 - (NSString*)customDescription {

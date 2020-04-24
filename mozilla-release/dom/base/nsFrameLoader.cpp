@@ -460,11 +460,6 @@ void nsFrameLoader::LoadFrame(bool aOriginalSrc) {
     return;
   }
 
-  if (doc->IsLoadedAsInteractiveData()) {
-    // XBL bindings doc shouldn't load sub-documents.
-    return;
-  }
-
   nsIURI* base_uri = mOwnerContent->GetBaseURI();
   auto encoding = doc->GetDocumentCharacterSet();
 
@@ -529,8 +524,8 @@ nsresult nsFrameLoader::LoadURI(nsIURI* aURI,
 
 void nsFrameLoader::ResumeLoad(uint64_t aPendingSwitchID) {
   Document* doc = mOwnerContent->OwnerDoc();
-  if (doc->IsStaticDocument() || doc->IsLoadedAsInteractiveData()) {
-    // Static & XBL bindings doc shouldn't load sub-documents.
+  if (doc->IsStaticDocument()) {
+    // Static doc shouldn't load sub-documents.
     return;
   }
 
@@ -1812,7 +1807,9 @@ void nsFrameLoader::StartDestroy(bool aForProcessSwitch) {
   if (auto* browserParent = GetBrowserParent()) {
     browserParent->RemoveWindowListeners();
     if (aForProcessSwitch) {
-      browserParent->SetDestroyingForProcessSwitch();
+      // This should suspend all future progress events from this BrowserParent,
+      // since we're going to tear it down after stopping the docshell in it.
+      browserParent->SuspendProgressEventsUntilAfterNextLoadStarts();
     }
   }
 
@@ -2663,6 +2660,7 @@ bool nsFrameLoader::TryRemoteBrowserInternal() {
   if (!mRemoteBrowser) {
     return false;
   }
+
   // If we were given a remote tab ID, we may be attaching to an existing remote
   // browser, which already has its own BrowsingContext. If so, we need to
   // detach our original BC and take ownership of the one from the remote
@@ -3209,6 +3207,18 @@ void nsFrameLoader::RequestEpochUpdate(uint32_t aEpoch) {
   // If remote browsing (e10s), handle this with the BrowserParent.
   if (auto* browserParent = GetBrowserParent()) {
     Unused << browserParent->SendUpdateEpoch(aEpoch);
+  }
+}
+
+void nsFrameLoader::RequestSHistoryUpdate(bool aImmediately) {
+  if (mSessionStoreListener) {
+    mSessionStoreListener->UpdateSHistoryChanges(aImmediately);
+    return;
+  }
+
+  // If remote browsing (e10s), handle this with the BrowserParent.
+  if (auto* browserParent = GetBrowserParent()) {
+    Unused << browserParent->SendUpdateSHistory(aImmediately);
   }
 }
 

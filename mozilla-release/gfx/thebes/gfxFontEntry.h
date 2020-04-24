@@ -251,9 +251,9 @@ class gfxFontEntry {
 
   bool TryGetColorGlyphs();
   bool GetColorLayersInfo(uint32_t aGlyphId,
-                          const mozilla::gfx::Color& aDefaultColor,
+                          const mozilla::gfx::DeviceColor& aDefaultColor,
                           nsTArray<uint16_t>& layerGlyphs,
-                          nsTArray<mozilla::gfx::Color>& layerColors);
+                          nsTArray<mozilla::gfx::DeviceColor>& layerColors);
 
   // Access to raw font table data (needed for Harfbuzz):
   // returns a pointer to data owned by the fontEntry or the OS,
@@ -760,13 +760,35 @@ struct GlobalFontMatch {
   float mMatchDistance = INFINITY;  // metric indicating closest match
 };
 
+// Installation status (base system / langpack / user-installed) may determine
+// whether the font is visible to CSS font-family or src:local() lookups.
+// (Exactly what these mean and how accurate they are may be vary across
+// platforms -- e.g. on Linux there is no clear "base" set of fonts.)
+enum class FontVisibility : uint8_t {
+  Unknown = 0,   // No categorization of families available on this system
+  Base = 1,      // Standard part of the base OS installation
+  LangPack = 2,  // From an optional OS component such as language support
+  User = 3,      // User-installed font (or installed by another app, etc)
+  Hidden = 4,    // Internal system font, should never exposed to users
+  Webfont = 5,   // Webfont defined by @font-face
+  Count = 6,     // Count of values, for IPC serialization
+};
+
+namespace IPC {
+template <>
+struct ParamTraits<FontVisibility>
+    : public ContiguousEnumSerializer<FontVisibility, FontVisibility::Unknown,
+                                      FontVisibility::Count> {};
+}  // namespace IPC
+
 class gfxFontFamily {
  public:
   // Used by stylo
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(gfxFontFamily)
 
-  explicit gfxFontFamily(const nsACString& aName)
+  gfxFontFamily(const nsACString& aName, FontVisibility aVisibility)
       : mName(aName),
+        mVisibility(aVisibility),
         mOtherFamilyNamesInitialized(false),
         mHasOtherFamilyNames(false),
         mFaceNamesInitialized(false),
@@ -921,6 +943,12 @@ class gfxFontFamily {
     return true;
   }
 
+  FontVisibility Visibility() const { return mVisibility; }
+  bool IsHidden() const { return Visibility() == FontVisibility::Hidden; }
+  bool IsWebFontFamily() const {
+    return Visibility() == FontVisibility::Webfont;
+  }
+
  protected:
   // Protected destructor, to discourage deletion outside of Release():
   virtual ~gfxFontFamily();
@@ -942,6 +970,9 @@ class gfxFontFamily {
   nsCString mName;
   nsTArray<RefPtr<gfxFontEntry>> mAvailableFonts;
   gfxSparseBitSet mFamilyCharacterMap;
+
+  FontVisibility mVisibility;
+
   bool mOtherFamilyNamesInitialized : 1;
   bool mHasOtherFamilyNames : 1;
   bool mFaceNamesInitialized : 1;

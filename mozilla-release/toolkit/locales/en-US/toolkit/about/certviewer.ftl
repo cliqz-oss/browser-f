@@ -22,11 +22,15 @@ certificate-viewer-country = Country
 certificate-viewer-curve = Curve
 certificate-viewer-distribution-point = Distribution Point
 certificate-viewer-dns-name = DNS Name
+certificate-viewer-ip-address = IP Address
+certificate-viewer-other-name = Other Name
 certificate-viewer-exponent = Exponent
 certificate-viewer-id = ID
 certificate-viewer-key-exchange-group = Key Exchange Group
 certificate-viewer-key-id = Key ID
 certificate-viewer-key-size = Key Size
+# Inc. means Incorporated, e.g GitHub is incorporated in Delaware
+certificate-viewer-inc-locality = Inc. Locality
 certificate-viewer-locality = Locality
 certificate-viewer-location = Location
 certificate-viewer-logid = Log ID
@@ -44,6 +48,7 @@ certificate-viewer-purposes = Purposes
 certificate-viewer-qualifier = Qualifier
 certificate-viewer-qualifiers = Qualifiers
 certificate-viewer-required = Required
+certificate-viewer-unsupported = &lt;unsupported&gt;
 # Inc. means Incorporated, e.g GitHub is incorporated in Delaware
 certificate-viewer-inc-state-province = Inc. State/Province
 certificate-viewer-state-province = State/Province

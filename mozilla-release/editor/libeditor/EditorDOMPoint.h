@@ -472,6 +472,20 @@ class EditorDOMPointBase final {
     MOZ_ASSERT(aContainer.get());
     return After(*aContainer.get());
   }
+  template <typename PT, typename CT>
+  MOZ_NEVER_INLINE_DEBUG static SelfType After(
+      const EditorDOMPointBase<PT, CT>& aPoint) {
+    MOZ_ASSERT(aPoint.IsSet());
+    if (aPoint.mChild) {
+      return After(*aPoint.mChild);
+    }
+    if (NS_WARN_IF(aPoint.IsEndOfContainer())) {
+      return SelfType();
+    }
+    SelfType point(aPoint);
+    MOZ_ALWAYS_TRUE(point.AdvanceOffset());
+    return point;
+  }
 
   /**
    * NextPoint() and PreviousPoint() returns next/previous DOM point in
@@ -705,7 +719,7 @@ class EditorDOMPointBase final {
     if (NS_WARN_IF(!mParent)) {
       return false;
     }
-    if (mParent->IsContainerNode()) {
+    if (mParent->IsContainerNode() && mOffset.isSome()) {
       return mOffset.value() == mParent->Length() - 1;
     }
     if (mIsChildInitialized) {
@@ -817,7 +831,19 @@ class EditorDOMPointBase final {
   }
 
   template <typename A, typename B>
+  bool operator==(const RangeBoundaryBase<A, B>& aOther) const {
+    // TODO: Optimize this with directly comparing with RangeBoundaryBase
+    //       members.
+    return *this == SelfType(aOther);
+  }
+
+  template <typename A, typename B>
   bool operator!=(const EditorDOMPointBase<A, B>& aOther) const {
+    return !(*this == aOther);
+  }
+
+  template <typename A, typename B>
+  bool operator!=(const RangeBoundaryBase<A, B>& aOther) const {
     return !(*this == aOther);
   }
 

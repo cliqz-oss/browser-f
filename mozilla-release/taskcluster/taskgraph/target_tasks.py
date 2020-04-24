@@ -7,6 +7,7 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 from taskgraph import try_option_syntax
+from taskgraph.parameters import Parameters
 from taskgraph.util.attributes import match_run_on_projects, match_run_on_hg_branches
 
 _target_task_methods = {}
@@ -114,7 +115,6 @@ def _try_option_syntax(full_task_graph, parameters, graph_config):
 
     attributes = {
         k: getattr(options, k) for k in [
-            'env',
             'no_retry',
             'tag',
         ]
@@ -130,17 +130,14 @@ def _try_option_syntax(full_task_graph, parameters, graph_config):
         # If the developer wants test jobs to be rebuilt N times we add that value here
         if options.trigger_tests > 1 and 'unittest_suite' in task.attributes:
             task.attributes['task_duplicates'] = options.trigger_tests
-            task.attributes['profile'] = False
 
         # If the developer wants test talos jobs to be rebuilt N times we add that value here
         if options.talos_trigger_tests > 1 and task.attributes.get('unittest_suite') == 'talos':
             task.attributes['task_duplicates'] = options.talos_trigger_tests
-            task.attributes['profile'] = options.profile
 
         # If the developer wants test raptor jobs to be rebuilt N times we add that value here
         if options.raptor_trigger_tests > 1 and task.attributes.get('unittest_suite') == 'raptor':
             task.attributes['task_duplicates'] = options.raptor_trigger_tests
-            task.attributes['profile'] = options.profile
 
         task.attributes.update(attributes)
 
@@ -169,6 +166,21 @@ def target_tasks_try(full_task_graph, parameters, graph_config):
         # With no try mode, we schedule nothing, allowing the user to add tasks
         # later via treeherder.
         return []
+
+
+@_target_task('try_auto')
+def target_tasks_try_auto(full_task_graph, parameters, graph_config):
+    """Target the tasks which have indicated they should be run on autoland
+    (rather than try) via the `run_on_projects` attributes.
+
+    Should do the same thing as the `default` target tasks method.
+    """
+    params = dict(parameters)
+    params['project'] = 'autoland'
+    parameters = Parameters(**params)
+    return [l for l, t in full_task_graph.tasks.iteritems()
+            if standard_filter(t, parameters)
+            and filter_out_nightly(t, parameters)]
 
 
 @_target_task('default')
@@ -685,7 +697,10 @@ def target_tasks_l10n_bump(full_task_graph, parameters, graph_config):
 def target_tasks_merge_automation(full_task_graph, parameters, graph_config):
     """Select the set of tasks required to perform repository merges.
     """
-    return ['merge-automation']
+    def filter(task):
+        # For now any task in the repo-update kind is ok
+        return task.kind in ['merge-automation']
+    return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
 
 
 @_target_task('cron_bouncer_check')

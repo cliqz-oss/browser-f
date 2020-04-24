@@ -29,7 +29,6 @@
 #include "mozilla/dom/ProfileTimelineMarkerBinding.h"
 #include "mozilla/dom/WindowProxyHolder.h"
 #include "mozilla/gfx/Matrix.h"
-#include "nsAutoPtr.h"
 #include "nsCOMPtr.h"
 #include "nsCRT.h"
 #include "nsCharsetSource.h"
@@ -149,8 +148,8 @@ class nsDocShell final : public nsDocLoader,
     // Whether a top-level data URI navigation is allowed for that load
     INTERNAL_LOAD_FLAGS_FORCE_ALLOW_DATA_URI = 0x200,
 
-    // Whether the load was triggered by user interaction.
-    INTERNAL_LOAD_FLAGS_IS_USER_TRIGGERED = 0x1000,
+    // Whether the load should go through LoadURIDelegate.
+    INTERNAL_LOAD_FLAGS_BYPASS_LOAD_URI_DELEGATE = 0x2000,
   };
 
   // Event type dispatched by RestorePresentation
@@ -491,20 +490,20 @@ class nsDocShell final : public nsDocLoader,
   // to transfer the resulting channel into the final process.
   static nsresult CreateRealChannelForDocument(
       nsIChannel** aChannel, nsIURI* aURI, nsILoadInfo* aLoadInfo,
-      nsIInterfaceRequestor* aCallbacks, nsDocShell* aDocShell,
-      nsLoadFlags aLoadFlags, const nsAString& aSrcdoc, nsIURI* aBaseURI);
+      nsIInterfaceRequestor* aCallbacks, nsLoadFlags aLoadFlags,
+      const nsAString& aSrcdoc, nsIURI* aBaseURI);
 
   // Creates a real (not DocumentChannel) channel, and configures it using the
   // supplied nsDocShellLoadState.
   // Configuration options here are ones that should be applied to only the
   // real channel, especially ones that need to QI to channel subclasses.
   static bool CreateAndConfigureRealChannelForLoadState(
+      mozilla::dom::BrowsingContext* aBrowsingContext,
       nsDocShellLoadState* aLoadState, mozilla::net::LoadInfo* aLoadInfo,
       nsIInterfaceRequestor* aCallbacks, nsDocShell* aDocShell,
       const mozilla::OriginAttributes& aOriginAttributes,
-      nsLoadFlags aLoadFlags, uint32_t aLoadType, uint32_t aCacheKey,
-      bool aIsActive, bool aIsTopLevelDoc, bool aHasNonEmptySandboxingFlags,
-      nsresult& rv, nsIChannel** aChannel);
+      nsLoadFlags aLoadFlags, uint32_t aCacheKey, nsresult& rv,
+      nsIChannel** aChannel);
 
   // Notify consumers of a search being loaded through the observer service:
   static void MaybeNotifyKeywordSearchLoading(const nsString& aProvider,
@@ -529,6 +528,9 @@ class nsDocShell final : public nsDocLoader,
    */
   static void ExtractLastVisit(nsIChannel* aChannel, nsIURI** aURI,
                                uint32_t* aChannelRedirectFlags);
+
+  static uint32_t ComputeURILoaderFlags(
+      mozilla::dom::BrowsingContext* aBrowsingContext, uint32_t aLoadType);
 
  private:  // member functions
   friend class nsDSURIContentListener;
@@ -660,7 +662,14 @@ class nsDocShell final : public nsDocLoader,
   // Call this method to swap in a new history entry to m[OL]SHE, rather than
   // setting it directly. This completes the navigation in all docshells
   // in the case of a subframe navigation.
-  void SetHistoryEntry(nsCOMPtr<nsISHEntry>* aPtr, nsISHEntry* aEntry);
+  // Returns old mOSHE/mLSHE.
+  already_AddRefed<nsISHEntry> SetHistoryEntry(nsCOMPtr<nsISHEntry>* aPtr,
+                                               nsISHEntry* aEntry);
+
+  // This method calls SetHistoryEntry and updates mOSHE and mLSHE in BC to be
+  // the same as in docshell
+  void SetHistoryEntryAndUpdateBC(const Maybe<nsISHEntry*>& aLSHE,
+                                  const Maybe<nsISHEntry*>& aOSHE);
 
   //
   // URI Load
@@ -881,6 +890,8 @@ class nsDocShell final : public nsDocLoader,
   // we need to adjust them when necessary.
   enum BFCacheStatusCombo : uint16_t {
     BFCACHE_SUCCESS,
+    SUCCESS_NOT_ONLY_TOPLEVEL =
+        mozilla::dom::BFCacheStatus::NOT_ONLY_TOPLEVEL_IN_BCG,
     UNLOAD = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER,
     UNLOAD_REQUEST = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
                      mozilla::dom::BFCacheStatus::REQUEST,
@@ -901,6 +912,7 @@ class nsDocShell final : public nsDocLoader,
         mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
         mozilla::dom::BFCacheStatus::REQUEST |
         mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
+    REMOTE_SUBFRAMES = mozilla::dom::BFCacheStatus::CONTAINS_REMOTE_SUBFRAMES
   };
 
   void ReportBFCacheComboTelemetry(uint16_t aCombo);
@@ -1280,15 +1292,12 @@ class nsDocShell final : public nsDocLoader,
 
   bool mCreated : 1;
   bool mAllowSubframes : 1;
-  bool mAllowPlugins : 1;
   bool mAllowJavascript : 1;
   bool mAllowMetaRedirects : 1;
   bool mAllowImages : 1;
   bool mAllowMedia : 1;
   bool mAllowDNSPrefetch : 1;
   bool mAllowWindowControl : 1;
-  bool mAllowContentRetargeting : 1;
-  bool mAllowContentRetargetingOnChildren : 1;
   bool mUseErrorPages : 1;
   bool mObserveErrorPages : 1;
   bool mCSSErrorReportingEnabled : 1;

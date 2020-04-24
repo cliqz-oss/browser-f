@@ -290,6 +290,10 @@ const SNAPSHOT_SCHEMA = {
           required: false,
           type: "boolean",
         },
+        "dom.ipc.processCount.webIsolated": {
+          required: false,
+          type: "number",
+        },
       },
     },
     graphics: {
@@ -822,6 +826,28 @@ const SNAPSHOT_SCHEMA = {
               },
             },
           },
+        },
+      },
+    },
+    startupCache: {
+      required: false,
+      type: "object",
+      properties: {
+        DiskCachePath: {
+          required: true,
+          type: "string",
+        },
+        IgnoreDiskCache: {
+          required: true,
+          type: "boolean",
+        },
+        FoundDiskCacheOnInit: {
+          required: true,
+          type: "boolean",
+        },
+        WroteToDiskCache: {
+          required: true,
+          type: "boolean",
         },
       },
     },

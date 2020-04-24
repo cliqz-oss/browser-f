@@ -32,6 +32,20 @@ function checksCertTab(tabsCount) {
   checkSpec(spec);
 }
 
+async function checkCertChain() {
+  await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function() {
+    let certificateTabs;
+    await ContentTaskUtils.waitForCondition(() => {
+      certificateTabs = content.document
+        .querySelector("certificate-section")
+        .shadowRoot.querySelectorAll(".certificate-tab");
+      return certificateTabs.length;
+    }, "Found certificate tabs.");
+
+    Assert.greater(certificateTabs.length, 1, "Certificate chain tabs shown");
+  });
+}
+
 // taken from https://searchfox.org/mozilla-central/rev/7ed8e2d3d1d7a1464ba42763a33fd2e60efcaedc/security/manager/ssl/tests/mochitest/browser/browser_downloadCert_ui.js#47
 function openCertDownloadDialog(cert) {
   let returnVals = Cc["@mozilla.org/hash-property-bag;1"].createInstance(
@@ -69,12 +83,27 @@ add_task(async function openFromPopUp() {
 
   let [win] = await openCertDownloadDialog(cert);
   let viewCertButton = win.document.getElementById("viewC-button");
-  let newWinOpened = BrowserTestUtils.waitForNewWindow({
-    url: spec => spec.startsWith("about:certificate"),
-  });
+  let newWinOpened = BrowserTestUtils.waitForNewWindow();
   viewCertButton.click();
+
   let topWin = await newWinOpened;
-  let spec = topWin.gBrowser.selectedBrowser.currentURI.spec;
+  let browser = topWin.gBrowser.selectedBrowser;
+
+  // We're racing against messages sent up from the content process that
+  // loads about:certificate. It may or may not have had the opportunity
+  // to tell the parent that it had loaded the page yet. If not, we wait
+  // for the page to load.
+  //
+  // Note that we can't use the URL parameter for
+  // BrowserTestUtils.waitForNewWindow, since we need to use a function
+  // to choose the right URL.
+  if (!browser.currentURI.spec.startsWith("about:certificate")) {
+    await BrowserTestUtils.browserLoaded(browser, false, spec =>
+      spec.startsWith("about:certificate")
+    );
+  }
+
+  let spec = browser.currentURI.spec;
   checkSpec(spec);
 
   await BrowserTestUtils.closeWindow(topWin); // closes about:certificate
@@ -221,22 +250,22 @@ add_task(async function testPreferencesCert() {
     Assert.ok(doc, "doc loaded");
 
     doc.getElementById("certmanagertabs").selectedTab = doc.getElementById(
-      "ca_tab"
+      "mine_tab"
     );
-    let treeView = doc.getElementById("ca-tree").view;
+    let treeView = doc.getElementById("user-tree").view;
     let selectedCert;
     // See https://searchfox.org/mozilla-central/rev/40ef22080910c2e2c27d9e2120642376b1d8b8b2/browser/components/preferences/in-content/tests/browser_cert_export.js#41
     for (let i = 0; i < treeView.rowCount; i++) {
       treeView.selection.select(i);
       dialogWin.getSelectedCerts();
       let certs = dialogWin.selected_certs;
-      if (certs && certs.length == 1 && certs[0]) {
+      if (certs && certs[0]) {
         selectedCert = certs[0];
         break;
       }
     }
     Assert.ok(selectedCert, "A cert should be selected");
-    let viewButton = doc.getElementById("ca_viewButton");
+    let viewButton = doc.getElementById("mine_viewButton");
     Assert.equal(viewButton.disabled, false, "Should enable view button");
 
     let loaded = BrowserTestUtils.waitForNewTab(gBrowser, null, true);
@@ -244,6 +273,7 @@ add_task(async function testPreferencesCert() {
     await loaded;
 
     checksCertTab(tabsCount);
+    await checkCertChain();
   });
   gBrowser.removeCurrentTab(); // closes about:certificate
 });

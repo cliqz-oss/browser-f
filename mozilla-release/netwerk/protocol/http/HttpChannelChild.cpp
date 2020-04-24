@@ -10,7 +10,6 @@
 
 #include "nsHttp.h"
 #include "nsICacheEntry.h"
-#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/ContentChild.h"
@@ -90,8 +89,8 @@ InterceptStreamListener::OnStartRequest(nsIRequest* aRequest) {
 }
 
 NS_IMETHODIMP
-InterceptStreamListener::OnStatus(nsIRequest* aRequest, nsISupports* aContext,
-                                  nsresult status, const char16_t* aStatusArg) {
+InterceptStreamListener::OnStatus(nsIRequest* aRequest, nsresult status,
+                                  const char16_t* aStatusArg) {
   if (mOwner) {
     mOwner->DoOnStatus(mOwner, status);
   }
@@ -99,8 +98,8 @@ InterceptStreamListener::OnStatus(nsIRequest* aRequest, nsISupports* aContext,
 }
 
 NS_IMETHODIMP
-InterceptStreamListener::OnProgress(nsIRequest* aRequest, nsISupports* aContext,
-                                    int64_t aProgress, int64_t aProgressMax) {
+InterceptStreamListener::OnProgress(nsIRequest* aRequest, int64_t aProgress,
+                                    int64_t aProgressMax) {
   if (mOwner) {
     mOwner->DoOnProgress(mOwner, aProgress, aProgressMax);
   }
@@ -125,11 +124,10 @@ InterceptStreamListener::OnDataAvailable(nsIRequest* aRequest,
     nsAutoCString host;
     uri->GetHost(host);
 
-    OnStatus(mOwner, nullptr, NS_NET_STATUS_READING,
-             NS_ConvertUTF8toUTF16(host).get());
+    OnStatus(mOwner, NS_NET_STATUS_READING, NS_ConvertUTF8toUTF16(host).get());
 
     int64_t progress = aOffset + aCount;
-    OnProgress(mOwner, nullptr, progress, mOwner->mSynthesizedStreamLength);
+    OnProgress(mOwner, progress, mOwner->mSynthesizedStreamLength);
   }
 
   mOwner->DoOnDataAvailable(mOwner, nullptr, aInputStream, aOffset, aCount);
@@ -224,7 +222,6 @@ void HttpChannelChild::ReleaseMainThreadOnlyReferences() {
   arrayToRelease.AppendElement(listener.forget());
 
   arrayToRelease.AppendElement(mInterceptedRedirectListener.forget());
-  arrayToRelease.AppendElement(mInterceptedRedirectContext.forget());
 
   NS_DispatchToMainThread(new ProxyReleaseRunnable(std::move(arrayToRelease)));
 }
@@ -932,7 +929,7 @@ void HttpChannelChild::DoOnStatus(nsIRequest* aRequest, nsresult status) {
       !(mLoadFlags & LOAD_BACKGROUND)) {
     nsAutoCString host;
     mURI->GetHost(host);
-    mProgressSink->OnStatus(aRequest, nullptr, status,
+    mProgressSink->OnStatus(aRequest, status,
                             NS_ConvertUTF8toUTF16(host).get());
   }
 }
@@ -953,7 +950,7 @@ void HttpChannelChild::DoOnProgress(nsIRequest* aRequest, int64_t progress,
     // OnProgress
     //
     if (progress > 0) {
-      mProgressSink->OnProgress(aRequest, nullptr, progress, progressMax);
+      mProgressSink->OnProgress(aRequest, progress, progressMax);
     }
   }
 }
@@ -1122,9 +1119,9 @@ void HttpChannelChild::OnStopRequest(
     return;
   }
 
-  // If we're a multi-part stream, and this wasn't the last part, then don't
-  // cleanup yet, as we're expecting more parts.
-  if (mMultiPartID && !mIsLastPartOfMultiPart) {
+  // If we're a multi-part stream, then don't cleanup yet, and we'll do so
+  // in OnAfterLastPart.
+  if (mMultiPartID) {
     LOG(
         ("HttpChannelChild::OnStopRequest  - Expecting future parts on a "
          "multipart channel"
@@ -1186,10 +1183,8 @@ void HttpChannelChild::CollectOMTTelemetry() {
   }
 
   // Use content policy type to accumulate data by usage.
-  nsContentPolicyType type = mLoadInfo ? mLoadInfo->InternalContentPolicyType()
-                                       : nsIContentPolicy::TYPE_OTHER;
-
-  nsAutoCString key(NS_CP_ContentTypeName(type));
+  nsAutoCString key(
+      NS_CP_ContentTypeName(mLoadInfo->InternalContentPolicyType()));
 
   Telemetry::AccumulateCategoricalKeyed(key, mOMTResult);
 }
@@ -1246,9 +1241,9 @@ void HttpChannelChild::DoOnStopRequest(nsIRequest* aRequest,
   }
   mOnStopRequestCalled = true;
 
-  // If we're a multi-part stream, and this wasn't the last part, then don't
-  // cleanup yet, as we're expecting more parts.
-  if (mMultiPartID && !mIsLastPartOfMultiPart) {
+  // If we're a multi-part stream, then don't cleanup yet, and we'll do so
+  // in OnAfterLastPart.
+  if (mMultiPartID) {
     LOG(
         ("HttpChannelChild::DoOnStopRequest  - Expecting future parts on a "
          "multipart channel"
@@ -1532,7 +1527,7 @@ void HttpChannelChild::ContinueDoNotifyListener() {
   if (!IsNavigation()) {
     if (mLoadGroup) {
       FlushConsoleReports(mLoadGroup);
-    } else if (mLoadInfo) {
+    } else {
       RefPtr<dom::Document> doc;
       mLoadInfo->GetLoadingDocument(getter_AddRefs(doc));
       FlushConsoleReports(doc);
@@ -1542,11 +1537,9 @@ void HttpChannelChild::ContinueDoNotifyListener() {
 
 void HttpChannelChild::FinishInterceptedRedirect() {
   nsresult rv;
-  MOZ_ASSERT(!mInterceptedRedirectContext, "the context should be null!");
   rv = AsyncOpen(mInterceptedRedirectListener);
 
   mInterceptedRedirectListener = nullptr;
-  mInterceptedRedirectContext = nullptr;
 
   if (mInterceptingChannel) {
     mInterceptingChannel->CleanupRedirectingChannel(rv);
@@ -1947,7 +1940,7 @@ bool HttpChannelChild::Redirect3Complete(OverrideRunnable* aRunnable) {
       httpChannelChild->mOverrideRunnable = aRunnable;
       httpChannelChild->mInterceptingChannel = this;
     }
-    rv = mRedirectChannelChild->CompleteRedirectSetup(mListener, nullptr);
+    rv = mRedirectChannelChild->CompleteRedirectSetup(mListener);
   }
 
   if (!httpChannelChild || !httpChannelChild->mShouldParentIntercept) {
@@ -1973,19 +1966,17 @@ void HttpChannelChild::CleanupRedirectingChannel(nsresult rv) {
   if (mLoadGroup) mLoadGroup->RemoveRequest(this, nullptr, NS_BINDING_ABORTED);
 
   if (NS_SUCCEEDED(rv)) {
-    if (mLoadInfo) {
-      nsCString remoteAddress;
-      Unused << GetRemoteAddress(remoteAddress);
-      nsCOMPtr<nsIURI> referrer;
-      if (mReferrerInfo) {
-        referrer = mReferrerInfo->GetComputedReferrer();
-      }
-
-      nsCOMPtr<nsIRedirectHistoryEntry> entry = new nsRedirectHistoryEntry(
-          GetURIPrincipal(), referrer, remoteAddress);
-
-      mLoadInfo->AppendRedirectHistoryEntry(entry, false);
+    nsCString remoteAddress;
+    Unused << GetRemoteAddress(remoteAddress);
+    nsCOMPtr<nsIURI> referrer;
+    if (mReferrerInfo) {
+      referrer = mReferrerInfo->GetComputedReferrer();
     }
+
+    nsCOMPtr<nsIRedirectHistoryEntry> entry =
+        new nsRedirectHistoryEntry(GetURIPrincipal(), referrer, remoteAddress);
+
+    mLoadInfo->AppendRedirectHistoryEntry(entry, false);
   } else {
     NS_WARNING("CompleteRedirectSetup failed, HttpChannelChild already open?");
   }
@@ -2077,8 +2068,7 @@ HttpChannelChild::ConnectParent(uint32_t registrarId) {
 }
 
 NS_IMETHODIMP
-HttpChannelChild::CompleteRedirectSetup(nsIStreamListener* aListener,
-                                        nsISupports* aContext) {
+HttpChannelChild::CompleteRedirectSetup(nsIStreamListener* aListener) {
   LOG(("HttpChannelChild::FinishRedirectSetup [this=%p]\n", this));
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -2100,8 +2090,6 @@ HttpChannelChild::CompleteRedirectSetup(nsIStreamListener* aListener,
     //  4. [optional] Call OverrideWithSynthesizedResponse on the redirected
     //  channel if the call came from OverrideRunnable.
     mInterceptedRedirectListener = aListener;
-    mInterceptedRedirectContext = aContext;
-
     // This will send a message to the parent notifying it that we are closing
     // down. After closing the IPC channel, we will proceed to execute
     // FinishInterceptedRedirect() which AsyncOpen's the channel again.
@@ -2251,19 +2239,16 @@ HttpChannelChild::OnRedirectVerifyCallback(nsresult aResult) {
   }
 
   uint32_t sourceRequestBlockingReason = 0;
-  if (mLoadInfo) {
-    mLoadInfo->GetRequestBlockingReason(&sourceRequestBlockingReason);
-  }
+  mLoadInfo->GetRequestBlockingReason(&sourceRequestBlockingReason);
 
-  nsCOMPtr<nsILoadInfo> newChannelLoadInfo = nullptr;
+  Maybe<ChildLoadInfoForwarderArgs> targetLoadInfoForwarder;
   nsCOMPtr<nsIChannel> newChannel = do_QueryInterface(mRedirectChannelChild);
   if (newChannel) {
-    newChannelLoadInfo = newChannel->LoadInfo();
+    ChildLoadInfoForwarderArgs args;
+    nsCOMPtr<nsILoadInfo> loadInfo = newChannel->LoadInfo();
+    LoadInfoToChildLoadInfoForwarder(loadInfo, &args);
+    targetLoadInfoForwarder.emplace(args);
   }
-
-  ChildLoadInfoForwarderArgs targetLoadInfoForwarder;
-  LoadInfoToChildLoadInfoForwarder(newChannelLoadInfo,
-                                   &targetLoadInfoForwarder);
 
   if (CanSend())
     SendRedirect2Verify(aResult, *headerTuples, sourceRequestBlockingReason,
@@ -2397,9 +2382,7 @@ HttpChannelChild::AsyncOpen(nsIStreamListener* aListener) {
   nsresult rv = AsyncOpenInternal(aListener);
   if (NS_FAILED(rv)) {
     uint32_t blockingReason = 0;
-    if (mLoadInfo) {
-      mLoadInfo->GetRequestBlockingReason(&blockingReason);
-    }
+    mLoadInfo->GetRequestBlockingReason(&blockingReason);
     LOG(
         ("HttpChannelChild::AsyncOpen failed [this=%p rv=0x%08x "
          "blocking-reason=%u]\n",
@@ -2421,7 +2404,7 @@ nsresult HttpChannelChild::AsyncOpenInternal(nsIStreamListener* aListener) {
   }
 
   MOZ_ASSERT(
-      !mLoadInfo || mLoadInfo->GetSecurityMode() == 0 ||
+      mLoadInfo->GetSecurityMode() == 0 ||
           mLoadInfo->GetInitialSecurityCheckDone() ||
           (mLoadInfo->GetSecurityMode() ==
                nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL &&
@@ -2708,17 +2691,11 @@ nsresult HttpChannelChild::ContinueAsyncOpen() {
   Maybe<CorsPreflightArgs> optionalCorsPreflightArgs;
   GetClientSetCorsPreflightParameters(optionalCorsPreflightArgs);
 
-  // NB: This call forces us to cache mTopWindowURI and
-  // mContentBlockingAllowListPrincipal if we haven't already.
+  // NB: This call forces us to cache mTopWindowURI if we haven't already.
   nsCOMPtr<nsIURI> uri;
   GetTopWindowURI(mURI, getter_AddRefs(uri));
 
   SerializeURI(mTopWindowURI, openArgs.topWindowURI());
-
-  openArgs.contentBlockingAllowListPrincipal() =
-      mContentBlockingAllowListPrincipal
-          ? Some(RefPtr<nsIPrincipal>(mContentBlockingAllowListPrincipal))
-          : Nothing();
 
   openArgs.preflightArgs() = optionalCorsPreflightArgs;
 
@@ -3872,7 +3849,7 @@ mozilla::ipc::IPCResult HttpChannelChild::RecvIssueDeprecationWarning(
 
 bool HttpChannelChild::ShouldInterceptURI(nsIURI* aURI, bool& aShouldUpgrade) {
   nsCOMPtr<nsIPrincipal> resultPrincipal;
-  if (!aURI->SchemeIs("https") && mLoadInfo) {
+  if (!aURI->SchemeIs("https")) {
     nsContentUtils::GetSecurityManager()->GetChannelResultPrincipal(
         this, getter_AddRefs(resultPrincipal));
   }
@@ -3949,15 +3926,12 @@ mozilla::ipc::IPCResult HttpChannelChild::RecvLogBlockedCORSRequest(
 NS_IMETHODIMP
 HttpChannelChild::LogBlockedCORSRequest(const nsAString& aMessage,
                                         const nsACString& aCategory) {
-  if (mLoadInfo) {
-    uint64_t innerWindowID = mLoadInfo->GetInnerWindowID();
-    bool privateBrowsing =
-        !!mLoadInfo->GetOriginAttributes().mPrivateBrowsingId;
-    bool fromChromeContext =
-        mLoadInfo->TriggeringPrincipal()->IsSystemPrincipal();
-    nsCORSListenerProxy::LogBlockedCORSRequest(
-        innerWindowID, privateBrowsing, fromChromeContext, aMessage, aCategory);
-  }
+  uint64_t innerWindowID = mLoadInfo->GetInnerWindowID();
+  bool privateBrowsing = !!mLoadInfo->GetOriginAttributes().mPrivateBrowsingId;
+  bool fromChromeContext =
+      mLoadInfo->TriggeringPrincipal()->IsSystemPrincipal();
+  nsCORSListenerProxy::LogBlockedCORSRequest(
+      innerWindowID, privateBrowsing, fromChromeContext, aMessage, aCategory);
   return NS_OK;
 }
 
@@ -3973,9 +3947,7 @@ HttpChannelChild::LogMimeTypeMismatch(const nsACString& aMessageName,
                                       bool aWarning, const nsAString& aURL,
                                       const nsAString& aContentType) {
   RefPtr<Document> doc;
-  if (mLoadInfo) {
-    mLoadInfo->GetLoadingDocument(getter_AddRefs(doc));
-  }
+  mLoadInfo->GetLoadingDocument(getter_AddRefs(doc));
 
   AutoTArray<nsString, 2> params;
   params.AppendElement(aURL);

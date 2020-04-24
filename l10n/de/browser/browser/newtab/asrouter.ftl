@@ -129,6 +129,7 @@ cfr-whatsnew-searchbar-title = Weniger Tippen und mehr Finden mit der Adressleis
 #   $searchEngineName - Name of the current default search engine as also shown in the urlbar.
 cfr-whatsnew-searchbar-body-enginename = Rufe deine meistbesuchten Websites mit einem Klick in die Adressleiste auf. Werde schneller fündig mit Suchergebnissen von { $searchEngineName } und deiner Browser-Chronik.
 cfr-whatsnew-searchbar-body-generic = Rufe deine meistbesuchten Websites mit einem Klick in die Adressleiste auf. Werde schneller fündig mit Vorschlägen aus deiner Browser-Chronik.
+cfr-whatsnew-searchbar-body-topsites = Klicken Sie einfach in die Adressleiste, um ein Auswahlmenü mit Ihren „Wichtigen Seiten“ anzuzeigen.
 cfr-whatsnew-searchbar-icon-alt-text = Lupensymbol
 
 ## Picture-in-Picture
@@ -214,3 +215,17 @@ cfr-doorhanger-milestone-heading =
     }
 cfr-doorhanger-milestone-ok-button = Alle anzeigen
     .accesskey = A
+
+## What’s New Panel Content for Firefox 76
+
+
+## Lockwise message
+
+cfr-whatsnew-lockwise-icon-alt = { -lockwise-brand-short-name }-Symbol
+
+## Vulnerable Passwords message
+
+
+## Picture-in-Picture fullscreen message
+
+cfr-whatsnew-pip-fullscreen-icon-alt = Bild-im-Bild-Symbol

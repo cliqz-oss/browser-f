@@ -85,7 +85,7 @@ static const nsGlyphCode kNullGlyph = {{{0, 0}}, 0};
 
 class nsGlyphTable {
  public:
-  virtual ~nsGlyphTable() {}
+  virtual ~nsGlyphTable() = default;
 
   virtual const FontFamilyName& FontNameFor(
       const nsGlyphCode& aGlyphCode) const = 0;
@@ -560,7 +560,7 @@ class nsGlyphTableList final : public nsIObserver {
   nsGlyphTable* GetGlyphTableFor(const nsACString& aFamily);
 
  private:
-  ~nsGlyphTableList() {}
+  ~nsGlyphTableList() = default;
 
   nsPropertiesTable* PropertiesTableAt(int32_t aIndex) {
     return &mPropertiesTableList.ElementAt(aIndex);
@@ -885,6 +885,7 @@ bool nsMathMLChar::SetFontFamily(nsPresContext* aPresContext,
     params.explicitLanguage = styleFont->mExplicitLanguage;
     params.userFontSet = aPresContext->GetUserFontSet();
     params.textPerf = aPresContext->GetTextPerfMetrics();
+    params.fontStats = aPresContext->GetFontMatchingStats();
     params.featureValueLookup = aPresContext->GetFontFeatureValuesLookup();
     RefPtr<nsFontMetrics> fm =
         aPresContext->DeviceContext()->GetMetricsFor(font, params);
@@ -1398,6 +1399,7 @@ nsresult nsMathMLChar::StretchInternal(
   params.explicitLanguage = styleFont->mExplicitLanguage;
   params.userFontSet = presContext->GetUserFontSet();
   params.textPerf = presContext->GetTextPerfMetrics();
+  params.fontStats = presContext->GetFontMatchingStats();
   RefPtr<nsFontMetrics> fm =
       presContext->DeviceContext()->GetMetricsFor(font, params);
   uint32_t len = uint32_t(mData.Length());
@@ -1888,7 +1890,7 @@ void nsMathMLChar::PaintForeground(nsIFrame* aForFrame,
     fgColor = LookAndFeel::GetColor(LookAndFeel::ColorID::TextSelectForeground,
                                     fgColor);
   }
-  aRenderingContext.SetColor(Color::FromABGR(fgColor));
+  aRenderingContext.SetColor(sRGBColor::FromABGR(fgColor));
   aRenderingContext.Save();
   nsRect r = mRect + aPt;
   ApplyTransforms(&aRenderingContext,

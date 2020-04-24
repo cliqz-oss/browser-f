@@ -25,7 +25,7 @@ extern crate cubeb_coreaudio;
 extern crate cubeb_pulse;
 extern crate encoding_glue;
 extern crate env_logger;
-#[cfg(feature = "fogotype")]
+#[cfg(feature = "glean")]
 extern crate fog;
 extern crate gkrust_utils;
 extern crate jsrust_shared;
@@ -66,6 +66,11 @@ extern crate unic_langid_ffi;
 
 extern crate fluent_langneg;
 extern crate fluent_langneg_ffi;
+
+extern crate fluent;
+extern crate fluent_ffi;
+
+extern crate sync15_traits;
 
 #[cfg(feature = "remote")]
 extern crate remote;

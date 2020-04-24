@@ -69,6 +69,7 @@ STATIC_ATOMS = [
     Atom("activateontab", "activateontab"),
     Atom("actuate", "actuate"),
     Atom("address", "address"),
+    Atom("adoptedsheetclones", "adoptedsheetclones"),
     Atom("after", "after"),
     Atom("align", "align"),
     Atom("alink", "alink"),
@@ -101,7 +102,6 @@ STATIC_ATOMS = [
     Atom("animations", "animations"),
     Atom("anonid", "anonid"),
     Atom("anonlocation", "anonlocation"),
-    Atom("anonymousDiv", "anonymous-div"),
     Atom("any", "any"),
     Atom("any_hover", "any-hover"),
     Atom("any_pointer", "any-pointer"),
@@ -736,7 +736,6 @@ STATIC_ATOMS = [
     Atom("onanimationiteration", "onanimationiteration"),
     Atom("onanimationstart", "onanimationstart"),
     Atom("onAppCommand", "onAppCommand"),
-    Atom("onappinstalled", "onappinstalled"),
     Atom("onaudioprocess", "onaudioprocess"),
     Atom("onauxclick", "onauxclick"),
     Atom("onbeforecopy", "onbeforecopy"),
@@ -893,6 +892,7 @@ STATIC_ATOMS = [
     Atom("onterminate", "onterminate"),
     Atom("ontext", "ontext"),
     Atom("ontoggle", "ontoggle"),
+    Atom("ontonechange", "ontonechange"),
     Atom("ontouchstart", "ontouchstart"),
     Atom("ontouchend", "ontouchend"),
     Atom("ontouchmove", "ontouchmove"),
@@ -2131,6 +2131,7 @@ STATIC_ATOMS = [
     Atom("labelMouseDownPtProperty", "LabelMouseDownPtProperty"),
     Atom("lockedStyleStates", "lockedStyleStates"),
     Atom("apzCallbackTransform", "apzCallbackTransform"),
+    Atom("apzDisabled", "ApzDisabled"),  # bool
     Atom("restylableAnonymousNode", "restylableAnonymousNode"),  # bool
     Atom("docLevelNativeAnonymousContent", "docLevelNativeAnonymousContent"),  # bool
     Atom("paintRequestTime", "PaintRequestTime"),
@@ -2470,6 +2471,8 @@ STATIC_ATOMS = [
     PseudoElementAtom("PseudoElement_mozMeterBar", ":-moz-meter-bar"),
     PseudoElementAtom("PseudoElement_placeholder", ":placeholder"),
     PseudoElementAtom("PseudoElement_mozColorSwatch", ":-moz-color-swatch"),
+    PseudoElementAtom("PseudoElement_mozTextControlEditingRoot", ":-moz-text-control-editing-root"),
+    PseudoElementAtom("PseudoElement_mozTextControlPreview", ":-moz-text-control-preview"),
 
     # CSS anonymous boxes -- these must appear in the same order as
     # in nsCSSAnonBoxList.h

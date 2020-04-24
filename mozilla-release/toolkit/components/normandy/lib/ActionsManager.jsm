@@ -12,11 +12,12 @@ const { LogManager } = ChromeUtils.import(
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonRollbackAction: "resource://normandy/actions/AddonRollbackAction.jsm",
   AddonRolloutAction: "resource://normandy/actions/AddonRolloutAction.jsm",
-  AddonStudyAction: "resource://normandy/actions/AddonStudyAction.jsm",
   BaseAction: "resource://normandy/actions/BaseAction.jsm",
   BranchedAddonStudyAction:
     "resource://normandy/actions/BranchedAddonStudyAction.jsm",
   ConsoleLogAction: "resource://normandy/actions/ConsoleLogAction.jsm",
+  MessagingExperimentAction:
+    "resource://normandy/actions/MessagingExperimentAction.jsm",
   PreferenceExperimentAction:
     "resource://normandy/actions/PreferenceExperimentAction.jsm",
   PreferenceRollbackAction:
@@ -24,8 +25,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   PreferenceRolloutAction:
     "resource://normandy/actions/PreferenceRolloutAction.jsm",
   ShowHeartbeatAction: "resource://normandy/actions/ShowHeartbeatAction.jsm",
-  SinglePreferenceExperimentAction:
-    "resource://normandy/actions/SinglePreferenceExperimentAction.jsm",
   Uptake: "resource://normandy/lib/Uptake.jsm",
 });
 
@@ -34,22 +33,15 @@ var EXPORTED_SYMBOLS = ["ActionsManager"];
 const log = LogManager.getLogger("recipe-runner");
 
 const actionConstructors = {
-  "addon-study": AddonStudyAction,
   "addon-rollback": AddonRollbackAction,
   "addon-rollout": AddonRolloutAction,
   "branched-addon-study": BranchedAddonStudyAction,
   "console-log": ConsoleLogAction,
+  "messsaging-experiment": MessagingExperimentAction,
   "multi-preference-experiment": PreferenceExperimentAction,
   "preference-rollback": PreferenceRollbackAction,
   "preference-rollout": PreferenceRolloutAction,
   "show-heartbeat": ShowHeartbeatAction,
-  "single-preference-experiment": SinglePreferenceExperimentAction,
-};
-
-// Legacy names used by the server and older clients for actions.
-const actionAliases = {
-  "opt-out-study": "addon-study",
-  "preference-experiment": "single-preference-experiment",
 };
 
 /**
@@ -59,14 +51,9 @@ class ActionsManager {
   constructor() {
     this.finalized = false;
 
-    // Build a set of local actions, and aliases to them. The aliased names are
-    // used by the server to keep compatibility with older clients.
     this.localActions = {};
     for (const [name, Constructor] of Object.entries(actionConstructors)) {
       this.localActions[name] = new Constructor();
-    }
-    for (const [alias, target] of Object.entries(actionAliases)) {
-      this.localActions[alias] = this.localActions[target];
     }
   }
 
@@ -75,9 +62,6 @@ class ActionsManager {
     let capabilities = new Set();
     for (const actionName of Object.keys(actionConstructors)) {
       capabilities.add(`action.${actionName}`);
-    }
-    for (const actionAlias of Object.keys(actionAliases)) {
-      capabilities.add(`action.${actionAlias}`);
     }
     return capabilities;
   }
@@ -108,7 +92,7 @@ class ActionsManager {
     this.finalized = true;
 
     // Finalize local actions
-    for (const action of new Set(Object.values(this.localActions))) {
+    for (const action of Object.values(this.localActions)) {
       action.finalize();
     }
   }

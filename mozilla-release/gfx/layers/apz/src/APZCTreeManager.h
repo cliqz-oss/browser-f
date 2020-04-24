@@ -40,7 +40,6 @@ class MultiTouchInput;
 namespace wr {
 class TransactionWrapper;
 class WebRenderAPI;
-struct WrTransformProperty;
 }  // namespace wr
 
 namespace layers {
@@ -185,7 +184,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    * shadow layers in that scenario.
    */
   void UpdateHitTestingTree(const WebRenderScrollDataWrapper& aScrollWrapper,
-                            bool aIsFirstPaint, WRRootId aOriginatingWrRootId,
+                            bool aIsFirstPaint, LayersId aOriginatingLayersId,
                             uint32_t aPaintSequenceNumber);
 
   /**
@@ -202,7 +201,16 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    */
   void SampleForWebRender(wr::TransactionWrapper& aTxn,
                           const TimeStamp& aSampleTime,
-                          wr::RenderRoot aRenderRoot);
+                          wr::RenderRoot aRenderRoot,
+                          const wr::WrPipelineIdEpochs* aEpochsBeingRendered);
+
+  /**
+   * Walk through all the APZCs and do the sampling steps needed when
+   * advancing to the next frame. The APZCs walked can be restricted to a
+   * specific render root by providing that as the first argument.
+   */
+  bool AdvanceAnimations(Maybe<wr::RenderRoot> aRenderRoot,
+                         const TimeStamp& aSampleTime);
 
   /**
    * Refer to the documentation of APZInputBridge::ReceiveInputEvent() and
@@ -221,7 +229,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    * up. |aRect| must be given in CSS pixels, relative to the document.
    * |aFlags| is a combination of the ZoomToRectBehavior enum values.
    */
-  void ZoomToRect(const SLGuidAndRenderRoot& aGuid, const CSSRect& aRect,
+  void ZoomToRect(const ScrollableLayerGuid& aGuid, const CSSRect& aRect,
                   const uint32_t aFlags = DEFAULT_BEHAVIOR) override;
 
   /**
@@ -253,7 +261,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    *       arrive.
    */
   void SetTargetAPZC(uint64_t aInputBlockId,
-                     const nsTArray<SLGuidAndRenderRoot>& aTargets) override;
+                     const nsTArray<ScrollableLayerGuid>& aTargets) override;
 
   /**
    * Updates any zoom constraints contained in the <meta name="viewport"> tag.
@@ -261,7 +269,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    * the given |aGuid| are cleared.
    */
   void UpdateZoomConstraints(
-      const SLGuidAndRenderRoot& aGuid,
+      const ScrollableLayerGuid& aGuid,
       const Maybe<ZoomConstraints>& aConstraints) override;
 
   /**
@@ -402,13 +410,13 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
   ParentLayerPoint DispatchFling(AsyncPanZoomController* aApzc,
                                  const FlingHandoffState& aHandoffState);
 
-  void StartScrollbarDrag(const SLGuidAndRenderRoot& aGuid,
+  void StartScrollbarDrag(const ScrollableLayerGuid& aGuid,
                           const AsyncDragMetrics& aDragMetrics) override;
 
-  bool StartAutoscroll(const SLGuidAndRenderRoot& aGuid,
+  bool StartAutoscroll(const ScrollableLayerGuid& aGuid,
                        const ScreenPoint& aAnchorLocation) override;
 
-  void StopAutoscroll(const SLGuidAndRenderRoot& aGuid) override;
+  void StopAutoscroll(const ScrollableLayerGuid& aGuid) override;
 
   /*
    * Build the chain of APZCs that will handle overscroll for a pan starting at
@@ -536,8 +544,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
 
   // Protected hooks for gtests subclass
   virtual AsyncPanZoomController* NewAPZCInstance(
-      LayersId aLayersId, GeckoContentController* aController,
-      wr::RenderRoot aRenderRoot);
+      LayersId aLayersId, GeckoContentController* aController);
 
  public:
   // Public hook for gtests subclass
@@ -627,7 +634,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
   /* Helpers */
   template <class ScrollNode>
   void UpdateHitTestingTreeImpl(const ScrollNode& aRoot, bool aIsFirstPaint,
-                                WRRootId aOriginatingWrRootId,
+                                LayersId aOriginatingLayersId,
                                 uint32_t aPaintSequenceNumber);
 
   void AttachNodeToTree(HitTestingTreeNode* aNode, HitTestingTreeNode* aParent,
@@ -720,8 +727,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
       const RecursiveMutexAutoLock& aProofOfTreeLock, const ScrollNode& aLayer,
       const FrameMetrics& aMetrics, LayersId aLayersId,
       const AncestorTransform& aAncestorTransform, HitTestingTreeNode* aParent,
-      HitTestingTreeNode* aNextSibling, TreeBuildingState& aState,
-      wr::RenderRoot aRenderRoot);
+      HitTestingTreeNode* aNextSibling, TreeBuildingState& aState);
   template <class ScrollNode>
   Maybe<ParentLayerIntRegion> ComputeClipRegion(const ScrollNode& aLayer);
 
@@ -742,6 +748,23 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
   // Look up the GeckoContentController for the given layers id.
   static already_AddRefed<GeckoContentController> GetContentController(
       LayersId aLayersId);
+
+  bool AdvanceAnimationsInternal(const MutexAutoLock& aProofOfMapLock,
+                                 Maybe<wr::RenderRoot> aRenderRoot,
+                                 const TimeStamp& aSampleTime);
+
+  using ClippedCompositionBoundsMap =
+      std::unordered_map<ScrollableLayerGuid, ParentLayerRect,
+                         ScrollableLayerGuid::HashIgnoringPresShellFn,
+                         ScrollableLayerGuid::EqualIgnoringPresShellFn>;
+  // This is a recursive function that populates `aDestMap` with the clipped
+  // composition bounds for the APZC corresponding to `aGuid` and returns those
+  // bounds as a convenience. It recurses to also populate `aDestMap` with that
+  // APZC's ancestors. In order to do this it needs to access mApzcMap
+  // and therefore requires the caller to hold the map lock.
+  ParentLayerRect ComputeClippedCompositionBounds(
+      const MutexAutoLock& aProofOfMapLock,
+      ClippedCompositionBoundsMap& aDestMap, ScrollableLayerGuid aGuid);
 
  protected:
   /* The input queue where input events are held until we know enough to
@@ -797,12 +820,24 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    * mFixedPositionInfo.
    */
   mutable mozilla::Mutex mMapLock;
+
   /**
-   * A map for quick access to get APZC instances by guid, without having to
+   * Helper structure to store a bunch of things in mApzcMap so that they can
+   * be used from the sampler thread.
+   */
+  struct ApzcMapData {
+    // A pointer to the APZC itself
+    RefPtr<AsyncPanZoomController> apzc;
+    // The parent APZC's guid, or Nothing() if there is no parent
+    Maybe<ScrollableLayerGuid> parent;
+  };
+
+  /**
+   * A map for quick access to get some APZC data by guid, without having to
    * acquire the tree lock. mMapLock must be acquired while accessing or
    * modifying mApzcMap.
    */
-  std::unordered_map<ScrollableLayerGuid, RefPtr<AsyncPanZoomController>,
+  std::unordered_map<ScrollableLayerGuid, ApzcMapData,
                      ScrollableLayerGuid::HashIgnoringPresShellFn,
                      ScrollableLayerGuid::EqualIgnoringPresShellFn>
       mApzcMap;

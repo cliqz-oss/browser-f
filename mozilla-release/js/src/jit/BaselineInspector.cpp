@@ -241,7 +241,9 @@ static void SkipBinaryGuards(CacheIRReader& reader) {
     if (reader.matchOp(CacheOp::GuardToInt32) ||
         reader.matchOp(CacheOp::GuardType) ||
         reader.matchOp(CacheOp::TruncateDoubleToUInt32) ||
-        reader.matchOp(CacheOp::GuardToBoolean)) {
+        reader.matchOp(CacheOp::GuardToBoolean) ||
+        reader.matchOp(CacheOp::GuardAndGetNumberFromString) ||
+        reader.matchOp(CacheOp::GuardAndGetInt32FromNumber)) {
       reader.skip();  // Skip over operandId
       reader.skip();  // Skip over result/type.
       continue;
@@ -582,10 +584,7 @@ MIRType BaselineInspector::expectedBinaryArithSpecialization(jsbytecode* pc) {
   MIRType result;
   ICStub* stubs[2];
 
-  if (JSOp(*pc) == JSOp::Pos) {
-    // +x expanding to x*1, but no corresponding IC.
-    return MIRType::None;
-  }
+  MOZ_ASSERT(JSOp(*pc) != JSOp::Pos);
 
   const ICEntry& entry = icEntryFromPC(pc);
   ICFallbackStub* stub = entry.fallbackStub();
@@ -749,9 +748,7 @@ ObjectGroup* BaselineInspector::getTemplateObjectGroup(jsbytecode* pc) {
 }
 
 JSFunction* BaselineInspector::getSingleCallee(jsbytecode* pc) {
-  MOZ_ASSERT(JSOp(*pc) == JSOp::New || JSOp(*pc) == JSOp::SuperCall ||
-             JSOp(*pc) == JSOp::SpreadNew ||
-             JSOp(*pc) == JSOp::SpreadSuperCall);
+  MOZ_ASSERT(IsConstructPC(pc));
 
   const ICEntry& entry = icEntryFromPC(pc);
   ICStub* stub = entry.firstStub();
@@ -1512,6 +1509,11 @@ static MIRType GetCacheIRExpectedInputType(ICCacheIR_Monitored* stub) {
   if (reader.matchOp(CacheOp::GuardType, ValOperandId(0))) {
     ValueType type = reader.valueType();
     return MIRTypeFromValueType(JSValueType(type));
+  }
+  if (reader.matchOp(CacheOp::GuardMagicValue)) {
+    // This can happen if we attached a lazy-args Baseline IC stub but then
+    // called JSScript::argumentsOptimizationFailed.
+    return MIRType::Value;
   }
 
   MOZ_ASSERT_UNREACHABLE("Unexpected instruction");

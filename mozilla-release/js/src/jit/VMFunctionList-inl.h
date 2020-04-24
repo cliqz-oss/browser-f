@@ -80,7 +80,6 @@ namespace jit {
   _(BitXor, js::BitXor)                                                        \
   _(BoxBoxableValue, js::wasm::BoxBoxableValue)                                \
   _(BoxNonStrictThis, js::BoxNonStrictThis)                                    \
-  _(BuiltinProtoOperation, js::BuiltinProtoOperation)                          \
   _(CallNativeGetter, js::jit::CallNativeGetter)                               \
   _(CallNativeGetterByValue, js::jit::CallNativeGetterByValue)                 \
   _(CallNativeSetter, js::jit::CallNativeSetter)                               \
@@ -114,11 +113,11 @@ namespace jit {
   _(DefFunOperation, js::DefFunOperation)                                      \
   _(DefLexicalOperation, js::DefLexicalOperation)                              \
   _(DefVarOperation, js::DefVarOperation)                                      \
-  _(DeleteElementNonStrict, js::DeleteElementJit<false>)                       \
-  _(DeleteElementStrict, js::DeleteElementJit<true>)                           \
+  _(DelElemOperationNonStrict, js::DelElemOperation<false>)                    \
+  _(DelElemOperationStrict, js::DelElemOperation<true>)                        \
+  _(DelPropOperationNonStrict, js::DelPropOperation<false>)                    \
+  _(DelPropOperationStrict, js::DelPropOperation<true>)                        \
   _(DeleteNameOperation, js::DeleteNameOperation)                              \
-  _(DeletePropertyNonStrict, js::DeletePropertyJit<false>)                     \
-  _(DeletePropertyStrict, js::DeletePropertyJit<true>)                         \
   _(DirectEvalStringFromIon, js::DirectEvalStringFromIon)                      \
   _(DivValues, js::DivValues)                                                  \
   _(DoCallFallback, js::jit::DoCallFallback)                                   \
@@ -132,6 +131,7 @@ namespace jit {
   _(FinishBoundFunctionInit, JSFunction::finishBoundFunctionInit)              \
   _(FreshenLexicalEnv, js::jit::FreshenLexicalEnv)                             \
   _(FunWithProtoOperation, js::FunWithProtoOperation)                          \
+  _(FunctionProtoOperation, js::FunctionProtoOperation)                        \
   _(GeneratorThrowOrReturn, js::jit::GeneratorThrowOrReturn)                   \
   _(GetAndClearException, js::GetAndClearException)                            \
   _(GetElementOperation, js::GetElementOperation)                              \

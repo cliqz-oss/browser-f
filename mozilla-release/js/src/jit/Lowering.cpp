@@ -2170,6 +2170,13 @@ void LIRGenerator::visitToNumeric(MToNumeric* ins) {
   assignSafepoint(lir, ins);
 }
 
+void LIRGenerator::visitToNumber(MToNumber* ins) {
+  MOZ_ASSERT(ins->input()->type() == MIRType::Value);
+  LToNumber* lir = new (alloc()) LToNumber(useBoxAtStart(ins->input()));
+  defineBox(lir, ins);
+  assignSafepoint(lir, ins);
+}
+
 void LIRGenerator::visitTruncateToInt32(MTruncateToInt32* truncate) {
   MDefinition* opd = truncate->input();
 
@@ -4445,6 +4452,7 @@ void LIRGenerator::visitWasmStackArg(MWasmStackArg* ins) {
 void LIRGenerator::visitWasmRegisterResult(MWasmRegisterResult* ins) {
   auto* lir = new (alloc()) LWasmRegisterResult();
   uint32_t vreg = getVirtualRegister();
+  MOZ_ASSERT(ins->type() != MIRType::Int64);
   auto type = LDefinition::TypeFrom(ins->type());
   lir->setDef(0, LDefinition(vreg, type, LGeneralReg(ins->loc())));
   ins->setVirtualRegister(vreg);
@@ -4781,10 +4789,10 @@ void LIRGenerator::visitObjectWithProto(MObjectWithProto* ins) {
   assignSafepoint(lir, ins);
 }
 
-void LIRGenerator::visitBuiltinProto(MBuiltinProto* ins) {
+void LIRGenerator::visitFunctionProto(MFunctionProto* ins) {
   MOZ_ASSERT(ins->type() == MIRType::Object);
 
-  auto* lir = new (alloc()) LBuiltinProto();
+  auto* lir = new (alloc()) LFunctionProto();
   defineReturn(lir, ins);
   assignSafepoint(lir, ins);
 }
@@ -4881,7 +4889,7 @@ static void SpewResumePoint(MBasicBlock* block, MInstruction* ins,
     out.printf("    taken after: ");
     ins->printName(out);
   } else {
-    out.printf("    taken at block %d entry", block->id());
+    out.printf("    taken at block %u entry", block->id());
   }
   out.printf("\n");
 

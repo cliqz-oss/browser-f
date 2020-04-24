@@ -10,19 +10,25 @@
 #include "mozilla/PodOperations.h"
 
 #include <algorithm>
+#include <type_traits>
 
 #include "builtin/RegExp.h"
 #include "builtin/SelfHostingDefines.h"  // REGEXP_*_FLAG
 #include "frontend/TokenStream.h"
 #include "gc/HashUtil.h"
-#ifdef DEBUG
-#  include "irregexp/RegExpBytecode.h"
+#ifndef ENABLE_NEW_REGEXP
+#  ifdef DEBUG
+#    include "irregexp/RegExpBytecode.h"
+#  endif
+#  include "irregexp/RegExpParser.h"
 #endif
-#include "irregexp/RegExpParser.h"
 #include "jit/VMFunctions.h"
 #include "js/RegExp.h"
 #include "js/RegExpFlags.h"  // JS::RegExpFlags
 #include "js/StableStringChars.h"
+#ifdef ENABLE_NEW_REGEXP
+#  include "new-regexp/RegExpAPI.h"
+#endif
 #include "util/StringBuffer.h"
 #include "vm/MatchPairs.h"
 #include "vm/RegExpStatics.h"
@@ -56,6 +62,8 @@ static_assert(RegExpFlag::IgnoreCase == REGEXP_IGNORECASE_FLAG,
               "self-hosted JS and /i flag bits must agree");
 static_assert(RegExpFlag::Multiline == REGEXP_MULTILINE_FLAG,
               "self-hosted JS and /m flag bits must agree");
+static_assert(RegExpFlag::DotAll == REGEXP_DOTALL_FLAG,
+              "self-hosted JS and /s flag bits must agree");
 static_assert(RegExpFlag::Unicode == REGEXP_UNICODE_FLAG,
               "self-hosted JS and /u flag bits must agree");
 static_assert(RegExpFlag::Sticky == REGEXP_STICKY_FLAG,
@@ -131,6 +139,10 @@ bool RegExpObject::isOriginalFlagGetter(JSNative native, RegExpFlags* mask) {
     *mask = RegExpFlag::Multiline;
     return true;
   }
+  if (native == regexp_dotAll) {
+    *mask = RegExpFlag::DotAll;
+    return true;
+  }
   if (native == regexp_sticky) {
     *mask = RegExpFlag::Sticky;
     return true;
@@ -202,7 +214,7 @@ RegExpObject* RegExpObject::create(JSContext* cx, const CharT* chars,
                                    size_t length, RegExpFlags flags,
                                    frontend::TokenStreamAnyChars& tokenStream,
                                    NewObjectKind newKind) {
-  static_assert(mozilla::IsSame<CharT, char16_t>::value,
+  static_assert(std::is_same_v<CharT, char16_t>,
                 "this code may need updating if/when CharT encodes UTF-8");
 
   RootedAtom source(cx, AtomizeChars(cx, chars, length));
@@ -221,7 +233,7 @@ template <typename CharT>
 RegExpObject* RegExpObject::create(JSContext* cx, const CharT* chars,
                                    size_t length, RegExpFlags flags,
                                    NewObjectKind newKind) {
-  static_assert(mozilla::IsSame<CharT, char16_t>::value,
+  static_assert(std::is_same_v<CharT, char16_t>,
                 "this code may need updating if/when CharT encodes UTF-8");
 
   RootedAtom source(cx, AtomizeChars(cx, chars, length));
@@ -242,11 +254,16 @@ RegExpObject* RegExpObject::create(JSContext* cx, HandleAtom source,
                                    frontend::TokenStreamAnyChars& tokenStream,
                                    NewObjectKind newKind) {
   LifoAllocScope allocScope(&cx->tempLifoAlloc());
+#ifdef ENABLE_NEW_REGEXP
+  if (!irregexp::CheckPatternSyntax(cx, tokenStream, source, flags)) {
+    return nullptr;
+  }
+#else
   if (!irregexp::ParsePatternSyntax(tokenStream, allocScope.alloc(), source,
                                     flags.unicode())) {
     return nullptr;
   }
-
+#endif
   return createSyntaxChecked(cx, source, flags, newKind);
 }
 
@@ -284,10 +301,16 @@ RegExpObject* RegExpObject::create(JSContext* cx, HandleAtom source,
                                nullptr);
 
   LifoAllocScope allocScope(&cx->tempLifoAlloc());
+#ifdef ENABLE_NEW_REGEXP
+  if (!irregexp::CheckPatternSyntax(cx, dummyTokenStream, source, flags)) {
+    return nullptr;
+  }
+#else
   if (!irregexp::ParsePatternSyntax(dummyTokenStream, allocScope.alloc(),
                                     source, flags.unicode())) {
     return nullptr;
   }
+#endif
 
   Rooted<RegExpObject*> regexp(cx, RegExpAlloc(cx, newKind));
   if (!regexp) {
@@ -400,8 +423,10 @@ template <typename CharT>
 static MOZ_ALWAYS_INLINE bool SetupBuffer(StringBuffer& sb,
                                           const CharT* oldChars, size_t oldLen,
                                           const CharT* it) {
-  if (mozilla::IsSame<CharT, char16_t>::value && !sb.ensureTwoByteChars()) {
-    return false;
+  if constexpr (std::is_same_v<CharT, char16_t>) {
+    if (!sb.ensureTwoByteChars()) {
+      return false;
+    }
   }
 
   if (!sb.reserve(oldLen + 1)) {
@@ -533,6 +558,9 @@ JSLinearString* RegExpObject::toString(JSContext* cx) const {
   if (multiline() && !sb.append('m')) {
     return nullptr;
   }
+  if (dotAll() && !sb.append('s')) {
+    return nullptr;
+  }
   if (unicode() && !sb.append('u')) {
     return nullptr;
   }
@@ -543,7 +571,7 @@ JSLinearString* RegExpObject::toString(JSContext* cx) const {
   return sb.finishString();
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) && !defined(ENABLE_NEW_REGEXP)
 /* static */
 bool RegExpShared::dumpBytecode(JSContext* cx, MutableHandleRegExpShared re,
                                 bool match_only, HandleLinearString input) {
@@ -866,7 +894,7 @@ bool RegExpObject::dumpBytecode(JSContext* cx, Handle<RegExpObject*> regexp,
 
   return RegExpShared::dumpBytecode(cx, &shared, match_only, input);
 }
-#endif
+#endif  // DEBUG && !ENABLE_NEW_REGEXP
 
 template <typename CharT>
 static MOZ_ALWAYS_INLINE bool IsRegExpMetaChar(CharT ch) {
@@ -964,6 +992,30 @@ bool RegExpShared::compile(JSContext* cx, MutableHandleRegExpShared re,
   return compile(cx, re, pattern, input, mode, force);
 }
 
+#ifdef ENABLE_NEW_REGEXP
+bool RegExpShared::compile(JSContext* cx, MutableHandleRegExpShared re,
+                           HandleAtom pattern, HandleLinearString input,
+                           CompilationMode mode, ForceByteCodeEnum force) {
+  MOZ_CRASH("TODO");
+}
+/* static */
+bool RegExpShared::compileIfNecessary(JSContext* cx,
+                                      MutableHandleRegExpShared re,
+                                      HandleLinearString input,
+                                      CompilationMode mode,
+                                      ForceByteCodeEnum force) {
+  MOZ_CRASH("TODO");
+}
+
+/* static */
+RegExpRunStatus RegExpShared::execute(JSContext* cx,
+                                      MutableHandleRegExpShared re,
+                                      HandleLinearString input, size_t start,
+                                      VectorMatchPairs* matches,
+                                      size_t* endIndex) {
+  MOZ_CRASH("TODO");
+}
+#else
 /* static */
 bool RegExpShared::compile(JSContext* cx, MutableHandleRegExpShared re,
                            HandleAtom pattern, HandleLinearString input,
@@ -1179,6 +1231,7 @@ RegExpRunStatus RegExpShared::execute(JSContext* cx,
   }
   return result;
 }
+#endif  // ENABLE_NEW_REGEXP
 
 size_t RegExpShared::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) {
   size_t n = 0;
@@ -1344,6 +1397,9 @@ static bool ParseRegExpFlags(const CharT* chars, size_t length,
         break;
       case 'm':
         flag = RegExpFlag::Multiline;
+        break;
+      case 's':
+        flag = RegExpFlag::DotAll;
         break;
       case 'u':
         flag = RegExpFlag::Unicode;

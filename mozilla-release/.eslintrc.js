@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
 const xpcshellTestConfig = require("eslint-plugin-mozilla/lib/configs/xpcshell-test.js");
@@ -19,7 +23,7 @@ function removeOverrides(config) {
 
 const xpcshellTestPaths = ["**/test*/unit*/", "**/test*/xpcshell/"];
 
-const browserTestPaths = ["**/test*/**/browser/"];
+const browserTestPaths = ["**/test*/**/browser*/"];
 
 const mochitestTestPaths = [
   // Note: we do not want to match testing/mochitest as that would apply
@@ -50,6 +54,13 @@ const ignorePatterns = [
 ];
 
 module.exports = {
+  parser: "babel-eslint",
+  parserOptions: {
+    sourceType: "script",
+    babelOptions: {
+      configFile: path.join(__dirname, ".babel-eslint.rc.js"),
+    },
+  },
   ignorePatterns,
   // Ignore eslint configurations in parent directories.
   root: true,
@@ -246,6 +257,7 @@ module.exports = {
         "dom/security/test/cors/**",
         "dom/security/test/csp/**",
         "dom/security/test/general/**",
+        "dom/security/test/https-only/**",
         "dom/security/test/mixedcontentblocker/**",
         "dom/security/test/sri/**",
         "dom/security/test/referrer-policy/**",
@@ -941,10 +953,6 @@ module.exports = {
         "toolkit/mozapps/extensions/test/xpcshell/test_webextension.js",
         "toolkit/mozapps/extensions/test/xpcshell/test_webextension_events.js",
         "toolkit/mozapps/extensions/test/xpcshell/test_XPIStates.js",
-        "toolkit/mozapps/extensions/test/xpcshell/xml-blocklist/test_blocklist_gfx.js",
-        "toolkit/mozapps/extensions/test/xpcshell/xml-blocklist/test_blocklist_telemetry.js",
-        "toolkit/mozapps/extensions/test/xpcshell/xml-blocklist/test_blocklistchange.js",
-        "toolkit/mozapps/extensions/test/xpcshell/xml-blocklist/test_overrideblocklist.js",
         "toolkit/mozapps/installer/precompile_cache.js",
       ],
       rules: {

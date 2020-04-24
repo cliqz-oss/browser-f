@@ -28,9 +28,6 @@ job-defaults:
         --max-page-diff-block-lines 10000
         --exclude-directory-metadata
         --exclude-command .--line-numbers
-        --exclude **/*freeblpriv3.chk
-        --exclude **/*nssdbm3.chk
-        --exclude **/*softokn3.chk
 
 jobs:
     artifact-win64-aarch64-eme-validation:
@@ -64,6 +61,14 @@ jobs:
 
     reproducible-linux32:
         symbol: Linux32
+        new: build-linux-reproduced/opt
+        original: build-linux-shippable/opt
+        fail-on-diff: true
+        run-on-projects: ['try', 'mozilla-central']  # Do not run linux32 on autoland, Bug 1599197
+
+    reproducible-linux32-generated-files:
+        symbol: Linux32g
+        artifact: target.generated-files.tar.gz
         new: build-linux-reproduced/opt
         original: build-linux-shippable/opt
         fail-on-diff: true

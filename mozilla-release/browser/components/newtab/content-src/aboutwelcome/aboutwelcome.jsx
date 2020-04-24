@@ -6,6 +6,8 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { HeroText } from "./components/HeroText";
 import { FxCards } from "./components/FxCards";
+import { Localized } from "./components/MSLocalized";
+
 import {
   AboutWelcomeUtils,
   DEFAULT_WELCOME_CONTENT,
@@ -24,10 +26,15 @@ class AboutWelcome extends React.PureComponent {
   }
 
   componentDidMount() {
+    let messageId =
+      this.props.experiment && this.props.branchId
+        ? `SIMPLIFIED_ABOUT_WELCOME_${this.props.experiment}_${this.props.branchId}`.toUpperCase()
+        : "SIMPLIFIED_ABOUT_WELCOME";
+
     this.fetchFxAFlowUri();
     window.AWSendEventTelemetry({
       event: "IMPRESSION",
-      message_id: "SIMPLIFIED_ABOUT_WELCOME",
+      message_id: messageId,
     });
     // Captures user has seen about:welcome by setting
     // firstrun.didSeeAboutWelcome pref to true
@@ -46,23 +53,27 @@ class AboutWelcome extends React.PureComponent {
 
   render() {
     const { props } = this;
+    let UTMTerm =
+      this.props.experiment && this.props.branchId
+        ? `${this.props.experiment}-${this.props.branchId}`
+        : "default";
     return (
-      <div className="trailheadCards">
-        <div className="trailheadCardsInner">
+      <div className="outer-wrapper welcomeContainer">
+        <div className="welcomeContainerInner">
           <main>
             <HeroText title={props.title} subtitle={props.subtitle} />
             <FxCards
               cards={props.cards}
               metricsFlowUri={this.state.metricsFlowUri}
               sendTelemetry={window.AWSendEventTelemetry}
+              utm_term={UTMTerm}
             />
-            {props.startButton && props.startButton.string_id && (
+            <Localized text={props.startButton.label}>
               <button
                 className="start-button"
-                data-l10n-id={props.startButton.string_id}
                 onClick={this.handleStartBtnClick}
               />
-            )}
+            </Localized>
           </main>
         </div>
       </div>
@@ -72,11 +83,18 @@ class AboutWelcome extends React.PureComponent {
 
 AboutWelcome.defaultProps = DEFAULT_WELCOME_CONTENT;
 
-function mount(settings) {
+async function mount() {
+  const { slug, branch } = await window.AWGetStartupData();
+  const settings = branch && branch.value ? branch.value : {};
+
   ReactDOM.render(
-    <AboutWelcome title={settings.title} subtitle={settings.subtitle} />,
+    <AboutWelcome
+      experiment={slug}
+      branchId={branch && branch.slug}
+      {...settings}
+    />,
     document.getElementById("root")
   );
 }
 
-mount(window.AWGetStartupData());
+mount();

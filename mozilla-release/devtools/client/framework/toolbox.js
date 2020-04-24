@@ -34,6 +34,9 @@ var Startup = Cc["@mozilla.org/devtools/startup-clh;1"].getService(
 ).wrappedJSObject;
 
 const { TargetList } = require("devtools/shared/resources/target-list");
+const {
+  ResourceWatcher,
+} = require("devtools/shared/resources/resource-watcher");
 
 const { BrowserLoader } = ChromeUtils.import(
   "resource://devtools/client/shared/browser-loader.js"
@@ -58,20 +61,20 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   this,
-  "registerThread",
+  "registerTarget",
   "devtools/client/framework/actions/index",
   true
 );
 loader.lazyRequireGetter(
   this,
-  "clearThread",
+  "unregisterTarget",
   "devtools/client/framework/actions/index",
   true
 );
 
 loader.lazyRequireGetter(
   this,
-  "selectThread",
+  "selectTarget",
   "devtools/client/framework/actions/index",
   true
 );
@@ -144,8 +147,8 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   this,
-  "getSelectedThread",
-  "devtools/client/framework/reducers/threads",
+  "getSelectedTarget",
+  "devtools/client/framework/reducers/targets",
   true
 );
 loader.lazyRequireGetter(
@@ -193,7 +196,7 @@ loader.lazyRequireGetter(
 loader.lazyRequireGetter(
   this,
   "NodeFront",
-  "devtools/shared/fronts/node",
+  "devtools/client/fronts/node",
   true
 );
 
@@ -237,6 +240,7 @@ function Toolbox(
   this.telemetry = new Telemetry();
 
   this.targetList = new TargetList(target.client.mainRoot, target);
+  this.resourceWatcher = new ResourceWatcher(this.targetList);
 
   // The session ID is used to determine which telemetry events belong to which
   // toolbox session. Because we use Amplitude to analyse the telemetry data we
@@ -607,18 +611,24 @@ Toolbox.prototype = {
     return this.hostType === Toolbox.HostType.BROWSERTOOLBOX;
   },
 
-  selectThread(threadActor) {
-    const thread = this.target.client.getFrontByID(threadActor);
-    this.store.dispatch(selectThread(thread));
+  /**
+   * Set a given target as selected (which may impact the console evaluation context selector).
+   *
+   * @param {String} targetActorID: The actorID of the target we want to select.
+   */
+  selectTarget(targetActorID) {
+    this.store.dispatch(selectTarget(targetActorID));
   },
 
-  getSelectedThreadFront: function() {
-    const thread = getSelectedThread(this.store.getState());
-    if (!thread) {
+  /**
+   * @returns {ThreadFront|null} The selected thread front, or null if there is none.
+   */
+  getSelectedTargetFront: function() {
+    const selectedTarget = getSelectedTarget(this.store.getState());
+    if (!selectedTarget) {
       return null;
     }
-
-    return this.target.client.getFrontByID(thread.actor);
+    return this.target.client.getFrontByID(selectedTarget.actorID);
   },
 
   _onPausedState: function(packet, threadFront) {
@@ -674,7 +684,7 @@ Toolbox.prototype = {
     await this._attachTarget({ type, targetFront, isTopLevel });
 
     if (this.hostType !== Toolbox.HostType.PAGE) {
-      await this.store.dispatch(registerThread(targetFront));
+      await this.store.dispatch(registerTarget(targetFront));
     }
 
     if (isTopLevel) {
@@ -688,7 +698,7 @@ Toolbox.prototype = {
     }
 
     if (this.hostType !== Toolbox.HostType.PAGE) {
-      this.store.dispatch(clearThread(targetFront));
+      this.store.dispatch(unregisterTarget(targetFront));
     }
   },
 
@@ -729,7 +739,7 @@ Toolbox.prototype = {
 
   _attachAndResumeThread: async function(target) {
     const options = defaultThreadOptions();
-    const [, threadFront] = await target.attachThread(options);
+    const threadFront = await target.attachThread(options);
 
     try {
       await threadFront.resume();
@@ -2119,7 +2129,7 @@ Toolbox.prototype = {
     const button = this.pickerButton;
     const currentPanel = this.getCurrentPanel();
 
-    if (currentPanel && currentPanel.updatePickerButton) {
+    if (currentPanel?.updatePickerButton) {
       currentPanel.updatePickerButton();
     } else {
       // If the current panel doesn't define a custom updatePickerButton,
@@ -2523,8 +2533,7 @@ Toolbox.prototype = {
    * @param {IFrameElement} iframe
    */
   setIframeDocumentDir: function(iframe) {
-    const docEl =
-      iframe.contentWindow && iframe.contentWindow.document.documentElement;
+    const docEl = iframe.contentWindow?.document.documentElement;
     if (!docEl || docEl.namespaceURI !== HTML_NS) {
       // Bail out if the content window or document is not ready or if the document is not
       // HTML.
@@ -3492,11 +3501,16 @@ Toolbox.prototype = {
     };
   },
 
-  _onNewSelectedNodeFront: function() {
+  _onNewSelectedNodeFront: async function() {
     // Emit a "selection-changed" event when the toolbox.selection has been set
     // to a new node (or cleared). Currently used in the WebExtensions APIs (to
     // provide the `devtools.panels.elements.onSelectionChanged` event).
     this.emit("selection-changed");
+
+    const targetFrontActorID = this.selection?.nodeFront?.targetFront?.actorID;
+    if (targetFrontActorID) {
+      this.selectTarget(targetFrontActorID);
+    }
   },
 
   _onInspectObject: function(packet) {
@@ -3514,8 +3528,9 @@ Toolbox.prototype = {
   },
 
   inspectObjectActor: async function(objectActor, inspectFromAnnotation) {
-    const objectGrip =
-      objectActor && objectActor.getGrip ? objectActor.getGrip() : objectActor;
+    const objectGrip = objectActor?.getGrip
+      ? objectActor.getGrip()
+      : objectActor;
 
     if (
       objectGrip.preview &&
@@ -3587,6 +3602,14 @@ Toolbox.prototype = {
 
   _destroyToolbox: async function() {
     this.emit("destroy");
+
+    // This flag will be checked by Fronts in order to decide if they should
+    // skip their destroy.
+    if (this.target.client) {
+      // Note: this.target.client might be null if the target was already
+      // destroyed (eg: tab is closed during remote debugging).
+      this.target.client.isToolboxDestroy = true;
+    }
 
     this.off("select", this._onToolSelected);
     this.off("host-changed", this._refreshHostTitle);

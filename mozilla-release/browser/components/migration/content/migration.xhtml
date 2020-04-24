@@ -9,18 +9,21 @@
 
 <window id="migrationWizard"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
         windowtype="Browser:MigrationWizard"
         title="&migrationWizard.title;"
         onload="MigrationWizard.init()"
         onunload="MigrationWizard.uninit()"
         style="width: 40em;"
-        buttons="accept,cancel"
-        branded="true">
+        buttons="accept,cancel">
+<linkset>
+  <html:link rel="localization" href="toolkit/global/wizard.ftl"/>
+</linkset>
 
 <script src="chrome://global/content/customElements.js"/>
 <script src="chrome://browser/content/migration/migration.js"/>
 
-<wizard>
+<wizard data-branded="true">
   <wizardpage id="importSource" pageid="importSource" next="selectProfile"
               label="&importSource.title;">
 #ifdef XP_WIN

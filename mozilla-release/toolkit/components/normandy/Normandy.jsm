@@ -21,6 +21,10 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ShieldPreferences: "resource://normandy/lib/ShieldPreferences.jsm",
   TelemetryUtils: "resource://gre/modules/TelemetryUtils.jsm",
   TelemetryEvents: "resource://normandy/lib/TelemetryEvents.jsm",
+  ExperimentManager:
+    "resource://messaging-system/experiments/ExperimentManager.jsm",
+  RemoteSettingsExperimentLoader:
+    "resource://messaging-system/lib/RemoteSettingsExperimentLoader.jsm",
 });
 
 var EXPORTED_SYMBOLS = ["Normandy"];
@@ -29,10 +33,9 @@ const UI_AVAILABLE_NOTIFICATION = "sessionstore-windows-restored";
 const BOOTSTRAP_LOGGER_NAME = "app.normandy.bootstrap";
 const SHIELD_INIT_NOTIFICATION = "shield-init-complete";
 
-const PREF_PREFIX = "app.normandy";
-const STARTUP_EXPERIMENT_PREFS_BRANCH = `${PREF_PREFIX}.startupExperimentPrefs.`;
-const STARTUP_ROLLOUT_PREFS_BRANCH = `${PREF_PREFIX}.startupRolloutPrefs.`;
-const PREF_LOGGING_LEVEL = `${PREF_PREFIX}.logging.level`;
+const STARTUP_EXPERIMENT_PREFS_BRANCH = "app.normandy.startupExperimentPrefs.";
+const STARTUP_ROLLOUT_PREFS_BRANCH = "app.normandy.startupRolloutPrefs.";
+const PREF_LOGGING_LEVEL = "app.normandy.logging.level";
 
 // Logging
 const log = Log.repository.getLogger(BOOTSTRAP_LOGGER_NAME);
@@ -104,6 +107,18 @@ var Normandy = {
     CleanupManager.addCleanupHandler(() =>
       Services.prefs.removeObserver(PREF_LOGGING_LEVEL, LogManager.configure)
     );
+
+    try {
+      await ExperimentManager.onStartup();
+    } catch (err) {
+      log.error("Failed to initialize ExperimentManager:", err);
+    }
+
+    try {
+      await RemoteSettingsExperimentLoader.init();
+    } catch (err) {
+      log.error("Failed to initialize RemoteSettingsExperimentLoader:", err);
+    }
 
     try {
       await AddonStudies.init();

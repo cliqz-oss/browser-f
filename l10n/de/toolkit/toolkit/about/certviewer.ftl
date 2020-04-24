@@ -29,6 +29,8 @@ certificate-viewer-id = ID
 certificate-viewer-key-exchange-group = Schlüsselaustausch-Gruppe (Key Exchange Group)
 certificate-viewer-key-id = Schlüssel-ID
 certificate-viewer-key-size = Schlüssellänge
+# Inc. means Incorporated, e.g GitHub is incorporated in Delaware
+certificate-viewer-inc-locality = Unternehmenssitz: Ort
 certificate-viewer-locality = Ort
 certificate-viewer-location = Ort
 certificate-viewer-logid = Log ID
@@ -95,3 +97,12 @@ certificate-viewer-download-pem = PEM (Zertifikat)
     .download = { $fileName }.pem
 certificate-viewer-download-pem-chain = PEM (Zertifikatskette)
     .download = { $fileName }-zertifikatskette.pem
+certificate-viewer-export = Exportieren
+    .download = { $fileName }.pem
+
+## Labels for tabs displayed in stand-alone about:certificate page
+
+certificate-viewer-tab-people = Personen
+certificate-viewer-tab-servers = Server
+certificate-viewer-tab-ca = Zertifizierungsstellen
+certificate-viewer-tab-unkonwn = Unbekannt

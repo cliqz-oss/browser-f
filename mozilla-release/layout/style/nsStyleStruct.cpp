@@ -44,6 +44,7 @@
 #include "mozilla/dom/DocumentInlines.h"
 #include <algorithm>
 #include "ImageLoader.h"
+#include "mozilla/StaticPrefs_layout.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -1968,11 +1969,11 @@ nsStyleImageLayers::Layer::Layer()
 
       mClip(StyleGeometryBox::BorderBox),
       mAttachment(StyleImageLayerAttachment::Scroll),
-      mBlendMode(NS_STYLE_BLEND_NORMAL),
-      mComposite(NS_STYLE_MASK_COMPOSITE_ADD),
+      mBlendMode(StyleBlend::Normal),
+      mComposite(StyleMaskComposite::Add),
       mMaskMode(StyleMaskMode::MatchSource) {}
 
-nsStyleImageLayers::Layer::~Layer() {}
+nsStyleImageLayers::Layer::~Layer() = default;
 
 void nsStyleImageLayers::Layer::Initialize(
     nsStyleImageLayers::LayerType aType) {
@@ -2146,12 +2147,7 @@ bool nsStyleBackground::IsTransparent(mozilla::ComputedStyle* aStyle) const {
          NS_GET_A(BackgroundColor(aStyle)) == 0;
 }
 
-StyleTransition::StyleTransition(const StyleTransition& aCopy)
-    : mTimingFunction(aCopy.mTimingFunction),
-      mDuration(aCopy.mDuration),
-      mDelay(aCopy.mDelay),
-      mProperty(aCopy.mProperty),
-      mUnknownProperty(aCopy.mUnknownProperty) {}
+StyleTransition::StyleTransition(const StyleTransition& aCopy) = default;
 
 void StyleTransition::SetInitialValues() {
   mTimingFunction = nsTimingFunction(StyleTimingKeyword::Ease);
@@ -2168,15 +2164,7 @@ bool StyleTransition::operator==(const StyleTransition& aOther) const {
           mUnknownProperty == aOther.mUnknownProperty);
 }
 
-StyleAnimation::StyleAnimation(const StyleAnimation& aCopy)
-    : mTimingFunction(aCopy.mTimingFunction),
-      mDuration(aCopy.mDuration),
-      mDelay(aCopy.mDelay),
-      mName(aCopy.mName),
-      mDirection(aCopy.mDirection),
-      mFillMode(aCopy.mFillMode),
-      mPlayState(aCopy.mPlayState),
-      mIterationCount(aCopy.mIterationCount) {}
+StyleAnimation::StyleAnimation(const StyleAnimation& aCopy) = default;
 
 void StyleAnimation::SetInitialValues() {
   mTimingFunction = nsTimingFunction(StyleTimingKeyword::Ease);
@@ -2249,7 +2237,7 @@ nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
       mRotate(StyleRotate::None()),
       mTranslate(StyleTranslate::None()),
       mScale(StyleScale::None()),
-      mBackfaceVisibility(NS_STYLE_BACKFACE_VISIBILITY_VISIBLE),
+      mBackfaceVisibility(StyleBackfaceVisibility::Visible),
       mTransformStyle(StyleTransformStyle::Flat),
       mTransformBox(StyleGeometryBox::BorderBox),
       mOffsetPath(StyleOffsetPath::None()),
@@ -2712,7 +2700,11 @@ nsChangeHint nsStyleDisplay::CalcDifference(
 //
 
 nsStyleVisibility::nsStyleVisibility(const Document& aDocument)
-    : mDirection(aDocument.GetBidiOptions() == IBMBIDI_TEXTDIRECTION_RTL
+    : mImageOrientation(
+          StaticPrefs::layout_css_image_orientation_initial_from_image()
+              ? StyleImageOrientation::FromImage
+              : StyleImageOrientation::None),
+      mDirection(aDocument.GetBidiOptions() == IBMBIDI_TEXTDIRECTION_RTL
                      ? StyleDirection::Rtl
                      : StyleDirection::Ltr),
       mVisible(StyleVisibility::Visible),
@@ -3248,7 +3240,7 @@ nsChangeHint nsStyleUIReset::CalcDifference(
 nsStyleEffects::nsStyleEffects(const Document&)
     : mClip(StyleClipRectOrAuto::Auto()),
       mOpacity(1.0f),
-      mMixBlendMode(NS_STYLE_BLEND_NORMAL) {
+      mMixBlendMode(StyleBlend::Normal) {
   MOZ_COUNT_CTOR(nsStyleEffects);
 }
 

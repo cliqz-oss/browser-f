@@ -8,13 +8,18 @@
 
 #include "mozilla/Casting.h"
 #include "mozilla/CheckedInt.h"
-#include "mozilla/TypeTraits.h"
+#include "mozilla/TextUtils.h"
 
 #include "frontend/TokenStream.h"
-#include "irregexp/RegExpParser.h"
+#ifndef ENABLE_NEW_REGEXP
+#  include "irregexp/RegExpParser.h"
+#endif
 #include "jit/InlinableNatives.h"
 #include "js/PropertySpec.h"
 #include "js/RegExpFlags.h"  // JS::RegExpFlag, JS::RegExpFlags
+#ifdef ENABLE_NEW_REGEXP
+#  include "new-regexp/RegExpAPI.h"
+#endif
 #include "util/StringBuffer.h"
 #include "util/Unicode.h"
 #include "vm/JSContext.h"
@@ -196,8 +201,12 @@ static bool CheckPatternSyntaxSlow(JSContext* cx, HandleAtom pattern,
   LifoAllocScope allocScope(&cx->tempLifoAlloc());
   CompileOptions options(cx);
   frontend::TokenStream dummyTokenStream(cx, options, nullptr, 0, nullptr);
+#ifdef ENABLE_NEW_REGEXP
+  return irregexp::CheckPatternSyntax(cx, dummyTokenStream, pattern, flags);
+#else
   return irregexp::ParsePatternSyntax(dummyTokenStream, allocScope.alloc(),
                                       pattern, flags.unicode());
+#endif
 }
 
 static RegExpShared* CheckPatternSyntax(JSContext* cx, HandleAtom pattern,
@@ -723,6 +732,29 @@ static bool regexp_source(JSContext* cx, unsigned argc, JS::Value* vp) {
   return CallNonGenericMethod<IsRegExpObject, regexp_source_impl>(cx, args);
 }
 
+// ES 2020 draft 21.2.5.3.
+MOZ_ALWAYS_INLINE bool regexp_dotAll_impl(JSContext* cx, const CallArgs& args) {
+  MOZ_ASSERT(IsRegExpObject(args.thisv()));
+
+  // Steps 4-6.
+  RegExpObject* reObj = &args.thisv().toObject().as<RegExpObject>();
+  args.rval().setBoolean(reObj->dotAll());
+  return true;
+}
+
+bool js::regexp_dotAll(JSContext* cx, unsigned argc, JS::Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Step 3.a.
+  if (IsRegExpPrototype(args.thisv(), cx)) {
+    args.rval().setUndefined();
+    return true;
+  }
+
+  // Steps 1-3.
+  return CallNonGenericMethod<IsRegExpObject, regexp_dotAll_impl>(cx, args);
+}
+
 // ES 2017 draft 21.2.5.12.
 MOZ_ALWAYS_INLINE bool regexp_sticky_impl(JSContext* cx, const CallArgs& args) {
   MOZ_ASSERT(IsRegExpObject(args.thisv()));
@@ -775,6 +807,9 @@ const JSPropertySpec js::regexp_properties[] = {
     JS_PSG("global", regexp_global, 0),
     JS_PSG("ignoreCase", regexp_ignoreCase, 0),
     JS_PSG("multiline", regexp_multiline, 0),
+#ifdef ENABLE_NEW_REGEXP
+    JS_PSG("dotAll", regexp_dotAll, 0),
+#endif
     JS_PSG("source", regexp_source, 0),
     JS_PSG("sticky", regexp_sticky, 0),
     JS_PSG("unicode", regexp_unicode, 0),
@@ -1668,6 +1703,18 @@ bool js::RegExpPrototypeOptimizableRaw(JSContext* cx, JSObject* proto) {
   if (unicodeGetter != regexp_unicode) {
     return false;
   }
+
+#ifdef ENABLE_NEW_REGEXP
+  JSNative dotAllGetter;
+  if (!GetOwnNativeGetterPure(cx, proto, NameToId(cx->names().dotAll),
+                              &dotAllGetter)) {
+    return false;
+  }
+
+  if (dotAllGetter != regexp_dotAll) {
+    return false;
+  }
+#endif
 
   // Check if @@match, @@search, and exec are own data properties,
   // those values should be tested in selfhosted JS.

@@ -402,20 +402,9 @@ CssRuleView.prototype = {
     // supported, we have to call the content-viewer front so that the actor is lazily loaded.
     // This allows us to use `actorHasMethod`. Please see `getActorDescription` for more
     // information.
-    try {
-      this.contentViewerFront = await this.currentTarget.getFront(
-        "contentViewer"
-      );
-    } catch (e) {
-      console.error(e);
-    }
-
-    // Bug 1606852: For backwards compatibility, we need to get the emulation actor. The ContentViewer
-    // actor is only available in Firefox 73 or newer. We can remove this call when Firefox 73
-    // is on release.
-    if (!this.contentViewerFront) {
-      this.contentViewerFront = await this.currentTarget.getFront("emulation");
-    }
+    this.contentViewerFront = await this.currentTarget.getFront(
+      "contentViewer"
+    );
 
     if (!this.currentTarget.chrome) {
       this.printSimulationButton.removeAttribute("hidden");
@@ -428,16 +417,10 @@ CssRuleView.prototype = {
     // Show the color scheme simulation toggle button if:
     // - The feature pref is enabled.
     // - Color scheme simulation is supported for the current target.
-    const isEmulateColorSchemeSupported =
-      (await this.currentTarget.actorHasMethod(
-        "contentViewer",
-        "getEmulatedColorScheme"
-      )) ||
-      // Bug 1606852: We can removed this check when Firefox 73 is on release.
-      (await this.currentTarget.actorHasMethod(
-        "emulation",
-        "getEmulatedColorScheme"
-      ));
+    const isEmulateColorSchemeSupported = await this.currentTarget.actorHasMethod(
+      "contentViewer",
+      "getEmulatedColorScheme"
+    );
 
     if (
       Services.prefs.getBoolPref(
@@ -497,6 +480,7 @@ CssRuleView.prototype = {
     if (event) {
       this.copySelection(event.target);
       event.preventDefault();
+      event.stopPropagation();
     }
   },
 
@@ -511,7 +495,7 @@ CssRuleView.prototype = {
     try {
       let text = "";
 
-      const nodeName = target && target.nodeName;
+      const nodeName = target?.nodeName;
       if (nodeName === "input" || nodeName == "textarea") {
         const start = Math.min(target.selectionStart, target.selectionEnd);
         const end = Math.max(target.selectionStart, target.selectionEnd);

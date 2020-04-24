@@ -226,11 +226,11 @@ class ColorPattern : public Pattern {
  public:
   // Explicit because consumers should generally use ToDeviceColor when
   // creating a ColorPattern.
-  explicit ColorPattern(const Color& aColor) : mColor(aColor) {}
+  explicit ColorPattern(const DeviceColor& aColor) : mColor(aColor) {}
 
   PatternType GetType() const override { return PatternType::COLOR; }
 
-  Color mColor;
+  DeviceColor mColor;
 };
 
 /**
@@ -310,8 +310,8 @@ class ConicGradientPattern : public Pattern {
 
   PatternType GetType() const override { return PatternType::CONIC_GRADIENT; }
 
-  Point mCenter;  //!< Center of the gradient
-  Float mAngle;   //!< Start angle of gradient
+  Point mCenter;       //!< Center of the gradient
+  Float mAngle;        //!< Start angle of gradient
   Float mStartOffset;  // Offset of first stop
   Float mEndOffset;    // Offset of last stop
   RefPtr<GradientStops>
@@ -902,18 +902,12 @@ class UnscaledFont : public SupportsThreadSafeWeakPtr<UnscaledFont> {
 
   typedef void (*FontFileDataOutput)(const uint8_t* aData, uint32_t aLength,
                                      uint32_t aIndex, void* aBaton);
-  typedef void (*WRFontDescriptorOutput)(const uint8_t* aData, uint32_t aLength,
-                                         uint32_t aIndex, void* aBaton);
   typedef void (*FontInstanceDataOutput)(const uint8_t* aData, uint32_t aLength,
                                          void* aBaton);
   typedef void (*FontDescriptorOutput)(const uint8_t* aData, uint32_t aLength,
                                        uint32_t aIndex, void* aBaton);
 
   virtual bool GetFontFileData(FontFileDataOutput, void*) { return false; }
-
-  virtual bool GetWRFontDescriptor(WRFontDescriptorOutput, void*) {
-    return false;
-  }
 
   virtual bool GetFontInstanceData(FontInstanceDataOutput, void*) {
     return false;
@@ -1175,7 +1169,8 @@ class DrawTarget : public external::AtomicRefCounted<DrawTarget> {
    * @param aOperator Composition operator used
    */
   virtual void DrawSurfaceWithShadow(SourceSurface* aSurface,
-                                     const Point& aDest, const Color& aColor,
+                                     const Point& aDest,
+                                     const DeviceColor& aColor,
                                      const Point& aOffset, Float aSigma,
                                      CompositionOp aOperator) = 0;
 
@@ -1800,8 +1795,8 @@ class GFX2D_API Factory {
 #ifdef XP_DARWIN
   static already_AddRefed<ScaledFont> CreateScaledFontForMacFont(
       CGFontRef aCGFont, const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize,
-      const Color& aFontSmoothingBackgroundColor, bool aUseFontSmoothing = true,
-      bool aApplySyntheticBold = false);
+      const DeviceColor& aFontSmoothingBackgroundColor,
+      bool aUseFontSmoothing = true, bool aApplySyntheticBold = false);
 #endif
 
 #ifdef MOZ_WIDGET_GTK

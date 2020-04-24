@@ -67,7 +67,7 @@ export class Popup extends Component<Props> {
   }
 
   addHighlightToToken() {
-    const target = this.props.preview.target;
+    const { target } = this.props.preview;
     if (target) {
       target.classList.add("preview-token");
       addHighlightToTargetSiblings(target, this.props);
@@ -75,7 +75,7 @@ export class Popup extends Component<Props> {
   }
 
   removeHighlightFromToken() {
-    const target = this.props.preview.target;
+    const { target } = this.props.preview;
     if (target) {
       target.classList.remove("preview-token");
       removeHighlightForTargetSiblings(target);
@@ -225,10 +225,7 @@ export class Popup extends Component<Props> {
       editorRef,
     } = this.props;
 
-    if (
-      typeof resultGrip == "undefined" ||
-      (resultGrip && resultGrip.optimizedOut)
-    ) {
+    if (typeof resultGrip == "undefined" || resultGrip?.optimizedOut) {
       return null;
     }
 
@@ -264,6 +261,7 @@ export function addHighlightToTargetSiblings(target: Element, props: Object) {
   ) {
     let nextSibling = target.nextSibling;
     let nextElementSibling = target.nextElementSibling;
+
     // Note: Declaring previous/next ELEMENT siblings as well because
     // properties like innerHTML can't be checked on nextSibling
     // without creating a flow error even if the node is an element type.

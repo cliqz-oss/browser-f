@@ -9,6 +9,7 @@
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/ThreadLocal.h"
+#include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/dom/WorkerPrivate.h"
 
 #include "jsapi.h"
@@ -444,7 +445,7 @@ bool AutoJSAPI::Init(nsGlobalWindowInner* aWindow) {
 // Eventually, SpiderMonkey will have a special-purpose callback for warnings
 // only.
 void WarningOnlyErrorReporter(JSContext* aCx, JSErrorReport* aRep) {
-  MOZ_ASSERT(JSREPORT_IS_WARNING(aRep->flags));
+  MOZ_ASSERT(aRep->isWarning());
   if (!NS_IsMainThread()) {
     // Reporting a warning on workers is a bit complicated because we have to
     // climb our parent chain until we get to the main thread.  So go ahead and
@@ -486,6 +487,13 @@ void AutoJSAPI::ReportException() {
         // We might be reporting an error in debugger code that ran before the
         // worker's global was created. Use the debugger global instead.
         errorGlobal = GetCurrentThreadWorkerDebuggerGlobal();
+        if (NS_WARN_IF(!errorGlobal)) {
+          // An exception may have been thrown on attempt to create a global
+          // and now there is no realm from which to fetch the exception.
+          // Give up.
+          ClearException();
+          return;
+        }
       }
     }
   }
@@ -495,7 +503,7 @@ void AutoJSAPI::ReportException() {
   JS::Rooted<JSObject*> exnStack(cx());
   js::ErrorReport jsReport(cx());
   if (StealExceptionAndStack(&exn, &exnStack) &&
-      jsReport.init(cx(), exn, js::ErrorReport::WithSideEffects)) {
+      jsReport.init(cx(), exn, js::ErrorReport::WithSideEffects, exnStack)) {
     if (mIsMainThread) {
       RefPtr<xpc::ErrorReport> xpcReport = new xpc::ErrorReport();
 
@@ -580,7 +588,8 @@ AutoEntryScript::AutoEntryScript(nsIGlobalObject* aGlobalObject,
           "", aReason, JS::ProfilingCategoryPair::JS,
           uint32_t(js::ProfilingStackFrame::Flags::RELEVANT_FOR_JS))
 #endif
-{
+      ,
+      mJSThreadExecution(aGlobalObject, aIsMainThread) {
   MOZ_ASSERT(aGlobalObject);
 
   if (aIsMainThread) {
@@ -598,7 +607,7 @@ AutoEntryScript::AutoEntryScript(JSObject* aObject, const char* aReason,
   // aObject is not a CCW.
 }
 
-AutoEntryScript::~AutoEntryScript() {}
+AutoEntryScript::~AutoEntryScript() = default;
 
 AutoEntryScript::DocshellEntryMonitor::DocshellEntryMonitor(JSContext* aCx,
                                                             const char* aReason)

@@ -656,6 +656,8 @@ class nsTextFrame : public nsFrame {
 
   nscolor GetCaretColorAt(int32_t aOffset) final;
 
+  // @param aSelectionFlags may be multiple of nsISelectionDisplay::DISPLAY_*.
+  // @return nsISelectionController.idl's `getDisplaySelection`.
   int16_t GetSelectionStatus(int16_t* aSelectionFlags);
 
   int32_t GetContentOffset() const { return mContentOffset; }
@@ -695,11 +697,11 @@ class nsTextFrame : public nsFrame {
       const nsLineList::iterator* aLine = nullptr,
       uint32_t* aFlowEndInTextRun = nullptr);
 
-  gfxTextRun* GetTextRun(TextRunType aWhichTextRun) {
+  gfxTextRun* GetTextRun(TextRunType aWhichTextRun) const {
     if (aWhichTextRun == eInflated || !HasFontSizeInflation()) return mTextRun;
     return GetUninflatedTextRun();
   }
-  gfxTextRun* GetUninflatedTextRun();
+  gfxTextRun* GetUninflatedTextRun() const;
   void SetTextRun(gfxTextRun* aTextRun, TextRunType aWhichTextRun,
                   float aInflation);
   bool IsInTextRunUserData() const {
@@ -887,14 +889,7 @@ class nsTextFrame : public nsFrame {
           mStyle(aStyle),
           mTextUnderlinePosition(aUnderlinePosition) {}
 
-    LineDecoration(const LineDecoration& aOther)
-        : mFrame(aOther.mFrame),
-          mBaselineOffset(aOther.mBaselineOffset),
-          mTextUnderlineOffset(aOther.mTextUnderlineOffset),
-          mTextDecorationThickness(aOther.mTextDecorationThickness),
-          mColor(aOther.mColor),
-          mStyle(aOther.mStyle),
-          mTextUnderlinePosition(aOther.mTextUnderlinePosition) {}
+    LineDecoration(const LineDecoration& aOther) = default;
 
     bool operator==(const LineDecoration& aOther) const {
       return mFrame == aOther.mFrame && mStyle == aOther.mStyle &&
@@ -912,7 +907,7 @@ class nsTextFrame : public nsFrame {
   struct TextDecorations {
     AutoTArray<LineDecoration, 1> mOverlines, mUnderlines, mStrikes;
 
-    TextDecorations() {}
+    TextDecorations() = default;
 
     bool HasDecorationLines() const {
       return HasUnderline() || HasOverline() || HasStrikeout();

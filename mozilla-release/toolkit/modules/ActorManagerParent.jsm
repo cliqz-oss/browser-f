@@ -132,6 +132,17 @@ let ACTORS = {
     allFrames: true,
   },
 
+  Controllers: {
+    parent: {
+      moduleURI: "resource://gre/actors/ControllersParent.jsm",
+    },
+    child: {
+      moduleURI: "resource://gre/actors/ControllersChild.jsm",
+    },
+
+    allFrames: true,
+  },
+
   DateTimePicker: {
     parent: {
       moduleURI: "resource://gre/actors/DateTimePickerParent.jsm",
@@ -169,6 +180,7 @@ let ACTORS = {
     },
 
     allFrames: true,
+    messageManagerGroups: ["browsers", "test"],
   },
 
   // This is the actor that responds to requests from the find toolbar and
@@ -232,6 +244,7 @@ let ACTORS = {
     },
 
     allFrames: true,
+    messageManagerGroups: ["browsers", ""],
   },
   PictureInPicture: {
     parent: {
@@ -369,6 +382,21 @@ let ACTORS = {
     allFrames: true,
   },
 
+  UnselectedTabHover: {
+    parent: {
+      moduleURI: "resource://gre/actors/UnselectedTabHoverParent.jsm",
+    },
+    child: {
+      moduleURI: "resource://gre/actors/UnselectedTabHoverChild.jsm",
+      events: {
+        "UnselectedTabHover:Enable": {},
+        "UnselectedTabHover:Disable": {},
+      },
+    },
+
+    allFrames: true,
+  },
+
   WebNavigation: {
     child: {
       moduleURI: "resource://gre/actors/WebNavigationChild.jsm",
@@ -493,18 +521,10 @@ let ACTORS = {
  * sub-frames, it must use "allFrames".
  */
 let LEGACY_ACTORS = {
-  Controllers: {
-    child: {
-      module: "resource://gre/actors/ControllersChild.jsm",
-      messages: ["ControllerCommands:Do", "ControllerCommands:DoWithParams"],
-    },
-  },
-
   ManifestMessages: {
     child: {
       module: "resource://gre/modules/ManifestMessagesChild.jsm",
       messages: [
-        "DOM:Manifest:FireAppInstalledEvent",
         "DOM:ManifestObtainer:Obtain",
         "DOM:WebManifest:fetchIcon",
         "DOM:WebManifest:hasManifestLink",
@@ -526,17 +546,6 @@ let LEGACY_ACTORS = {
         "Printing:Preview:ParseDocument",
         "Printing:Print",
       ],
-    },
-  },
-
-  UnselectedTabHover: {
-    child: {
-      module: "resource://gre/actors/UnselectedTabHoverChild.jsm",
-      events: {
-        "UnselectedTabHover:Enable": {},
-        "UnselectedTabHover:Disable": {},
-      },
-      messages: ["Browser:UnselectedTabHover"],
     },
   },
 };

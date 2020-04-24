@@ -147,18 +147,6 @@ def use_profile_data(config, jobs):
 
 
 @transforms.add
-def set_env(config, jobs):
-    """Set extra environment variables from try command line."""
-    env = []
-    if config.params['try_mode'] == 'try_option_syntax':
-        env = config.params['try_options']['env'] or []
-    for job in jobs:
-        if env:
-            job['worker']['env'].update(dict(x.split('=') for x in env))
-        yield job
-
-
-@transforms.add
 def enable_full_crashsymbols(config, jobs):
     """Enable full crashsymbols on jobs with
     'enable-full-crashsymbols' set to True and on release branches, or
@@ -177,11 +165,8 @@ def enable_full_crashsymbols(config, jobs):
 
 @transforms.add
 def use_artifact(config, jobs):
-    if config.params['try_mode'] == 'try_task_config':
-        use_artifact = config.params['try_task_config'] \
-            .get('use-artifact-builds', False)
-    elif config.params['try_mode'] == 'try_option_syntax':
-        use_artifact = config.params['try_options'].get('artifact')
+    if config.params.is_try():
+        use_artifact = config.params['try_task_config'].get('use-artifact-builds', False)
     else:
         use_artifact = False
     for job in jobs:

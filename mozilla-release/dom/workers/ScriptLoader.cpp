@@ -159,7 +159,7 @@ nsresult ChannelFromScriptURL(
 
   bool isData = uri->SchemeIs("data");
   bool isURIUniqueOrigin =
-      net::nsIOService::IsDataURIUniqueOpaqueOrigin() && isData;
+      StaticPrefs::security_data_uri_unique_opaque_origin() && isData;
   if (inheritAttrs && !isURIUniqueOrigin) {
     secFlags |= nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL;
   }
@@ -1965,22 +1965,6 @@ bool ScriptExecutorRunnable::PreRun(WorkerPrivate* aWorkerPrivate) {
   return true;
 }
 
-static bool EvaluateScript(JSContext* aCx,
-                           const JS::ReadOnlyCompileOptions& aOptions,
-                           JS::SourceText<char16_t>& aSrcBuf,
-                           JS::MutableHandle<JS::Value> aResult) {
-  return JS::Evaluate(aCx, aOptions, aSrcBuf, aResult);
-}
-
-static bool EvaluateScript(JSContext* aCx,
-                           const JS::ReadOnlyCompileOptions& aOptions,
-                           JS::SourceText<Utf8Unit>& aSrcBuf,
-                           JS::MutableHandle<JS::Value> aResult) {
-  // Once evaluate-UTF-8-without-inflating is the default, these two overloads
-  // can be removed and |JS::Evaluate| can be used in the sole caller below.
-  return JS::EvaluateDontInflate(aCx, aOptions, aSrcBuf, aResult);
-}
-
 template <typename Unit>
 static bool EvaluateScriptData(JSContext* aCx,
                                const JS::CompileOptions& aOptions,
@@ -2001,7 +1985,7 @@ static bool EvaluateScriptData(JSContext* aCx,
   }
 
   JS::Rooted<JS::Value> unused(aCx);
-  return EvaluateScript(aCx, aOptions, srcBuf, &unused);
+  return Evaluate(aCx, aOptions, srcBuf, &unused);
 }
 
 bool ScriptExecutorRunnable::WorkerRun(JSContext* aCx,

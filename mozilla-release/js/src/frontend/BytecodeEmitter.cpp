@@ -26,7 +26,7 @@
 #include "jstypes.h"  // JS_BIT
 
 #include "ds/Nestable.h"  // Nestable
-#include "frontend/AbstractScope.h"
+#include "frontend/AbstractScopePtr.h"
 #include "frontend/BCEScriptStencil.h"           // BCEScriptStencil
 #include "frontend/BytecodeControlStructures.h"  // NestableControl, BreakableControl, LabelControl, LoopControl, TryFinallyControl
 #include "frontend/CallOrNewEmitter.h"           // CallOrNewEmitter
@@ -48,23 +48,27 @@
 #include "frontend/NameOpEmitter.h"        // NameOpEmitter
 #include "frontend/ObjectEmitter.h"  // PropertyEmitter, ObjectEmitter, ClassEmitter
 #include "frontend/OptionalEmitter.h"  // OptionalEmitter
-#include "frontend/ParseNode.h"  // ParseNodeKind, ParseNode and subclasses, ObjectBox
+#include "frontend/ParseNode.h"      // ParseNodeKind, ParseNode and subclasses
 #include "frontend/Parser.h"         // Parser
 #include "frontend/PropOpEmitter.h"  // PropOpEmitter
+#include "frontend/SourceNotes.h"    // SrcNote, SrcNoteType, SrcNoteWriter
 #include "frontend/SwitchEmitter.h"  // SwitchEmitter
 #include "frontend/TDZCheckCache.h"  // TDZCheckCache
 #include "frontend/TryEmitter.h"     // TryEmitter
 #include "frontend/WhileEmitter.h"   // WhileEmitter
 #include "js/CompileOptions.h"       // TransitiveCompileOptions, CompileOptions
-#include "vm/AsyncFunction.h"        // AsyncFunctionResolveKind
-#include "vm/BytecodeUtil.h"  // IsArgOp, IsLocalOp, SET_UINT24, SET_ICINDEX, BytecodeFallsThrough, BytecodeIsJumpTarget
-#include "vm/GeneratorObject.h"  // AbstractGeneratorObject
-#include "vm/JSAtom.h"           // JSAtom, js_*_str
-#include "vm/JSContext.h"        // JSContext
-#include "vm/JSFunction.h"       // FunctionPrefixKind, JSFunction,
-#include "vm/JSScript.h"  // JSScript, ScopeNote, ScriptSourceObject, FieldInitializers, BaseScript
-#include "vm/Opcodes.h"  // JSOp, JSOpLength_*
-#include "wasm/AsmJS.h"  // IsAsmJSModule
+#include "vm/AsyncFunctionResolveKind.h"  // AsyncFunctionResolveKind
+#include "vm/BytecodeUtil.h"  // JOF_*, IsArgOp, IsLocalOp, SET_UINT24, SET_ICINDEX, BytecodeFallsThrough, BytecodeIsJumpTarget
+#include "vm/FunctionPrefixKind.h"  // FunctionPrefixKind
+#include "vm/GeneratorObject.h"     // AbstractGeneratorObject
+#include "vm/JSAtom.h"              // JSAtom, js_*_str
+#include "vm/JSContext.h"           // JSContext
+#include "vm/JSFunction.h"          // JSFunction,
+#include "vm/JSScript.h"  // JSScript, ScriptSourceObject, FieldInitializers, BaseScript
+#include "vm/Opcodes.h"        // JSOp, JSOpLength_*
+#include "vm/SharedStencil.h"  // ScopeNote
+#include "vm/ThrowMsgKind.h"   // ThrowMsgKind
+#include "wasm/AsmJS.h"        // IsAsmJSModule
 
 #include "vm/JSObject-inl.h"  // JSObject
 
@@ -184,7 +188,7 @@ Maybe<NameLocation> BytecodeEmitter::locationOfNameBoundInFunctionScope(
 }
 
 bool BytecodeEmitter::markStepBreakpoint() {
-  if (inPrologue()) {
+  if (skipBreakpointSrcNotes()) {
     return true;
   }
 
@@ -192,11 +196,11 @@ bool BytecodeEmitter::markStepBreakpoint() {
     return false;
   }
 
-  if (!newSrcNote(SRC_STEP_SEP)) {
+  if (!newSrcNote(SrcNoteType::StepSep)) {
     return false;
   }
 
-  if (!newSrcNote(SRC_BREAKPOINT)) {
+  if (!newSrcNote(SrcNoteType::Breakpoint)) {
     return false;
   }
 
@@ -209,7 +213,7 @@ bool BytecodeEmitter::markStepBreakpoint() {
 }
 
 bool BytecodeEmitter::markSimpleBreakpoint() {
-  if (inPrologue()) {
+  if (skipBreakpointSrcNotes()) {
     return true;
   }
 
@@ -222,7 +226,7 @@ bool BytecodeEmitter::markSimpleBreakpoint() {
       return false;
     }
 
-    if (!newSrcNote(SRC_BREAKPOINT)) {
+    if (!newSrcNote(SrcNoteType::Breakpoint)) {
       return false;
     }
   }
@@ -503,14 +507,9 @@ bool BytecodeEmitter::emitCheckIsCallable(CheckIsCallableKind kind) {
   return emit2(JSOp::CheckIsCallable, uint8_t(kind));
 }
 
-static inline unsigned LengthOfSetLine(unsigned line) {
-  return 1 /* SRC_SETLINE */ + (line > SN_4BYTE_OFFSET_MASK ? 4 : 1);
-}
-
 /* Updates line number notes, not column notes. */
 bool BytecodeEmitter::updateLineNumberNotes(uint32_t offset) {
-  // Don't emit line/column number notes in the prologue.
-  if (inPrologue()) {
+  if (skipLocationSrcNotes()) {
     return true;
   }
 
@@ -527,23 +526,24 @@ bool BytecodeEmitter::updateLineNumberNotes(uint32_t offset) {
 
     /*
      * Encode any change in the current source line number by using
-     * either several SRC_NEWLINE notes or just one SRC_SETLINE note,
-     * whichever consumes less space.
+     * either several SrcNoteType::NewLine notes or just one
+     * SrcNoteType::SetLine note, whichever consumes less space.
      *
      * NB: We handle backward line number deltas (possible with for
      * loops where the update part is emitted after the body, but its
      * line number is <= any line number in the body) here by letting
      * unsigned delta_ wrap to a very large number, which triggers a
-     * SRC_SETLINE.
+     * SrcNoteType::SetLine.
      */
     bytecodeSection().setCurrentLine(line, offset);
-    if (delta >= LengthOfSetLine(line)) {
-      if (!newSrcNote2(SRC_SETLINE, ptrdiff_t(line))) {
+    if (delta >= SrcNote::SetLine::lengthFor(line)) {
+      if (!newSrcNote2(SrcNoteType::SetLine,
+                       SrcNote::SetLine::toOperand(line))) {
         return false;
       }
     } else {
       do {
-        if (!newSrcNote(SRC_NEWLINE)) {
+        if (!newSrcNote(SrcNoteType::NewLine)) {
           return false;
         }
       } while (--delta != 0);
@@ -560,8 +560,7 @@ bool BytecodeEmitter::updateSourceCoordNotes(uint32_t offset) {
     return false;
   }
 
-  // Don't emit line/column number notes in the prologue.
-  if (inPrologue()) {
+  if (skipLocationSrcNotes()) {
     return true;
   }
 
@@ -574,10 +573,11 @@ bool BytecodeEmitter::updateSourceCoordNotes(uint32_t offset) {
     // machine-generated code. Even gigantic column numbers are still
     // valuable if you have a source map to relate them to something real;
     // but it's better to fail soft here.
-    if (!SN_REPRESENTABLE_COLSPAN(colspan)) {
+    if (!SrcNote::ColSpan::isRepresentable(colspan)) {
       return true;
     }
-    if (!newSrcNote2(SRC_COLSPAN, SN_COLSPAN_TO_OFFSET(colspan))) {
+    if (!newSrcNote2(SrcNoteType::ColSpan,
+                     SrcNote::ColSpan::toOperand(colspan))) {
       return false;
     }
     bytecodeSection().setLastColumn(columnIndex, offset);
@@ -831,7 +831,7 @@ bool NonLocalExitControl::prepareForNonLocalJump(NestableControl* target) {
   // Close FOR_OF_ITERCLOSE trynotes.
   BytecodeOffset end = bce_->bytecodeSection().offset();
   for (BytecodeOffset start : forOfIterCloseScopeStarts) {
-    if (!bce_->addTryNote(JSTRY_FOR_OF_ITERCLOSE, 0, start, end)) {
+    if (!bce_->addTryNote(TryNoteKind::ForOfIterClose, 0, start, end)) {
       return false;
     }
   }
@@ -854,7 +854,7 @@ bool BytecodeEmitter::emitGoto(NestableControl* target, JumpList* jumplist,
   return emitJump(JSOp::Goto, jumplist);
 }
 
-AbstractScope BytecodeEmitter::innermostScope() const {
+AbstractScopePtr BytecodeEmitter::innermostScope() const {
   return innermostEmitterScope()->scope(this);
 }
 
@@ -1542,14 +1542,14 @@ bool BytecodeEmitter::emitThisEnvironmentCallee() {
 
   // We have to load the callee from the environment chain.
   unsigned numHops = 0;
-  for (AbstractScopeIter si(innermostScope()); si; si++) {
+  for (AbstractScopePtrIter si(innermostScope()); si; si++) {
     if (si.hasSyntacticEnvironment() &&
-        si.abstractScope().is<FunctionScope>()) {
-      if (!si.abstractScope().isArrow()) {
+        si.abstractScopePtr().is<FunctionScope>()) {
+      if (!si.abstractScopePtr().isArrow()) {
         break;
       }
     }
-    if (si.abstractScope().hasEnvironment()) {
+    if (si.abstractScopePtr().hasEnvironment()) {
       numHops++;
     }
   }
@@ -1610,34 +1610,6 @@ void BytecodeEmitter::reportError(const Maybe<uint32_t>& maybeOffset,
                                              errorNumber, &args);
 
   va_end(args);
-}
-
-bool BytecodeEmitter::reportExtraWarning(ParseNode* pn, unsigned errorNumber,
-                                         ...) {
-  uint32_t offset = pn ? pn->pn_pos.begin : *scriptStartOffset;
-
-  va_list args;
-  va_start(args, errorNumber);
-
-  bool result = parser->errorReporter().extraWarningWithNotesAtVA(
-      nullptr, AsVariant(offset), errorNumber, &args);
-
-  va_end(args);
-  return result;
-}
-
-bool BytecodeEmitter::reportExtraWarning(const Maybe<uint32_t>& maybeOffset,
-                                         unsigned errorNumber, ...) {
-  uint32_t offset = maybeOffset ? *maybeOffset : *scriptStartOffset;
-
-  va_list args;
-  va_start(args, errorNumber);
-
-  bool result = parser->errorReporter().extraWarningWithNotesAtVA(
-      nullptr, AsVariant(offset), errorNumber, &args);
-
-  va_end(args);
-  return result;
 }
 
 bool BytecodeEmitter::iteratorResultShape(uint32_t* shape) {
@@ -1703,7 +1675,8 @@ bool BytecodeEmitter::emitGetName(NameNode* name) {
 }
 
 bool BytecodeEmitter::emitTDZCheckIfNeeded(HandleAtom name,
-                                           const NameLocation& loc) {
+                                           const NameLocation& loc,
+                                           ValueIsOnStack isOnStack) {
   // Dynamic accesses have TDZ checks built into their VM code and should
   // never emit explicit TDZ checks.
   MOZ_ASSERT(loc.hasKnownSlot());
@@ -1720,6 +1693,20 @@ bool BytecodeEmitter::emitTDZCheckIfNeeded(HandleAtom name,
     return true;
   }
 
+  // If the value is not on the stack, we have to load it first.
+  if (isOnStack == ValueIsOnStack::No) {
+    if (loc.kind() == NameLocation::Kind::FrameSlot) {
+      if (!emitLocalOp(JSOp::GetLocal, loc.frameSlot())) {
+        return false;
+      }
+    } else {
+      if (!emitEnvCoordOp(JSOp::GetAliasedVar, loc.environmentCoordinate())) {
+        return false;
+      }
+    }
+  }
+
+  // Emit the lexical check.
   if (loc.kind() == NameLocation::Kind::FrameSlot) {
     if (!emitLocalOp(JSOp::CheckLexical, loc.frameSlot())) {
       return false;
@@ -1727,6 +1714,13 @@ bool BytecodeEmitter::emitTDZCheckIfNeeded(HandleAtom name,
   } else {
     if (!emitEnvCoordOp(JSOp::CheckAliasedLexical,
                         loc.environmentCoordinate())) {
+      return false;
+    }
+  }
+
+  // Pop the value if needed.
+  if (isOnStack == ValueIsOnStack::No) {
+    if (!emit1(JSOp::Pop)) {
       return false;
     }
   }
@@ -1950,7 +1944,7 @@ bool BytecodeEmitter::emitCallIncDec(UnaryNode* incDec) {
 
   // The increment/decrement has no side effects, so proceed to throw for
   // invalid assignment target.
-  return emitUint16Operand(JSOp::ThrowMsg, JSMSG_ASSIGN_TO_CALL);
+  return emit2(JSOp::ThrowMsg, uint8_t(ThrowMsgKind::AssignToCall));
 }
 
 bool BytecodeEmitter::emitDouble(double d) {
@@ -2170,9 +2164,9 @@ MOZ_NEVER_INLINE bool BytecodeEmitter::emitSwitch(SwitchStatement* switchStmt) {
 
 bool BytecodeEmitter::isRunOnceLambda() {
   if (lazyScript) {
-    // NOTE: The TreatAsRunOnce flag on LazyScript was computed without a
-    // complete 'funbox' so we must compute the shouldSuppressRunOnce
-    // conditions now that we have the full parse info.
+    // NOTE: The TreatAsRunOnce flag on lazy BaseScript was computed without a
+    // complete 'funbox' so we must compute the shouldSuppressRunOnce conditions
+    // now that we have the full parse info.
     return lazyScript->treatAsRunOnce() &&
            !sc->asFunctionBox()->shouldSuppressRunOnce();
   }
@@ -2439,16 +2433,33 @@ bool BytecodeEmitter::emitScript(ParseNode* body) {
     return false;
   }
 
-  uint32_t nslots;
-  if (!getNslots(&nslots)) {
-    return false;
-  }
-  BCEScriptStencil stencil(*this, nslots);
-  if (!JSScript::fullyInitFromStencil(cx, script, stencil)) {
+  js::UniquePtr<ImmutableScriptData> immutableScriptData =
+      createImmutableScriptData(cx);
+  if (!immutableScriptData) {
     return false;
   }
 
-  return true;
+  BCEScriptStencil stencil(*this, std::move(immutableScriptData));
+  return JSScript::fullyInitFromStencil(cx, compilationInfo, script, stencil);
+}
+
+js::UniquePtr<ImmutableScriptData> BytecodeEmitter::createImmutableScriptData(
+    JSContext* cx) {
+  uint32_t nslots;
+  if (!getNslots(&nslots)) {
+    return nullptr;
+  }
+
+  bool isFunction = sc->isFunctionBox();
+  uint16_t funLength = isFunction ? sc->asFunctionBox()->length : 0;
+
+  return ImmutableScriptData::new_(
+      cx, mainOffset(), maxFixedSlots, nslots, bodyScopeIndex,
+      bytecodeSection().numICEntries(), bytecodeSection().numTypeSets(),
+      isFunction, funLength, bytecodeSection().code(),
+      bytecodeSection().notes(), bytecodeSection().resumeOffsetList().span(),
+      bytecodeSection().scopeNoteList().span(),
+      bytecodeSection().tryNoteList().span());
 }
 
 bool BytecodeEmitter::getNslots(uint32_t* nslots) {
@@ -3045,7 +3056,7 @@ bool BytecodeEmitter::wrapWithDestructuringTryNote(int32_t iterDepth,
   }
   BytecodeOffset end = bytecodeSection().offset();
   if (start != end) {
-    return addTryNote(JSTRY_DESTRUCTURING, iterDepth, start, end);
+    return addTryNote(TryNoteKind::Destructuring, iterDepth, start, end);
   }
   return true;
 }
@@ -3270,7 +3281,7 @@ bool BytecodeEmitter::emitDestructuringOpsArray(ListNode* pattern,
     return false;
   }
 
-  // JSTRY_DESTRUCTURING expects the iterator and the done value
+  // TryNoteKind::Destructuring expects the iterator and the done value
   // to be the second to top and the top of the stack, respectively.
   // IteratorClose is called upon exception only if done is false.
   int32_t tryNoteDepth = bytecodeSection().stackDepth();
@@ -4204,7 +4215,7 @@ bool BytecodeEmitter::emitAssignmentOrInit(ParseNodeKind kind, ParseNode* lhs,
 
       // Assignment to function calls is forbidden, but we have to make the
       // call first.  Now we can throw.
-      if (!emitUint16Operand(JSOp::ThrowMsg, JSMSG_ASSIGN_TO_CALL)) {
+      if (!emit2(JSOp::ThrowMsg, uint8_t(ThrowMsgKind::AssignToCall))) {
         return false;
       }
 
@@ -4305,7 +4316,7 @@ bool BytecodeEmitter::emitAssignmentOrInit(ParseNodeKind kind, ParseNode* lhs,
 
   /* If += etc., emit the binary operator with a source note. */
   if (isCompound) {
-    if (!newSrcNote(SRC_ASSIGNOP)) {
+    if (!newSrcNote(SrcNoteType::AssignOp)) {
       return false;
     }
     if (!emit1(compoundOp)) {
@@ -5012,7 +5023,7 @@ bool BytecodeEmitter::emitSpread(bool allowSelfHosted) {
       return false;
     }
 
-    if (!loopInfo.emitLoopEnd(this, JSOp::Goto, JSTRY_FOR_OF)) {
+    if (!loopInfo.emitLoopEnd(this, JSOp::Goto, TryNoteKind::ForOf)) {
       //            [stack] NEXT ITER ARR (I+1)
       return false;
     }
@@ -5494,9 +5505,8 @@ MOZ_NEVER_INLINE bool BytecodeEmitter::emitFunction(
     RootedFunction fun(cx, funbox->function());
     RootedScript innerScript(
         cx, JSScript::Create(
-                cx, fun, compilationInfo.sourceObject,
-                ImmutableScriptFlags::fromCompileOptions(transitiveOptions),
-                transitiveOptions.hideScriptFromDebugger, funbox->extent));
+                cx, fun, compilationInfo.sourceObject, funbox->extent,
+                ImmutableScriptFlags::fromCompileOptions(transitiveOptions)));
     if (!innerScript) {
       return false;
     }
@@ -6230,7 +6240,7 @@ bool BytecodeEmitter::emitYieldStar(ParseNode* iter) {
       return false;
     }
     // Steps 7.b.iii.5-6.
-    if (!emitUint16Operand(JSOp::ThrowMsg, JSMSG_ITERATOR_NO_THROW)) {
+    if (!emit2(JSOp::ThrowMsg, uint8_t(ThrowMsgKind::IteratorNoThrow))) {
       //            [stack] NEXT ITER RECEIVED ITER
       //            [stack] # throw
       return false;
@@ -6474,7 +6484,7 @@ bool BytecodeEmitter::emitYieldStar(ParseNode* iter) {
     //              [stack] NEXT ITER RVAL RESUMEKIND
     return false;
   }
-  if (!loopInfo.emitLoopEnd(this, JSOp::Goto, JSTRY_LOOP)) {
+  if (!loopInfo.emitLoopEnd(this, JSOp::Goto, TryNoteKind::Loop)) {
     //              [stack] NEXT ITER RVAL RESUMEKIND
     return false;
   }
@@ -6570,39 +6580,6 @@ bool BytecodeEmitter::emitExpressionStatement(UnaryNode* exprStmt) {
     }
     if (!ese.emitEnd()) {
       return false;
-    }
-  } else if (exprStmt->isDirectivePrologueMember()) {
-    // Don't complain about directive prologue members; just don't emit
-    // their code.
-  } else {
-    if (JSAtom* atom = exprStmt->isStringExprStatement()) {
-      // Warn if encountering a non-directive prologue member string
-      // expression statement, that is inconsistent with the current
-      // directive prologue.  That is, a script *not* starting with
-      // "use strict" should warn for any "use strict" statements seen
-      // later in the script, because such statements are misleading.
-      const char* directive = nullptr;
-      if (atom == cx->names().useStrict) {
-        if (!sc->strictScript) {
-          directive = js_useStrict_str;
-        }
-      } else if (atom == cx->names().useAsm) {
-        if (sc->isFunctionBox()) {
-          if (IsAsmJSModule(sc->asFunctionBox()->function())) {
-            directive = js_useAsm_str;
-          }
-        }
-      }
-
-      if (directive) {
-        if (!reportExtraWarning(expr, JSMSG_CONTRARY_NONDIRECTIVE, directive)) {
-          return false;
-        }
-      }
-    } else {
-      if (!reportExtraWarning(expr, JSMSG_USELESS_EXPR)) {
-        return false;
-      }
     }
   }
 
@@ -7745,6 +7722,7 @@ bool BytecodeEmitter::emitOptionalTree(
           kind == ParseNodeKind::Function || kind == ParseNodeKind::ClassDecl ||
           kind == ParseNodeKind::RegExpExpr ||
           kind == ParseNodeKind::TemplateStringExpr ||
+          kind == ParseNodeKind::TemplateStringListExpr ||
           kind == ParseNodeKind::RawUndefinedExpr || pn->isInParens();
 
       // https://tc39.es/ecma262/#sec-left-hand-side-expressions
@@ -7757,7 +7735,12 @@ bool BytecodeEmitter::emitOptionalTree(
       bool isCallExpression = kind == ParseNodeKind::SetThis ||
                               kind == ParseNodeKind::CallImportExpr;
 
-      MOZ_ASSERT(isMemberExpression || isCallExpression,
+      // These should be handled through the main parse tree
+      bool isOptionalExpression =
+          kind == ParseNodeKind::OptionalChain ||
+          kind == ParseNodeKind::DeleteOptionalChainExpr;
+
+      MOZ_ASSERT(isMemberExpression || isCallExpression || isOptionalExpression,
                  "Unknown ParseNodeKind for OptionalChain");
 #endif
       return emitTree(pn);
@@ -8853,9 +8836,9 @@ const FieldInitializers& BytecodeEmitter::findFieldInitializersForCall() {
     }
   }
 
-  for (AbstractScopeIter si(innermostScope()); si; si++) {
-    if (si.abstractScope().is<FunctionScope>()) {
-      JSFunction* fun = si.abstractScope().canonicalFunction();
+  for (AbstractScopePtrIter si(innermostScope()); si; si++) {
+    if (si.abstractScopePtr().is<FunctionScope>()) {
+      JSFunction* fun = si.abstractScopePtr().canonicalFunction();
       if (fun->isClassConstructor()) {
         const FieldInitializers& fieldInitializers =
             fun->baseScript()->getFieldInitializers();
@@ -9163,8 +9146,11 @@ bool BytecodeEmitter::emitArrayLiteral(ListNode* array) {
     // every time the initializer executes. In non-singleton mode, don't do
     // this if the array is small: copying the elements lazily is not worth it
     // in that case.
+    // Note: for now we don't use COW arrays if TI is disabled. We probably need
+    // a BaseShape flag to optimize this better without TI. See bug 1626854.
     static const size_t MinElementsForCopyOnWrite = 5;
-    if (emitterMode != BytecodeEmitter::SelfHosting &&
+    if (IsTypeInferenceEnabled() &&
+        emitterMode != BytecodeEmitter::SelfHosting &&
         (array->count() >= MinElementsForCopyOnWrite || isSingleton) &&
         isArrayObjLiteralCompatible(array->head())) {
       return emitObjLiteralArray(array->head(), /* isCow = */ !isSingleton);
@@ -9503,7 +9489,7 @@ bool BytecodeEmitter::emitInitializeFunctionSpecialNames() {
       };
 
   // Do nothing if the function doesn't have an arguments binding.
-  if (funbox->argumentsHasLocalBinding()) {
+  if (funbox->argumentsHasVarBinding()) {
     if (!emitInitializeFunctionSpecialName(this, cx->names().arguments,
                                            JSOp::Arguments)) {
       //            [stack]
@@ -10481,16 +10467,16 @@ bool BytecodeEmitter::emitTree(
   return true;
 }
 
-static bool AllocSrcNote(JSContext* cx, SrcNotesVector& notes,
+static bool AllocSrcNote(JSContext* cx, SrcNotesVector& notes, unsigned size,
                          unsigned* index) {
   size_t oldLength = notes.length();
 
-  if (MOZ_UNLIKELY(oldLength + 1 > MaxSrcNotesLength)) {
+  if (MOZ_UNLIKELY(oldLength + size > MaxSrcNotesLength)) {
     ReportAllocationOverflow(cx);
     return false;
   }
 
-  if (!notes.growByUninitialized(1)) {
+  if (!notes.growByUninitialized(size)) {
     return false;
   }
 
@@ -10498,20 +10484,20 @@ static bool AllocSrcNote(JSContext* cx, SrcNotesVector& notes,
   return true;
 }
 
-bool BytecodeEmitter::addTryNote(JSTryNoteKind kind, uint32_t stackDepth,
+bool BytecodeEmitter::addTryNote(TryNoteKind kind, uint32_t stackDepth,
                                  BytecodeOffset start, BytecodeOffset end) {
   MOZ_ASSERT(!inPrologue());
   return bytecodeSection().tryNoteList().append(kind, stackDepth, start, end);
 }
 
 bool BytecodeEmitter::newSrcNote(SrcNoteType type, unsigned* indexp) {
-  // Prologue shouldn't have source notes.
-  MOZ_ASSERT(!inPrologue());
+  // Non-gettable source notes such as column/lineno and debugger should not be
+  // emitted for prologue / self-hosted.
+  MOZ_ASSERT_IF(skipLocationSrcNotes() || skipBreakpointSrcNotes(),
+                type <= SrcNoteType::LastGettable);
+
   SrcNotesVector& notes = bytecodeSection().notes();
   unsigned index;
-  if (!AllocSrcNote(cx, notes, &index)) {
-    return false;
-  }
 
   /*
    * Compute delta from the last annotated bytecode's offset.  If it's too
@@ -10520,27 +10506,16 @@ bool BytecodeEmitter::newSrcNote(SrcNoteType type, unsigned* indexp) {
   BytecodeOffset offset = bytecodeSection().offset();
   ptrdiff_t delta = (offset - bytecodeSection().lastNoteOffset()).value();
   bytecodeSection().setLastNoteOffset(offset);
-  if (delta >= SN_DELTA_LIMIT) {
-    do {
-      ptrdiff_t xdelta = std::min(delta, SN_XDELTA_MASK);
-      SN_MAKE_XDELTA(&notes[index], xdelta);
-      delta -= xdelta;
-      if (!AllocSrcNote(cx, notes, &index)) {
-        return false;
-      }
-    } while (delta >= SN_DELTA_LIMIT);
-  }
 
-  /*
-   * Initialize type and delta, then allocate the minimum number of notes
-   * needed for type's arity.  Usually, we won't need more, but if an offset
-   * does take two bytes, setSrcNoteOffset will grow notes.
-   */
-  SN_MAKE_NOTE(&notes[index], type, delta);
-  for (int n = (int)js_SrcNoteSpec[type].arity; n > 0; n--) {
-    if (!newSrcNote(SRC_NULL)) {
-      return false;
+  auto allocator = [&](unsigned size) -> SrcNote* {
+    if (!AllocSrcNote(cx, notes, size, &index)) {
+      return nullptr;
     }
+    return &notes[index];
+  };
+
+  if (!SrcNoteWriter::writeNote(type, delta, allocator)) {
+    return false;
   }
 
   if (indexp) {
@@ -10555,7 +10530,7 @@ bool BytecodeEmitter::newSrcNote2(SrcNoteType type, ptrdiff_t offset,
   if (!newSrcNote(type, &index)) {
     return false;
   }
-  if (!setSrcNoteOffset(index, 0, BytecodeOffsetDiff(offset))) {
+  if (!newSrcNoteOperand(offset)) {
     return false;
   }
   if (indexp) {
@@ -10564,109 +10539,21 @@ bool BytecodeEmitter::newSrcNote2(SrcNoteType type, ptrdiff_t offset,
   return true;
 }
 
-bool BytecodeEmitter::newSrcNote3(SrcNoteType type, ptrdiff_t offset1,
-                                  ptrdiff_t offset2, unsigned* indexp) {
-  unsigned index;
-  if (!newSrcNote(type, &index)) {
-    return false;
-  }
-  if (!setSrcNoteOffset(index, 0, BytecodeOffsetDiff(offset1))) {
-    return false;
-  }
-  if (!setSrcNoteOffset(index, 1, BytecodeOffsetDiff(offset2))) {
-    return false;
-  }
-  if (indexp) {
-    *indexp = index;
-  }
-  return true;
-}
-
-bool BytecodeEmitter::setSrcNoteOffset(unsigned index, unsigned which,
-                                       BytecodeOffsetDiff offset) {
-  ptrdiff_t offsetValue = offset.value();
-
-  if (!SN_REPRESENTABLE_OFFSET(offsetValue)) {
+bool BytecodeEmitter::newSrcNoteOperand(ptrdiff_t operand) {
+  if (!SrcNote::isRepresentableOperand(operand)) {
     reportError(nullptr, JSMSG_NEED_DIET, js_script_str);
     return false;
   }
 
   SrcNotesVector& notes = bytecodeSection().notes();
 
-  /* Find the offset numbered which (i.e., skip exactly which offsets). */
-  jssrcnote* sn = &notes[index];
-  MOZ_ASSERT(SN_TYPE(sn) != SRC_XDELTA);
-  MOZ_ASSERT((int)which < js_SrcNoteSpec[SN_TYPE(sn)].arity);
-  for (sn++; which; sn++, which--) {
-    if (*sn & SN_4BYTE_OFFSET_FLAG) {
-      sn += 3;
+  auto allocator = [&](unsigned size) -> SrcNote* {
+    unsigned index;
+    if (!AllocSrcNote(cx, notes, size, &index)) {
+      return nullptr;
     }
-  }
+    return &notes[index];
+  };
 
-  /*
-   * See if the new offset requires four bytes either by being too big or if
-   * the offset has already been inflated (in which case, we need to stay big
-   * to not break the srcnote encoding if this isn't the last srcnote).
-   */
-  if (offsetValue > (ptrdiff_t)SN_4BYTE_OFFSET_MASK ||
-      (*sn & SN_4BYTE_OFFSET_FLAG)) {
-    /* Maybe this offset was already set to a four-byte value. */
-    if (!(*sn & SN_4BYTE_OFFSET_FLAG)) {
-      /* Insert three dummy bytes that will be overwritten shortly. */
-      if (MOZ_UNLIKELY(notes.length() + 3 > MaxSrcNotesLength)) {
-        ReportAllocationOverflow(cx);
-        return false;
-      }
-      jssrcnote dummy = 0;
-      if (!(sn = notes.insert(sn, dummy)) || !(sn = notes.insert(sn, dummy)) ||
-          !(sn = notes.insert(sn, dummy))) {
-        return false;
-      }
-    }
-    *sn++ = (jssrcnote)(SN_4BYTE_OFFSET_FLAG | (offsetValue >> 24));
-    *sn++ = (jssrcnote)(offsetValue >> 16);
-    *sn++ = (jssrcnote)(offsetValue >> 8);
-  }
-  *sn = (jssrcnote)offsetValue;
-  return true;
-}
-
-const JSSrcNoteSpec js_SrcNoteSpec[] = {
-#define DEFINE_SRC_NOTE_SPEC(sym, name, arity) {name, arity},
-    FOR_EACH_SRC_NOTE_TYPE(DEFINE_SRC_NOTE_SPEC)
-#undef DEFINE_SRC_NOTE_SPEC
-};
-
-static int SrcNoteArity(jssrcnote* sn) {
-  MOZ_ASSERT(SN_TYPE(sn) < SRC_LAST);
-  return js_SrcNoteSpec[SN_TYPE(sn)].arity;
-}
-
-JS_FRIEND_API unsigned js::SrcNoteLength(jssrcnote* sn) {
-  unsigned arity;
-  jssrcnote* base;
-
-  arity = SrcNoteArity(sn);
-  for (base = sn++; arity; sn++, arity--) {
-    if (*sn & SN_4BYTE_OFFSET_FLAG) {
-      sn += 3;
-    }
-  }
-  return sn - base;
-}
-
-JS_FRIEND_API ptrdiff_t js::GetSrcNoteOffset(jssrcnote* sn, unsigned which) {
-  /* Find the offset numbered which (i.e., skip exactly which offsets). */
-  MOZ_ASSERT(SN_TYPE(sn) != SRC_XDELTA);
-  MOZ_ASSERT((int)which < SrcNoteArity(sn));
-  for (sn++; which; sn++, which--) {
-    if (*sn & SN_4BYTE_OFFSET_FLAG) {
-      sn += 3;
-    }
-  }
-  if (*sn & SN_4BYTE_OFFSET_FLAG) {
-    return (ptrdiff_t)(((uint32_t)(sn[0] & SN_4BYTE_OFFSET_MASK) << 24) |
-                       (sn[1] << 16) | (sn[2] << 8) | sn[3]);
-  }
-  return (ptrdiff_t)*sn;
+  return SrcNoteWriter::writeOperand(operand, allocator);
 }

@@ -98,8 +98,6 @@ SPConsoleListener.prototype = {
       isScriptError: false,
       isConsoleEvent: false,
       isWarning: false,
-      isException: false,
-      isStrict: false,
     };
     if (msg instanceof Ci.nsIScriptError) {
       m.errorMessage = msg.errorMessage;
@@ -113,8 +111,6 @@ SPConsoleListener.prototype = {
       m.innerWindowID = msg.innerWindowID;
       m.isScriptError = true;
       m.isWarning = (msg.flags & Ci.nsIScriptError.warningFlag) === 1;
-      m.isException = (msg.flags & Ci.nsIScriptError.exceptionFlag) === 1;
-      m.isStrict = (msg.flags & Ci.nsIScriptError.strictFlag) === 1;
     } else if (topic === "console-api-log-event") {
       // This is a dom/console event.
       let unwrapped = msg.wrappedJSObject;
@@ -1496,7 +1492,13 @@ class SpecialPowersChild extends JSWindowActorChild {
     try {
       Cc["@mozilla.org/memory-reporter-manager;1"]
         .getService(Ci.nsIMemoryReporterManager)
-        .getReports(() => {}, null, () => {}, null, false);
+        .getReports(
+          () => {},
+          null,
+          () => {},
+          null,
+          false
+        );
     } catch (e) {}
   }
 

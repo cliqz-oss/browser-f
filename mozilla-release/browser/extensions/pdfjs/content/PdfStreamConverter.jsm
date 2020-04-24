@@ -151,7 +151,9 @@ function isValidMatchesCount(data) {
   if (
     typeof total !== "number" ||
     total < 0 ||
-    (typeof current !== "number" || current < 0 || current > total)
+    typeof current !== "number" ||
+    current < 0 ||
+    current > total
   ) {
     return false;
   }
@@ -383,15 +385,15 @@ class ChromeActions {
     return !!prefBrowser && prefGfx;
   }
 
-  supportsDocumentColors() {
-    return getIntPref("browser.display.document_color_use", 0) !== 2;
-  }
-
   supportedMouseWheelZoomModifierKeys() {
     return {
       ctrlKey: getIntPref("mousewheel.with_control.action", 3) === 3,
       metaKey: getIntPref("mousewheel.with_meta.action", 1) === 3,
     };
+  }
+
+  isInAutomation() {
+    return Cu.isInAutomation;
   }
 
   reportTelemetry(data) {

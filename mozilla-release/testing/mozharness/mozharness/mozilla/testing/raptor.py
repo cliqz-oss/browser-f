@@ -103,7 +103,16 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
           }],
         [["--app"],
          {"default": "firefox",
-          "choices": ["firefox", "chrome", "chromium", "fennec", "geckoview", "refbrow", "fenix"],
+          "choices": [
+            "firefox",
+            "chrome",
+            "chrome-m",
+            "chromium",
+            "fennec",
+            "geckoview",
+            "refbrow",
+            "fenix"
+          ],
           "dest": "app",
           "help": "Name of the application we are testing (default: firefox)."
           }],
@@ -228,6 +237,12 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             "default": False,
             "help": "Use Raptor to measure CPU usage."
         }],
+        [["--disable-perf-tuning"], {
+            "action": "store_true",
+            "dest": "disable_perf_tuning",
+            "default": False,
+            "help": "Disable performance tuning on android.",
+        }],
         [["--debug-mode"], {
             "dest": "debug_mode",
             "action": "store_true",
@@ -350,10 +365,13 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         self.power_test = self.config.get('power_test')
         self.memory_test = self.config.get('memory_test')
         self.cpu_test = self.config.get('cpu_test')
+        self.disable_perf_tuning = self.config.get('disable_perf_tuning')
         self.extra_prefs = self.config.get('extra_prefs')
         self.is_release_build = self.config.get('is_release_build')
         self.debug_mode = self.config.get('debug_mode', False)
+        self.chromium_dist_path = None
         self.firefox_android_browsers = ["fennec", "geckoview", "refbrow", "fenix"]
+        self.android_browsers = self.firefox_android_browsers + ["chrome-m"]
 
         for (arg,), details in Raptor.browsertime_options:
             # Allow overriding defaults on the `./mach raptor-test ...` command-line.
@@ -489,7 +507,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
                 # When running locally we already set the Chromium binary above, in init.
                 # In production, we already installed Chromium, so set the binary path
                 # to our install.
-                kw_options['binary'] = self.chromium_dist_path
+                kw_options['binary'] = self.chromium_dist_path or ""
 
         # Options overwritten from **kw
         if 'test' in self.config:
@@ -529,6 +547,8 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             options.extend(['--memory-test'])
         if self.config.get('cpu_test', False):
             options.extend(['--cpu-test'])
+        if self.config.get('disable_perf_tuning', False):
+            options.extend(['--disable-perf-tuning'])
         if self.config.get('cold', False):
             options.extend(['--cold'])
         if self.config.get('enable_webrender', False):
@@ -648,11 +668,12 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             self._install_view_gecko_profile_req()
 
     def install(self):
-        if self.app in self.firefox_android_browsers:
-            self.device.uninstall_app(self.binary_path)
-            self.install_apk(self.installer_path)
-        else:
-            super(Raptor, self).install()
+        if not self.config.get('noinstall', False):
+            if self.app in self.firefox_android_browsers:
+                self.device.uninstall_app(self.binary_path)
+                self.install_apk(self.installer_path)
+            else:
+                super(Raptor, self).install()
 
     def _install_view_gecko_profile_req(self):
         # If running locally and gecko profiing is on, we will be using the
@@ -740,7 +761,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
 
             return bool(debug_opts.intersection(cmdline))
 
-        if self.app in self.firefox_android_browsers:
+        if self.app in self.android_browsers:
             self.logcat_start()
 
         command = [python, run_tests] + options + mozlog_opts
@@ -753,7 +774,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
                                                 output_parser=parser,
                                                 env=env)
 
-        if self.app in self.firefox_android_browsers:
+        if self.app in self.android_browsers:
             self.logcat_stop()
 
         if parser.minidump_output:

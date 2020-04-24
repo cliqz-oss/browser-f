@@ -7,6 +7,7 @@
 #define mozilla_BasicEvents_h__
 
 #include <stdint.h>
+#include <type_traits>
 
 #include "mozilla/EventForwards.h"
 #include "mozilla/TimeStamp.h"
@@ -176,6 +177,8 @@ struct BaseEventFlags {
   // remote process (but it's not handled yet if it's not a duplicated event
   // instance).
   bool mPostedToRemoteProcess : 1;
+  // If mCameFromAnotherProcess is true, the event came from another process.
+  bool mCameFromAnotherProcess : 1;
 
   // At lease one of the event in the event path had non privileged click
   // listener.
@@ -336,6 +339,16 @@ struct BaseEventFlags {
    */
   inline bool HasBeenPostedToRemoteProcess() const {
     return mPostedToRemoteProcess;
+  }
+  /**
+   * Return true if the event came from another process.
+   */
+  inline bool CameFromAnotherProcess() const { return mCameFromAnotherProcess; }
+  /**
+   * Mark the event as coming from another process.
+   */
+  inline void MarkAsComingFromAnotherProcess() {
+    mCameFromAnotherProcess = true;
   }
   /**
    * Mark the event is reserved by chrome.  I.e., shouldn't be dispatched to
@@ -701,6 +714,18 @@ class WidgetEvent : public WidgetEventTime {
     return mFlags.HasBeenPostedToRemoteProcess();
   }
   /**
+   * Return true if the event came from another process.
+   */
+  inline bool CameFromAnotherProcess() const {
+    return mFlags.CameFromAnotherProcess();
+  }
+  /**
+   * Mark the event as coming from another process.
+   */
+  inline void MarkAsComingFromAnotherProcess() {
+    mFlags.MarkAsComingFromAnotherProcess();
+  }
+  /**
    * Mark the event is reserved by chrome.  I.e., shouldn't be dispatched to
    * content because it shouldn't be cancelable.
    */
@@ -1025,7 +1050,7 @@ class NativeEventData final {
 
   template <typename T>
   void Copy(const T& other) {
-    static_assert(!mozilla::IsPointer<T>::value, "Don't want a pointer!");
+    static_assert(!std::is_pointer_v<T>, "Don't want a pointer!");
     mBuffer.SetLength(sizeof(T));
     memcpy(mBuffer.Elements(), &other, mBuffer.Length());
   }
@@ -1043,7 +1068,7 @@ class WidgetGUIEvent : public WidgetEvent {
                  EventClassID aEventClassID)
       : WidgetEvent(aIsTrusted, aMessage, aEventClassID), mWidget(aWidget) {}
 
-  WidgetGUIEvent() {}
+  WidgetGUIEvent() = default;
 
  public:
   virtual WidgetGUIEvent* AsGUIEvent() override { return this; }

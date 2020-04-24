@@ -8,7 +8,7 @@
  */
 
 add_task(async function() {
-  let { monitor } = await initNetMonitor(SIMPLE_URL);
+  let { monitor } = await initNetMonitor(SIMPLE_URL, { requestCount: 1 });
   const Actions = monitor.panelWin.windowRequire(
     "devtools/client/netmonitor/src/actions/index"
   );
@@ -238,14 +238,14 @@ add_task(async function() {
   }
 
   async function restartNetMonitorAndSetupEnv() {
-    const newMonitor = await restartNetMonitor(monitor);
+    const newMonitor = await restartNetMonitor(monitor, { requestCount: 1 });
     monitor = newMonitor.monitor;
 
     const networkEvent = waitForNetworkEvents(monitor, 1);
     newMonitor.tab.linkedBrowser.reload();
     await networkEvent;
 
-    const wait = waitForDOM(getDoc(), ".network-details-panel");
+    const wait = waitForDOM(getDoc(), ".network-details-bar");
     getStore().dispatch(Actions.toggleNetworkDetails());
     await wait;
   }

@@ -80,6 +80,7 @@
 #  include "nsAccessibilityService.h"
 #endif
 #include "gfxConfig.h"
+#include "gfxUtils.h"  // for ToDeviceColor
 #include "mozilla/layers/CompositorSession.h"
 #include "VRManagerChild.h"
 #include "gfxConfig.h"
@@ -112,7 +113,6 @@ using namespace mozilla::layers;
 using namespace mozilla::ipc;
 using namespace mozilla::widget;
 using namespace mozilla;
-using base::Thread;
 
 // Async pump timer during injected long touch taps
 #define TOUCH_INJECT_PUMP_TIMER_MSEC 50
@@ -923,10 +923,10 @@ void nsBaseWidget::ConfigureAPZControllerThread() {
 
 void nsBaseWidget::SetConfirmedTargetAPZC(
     uint64_t aInputBlockId,
-    const nsTArray<SLGuidAndRenderRoot>& aTargets) const {
+    const nsTArray<ScrollableLayerGuid>& aTargets) const {
   APZThreadUtils::RunOnControllerThread(
       NewRunnableMethod<uint64_t,
-                        StoreCopyPassByRRef<nsTArray<SLGuidAndRenderRoot>>>(
+                        StoreCopyPassByRRef<nsTArray<ScrollableLayerGuid>>>(
           "layers::IAPZCTreeManager::SetTargetAPZC", mAPZC,
           &IAPZCTreeManager::SetTargetAPZC, aInputBlockId, aTargets));
 }
@@ -953,9 +953,7 @@ void nsBaseWidget::UpdateZoomConstraints(
   }
   LayersId layersId = mCompositorSession->RootLayerTreeId();
   mAPZC->UpdateZoomConstraints(
-      SLGuidAndRenderRoot(layersId, aPresShellId, aViewId,
-                          wr::RenderRoot::Default),
-      aConstraints);
+      ScrollableLayerGuid(layersId, aPresShellId, aViewId), aConstraints);
 }
 
 bool nsBaseWidget::AsyncPanZoomEnabled() const { return !!mAPZC; }
@@ -1431,22 +1429,23 @@ void nsBaseWidget::OnDestroy() {
   ReleaseContentController();
 }
 
-void nsBaseWidget::MoveClient(double aX, double aY) {
+void nsBaseWidget::MoveClient(const DesktopPoint& aOffset) {
   LayoutDeviceIntPoint clientOffset(GetClientOffset());
 
   // GetClientOffset returns device pixels; scale back to desktop pixels
   // if that's what this widget uses for the Move/Resize APIs
   if (BoundsUseDesktopPixels()) {
     DesktopPoint desktopOffset = clientOffset / GetDesktopToDeviceScale();
-    Move(aX - desktopOffset.x, aY - desktopOffset.y);
+    Move(aOffset.x - desktopOffset.x, aOffset.y - desktopOffset.y);
   } else {
-    Move(aX - clientOffset.x, aY - clientOffset.y);
+    LayoutDevicePoint layoutOffset = aOffset * GetDesktopToDeviceScale();
+    Move(layoutOffset.x - clientOffset.x, layoutOffset.y - clientOffset.y);
   }
 }
 
-void nsBaseWidget::ResizeClient(double aWidth, double aHeight, bool aRepaint) {
-  NS_ASSERTION((aWidth >= 0), "Negative width passed to ResizeClient");
-  NS_ASSERTION((aHeight >= 0), "Negative height passed to ResizeClient");
+void nsBaseWidget::ResizeClient(const DesktopSize& aSize, bool aRepaint) {
+  NS_ASSERTION((aSize.width >= 0), "Negative width passed to ResizeClient");
+  NS_ASSERTION((aSize.height >= 0), "Negative height passed to ResizeClient");
 
   LayoutDeviceIntRect clientBounds = GetClientBounds();
 
@@ -1457,36 +1456,39 @@ void nsBaseWidget::ResizeClient(double aWidth, double aHeight, bool aRepaint) {
         (LayoutDeviceIntSize(mBounds.Width(), mBounds.Height()) -
          clientBounds.Size()) /
         GetDesktopToDeviceScale();
-    Resize(aWidth + desktopDelta.width, aHeight + desktopDelta.height,
+    Resize(aSize.width + desktopDelta.width, aSize.height + desktopDelta.height,
            aRepaint);
   } else {
-    Resize(mBounds.Width() + (aWidth - clientBounds.Width()),
-           mBounds.Height() + (aHeight - clientBounds.Height()), aRepaint);
+    LayoutDeviceSize layoutSize = aSize * GetDesktopToDeviceScale();
+    Resize(mBounds.Width() + (layoutSize.width - clientBounds.Width()),
+           mBounds.Height() + (layoutSize.height - clientBounds.Height()),
+           aRepaint);
   }
 }
 
-void nsBaseWidget::ResizeClient(double aX, double aY, double aWidth,
-                                double aHeight, bool aRepaint) {
-  NS_ASSERTION((aWidth >= 0), "Negative width passed to ResizeClient");
-  NS_ASSERTION((aHeight >= 0), "Negative height passed to ResizeClient");
+void nsBaseWidget::ResizeClient(const DesktopRect& aRect, bool aRepaint) {
+  NS_ASSERTION((aRect.Width() >= 0), "Negative width passed to ResizeClient");
+  NS_ASSERTION((aRect.Height() >= 0), "Negative height passed to ResizeClient");
 
   LayoutDeviceIntRect clientBounds = GetClientBounds();
   LayoutDeviceIntPoint clientOffset = GetClientOffset();
+  DesktopToLayoutDeviceScale scale = GetDesktopToDeviceScale();
 
   if (BoundsUseDesktopPixels()) {
-    DesktopToLayoutDeviceScale scale = GetDesktopToDeviceScale();
     DesktopPoint desktopOffset = clientOffset / scale;
     DesktopSize desktopDelta =
         (LayoutDeviceIntSize(mBounds.Width(), mBounds.Height()) -
          clientBounds.Size()) /
         scale;
-    Resize(aX - desktopOffset.x, aY - desktopOffset.y,
-           aWidth + desktopDelta.width, aHeight + desktopDelta.height,
-           aRepaint);
+    Resize(aRect.X() - desktopOffset.x, aRect.Y() - desktopOffset.y,
+           aRect.Width() + desktopDelta.width,
+           aRect.Height() + desktopDelta.height, aRepaint);
   } else {
-    Resize(aX - clientOffset.x, aY - clientOffset.y,
-           aWidth + mBounds.Width() - clientBounds.Width(),
-           aHeight + mBounds.Height() - clientBounds.Height(), aRepaint);
+    LayoutDeviceRect layoutRect = aRect * scale;
+    Resize(layoutRect.X() - clientOffset.x, layoutRect.Y() - clientOffset.y,
+           layoutRect.Width() + mBounds.Width() - clientBounds.Width(),
+           layoutRect.Height() + mBounds.Height() - clientBounds.Height(),
+           aRepaint);
   }
 }
 
@@ -1786,12 +1788,10 @@ void nsBaseWidget::ZoomToRect(const uint32_t& aPresShellId,
   }
   LayersId layerId = mCompositorSession->RootLayerTreeId();
   APZThreadUtils::RunOnControllerThread(
-      NewRunnableMethod<SLGuidAndRenderRoot, CSSRect, uint32_t>(
+      NewRunnableMethod<ScrollableLayerGuid, CSSRect, uint32_t>(
           "layers::IAPZCTreeManager::ZoomToRect", mAPZC,
           &IAPZCTreeManager::ZoomToRect,
-          SLGuidAndRenderRoot(layerId, aPresShellId, aViewId,
-                              wr::RenderRoot::Default),
-          aRect, aFlags));
+          ScrollableLayerGuid(layerId, aPresShellId, aViewId), aRect, aFlags));
 }
 
 #ifdef ACCESSIBILITY
@@ -1829,23 +1829,23 @@ void nsBaseWidget::StartAsyncScrollbarDrag(
   MOZ_ASSERT(XRE_IsParentProcess() && mCompositorSession);
 
   LayersId layersId = mCompositorSession->RootLayerTreeId();
-  SLGuidAndRenderRoot guid(layersId, aDragMetrics.mPresShellId,
-                           aDragMetrics.mViewId, wr::RenderRoot::Default);
+  ScrollableLayerGuid guid(layersId, aDragMetrics.mPresShellId,
+                           aDragMetrics.mViewId);
 
   APZThreadUtils::RunOnControllerThread(
-      NewRunnableMethod<SLGuidAndRenderRoot, AsyncDragMetrics>(
+      NewRunnableMethod<ScrollableLayerGuid, AsyncDragMetrics>(
           "layers::IAPZCTreeManager::StartScrollbarDrag", mAPZC,
           &IAPZCTreeManager::StartScrollbarDrag, guid, aDragMetrics));
 }
 
 bool nsBaseWidget::StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
-                                        const SLGuidAndRenderRoot& aGuid) {
+                                        const ScrollableLayerGuid& aGuid) {
   MOZ_ASSERT(XRE_IsParentProcess() && AsyncPanZoomEnabled());
 
   return mAPZC->StartAutoscroll(aGuid, aAnchorLocation);
 }
 
-void nsBaseWidget::StopAsyncAutoscroll(const SLGuidAndRenderRoot& aGuid) {
+void nsBaseWidget::StopAsyncAutoscroll(const ScrollableLayerGuid& aGuid) {
   MOZ_ASSERT(XRE_IsParentProcess() && AsyncPanZoomEnabled());
 
   mAPZC->StopAutoscroll(aGuid);
@@ -2204,7 +2204,7 @@ void nsBaseWidget::DefaultFillScrollCapture(DrawTarget* aSnapshotDrawTarget) {
   gfx::IntSize dtSize = aSnapshotDrawTarget->GetSize();
   aSnapshotDrawTarget->FillRect(
       gfx::Rect(0, 0, dtSize.width, dtSize.height),
-      gfx::ColorPattern(gfx::Color::FromABGR(kScrollCaptureFillColor)),
+      gfx::ColorPattern(gfx::ToDeviceColor(kScrollCaptureFillColor)),
       gfx::DrawOptions(1.f, gfx::CompositionOp::OP_SOURCE));
   aSnapshotDrawTarget->Flush();
 }
@@ -3158,7 +3158,7 @@ static void debug_SetCachedBoolPref(const char* aPrefName, bool aValue) {
 
 //////////////////////////////////////////////////////////////
 class Debug_PrefObserver final : public nsIObserver {
-  ~Debug_PrefObserver() {}
+  ~Debug_PrefObserver() = default;
 
  public:
   NS_DECL_ISUPPORTS

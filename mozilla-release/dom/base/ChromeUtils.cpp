@@ -23,6 +23,7 @@
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/IdleDeadline.h"
 #include "mozilla/dom/JSWindowActorService.h"
@@ -30,6 +31,7 @@
 #include "mozilla/dom/MediaControlService.h"
 #include "mozilla/dom/MediaMetadata.h"
 #include "mozilla/dom/MediaSessionBinding.h"
+#include "mozilla/dom/Performance.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ReportingHeader.h"
 #include "mozilla/dom/UnionTypes.h"
@@ -43,6 +45,9 @@
 #include "nsThreadUtils.h"
 #include "mozJSComponentLoader.h"
 #include "GeckoProfiler.h"
+#ifdef MOZ_GECKO_PROFILER
+#  include "ProfilerMarkerPayload.h"
+#endif
 #include "nsIException.h"
 
 namespace mozilla {
@@ -181,6 +186,57 @@ void ChromeUtils::ReleaseAssert(GlobalObject& aGlobal, bool aCondition,
   // Actually crash.
   MOZ_CRASH_UNSAFE_PRINTF("Failed ChromeUtils.releaseAssert(\"%s\") @ %s:%u",
                           messageUtf8.get(), filenameUtf8.get(), lineNo);
+}
+
+/* static */
+void ChromeUtils::AddProfilerMarker(
+    GlobalObject& aGlobal, const nsACString& aName,
+    const Optional<DOMHighResTimeStamp>& aStartTime,
+    const Optional<nsACString>& aText) {
+#ifdef MOZ_GECKO_PROFILER
+  const nsCString& name = PromiseFlatCString(aName);
+
+  if (!aText.WasPassed() && !aStartTime.WasPassed()) {
+    profiler_add_js_marker(name.get());
+    return;
+  }
+
+  TimeStamp now = mozilla::TimeStamp::NowUnfuzzed();
+  TimeStamp startTime = now;
+  if (aStartTime.WasPassed()) {
+    RefPtr<Performance> performance;
+
+    if (NS_IsMainThread()) {
+      nsCOMPtr<nsPIDOMWindowInner> ownerWindow =
+          do_QueryInterface(aGlobal.GetAsSupports());
+      if (ownerWindow) {
+        performance = ownerWindow->GetPerformance();
+      }
+    } else {
+      JSContext* cx = aGlobal.Context();
+      WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(cx);
+      if (workerPrivate) {
+        performance = workerPrivate->GlobalScope()->GetPerformance();
+      }
+    }
+
+    if (performance) {
+      startTime = performance->CreationTimeStamp() +
+                  TimeDuration::FromMilliseconds(aStartTime.Value());
+    } else {
+      startTime = TimeStamp::ProcessCreation() +
+                  TimeDuration::FromMilliseconds(aStartTime.Value());
+    }
+  }
+
+  if (aText.WasPassed()) {
+    profiler_add_text_marker(name.get(), aText.Value(),
+                             JS::ProfilingCategoryPair::JS, startTime, now);
+  } else {
+    profiler_add_marker(name.get(), JS::ProfilingCategoryPair::JS,
+                        TimingMarkerPayload(startTime, now));
+  }
+#endif
 }
 
 /* static */
@@ -1188,6 +1244,11 @@ void ChromeUtils::GenerateMediaControlKeysTestEvent(
 }
 
 /* static */
+nsIContentChild* ChromeUtils::GetContentChild(const GlobalObject&) {
+  return ContentChild::GetSingleton();
+}
+
+/* static */
 void ChromeUtils::GetCurrentActiveMediaMetadata(const GlobalObject& aGlobal,
                                                 MediaMetadataInit& aMetadata) {
   if (RefPtr<MediaControlService> service = MediaControlService::GetService()) {
@@ -1206,6 +1267,24 @@ void ChromeUtils::GetCurrentActiveMediaMetadata(const GlobalObject& aGlobal,
       }
     }
   }
+}
+
+/* static */
+MediaSessionPlaybackTestState ChromeUtils::GetCurrentMediaSessionPlaybackState(
+    GlobalObject& aGlobal) {
+  static_assert(int(MediaSessionPlaybackState::None) ==
+                    int(MediaSessionPlaybackTestState::Stopped) &&
+                int(MediaSessionPlaybackState::Paused) ==
+                    int(MediaSessionPlaybackTestState::Paused) &&
+                int(MediaSessionPlaybackState::Playing) ==
+                    int(MediaSessionPlaybackTestState::Playing) &&
+                MediaSessionPlaybackStateValues::Count ==
+                    MediaSessionPlaybackTestStateValues::Count);
+  if (RefPtr<MediaControlService> service = MediaControlService::GetService()) {
+    return ConvertToMediaSessionPlaybackTestState(
+        service->GetMainControllerPlaybackState());
+  }
+  return MediaSessionPlaybackTestState::Stopped;
 }
 
 }  // namespace dom

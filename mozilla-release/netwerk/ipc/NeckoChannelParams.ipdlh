@@ -39,8 +39,9 @@ struct CookiePermissionData
 
 struct CookieJarSettingsArgs
 {
-  // Copy of the cookie behavior and permissions for the top-level document.
+  // Copy of the cookie jar settings for the top-level document.
   uint32_t cookieBehavior;
+  bool isOnContentBlockingAllowList;
   CookiePermissionData[] cookiePermissions;
   bool isFixed;
 };
@@ -144,10 +145,12 @@ struct LoadInfoArgs
   bool allowListFutureDocumentsCreatedFromThisRedirectChain;
   nsString                    cspNonce;
   bool                        skipContentSniffing;
+  uint32_t                    httpsOnlyStatus;
   bool                        isFromProcessingFrameAttributes;
   CookieJarSettingsArgs       cookieJarSettings;
   uint32_t                    requestBlockingReason;
   CSPInfo?                    cspToInheritInfo;
+  bool                        hasStoragePermission;
 };
 
 /**
@@ -177,11 +180,13 @@ struct ParentLoadInfoForwarderArgs
   // tainting value.
   uint32_t tainting;
 
-
   // This flag is used for any browsing context where we should not sniff
   // the content type. E.g if an iframe has the XCTO nosniff header, then
   // that flag is set to true so we skip content sniffing for that browsing
   bool skipContentSniffing;
+
+  // Upgrade state of HTTPS-Only Mode
+  uint32_t httpsOnlyStatus;
 
   // We must also note that the tainting value was explicitly set
   // by the service worker.
@@ -194,6 +199,8 @@ struct ParentLoadInfoForwarderArgs
   CookieJarSettingsArgs? cookieJarSettings;
 
   uint32_t requestBlockingReason;
+
+  bool hasStoragePermission;
 
   // IMPORTANT: when you add new properites here you must also update
   // LoadInfoToParentLoadInfoForwarder and MergeParentLoadInfoForwarder
@@ -241,7 +248,6 @@ struct HttpChannelOpenArgs
   nsIReferrerInfo             referrerInfo;
   URIParams?                  apiRedirectTo;
   URIParams?                  topWindowURI;
-  nsIPrincipal?               contentBlockingAllowListPrincipal;
   uint32_t                    loadFlags;
   RequestHeaderTuples         requestHeaders;
   nsCString                   requestMethod;
@@ -413,12 +419,7 @@ struct DocumentChannelCreationArgs {
   TimeStamp asyncOpenTime;
   uint64_t channelId;
   uint32_t loadFlags;
-  uint32_t loadType;
   uint32_t cacheKey;
-  uint32_t? documentOpenFlags;
-  bool isActive;
-  bool isTopLevelDoc;
-  bool hasNonEmptySandboxingFlags;
   bool pluginsAllowed;
   nsDOMNavigationTiming? timing;
   IPCClientInfo? initialClientInfo;
@@ -514,6 +515,13 @@ struct TransactionObserverResult
   bool versionOk;
   bool authOk;
   nsresult closeReason;
+};
+
+struct SpeculativeConnectionOverriderArgs {
+  uint32_t parallelSpeculativeConnectLimit;
+  bool ignoreIdle;
+  bool isFromPredictor;
+  bool allow1918;
 };
 
 } // namespace net

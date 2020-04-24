@@ -87,7 +87,6 @@ struct _MozContainer {
   gboolean surface_needs_clear;
   gboolean ready_to_draw;
   std::vector<std::function<void(void)>> initial_draw_cbs;
-  gboolean is_accelerated;
 #endif
   gboolean force_default_visual;
 };
@@ -113,15 +112,13 @@ void moz_container_move_resize(MozContainer* container, int dx, int dy,
                                int width, int height);
 void moz_container_egl_window_set_size(MozContainer* container, int width,
                                        int height);
-void moz_container_scale_changed(MozContainer* container,
-                                 GtkAllocation* aAllocation);
+void moz_container_set_scale_factor(MozContainer* container);
 void moz_container_add_initial_draw_callback(
     MozContainer* container, const std::function<void(void)>& initial_draw_cb);
 wl_surface* moz_gtk_widget_get_wl_surface(GtkWidget* aWidget);
 void moz_container_update_opaque_region(MozContainer* container,
                                         bool aSubtractCorners,
                                         bool aFullScreen);
-void moz_container_set_accelerated(MozContainer* container);
 #endif
 
 #endif /* __MOZ_CONTAINER_H__ */

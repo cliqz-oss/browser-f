@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsURILoader.h"
-#include "nsAutoPtr.h"
 #include "nsIURIContentListener.h"
 #include "nsIContentHandler.h"
 #include "nsILoadGroup.h"
@@ -727,7 +726,7 @@ NS_IMETHODIMP nsURILoader::OpenURI(nsIChannel* channel, uint32_t aFlags,
     // be opened again. However, it does need its listener hooked up
     // correctly.
     if (nsCOMPtr<nsIChildChannel> childChannel = do_QueryInterface(channel)) {
-      return childChannel->CompleteRedirectSetup(loader, nullptr);
+      return childChannel->CompleteRedirectSetup(loader);
     }
 
     // It's possible for the redirected channel to not implement
@@ -764,24 +763,6 @@ nsresult nsURILoader::OpenChannel(nsIChannel* channel, uint32_t aFlags,
     nsAutoCString spec;
     uri->GetAsciiSpec(spec);
     LOG(("nsURILoader::OpenChannel for %s", spec.get()));
-  }
-
-  // Let the window context's uriListener know that the open is starting. This
-  // gives that window a chance to abort the load process.
-  nsCOMPtr<nsIURIContentListener> winContextListener(
-      do_GetInterface(aWindowContext));
-  if (winContextListener) {
-    nsCOMPtr<nsIURI> uri;
-    channel->GetURI(getter_AddRefs(uri));
-    if (uri) {
-      bool doAbort = false;
-      winContextListener->OnStartURIOpen(uri, &doAbort);
-
-      if (doAbort) {
-        LOG(("  OnStartURIOpen aborted load"));
-        return NS_ERROR_WONT_HANDLE_CONTENT;
-      }
-    }
   }
 
   static bool once = InitPreferences();

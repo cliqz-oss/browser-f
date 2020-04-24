@@ -48,6 +48,7 @@
 #include "vm/SelfHosting.h"
 #include "vm/Time.h"
 #include "vm/TypedArrayObject.h"
+#include "vm/Warnings.h"  // js::WarnNumberASCII
 #include "wasm/WasmCompile.h"
 #include "wasm/WasmGenerator.h"
 #include "wasm/WasmInstance.h"
@@ -349,7 +350,7 @@ struct js::AsmJSMetadata : Metadata, AsmJSMetadataCacheablePod {
         toStringStart(0),
         srcStart(0),
         strict(false) {}
-  ~AsmJSMetadata() override {}
+  ~AsmJSMetadata() override = default;
 
   const AsmJSExport& lookupAsmJSExport(uint32_t funcIndex) const {
     // The AsmJSExportVector isn't stored in sorted order so do a linear
@@ -1352,7 +1353,7 @@ class MOZ_STACK_CLASS JS_HAZ_ROOTED ModuleValidatorShared {
                      /* ref types */ false, /* gc types */ false,
                      /* huge memory */ false, /* bigint */ false),
         env_(&compilerEnv_, Shareable::False, ModuleKind::AsmJS) {
-    compilerEnv_.computeParameters(/* gc types */ false);
+    compilerEnv_.computeParameters();
     env_.minMemoryLength = RoundUpToNextValidAsmJSHeapLength(0);
   }
 
@@ -1913,8 +1914,7 @@ class MOZ_STACK_CLASS JS_HAZ_ROOTED ModuleValidator
     if (ts.computeErrorMetadata(&metadata, AsVariant(offset))) {
       if (ts.anyCharsAccess().options().throwOnAsmJSValidationFailureOption) {
         ReportCompileErrorLatin1(cx_, std::move(metadata), nullptr,
-                                 JSREPORT_ERROR, JSMSG_USE_ASM_TYPE_FAIL,
-                                 &args);
+                                 JSMSG_USE_ASM_TYPE_FAIL, &args);
       } else {
         // asm.js type failure is indicated by calling one of the fail*
         // functions below.  These functions always return false to
@@ -1925,8 +1925,7 @@ class MOZ_STACK_CLASS JS_HAZ_ROOTED ModuleValidator
         // an exception is set and execution will halt.  Thus it's safe
         // and correct to ignore the return value here.
         Unused << ts.compileWarning(std::move(metadata), nullptr,
-                                    JSREPORT_WARNING, JSMSG_USE_ASM_TYPE_FAIL,
-                                    &args);
+                                    JSMSG_USE_ASM_TYPE_FAIL, &args);
       }
     }
 
@@ -6429,8 +6428,7 @@ static SharedModule CheckModule(JSContext* cx, AsmJSParser<Unit>& parser,
 // Link-time validation
 
 static bool LinkFail(JSContext* cx, const char* str) {
-  JS_ReportErrorFlagsAndNumberASCII(cx, JSREPORT_WARNING, GetErrorMessage,
-                                    nullptr, JSMSG_USE_ASM_LINK_FAIL, str);
+  WarnNumberASCII(cx, JSMSG_USE_ASM_LINK_FAIL, str);
   return false;
 }
 
@@ -6843,10 +6841,10 @@ static bool TryInstantiate(JSContext* cx, CallArgs args, const Module& module,
   HandleValue importVal = args.get(1);
   HandleValue bufferVal = args.get(2);
 
-  // Re-check HasCompilerSupport(cx) since this varies per-thread and
+  // Re-check HasPlatformSupport(cx) since this varies per-thread and
   // 'module' may have been produced on a parser thread.
-  if (!HasCompilerSupport(cx)) {
-    return LinkFail(cx, "no compiler support");
+  if (!HasPlatformSupport(cx)) {
+    return LinkFail(cx, "no platform support");
   }
 
   Rooted<ImportValues> imports(cx);
@@ -7039,7 +7037,7 @@ static bool TypeFailureWarning(frontend::ParserBase& parser, const char* str) {
 // asm.js requires Ion to be available on the current hardware/OS and to be
 // enabled for wasm, since asm.js compilation goes via wasm.
 static bool IsAsmJSCompilerAvailable(JSContext* cx) {
-  return HasCompilerSupport(cx) && IonCanCompile() && cx->options().wasmIon();
+  return HasPlatformSupport(cx) && IonAvailable(cx);
 }
 
 static bool EstablishPreconditions(JSContext* cx,
@@ -7119,13 +7117,6 @@ static bool DoCompileAsmJS(JSContext* cx, AsmJSParser<Unit>& parser,
   // function to be the finished result.
   MOZ_ASSERT(funbox->isInterpreted());
   funbox->clobberFunction(moduleFun);
-
-  // Clear any function creation data. This is important in particular
-  // to avoid publishing a deferred function allocation on top of the
-  // module function set on the funbox above.
-  if (funbox->hasFunctionCreationIndex()) {
-    funbox->clearFunctionCreationData();
-  }
 
   // Success! Write to the console with a "warning" message indicating
   // total compilation time.

@@ -16,7 +16,7 @@ const { TargetList } = require("devtools/shared/resources/target-list");
 loader.lazyRequireGetter(
   this,
   "DevToolsClient",
-  "devtools/shared/client/devtools-client",
+  "devtools/client/devtools-client",
   true
 );
 loader.lazyRequireGetter(
@@ -161,6 +161,10 @@ class ResponsiveUI {
 
     if (this.isBrowserUIEnabled) {
       this.initRDMFrame();
+
+      // Hide the browser content temporarily while things move around to avoid displaying
+      // strange intermediate states.
+      this.hideBrowserUI();
     }
 
     // Watch for tab close and window close so we can clean up RDM synchronously
@@ -235,6 +239,9 @@ class ResponsiveUI {
 
     // Restore the previous UI state.
     await this.restoreUIState();
+
+    // Show the browser UI now that its state is ready.
+    this.showBrowserUI();
 
     if (!this.isBrowserUIEnabled) {
       // Force the newly created Zoom actor to cache its 1.0 zoom level. This
@@ -385,12 +392,16 @@ class ResponsiveUI {
       if (this.isBrowserUIEnabled) {
         await this.responsiveFront.setDocumentInRDMPane(false);
         await this.responsiveFront.setFloatingScrollbars(false);
+
+        // Hide browser UI to avoid displaying weird intermediate states while closing.
+        this.hideBrowserUI();
       }
 
       this.targetList.unwatchTargets(
         [this.targetList.TYPES.FRAME],
         this.onTargetAvailable
       );
+      this.targetList.stopListening();
     }
 
     this.tab.removeEventListener("TabClose", this);
@@ -440,6 +451,9 @@ class ResponsiveUI {
       }
     }
 
+    // Show the browser UI now.
+    this.showBrowserUI();
+
     // Destroy local state
     const swap = this.swap;
     this.browserContainerEl = null;
@@ -484,6 +498,7 @@ class ResponsiveUI {
 
     const targetFront = await this.client.mainRoot.getTab();
     this.targetList = new TargetList(this.client.mainRoot, targetFront);
+    this.targetList.startListening();
     await this.targetList.watchTargets(
       [this.targetList.TYPES.FRAME],
       this.onTargetAvailable
@@ -506,6 +521,20 @@ class ResponsiveUI {
     this.showReloadNotification();
     const pref = RELOAD_CONDITION_PREF_PREFIX + id;
     return Services.prefs.getBoolPref(pref, false);
+  }
+
+  hideBrowserUI() {
+    if (this.isBrowserUIEnabled) {
+      this.tab.linkedBrowser.style.visibility = "hidden";
+      this.resizeHandle.style.visibility = "hidden";
+    }
+  }
+
+  showBrowserUI() {
+    if (this.isBrowserUIEnabled) {
+      this.tab.linkedBrowser.style.removeProperty("visibility");
+      this.resizeHandle.style.removeProperty("visibility");
+    }
   }
 
   handleEvent(event) {
@@ -857,13 +886,6 @@ class ResponsiveUI {
       this.updateUIAlignment(leftAlignmentEnabled);
     }
 
-    const hasDeviceState = await this.hasDeviceState();
-    if (hasDeviceState) {
-      // Return if there is a device state to restore, this will be done when the
-      // device list is loaded after the post-init.
-      return;
-    }
-
     const height = Services.prefs.getIntPref(
       "devtools.responsive.viewport.height",
       0
@@ -1136,7 +1158,16 @@ class ResponsiveUI {
       return;
     }
 
-    const { width, height } = size;
+    // Ensure that width and height are valid.
+    let { width, height } = size;
+    if (!size.width) {
+      width = this.getViewportSize().width;
+    }
+
+    if (!size.height) {
+      height = this.getViewportSize().height;
+    }
+
     this.rdmFrame.contentWindow.setViewportSize({ width, height });
     this.updateViewportSize(width, height);
   }
@@ -1177,9 +1208,11 @@ class ResponsiveUI {
     return this.browserWindow;
   }
 
-  async onTargetAvailable({ targetFront }) {
-    this.responsiveFront = await targetFront.getFront("responsive");
-    await this.restoreActorState();
+  async onTargetAvailable({ isTopLevel, targetFront }) {
+    if (isTopLevel) {
+      this.responsiveFront = await targetFront.getFront("responsive");
+      await this.restoreActorState();
+    }
   }
 
   async onRemotenessChange(event) {

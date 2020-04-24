@@ -93,6 +93,7 @@ either Raptor or browsertime."""
         results_handler_class=RaptorResultsHandler,
         no_conditioned_profile=False,
         device_name=None,
+        disable_perf_tuning=False,
         extra_prefs={},
         **kwargs
     ):
@@ -123,6 +124,7 @@ either Raptor or browsertime."""
             "no_conditioned_profile": no_conditioned_profile,
             "device_name": device_name,
             "enable_fission": extra_prefs.get("fission.autostart", False),
+            "disable_perf_tuning": disable_perf_tuning,
             "extra_prefs": extra_prefs,
         }
 
@@ -248,7 +250,7 @@ either Raptor or browsertime."""
         return self.conditioned_profile_dir
 
     def build_browser_profile(self):
-        if self.no_condprof:
+        if self.no_condprof or self.config['app'] in ['chrome', 'chromium', 'chrome-m']:
             self.profile = create_profile(self.profile_class)
         else:
             self.get_conditioned_profile()
@@ -505,6 +507,28 @@ class PerftestAndroid(Perftest):
                     "Failed to get android browser meta data through mozversion: %s-%s"
                     % (e.__class__.__name__, e)
                 )
+
+        if self.config["app"] == "chrome-m":
+            # We absolutely need to determine the chrome
+            # version here so that we can select the correct
+            # chromedriver for browsertime
+            from mozdevice import ADBDevice
+            device = ADBDevice(verbose=True)
+            binary = "com.android.chrome"
+
+            pkg_info = device.shell_output("dumpsys package %s" % binary)
+            version_matcher = re.compile(r".*versionName=([\d.]+)")
+            for line in pkg_info.split("\n"):
+                match = version_matcher.match(line)
+                if match:
+                    browser_version = match.group(1)
+                    browser_name = self.config["app"]
+                    # First one found is the non-system
+                    # or latest version.
+                    break
+
+            if not browser_version:
+                raise Exception("Could not determine version for Google Chrome for Android")
 
         if not browser_name:
             LOG.warning("Could not find a browser name")

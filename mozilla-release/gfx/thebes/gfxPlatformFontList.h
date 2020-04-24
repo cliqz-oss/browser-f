@@ -91,10 +91,8 @@ class ShmemCharMapHashEntry final : public PLDHashEntryHdr {
    */
   explicit ShmemCharMapHashEntry(const gfxSparseBitSet* aCharMap);
 
-  ShmemCharMapHashEntry(const ShmemCharMapHashEntry& aOther)
-      : mList(aOther.mList), mCharMap(aOther.mCharMap), mHash(aOther.mHash) {}
-
-  ~ShmemCharMapHashEntry() = default;
+  ShmemCharMapHashEntry(ShmemCharMapHashEntry&&) = default;
+  ShmemCharMapHashEntry& operator=(ShmemCharMapHashEntry&&) = default;
 
   /**
    * Return a shared-memory Pointer that refers to the wrapped SharedBitSet.
@@ -210,7 +208,8 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
 
   gfxFontEntry* SystemFindFontForChar(uint32_t aCh, uint32_t aNextCh,
                                       Script aRunScript,
-                                      const gfxFontStyle* aStyle);
+                                      const gfxFontStyle* aStyle,
+                                      FontVisibility* aVisibility);
 
   // Flags to control optional behaviors in FindAndAddFamilies. The sense
   // of the bit flags have been chosen such that the default parameter of
@@ -273,7 +272,7 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   void SetupFamilyCharMap(uint32_t aGeneration,
                           const mozilla::fontlist::Pointer& aFamilyPtr);
 
-  MOZ_MUST_USE bool InitializeFamily(mozilla::fontlist::Family* aFamily);
+  [[nodiscard]] bool InitializeFamily(mozilla::fontlist::Family* aFamily);
   void InitializeFamily(uint32_t aGeneration, uint32_t aFamilyIndex);
 
   // name lookup table methods
@@ -439,7 +438,8 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   static void FontWhitelistPrefChanged(const char* aPref, void* aClosure);
 
   bool AddWithLegacyFamilyName(const nsACString& aLegacyName,
-                               gfxFontEntry* aFontEntry);
+                               gfxFontEntry* aFontEntry,
+                               FontVisibility aVisibility);
 
   static const char* GetGenericName(
       mozilla::StyleGenericFontFamily aGenericType);
@@ -459,6 +459,9 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
  protected:
   friend class mozilla::fontlist::FontList;
   friend class InitOtherFamilyNamesForStylo;
+
+  static bool FamilyInList(const nsACString& aName, const char* aList[],
+                           size_t aCount);
 
   class InitOtherFamilyNamesRunnable : public mozilla::CancelableRunnable {
    public:
@@ -700,7 +703,8 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
 
   // Create a new gfxFontFamily of the appropriate subclass for the platform,
   // used when AddWithLegacyFamilyName needs to create a new family.
-  virtual gfxFontFamily* CreateFontFamily(const nsACString& aName) const = 0;
+  virtual gfxFontFamily* CreateFontFamily(const nsACString& aName,
+                                          FontVisibility aVisibility) const = 0;
 
   /**
    * For the post-startup font info loader task.

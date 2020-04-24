@@ -65,17 +65,16 @@ ConvertMediaControlKeysTestEventToMediaControlKeysEvent(
   }
 }
 
-inline const char* ToPlaybackStateEventStr(PlaybackState aState) {
+inline MediaSessionPlaybackTestState ConvertToMediaSessionPlaybackTestState(
+    MediaSessionPlaybackState aState) {
   switch (aState) {
-    case PlaybackState::ePlaying:
-      return "Playing";
-    case PlaybackState::ePaused:
-      return "Paused";
-    case PlaybackState::eStopped:
-      return "Stopped";
+    case MediaSessionPlaybackState::Playing:
+      return MediaSessionPlaybackTestState::Playing;
+    case MediaSessionPlaybackState::Paused:
+      return MediaSessionPlaybackTestState::Paused;
     default:
-      MOZ_ASSERT_UNREACHABLE("Invalid playback state.");
-      return "Unknown";
+      MOZ_ASSERT(aState == MediaSessionPlaybackState::None);
+      return MediaSessionPlaybackTestState::Stopped;
   }
 }
 

@@ -121,7 +121,6 @@ impl<'a> RawtestHarness<'a> {
             spatial_id: space_and_clip.spatial_id,
             flags: PrimitiveFlags::default(),
             hit_info: None,
-            item_key: None,
         }
     }
 
@@ -137,7 +136,6 @@ impl<'a> RawtestHarness<'a> {
             spatial_id,
             flags: PrimitiveFlags::default(),
             hit_info: None,
-            item_key: None,
         }
     }
 
@@ -327,7 +325,6 @@ impl<'a> RawtestHarness<'a> {
             spatial_id: root_space_and_clip.spatial_id,
             flags: PrimitiveFlags::default(),
             hit_info: None,
-            item_key: None,
         };
 
         // setup some malicious image size parameters
@@ -416,7 +413,6 @@ impl<'a> RawtestHarness<'a> {
             spatial_id: root_space_and_clip.spatial_id,
             flags: PrimitiveFlags::default(),
             hit_info: None,
-            item_key: None,
         };
 
         builder.push_repeating_image(
@@ -514,7 +510,6 @@ impl<'a> RawtestHarness<'a> {
             spatial_id: root_space_and_clip.spatial_id,
             flags: PrimitiveFlags::default(),
             hit_info: None,
-            item_key: None,
         };
 
         builder.push_repeating_image(
@@ -562,7 +557,6 @@ impl<'a> RawtestHarness<'a> {
             spatial_id: root_space_and_clip.spatial_id,
             flags: PrimitiveFlags::default(),
             hit_info: None,
-            item_key: None,
         };
 
         builder.push_repeating_image(
@@ -612,7 +606,6 @@ impl<'a> RawtestHarness<'a> {
             spatial_id: root_space_and_clip.spatial_id,
             flags: PrimitiveFlags::default(),
             hit_info: None,
-            item_key: None,
         };
 
         builder.push_repeating_image(
@@ -1094,6 +1087,7 @@ impl<'a> RawtestHarness<'a> {
                     rect(100., 100., 100., 100.),
                     clip_id,
                     spatial_id),
+                rect(100., 100., 100., 100.),
                 ColorF::new(0.0, 0.0, 1.0, 1.0),
             );
 
@@ -1114,6 +1108,7 @@ impl<'a> RawtestHarness<'a> {
                         rect(110., 110., 50., 50.),
                         clip_id,
                         spatial_id),
+                    rect(110., 110., 50., 50.),
                     ColorF::new(0.0, 1.0, 0.0, 1.0),
                 );
                 builder.push_shadow(
@@ -1131,7 +1126,6 @@ impl<'a> RawtestHarness<'a> {
                     spatial_id,
                     flags: PrimitiveFlags::default(),
                     hit_info: None,
-                    item_key: None,
                 };
                 builder.push_line(
                     &info,
@@ -1156,6 +1150,7 @@ impl<'a> RawtestHarness<'a> {
                         rect(150., 150., 100., 100.),
                         clip_id,
                         spatial_id),
+                    rect(150., 150., 100., 100.),
                     ColorF::new(0.0, 0.0, 1.0, 1.0),
                 );
                 builder.clear_save();
@@ -1321,6 +1316,7 @@ impl<'a> RawtestHarness<'a> {
                                                             LayoutSize::new(100.0, 100.0)));
         builder.push_rect(
             &info,
+            info.clip_rect,
             ColorF::new(0.0, 1.0, 0.0, 1.0),
         );
 
@@ -1351,7 +1347,7 @@ impl<'a> RawtestHarness<'a> {
         // Add a rectangle that covers the entire scene.
         let mut info = self.make_common_properties(LayoutRect::new(LayoutPoint::zero(), layout_size));
         info.hit_info = Some((0, 1));
-        builder.push_rect(&info, ColorF::new(1.0, 1.0, 1.0, 1.0));
+        builder.push_rect(&info, info.clip_rect, ColorF::new(1.0, 1.0, 1.0, 1.0));
 
         // Add a simple 100x100 rectangle at 100,0.
         let mut info = self.make_common_properties(LayoutRect::new(
@@ -1359,7 +1355,7 @@ impl<'a> RawtestHarness<'a> {
             LayoutSize::new(100., 100.)
         ));
         info.hit_info = Some((0, 2));
-        builder.push_rect(&info, ColorF::new(1.0, 1.0, 1.0, 1.0));
+        builder.push_rect(&info, info.clip_rect, ColorF::new(1.0, 1.0, 1.0, 1.0));
 
         let space_and_clip = SpaceAndClipInfo::root_scroll(self.wrench.root_pipeline_id);
 
@@ -1382,12 +1378,12 @@ impl<'a> RawtestHarness<'a> {
         builder.push_rect(
             &CommonItemProperties {
                 hit_info: Some((0, 4)),
-                item_key: None,
                 clip_rect: rect,
                 clip_id: temp_clip_id,
                 spatial_id: space_and_clip.spatial_id,
                 flags: PrimitiveFlags::default(),
             },
+            rect,
             ColorF::new(1.0, 1.0, 1.0, 1.0),
         );
 
@@ -1403,12 +1399,12 @@ impl<'a> RawtestHarness<'a> {
         builder.push_rect(
             &CommonItemProperties {
                 hit_info: Some((0, 5)),
-                item_key: None,
                 clip_rect: rect,
                 clip_id: ClipId::ClipChain(clip_chain_id),
                 spatial_id: space_and_clip.spatial_id,
                 flags: PrimitiveFlags::default(),
             },
+            rect,
             ColorF::new(1.0, 1.0, 1.0, 1.0),
         );
 

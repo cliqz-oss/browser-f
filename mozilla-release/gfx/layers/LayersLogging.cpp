@@ -35,10 +35,19 @@ void AppendToString(std::stringstream& aStream, ScrollableLayerGuid::ViewID n,
   aStream << sfx;
 }
 
-void AppendToString(std::stringstream& aStream, const Color& c, const char* pfx,
-                    const char* sfx) {
+void AppendToString(std::stringstream& aStream, const sRGBColor& c,
+                    const char* pfx, const char* sfx) {
   aStream << pfx;
   aStream << nsPrintfCString("rgba(%d, %d, %d, %f)", uint8_t(c.r * 255.f),
+                             uint8_t(c.g * 255.f), uint8_t(c.b * 255.f), c.a)
+                 .get();
+  aStream << sfx;
+}
+
+void AppendToString(std::stringstream& aStream, const DeviceColor& c,
+                    const char* pfx, const char* sfx) {
+  aStream << pfx;
+  aStream << nsPrintfCString("dev_rgba(%d, %d, %d, %f)", uint8_t(c.r * 255.f),
                              uint8_t(c.g * 255.f), uint8_t(c.b * 255.f), c.a)
                  .get();
   aStream << sfx;
@@ -256,13 +265,6 @@ void AppendToString(std::stringstream& aStream, const ScrollableLayerGuid& s,
                              uint64_t(s.mLayersId), s.mPresShellId, s.mScrollId)
                  .get()
           << sfx;
-}
-
-void AppendToString(std::stringstream& aStream, const SLGuidAndRenderRoot& s,
-                    const char* pfx, const char* sfx) {
-  aStream << pfx << "{ ";
-  AppendToString(aStream, s.mScrollableLayerGuid, "s=");
-  aStream << nsPrintfCString(", r=%d }", (int)s.mRenderRoot).get() << sfx;
 }
 
 void AppendToString(std::stringstream& aStream, const ZoomConstraints& z,

@@ -604,9 +604,9 @@ class WebGLVertexArrayJS final : public nsWrapperCache, public webgl::ObjectJS {
 
 ////////////////////////////////////
 
-typedef dom::Float32ArrayOrUnrestrictedFloatSequence Float32ListU;
-typedef dom::Int32ArrayOrLongSequence Int32ListU;
-typedef dom::Uint32ArrayOrUnsignedLongSequence Uint32ListU;
+typedef dom::MaybeSharedFloat32ArrayOrUnrestrictedFloatSequence Float32ListU;
+typedef dom::MaybeSharedInt32ArrayOrLongSequence Int32ListU;
+typedef dom::MaybeSharedUint32ArrayOrUnsignedLongSequence Uint32ListU;
 
 inline Range<const float> MakeRange(const Float32ListU& list) {
   if (list.IsFloat32Array()) return MakeRangeAbv(list.GetAsFloat32Array());
@@ -826,10 +826,15 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
 #ifdef __clang__
 #  pragma clang diagnostic push
 #  pragma clang diagnostic ignored "-Wformat-security"
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wformat-security"
 #endif
     text.AppendPrintf(format, args...);
 #ifdef __clang__
 #  pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic pop
 #endif
 
     EnqueueErrorImpl(error, text);

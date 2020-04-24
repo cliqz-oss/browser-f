@@ -21,7 +21,7 @@
 
 #include "jsapi.h"  // CompletionKind
 
-#include "frontend/AbstractScope.h"
+#include "frontend/AbstractScopePtr.h"
 #include "frontend/BCEParserHandle.h"            // BCEParserHandle
 #include "frontend/BytecodeControlStructures.h"  // NestableControl
 #include "frontend/BytecodeOffset.h"             // BytecodeOffset
@@ -33,28 +33,26 @@
 #include "frontend/JumpList.h"             // JumpList, JumpTarget
 #include "frontend/NameAnalysisTypes.h"    // NameLocation
 #include "frontend/NameCollections.h"      // AtomIndexMap
-#include "frontend/ParseNode.h"      // ParseNode and subclasses, ObjectBox
-#include "frontend/Parser.h"         // Parser, PropListType
-#include "frontend/SharedContext.h"  // SharedContext
-#include "frontend/SourceNotes.h"    // SrcNoteType
-#include "frontend/TokenStream.h"    // TokenPos
-#include "frontend/ValueUsage.h"     // ValueUsage
-#include "js/RootingAPI.h"           // JS::Rooted, JS::Handle
-#include "js/TypeDecls.h"            // jsbytecode
-#include "vm/BytecodeUtil.h"         // JSOp
-#include "vm/Instrumentation.h"      // InstrumentationKind
-#include "vm/Interpreter.h"          // CheckIsObjectKind, CheckIsCallableKind
-#include "vm/Iteration.h"            // IteratorKind
-#include "vm/JSFunction.h"           // JSFunction, FunctionPrefixKind
-#include "vm/JSScript.h"  // JSScript, BaseScript, FieldInitializers, JSTryNoteKind
-#include "vm/Runtime.h"     // ReportOutOfMemory
-#include "vm/StringType.h"  // JSAtom
-
-namespace js {
-
-enum class GeneratorResumeKind;
-
-}  // namespace js
+#include "frontend/ParseNode.h"            // ParseNode and subclasses
+#include "frontend/Parser.h"               // Parser, PropListType
+#include "frontend/SharedContext.h"        // SharedContext
+#include "frontend/SourceNotes.h"          // SrcNoteType
+#include "frontend/TokenStream.h"          // TokenPos
+#include "frontend/ValueUsage.h"           // ValueUsage
+#include "js/RootingAPI.h"                 // JS::Rooted, JS::Handle
+#include "js/TypeDecls.h"                  // jsbytecode
+#include "vm/BytecodeUtil.h"               // JSOp
+#include "vm/CheckIsCallableKind.h"        // CheckIsCallableKind
+#include "vm/CheckIsObjectKind.h"          // CheckIsObjectKind
+#include "vm/FunctionPrefixKind.h"         // FunctionPrefixKind
+#include "vm/GeneratorResumeKind.h"        // GeneratorResumeKind
+#include "vm/Instrumentation.h"            // InstrumentationKind
+#include "vm/Iteration.h"                  // IteratorKind
+#include "vm/JSFunction.h"                 // JSFunction
+#include "vm/JSScript.h"     // JSScript, BaseScript, FieldInitializers
+#include "vm/Runtime.h"      // ReportOutOfMemory
+#include "vm/StringType.h"   // JSAtom
+#include "vm/TryNoteKind.h"  // TryNoteKind
 
 namespace js {
 namespace frontend {
@@ -69,6 +67,8 @@ class PropOpEmitter;
 class OptionalEmitter;
 class TDZCheckCache;
 class TryEmitter;
+
+enum class ValueIsOnStack { Yes, No };
 
 struct MOZ_STACK_CLASS BytecodeEmitter {
   // Context shared between parsing and bytecode generation.
@@ -261,11 +261,11 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
     varEmitterScope = emitterScope;
   }
 
-  AbstractScope outermostScope() const {
+  AbstractScopePtr outermostScope() const {
     return perScriptData().gcThingList().firstScope();
   }
-  AbstractScope innermostScope() const;
-  AbstractScope bodyScope() const {
+  AbstractScopePtr innermostScope() const;
+  AbstractScopePtr bodyScope() const {
     return perScriptData().gcThingList().getScope(bodyScopeIndex);
   }
 
@@ -324,9 +324,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   void reportError(ParseNode* pn, unsigned errorNumber, ...);
   void reportError(const mozilla::Maybe<uint32_t>& maybeOffset,
                    unsigned errorNumber, ...);
-  bool reportExtraWarning(ParseNode* pn, unsigned errorNumber, ...);
-  bool reportExtraWarning(const mozilla::Maybe<uint32_t>& maybeOffset,
-                          unsigned errorNumber, ...);
 
   // If pn contains a useful expression, return true with *answer set to true.
   // If pn contains a useless expression, return true with *answer set to
@@ -346,20 +343,26 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
 
   // Add TryNote to the tryNoteList array. The start and end offset are
   // relative to current section.
-  MOZ_MUST_USE bool addTryNote(JSTryNoteKind kind, uint32_t stackDepth,
+  MOZ_MUST_USE bool addTryNote(TryNoteKind kind, uint32_t stackDepth,
                                BytecodeOffset start, BytecodeOffset end);
+
+  // Indicates the emitter should not generate location or debugger source
+  // notes. This lets us avoid generating notes for non-user code.
+  bool skipLocationSrcNotes() const {
+    return inPrologue() || (emitterMode == EmitterMode::SelfHosting);
+  }
+  bool skipBreakpointSrcNotes() const {
+    return inPrologue() || (emitterMode == EmitterMode::SelfHosting);
+  }
 
   // Append a new source note of the given type (and therefore size) to the
   // notes dynamic array, updating noteCount. Return the new note's index
   // within the array pointed at by current->notes as outparam.
   MOZ_MUST_USE bool newSrcNote(SrcNoteType type, unsigned* indexp = nullptr);
-  MOZ_MUST_USE bool newSrcNote2(SrcNoteType type, ptrdiff_t offset,
+  MOZ_MUST_USE bool newSrcNote2(SrcNoteType type, ptrdiff_t operand,
                                 unsigned* indexp = nullptr);
-  MOZ_MUST_USE bool newSrcNote3(SrcNoteType type, ptrdiff_t offset1,
-                                ptrdiff_t offset2, unsigned* indexp = nullptr);
 
-  MOZ_MUST_USE bool setSrcNoteOffset(unsigned index, unsigned which,
-                                     BytecodeOffsetDiff offset);
+  MOZ_MUST_USE bool newSrcNoteOperand(ptrdiff_t operand);
 
   // Control whether emitTree emits a line number note.
   enum EmitLineNumberNote { EMIT_LINENOTE, SUPPRESS_LINENOTE };
@@ -551,7 +554,8 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   MOZ_MUST_USE bool emitGetName(NameNode* name);
 
   MOZ_MUST_USE bool emitTDZCheckIfNeeded(HandleAtom name,
-                                         const NameLocation& loc);
+                                         const NameLocation& loc,
+                                         ValueIsOnStack isOnStack);
 
   MOZ_MUST_USE bool emitNameIncDec(UnaryNode* incDec);
 
@@ -851,6 +855,9 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
     return MOZ_LIKELY(!instrumentationKinds) ||
            emitInstrumentationForOpcodeSlow(op, atomIndex);
   }
+
+  MOZ_MUST_USE js::UniquePtr<ImmutableScriptData> createImmutableScriptData(
+      JSContext* cx);
 
  private:
   MOZ_MUST_USE bool emitInstrumentationSlow(

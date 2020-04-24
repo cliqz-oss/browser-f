@@ -17,7 +17,7 @@
 #include "frontend/ParseContext.h"         // BindingIter
 #include "frontend/PropOpEmitter.h"        // PropOpEmitter
 #include "frontend/SharedContext.h"        // SharedContext
-#include "vm/AsyncFunction.h"              // AsyncFunctionResolveKind
+#include "vm/AsyncFunctionResolveKind.h"   // AsyncFunctionResolveKind
 #include "vm/JSScript.h"                   // JSScript
 #include "vm/Opcodes.h"                    // JSOp
 #include "vm/Scope.h"                      // BindingKind
@@ -735,12 +735,15 @@ bool FunctionScriptEmitter::initScript(
     const FieldInitializers& fieldInitializers) {
   MOZ_ASSERT(state_ == State::EndBody);
 
-  uint32_t nslots;
-  if (!bce_->getNslots(&nslots)) {
+  js::UniquePtr<ImmutableScriptData> immutableScriptData =
+      bce_->createImmutableScriptData(bce_->cx);
+  if (!immutableScriptData) {
     return false;
   }
-  BCEScriptStencil stencil(*bce_, nslots);
-  if (!JSScript::fullyInitFromStencil(bce_->cx, bce_->script, stencil)) {
+
+  BCEScriptStencil stencil(*bce_, std::move(immutableScriptData));
+  if (!JSScript::fullyInitFromStencil(bce_->cx, bce_->compilationInfo,
+                                      bce_->script, stencil)) {
     return false;
   }
 

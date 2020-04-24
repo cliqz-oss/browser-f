@@ -40,6 +40,7 @@
 #include "mozilla/dom/RemoteWorkerService.h"
 #include "mozilla/dom/TimeoutHandler.h"
 #include "mozilla/dom/WorkerBinding.h"
+#include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/StorageAccess.h"
 #include "mozilla/ThreadEventQueue.h"
 #include "mozilla/ThrottledEventQueue.h"
@@ -124,23 +125,23 @@ const nsIID kDEBUGWorkerEventTargetIID = {
 #endif
 
 template <class T>
-class AutoPtrComparator {
-  typedef nsAutoPtr<T> A;
+class UniquePtrComparator {
+  typedef UniquePtr<T> A;
   typedef T* B;
 
  public:
-  bool Equals(const A& a, const B& b) const {
+  bool Equals(const A& a, const A& b) const {
     return a && b ? *a == *b : !a && !b ? true : false;
   }
-  bool LessThan(const A& a, const B& b) const {
+  bool LessThan(const A& a, const A& b) const {
     return a && b ? *a < *b : b ? true : false;
   }
 };
 
 template <class T>
-inline AutoPtrComparator<T> GetAutoPtrComparator(
-    const nsTArray<nsAutoPtr<T>>&) {
-  return AutoPtrComparator<T>();
+inline UniquePtrComparator<T> GetUniquePtrComparator(
+    const nsTArray<UniquePtr<T>>&) {
+  return UniquePtrComparator<T>();
 }
 
 // This class is used to wrap any runnables that the worker receives via the
@@ -230,6 +231,9 @@ class WorkerFinishedRunnable final : public WorkerControlRunnable {
 
   virtual bool WorkerRun(JSContext* aCx,
                          WorkerPrivate* aWorkerPrivate) override {
+    // This may block on the main thread.
+    AutoYieldJSThreadExecution yield;
+
     if (!mFinishedWorker->ProxyReleaseMainThreadObjects()) {
       NS_WARNING("Failed to dispatch, going to leak!");
     }
@@ -334,13 +338,6 @@ class CompileScriptRunnable final : public WorkerDebuggeeRunnable {
     if (NS_WARN_IF(!aWorkerPrivate->EnsureCSPEventListener())) {
       return false;
     }
-
-    // PerformanceStorage & PerformanceCounter both need to be initialized
-    // on the worker thread before being used on main-thread.
-    // Let's be sure that it is created before any
-    // content loading.
-    aWorkerPrivate->EnsurePerformanceStorage();
-    aWorkerPrivate->EnsurePerformanceCounter();
 
     ErrorResult rv;
     workerinternals::LoadMainScript(aWorkerPrivate, std::move(mOriginStack),
@@ -1306,8 +1303,8 @@ void WorkerPrivate::SetCSP(nsIContentSecurityPolicy* aCSP) {
   aCSP->EnsureEventTarget(mMainThreadEventTarget);
 
   mLoadInfo.mCSP = aCSP;
-  mLoadInfo.mCSPInfo = new CSPInfo();
-  nsresult rv = CSPToCSPInfo(mLoadInfo.mCSP, mLoadInfo.mCSPInfo);
+  mLoadInfo.mCSPInfo = MakeUnique<CSPInfo>();
+  nsresult rv = CSPToCSPInfo(mLoadInfo.mCSP, mLoadInfo.mCSPInfo.get());
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -1368,8 +1365,8 @@ nsresult WorkerPrivate::SetCSPFromHeaderValues(
   mLoadInfo.mEvalAllowed = evalAllowed;
   mLoadInfo.mReportCSPViolations = reportEvalViolations;
 
-  mLoadInfo.mCSPInfo = new CSPInfo();
-  rv = CSPToCSPInfo(csp, mLoadInfo.mCSPInfo);
+  mLoadInfo.mCSPInfo = MakeUnique<CSPInfo>();
+  rv = CSPToCSPInfo(csp, mLoadInfo.mCSPInfo.get());
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -2105,7 +2102,8 @@ WorkerPrivate::WorkerThreadAccessible::WorkerThreadAccessible(
       mRunningExpiredTimeouts(false),
       mPeriodicGCTimerRunning(false),
       mIdleGCTimerRunning(false),
-      mOnLine(aParent ? aParent->OnLine() : !NS_IsOffline()) {}
+      mOnLine(aParent ? aParent->OnLine() : !NS_IsOffline()),
+      mJSThreadExecutionGranted(false) {}
 
 namespace {
 
@@ -2762,6 +2760,8 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
   MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
   MOZ_ASSERT(mThread);
 
+  MOZ_RELEASE_ASSERT(!GetExecutionManager());
+
   {
     MutexAutoLock lock(mMutex);
     mJSContext = aCx;
@@ -3112,6 +3112,49 @@ const ClientState WorkerPrivate::GetClientState() const {
   return ClientState();
 }
 
+bool WorkerPrivate::GetExecutionGranted() const {
+  MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+  return data->mJSThreadExecutionGranted;
+}
+
+void WorkerPrivate::SetExecutionGranted(bool aGranted) {
+  MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+  data->mJSThreadExecutionGranted = aGranted;
+}
+
+void WorkerPrivate::ScheduleTimeSliceExpiration(uint32_t aDelay) {
+  MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+
+  if (!data->mTSTimer) {
+    data->mTSTimer = NS_NewTimer();
+    MOZ_ALWAYS_SUCCEEDS(data->mTSTimer->SetTarget(mWorkerControlEventTarget));
+  }
+
+  // Whenever an event is scheduled on the WorkerControlEventTarget an
+  // interrupt is automatically requested which causes us to yield JS execution
+  // and the next JS execution in the queue to execute.
+  // This allows for simple code reuse of the existing interrupt callback code
+  // used for control events.
+  MOZ_ALWAYS_SUCCEEDS(data->mTSTimer->InitWithNamedFuncCallback(
+      [](nsITimer* Timer, void* aClosure) { return; }, nullptr, aDelay,
+      nsITimer::TYPE_ONE_SHOT, "TimeSliceExpirationTimer"));
+}
+
+void WorkerPrivate::CancelTimeSliceExpiration() {
+  MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+  MOZ_ALWAYS_SUCCEEDS(data->mTSTimer->Cancel());
+}
+
+JSExecutionManager* WorkerPrivate::GetExecutionManager() const {
+  MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+  return data->mExecutionManager.get();
+}
+
+void WorkerPrivate::SetExecutionManager(JSExecutionManager* aManager) {
+  MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+  data->mExecutionManager = aManager;
+}
+
 const Maybe<ServiceWorkerDescriptor> WorkerPrivate::GetController() {
   MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
   {
@@ -3245,6 +3288,8 @@ void WorkerPrivate::ShutdownGCTimers() {
 
 bool WorkerPrivate::InterruptCallback(JSContext* aCx) {
   MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+
+  AutoYieldJSThreadExecution yield;
 
   // If we are here it's because a WorkerControlRunnable has been dispatched.
   // The runnable could be processed here or it could have already been
@@ -3434,6 +3479,8 @@ WorkerPrivate::ProcessAllControlRunnablesLocked() {
   AssertIsOnWorkerThread();
   mMutex.AssertCurrentThreadOwns();
 
+  AutoYieldJSThreadExecution yield;
+
   auto result = ProcessAllControlRunnablesResult::Nothing;
 
   for (;;) {
@@ -3462,9 +3509,21 @@ WorkerPrivate::ProcessAllControlRunnablesLocked() {
 void WorkerPrivate::ClearMainEventQueue(WorkerRanOrNot aRanOrNot) {
   AssertIsOnWorkerThread();
 
-  MOZ_ASSERT(mSyncLoopStack.IsEmpty());
+  MOZ_ASSERT((mPostSyncLoopOperations & ePendingEventQueueClearing)
+                 ? (mSyncLoopStack.Length() == 1)
+                 : mSyncLoopStack.IsEmpty());
   MOZ_ASSERT(!mCancelAllPendingRunnables);
+
   mCancelAllPendingRunnables = true;
+  WorkerGlobalScope* globalScope = GlobalScope();
+  if (globalScope) {
+    // It's appropriate to disconnect event targets at the point that it's no
+    // longer possible for new tasks to be dispatched at the global, and this is
+    // that point.
+    globalScope->DisconnectEventTargetObjects();
+
+    globalScope->WorkerPrivateSaysForbidScript();
+  }
 
   if (WorkerNeverRan == aRanOrNot) {
     for (uint32_t count = mPreStartRunnables.Length(), index = 0; index < count;
@@ -3482,6 +3541,9 @@ void WorkerPrivate::ClearMainEventQueue(WorkerRanOrNot aRanOrNot) {
     ReportUseCounters();
   }
 
+  if (globalScope) {
+    globalScope->WorkerPrivateSaysAllowScript();
+  }
   MOZ_ASSERT(mCancelAllPendingRunnables);
   mCancelAllPendingRunnables = false;
 }
@@ -3498,6 +3560,8 @@ void WorkerPrivate::ClearDebuggerEventQueue() {
 bool WorkerPrivate::FreezeInternal() {
   MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
   NS_ASSERTION(!data->mFrozen, "Already frozen!");
+
+  AutoYieldJSThreadExecution yield;
 
   if (data->mClientSource) {
     data->mClientSource->Freeze();
@@ -3548,7 +3612,8 @@ void WorkerPrivate::PropagateFirstPartyStorageAccessGrantedInternal() {
 void WorkerPrivate::TraverseTimeouts(nsCycleCollectionTraversalCallback& cb) {
   MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
   for (uint32_t i = 0; i < data->mTimeouts.Length(); ++i) {
-    TimeoutInfo* tmp = data->mTimeouts[i];
+    // TODO(erahm): No idea what's going on here.
+    TimeoutInfo* tmp = data->mTimeouts[i].get();
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mHandler)
   }
 }
@@ -3765,7 +3830,9 @@ bool WorkerPrivate::RunCurrentSyncLoop() {
   // loop.
   uint32_t currentLoopIndex = mSyncLoopStack.Length() - 1;
 
-  SyncLoopInfo* loopInfo = mSyncLoopStack[currentLoopIndex];
+  SyncLoopInfo* loopInfo = mSyncLoopStack[currentLoopIndex].get();
+
+  AutoYieldJSThreadExecution yield;
 
   MOZ_ASSERT(loopInfo);
   MOZ_ASSERT(!loopInfo->mHasRun);
@@ -3835,7 +3902,7 @@ bool WorkerPrivate::RunCurrentSyncLoop() {
   }
 
   // Make sure that the stack didn't change underneath us.
-  MOZ_ASSERT(mSyncLoopStack[currentLoopIndex] == loopInfo);
+  MOZ_ASSERT(mSyncLoopStack[currentLoopIndex].get() == loopInfo);
 
   return DestroySyncLoop(currentLoopIndex);
 }
@@ -3844,13 +3911,32 @@ bool WorkerPrivate::DestroySyncLoop(uint32_t aLoopIndex) {
   MOZ_ASSERT(!mSyncLoopStack.IsEmpty());
   MOZ_ASSERT(mSyncLoopStack.Length() - 1 == aLoopIndex);
 
+  AutoYieldJSThreadExecution yield;
+
   // We're about to delete the loop, stash its event target and result.
-  SyncLoopInfo* loopInfo = mSyncLoopStack[aLoopIndex];
+  const auto& loopInfo = mSyncLoopStack[aLoopIndex];
   nsIEventTarget* nestedEventTarget =
       loopInfo->mEventTarget->GetWeakNestedEventTarget();
   MOZ_ASSERT(nestedEventTarget);
 
   bool result = loopInfo->mResult;
+
+  auto queue =
+      static_cast<ThreadEventQueue<EventQueue>*>(mThread->EventQueue());
+  queue->PopEventQueue(nestedEventTarget);
+
+  // Are we making a 1 -> 0 transition here?
+  if (mSyncLoopStack.Length() == 1) {
+    if ((mPostSyncLoopOperations & ePendingEventQueueClearing)) {
+      ClearMainEventQueue(WorkerRan);
+    }
+
+    if ((mPostSyncLoopOperations & eDispatchCancelingRunnable)) {
+      DispatchCancelingRunnable();
+    }
+
+    mPostSyncLoopOperations = 0;
+  }
 
   {
     // Modifications must be protected by mMutex in DEBUG builds, see comment
@@ -3861,22 +3947,6 @@ bool WorkerPrivate::DestroySyncLoop(uint32_t aLoopIndex) {
 
     // This will delete |loopInfo|!
     mSyncLoopStack.RemoveElementAt(aLoopIndex);
-  }
-
-  auto queue =
-      static_cast<ThreadEventQueue<EventQueue>*>(mThread->EventQueue());
-  queue->PopEventQueue(nestedEventTarget);
-
-  if (mSyncLoopStack.IsEmpty()) {
-    if ((mPostSyncLoopOperations & ePendingEventQueueClearing)) {
-      ClearMainEventQueue(WorkerRan);
-    }
-
-    if ((mPostSyncLoopOperations & eDispatchCancelingRunnable)) {
-      DispatchCancelingRunnable();
-    }
-
-    mPostSyncLoopOperations = 0;
   }
 
   return result;
@@ -3973,7 +4043,7 @@ void WorkerPrivate::StopSyncLoop(nsIEventTarget* aSyncLoopTarget,
   MOZ_ASSERT(!mSyncLoopStack.IsEmpty());
 
   for (uint32_t index = mSyncLoopStack.Length(); index > 0; index--) {
-    nsAutoPtr<SyncLoopInfo>& loopInfo = mSyncLoopStack[index - 1];
+    const auto& loopInfo = mSyncLoopStack[index - 1];
     MOZ_ASSERT(loopInfo);
     MOZ_ASSERT(loopInfo->mEventTarget);
 
@@ -4012,7 +4082,7 @@ void WorkerPrivate::AssertValidSyncLoop(nsIEventTarget* aSyncLoopTarget) {
     MutexAutoLock lock(mMutex);
 
     for (uint32_t index = 0; index < mSyncLoopStack.Length(); index++) {
-      nsAutoPtr<SyncLoopInfo>& loopInfo = mSyncLoopStack[index];
+      const auto& loopInfo = mSyncLoopStack[index];
       MOZ_ASSERT(loopInfo);
       MOZ_ASSERT(loopInfo->mEventTarget);
 
@@ -4096,6 +4166,7 @@ void WorkerPrivate::EnterDebuggerEventLoop() {
   MOZ_ASSERT(cx);
 
   AutoPushEventLoopGlobal eventLoopGlobal(this, cx);
+  AutoYieldJSThreadExecution yield;
 
   CycleCollectedJSContext* ccjscx = CycleCollectedJSContext::Get();
 
@@ -4196,6 +4267,10 @@ void WorkerPrivate::ReportErrorToDebugger(const nsAString& aFilename,
 
 bool WorkerPrivate::NotifyInternal(WorkerStatus aStatus) {
   MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+
+  // Yield execution while notifying out-of-module WorkerRefs and cancelling
+  // runnables.
+  AutoYieldJSThreadExecution yield;
 
   NS_ASSERTION(aStatus > Running && aStatus < Dead, "Bad status!");
 
@@ -4321,8 +4396,6 @@ void WorkerPrivate::ReportError(JSContext* aCx,
   UniquePtr<WorkerErrorReport> report = MakeUnique<WorkerErrorReport>();
   if (aReport) {
     report->AssignErrorReport(aReport);
-  } else {
-    report->mFlags = nsIScriptError::errorFlag | nsIScriptError::exceptionFlag;
   }
 
   JS::RootedObject stack(aCx), stackGlobal(aCx);
@@ -4402,7 +4475,7 @@ int32_t WorkerPrivate::SetTimeout(JSContext* aCx, TimeoutHandler* aHandler,
     return timerId;
   }
 
-  nsAutoPtr<TimeoutInfo> newInfo(new TimeoutInfo());
+  auto newInfo = MakeUnique<TimeoutInfo>();
   newInfo->mIsInterval = aIsInterval;
   newInfo->mId = timerId;
 
@@ -4419,8 +4492,8 @@ int32_t WorkerPrivate::SetTimeout(JSContext* aCx, TimeoutHandler* aHandler,
 
   newInfo->mTargetTime = TimeStamp::Now() + newInfo->mInterval;
 
-  nsAutoPtr<TimeoutInfo>* insertedInfo = data->mTimeouts.InsertElementSorted(
-      newInfo.forget(), GetAutoPtrComparator(data->mTimeouts));
+  const auto& insertedInfo = data->mTimeouts.InsertElementSorted(
+      std::move(newInfo), GetUniquePtrComparator(data->mTimeouts));
 
   LOG(TimeoutsLog(), ("Worker %p has new timeout: delay=%d interval=%s\n", this,
                       aTimeout, aIsInterval ? "yes" : "no"));
@@ -4463,7 +4536,7 @@ void WorkerPrivate::ClearTimeout(int32_t aId) {
     NS_ASSERTION(data->mTimerRunning, "Huh?!");
 
     for (uint32_t index = 0; index < data->mTimeouts.Length(); index++) {
-      nsAutoPtr<TimeoutInfo>& info = data->mTimeouts[index];
+      const auto& info = data->mTimeouts[index];
       if (info->mId == aId) {
         info->mCanceled = true;
         break;
@@ -4487,8 +4560,7 @@ bool WorkerPrivate::RunExpiredTimeouts(JSContext* aCx) {
 
   bool retval = true;
 
-  AutoPtrComparator<TimeoutInfo> comparator =
-      GetAutoPtrComparator(data->mTimeouts);
+  auto comparator = GetUniquePtrComparator(data->mTimeouts);
   JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
 
   // We want to make sure to run *something*, even if the timer fired a little
@@ -4503,7 +4575,7 @@ bool WorkerPrivate::RunExpiredTimeouts(JSContext* aCx) {
 
   AutoTArray<TimeoutInfo*, 10> expiredTimeouts;
   for (uint32_t index = 0; index < data->mTimeouts.Length(); index++) {
-    nsAutoPtr<TimeoutInfo>& info = data->mTimeouts[index];
+    TimeoutInfo* info = data->mTimeouts[index].get();
     if (info->mTargetTime > now) {
       break;
     }
@@ -4562,7 +4634,7 @@ bool WorkerPrivate::RunExpiredTimeouts(JSContext* aCx) {
   for (uint32_t index = 0, expiredTimeoutIndex = 0,
                 expiredTimeoutLength = expiredTimeouts.Length();
        index < data->mTimeouts.Length();) {
-    nsAutoPtr<TimeoutInfo>& info = data->mTimeouts[index];
+    const auto& info = data->mTimeouts[index];
     if ((expiredTimeoutIndex < expiredTimeoutLength &&
          info == expiredTimeouts[expiredTimeoutIndex] &&
          ++expiredTimeoutIndex) ||
@@ -4869,16 +4941,39 @@ void WorkerPrivate::ResetWorkerPrivateInWorkerThread() {
 
 void WorkerPrivate::BeginCTypesCall() {
   AssertIsOnWorkerThread();
+  MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
 
   // Don't try to GC while we're blocked in a ctypes call.
   SetGCTimerMode(NoTimer);
+
+  data->mYieldJSThreadExecution.EmplaceBack();
 }
 
 void WorkerPrivate::EndCTypesCall() {
   AssertIsOnWorkerThread();
+  MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
+
+  data->mYieldJSThreadExecution.RemoveLastElement();
 
   // Make sure the periodic timer is running before we start running JS again.
   SetGCTimerMode(PeriodicTimer);
+}
+
+void WorkerPrivate::BeginCTypesCallback() {
+  AssertIsOnWorkerThread();
+
+  // Make sure the periodic timer is running before we start running JS again.
+  SetGCTimerMode(PeriodicTimer);
+
+  // Re-requesting execution is not needed since the JSRuntime code calling
+  // this will do an AutoEntryScript.
+}
+
+void WorkerPrivate::EndCTypesCallback() {
+  AssertIsOnWorkerThread();
+
+  // Don't try to GC while we're blocked in a ctypes call.
+  SetGCTimerMode(NoTimer);
 }
 
 bool WorkerPrivate::ConnectMessagePort(JSContext* aCx,

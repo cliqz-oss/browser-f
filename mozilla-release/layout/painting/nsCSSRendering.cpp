@@ -1367,11 +1367,12 @@ bool nsCSSRendering::HasBoxShadowNativeTheme(nsIFrame* aFrame,
   return false;
 }
 
-gfx::Color nsCSSRendering::GetShadowColor(const StyleSimpleShadow& aShadow,
-                                          nsIFrame* aFrame, float aOpacity) {
+gfx::sRGBColor nsCSSRendering::GetShadowColor(const StyleSimpleShadow& aShadow,
+                                              nsIFrame* aFrame,
+                                              float aOpacity) {
   // Get the shadow color; if not specified, use the foreground color
   nscolor shadowColor = aShadow.color.CalcColor(aFrame);
-  Color color = Color::FromABGR(shadowColor);
+  sRGBColor color = sRGBColor::FromABGR(shadowColor);
   color.a *= aOpacity;
   return color;
 }
@@ -1489,7 +1490,7 @@ void nsCSSRendering::PaintBoxShadowOuter(nsPresContext* aPresContext,
     shadowGfxRectPlusBlur.RoundOut();
     MaybeSnapToDevicePixels(shadowGfxRectPlusBlur, aDrawTarget, true);
 
-    Color gfxShadowColor = GetShadowColor(shadow.base, aForFrame, aOpacity);
+    sRGBColor gfxShadowColor = GetShadowColor(shadow.base, aForFrame, aOpacity);
 
     if (nativeTheme) {
       nsContextBoxBlur blurringArea;
@@ -1777,7 +1778,7 @@ void nsCSSRendering::PaintBoxShadowInner(nsPresContext* aPresContext,
     Rect shadowGfxRect = NSRectToRect(paddingRect, oneDevPixel);
     shadowGfxRect.Round();
 
-    Color shadowColor = GetShadowColor(shadow.base, aForFrame, 1.0);
+    sRGBColor shadowColor = GetShadowColor(shadow.base, aForFrame, 1.0);
     aRenderingContext.Save();
 
     // This clips the outside border radius.
@@ -2403,7 +2404,7 @@ nscolor nsCSSRendering::DetermineBackgroundColor(nsPresContext* aPresContext,
                      repeat.mYRepeat == StyleImageLayerRepeat::Round;
   if (aDrawBackgroundColor && xFullRepeat && yFullRepeat &&
       bg->BottomLayer().mImage.IsOpaque() &&
-      bg->BottomLayer().mBlendMode == NS_STYLE_BLEND_NORMAL) {
+      bg->BottomLayer().mBlendMode == StyleBlend::Normal) {
     aDrawBackgroundColor = false;
   }
 
@@ -2521,7 +2522,7 @@ ImgDrawResult nsCSSRendering::PaintStyleImageLayerWithSC(
 
   // If we might be using a background color, go ahead and set it now.
   if (drawBackgroundColor && !isCanvasFrame) {
-    aRenderingCtx.SetColor(Color::FromABGR(bgColor));
+    aRenderingCtx.SetColor(sRGBColor::FromABGR(bgColor));
   }
 
   // If there is no background image, draw a color.  (If there is
@@ -3959,27 +3960,26 @@ static void SkipInk(nsIFrame* aFrame, DrawTarget& aDrawTarget,
     clipParams.lineSize.width =
         (dir * (endIntercept - startIntercept)) - (2.0 * aPadding);
 
-    if (aParams.vertical) {
-      aRect.height = clipParams.lineSize.width;
-    } else {
-      aRect.width = clipParams.lineSize.width;
-    }
-
     // Don't draw decoration lines that have a smaller width than 1, or half
     // the line-end padding dimension.
     if (clipParams.lineSize.width < std::max(aPadding * 0.5, 1.0)) {
       continue;
     }
 
-    // start the line right after the intercept's location plus room for
-    // padding
+    // Start the line right after the intercept's location plus room for
+    // padding; snap the rect edges to device pixels for consistent rendering
+    // of dots across separate fragments of a dotted line.
     if (aParams.vertical) {
       clipParams.pt.y = aParams.sidewaysLeft ? endIntercept + aPadding
                                              : startIntercept + aPadding;
-      aRect.y = clipParams.pt.y;
+      aRect.y = std::floor(clipParams.pt.y + 0.5);
+      aRect.SetBottomEdge(
+          std::floor(clipParams.pt.y + clipParams.lineSize.width + 0.5));
     } else {
       clipParams.pt.x = startIntercept + aPadding;
-      aRect.x = clipParams.pt.x;
+      aRect.x = std::floor(clipParams.pt.x + 0.5);
+      aRect.SetRightEdge(
+          std::floor(clipParams.pt.x + clipParams.lineSize.width + 0.5));
     }
 
     nsCSSRendering::PaintDecorationLineInternal(aFrame, aDrawTarget, clipParams,
@@ -4150,7 +4150,7 @@ void nsCSSRendering::PaintDecorationLineInternal(
     const PaintDecorationLineParams& aParams, Rect aRect) {
   Float lineThickness = std::max(NS_round(aParams.lineSize.height), 1.0);
 
-  Color color = ToDeviceColor(aParams.color);
+  DeviceColor color = ToDeviceColor(aParams.color);
   ColorPattern colorPat(color);
   StrokeOptions strokeOptions(lineThickness);
   DrawOptions drawOptions;
@@ -4745,8 +4745,8 @@ nsMargin nsContextBoxBlur::GetBlurRadiusMargin(nscoord aBlurRadius,
 void nsContextBoxBlur::BlurRectangle(
     gfxContext* aDestinationCtx, const nsRect& aRect,
     int32_t aAppUnitsPerDevPixel, RectCornerRadii* aCornerRadii,
-    nscoord aBlurRadius, const Color& aShadowColor, const nsRect& aDirtyRect,
-    const gfxRect& aSkipRect) {
+    nscoord aBlurRadius, const sRGBColor& aShadowColor,
+    const nsRect& aDirtyRect, const gfxRect& aSkipRect) {
   DrawTarget& aDestDrawTarget = *aDestinationCtx->GetDrawTarget();
 
   if (aRect.IsEmpty()) {
@@ -4845,7 +4845,7 @@ void nsContextBoxBlur::GetBlurAndSpreadRadius(
 /* static */
 bool nsContextBoxBlur::InsetBoxBlur(
     gfxContext* aDestinationCtx, Rect aDestinationRect, Rect aShadowClipRect,
-    Color& aShadowColor, nscoord aBlurRadiusAppUnits,
+    sRGBColor& aShadowColor, nscoord aBlurRadiusAppUnits,
     nscoord aSpreadDistanceAppUnits, int32_t aAppUnitsPerDevPixel,
     bool aHasBorderRadius, RectCornerRadii& aInnerClipRectRadii, Rect aSkipRect,
     Point aShadowOffset) {

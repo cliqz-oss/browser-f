@@ -96,6 +96,10 @@ class WebConsole {
     return this.toolbox.targetList;
   }
 
+  get resourceWatcher() {
+    return this.toolbox.resourceWatcher;
+  }
+
   /**
    * Getter for the window that can provide various utilities that the web
    * console makes use of, like opening links, managing popups, etc.  In
@@ -145,11 +149,6 @@ class WebConsole {
    */
   get jsterm() {
     return this.ui ? this.ui.jsterm : null;
-  }
-
-  canRewind() {
-    const traits = this.currentTarget && this.currentTarget.traits;
-    return traits && traits.canRewind;
   }
 
   /**
@@ -237,7 +236,7 @@ class WebConsole {
    *        The line number which you want to place the caret.
    */
   viewSourceInStyleEditor(sourceURL, sourceLine) {
-    const toolbox = this.toolbox;
+    const { toolbox } = this;
     if (!toolbox) {
       this.viewSource(sourceURL, sourceLine);
       return;
@@ -260,7 +259,7 @@ class WebConsole {
    *        The column number which you want to place the caret.
    */
   async viewSourceInDebugger(sourceURL, sourceLine, sourceColumn) {
-    const toolbox = this.toolbox;
+    const { toolbox } = this;
     if (!toolbox) {
       this.viewSource(sourceURL, sourceLine, sourceColumn);
       return;
@@ -284,7 +283,7 @@ class WebConsole {
    *         returned.
    */
   getDebuggerFrames() {
-    const toolbox = this.toolbox;
+    const { toolbox } = this;
     if (!toolbox) {
       return null;
     }
@@ -313,7 +312,7 @@ class WebConsole {
    *                               `originalExpression`.
    */
   getMappedExpression(expression) {
-    const toolbox = this.toolbox;
+    const { toolbox } = this;
 
     // We need to check if the debugger is open, since it may perform a variable name
     // substitution for sourcemapped script (i.e. evaluated `myVar.trim()` might need to
@@ -368,7 +367,7 @@ class WebConsole {
    *         then |null| is returned.
    */
   getInspectorSelection() {
-    const toolbox = this.toolbox;
+    const { toolbox } = this;
     if (!toolbox) {
       return null;
     }
@@ -467,7 +466,7 @@ class WebConsole {
    *
    * @param {String} string: The code you want to evaluate.
    * @param {Object} options: Options for evaluation. See evaluateJSAsync method on
-   *                          devtools/shared/fronts/webconsole.js
+   *                          devtools/client/fronts/webconsole.js
    */
   evaluateJSAsync(expression, options = {}) {
     return this.ui._commands.evaluateJSAsync(expression, options);

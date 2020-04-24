@@ -35,13 +35,11 @@ async function clear_state() {
   clientWithDump.verifySignature = false;
 
   // Clear local DB.
-  const collection = await client.openCollection();
-  await collection.clear();
+  await client.db.clear();
   // Reset event listeners.
   client._listeners.set("sync", []);
 
-  const collectionWithDump = await clientWithDump.openCollection();
-  await collectionWithDump.clear();
+  await clientWithDump.db.clear();
 
   Services.prefs.clearUserPref("services.settings.default_bucket");
 
@@ -129,7 +127,7 @@ add_task(
     await clientWithDump.maybeSync(timestamp);
 
     const list = await clientWithDump.get();
-    ok(list.length > 20, "The dump was loaded");
+    ok(list.length > 20, `The dump was loaded (${list.length} records)`);
     equal(received.created[0].id, "xx", "Record from the sync come first.");
 
     const createdById = received.created.reduce((acc, r) => {
@@ -211,8 +209,7 @@ add_task(async function test_records_can_have_local_fields() {
 
   await c.maybeSync(2000);
 
-  const col = await c.openCollection();
-  await col.update({
+  await c.db.update({
     id: "c74279ce-fb0a-42a6-ae11-386b567a6119",
     accepted: true,
   });
@@ -223,8 +220,7 @@ add_task(clear_state);
 add_task(
   async function test_records_changes_are_overwritten_by_server_changes() {
     // Create some local conflicting data, and make sure it syncs without error.
-    const collection = await client.openCollection();
-    await collection.create(
+    await client.db.create(
       {
         website: "",
         id: "9d500963-d80e-3a91-6e74-66f3811b99cc",
@@ -326,8 +322,8 @@ add_task(async function test_get_can_verify_signature() {
   ok(calledSignature.endsWith("abcdef"));
 
   // It throws when signature does not verify.
-  const col = await client.openCollection();
-  await col.delete("9d500963-d80e-3a91-6e74-66f3811b99cc");
+  await client.db.delete("9d500963-d80e-3a91-6e74-66f3811b99cc");
+  error = null;
   try {
     await client.get({ verifySignature: true });
   } catch (e) {
@@ -372,7 +368,7 @@ add_task(async function test_get_does_not_verify_signature_if_load_dump() {
 
   // If metadata is missing locally, it is fetched by default (`syncIfEmpty: true`)
   await clientWithDump.get({ verifySignature: true });
-  const metadata = await (await clientWithDump.openCollection()).metadata();
+  const metadata = await clientWithDump.db.getMetadata();
   ok(Object.keys(metadata).length > 0, "metadata was fetched");
   ok(called, "signature was verified for the data that was in dump");
 });
@@ -418,7 +414,7 @@ add_task(
     // Signature verification is disabled (see `clear_state()`), so we don't bother with
     // fetching metadata.
     await clientWithDump.maybeSync(42);
-    let metadata = await (await clientWithDump.openCollection()).metadata();
+    let metadata = await clientWithDump.db.getMetadata();
     ok(!metadata, "metadata was not fetched");
 
     // Synchronize again the collection (up-to-date, since collection last modified still > 42)
@@ -426,7 +422,7 @@ add_task(
     await clientWithDump.maybeSync(42);
 
     // With signature verification, metadata was fetched.
-    metadata = await (await clientWithDump.openCollection()).metadata();
+    metadata = await clientWithDump.db.getMetadata();
     ok(Object.keys(metadata).length > 0, "metadata was fetched");
     ok(called, "signature was verified for the data that was in dump");
 
@@ -644,8 +640,7 @@ add_task(async function test_telemetry_reports_if_application_fails() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_if_sync_fails() {
-  const collection = await client.openCollection();
-  await collection.db.saveLastModified(9999);
+  await client.db.saveLastModified(9999);
 
   const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
 
@@ -660,8 +655,7 @@ add_task(async function test_telemetry_reports_if_sync_fails() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_if_parsing_fails() {
-  const collection = await client.openCollection();
-  await collection.db.saveLastModified(10000);
+  await client.db.saveLastModified(10000);
 
   const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
 
@@ -676,8 +670,7 @@ add_task(async function test_telemetry_reports_if_parsing_fails() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_if_fetching_signature_fails() {
-  const collection = await client.openCollection();
-  await collection.db.saveLastModified(11000);
+  await client.db.saveLastModified(11000);
 
   const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
 
@@ -692,8 +685,8 @@ add_task(async function test_telemetry_reports_if_fetching_signature_fails() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_unknown_errors() {
-  const backup = client.openCollection;
-  client.openCollection = () => {
+  const backup = client.db.list;
+  client.db.list = () => {
     throw new Error("Internal");
   };
   const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
@@ -702,7 +695,7 @@ add_task(async function test_telemetry_reports_unknown_errors() {
     await client.maybeSync(2000);
   } catch (e) {}
 
-  client.openCollection = backup;
+  client.db.list = backup;
   const endHistogram = getUptakeTelemetrySnapshot(client.identifier);
   const expectedIncrements = { [UptakeTelemetry.STATUS.UNKNOWN_ERROR]: 1 };
   checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
@@ -710,10 +703,10 @@ add_task(async function test_telemetry_reports_unknown_errors() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_indexeddb_as_custom_1() {
-  const backup = client.openCollection;
+  const backup = client.db.getLastModified;
   const msg =
     "IndexedDB getLastModified() The operation failed for reasons unrelated to the database itself";
-  client.openCollection = () => {
+  client.db.getLastModified = () => {
     throw new Error(msg);
   };
   const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
@@ -722,7 +715,7 @@ add_task(async function test_telemetry_reports_indexeddb_as_custom_1() {
     await client.maybeSync(2000);
   } catch (e) {}
 
-  client.openCollection = backup;
+  client.db.getLastModified = backup;
   const endHistogram = getUptakeTelemetrySnapshot(client.identifier);
   const expectedIncrements = { [UptakeTelemetry.STATUS.CUSTOM_1_ERROR]: 1 };
   checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
@@ -730,8 +723,8 @@ add_task(async function test_telemetry_reports_indexeddb_as_custom_1() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_error_name_as_event_nightly() {
-  const backup = client.openCollection;
-  client.openCollection = () => {
+  const backup = client.db.list;
+  client.db.list = () => {
     const e = new Error("Some unknown error");
     e.name = "ThrownError";
     throw e;
@@ -758,7 +751,7 @@ add_task(async function test_telemetry_reports_error_name_as_event_nightly() {
     ]);
   });
 
-  client.openCollection = backup;
+  client.db.list = backup;
 });
 add_task(clear_state);
 

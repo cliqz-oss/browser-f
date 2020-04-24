@@ -15,7 +15,7 @@ async function previews(dbg, fnName, previews) {
 async function testBucketedArray(dbg) {
   const invokeResult = invokeInTab("largeArray");
   await waitForPaused(dbg);
-  const preview = await hoverOnToken(dbg, 33, 10, "popup");
+  const preview = await hoverOnToken(dbg, 34, 10, "popup");
 
   is(
     preview.properties.map(p => p.name).join(" "),
@@ -32,8 +32,12 @@ async function testBucketedArray(dbg) {
 // simple value, which will show a tooltip.
 add_task(async function() {
   const dbg = await initDebugger("doc-preview.html", "preview.js");
-  await selectSource(dbg, "preview.js");
 
+  await previews(dbg, "testInline", [
+    { line: 17, column: 16, expression: "obj?.prop", result: 2 },
+  ]);
+
+  await selectSource(dbg, "preview.js");
   await testBucketedArray(dbg);
 
   await previews(dbg, "empties", [
@@ -45,6 +49,7 @@ add_task(async function() {
 
   await previews(dbg, "objects", [
     { line: 27, column: 10, expression: "empty", result: "No properties" },
+    { line: 28, column: 22, expression: "obj?.foo", result: 1 },
   ]);
 
   await previews(dbg, "smalls", [

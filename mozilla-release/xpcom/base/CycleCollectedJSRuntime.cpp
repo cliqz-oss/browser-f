@@ -75,6 +75,7 @@
 #include "mozilla/TimelineMarker.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/DOMJSClass.h"
+#include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/dom/ProfileTimelineMarkerBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseBinding.h"
@@ -473,6 +474,81 @@ static void MozCrashWarningReporter(JSContext*, JSErrorReport*) {
   MOZ_CRASH("Why is someone touching JSAPI without an AutoJSAPI?");
 }
 
+JSHolderMap::JSHolderMap() : mJSHolderMap(256) {}
+
+template <typename F>
+inline void JSHolderMap::ForEach(F&& f) {
+  for (auto iter = mJSHolders.Iter(); !iter.Done(); iter.Next()) {
+    f(iter.Get().mHolder, iter.Get().mTracer);
+  }
+}
+
+inline bool JSHolderMap::Has(void* aHolder) const {
+  return mJSHolderMap.has(aHolder);
+}
+
+inline nsScriptObjectTracer* JSHolderMap::Get(void* aHolder) const {
+  auto ptr = mJSHolderMap.lookup(aHolder);
+  if (!ptr) {
+    return nullptr;
+  }
+
+  Entry* info = ptr->value();
+  MOZ_ASSERT(info->mHolder == aHolder);
+  return info->mTracer;
+}
+
+inline nsScriptObjectTracer* JSHolderMap::GetAndRemove(void* aHolder) {
+  auto ptr = mJSHolderMap.lookup(aHolder);
+  if (!ptr) {
+    return nullptr;
+  }
+
+  Entry* info = ptr->value();
+  MOZ_ASSERT(info->mHolder == aHolder);
+  nsScriptObjectTracer* tracer = info->mTracer;
+
+  Entry* lastInfo = &mJSHolders.GetLast();
+  if (info != lastInfo) {
+    // Swap the mJSHolders element we want to remove with the last one and
+    // update the hash table.
+    *info = *lastInfo;
+    MOZ_ASSERT(mJSHolderMap.has(info->mHolder));
+    MOZ_ALWAYS_TRUE(mJSHolderMap.put(info->mHolder, info));
+  }
+
+  mJSHolders.PopLast();
+  mJSHolderMap.remove(ptr);
+
+  return tracer;
+}
+
+inline void JSHolderMap::Put(void* aHolder, nsScriptObjectTracer* aTracer) {
+  auto ptr = mJSHolderMap.lookupForAdd(aHolder);
+  if (ptr) {
+    Entry* info = ptr->value();
+    MOZ_ASSERT(info->mHolder == aHolder);
+    MOZ_ASSERT(info->mTracer == aTracer,
+               "Don't call HoldJSObjects in superclass ctors");
+    info->mTracer = aTracer;
+    return;
+  }
+
+  mJSHolders.InfallibleAppend(Entry{aHolder, aTracer});
+  MOZ_ALWAYS_TRUE(mJSHolderMap.add(ptr, aHolder, &mJSHolders.GetLast()));
+}
+
+size_t JSHolderMap::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const {
+  size_t n = 0;
+
+  // We're deliberately not measuring anything hanging off the entries in
+  // mJSHolders.
+  n += mJSHolders.SizeOfExcludingThis(aMallocSizeOf);
+  n += mJSHolderMap.shallowSizeOfExcludingThis(aMallocSizeOf);
+
+  return n;
+}
+
 CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
     : mContext(nullptr),
       mGCThingCycleCollectorGlobal(sGCThingCycleCollectorGlobal),
@@ -481,7 +557,6 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
       mHasPendingIdleGCTask(false),
       mPrevGCSliceCallback(nullptr),
       mPrevGCNurseryCollectionCallback(nullptr),
-      mJSHolderMap(256),
       mOutOfMemoryState(OOMState::OK),
       mLargeAllocationFailureState(OOMState::OK)
 #ifdef DEBUG
@@ -520,6 +595,8 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
 
   JS_SetObjectsTenuredCallback(aCx, JSObjectsTenuredCb, this);
   JS::SetOutOfMemoryCallback(aCx, OutOfMemoryCallback, this);
+  JS::SetWaitCallback(mJSRuntime, BeforeWaitCallback, AfterWaitCallback,
+                      sizeof(dom::AutoYieldJSThreadExecution));
   JS::SetWarningReporter(aCx, MozCrashWarningReporter);
 
   js::AutoEnterOOMUnsafeRegion::setAnnotateOOMAllocationSizeCallback(
@@ -583,22 +660,13 @@ void CycleCollectedJSRuntime::SetContext(CycleCollectedJSContext* aContext) {
 
 size_t CycleCollectedJSRuntime::SizeOfExcludingThis(
     MallocSizeOf aMallocSizeOf) const {
-  size_t n = 0;
-
-  // We're deliberately not measuring anything hanging off the entries in
-  // mJSHolders.
-  n += mJSHolders.SizeOfExcludingThis(aMallocSizeOf);
-  n += mJSHolderMap.ShallowSizeOfExcludingThis(aMallocSizeOf);
-
-  return n;
+  return mJSHolders.SizeOfExcludingThis(aMallocSizeOf);
 }
 
 void CycleCollectedJSRuntime::UnmarkSkippableJSHolders() {
-  for (auto iter = mJSHolders.Iter(); !iter.Done(); iter.Next()) {
-    void* holder = iter.Get().mHolder;
-    nsScriptObjectTracer* tracer = iter.Get().mTracer;
+  mJSHolders.ForEach([](void* holder, nsScriptObjectTracer* tracer) {
     tracer->CanSkip(holder, true);
-  }
+  });
 }
 
 void CycleCollectedJSRuntime::DescribeGCThing(
@@ -782,10 +850,7 @@ void CycleCollectedJSRuntime::TraverseNativeRoots(
   // would hurt to do this after the JS holders.
   TraverseAdditionalNativeRoots(aCb);
 
-  for (auto iter = mJSHolders.Iter(); !iter.Done(); iter.Next()) {
-    void* holder = iter.Get().mHolder;
-    nsScriptObjectTracer* tracer = iter.Get().mTracer;
-
+  mJSHolders.ForEach([&aCb](void* holder, nsScriptObjectTracer* tracer) {
     bool noteRoot = false;
     if (MOZ_UNLIKELY(aCb.WantAllTraces())) {
       noteRoot = true;
@@ -798,7 +863,7 @@ void CycleCollectedJSRuntime::TraverseNativeRoots(
     if (noteRoot) {
       aCb.NoteNativeRoot(holder, tracer);
     }
-  }
+  });
 }
 
 /* static */
@@ -948,6 +1013,22 @@ void CycleCollectedJSRuntime::OutOfMemoryCallback(JSContext* aContext,
   self->OnOutOfMemory();
 }
 
+/* static */
+void* CycleCollectedJSRuntime::BeforeWaitCallback(uint8_t* aMemory) {
+  MOZ_ASSERT(aMemory);
+
+  // aMemory is stack allocated memory to contain our RAII object. This allows
+  // for us to avoid allocations on the heap during this callback.
+  return new (aMemory) dom::AutoYieldJSThreadExecution;
+}
+
+/* static */
+void CycleCollectedJSRuntime::AfterWaitCallback(void* aCookie) {
+  MOZ_ASSERT(aCookie);
+  static_cast<dom::AutoYieldJSThreadExecution*>(aCookie)
+      ->~AutoYieldJSThreadExecution();
+}
+
 struct JsGcTracer : public TraceCallbacks {
   virtual void Trace(JS::Heap<JS::Value>* aPtr, const char* aName,
                      void* aClosure) const override {
@@ -989,30 +1070,133 @@ void mozilla::TraceScriptHolder(nsISupports* aHolder, JSTracer* aTracer) {
   participant->Trace(aHolder, JsGcTracer(), aTracer);
 }
 
+#ifdef DEBUG
+
+// A tracer that checks that a JS holder only holds JS GC things in a single
+// JS::Zone.
+struct CheckZoneTracer : public TraceCallbacks {
+  const char* mClassName;
+  mutable JS::Zone* mZone = nullptr;
+
+  explicit CheckZoneTracer(const char* aClassName) : mClassName(aClassName) {}
+
+  void checkZone(JS::Zone* aZone, const char* aName) const {
+    if (!mZone) {
+      mZone = aZone;
+      return;
+    }
+
+    if (aZone == mZone) {
+      return;
+    }
+
+    // Most JS holders only contain pointers to GC things in a single zone. In
+    // the future this will allow us to improve GC performance by only tracing
+    // holders in zones that are being collected.
+    //
+    // If you added a holder that has pointers into multiple zones please try to
+    // remedy this. Some options are:
+    //
+    //  - wrap all JS GC things into the same compartment
+    //  - split GC thing pointers between separate cycle collected objects
+    //
+    // If all else fails, flag the class as containing pointers into multiple
+    // zones by using NS_IMPL_CYCLE_COLLECTION_MULTI_ZONE_JSHOLDER_CLASS.
+    MOZ_CRASH_UNSAFE_PRINTF(
+        "JS holder %s contains pointers to GC things in more than one zone ("
+        "found in %s)\n",
+        mClassName, aName);
+  }
+
+  virtual void Trace(JS::Heap<JS::Value>* aPtr, const char* aName,
+                     void* aClosure) const override {
+    JS::Value value = aPtr->unbarrieredGet();
+    if (value.isObject()) {
+      checkZone(js::GetObjectZoneFromAnyThread(&value.toObject()), aName);
+    } else if (value.isString()) {
+      checkZone(JS::GetStringZone(value.toString()), aName);
+    } else if (value.isGCThing()) {
+      checkZone(JS::GetTenuredGCThingZone(value.toGCCellPtr()), aName);
+    }
+  }
+  virtual void Trace(JS::Heap<jsid>* aPtr, const char* aName,
+                     void* aClosure) const override {
+    jsid id = aPtr->unbarrieredGet();
+    if (JSID_IS_GCTHING(id)) {
+      checkZone(JS::GetTenuredGCThingZone(JSID_TO_GCTHING(id)), aName);
+    }
+  }
+  virtual void Trace(JS::Heap<JSObject*>* aPtr, const char* aName,
+                     void* aClosure) const override {
+    JSObject* obj = aPtr->unbarrieredGet();
+    if (obj) {
+      checkZone(js::GetObjectZoneFromAnyThread(obj), aName);
+    }
+  }
+  virtual void Trace(nsWrapperCache* aPtr, const char* aName,
+                     void* aClosure) const override {
+    JSObject* obj = aPtr->GetWrapperPreserveColor();
+    if (obj) {
+      checkZone(js::GetObjectZoneFromAnyThread(obj), aName);
+    }
+  }
+  virtual void Trace(JS::TenuredHeap<JSObject*>* aPtr, const char* aName,
+                     void* aClosure) const override {
+    JSObject* obj = aPtr->unbarrieredGetPtr();
+    if (obj) {
+      checkZone(js::GetObjectZoneFromAnyThread(obj), aName);
+    }
+  }
+  virtual void Trace(JS::Heap<JSString*>* aPtr, const char* aName,
+                     void* aClosure) const override {
+    JSString* str = aPtr->unbarrieredGet();
+    if (str) {
+      checkZone(JS::GetStringZone(str), aName);
+    }
+  }
+  virtual void Trace(JS::Heap<JSScript*>* aPtr, const char* aName,
+                     void* aClosure) const override {
+    JSScript* script = aPtr->unbarrieredGet();
+    if (script) {
+      checkZone(JS::GetTenuredGCThingZone(JS::GCCellPtr(script)), aName);
+    }
+  }
+  virtual void Trace(JS::Heap<JSFunction*>* aPtr, const char* aName,
+                     void* aClosure) const override {
+    JSFunction* fun = aPtr->unbarrieredGet();
+    if (fun) {
+      checkZone(js::GetObjectZoneFromAnyThread(JS_GetFunctionObject(fun)),
+                aName);
+    }
+  }
+};
+
+static inline void CheckHolderIsSingleZone(
+    void* aHolder, nsCycleCollectionParticipant* aParticipant) {
+  CheckZoneTracer tracer(aParticipant->ClassName());
+  aParticipant->Trace(aHolder, tracer, nullptr);
+}
+
+#endif
+
 void CycleCollectedJSRuntime::TraceNativeGrayRoots(JSTracer* aTracer) {
   // NB: This is here just to preserve the existing XPConnect order. I doubt it
   // would hurt to do this after the JS holders.
   TraceAdditionalNativeGrayRoots(aTracer);
 
-  for (auto iter = mJSHolders.Iter(); !iter.Done(); iter.Next()) {
-    void* holder = iter.Get().mHolder;
-    nsScriptObjectTracer* tracer = iter.Get().mTracer;
+  mJSHolders.ForEach([aTracer](void* holder, nsScriptObjectTracer* tracer) {
+#ifdef DEBUG
+    if (!tracer->IsMultiZoneJSHolder()) {
+      CheckHolderIsSingleZone(holder, tracer);
+    }
+#endif
     tracer->Trace(holder, JsGcTracer(), aTracer);
-  }
+  });
 }
 
 void CycleCollectedJSRuntime::AddJSHolder(void* aHolder,
                                           nsScriptObjectTracer* aTracer) {
-  auto entry = mJSHolderMap.LookupForAdd(aHolder);
-  if (entry) {
-    JSHolderInfo* info = entry.Data();
-    MOZ_ASSERT(info->mHolder == aHolder);
-    info->mTracer = aTracer;
-    return;
-  }
-
-  mJSHolders.InfallibleAppend(JSHolderInfo{aHolder, aTracer});
-  entry.OrInsert([&] { return &mJSHolders.GetLast(); });
+  mJSHolders.Put(aHolder, aTracer);
 }
 
 struct ClearJSHolder : public TraceCallbacks {
@@ -1057,32 +1241,15 @@ struct ClearJSHolder : public TraceCallbacks {
 };
 
 void CycleCollectedJSRuntime::RemoveJSHolder(void* aHolder) {
-  auto entry = mJSHolderMap.Lookup(aHolder);
-  if (entry) {
-    JSHolderInfo* info = entry.Data();
-    MOZ_ASSERT(info->mHolder == aHolder);
-    info->mTracer->Trace(aHolder, ClearJSHolder(), nullptr);
-
-    JSHolderInfo* lastInfo = &mJSHolders.GetLast();
-    bool updateLast = (info != lastInfo);
-    if (updateLast) {
-      *info = *lastInfo;
-    }
-
-    mJSHolders.PopLast();
-    entry.Remove();
-
-    if (updateLast) {
-      // We have to do this after removing the entry above to ensure that we
-      // don't trip over the hashtable generation number assertion.
-      mJSHolderMap.Put(info->mHolder, info);
-    }
+  nsScriptObjectTracer* tracer = mJSHolders.GetAndRemove(aHolder);
+  if (tracer) {
+    tracer->Trace(aHolder, ClearJSHolder(), nullptr);
   }
 }
 
 #ifdef DEBUG
 bool CycleCollectedJSRuntime::IsJSHolder(void* aHolder) {
-  return mJSHolderMap.Get(aHolder, nullptr);
+  return mJSHolders.Has(aHolder);
 }
 
 static void AssertNoGcThing(JS::GCCellPtr aGCThing, const char* aName,
@@ -1091,14 +1258,11 @@ static void AssertNoGcThing(JS::GCCellPtr aGCThing, const char* aName,
 }
 
 void CycleCollectedJSRuntime::AssertNoObjectsToTrace(void* aPossibleJSHolder) {
-  JSHolderInfo* info = nullptr;
-  if (!mJSHolderMap.Get(aPossibleJSHolder, &info)) {
-    return;
+  nsScriptObjectTracer* tracer = mJSHolders.Get(aPossibleJSHolder);
+  if (tracer) {
+    tracer->Trace(aPossibleJSHolder, TraceCallbackFunc(AssertNoGcThing),
+                  nullptr);
   }
-
-  MOZ_ASSERT(info->mHolder == aPossibleJSHolder);
-  info->mTracer->Trace(aPossibleJSHolder, TraceCallbackFunc(AssertNoGcThing),
-                       nullptr);
 }
 #endif
 

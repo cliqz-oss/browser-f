@@ -1,31 +1,43 @@
 .PHONY: help update run expectations
 
 help:
-	@echo "Script to regenerate wasm test cases (JS and WPT) from the spec repository."
+	@echo "Script to regenerate wasm test cases (JS and WPT) using the wasm-generate-testsuite tool."
 	@echo ""
-	@echo "- a spec directory is needed under js/src/wasm (not checked in). It can be a"
-	@echo "  symbolic link or a real directory; if it's not there, the Makefile will clone"
-	@echo "  the repository from the sources."
-	@echo "- 'make update' makes sure the spec wast interpreter is up to date, regenerates"
-	@echo "  all the JS and WPT test cases, and put them in the right directories, then"
-	@echo "  updates the WPT manifest, if needed."
+	@echo "- 'make update' runs wasm-generate-testsuite and puts the results in"
+	@echo "  the right directories, then updates the WPT manifest, if needed."
+	@echo ""
+	@echo "  The wasm-generate-testsuite repo is needed under js/src/wasm (not"
+	@echo "  checked in). It can be a symbolic link or a real directory; if it's"
+	@echo "  not there, the Makefile will clone the repo from the sources."
+	@echo ""
+	@echo "  Generation of a testsuite is driven by js/src/jit-test/etc/wasm-config.toml"
+	@echo "  If you need to exclude a test, change test directives, or add a"
+	@echo "  proposal; that is the file to modify."
+	@echo ""
+	@echo "  Generated testsuites are made reproducible using 'wasm-config-lock.toml'"
+	@echo "  which contains pinned commits from the last build. New testsuites will"
+	@echo "  remain on those commits by default. To update to the latest version for"
+	@echo "  a repo, delete it from the lock file and do a build."
+	@echo ""
 	@echo "- 'MOZCONFIG=/path/to/bin/firefox make run' runs the WPT test cases and prints a"
 	@echo "  summary of the failures in the console."
+	@echo ""
 	@echo "- 'MOZCONFIG=/path/to/bin/firefox make expectations' runs the WPT test cases and"
 	@echo "  updates the expectations (known failures)."
 	@echo ""
-	@echo "Choose a rule: update or expectations."
+	@echo "Choose a rule: update, run, or expectations."
 
 update:
-	[ -d ./spec ] || git clone https://github.com/webassembly/spec ./spec
-	(cd ./spec/interpreter && make)
-	./spec/test/build.py \
-		--use-sync \
-		--js ../jit-test/tests/wasm/spec \
-		--html ../../../testing/web-platform/mozilla/tests/wasm
-	(cd ../jit-test/tests/wasm/spec && patch -u -p7 < ../../../etc/wasm-spec-tests.patch)
-	echo "|jit-test| test-also=--wasm-compiler=ion; test-also=--wasm-compiler=baseline; test-also=--test-wasm-await-tier2; test-also=--disable-wasm-huge-memory; include:wasm-testharness.js" > ../jit-test/tests/wasm/spec/directives.txt
-	echo "|jit-test| skip-if:true" > ../jit-test/tests/wasm/spec/harness/directives.txt
+	[ -d ./wasm-generate-testsuite ] || git clone https://github.com/eqrion/wasm-generate-testsuite ./wasm-generate-testsuite
+	cp ../jit-test/etc/wasm-config.toml ./wasm-generate-testsuite/config.toml
+	cp ../jit-test/etc/wasm-config-lock.toml ./wasm-generate-testsuite/config-lock.toml
+	(cd ./wasm-generate-testsuite && cargo run)
+	cp ./wasm-generate-testsuite/config-lock.toml ../jit-test/etc/wasm-config-lock.toml
+	rm -r ../jit-test/tests/wasm/spec
+	cp -R wasm-generate-testsuite/tests/js ../jit-test/tests/wasm/spec
+	[ ! -d ../jit-test/etc/wasm-spec-tests.patch ] || (cd ../jit-test/tests/wasm/spec && patch -u -p7 < ../../../etc/wasm-spec-tests.patch)
+	rm -r ../../../testing/web-platform/mozilla/tests/wasm
+	cp -R wasm-generate-testsuite/tests/wpt ../../../testing/web-platform/mozilla/tests/wasm
 
 run:
 	@[ -z $(MOZCONFIG) ] && echo "You need to define the MOZCONFIG env variable first."

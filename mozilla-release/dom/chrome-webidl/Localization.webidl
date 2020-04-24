@@ -13,16 +13,14 @@
  *         The argument will be converted to/from JSON, and the API
  *         will only handle strings and numbers.
  */
-typedef record<DOMString, (DOMString or double)?> L10nArgs;
-
 dictionary L10nKey {
-  DOMString? id = null;
+  UTF8String? id = null;
   L10nArgs? args = null;
 };
 
 /**
  * L10nMessage is a compound translation unit from Fluent which
- * encodes the value and (optionall) a list of attributes used
+ * encodes the value and (optionally) a list of attributes used
  * to translate a given widget.
  *
  * Most simple imperative translations will only use the `value`,
@@ -30,12 +28,12 @@ dictionary L10nKey {
  * of a value and attributes will be used.
  */
 dictionary AttributeNameValue {
-  required DOMString name;
-  required DOMString value;
+  required UTF8String name;
+  required UTF8String value;
 };
 
 dictionary L10nMessage {
-  DOMString? value = null;
+  UTF8String? value = null;
   sequence<AttributeNameValue>? attributes = null;
 };
 
@@ -100,7 +98,7 @@ interface Localization {
    *    let value = await document.l10n.formatValue("unread-emails", {count: 5});
    *    assert.equal(value, "You have 5 unread emails");
    */
-  [NewObject] Promise<DOMString> formatValue(DOMString aId, optional L10nArgs aArgs);
+  [NewObject] Promise<UTF8String> formatValue(UTF8String aId, optional L10nArgs aArgs);
 
   /**
    * Formats values of a list of messages with given ids.
@@ -115,7 +113,7 @@ interface Localization {
    *      "You have 5 unread emails"
    *    ]);
    */
-  [NewObject] Promise<sequence<DOMString>> formatValues(sequence<L10nKey> aKeys);
+  [NewObject] Promise<sequence<UTF8String>> formatValues(sequence<L10nKey> aKeys);
 
   /**
    * Formats values and attributes of a list of messages with given ids.

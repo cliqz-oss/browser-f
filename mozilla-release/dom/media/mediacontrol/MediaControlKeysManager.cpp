@@ -55,12 +55,15 @@ void MediaControlKeysManager::StartMonitoringControlKeys() {
 
   // When cross-compiling with MinGW, we cannot use the related WinAPI, thus
   // mEventSource might be null there.
-  if (mEventSource && !mEventSource->IsOpened()) {
-    LOG("StartMonitoringControlKeys");
-    if (mEventSource->Open()) {
-      mEventSource->SetPlaybackState(mPlaybackState);
-      mEventSource->AddListener(this);
-    }
+  if (!mEventSource) {
+    return;
+  }
+
+  LOG("StartMonitoringControlKeys");
+  if (!mEventSource->IsOpened() && mEventSource->Open()) {
+    mEventSource->SetPlaybackState(mPlaybackState);
+    mEventSource->SetMediaMetadata(mMetadata);
+    mEventSource->AddListener(this);
   }
 }
 
@@ -87,7 +90,8 @@ void MediaControlKeysManager::OnKeyPressed(MediaControlKeysEvent aKeyEvent) {
   }
 }
 
-void MediaControlKeysManager::SetPlaybackState(PlaybackState aState) {
+void MediaControlKeysManager::SetPlaybackState(
+    MediaSessionPlaybackState aState) {
   if (mEventSource && mEventSource->IsOpened()) {
     mEventSource->SetPlaybackState(aState);
   } else {
@@ -97,10 +101,21 @@ void MediaControlKeysManager::SetPlaybackState(PlaybackState aState) {
   }
 }
 
-PlaybackState MediaControlKeysManager::GetPlaybackState() const {
+MediaSessionPlaybackState MediaControlKeysManager::GetPlaybackState() const {
   return (mEventSource && mEventSource->IsOpened())
              ? mEventSource->GetPlaybackState()
              : mPlaybackState;
+}
+
+void MediaControlKeysManager::SetMediaMetadata(
+    const MediaMetadataBase& aMetadata) {
+  if (mEventSource && mEventSource->IsOpened()) {
+    mEventSource->SetMediaMetadata(aMetadata);
+  } else {
+    // If the event source hasn't been created or been opened yet, we would
+    // cache the state, and set it again when creating the event source.
+    mMetadata = aMetadata;
+  }
 }
 
 }  // namespace dom

@@ -88,6 +88,7 @@ GeckoViewStartup.prototype = {
             "GeckoView:WebExtension:Get",
             "GeckoView:WebExtension:Disable",
             "GeckoView:WebExtension:Enable",
+            "GeckoView:WebExtension:CancelInstall",
             "GeckoView:WebExtension:Install",
             "GeckoView:WebExtension:InstallBuiltIn",
             "GeckoView:WebExtension:List",
@@ -222,6 +223,14 @@ GeckoViewStartup.prototype = {
         ]);
 
         Services.obs.notifyObservers(null, "geckoview-startup-complete");
+        break;
+      }
+      case "browser-idle-startup-tasks-finished": {
+        // This only needs to happen once during startup.
+        Services.obs.removeObserver(this, aTopic);
+        // Notify the start up crash tracker that the browser has successfully
+        // started up so the startup cache isn't rebuilt on next startup.
+        Services.startup.trackStartupCrashEnd();
         break;
       }
     }

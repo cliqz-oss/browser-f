@@ -10,9 +10,13 @@
 #include "nsNetCID.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/Logging.h"
+#include "nsIBaseWindow.h"
+#include "nsIDocShell.h"
 #include "nsISupportsUtils.h"
+#include "nsIWidget.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
+#include "ipc/IPCMessageUtils.h"
 
 NS_IMPL_ISUPPORTS(OSReauthenticator, nsIOSReauthenticator)
 
@@ -78,28 +82,50 @@ std::unique_ptr<char[]> GetUserTokenInfo() {
 
 // Use the Windows credential prompt to ask the user to authenticate the
 // currently used account.
-static nsresult ReauthenticateUserWindows(const nsACString& aPrompt,
-                                          /* out */ bool& reauthenticated) {
+static nsresult ReauthenticateUserWindows(const nsAString& aMessageText,
+                                          const nsAString& aCaptionText,
+                                          const WindowsHandle& hwndParent,
+                                          /* out */ bool& reauthenticated,
+                                          /* out */ bool& isBlankPassword) {
   reauthenticated = false;
+  isBlankPassword = false;
+
+  // Check if the user has a blank password before proceeding
+  DWORD usernameLength = CREDUI_MAX_USERNAME_LENGTH + 1;
+  WCHAR username[CREDUI_MAX_USERNAME_LENGTH + 1] = {0};
+  if (GetUserName(username, &usernameLength)) {
+    HANDLE logonUserHandle = nullptr;
+    bool result = LogonUser(username, L".", L"", LOGON32_LOGON_INTERACTIVE,
+                            LOGON32_PROVIDER_DEFAULT, &logonUserHandle);
+    // ERROR_ACCOUNT_RESTRICTION: Indicates a referenced user name and
+    // authentication information are valid, but some user account restriction
+    // has prevented successful authentication (such as time-of-day
+    // restrictions).
+    if (result || GetLastError() == ERROR_ACCOUNT_RESTRICTION) {
+      if (logonUserHandle && logonUserHandle != INVALID_HANDLE_VALUE) {
+        CloseHandle(logonUserHandle);
+      }
+      reauthenticated = true;
+      isBlankPassword = true;
+      return NS_OK;
+    }
+  }
 
   // Is used in next iteration if the previous login failed.
   DWORD err = 0;
-  uint8_t numAttempts = 3;
   std::unique_ptr<char[]> userTokenInfo = GetUserTokenInfo();
 
   // CredUI prompt.
   CREDUI_INFOW credui = {};
   credui.cbSize = sizeof(credui);
-  // TODO: maybe set parent (Firefox) here.
-  credui.hwndParent = nullptr;
-  const nsString& prompt = NS_ConvertUTF8toUTF16(aPrompt);
-  credui.pszMessageText = prompt.get();
-  credui.pszCaptionText = nullptr;
+  credui.hwndParent = reinterpret_cast<HWND>(hwndParent);
+  const nsString& messageText = PromiseFlatString(aMessageText);
+  credui.pszMessageText = messageText.get();
+  const nsString& captionText = PromiseFlatString(aCaptionText);
+  credui.pszCaptionText = captionText.get();
   credui.hbmBanner = nullptr;  // ignored
 
-  while (!reauthenticated && numAttempts > 0) {
-    --numAttempts;
-
+  while (!reauthenticated) {
     HANDLE lsa;
     // Get authentication handle for future user authentications.
     // https://docs.microsoft.com/en-us/windows/desktop/api/ntsecapi/nf-ntsecapi-lsaconnectuntrusted
@@ -174,9 +200,9 @@ static nsresult ReauthenticateUserWindows(const nsACString& aPrompt,
       MOZ_LOG(gCredentialManagerSecretLog, LogLevel::Debug,
               ("User logged in successfully."));
     } else {
-      MOZ_LOG(
-          gCredentialManagerSecretLog, LogLevel::Debug,
-          ("Login failed with %lx (%lx).", sts, LsaNtStatusToWinError(sts)));
+      err = LsaNtStatusToWinError(sts);
+      MOZ_LOG(gCredentialManagerSecretLog, LogLevel::Debug,
+              ("Login failed with %lx (%lx).", sts, err));
       continue;
     }
 
@@ -196,42 +222,58 @@ static nsresult ReauthenticateUserWindows(const nsACString& aPrompt,
               ("Login successfully (correct user)."));
       reauthenticated = true;
       break;
+    } else {
+      err = ERROR_LOGON_FAILURE;
     }
   }
   return NS_OK;
 }
 #endif  // XP_WIN
 
-static nsresult ReauthenticateUser(const nsACString& prompt,
-                                   /* out */ bool& reauthenticated) {
+static nsresult ReauthenticateUser(const nsAString& prompt,
+                                   const nsAString& caption,
+                                   const WindowsHandle& hwndParent,
+                                   /* out */ bool& reauthenticated,
+                                   /* out */ bool& isBlankPassword) {
   reauthenticated = false;
+  isBlankPassword = false;
 #if defined(XP_WIN)
-  return ReauthenticateUserWindows(prompt, reauthenticated);
+  return ReauthenticateUserWindows(prompt, caption, hwndParent, reauthenticated,
+                                   isBlankPassword);
 #elif defined(XP_MACOSX)
-  return ReauthenticateUserMacOS(prompt, reauthenticated);
+  return ReauthenticateUserMacOS(prompt, reauthenticated, isBlankPassword);
 #endif  // Reauthentication is not implemented for this platform.
   return NS_OK;
 }
 
 static void BackgroundReauthenticateUser(RefPtr<Promise>& aPromise,
-                                         const nsACString& aPrompt) {
+                                         const nsAString& aMessageText,
+                                         const nsAString& aCaptionText,
+                                         const WindowsHandle& hwndParent) {
   nsAutoCString recovery;
   bool reauthenticated;
-  nsresult rv = ReauthenticateUser(aPrompt, reauthenticated);
+  bool isBlankPassword;
+  nsresult rv = ReauthenticateUser(aMessageText, aCaptionText, hwndParent,
+                                   reauthenticated, isBlankPassword);
+  nsTArray<bool> results(2);
+  results.AppendElement(reauthenticated);
+  results.AppendElement(isBlankPassword);
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
       "BackgroundReauthenticateUserResolve",
-      [rv, reauthenticated, aPromise = std::move(aPromise)]() {
+      [rv, results = std::move(results), aPromise = std::move(aPromise)]() {
         if (NS_FAILED(rv)) {
           aPromise->MaybeReject(rv);
         } else {
-          aPromise->MaybeResolve(reauthenticated);
+          aPromise->MaybeResolve(results);
         }
       }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
-OSReauthenticator::AsyncReauthenticateUser(const nsACString& aPrompt,
+OSReauthenticator::AsyncReauthenticateUser(const nsAString& aMessageText,
+                                           const nsAString& aCaptionText,
+                                           mozIDOMWindow* aParentWindow,
                                            JSContext* aCx,
                                            Promise** promiseOut) {
   NS_ENSURE_ARG_POINTER(aCx);
@@ -242,10 +284,29 @@ OSReauthenticator::AsyncReauthenticateUser(const nsACString& aPrompt,
     return rv;
   }
 
+  WindowsHandle hwndParent = 0;
+  if (aParentWindow) {
+    nsPIDOMWindowInner* win = nsPIDOMWindowInner::From(aParentWindow);
+    nsIDocShell* docShell = win->GetDocShell();
+    if (docShell) {
+      nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(docShell);
+      if (baseWindow) {
+        nsCOMPtr<nsIWidget> widget;
+        baseWindow->GetMainWidget(getter_AddRefs(widget));
+        if (widget) {
+          hwndParent = reinterpret_cast<WindowsHandle>(
+              widget->GetNativeData(NS_NATIVE_WINDOW));
+        }
+      }
+    }
+  }
+
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
       "BackgroundReauthenticateUser",
-      [promiseHandle, aPrompt = nsAutoCString(aPrompt)]() mutable {
-        BackgroundReauthenticateUser(promiseHandle, aPrompt);
+      [promiseHandle, aMessageText = nsAutoString(aMessageText),
+       aCaptionText = nsAutoString(aCaptionText), hwndParent]() mutable {
+        BackgroundReauthenticateUser(promiseHandle, aMessageText, aCaptionText,
+                                     hwndParent);
       }));
 
   nsCOMPtr<nsIEventTarget> target(

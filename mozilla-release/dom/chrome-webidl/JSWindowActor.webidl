@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 interface nsISupports;
+interface nsIContentChild;
+interface nsIContentParent;
 
 interface mixin JSWindowActor {
   [Throws]
@@ -137,6 +139,12 @@ dictionary WindowActorOptions {
    * all content processes are allowed to instantiate the actor.
    */
   sequence<DOMString> remoteTypes;
+
+  /**
+   * An array of MessageManagerGroup values which restrict which type
+   * of browser elements the actor is allowed to be loaded within.
+   */
+  sequence<DOMString> messageManagerGroups;
 
   /** This fields are used for configuring individual sides of the actor. */
   WindowActorSidedOptions parent;

@@ -62,7 +62,7 @@ static nsresult convertRtfToNode(txIEvalContext* aContext,
   }
 
   RefPtr<DocumentFragment> domFragment =
-      new DocumentFragment(doc->NodeInfoManager());
+      new (doc->NodeInfoManager()) DocumentFragment(doc->NodeInfoManager());
 
   txOutputFormat format;
   txMozillaXMLOutput mozHandler(&format, domFragment, true);
@@ -90,7 +90,8 @@ static nsresult createTextNode(txIEvalContext* aContext, nsString& aValue,
     return NS_ERROR_UNEXPECTED;
   }
 
-  RefPtr<nsTextNode> text = new nsTextNode(doc->NodeInfoManager());
+  RefPtr<nsTextNode> text =
+      new (doc->NodeInfoManager()) nsTextNode(doc->NodeInfoManager());
 
   nsresult rv = text->SetText(aValue, false);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -109,7 +110,8 @@ static nsresult createAndAddToResult(nsAtom* aName, const nsAString& aValue,
       doc->CreateElem(nsDependentAtomString(aName), nullptr, kNameSpaceID_None);
   NS_ENSURE_TRUE(elem, NS_ERROR_NULL_POINTER);
 
-  RefPtr<nsTextNode> text = new nsTextNode(doc->NodeInfoManager());
+  RefPtr<nsTextNode> text =
+      new (doc->NodeInfoManager()) nsTextNode(doc->NodeInfoManager());
 
   nsresult rv = text->SetText(aValue, false);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -440,8 +442,8 @@ nsresult txEXSLTFunctionCall::evaluate(txIEvalContext* aContext,
       Document* sourceDoc = getSourceDocument(aContext);
       NS_ENSURE_STATE(sourceDoc);
 
-      RefPtr<DocumentFragment> docFrag =
-          new DocumentFragment(sourceDoc->NodeInfoManager());
+      RefPtr<DocumentFragment> docFrag = new (sourceDoc->NodeInfoManager())
+          DocumentFragment(sourceDoc->NodeInfoManager());
 
       RefPtr<txNodeSet> resultSet;
       rv = aContext->recycler()->getNodeSet(getter_AddRefs(resultSet));

@@ -1,4 +1,4 @@
-/*
+/**
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -6,11 +6,31 @@
 
 "use strict";
 
+const EXPORTED_SYMBOLS = ["AboutNewTabStubService"];
+
+/**
+ * The nsIAboutNewTabService is accessed by the AboutRedirector anytime
+ * about:home, about:newtab or about:welcome are requested. The primary
+ * job of an nsIAboutNewTabService is to tell the AboutRedirector what
+ * resources to actually load for those requests.
+ *
+ * The nsIAboutNewTabService is not involved when the user has overridden
+ * the default about:home or about:newtab pages.
+ *
+ * There are two implementations of this service - one for the parent
+ * process, and one for content processes. Each one has some secondary
+ * responsibilties that are process-specific.
+ *
+ * The need for two implementations is an unfortunate consequence of how
+ * document loading and process redirection for about: pages currently
+ * works in Gecko. The commonalities between the two implementations has
+ * been put into an abstract base class.
+ */
+
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
-
 const { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm"
 );
@@ -18,243 +38,71 @@ const { E10SUtils } = ChromeUtils.import(
   "resource://gre/modules/E10SUtils.jsm"
 );
 
-#ifdef MOZ_ACTIVITY_STREAM
-ChromeUtils.defineModuleGetter(
-  this,
-  "AboutNewTab",
-  "resource:///modules/AboutNewTab.jsm"
-);
-#endif
+/**
+ * BEWARE: Do not add variables for holding state in the global scope.
+ * Any state variables should be properties of the appropriate class
+ * below. This is to avoid confusion where the state is set in one process,
+ * but not in another.
+ *
+ * Constants are fine in the global scope.
+ */
 
 const PREF_SEPARATE_ABOUT_WELCOME = "browser.aboutwelcome.enabled";
 const SEPARATE_ABOUT_WELCOME_URL =
   "resource://activity-stream/aboutwelcome/aboutwelcome.html";
 
-XPCOMUtils.defineLazyPreferenceGetter(
-  this,
-  "isSeparateAboutWelcome",
-  PREF_SEPARATE_ABOUT_WELCOME,
-  false
-);
-
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_CONTENT_DOCUMENT_INTERACTIVE = "content-document-interactive";
 
-const ABOUT_URL = "about:newtab";
 const BASE_URL = "resource://activity-stream/";
 const ACTIVITY_STREAM_PAGES = new Set(["home", "newtab", "welcome"]);
 
-const IS_MAIN_PROCESS =
-  Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT;
 const IS_PRIVILEGED_PROCESS =
   Services.appinfo.remoteType === E10SUtils.PRIVILEGEDABOUT_REMOTE_TYPE;
-
-const IS_RELEASE_OR_BETA = AppConstants.RELEASE_OR_BETA;
 
 const PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS =
   "browser.tabs.remote.separatePrivilegedContentProcess";
 const PREF_ACTIVITY_STREAM_DEBUG = "browser.newtabpage.activity-stream.debug";
 
-function AboutNewTabService() {
-  Services.obs.addObserver(this, TOPIC_APP_QUIT);
-  Services.prefs.addObserver(
-    PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS,
-    this
-  );
-  if (!IS_RELEASE_OR_BETA) {
-    Services.prefs.addObserver(PREF_ACTIVITY_STREAM_DEBUG, this);
-  }
-
-  // More initialization happens here
-  this.toggleActivityStream(true);
-  this.initialized = true;
-
-  if (IS_MAIN_PROCESS) {
-#ifdef MOZ_ACTIVITY_STREAM
-    AboutNewTab.init();
-#endif
-  } else if (IS_PRIVILEGED_PROCESS) {
-    Services.obs.addObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
-  }
-}
-
-/*
- * A service that allows for the overriding, at runtime, of the newtab page's url.
- *
- * There is tight coupling with browser/about/AboutRedirector.cpp.
- *
- * 1. Browser chrome access:
- *
- * When the user issues a command to open a new tab page, usually clicking a button
- * in the browser chrome or using shortcut keys, the browser chrome code invokes the
- * service to obtain the newtab URL. It then loads that URL in a new tab.
- *
- * When not overridden, the default URL emitted by the service is "about:newtab".
- * When overridden, it returns the overriden URL.
- *
- * 2. Redirector Access:
- *
- * When the URL loaded is about:newtab, the default behavior, or when entered in the
- * URL bar, the redirector is hit. The service is then called to return the
- * appropriate activity stream url based on prefs.
- *
- * NOTE: "about:newtab" will always result in a default newtab page, and never an overridden URL.
- *
- * Access patterns:
- *
- * The behavior is different when accessing the service via browser chrome or via redirector
- * largely to maintain compatibility with expectations of add-on developers.
- *
- * Loading a chrome resource, or an about: URL in the redirector with either the
- * LOAD_NORMAL or LOAD_REPLACE flags yield unexpected behaviors, so a roundtrip
- * to the redirector from browser chrome is avoided.
+/**
+ * This is an abstract base class for the nsIAboutNewTabService
+ * implementations that has some common methods and properties.
  */
-AboutNewTabService.prototype = {
-  _newTabURL: ABOUT_URL,
-  _activityStreamEnabled: false,
-  _activityStreamDebug: false,
-  _privilegedAboutContentProcess: false,
-  _overridden: false,
-  willNotifyUser: false,
-
-  classID: Components.ID("{dfcd2adc-7867-4d3a-ba70-17501f208142}"),
-  QueryInterface: ChromeUtils.generateQI([
-    Ci.nsIAboutNewTabService,
-    Ci.nsIObserver,
-  ]),
-
-  observe(subject, topic, data) {
-    switch (topic) {
-      case "nsPref:changed":
-        if (data === PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS) {
-          this._privilegedAboutContentProcess = Services.prefs.getBoolPref(
-            PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS
-          );
-          this.notifyChange();
-        } else if (!IS_RELEASE_OR_BETA && data === PREF_ACTIVITY_STREAM_DEBUG) {
-          this._activityStreamDebug = Services.prefs.getBoolPref(
-            PREF_ACTIVITY_STREAM_DEBUG,
-            false
-          );
-          this.notifyChange();
-        }
-        break;
-      case TOPIC_CONTENT_DOCUMENT_INTERACTIVE: {
-        const win = subject.defaultView;
-
-        // It seems like "content-document-interactive" is triggered multiple
-        // times for a single window. The first event always seems to be an
-        // HTMLDocument object that contains a non-null window reference
-        // whereas the remaining ones seem to be proxied objects.
-        // https://searchfox.org/mozilla-central/rev/d2966246905102b36ef5221b0e3cbccf7ea15a86/devtools/server/actors/object.js#100-102
-        if (win === null) {
-          break;
-        }
-
-        // We use win.location.pathname instead of win.location.toString()
-        // because we want to account for URLs that contain the location hash
-        // property or query strings (e.g. about:newtab#foo, about:home?bar).
-        // Asserting here would be ideal, but this code path is also taken
-        // by the view-source:// scheme, so we should probably just bail out
-        // and do nothing.
-        if (!ACTIVITY_STREAM_PAGES.has(win.location.pathname)) {
-          break;
-        }
-
-        // Bail out early for separate about:welcome URL
-        if (
-          isSeparateAboutWelcome &&
-          win.location.pathname.includes("welcome")
-        ) {
-          break;
-        }
-
-        const onLoaded = () => {
-          const debugString = this._activityStreamDebug ? "-dev" : "";
-
-          // This list must match any similar ones in render-activity-stream-html.js.
-          const scripts = [
-            "chrome://browser/content/contentSearchUI.js",
-            "chrome://browser/content/contentSearchHandoffUI.js",
-            "chrome://browser/content/contentTheme.js",
-            `${BASE_URL}vendor/react${debugString}.js`,
-            `${BASE_URL}vendor/react-dom${debugString}.js`,
-            `${BASE_URL}vendor/prop-types.js`,
-            `${BASE_URL}vendor/react-transition-group.js`,
-            `${BASE_URL}vendor/redux.js`,
-            `${BASE_URL}vendor/react-redux.js`,
-            `${BASE_URL}data/content/activity-stream.bundle.js`,
-          ];
-
-          for (let script of scripts) {
-            Services.scriptloader.loadSubScript(script, win); // Synchronous call
-          }
-        };
-        subject.addEventListener("DOMContentLoaded", onLoaded, { once: true });
-
-        // There is a possibility that DOMContentLoaded won't be fired. This
-        // unload event (which cannot be cancelled) will attempt to remove
-        // the listener for the DOMContentLoaded event.
-        const onUnloaded = () => {
-          subject.removeEventListener("DOMContentLoaded", onLoaded);
-        };
-        subject.addEventListener("unload", onUnloaded, { once: true });
-        break;
-      }
-      case TOPIC_APP_QUIT:
-        this.uninit();
-        if (IS_MAIN_PROCESS) {
-#ifdef MOZ_ACTIVITY_STREAM
-          AboutNewTab.uninit();
-#endif
-        } else if (IS_PRIVILEGED_PROCESS) {
-          Services.obs.removeObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
-        }
-        break;
-    }
-  },
-
-  notifyChange() {
-    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
-  },
-
-  /**
-   * React to changes to the activity stream being enabled or not.
-   *
-   * This will only act if there is a change of state and if not overridden.
-   *
-   * @returns {Boolean} Returns if there has been a state change
-   *
-   * @param {Boolean}   stateEnabled    activity stream enabled state to set to
-   * @param {Boolean}   forceState      force state change
-   */
-  toggleActivityStream(stateEnabled, forceState = false) {
-    if (
-      !forceState &&
-      (this.overridden || stateEnabled === this.activityStreamEnabled)
-    ) {
-      // exit there is no change of state
-      return false;
-    }
-    if (stateEnabled) {
-      this._activityStreamEnabled = true;
-    } else {
-      this._activityStreamEnabled = false;
-    }
-    this._privilegedAboutContentProcess = Services.prefs.getBoolPref(
-      PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS
-    );
-    if (!IS_RELEASE_OR_BETA) {
-      this._activityStreamDebug = Services.prefs.getBoolPref(
+class BaseAboutNewTabService {
+  constructor() {
+    if (!AppConstants.RELEASE_OR_BETA) {
+      XPCOMUtils.defineLazyPreferenceGetter(
+        this,
+        "activityStreamDebug",
         PREF_ACTIVITY_STREAM_DEBUG,
         false
       );
+    } else {
+      this.activityStreamDebug = false;
     }
-    this._newtabURL = ABOUT_URL;
-    return true;
-  },
 
-  /*
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "isSeparateAboutWelcome",
+      PREF_SEPARATE_ABOUT_WELCOME,
+      false
+    );
+
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "privilegedAboutProcessEnabled",
+      PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS,
+      false
+    );
+
+    this.classID = Components.ID("{cb36c925-3adc-49b3-b720-a5cc49d8a40e}");
+    this.QueryInterface = ChromeUtils.generateQI([
+      Ci.nsIAboutNewTabService,
+      Ci.nsIObserver,
+    ]);
+  }
+
+  /**
    * Returns the default URL.
    *
    * This URL depends on various activity stream prefs. Overriding
@@ -266,7 +114,6 @@ AboutNewTabService.prototype = {
     // "resource://activity-stream/prerendered/activity-stream-debug.html"
     // "resource://activity-stream/prerendered/activity-stream-noscripts.html"
 
-    let freshTabUrl = this.newTabURL;
     let uuids = null;
     try {
       uuids = JSON.parse(Services.prefs.getStringPref("extensions.webextensions.uuids", ""));
@@ -274,11 +121,8 @@ AboutNewTabService.prototype = {
       // Error while parsing JSON or reading the pref;
       // We should notify about that in the console;
       // As a fallback we can return "about:blank";
-      console.error("AboutNewTabService#defaultURL: " + e);
+      console.error("BaseAboutNewTabService#defaultURL: " + e);
       return "about:blank";
-    }
-    if (freshTabUrl !== ABOUT_URL) {
-      return freshTabUrl;
     }
 
     // CLIQZ-SPECIAL: DB-2458, Why we need this.
@@ -300,14 +144,14 @@ AboutNewTabService.prototype = {
       "resource://activity-stream/prerendered/",
       "activity-stream",
       // Debug version loads dev scripts but noscripts separately loads scripts
-      this._activityStreamDebug && !this._privilegedAboutContentProcess
+      this.activityStreamDebug && !this.privilegedAboutProcessEnabled
         ? "-debug"
         : "",
-      this._privilegedAboutContentProcess ? "-noscripts" : "",
+      this.privilegedAboutProcessEnabled ? "-noscripts" : "",
       ".html",
     ].join("");
 #endif
-  },
+  }
 
   /*
    * Returns the about:welcome URL
@@ -315,96 +159,105 @@ AboutNewTabService.prototype = {
    * This is calculated in the same way the default URL is.
    */
   get welcomeURL() {
-    if (isSeparateAboutWelcome) {
+    if (this.isSeparateAboutWelcome) {
       return SEPARATE_ABOUT_WELCOME_URL;
     }
     return this.defaultURL;
-  },
-
-  get newTabURL() {
-    return this._newTabURL;
-  },
-
-  set newTabURL(aNewTabURL) {
-    let newTabURL = aNewTabURL.trim();
-    if (newTabURL === ABOUT_URL) {
-      // avoid infinite redirects in case one sets the URL to about:newtab
-      this.resetNewTabURL();
-      return;
-    } else if (newTabURL === "") {
-      newTabURL = "about:blank";
-    }
-
-    this.toggleActivityStream(false);
-    this._newTabURL = newTabURL;
-    this._overridden = true;
-    this.notifyChange();
-  },
-
-  get overridden() {
-    return this._overridden;
-  },
-
-  get activityStreamEnabled() {
-    return this._activityStreamEnabled;
-  },
-
-  get activityStreamDebug() {
-    return this._activityStreamDebug;
-  },
-
-  resetNewTabURL() {
-    this._overridden = false;
-    this._newTabURL = ABOUT_URL;
-    this.toggleActivityStream(true, true);
-    this.notifyChange();
-  },
-
-  uninit() {
-    if (!this.initialized) {
-      return;
-    }
-    Services.obs.removeObserver(this, TOPIC_APP_QUIT);
-    Services.prefs.removeObserver(
-      PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS,
-      this
-    );
-    if (!IS_RELEASE_OR_BETA) {
-      Services.prefs.removeObserver(PREF_ACTIVITY_STREAM_DEBUG, this);
-    }
-    this.initialized = false;
-  },
-};
+  }
+}
 
 /**
- * We split out the definition of AboutNewTabStartupRecorder from
- * AboutNewTabService to avoid initializing the AboutNewTabService
- * unnecessarily early when we just want to record some startup
- * data.
+ * The child-process implementation of nsIAboutNewTabService,
+ * which also does the work of loading scripts from the ScriptPreloader
+ * cache when using the privileged about content process.
  */
-const AboutNewTabStartupRecorder = {
-  //_alreadyRecordedTopsitesPainted: false,
-  // CLIQZ-SPECIAL: don't do this in Cliqz browser
-  _alreadyRecordedTopsitesPainted: true,
-  _nonDefaultStartup: false,
-
-  noteNonDefaultStartup() {
-    this._nonDefaultStartup = true;
-  },
-
-  maybeRecordTopsitesPainted(timestamp) {
-    if (this._alreadyRecordedTopsitesPainted || this._nonDefaultStartup) {
-      return;
+class AboutNewTabChildService extends BaseAboutNewTabService {
+  constructor() {
+    super();
+    if (this.privilegedAboutProcessEnabled) {
+      Services.obs.addObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
+      Services.obs.addObserver(this, TOPIC_APP_QUIT);
     }
+  }
 
-    const SCALAR_KEY = "timestamps.about_home_topsites_first_paint";
+  observe(subject, topic, data) {
+    switch (topic) {
+      case TOPIC_APP_QUIT: {
+        Services.obs.removeObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
+        Services.obs.removeObserver(this, TOPIC_APP_QUIT);
+        break;
+      }
+      case TOPIC_CONTENT_DOCUMENT_INTERACTIVE: {
+        if (!this.privilegedAboutProcessEnabled || !IS_PRIVILEGED_PROCESS) {
+          return;
+        }
 
-    let startupInfo = Services.startup.getStartupInfo();
-    let processStartTs = startupInfo.process.getTime();
-    let delta = Math.round(timestamp - processStartTs);
-    Services.telemetry.scalarSet(SCALAR_KEY, delta);
-    this._alreadyRecordedTopsitesPainted = true;
-  },
-};
+        const win = subject.defaultView;
 
-const EXPORTED_SYMBOLS = ["AboutNewTabService", "AboutNewTabStartupRecorder"];
+        // It seems like "content-document-interactive" is triggered multiple
+        // times for a single window. The first event always seems to be an
+        // HTMLDocument object that contains a non-null window reference
+        // whereas the remaining ones seem to be proxied objects.
+        // https://searchfox.org/mozilla-central/rev/d2966246905102b36ef5221b0e3cbccf7ea15a86/devtools/server/actors/object.js#100-102
+        if (win === null) {
+          return;
+        }
+
+        // We use win.location.pathname instead of win.location.toString()
+        // because we want to account for URLs that contain the location hash
+        // property or query strings (e.g. about:newtab#foo, about:home?bar).
+        // Asserting here would be ideal, but this code path is also taken
+        // by the view-source:// scheme, so we should probably just bail out
+        // and do nothing.
+        if (!ACTIVITY_STREAM_PAGES.has(win.location.pathname)) {
+          return;
+        }
+
+        // Bail out early for separate about:welcome URL
+        if (
+          this.isSeparateAboutWelcome &&
+          win.location.pathname.includes("welcome")
+        ) {
+          return;
+        }
+
+        const onLoaded = () => {
+          const debugString = this.activityStreamDebug ? "-dev" : "";
+
+          // This list must match any similar ones in render-activity-stream-html.js.
+          const scripts = [
+            "chrome://browser/content/contentSearchUI.js",
+            "chrome://browser/content/contentSearchHandoffUI.js",
+            "chrome://browser/content/contentTheme.js",
+            `${BASE_URL}vendor/react${debugString}.js`,
+            `${BASE_URL}vendor/react-dom${debugString}.js`,
+            `${BASE_URL}vendor/prop-types.js`,
+            `${BASE_URL}vendor/react-transition-group.js`,
+            `${BASE_URL}vendor/redux.js`,
+            `${BASE_URL}vendor/react-redux.js`,
+            `${BASE_URL}data/content/activity-stream.bundle.js`,
+          ];
+
+          for (let script of scripts) {
+            Services.scriptloader.loadSubScript(script, win); // Synchronous call
+          }
+        };
+        win.addEventListener("DOMContentLoaded", onLoaded, { once: true });
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * The AboutNewTabStubService is a function called in both the main and
+ * content processes when trying to get at the nsIAboutNewTabService. This
+ * function does the job of choosing the appropriate implementation of
+ * nsIAboutNewTabService for the process type.
+ */
+function AboutNewTabStubService() {
+  if (Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT) {
+    return new BaseAboutNewTabService();
+  }
+  return new AboutNewTabChildService();
+}

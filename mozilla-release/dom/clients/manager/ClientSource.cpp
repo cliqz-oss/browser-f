@@ -16,6 +16,7 @@
 #include "mozilla/dom/ClientIPCTypes.h"
 #include "mozilla/dom/DOMMozPromiseRequestHolder.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
+#include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/dom/MessageEvent.h"
 #include "mozilla/dom/MessageEventBinding.h"
 #include "mozilla/dom/Navigator.h"
@@ -230,8 +231,8 @@ void ClientSource::WorkerExecutionReady(WorkerPrivate* aWorkerPrivate) {
 nsresult ClientSource::WindowExecutionReady(nsPIDOMWindowInner* aInnerWindow) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(aInnerWindow);
-  MOZ_DIAGNOSTIC_ASSERT(aInnerWindow->IsCurrentInnerWindow());
-  MOZ_DIAGNOSTIC_ASSERT(aInnerWindow->HasActiveDocument());
+  MOZ_ASSERT(aInnerWindow->IsCurrentInnerWindow());
+  MOZ_ASSERT(aInnerWindow->HasActiveDocument());
 
   if (IsShutdown()) {
     return NS_OK;
@@ -348,6 +349,9 @@ void ClientSource::WorkerSyncPing(WorkerPrivate* aWorkerPrivate) {
   if (IsShutdown()) {
     return;
   }
+
+  // We need to make sure the mainthread is unblocked.
+  AutoYieldJSThreadExecution yield;
 
   MOZ_DIAGNOSTIC_ASSERT(aWorkerPrivate == mManager->GetWorkerPrivate());
   aWorkerPrivate->AssertIsOnWorkerThread();

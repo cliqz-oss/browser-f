@@ -61,7 +61,7 @@ class RendererOGL {
   RenderedFrameId UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize,
                                   const Maybe<wr::ImageFormat>& aReadbackFormat,
                                   const Maybe<Range<uint8_t>>& aReadbackBuffer,
-                                  bool aHadSlowFrame, RendererStats* aOutStats);
+                                  RendererStats* aOutStats);
 
   /// This can be called on the render thread only.
   void WaitForGPU();
@@ -84,7 +84,8 @@ class RendererOGL {
   /// This can be called on the render thread only.
   RendererOGL(RefPtr<RenderThread>&& aThread,
               UniquePtr<RenderCompositor> aCompositor, wr::WindowId aWindowId,
-              wr::Renderer* aRenderer, layers::CompositorBridgeParent* aBridge);
+              wr::Renderer* aRenderer, layers::CompositorBridgeParent* aBridge,
+              void* aSoftwareContext = nullptr);
 
   /// This can be called on the render thread only.
   void Pause();
@@ -117,6 +118,7 @@ class RendererOGL {
   wr::Renderer* mRenderer;
   layers::CompositorBridgeParent* mBridge;
   wr::WindowId mWindowId;
+  void* mSoftwareContext;
   TimeStamp mFrameStartTime;
 
   bool mDisableNativeCompositor;

@@ -88,6 +88,11 @@ EXPORTS.mozilla += [
     'public/leb128iterator.h',
     'public/ModuloBuffer.h',
     'public/PowerOfTwo.h',
+    'public/ProfileBufferChunk.h',
+    'public/ProfileBufferChunkManager.h',
+    'public/ProfileBufferChunkManagerSingle.h',
+    'public/ProfileBufferChunkManagerWithLocalLimit.h',
+    'public/ProfileBufferEntrySerialization.h',
     'public/ProfileBufferIndex.h',
 ]
 

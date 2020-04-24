@@ -1008,14 +1008,10 @@ class Window extends WindowBase {
   }
 
   setTitlePreface(titlePreface) {
-    if (!titlePreface) {
-      this.window.document.documentElement.removeAttribute("titlepreface");
-    } else {
-      this.window.document.documentElement.setAttribute(
-        "titlepreface",
-        titlePreface
-      );
-    }
+    this.window.document.documentElement.setAttribute(
+      "titlepreface",
+      titlePreface
+    );
   }
 
   get focused() {
@@ -1223,13 +1219,6 @@ class WindowManager extends WindowManagerBase {
     let window = windowTracker.getWindow(windowId, context);
 
     return this.getWrapper(window);
-  }
-
-  canAccessWindow(window, context) {
-    return (
-      (context && context.canAccessWindow(window)) ||
-      this.extension.canAccessWindow(window)
-    );
   }
 
   *getAll(context) {

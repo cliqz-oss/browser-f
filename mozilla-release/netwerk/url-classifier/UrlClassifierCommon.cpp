@@ -7,15 +7,17 @@
 #include "mozilla/net/UrlClassifierCommon.h"
 
 #include "ClassifierDummyChannel.h"
-#include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/AntiTrackingUtils.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ContentBlockingAllowList.h"
+#include "mozilla/ContentBlockingNotifier.h"
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/net/HttpBaseChannel.h"
 #include "mozilla/net/UrlClassifierFeatureFactory.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/StaticPrefs_privacy.h"
 #include "mozilla/StaticPrefs_channelclassifier.h"
+#include "mozilla/StaticPrefs_security.h"
 #include "mozIThirdPartyUtil.h"
 #include "nsContentUtils.h"
 #include "nsIChannel.h"
@@ -211,7 +213,7 @@ nsresult UrlClassifierCommon::SetBlockedContent(nsIChannel* channel,
     if (!state) {
       state = nsIWebProgressListener::STATE_BLOCKED_UNSAFE_CONTENT;
     }
-    AntiTrackingCommon::NotifyContentBlockingEvent(channel, state);
+    ContentBlockingNotifier::OnEvent(channel, state);
 
     return NS_OK;
   }
@@ -227,7 +229,7 @@ nsresult UrlClassifierCommon::SetBlockedContent(nsIChannel* channel,
   }
 
   nsCOMPtr<nsIURI> uriBeingLoaded =
-      AntiTrackingCommon::MaybeGetDocumentURIBeingLoaded(channel);
+      AntiTrackingUtils::MaybeGetDocumentURIBeingLoaded(channel);
   nsCOMPtr<mozIDOMWindowProxy> win;
   rv = thirdPartyUtil->GetTopWindowForChannel(channel, uriBeingLoaded,
                                               getter_AddRefs(win));
@@ -443,7 +445,7 @@ void UrlClassifierCommon::AnnotateChannel(nsIChannel* aChannel,
       IsCryptominingClassificationFlag(aClassificationFlags);
 
   if (validClassificationFlags && isThirdPartyWithTopLevelWinURI) {
-    AntiTrackingCommon::NotifyContentBlockingEvent(aChannel, aLoadingState);
+    ContentBlockingNotifier::OnEvent(aChannel, aLoadingState);
   }
 
   if (isThirdPartyWithTopLevelWinURI &&
@@ -460,39 +462,38 @@ bool UrlClassifierCommon::IsAllowListed(nsIChannel* aChannel) {
     return false;
   }
 
-  nsCOMPtr<nsIPrincipal> cbAllowListPrincipal;
-  nsresult rv = channel->GetContentBlockingAllowListPrincipal(
-      getter_AddRefs(cbAllowListPrincipal));
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return false;
-  }
+  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
 
-  if (!cbAllowListPrincipal &&
-      StaticPrefs::channelclassifier_allowlist_example()) {
+  bool isAllowListed = false;
+  if (StaticPrefs::channelclassifier_allowlist_example()) {
     UC_LOG(("nsChannelClassifier: Allowlisting test domain"));
+
     nsCOMPtr<nsIIOService> ios = services::GetIOService();
     if (NS_WARN_IF(!ios)) {
       return false;
     }
 
     nsCOMPtr<nsIURI> uri;
-    rv = ios->NewURI(NS_LITERAL_CSTRING("http://allowlisted.example.com"),
-                     nullptr, nullptr, getter_AddRefs(uri));
+    nsresult rv =
+        ios->NewURI(NS_LITERAL_CSTRING("http://allowlisted.example.com"),
+                    nullptr, nullptr, getter_AddRefs(uri));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return false;
     }
+    nsCOMPtr<nsIPrincipal> cbAllowListPrincipal =
+        BasePrincipal::CreateContentPrincipal(uri,
+                                              loadInfo->GetOriginAttributes());
 
-    nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
-    RefPtr<BasePrincipal> bp = BasePrincipal::CreateContentPrincipal(
-        uri, loadInfo->GetOriginAttributes());
-    cbAllowListPrincipal = std::move(bp);
-  }
-
-  bool isAllowListed = false;
-  rv = ContentBlockingAllowList::Check(
-      cbAllowListPrincipal, NS_UsePrivateBrowsing(aChannel), isAllowListed);
-  if (NS_FAILED(rv)) {  // normal for some loads, no need to print a warning
-    return false;
+    rv = ContentBlockingAllowList::Check(
+        cbAllowListPrincipal, NS_UsePrivateBrowsing(aChannel), isAllowListed);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return false;
+    }
+  } else {
+    nsCOMPtr<nsICookieJarSettings> cookieJarSettings;
+    MOZ_ALWAYS_SUCCEEDS(
+        loadInfo->GetCookieJarSettings(getter_AddRefs(cookieJarSettings)));
+    isAllowListed = cookieJarSettings->GetIsOnContentBlockingAllowList();
   }
 
   if (isAllowListed) {
@@ -594,6 +595,22 @@ uint32_t UrlClassifierCommon::TableToClassificationFlag(
   }
 
   return 0;
+}
+
+/* static */
+bool UrlClassifierCommon::IsPassiveContent(nsIChannel* aChannel) {
+  MOZ_ASSERT(aChannel);
+
+  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
+  nsContentPolicyType contentType = loadInfo->GetExternalContentPolicyType();
+
+  // Return true if aChannel is loading passive display content, as
+  // defined by the mixed content blocker.
+  // https://searchfox.org/mozilla-central/rev/c80fa7258c935223fe319c5345b58eae85d4c6ae/dom/security/nsMixedContentBlocker.cpp#532
+  return contentType == nsIContentPolicy::TYPE_IMAGE ||
+         contentType == nsIContentPolicy::TYPE_MEDIA ||
+         (contentType == nsIContentPolicy::TYPE_OBJECT_SUBREQUEST &&
+          !StaticPrefs::security_mixed_content_block_object_subrequest());
 }
 
 }  // namespace net

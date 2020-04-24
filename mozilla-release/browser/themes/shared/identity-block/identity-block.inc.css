@@ -133,7 +133,7 @@
 /* MAIN IDENTITY ICON */
 #identity-icon {
   margin-inline-start: 0;
-  list-style-image: url(chrome://browser/skin/identity-icon.svg);
+  list-style-image: url(chrome://global/skin/icons/identity-icon.svg);
 }
 
 #identity-box[pageproxystate="valid"].chromeUI > #identity-icon {
@@ -146,11 +146,11 @@
 }
 
 #urlbar[actiontype="extension"] > #urlbar-input-container > #identity-box > #identity-icon {
-  list-style-image: url(chrome://mozapps/skin/extensions/extensionGeneric-16.svg);
+  list-style-image: url(chrome://mozapps/skin/extensions/extension.svg);
 }
 
 #identity-box[pageproxystate="valid"].extensionPage > #identity-icon {
-  list-style-image: url(chrome://mozapps/skin/extensions/extensionGeneric-16.svg);
+  list-style-image: url(chrome://mozapps/skin/extensions/extension.svg);
 }
 
 #identity-box[pageproxystate="valid"].verifiedDomain > #identity-icon,
@@ -176,7 +176,6 @@
 }
 
 #identity-box[pageproxystate="valid"].notSecure > #identity-icon,
-#identity-box[pageproxystate="valid"].insecureLoginForms > #identity-icon,
 #identity-box[pageproxystate="valid"].mixedActiveContent > #identity-icon {
   list-style-image: url(chrome://browser/skin/connection-mixed-active-loaded.svg);
 }
@@ -212,12 +211,12 @@
 }
 
 #webrtc-sharing-icon[sharing]:not([paused]) {
-  animation: 1.5s ease in-use-blink infinite;
+  animation: 1.5s ease webrtc-sharing-icon-in-use-blink infinite;
   -moz-context-properties: fill;
   fill: rgb(224, 41, 29);
 }
 
-@keyframes in-use-blink {
+@keyframes webrtc-sharing-icon-in-use-blink {
   50% { opacity: 0; }
 }
 

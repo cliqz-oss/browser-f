@@ -1725,10 +1725,10 @@ main {
     border-collapse: collapse;
     width: 100%; }
     .asrouter-admin table.minimal-table {
-      border-collapse: collapse; }
+      border-collapse: collapse;
+      border: 1px solid var(--newtab-border-secondary-color); }
       .asrouter-admin table.minimal-table td {
-        padding: 8px;
-        border: 1px solid var(--newtab-border-secondary-color); }
+        padding: 8px; }
       .asrouter-admin table.minimal-table td:first-child {
         width: 1%;
         white-space: nowrap; }
@@ -1751,11 +1751,15 @@ main {
     border-top: 1px solid var(--newtab-border-secondary-color); }
   .asrouter-admin .message-item td {
     vertical-align: top;
-    border-bottom: 1px solid var(--newtab-border-secondary-color);
-    padding: 8px; }
+    padding: 8px;
+    border-bottom: 1px solid var(--newtab-border-secondary-color); }
     .asrouter-admin .message-item td.min {
       width: 1%;
       white-space: nowrap; }
+    .asrouter-admin .message-item td.message-summary {
+      width: 60%; }
+    .asrouter-admin .message-item td.button-column {
+      width: 15%; }
     .asrouter-admin .message-item td:first-child {
       border-left: 1px solid var(--newtab-border-secondary-color); }
     .asrouter-admin .message-item td:last-child {
@@ -1791,6 +1795,17 @@ main {
     margin-bottom: 20px; }
   .asrouter-admin .modalOverlayInner {
     height: 80%; }
+  .asrouter-admin .clearButton {
+    border: 0;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex; }
+    .asrouter-admin .clearButton:hover {
+      background: var(--newtab-element-hover-color); }
+  .asrouter-admin .collapsed {
+    display: none; }
+  .asrouter-admin .icon {
+    cursor: pointer; }
 
 .pocket-logged-in-cta {
   font-size: 13px;
@@ -3240,6 +3255,13 @@ main {
       background-color: rgba(12, 12, 13, 0.3); }
     .ASRouterButton.secondary:focus {
       box-shadow: 0 0 0 1px #0A84FF inset, 0 0 0 1px #0A84FF, 0 0 0 4px rgba(10, 132, 255, 0.3); }
+  .ASRouterButton.slim {
+    background-color: rgba(12, 12, 13, 0.1);
+    margin-inline-start: 0;
+    font-size: 12px;
+    padding: 6px 12px; }
+    .ASRouterButton.slim:hover {
+      background-color: rgba(12, 12, 13, 0.2); }
 
 [lwt-newtab-brighttext] .secondary {
   background-color: rgba(249, 249, 250, 0.1); }
@@ -3307,9 +3329,6 @@ main {
     margin-top: -8px;
     padding: 0;
     cursor: pointer; }
-    @media (min-width: 766px) {
-      .SnippetBaseContainer .blockButton {
-        inset-inline-end: 24px; } }
   .SnippetBaseContainer:hover .blockButton {
     display: block; }
   .SnippetBaseContainer .icon {
@@ -3845,6 +3864,57 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
   .submissionStatus .submitStatusTitle {
     font-size: 20px; }
 
+.onboardingMessageImage.addons {
+  background-image: url("../data/content/assets/illustration-addons@2x.png"); }
+
+.onboardingMessageImage.privatebrowsing {
+  background-image: url("../data/content/assets/illustration-privatebrowsing@2x.png"); }
+
+.onboardingMessageImage.screenshots {
+  background-image: url("../data/content/assets/illustration-screenshots@2x.png"); }
+
+.onboardingMessageImage.gift {
+  background-image: url("../data/content/assets/illustration-gift@2x.png"); }
+
+.onboardingMessageImage.sync {
+  background-image: url("../data/content/assets/illustration-sync@2x.png"); }
+
+.onboardingMessageImage.devices {
+  background-image: url("../data/content/assets/trailhead/card-illo-devices.svg"); }
+
+.onboardingMessageImage.fbcont {
+  background-image: url("../data/content/assets/trailhead/card-illo-fbcont.svg"); }
+
+.onboardingMessageImage.import {
+  background-image: url("../data/content/assets/trailhead/card-illo-import.svg"); }
+
+.onboardingMessageImage.ffmonitor {
+  background-image: url("../data/content/assets/trailhead/card-illo-ffmonitor.svg"); }
+
+.onboardingMessageImage.ffsend {
+  background-image: url("../data/content/assets/trailhead/card-illo-ffsend.svg"); }
+
+.onboardingMessageImage.lockwise {
+  background-image: url("../data/content/assets/trailhead/card-illo-lockwise.svg"); }
+
+.onboardingMessageImage.mobile {
+  background-image: url("../data/content/assets/trailhead/card-illo-mobile.svg"); }
+
+.onboardingMessageImage.pledge {
+  background-image: url("../data/content/assets/trailhead/card-illo-pledge.svg"); }
+
+.onboardingMessageImage.pocket {
+  background-image: url("../data/content/assets/trailhead/card-illo-pocket.svg"); }
+
+.onboardingMessageImage.private {
+  background-image: url("../data/content/assets/trailhead/card-illo-private.svg"); }
+
+.onboardingMessageImage.sendtab {
+  background-image: url("../data/content/assets/trailhead/card-illo-sendtab.svg"); }
+
+.onboardingMessageImage.tracking {
+  background-image: url("../data/content/assets/trailhead/card-illo-tracking.svg"); }
+
 .onboardingMessage {
   height: 340px;
   text-align: center;
@@ -3926,7 +3996,7 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
 
 .onboardingMessageImage {
   height: 112px;
-  width: 120px;
+  width: 180px;
   background-size: auto 140px;
   background-position: center center;
   background-repeat: no-repeat;
@@ -3936,44 +4006,6 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
       height: 75px;
       min-width: 80px;
       background-size: 140px; } }
-  @media (min-width: 1122px) {
-    .onboardingMessageImage {
-      width: 230px;
-      background-size: auto 140px; } }
-  .onboardingMessageImage.addons {
-    background-image: url("../data/content/assets/illustration-addons@2x.png"); }
-  .onboardingMessageImage.privatebrowsing {
-    background-image: url("../data/content/assets/illustration-privatebrowsing@2x.png"); }
-  .onboardingMessageImage.screenshots {
-    background-image: url("../data/content/assets/illustration-screenshots@2x.png"); }
-  .onboardingMessageImage.gift {
-    background-image: url("../data/content/assets/illustration-gift@2x.png"); }
-  .onboardingMessageImage.sync {
-    background-image: url("../data/content/assets/illustration-sync@2x.png"); }
-  .onboardingMessageImage.devices {
-    background-image: url("../data/content/assets/trailhead/card-illo-devices.svg"); }
-  .onboardingMessageImage.fbcont {
-    background-image: url("../data/content/assets/trailhead/card-illo-fbcont.svg"); }
-  .onboardingMessageImage.import {
-    background-image: url("../data/content/assets/trailhead/card-illo-import.svg"); }
-  .onboardingMessageImage.ffmonitor {
-    background-image: url("../data/content/assets/trailhead/card-illo-ffmonitor.svg"); }
-  .onboardingMessageImage.ffsend {
-    background-image: url("../data/content/assets/trailhead/card-illo-ffsend.svg"); }
-  .onboardingMessageImage.lockwise {
-    background-image: url("../data/content/assets/trailhead/card-illo-lockwise.svg"); }
-  .onboardingMessageImage.mobile {
-    background-image: url("../data/content/assets/trailhead/card-illo-mobile.svg"); }
-  .onboardingMessageImage.pledge {
-    background-image: url("../data/content/assets/trailhead/card-illo-pledge.svg"); }
-  .onboardingMessageImage.pocket {
-    background-image: url("../data/content/assets/trailhead/card-illo-pocket.svg"); }
-  .onboardingMessageImage.private {
-    background-image: url("../data/content/assets/trailhead/card-illo-private.svg"); }
-  .onboardingMessageImage.sendtab {
-    background-image: url("../data/content/assets/trailhead/card-illo-sendtab.svg"); }
-  .onboardingMessageImage.tracking {
-    background-image: url("../data/content/assets/trailhead/card-illo-tracking.svg"); }
 
 .EOYSnippetForm {
   margin: 10px 0 8px;
@@ -4265,10 +4297,10 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
   border-radius: 4px;
   box-shadow: var(--newtab-card-shadow);
   font-size: 13px;
-  padding: 20px 40px 60px; }
+  padding: 20px 20px 60px; }
   @media (max-width: 865px) {
     .trailheadCard {
-      padding: 20px 40px; } }
+      padding: 20px; } }
   @media (min-width: 1122px) {
     .trailheadCard {
       font-size: 15px; } }

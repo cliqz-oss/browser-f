@@ -17,6 +17,7 @@
 #include "mozilla/dom/CustomEvent.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "nsIBrowserChild.h"
+#include "nsIOService.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsPIDOMWindow.h"
 #include "nsIDocShell.h"
@@ -95,7 +96,6 @@ static const char kPrintingPromptService[] =
 
 #include "nsFocusManager.h"
 #include "nsRange.h"
-#include "nsIURIFixup.h"
 #include "mozilla/Components.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLFrameElement.h"
@@ -490,31 +490,34 @@ static nsresult EnsureSettingsHasPrinterNameSet(
 #endif
 }
 
-static CallState DocHasPrintCallbackCanvas(Document& aDoc, void* aData) {
+static bool DocHasPrintCallbackCanvas(Document& aDoc) {
   Element* root = aDoc.GetRootElement();
   if (!root) {
-    return CallState::Continue;
+    return false;
   }
+  // FIXME(emilio): This doesn't account for shadow dom and it's unnecessarily
+  // inefficient. Though I guess it doesn't really matter.
   RefPtr<nsContentList> canvases =
       NS_GetContentList(root, kNameSpaceID_XHTML, NS_LITERAL_STRING("canvas"));
   uint32_t canvasCount = canvases->Length(true);
   for (uint32_t i = 0; i < canvasCount; ++i) {
-    HTMLCanvasElement* canvas =
-        HTMLCanvasElement::FromNodeOrNull(canvases->Item(i, false));
+    auto* canvas = HTMLCanvasElement::FromNodeOrNull(canvases->Item(i, false));
     if (canvas && canvas->GetMozPrintCallback()) {
-      // This subdocument has a print callback. Set result and return false to
-      // stop iteration.
-      *static_cast<bool*>(aData) = true;
-      return CallState::Stop;
+      return true;
     }
   }
-  return CallState::Continue;
-}
 
-static bool AnySubdocHasPrintCallbackCanvas(Document& aDoc) {
   bool result = false;
-  aDoc.EnumerateSubDocuments(DocHasPrintCallbackCanvas,
-                             static_cast<void*>(&result));
+
+  auto checkSubDoc = [&result](Document& aSubDoc) {
+    if (DocHasPrintCallbackCanvas(aSubDoc)) {
+      result = true;
+      return CallState::Stop;
+    }
+    return CallState::Continue;
+  };
+
+  aDoc.EnumerateSubDocuments(checkSubDoc);
   return result;
 }
 
@@ -587,11 +590,7 @@ nsresult nsPrintJob::Initialize(nsIDocumentViewerPrint* aDocViewerPrint,
     }
   }
 
-  bool hasMozPrintCallback = false;
-  DocHasPrintCallbackCanvas(*aOriginalDoc,
-                            static_cast<void*>(&hasMozPrintCallback));
-  mHasMozPrintCallback =
-      hasMozPrintCallback || AnySubdocHasPrintCallbackCanvas(*aOriginalDoc);
+  mHasMozPrintCallback = DocHasPrintCallbackCanvas(*aOriginalDoc);
 
   return NS_OK;
 }
@@ -1276,17 +1275,7 @@ void nsPrintJob::GetDisplayTitleAndURL(Document& aDoc,
       return;
     }
 
-    nsCOMPtr<nsIURIFixup> urifixup(components::URIFixup::Service());
-    if (!urifixup) {
-      return;
-    }
-
-    nsCOMPtr<nsIURI> exposableURI;
-    urifixup->CreateExposableURI(url, getter_AddRefs(exposableURI));
-    if (!exposableURI) {
-      return;
-    }
-
+    nsCOMPtr<nsIURI> exposableURI = net::nsIOService::CreateExposableURI(url);
     nsAutoCString urlCStr;
     nsresult rv = exposableURI->GetSpec(urlCStr);
     if (NS_FAILED(rv)) {
@@ -1299,8 +1288,7 @@ void nsPrintJob::GetDisplayTitleAndURL(Document& aDoc,
       return;
     }
 
-    textToSubURI->UnEscapeURIForUI(NS_LITERAL_CSTRING("UTF-8"), urlCStr,
-                                   aURLStr);
+    textToSubURI->UnEscapeURIForUI(urlCStr, aURLStr);
   }
 }
 
@@ -1892,8 +1880,9 @@ nsresult nsPrintJob::UpdateSelectionAndShrinkPrintObject(
     int32_t cnt = selection->RangeCount();
     int32_t inx;
     for (inx = 0; inx < cnt; ++inx) {
-      selectionPS->AddRangeAndSelectFramesAndNotifyListeners(
-          *selection->GetRangeAt(inx), IgnoreErrors());
+      const RefPtr<nsRange> range{selection->GetRangeAt(inx)};
+      selectionPS->AddRangeAndSelectFramesAndNotifyListeners(*range,
+                                                             IgnoreErrors());
     }
   }
 
@@ -2248,7 +2237,8 @@ static nsINode* GetCorrespondingNodeInDocument(const nsINode* aNode,
 
 static NS_NAMED_LITERAL_STRING(kEllipsis, u"\x2026");
 
-static nsresult DeleteUnselectedNodes(Document* aOrigDoc, Document* aDoc) {
+MOZ_CAN_RUN_SCRIPT_BOUNDARY static nsresult DeleteUnselectedNodes(
+    Document* aOrigDoc, Document* aDoc) {
   PresShell* origPresShell = aOrigDoc->GetPresShell();
   PresShell* presShell = aDoc->GetPresShell();
   NS_ENSURE_STATE(origPresShell && presShell);

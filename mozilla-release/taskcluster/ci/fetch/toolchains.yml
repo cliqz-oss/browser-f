@@ -463,11 +463,19 @@ dump-syms:
     fetch:
         type: git
         repo: https://github.com/mozilla/dump_syms/
-        revision: fcd7b79fb791da50233d6317f79e2a4b80a7f7d8
+        # 0.0.4 + fix for Windows cross builds
+        revision: c75b1fb14f07650d9490b788710af2367c7e00d0
 
 fix-stacks:
     description: fix-stacks source code
     fetch:
         type: git
         repo: https://github.com/mozilla/fix-stacks/
-        revision: b0abef037e6fd46a2debce83c1a7612c6f35c599
+        revision: 22bd8d55956d5403e1e2d2c14fd07d8ab74b5807
+
+winchecksec:
+    description: winchecksec source code
+    fetch:
+        type: git
+        repo: https://github.com/trailofbits/winchecksec/
+        revision: 8143f621359616f16eaa265e22d10a7962536634

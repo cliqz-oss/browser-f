@@ -171,7 +171,7 @@ LazyActor.prototype = {
   getConstructor() {
     const options = this._options;
     if (options.constructorFun) {
-      // Actor definition registered by ActorRegistryActor or testing helpers
+      // Actor definition registered by testing helpers
       return options.constructorFun;
     }
     // Lazy actor definition, where options contains all the information
@@ -192,7 +192,7 @@ LazyActor.prototype = {
   /**
    * Return the parent pool for this lazy actor.
    */
-  parent: function() {
+  getParent: function() {
     return this.conn && this.conn.poolFor(this.actorID);
   },
 
@@ -203,7 +203,7 @@ LazyActor.prototype = {
    * actor
    */
   destroy() {
-    const parent = this.parent();
+    const parent = this.getParent();
     if (parent) {
       parent.unmanage(this);
     }

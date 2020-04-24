@@ -17,6 +17,7 @@
 #include "mozilla/PodOperations.h"
 #include "mozilla/Vector.h"
 
+#include <type_traits>
 #include <utility>
 
 #include "frontend/BinAST-macros.h"
@@ -26,6 +27,9 @@
 #include "frontend/ParseNode.h"
 #include "frontend/Parser.h"
 #include "frontend/SharedContext.h"
+#ifndef ENABLE_NEW_REGEXP
+#  include "irregexp/RegExpParser.h"
+#endif
 #include "js/RegExpFlags.h"  //  JS::RegExpFlag, JS::RegExpFlags
 #include "vm/RegExpObject.h"
 
@@ -3543,7 +3547,7 @@ JS::Result<ParseNode*> BinASTParser<Tok>::parseInterfaceLiteralRegExpExpression(
   RegExpFlags reflags = JS::RegExpFlag::NoFlags;
   auto flagsContext =
       FieldContext(BinASTInterfaceAndField::LiteralRegExpExpression__Flags);
-  if (mozilla::IsSame<Tok, BinASTTokenReaderContext>::value) {
+  if constexpr (std::is_same_v<Tok, BinASTTokenReaderContext>) {
     // Hack: optimized `readChars` is not implemented for
     // `BinASTTokenReaderContext`.
     RootedAtom flags(cx_);
@@ -3559,13 +3563,27 @@ JS::Result<ParseNode*> BinASTParser<Tok>::parseInterfaceLiteralRegExpExpression(
     }
   }
 
-  Rooted<RegExpObject*> reobj(cx_);
-  BINJS_TRY_VAR(reobj,
-                RegExpObject::create(cx_, pattern, reflags, TenuredObject));
+  // Validate the RegExp pattern is valid.
+  {
+    JS::CompileOptions dummyOptions(cx_);
+    TokenStream dummyTokenStream(cx_, dummyOptions, nullptr, 0, nullptr);
 
-  BINJS_TRY_DECL(result,
-                 handler_.newRegExp(reobj, tokenizer_->pos(start), *this));
-  return result;
+    LifoAllocScope allocScope(&cx_->tempLifoAlloc());
+#ifdef ENABLE_NEW_REGEXP
+    BINJS_TRY(irregexp::CheckPatternSyntax(cx_, dummyTokenStream, pattern,
+					   reflags);
+#else
+    BINJS_TRY(irregexp::ParsePatternSyntax(dummyTokenStream, allocScope.alloc(),
+                                           pattern, reflags.unicode()));
+#endif
+  }
+
+  RegExpIndex index(this->getCompilationInfo().regExpData.length());
+  BINJS_TRY(this->getCompilationInfo().regExpData.emplaceBack());
+  BINJS_TRY(
+      this->getCompilationInfo().regExpData[index].init(cx_, pattern, reflags));
+
+  return handler_.newRegExp(index, tokenizer_->pos(start));
 }
 
 template <typename Tok>

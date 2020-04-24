@@ -66,7 +66,7 @@ IDBTypedCursor<CursorType>::~IDBTypedCursor() {
 // static
 RefPtr<IDBObjectStoreCursor> IDBCursor::Create(
     BackgroundCursorChild<Type::ObjectStore>* const aBackgroundActor, Key aKey,
-    StructuredCloneReadInfo&& aCloneInfo) {
+    StructuredCloneReadInfoChild&& aCloneInfo) {
   MOZ_ASSERT(aBackgroundActor);
   aBackgroundActor->AssertIsOnOwningThread();
   MOZ_ASSERT(!aKey.IsUnset());
@@ -89,7 +89,7 @@ RefPtr<IDBObjectStoreKeyCursor> IDBCursor::Create(
 // static
 RefPtr<IDBIndexCursor> IDBCursor::Create(
     BackgroundCursorChild<Type::Index>* const aBackgroundActor, Key aKey,
-    Key aSortKey, Key aPrimaryKey, StructuredCloneReadInfo&& aCloneInfo) {
+    Key aSortKey, Key aPrimaryKey, StructuredCloneReadInfoChild&& aCloneInfo) {
   MOZ_ASSERT(aBackgroundActor);
   aBackgroundActor->AssertIsOnOwningThread();
   MOZ_ASSERT(!aKey.IsUnset());
@@ -812,9 +812,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 // Don't unlink mRequest or mSource in
 // NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED!
-#define NS_IMPL_CYCLE_COLLECTION_IDBCURSOR_SUBCLASS(_subclassName)            \
-  NS_IMPL_CYCLE_COLLECTION_CLASS(_subclassName)                               \
-                                                                              \
+#define NS_IMPL_CYCLE_COLLECTION_IDBCURSOR_SUBCLASS_METHODS(_subclassName)    \
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(_subclassName, IDBCursor) \
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSource)                                \
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END                                       \
@@ -829,6 +827,10 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
                                                                               \
   NS_IMPL_ADDREF_INHERITED(_subclassName, IDBCursor)                          \
   NS_IMPL_RELEASE_INHERITED(_subclassName, IDBCursor)
+
+#define NS_IMPL_CYCLE_COLLECTION_IDBCURSOR_SUBCLASS(_subclassName)  \
+  NS_IMPL_CYCLE_COLLECTION_MULTI_ZONE_JSHOLDER_CLASS(_subclassName) \
+  NS_IMPL_CYCLE_COLLECTION_IDBCURSOR_SUBCLASS_METHODS(_subclassName)
 
 NS_IMPL_CYCLE_COLLECTION_IDBCURSOR_SUBCLASS(IDBObjectStoreCursor)
 NS_IMPL_CYCLE_COLLECTION_IDBCURSOR_SUBCLASS(IDBObjectStoreKeyCursor)
@@ -862,6 +864,11 @@ bool IDBTypedCursor<CursorType>::IsLocaleAware() const {
     return !GetSourceRef().Locale().IsEmpty();
   }
 }
+
+template class IDBTypedCursor<IDBCursorType::ObjectStore>;
+template class IDBTypedCursor<IDBCursorType::ObjectStoreKey>;
+template class IDBTypedCursor<IDBCursorType::Index>;
+template class IDBTypedCursor<IDBCursorType::IndexKey>;
 
 }  // namespace dom
 }  // namespace mozilla

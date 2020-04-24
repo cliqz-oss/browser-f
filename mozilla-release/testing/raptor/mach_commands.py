@@ -27,7 +27,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 BENCHMARK_REPOSITORY = 'https://github.com/mozilla/perf-automation'
 BENCHMARK_REVISION = 'e19a0865c946ae2f9a64dd25614b1c275a3996b2'
 
-FIREFOX_ANDROID_BROWSERS = ["fennec", "geckoview", "refbrow", "fenix"]
+ANDROID_BROWSERS = ["fennec", "geckoview", "refbrow", "fenix", "chrome-m"]
 
 
 class RaptorRunner(MozbuildObject):
@@ -58,9 +58,10 @@ class RaptorRunner(MozbuildObject):
         self.memory_test = kwargs['memory_test']
         self.power_test = kwargs['power_test']
         self.cpu_test = kwargs['cpu_test']
+        self.disable_perf_tuning = kwargs['disable_perf_tuning']
         self.device_name = kwargs['device_name']
 
-        if Conditions.is_android(self) or kwargs["app"] in FIREFOX_ANDROID_BROWSERS:
+        if Conditions.is_android(self) or kwargs["app"] in ANDROID_BROWSERS:
             self.binary_path = None
         else:
             self.binary_path = kwargs.get("binary") or self.get_binary_path()
@@ -156,6 +157,7 @@ class RaptorRunner(MozbuildObject):
             'power_test': self.power_test,
             'memory_test': self.memory_test,
             'cpu_test': self.cpu_test,
+            'disable_perf_tuning': self.disable_perf_tuning,
             'is_release_build': self.is_release_build,
             'device_name': self.device_name,
         }
@@ -214,12 +216,12 @@ class MachRaptor(MachCommandBase):
         build_obj = self
 
         is_android = Conditions.is_android(build_obj) or \
-            kwargs['app'] in FIREFOX_ANDROID_BROWSERS
+            kwargs['app'] in ANDROID_BROWSERS
 
         if is_android:
             from mozrunner.devices.android_device import (verify_android_device, InstallIntent)
             from mozdevice import ADBAndroid
-            install = InstallIntent.NO if kwargs.pop('noinstall', False) else InstallIntent.PROMPT
+            install = InstallIntent.NO if kwargs.pop('noinstall', False) else InstallIntent.YES
             if not verify_android_device(build_obj, install=install,
                                          app=kwargs['binary'],
                                          xre=True):  # Equivalent to 'run_local' = True.
