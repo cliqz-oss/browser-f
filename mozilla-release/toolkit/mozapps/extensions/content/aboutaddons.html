@@ -35,9 +35,11 @@
     <div id="full">
       <div id="sidebar">
         <categories-box id="categories" orientation="vertical">
-          <button is="discover-button" viewid="addons://discover/" class="category" role="tab" name="discover"></button>
+          <!-- CLIQZ-SPECIAL: we do not use recommendations in Cliqz browser, so hide it;
+          <button is="discover-button" viewid="addons://discover/" class="category" role="tab" name="discover"></button>-->
           <button is="category-button" viewid="addons://list/extension" class="category" role="tab" name="extension"></button>
-          <button is="category-button" viewid="addons://list/theme" class="category" role="tab" name="theme"></button>
+          <!-- CLIQZ-SPECIAL: we do not use FF themes in Cliqz browser, so hide it;
+          <button is="category-button" viewid="addons://list/theme" class="category" role="tab" name="theme"></button>-->
           <button is="category-button" viewid="addons://list/plugin" class="category" role="tab" name="plugin"></button>
           <button is="category-button" viewid="addons://list/dictionary" class="category" role="tab" name="dictionary" hidden default-hidden></button>
           <button is="category-button" viewid="addons://list/locale" class="category" role="tab" name="locale" hidden default-hidden></button>
