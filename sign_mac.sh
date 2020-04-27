@@ -24,6 +24,7 @@ do
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/plugin-container.app
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/pingsender
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libfreebl3.dylib
+  codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libgraphitewasm.dylib
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/cliqz-bin
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/liblgpllibs.dylib
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libplugin_child_interpose.dylib
