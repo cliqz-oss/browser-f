@@ -498,4 +498,4 @@ i686/gmp-clearkey/0.1/clearkey.dll
 #endif
 
 ; Extra distrubution files
-@RESPATH@/defaults/pref/distribution-prefs.js
+@RESPATH@/browser/defaults/preferences/distribution-prefs.js
