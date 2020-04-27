@@ -394,32 +394,16 @@ var gPrivacyPane = {
    * Handles https and consentrik integration integration
    */
   _handleAddons(addonId, groupId, checkboxId) {
-    const toggleAddon = function() {
-      AddonManager.getAddonByID(addonId).then(function(addon) {
-        (!addon.userDisabled) ? addon.disable() : addon.enable();
-      })
-    };
-
     AddonManager.getAddonByID(addonId).then(function(addon) {
       if (!addon) {
         document.getElementById(groupId).style.display = "none";
         return;
       }
-      let stateCheckbox = document.getElementById(checkboxId);
+      const toggleAddon = () =>
+        (!addon.userDisabled) ? addon.disable() : addon.enable();
+      const stateCheckbox = document.getElementById(checkboxId);
       stateCheckbox.checked = !addon.userDisabled;
-      stateCheckbox.addEventListener('click', toggleAddon);
-      let listener = {
-        onEnabled: () => stateCheckbox.checked = true,
-        onDisabled: () => stateCheckbox.checked = false,
-      };
-      AddonManager.addAddonListener(listener);
-
-      let unload = () => {
-        window.removeEventListener("unload", unload);
-        stateCheckbox.removeEventListener('click', toggleAddon);
-        AddonManager.removeAddonListener(listener);
-      };
-      window.addEventListener("unload", unload);
+      setEventListener(checkboxId, 'click', toggleAddon);
     });
   },
 
