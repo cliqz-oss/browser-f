@@ -951,14 +951,8 @@ ifdef DAT_EXT_URL
 	wget --output-document $(DAT_XPI_PATH) $(DAT_EXT_URL)
 endif
 
-CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
-$(CLIQZ_CFG):
-	echo CLIQZ_CFG in `pwd`
-	echo $(CLIQZ_CFG)
-	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
-
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CONSENTRICK_XPI_PATH) $(DAT_XPI_PATH) $(CLIQZ_CFG)
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CONSENTRICK_XPI_PATH) $(DAT_XPI_PATH)
 	echo cliqz_distr in `pwd`
 
 chrome::

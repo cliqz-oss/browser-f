@@ -58,9 +58,6 @@ desktop-file-install \
     --dir $RPM_BUILD_ROOT%{_datadir}/applications \
     %{SOURCE0}
 
-# copy pref file
-cat %{_sourcedir}/no-updates.js > $RPM_BUILD_ROOT/%{_libdir}/%{name}/cliqz.cfg
-
 #In order to make branding work in a generic way, We find
 #all the icons that are likely to be used for desktop files
 #and install them appropriately

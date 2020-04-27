@@ -195,7 +195,8 @@ pref("lightweightThemes.getMoreURL", "https://addons.mozilla.org/%LOCALE%/firefo
 #endif
 
 // UI tour experience.
-pref("browser.uitour.enabled", true);
+//CLIQZ-SPECIAL: turn off FF UI tour
+pref("browser.uitour.enabled", false);
 pref("browser.uitour.loglevel", "Error");
 pref("browser.uitour.requireSecure", true);
 pref("browser.uitour.themeOrigin", "https://addons.mozilla.org/%LOCALE%/firefox/themes/");
@@ -262,7 +263,8 @@ pref("browser.startup.firstrunSkipsHomepage", true);
 // platforms that don't always need it (Win/Linux).
 pref("toolkit.lazyHiddenWindow", true);
 
-pref("browser.slowStartup.notificationDisabled", false);
+// CLIQZ-SPECIAL: Disable Slow Startup message
+pref("browser.slowStartup.notificationDisabled", true);
 pref("browser.slowStartup.timeThreshold", 20000);
 pref("browser.slowStartup.maxSamples", 5);
 
@@ -1387,7 +1389,8 @@ pref("full-screen-api.enabled", true);
 // Startup Crash Tracking
 // number of startup crashes that can occur before starting into safe mode automatically
 // (this pref has no effect if more than 6 hours have passed since the last crash)
-pref("toolkit.startup.max_resumed_crashes", 3);
+// CLIQZ-SPECIAL: Disable Safe Mode trigger on start
+pref("toolkit.startup.max_resumed_crashes", -1);
 
 // Whether to use RegisterApplicationRestart to restart the browser and resume
 // the session on next Windows startup
@@ -2392,6 +2395,8 @@ pref("first-startup.timeout", 30000);
   pref("default-browser-agent.enabled", true);
 #endif
 
+
+// CLIQZ-SPECIAL: custom prefs
 pref("extensions.cliqz.labs.enabled", true);
 #if MOZ_UPDATE_CHANNEL == beta
   pref("extension.cliqz.dat.enabled", true);
@@ -2399,3 +2404,17 @@ pref("extensions.cliqz.labs.enabled", true);
   pref("extension.cliqz.dat.enabled", false);
 #endif
 
+// Turn off thumbnails for New Tab (not used in Cliqz browser)
+pref("browser.pagethumbnails.capturing_disabled", true);
+
+// DB-2142 | Enable mozaddonmanager on AMO
+pref("privacy.resistFingerprinting.block_mozAddonManager", true);
+
+// Hide system addons
+pref("extensions.cliqz.listed", false);
+
+#ifdef UNIX_BUT_NOT_MAC
+  // CLIQZ-SPECIAL: carried forward relevant prefs from no-updates.js
+  pref("app.update.auto", false);
+  pref("app.update.service.enabled", false);
+#endif

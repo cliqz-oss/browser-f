@@ -54,10 +54,15 @@ endif
 # channel-prefs.js is handled separate from other prefs due to bug 756325
 # DO NOT change the content of channel-prefs.js without taking the appropriate
 # steps. See bug 1431342.
+# CLIQZ-SPECIAL: We add distribution prefs in separate file
+# Also we need `MOZ_APP_VERSION_DISPLAY` matcher in distribution-prefs
+ACDEFINES += -DMOZ_APP_VERSION_DISPLAY=$(MOZ_APP_VERSION_DISPLAY)
+DIST_PREFS_JS = $(srcdir)/profile/distribution-prefs.js
 CH_PREFS_JS = $(srcdir)/profile/channel-prefs.js
-libs:: $(CH_PREFS_JS) cliqz_distr
+libs:: $(CH_PREFS_JS) $(DIST_PREFS_JS) cliqz_distr
 	$(NSINSTALL) -D $(DIST)/bin/defaults/pref
 	$(call py3_action,preprocessor,-Fsubstitution $(PREF_PPFLAGS) $(ACDEFINES) $(CH_PREFS_JS) -o $(DIST)/bin/defaults/pref/channel-prefs.js)
+	$(call py3_action,preprocessor,-Fsubstitution $(PREF_PPFLAGS) $(ACDEFINES) $(DIST_PREFS_JS) -o $(DIST)/bin/browser/defaults/preferences/distribution-prefs.js)
 
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 
