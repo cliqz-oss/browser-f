@@ -3076,7 +3076,7 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-    const UI_VERSION = 93;
+    const UI_VERSION = 94;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
@@ -3583,7 +3583,9 @@ BrowserGlue.prototype = {
       }
     }
 
-    if (currentUIVersion < 93) {
+    // CLIQZ-SPECIAL: we used 93 for 1.35, FF skipped 93, so we need to bump this version
+    // Must be get rid in 1.37.
+    if (currentUIVersion < 94) {
       // The Gecko Profiler Addon is now an internal component. Remove the old
       // addon, and enable the new UI.
 
