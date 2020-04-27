@@ -2413,7 +2413,7 @@ pref("privacy.resistFingerprinting.block_mozAddonManager", true);
 // Hide system addons
 pref("extensions.cliqz.listed", false);
 
-#ifdef XP_LINUX
+#ifdef UNIX_BUT_NOT_MAC
   // CLIQZ-SPECIAL: carried forward relevant prefs from no-updates.js
   pref("app.update.auto", false);
   pref("app.update.service.enabled", false);
