@@ -2,7 +2,8 @@
 FROM ubuntu:16.04
 
 RUN apt-get update && apt-get install -y unzip python3 make zip autoconf2.13 wget \
-    python yasm clang-6.0 rsync xz-utils awscli libnss3-dev libnss3-tools bzip2
+    python yasm clang-6.0 rsync xz-utils awscli libnss3-dev libnss3-tools bzip2 \
+    libxml2
 
 WORKDIR /opt
 ADD cbindgen.tar.xz /opt
@@ -15,6 +16,8 @@ ADD llvm-dsymutil.tar.xz /opt
 ADD node.tar.xz /opt
 ADD rustc.tar.xz /opt
 ADD rust-size.tar.xz /opt
+ADD lucetc.tar.xz /opt
+ADD wasi-sysroot.tar.xz /opt
 ADD MacOSX10.11.sdk.tar.bz2 /opt
 ADD http://repository.cliqz.com.s3.amazonaws.com/dist/artifacts/mac/release/1.27.0/signmar /opt
 RUN chmod 755 /opt/signmar
