@@ -722,7 +722,11 @@ const PanelUI = {
 
     let helpMenu = document.getElementById("menu_HelpPopup");
     let items = this.getElementsByTagName("vbox")[0];
-    let attrs = ["command", "oncommand", "onclick", "label", "key", "disabled"];
+    // CLIQZ-SPECIAL: DB-2491, we should not use neither of those attributes
+    // "command", "oncommand", "onclick";
+    // Adding them to Help menu items could lead to double triggering of some
+    // event listeners (For example, opening About Cliqz dialog twice).
+    let attrs = ["label", "key", "disabled"];
 
     // Remove all buttons from the view
     while (items.firstChild) {
