@@ -3093,6 +3093,33 @@ BrowserGlue.prototype = {
     XPIProvider._cliqz_UpdateCliqzExtToLatest();
   },
 
+  _cliqz_handleBrowserUpdate() {
+    // Custom Cliqz updatecheck function to handle functions to
+    // be executed on update or install
+    // RECURRING: make sure this is changed at every release
+    const CLIQZ_UI_VERSION = 1;
+    const CLIQZ_MIGRATION_PREF = "cliqz.browser.migration.version";
+
+    // Put all functions here which you want to execute at every startup
+    PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
+
+    if (!Services.prefs.prefHasUserValue(CLIQZ_MIGRATION_PREF)) {
+      // This is a new profile, nothing to migrate.
+      Services.prefs.setIntPref(CLIQZ_MIGRATION_PREF, CLIQZ_UI_VERSION);
+      return;
+    }
+
+    const currentCliqzUIVersion = Services.prefs.getIntPref(
+      CLIQZ_MIGRATION_PREF
+    );
+    if (currentCliqzUIVersion >= CLIQZ_UI_VERSION) {
+      return;
+    }
+
+    this._cliqz_CustomUpdateTimeTasks();
+    Services.prefs.setIntPref(CLIQZ_MIGRATION_PREF, CLIQZ_UI_VERSION);
+  },
+
   // eslint-disable-next-line complexity
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
@@ -3100,7 +3127,9 @@ BrowserGlue.prototype = {
     const UI_VERSION = 94;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
-    PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
+    // CLIQZ-SPECIAL: handle browser update
+    this._cliqz_handleBrowserUpdate();
+
     if (!Services.prefs.prefHasUserValue("browser.migration.version")) {
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
@@ -3115,10 +3144,6 @@ BrowserGlue.prototype = {
     if (currentUIVersion >= UI_VERSION) {
       return;
     }
-
-    // CLIQZ-SPECIAL: This will be called on evry browser update
-    // and perform some custom tasks which are required to be done on update.
-    this._cliqz_CustomUpdateTimeTasks();
 
     let xulStore = Services.xulStore;
 
