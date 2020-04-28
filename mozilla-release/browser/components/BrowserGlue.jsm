@@ -3093,26 +3093,19 @@ BrowserGlue.prototype = {
     XPIProvider._cliqz_UpdateCliqzExtToLatest();
   },
 
+  _cliqz_handleStartupTask() {
+    PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
+  },
+
   _cliqz_handleBrowserUpdate() {
     // Custom Cliqz updatecheck function to handle functions to
     // be executed on update or install
     // RECURRING: make sure this is changed at every release
     const CLIQZ_UI_VERSION = 1;
     const CLIQZ_MIGRATION_PREF = "cliqz.browser.migration.version";
+    const CLIQZ_MIGRATION_VAL = Services.prefs.getIntPref(CLIQZ_MIGRATION_PREF, 0);
 
-    // Put all functions here which you want to execute at every startup
-    PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
-
-    if (!Services.prefs.prefHasUserValue(CLIQZ_MIGRATION_PREF)) {
-      // This is a new profile, nothing to migrate.
-      Services.prefs.setIntPref(CLIQZ_MIGRATION_PREF, CLIQZ_UI_VERSION);
-      return;
-    }
-
-    const currentCliqzUIVersion = Services.prefs.getIntPref(
-      CLIQZ_MIGRATION_PREF
-    );
-    if (currentCliqzUIVersion >= CLIQZ_UI_VERSION) {
+    if (CLIQZ_MIGRATION_VAL >= CLIQZ_UI_VERSION) {
       return;
     }
 
@@ -3126,9 +3119,8 @@ BrowserGlue.prototype = {
     // Completely unrelated to the current Firefox release number.
     const UI_VERSION = 94;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
-
-    // CLIQZ-SPECIAL: handle browser update
-    this._cliqz_handleBrowserUpdate();
+    // CLIQZ-SPECIAL: handle browser startup tasks
+    this._cliqz_handleStartupTask();
 
     if (!Services.prefs.prefHasUserValue("browser.migration.version")) {
       // This is a new profile, nothing to migrate.
@@ -3141,6 +3133,10 @@ BrowserGlue.prototype = {
     let currentUIVersion = Services.prefs.getIntPref(
       "browser.migration.version"
     );
+
+    // CLIQZ-SPECIAL: handle browser update
+    this._cliqz_handleBrowserUpdate();
+
     if (currentUIVersion >= UI_VERSION) {
       return;
     }
