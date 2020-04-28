@@ -2366,8 +2366,6 @@ pref("extensions.blocklist.enabled", true);
 // Note that this needs to exceed the interval at which we update OneCRL data,
 // configured in services.settings.poll_interval .
 pref("security.onecrl.maximum_staleness_in_seconds", 108000);
-// CLIQZ-AFTER-MERGE: do we still need this?
-pref("extensions.blocklist.url", "https://settings.cliqz.com/blocklist.xml");
 pref("extensions.blocklist.detailsURL", "https://blocked.cdn.mozilla.net/");
 pref("extensions.blocklist.itemURL", "https://blocked.cdn.mozilla.net/%blockID%.html");
 // Controls what level the blocklist switches from warning about items to forcibly

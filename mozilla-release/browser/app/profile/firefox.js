@@ -1362,14 +1362,6 @@ pref("trailhead.firstrun.branches", "join-dynamic");
 
 // Separate about welcome
 pref("browser.aboutwelcome.enabled", false); // ALWAYS FALSE
-// CLIQZ-SPECIAL: always make sure this remains false,
-// we do not want separate welcome page
-// we do not use any experiments on Cliqz welcome page
-#if 0
-// Temporary utility to unblock testing on about:welcome experiment variations
-pref("browser.aboutwelcome.temp.testExperiment.slug", "");
-pref("browser.aboutwelcome.temp.testExperiment.branch", "control");
-#endif
 // See Console.jsm LOG_LEVELS for all possible values
 pref("browser.aboutwelcome.log", "warn");
 
@@ -1801,6 +1793,7 @@ pref("signon.generation.confidenceThreshold", "0.75");
 pref("signon.management.page.os-auth.enabled", true);
 pref("signon.management.page.breach-alerts.enabled", true);
 /* CLIQZ-SPECIAL: force use old password
+pref("signon.management.page.vulnerable-passwords.enabled", true);
 pref("signon.management.page.sort", "name");
 pref("signon.management.overrideURI", "about:logins?filter=%DOMAIN%");
 */
