@@ -306,8 +306,8 @@ Section "-InstallStartCleanup"
     Delete "$INSTDIR\defaults\pref\channel-prefs.js"
   ${EndIf}
   ; Cliqz Browser: replace already existing distribution-prefs.js file in pref
-  ${If} ${FileExists} "$INSTDIR\defaults\pref\distribution-prefs.js"
-    Delete "$INSTDIR\defaults\pref\distribution-prefs.js"
+  ${If} ${FileExists} "$INSTDIR\browser\defaults\preferences\distribution-prefs.js"
+    Delete "$INSTDIR\browser\defaults\preferences\distribution-prefs.js"
   ${EndIf}
   ; Cliqz Browser: we don't replace already existing distribution.js file in pref
   ${If} ${FileExists} "$INSTDIR\defaults\pref"

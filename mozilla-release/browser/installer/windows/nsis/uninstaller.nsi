@@ -468,8 +468,8 @@ Section "Uninstall"
     Delete /REBOOTOK "$INSTDIR\defaults\pref\channel-prefs.js"
   ${EndIf}
   ; Cliqz Browser: remove distribution-prefs.js file on uninstall stage
-  ${If} ${FileExists} "$INSTDIR\defaults\pref\distribution-prefs.js"
-    Delete /REBOOTOK "$INSTDIR\defaults\pref\distribution-prefs.js"
+  ${If} ${FileExists} "$INSTDIR\browser\defaults\preferences\distribution-prefs.js"
+    Delete /REBOOTOK "$INSTDIR\browser\defaults\preferences\distribution-prefs.js"
   ${EndIf}
   ; Cliqz Browser: remove distribution.js file on uninstall stage
   ${If} ${FileExists} "$INSTDIR\defaults\pref\distribution.js"
