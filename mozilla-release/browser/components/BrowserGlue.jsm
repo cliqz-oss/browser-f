@@ -3093,6 +3093,29 @@ BrowserGlue.prototype = {
     XPIProvider._cliqz_UpdateCliqzExtToLatest();
   },
 
+  _cliqz_handleBrowserUpdate() {
+    // Custom Cliqz updatecheck function to handle functions to
+    // be executed on update or install
+    // RECURRING: make sure this is changed at every release
+    const CLIQZ_UI_VERSION = 1;
+    const CLIQZ_MIGRATION_PREF = "cliqz.browser.migration.version";
+    const CLIQZ_MIGRATION_VAL = Services.prefs.getIntPref(CLIQZ_MIGRATION_PREF, 0);
+    const FF_MIGRATION_VAL = Services.prefs.getIntPref("browser.migration.version", 0);
+
+    // Put all functions here which you want to execute at every startup
+    PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
+
+    if (CLIQZ_MIGRATION_VAL >= CLIQZ_UI_VERSION) {
+      return;
+    }
+
+    // Do not run update for new profiles
+    if (FF_MIGRATION_VAL !== 0) {
+      this._cliqz_CustomUpdateTimeTasks();
+    }
+    Services.prefs.setIntPref(CLIQZ_MIGRATION_PREF, CLIQZ_UI_VERSION);
+  },
+
   // eslint-disable-next-line complexity
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
@@ -3100,7 +3123,9 @@ BrowserGlue.prototype = {
     const UI_VERSION = 94;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
-    PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
+    // CLIQZ-SPECIAL: handle browser update
+    this._cliqz_handleBrowserUpdate();
+
     if (!Services.prefs.prefHasUserValue("browser.migration.version")) {
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
@@ -3115,10 +3140,6 @@ BrowserGlue.prototype = {
     if (currentUIVersion >= UI_VERSION) {
       return;
     }
-
-    // CLIQZ-SPECIAL: This will be called on evry browser update
-    // and perform some custom tasks which are required to be done on update.
-    this._cliqz_CustomUpdateTimeTasks();
 
     let xulStore = Services.xulStore;
 
