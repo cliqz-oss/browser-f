@@ -169,7 +169,6 @@ ifeq ($(OS_ARCH), Linux)
 			$(RPM_INCIDENTALS)/mozilla.desktop \
 			-o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
 		rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
-		cp $(RPM_INCIDENTALS)/no-updates.js $(RPMBUILD_SOURCEDIR) &&  \
 		$(RPMBUILD) -bb \
 		$(SPEC_FILE) \
 		--target $(TARGET_CPU) \
