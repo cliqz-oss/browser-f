@@ -411,29 +411,30 @@ const AVAILABLE_INJECTIONS = [
     },
   },
   {
-    id: "bug1630280",
-    platform: "android",
-    domain: "dominos.ch",
-    bug: "1630280",
+    id: "bug1631960",
+    platform: "all",
+    domain: "websube.ckbogazici.com.tr",
+    bug: "1631960",
     contentScripts: {
-      matches: ["https://www.dominos.ch/*"],
+      matches: ["https://websube.ckbogazici.com.tr/*"],
       css: [
         {
-          file: "injections/css/bug1630280-dominos.ch-hide-overlay.css",
+          file:
+            "injections/css/bug1631960-websube.ckbogazici.com.tr-table-row-fix.css",
         },
       ],
     },
   },
   {
-    id: "bug1629926",
-    platform: "desktop",
-    domain: "GMail Hangouts microphone fix",
-    bug: "1629926",
+    id: "bug1632019",
+    platform: "all",
+    domain: "everyman.co",
+    bug: "1632019",
     contentScripts: {
-      matches: ["https://mail.google.com/*"],
-      js: [
+      matches: ["https://everyman.co/*"],
+      css: [
         {
-          file: "injections/js/bug1629926-mail.google.com-hangouts-mic-fix.js",
+          file: "injections/css/bug1632019-everyman.co-gallery-width-fix.css",
         },
       ],
     },
