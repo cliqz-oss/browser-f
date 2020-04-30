@@ -715,19 +715,19 @@ Section "-Application" APP_IDX
   ${EndIf}
 !endif
 
-!ifdef MOZ_DEFAULT_BROWSER_AGENT
-  ${If} $RegisterDefaultAgent != "0"
-    Exec '"$INSTDIR\default-browser-agent.exe" register-task $AppUserModelID'
-    ${If} $RegisterDefaultAgent == ""
-      ; If the variable was unset, force it to a good value.
-      StrCpy $RegisterDefaultAgent 1
-    ${EndIf}
-  ${EndIf}
-  ; Remember whether we were told to skip registering the agent, so that updates
-  ; won't try to create a registration when they don't find an existing one.
-  WriteRegDWORD HKCU "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
-                     "DidRegisterDefaultBrowserAgent" $RegisterDefaultAgent
-!endif
+;!ifdef MOZ_DEFAULT_BROWSER_AGENT
+;  ${If} $RegisterDefaultAgent != "0"
+;    Exec '"$INSTDIR\default-browser-agent.exe" register-task $AppUserModelID'
+;    ${If} $RegisterDefaultAgent == ""
+;      ; If the variable was unset, force it to a good value.
+;      StrCpy $RegisterDefaultAgent 1
+;    ${EndIf}
+;  ${EndIf}
+;  ; Remember whether we were told to skip registering the agent, so that updates
+;  ; won't try to create a registration when they don't find an existing one.
+;  WriteRegDWORD HKCU "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
+;                     "DidRegisterDefaultBrowserAgent" $RegisterDefaultAgent
+;!endif
 SectionEnd
 
 ; Cleanup operations to perform at the end of the installation.

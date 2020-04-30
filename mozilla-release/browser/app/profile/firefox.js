@@ -2385,7 +2385,7 @@ pref("first-startup.timeout", 30000);
 // The agent still runs as scheduled if this pref is disabled,
 // but it exits immediately before taking any action.
 #ifdef XP_WIN
-  pref("default-browser-agent.enabled", true);
+  pref("default-browser-agent.enabled", false);
 #endif
 
 
