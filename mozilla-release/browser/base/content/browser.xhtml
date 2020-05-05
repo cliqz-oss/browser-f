@@ -139,8 +139,9 @@
     <menupopup id="tabContextMenu"
                onpopupshowing="if (event.target == this) TabContextMenu.updateContextMenu(this);"
                onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
+                <!-- CLIQZ-SPECIAL: DB-2502, BrowserReloadOrDuplicate(event) fixes Cliqz Freshtab Reload; -->
       <menuitem id="context_reloadTab" data-lazy-l10n-id="reload-tab"
-                oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
+                oncommand="BrowserReloadOrDuplicate(event);"/>
       <menuitem id="context_reloadSelectedTabs" data-lazy-l10n-id="reload-tabs" hidden="true"
                 oncommand="gBrowser.reloadMultiSelectedTabs();"/>
       <menuitem

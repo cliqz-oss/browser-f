@@ -5977,20 +5977,6 @@
             }
           } else if (isSuccessful) {
             this.mBrowser.urlbarChangeTracker.finishedLoad();
-
-            // CLIQZ-SPECIAL: DB-2481, we need to assign 0 to userTypedClear,
-            // since our browser has finished loading successfully.
-            // userTypedClear attribute is used to determine whether a tab keeps
-            // loading (1) or not (0).
-            try {
-              const mTabState = JSON.parse(SessionStore.getTabState(this.mTab));
-              if (mTabState.userTypedClear != null) {
-                mTabState.userTypedClear = 0;
-                SessionStore.setTabState(this.mTab, mTabState);
-              }
-            } catch (e) {
-              console.error("tabbrowser#onStateChange: Attempt to parse current tab state failed ", e);
-            }
           }
         }
 
