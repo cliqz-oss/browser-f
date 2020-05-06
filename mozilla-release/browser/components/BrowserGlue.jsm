@@ -132,6 +132,13 @@ const cliqz_lockDitributionPrefs = function() {
   Services.prefs.lockPref("distribution.version");
 }
 
+const cliqz_setAndLockPrefs = function() {
+  Services.prefs.setBoolPref("datareporting.healthreport.uploadEnabled", false);
+  Services.prefs.lockPref("datareporting.healthreport.uploadEnabled");
+  Services.prefs.setBoolPref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
+  Services.prefs.lockPref("browser.crashReports.unsubmittedCheck.autoSubmit2");
+}
+
 /**
  * Fission-compatible JSWindowActor implementations.
  * Detailed documentation of these is in dom/docs/Fission.rst,
@@ -1338,6 +1345,7 @@ BrowserGlue.prototype = {
     cliqz_shouldMakeCliqzEngineDefault();
 
     cliqz_lockDitributionPrefs();
+    cliqz_setAndLockPrefs();
   },
 
   _checkForOldBuildUpdates() {
