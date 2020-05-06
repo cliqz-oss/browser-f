@@ -6,3 +6,4 @@ cliqzPrivateBrowsing-explanation = You are browsing in Forget Mode. This means t
 cliqzPrivateBrowsing-note = Note that your internet service provider or your employer at work can still identify websites you visit.
 cliqzPrivateBrowsing-learnMore = Learn More
 cliqzPrivateBrowsing-notForget = This is not a Forget Window.
+cliqzPrivateBrowsing-openForgetWindow = Open a Forget Window
