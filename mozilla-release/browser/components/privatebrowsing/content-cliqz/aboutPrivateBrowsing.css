@@ -8,6 +8,32 @@ html {
   color: #FFF;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 40px 48px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+
+button {
+  -moz-appearance: none;
+  min-height: 32px;
+  color: inherit !important;
+  border: 1px solid #FFF;
+  border-radius: 2px;
+  background-color: transparent;
+  font-weight: 400;
+  padding: 0 8px;
+  text-decoration: none;
+  margin: 4px 8px;
+  font-size: 1em;
+  cursor: pointer;
+}
+
 #header {
   text-align: center;
   font-size: 40px;
@@ -47,9 +73,4 @@ a:active {
 
 .hidden {
   display: none;
-}
-
-#isNormalWindow {
-  line-height: 100vh;
-  text-align: center;
 }

@@ -6,3 +6,4 @@ cliqzPrivateBrowsing-explanation = Du surfst im Vergessen Modus. Das heißt, das
 cliqzPrivateBrowsing-note = Dein Internetanbieter oder auch dein Arbeitgeber können weiterhin verfolgen, welche Seiten du besuchst.
 cliqzPrivateBrowsing-learnMore = Erfahre mehr dazu
 cliqzPrivateBrowsing-notForget = Dies ist kein Vergessen-Fenster.
+cliqzPrivateBrowsing-openForgetWindow = Neues Vergessen Fenster öffnen
