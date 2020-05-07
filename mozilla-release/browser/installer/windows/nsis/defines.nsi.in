@@ -33,7 +33,7 @@
 !define DDEApplication        "CLIQZ"
 !define AppRegName            "CLIQZ"
 
-!define BrandProductName      "Firefox"
+!define BrandProductName      "Cliqz"
 !ifndef DEV_EDITION
 !define BrandShortName        "@MOZ_APP_DISPLAYNAME@"
 !endif
