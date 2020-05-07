@@ -729,7 +729,7 @@ HttpObserverManager = {
       autoForgetTabs.isActive() &&
       autoForgetTabs.blacklisted(channel.finalURL, true)
     ){
-      channel.suspended = false;
+      channel.suspend();
       channel.cancel(Cr.NS_ERROR_ABORT);
       const { finalURL, originURL } = channel;
       const { gBrowser, openLinkIn, openTrustedLinkIn } = channel.browserElement.ownerGlobal;
