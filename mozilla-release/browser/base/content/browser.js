@@ -2480,10 +2480,20 @@ var gBrowserInit = {
         if (uri instanceof Ci.nsIArray) {
           // Transform the nsIArray of nsISupportsString's into a JS Array of
           // JS strings.
-          return Array.from(
+          let uriList = Array.from(
             uri.enumerate(Ci.nsISupportsString),
             supportStr => supportStr.data
           );
+          // CLIQZ-SPECIAL: DB-2490, in case of there is a freshtab url in uriList,
+          // we need to replace it with about:newtab so AboutNewTabService will catch it
+          // up later on.
+          let defaultArgsIndex = (CliqzResources.isCliqzPage(defaultArgs)
+            || defaultArgs === "about:home") ? uriList.indexOf(defaultArgs) : -1;
+
+          if (defaultArgsIndex !== -1) {
+            uriList[defaultArgsIndex] = "about:newtab";
+          }
+          return uriList;
         } else if (uri instanceof Ci.nsISupportsString) {
           return uri.data;
         }
