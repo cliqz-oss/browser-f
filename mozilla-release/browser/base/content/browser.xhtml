@@ -445,13 +445,15 @@
                 label="&customizeMenu.removeFromToolbar.label;"
                 contexttype="toolbaritem"
                 class="customize-context-removeFromToolbar"/>
+                <!-- CLIQZ-SPECIAL: DB-2502, BrowserReloadOrDuplicate(event) fixes Cliqz Freshtab Reload; -->
       <menuitem id="toolbar-context-reloadSelectedTab"
                 contexttype="tabbar"
-                oncommand="gBrowser.reloadMultiSelectedTabs();"
+                oncommand="BrowserReloadOrDuplicate(event);"
                 data-lazy-l10n-id="toolbar-context-menu-reload-selected-tab"/>
+                <!-- CLIQZ-SPECIAL: DB-2502, BrowserReloadOrDuplicate(event) fixes Cliqz Freshtab Reload; -->
       <menuitem id="toolbar-context-reloadSelectedTabs"
                 contexttype="tabbar"
-                oncommand="gBrowser.reloadMultiSelectedTabs();"
+                oncommand="BrowserReloadOrDuplicate(event);"
                 data-lazy-l10n-id="toolbar-context-menu-reload-selected-tabs"/>
       <menuitem id="toolbar-context-bookmarkSelectedTab"
                 contexttype="tabbar"
