@@ -63,7 +63,8 @@ Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
       }
     }
 #endif
-    return AboutNewTab.newTabURL;
+    // CLIQZ-SPECIAL: DB-2504: fix for reloading all freshtabs after history gets cleared;
+    return "about:newtab";
   },
 });
 
