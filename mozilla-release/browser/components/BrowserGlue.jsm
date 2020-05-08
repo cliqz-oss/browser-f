@@ -133,10 +133,15 @@ const cliqz_lockDitributionPrefs = function() {
 }
 
 const cliqz_setAndLockPrefs = function() {
-  Services.prefs.setBoolPref("datareporting.healthreport.uploadEnabled", false);
-  Services.prefs.lockPref("datareporting.healthreport.uploadEnabled");
-  Services.prefs.setBoolPref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
-  Services.prefs.lockPref("browser.crashReports.unsubmittedCheck.autoSubmit2");
+  const telemetryPref = "datareporting.healthreport.uploadEnabled";
+  const crashReportPref = "browser.crashReports.unsubmittedCheck.autoSubmit2";
+  [telemetryPref, crashReportPref].forEach(prefName => {
+    if (Services.prefs.prefIsLocked(prefName)) {
+      Services.prefs.unlockPref(prefName);
+    }
+    Services.prefs.setBoolPref(prefName, false);
+    Services.prefs.lockPref(prefName);
+  });
 }
 
 /**
