@@ -139,9 +139,8 @@
     <menupopup id="tabContextMenu"
                onpopupshowing="if (event.target == this) TabContextMenu.updateContextMenu(this);"
                onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
-                <!-- CLIQZ-SPECIAL: DB-2502, BrowserReloadOrDuplicate(event) fixes Cliqz Freshtab Reload; -->
       <menuitem id="context_reloadTab" data-lazy-l10n-id="reload-tab"
-                oncommand="BrowserReloadOrDuplicate(event);"/>
+                oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
       <menuitem id="context_reloadSelectedTabs" data-lazy-l10n-id="reload-tabs" hidden="true"
                 oncommand="gBrowser.reloadMultiSelectedTabs();"/>
       <menuitem
@@ -445,15 +444,13 @@
                 label="&customizeMenu.removeFromToolbar.label;"
                 contexttype="toolbaritem"
                 class="customize-context-removeFromToolbar"/>
-                <!-- CLIQZ-SPECIAL: DB-2502, BrowserReloadOrDuplicate(event) fixes Cliqz Freshtab Reload; -->
       <menuitem id="toolbar-context-reloadSelectedTab"
                 contexttype="tabbar"
-                oncommand="BrowserReloadOrDuplicate(event);"
+                oncommand="gBrowser.reloadMultiSelectedTabs();"
                 data-lazy-l10n-id="toolbar-context-menu-reload-selected-tab"/>
-                <!-- CLIQZ-SPECIAL: DB-2502, BrowserReloadOrDuplicate(event) fixes Cliqz Freshtab Reload; -->
       <menuitem id="toolbar-context-reloadSelectedTabs"
                 contexttype="tabbar"
-                oncommand="BrowserReloadOrDuplicate(event);"
+                oncommand="gBrowser.reloadMultiSelectedTabs();"
                 data-lazy-l10n-id="toolbar-context-menu-reload-selected-tabs"/>
       <menuitem id="toolbar-context-bookmarkSelectedTab"
                 contexttype="tabbar"
