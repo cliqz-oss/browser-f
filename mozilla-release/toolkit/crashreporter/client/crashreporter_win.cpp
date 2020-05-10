@@ -834,8 +834,11 @@ static BOOL CALLBACK CrashReporterDialogProc(HWND hwndDlg, UINT message,
                         &enabled))
         enabled = true;
 
+      // CLIQZ-SPECIAL: DB-2500: Do not allow to send Crash Report
+      enabled = false;
       CheckDlgButton(hwndDlg, IDC_SUBMITREPORTCHECK,
                      enabled ? BST_CHECKED : BST_UNCHECKED);
+      EnableWindow(GetDlgItem(hwndDlg, IDC_SUBMITREPORTCHECK), enabled);
       SubmitReportChecked(hwndDlg);
 
       HWND hwndComment = GetDlgItem(hwndDlg, IDC_COMMENTTEXT);
