@@ -6,6 +6,7 @@ var EXPORTED_SYMBOLS = [
   "BrowserGlue",
   "ContentPermissionPrompt",
   "DefaultBrowserCheck",
+  "cliqz_migrateFromCliqzToFirefox"
 ];
 
 const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
@@ -53,6 +54,138 @@ XPCOMUtils.defineLazyServiceGetter(
 );
 
 const PREF_PDFJS_ENABLED_CACHE_STATE = "pdfjs.enabledCache.state";
+
+const cliqz_migrateFromCliqzToFirefox = async function() {
+  let profileService = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
+    Ci.nsIToolkitProfileService
+  );
+  let currentProfile = profileService.currentProfile;
+  if (currentProfile == null) {
+    console.error(
+      "cliqz_migrateFromCliqzToFirefox: expected profileService.currentProfile to exist"
+    );
+    return;
+  }
+
+  let currentProfileRootDir = currentProfile.rootDir;
+  if (currentProfileRootDir == null || !currentProfileRootDir.exists()) {
+    console.error(
+      "cliqz_migrateFromCliqzToFirefox: expected currentProfile.rootDir to exist"
+    );
+    return;
+  }
+  if (!currentProfileRootDir.isReadable()) {
+    console.error(
+      "cliqz_migrateFromCliqzToFirefox: expected currentProfile.rootDir to be readable"
+    );
+    return;
+  }
+
+  // CLIQZ-SPECIAL:
+  // Was taken from mozilla-release/browser/components/migration/FirefoxProfileMigrator.jsm
+  let getFirefoxResourceParts = function(list) {
+    return [
+    #if defined(XP_WIN)
+        "AppData", ["Mozilla", "Firefox"].concat(list);
+    #elif defined(XP_MACOSX)
+        "ULibDir", ["Application Support", "Firefox"].concat(list)
+    #else
+        "Home", [".mozilla", "firefox"].concat(list)
+    #endif
+    , false];
+  };
+
+  const profilesIni = FileUtils.getFile(...getFirefoxResourceParts([
+      "profiles.ini"
+    ])
+  );
+  if (!profilesIni.exists()
+    || !profilesIni.isFile()
+    || !profilesIni.isReadable()
+    || !profilesIni.isWritable()
+  ) {
+    console.error(
+      "cliqz_migrateFromCliqzToFirefox: " +
+      "expected profiles.ini to exist in Firefox directory and to be a readable & writable file"
+    );
+    return;
+  }
+
+  const EOL = [
+    #if defined(XP_MACOSX)
+      "\n"
+    #else
+      "\r\n"
+    #endif
+  ].join('');
+
+  const firefoxProfilesDirectory = FileUtils.getDir(...getFirefoxResourceParts(["Profiles"]));
+
+  const cliqzToFirefoxProfileName = `cliqz_to_firefox_profile_${new Date().getTime()}`;
+  currentProfileRootDir.copyTo(firefoxProfilesDirectory, cliqzToFirefoxProfileName);
+
+  firefoxProfilesDirectory.append(cliqzToFirefoxProfileName);
+
+  // Remove files or directories which are listed in the set;
+  const filesToRemoveFromProfile = new Set([
+    "compatibility.ini",
+    "chrome_debugger_profile",
+    "crashes",
+    "extensions",
+    "features",
+    "prefs.js"
+  ]);
+
+  const cliqzToFirefoxProfileIterator = new OS.File.DirectoryIterator(firefoxProfilesDirectory.path);
+  let nextItem = await cliqzToFirefoxProfileIterator.next();
+
+  while (nextItem.done != true) {
+    if (filesToRemoveFromProfile.has(nextItem.value.name)) {
+      let resource = FileUtils.getFile(...getFirefoxResourceParts([
+          "Profiles", cliqzToFirefoxProfileName, nextItem.value.name
+        ])
+      );
+      // Since the resource might be a directory we want to try
+      // removing that recursively;
+      resource.remove(true);
+    }
+
+    nextItem = await cliqzToFirefoxProfileIterator.next();
+  }
+
+  // Modify profiles.ini file so that it has information about copied Cliqz profile;
+  const iniParser = Cc["@mozilla.org/xpcom/ini-parser-factory;1"].
+    getService(Ci.nsIINIParserFactory).createINIParser(profilesIni);
+
+  const sections = iniParser.getSections();
+  const profileSectionNameRE = /^Profile(\d+)$/;
+
+  let maxProfileId = 0;
+  while (sections.hasMore()) {
+    const section = sections.getNext();
+    if (!profileSectionNameRE.test(section))
+      continue;
+
+    let nextProfileId = section.match(profileSectionNameRE);
+
+    nextProfileId = nextProfileId === null ? maxProfileId : nextProfileId[1] * 1;
+    maxProfileId = maxProfileId < nextProfileId ? nextProfileId : maxProfileId;
+  }
+
+  let stream = FileUtils.openFileOutputStream(profilesIni,
+    (FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE | FileUtils.MODE_APPEND));
+
+  const message = [
+    "",
+    `[Profile${maxProfileId + 1}]`,
+    "Name=Cliqz To Firefox Profile",
+    "IsRelative=1",
+    `Path=Profiles/${cliqzToFirefoxProfileName}`
+  ].join(EOL);
+
+  stream.write(message, message.length);
+  stream.close();
+};
 
 // CLIQZ-SPECIAL: DB-2313, we need to set and lock it
 // lockPref("security.enterprise_roots.enabled", true);
