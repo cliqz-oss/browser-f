@@ -5,7 +5,7 @@
 var EXPORTED_SYMBOLS = [
   "BrowserGlue",
   "ContentPermissionPrompt",
-  "DefaultBrowserCheck"
+  "DefaultBrowserCheck",
 ];
 
 const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
