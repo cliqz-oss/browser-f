@@ -458,6 +458,31 @@
             ]
           }
         ]
+      },
+      {
+        "name": "getUserProfileNames",
+        "type": "function",
+        "async": "callback",
+        "description": "Returns the list of profile names available for a user.",
+        "parameters": [],
+        "returns": {
+          "type": "array",
+          "optional": false,
+          "description": "The list of profile names available for a user."
+        }
+      },
+      {
+        "name": "migrateToFirefox",
+        "type": "function",
+        "async": "callback",
+        "description": "Migrates a user profile to Firefox browser profiles.",
+        "parameters": [
+          {
+            "name": "userProfileName",
+            "type": "string",
+            "description": "The name of a profile which needs to be migrated."
+          }
+        ]
       }
     ],
     "events": [

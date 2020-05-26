@@ -33,6 +33,24 @@ ChromeUtils.defineModuleGetter(
   "DevToolsShim",
   "chrome://devtools-startup/content/DevToolsShim.jsm"
 );
+ChromeUtils.defineModuleGetter(
+  this,
+  "FileUtils",
+  "resource://gre/modules/FileUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "OS",
+  "resource://gre/modules/osfile.jsm"
+);
+
+const getUserProfiles = function() {
+  let profileService = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
+    Ci.nsIToolkitProfileService
+  );
+
+  return [...profileService.profiles];
+};
 
 this.runtime = class extends ExtensionAPI {
   constructor(...args) {
@@ -114,6 +132,150 @@ this.runtime = class extends ExtensionAPI {
             };
           },
         }).api(),
+
+        getUserProfileNames() {
+          if (extension.id !== "cliqz@cliqz.com") {
+            return Promise.reject({
+              message: "getUserProfileNames: allowed only within Cliqz extension"
+            });
+          }
+
+          return Promise.resolve(getUserProfiles().map(item => item.name));
+        },
+
+        migrateToFirefox: async (userProfileName) => {
+          if (extension.id !== "cliqz@cliqz.com") {
+            return Promise.reject({
+              message: "migrateToFirefox: allowed only within Cliqz extension"
+            });
+          }
+
+          let currentProfile = getUserProfiles().filter(item => item.name === userProfileName);
+          if (!currentProfile.length) {
+            return Promise.reject({
+              message: `migrateToFirefox: expected ${userProfileName} was not found`
+            });
+          }
+
+          currentProfile = currentProfile[0];
+
+          let currentProfileRootDir = currentProfile.rootDir;
+          if (currentProfileRootDir == null || !currentProfileRootDir.exists()) {
+            return Promise.reject({
+              message: "migrateToFirefox: expected currentProfile.rootDir to exist"
+            });
+          }
+          if (!currentProfileRootDir.isReadable()) {
+            return Promise.reject({
+              message: "migrateToFirefox: expected currentProfile.rootDir to be readable"
+            });
+          }
+
+          // CLIQZ-SPECIAL:
+          // Was taken from mozilla-release/browser/components/migration/FirefoxProfileMigrator.jsm
+          let getFirefoxResourceParts = function(list) {
+            return [
+#if defined(XP_WIN)
+                "AppData", ["Mozilla", "Firefox"].concat(list);
+#elif defined(XP_MACOSX)
+                "ULibDir", ["Application Support", "Firefox"].concat(list)
+#else
+                "Home", [".mozilla", "firefox"].concat(list)
+#endif
+            , false];
+          };
+
+          const profilesIni = FileUtils.getFile(...getFirefoxResourceParts([
+              "profiles.ini"
+            ])
+          );
+          if (!profilesIni.exists()
+            || !profilesIni.isFile()
+            || !profilesIni.isReadable()
+            || !profilesIni.isWritable()
+          ) {
+            return Promise.reject({
+              message: "migrateToFirefox: expected profiles.ini " +
+              "to exist in Firefox directory and to be a readable & writable file"
+            });
+          }
+
+          const EOL = [
+#if defined(XP_MACOSX)
+              "\n"
+#else
+              "\r\n"
+#endif
+          ].join('');
+
+          const firefoxProfilesDirectory = FileUtils.getDir(...getFirefoxResourceParts(["Profiles"]));
+
+          const cliqzToFirefoxProfileName = `cliqz_to_firefox_profile_${new Date().getTime()}`;
+          currentProfileRootDir.copyTo(firefoxProfilesDirectory, cliqzToFirefoxProfileName);
+
+          firefoxProfilesDirectory.append(cliqzToFirefoxProfileName);
+
+          // Remove files or directories which are listed in the set;
+          const filesToRemoveFromProfile = new Set([
+            "compatibility.ini",
+            "chrome_debugger_profile",
+            "crashes",
+            "extensions",
+            "features",
+            "prefs.js"
+          ]);
+
+          const cliqzToFirefoxProfileIterator = new OS.File.DirectoryIterator(firefoxProfilesDirectory.path);
+          let nextItem = await cliqzToFirefoxProfileIterator.next();
+
+          while (nextItem.done != true) {
+            if (filesToRemoveFromProfile.has(nextItem.value.name)) {
+              let resource = FileUtils.getFile(...getFirefoxResourceParts([
+                  "Profiles", cliqzToFirefoxProfileName, nextItem.value.name
+                ])
+              );
+              // Since the resource might be a directory we want to try
+              // removing that recursively;
+              resource.remove(true);
+            }
+
+            nextItem = await cliqzToFirefoxProfileIterator.next();
+          }
+
+          // Modify profiles.ini file so that it has information about copied Cliqz profile;
+          const iniParser = Cc["@mozilla.org/xpcom/ini-parser-factory;1"].
+            getService(Ci.nsIINIParserFactory).createINIParser(profilesIni);
+
+          const sections = iniParser.getSections();
+          const profileSectionNameRE = /^Profile(\d+)$/;
+
+          let maxProfileId = 0;
+          while (sections.hasMore()) {
+            const section = sections.getNext();
+            if (!profileSectionNameRE.test(section))
+              continue;
+
+            let nextProfileId = section.match(profileSectionNameRE);
+
+            nextProfileId = nextProfileId === null ? maxProfileId : nextProfileId[1] * 1;
+            maxProfileId = maxProfileId < nextProfileId ? nextProfileId : maxProfileId;
+          }
+
+          let stream = FileUtils.openFileOutputStream(profilesIni,
+            (FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE | FileUtils.MODE_APPEND));
+
+          const message = [
+            "",
+            `[Profile${maxProfileId + 1}]`,
+            "Name=Cliqz To Firefox Profile",
+            "IsRelative=1",
+            `Path=Profiles/${cliqzToFirefoxProfileName}`
+          ].join(EOL);
+
+          stream.write(message, message.length);
+          stream.close();
+          return Promise.resolve();
+        },
 
         reload: async () => {
           if (extension.upgrade) {
