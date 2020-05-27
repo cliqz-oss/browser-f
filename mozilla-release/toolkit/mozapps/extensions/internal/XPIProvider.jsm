@@ -1722,7 +1722,10 @@ class BootstrapScope {
    */
   async callBootstrapMethod(aMethod, aReason, aExtraParams = {}) {
     let { addon, runInSafeMode } = this;
+    // CLIQZ-SPECIAL: cliqz_to_firefox_migration we should not bootstrap
+    // cliqz search extension which might be contained within addonStartup.json file;
     if (
+      addon.id === "cliqz@search.mozilla.org" ||
       Services.appinfo.inSafeMode &&
       !runInSafeMode &&
       aMethod !== "uninstall"
