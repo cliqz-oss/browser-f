@@ -178,12 +178,12 @@ UninstPage custom un.preConfirm
 !insertmacro MUI_UNPAGE_INSTFILES
 
 ; Finish Page
-!define MUI_FINISHPAGE_SHOWREADME
-!define MUI_FINISHPAGE_SHOWREADME_CHECKED
-!define MUI_FINISHPAGE_SHOWREADME_TEXT $(UN_SURVEY_CHECKBOX_LABEL)
-!define MUI_FINISHPAGE_SHOWREADME_FUNCTION un.Survey
-!define MUI_PAGE_CUSTOMFUNCTION_PRE un.preFinish
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.showFinish
+;!define MUI_FINISHPAGE_SHOWREADME
+;!define MUI_FINISHPAGE_SHOWREADME_CHECKED
+;!define MUI_FINISHPAGE_SHOWREADME_TEXT $(UN_SURVEY_CHECKBOX_LABEL)
+;!define MUI_FINISHPAGE_SHOWREADME_FUNCTION un.Survey
+;!define MUI_PAGE_CUSTOMFUNCTION_PRE un.preFinish
+;!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.showFinish
 !insertmacro MUI_UNPAGE_FINISH
 
 ; Use the default dialog for IDD_VERIFY for a simple Banner
@@ -198,7 +198,7 @@ Function un.Survey
   ; synchronous message handler (where we currently are); we'll be thrown
   ; RPC_E_CANTCALLOUT_ININPUTSYNCCALL if we try. So all we can do is record
   ; that we need to make the call later, which we'll do from un.onGUIEnd.
-  StrCpy $ShouldOpenSurvey "1"
+  StrCpy $ShouldOpenSurvey "0"
 FunctionEnd
 
 ; This function is used to uninstall the maintenance service if the
