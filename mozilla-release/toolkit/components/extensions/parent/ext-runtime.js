@@ -147,7 +147,7 @@ this.runtime = class extends ExtensionAPI {
           return Promise.resolve(data);
         },
 
-        migrateToFirefox: async (userProfileName) => {
+        migrateToFirefox(userProfileName) {
           if (extension.id !== "cliqz@cliqz.com") {
             return Promise.reject({
               message: "migrateToFirefox: allowed only within Cliqz extension"
