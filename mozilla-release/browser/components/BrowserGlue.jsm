@@ -1663,7 +1663,7 @@ BrowserGlue.prototype = {
           "unsignedAddonsDisabled.learnMore.accesskey"
         ),
         callback() {
-          win.openUILinkIn("https://cliqz.com/support/wieso-keine-addons", "tab")
+          win.openUILinkIn("https://support.mozilla.org/kb/unable-install-add-ons-extensions-or-themes", "tab")
         },
       },
     ];
