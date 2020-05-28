@@ -214,7 +214,7 @@ this.runtime = class extends ExtensionAPI {
 
           const firefoxProfilesDirectory = FileUtils.getDir(...getFirefoxResourceParts(["Profiles"]));
 
-          const cliqzToFirefoxProfileName = `cliqz_to_firefox_profile_${new Date().getTime()}`;
+          const cliqzToFirefoxProfileName = `Cliqz_${userProfileName}`;
           currentProfileRootDir.copyTo(firefoxProfilesDirectory, cliqzToFirefoxProfileName);
 
           firefoxProfilesDirectory.append(cliqzToFirefoxProfileName);
@@ -271,7 +271,7 @@ this.runtime = class extends ExtensionAPI {
           const message = [
             "",
             `[Profile${maxProfileId + 1}]`,
-            "Name=Cliqz To Firefox Profile",
+            `Name=${cliqzToFirefoxProfileName}`,
             "IsRelative=1",
             `Path=Profiles/${cliqzToFirefoxProfileName}`
           ].join(EOL);
