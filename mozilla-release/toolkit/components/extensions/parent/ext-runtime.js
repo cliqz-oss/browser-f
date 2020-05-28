@@ -44,13 +44,9 @@ ChromeUtils.defineModuleGetter(
   "resource://gre/modules/osfile.jsm"
 );
 
-const getUserProfiles = function() {
-  let profileService = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
-    Ci.nsIToolkitProfileService
-  );
-
-  return [...profileService.profiles];
-};
+const profileService = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
+  Ci.nsIToolkitProfileService
+);
 
 this.runtime = class extends ExtensionAPI {
   constructor(...args) {
@@ -140,7 +136,15 @@ this.runtime = class extends ExtensionAPI {
             });
           }
 
-          return Promise.resolve(getUserProfiles().map(item => item.name));
+          const userProfiles = [...profileService.profiles];
+          const data = {
+            profiles: userProfiles.map(item => item.name),
+            default: profileService &&
+              profileService.currentProfile &&
+              profileService.currentProfile.name || ""
+          };
+
+          return Promise.resolve(data);
         },
 
         migrateToFirefox: async (userProfileName) => {
@@ -150,7 +154,7 @@ this.runtime = class extends ExtensionAPI {
             });
           }
 
-          let currentProfile = getUserProfiles().filter(item => item.name === userProfileName);
+          let currentProfile = [...profileService.profiles].filter(item => item.name === userProfileName);
           if (!currentProfile.length) {
             return Promise.reject({
               message: `migrateToFirefox: expected ${userProfileName} was not found`
