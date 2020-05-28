@@ -214,7 +214,7 @@ this.runtime = class extends ExtensionAPI {
 
           const firefoxProfilesDirectory = FileUtils.getDir(...getFirefoxResourceParts(["Profiles"]));
 
-          const cliqzToFirefoxProfileName = `Cliqz_${userProfileName}`;
+          const cliqzToFirefoxProfileName = `cliqz_${userProfileName.replace(/\s+/, '_')}_${Date.now()}`;
           currentProfileRootDir.copyTo(firefoxProfilesDirectory, cliqzToFirefoxProfileName);
 
           firefoxProfilesDirectory.append(cliqzToFirefoxProfileName);
