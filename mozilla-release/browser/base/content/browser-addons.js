@@ -825,9 +825,9 @@ var gXPInstallObserver = {
             // CLIQZ-AFTER-MERGE:
             // it takes a proper support url in case a user tried to install
             // unsinged addon.
-            options.learnMoreURL = "https://cliqz.com/support";
+            options.learnMoreURL = "https://mozilla.org/support";
           } else if (install.error == AddonManager.ERROR_UNSUPPORTED_API_CLIQZ) {
-            options.learnMoreURL = "https://cliqz.com/support/blocked-add-ons-apis";
+            options.learnMoreURL = "https://addons.mozilla.org";
           }
 
           messageString = gNavigatorBundle.getFormattedString(error, args);

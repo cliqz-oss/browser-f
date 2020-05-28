@@ -117,7 +117,7 @@ class BlockedSiteChild extends JSWindowActorChild {
           .setAttribute(
             "href",
             SafeBrowsing.getReportURL("PhishMistake", blockedInfo) ||
-              "https://cliqz.com/report-url"
+              "https://safebrowsing.google.com/safebrowsing/report_error/?tpl=mozilla"
           );
         doc
           .getElementById("learn_more_link")
