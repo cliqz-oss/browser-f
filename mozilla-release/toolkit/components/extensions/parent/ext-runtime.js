@@ -220,31 +220,27 @@ this.runtime = class extends ExtensionAPI {
           firefoxProfilesDirectory.append(cliqzToFirefoxProfileName);
 
           // Remove files or directories which are listed in the set;
-          const filesToRemoveFromProfile = new Set([
+          const filesToRemoveFromProfile = [
             "compatibility.ini",
             "chrome_debugger_profile",
             "crashes",
             "extensions",
             "features",
             "prefs.js"
-          ]);
+          ];
 
-          const cliqzToFirefoxProfileIterator = new OS.File.DirectoryIterator(firefoxProfilesDirectory.path);
-          let nextItem = await cliqzToFirefoxProfileIterator.next();
-
-          while (nextItem.done != true) {
-            if (filesToRemoveFromProfile.has(nextItem.value.name)) {
-              let resource = FileUtils.getFile(...getFirefoxResourceParts([
-                  "Profiles", cliqzToFirefoxProfileName, nextItem.value.name
+          filesToRemoveFromProfile.forEach(function(file) {
+              const resource = FileUtils.getFile(...getFirefoxResourceParts([
+                  "Profiles", cliqzToFirefoxProfileName, file
                 ])
               );
-              // Since the resource might be a directory we want to try
-              // removing that recursively;
-              resource.remove(true);
-            }
 
-            nextItem = await cliqzToFirefoxProfileIterator.next();
-          }
+              if (resource.exists()) {
+                // Since the resource might be a directory we want to try
+                // removing that recursively;
+                resource.remove(true);
+              }
+          });
 
           // Modify profiles.ini file so that it has information about copied Cliqz profile;
           const iniParser = Cc["@mozilla.org/xpcom/ini-parser-factory;1"].
