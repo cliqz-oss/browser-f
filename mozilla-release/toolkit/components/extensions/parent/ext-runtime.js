@@ -226,7 +226,7 @@ this.runtime = class extends ExtensionAPI {
             "crashes",
             "extensions",
             "features",
-            "prefs.js"
+            "prefs.js",
             "addons.json",
             "extensions.json"
           ];
