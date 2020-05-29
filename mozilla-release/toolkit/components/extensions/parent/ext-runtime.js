@@ -227,6 +227,8 @@ this.runtime = class extends ExtensionAPI {
             "extensions",
             "features",
             "prefs.js"
+            "addons.json",
+            "extensions.json"
           ];
 
           filesToRemoveFromProfile.forEach(function(file) {
@@ -269,7 +271,8 @@ this.runtime = class extends ExtensionAPI {
             `[Profile${maxProfileId + 1}]`,
             `Name=${cliqzToFirefoxProfileName}`,
             "IsRelative=1",
-            `Path=Profiles/${cliqzToFirefoxProfileName}`
+            `Path=Profiles/${cliqzToFirefoxProfileName}`,
+            ""
           ].join(EOL);
 
           stream.write(message, message.length);
