@@ -180,7 +180,7 @@ this.runtime = class extends ExtensionAPI {
           let getFirefoxResourceParts = function(list) {
             return [
 #if defined(XP_WIN)
-                "AppData", ["Mozilla", "Firefox"].concat(list);
+                "AppData", ["Mozilla", "Firefox"].concat(list)
 #elif defined(XP_MACOSX)
                 "ULibDir", ["Application Support", "Firefox"].concat(list)
 #else
