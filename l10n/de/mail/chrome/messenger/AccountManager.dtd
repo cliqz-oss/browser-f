@@ -4,7 +4,11 @@
 
 <!-- extracted from AccountManager.xul -->
 
+<!-- extracted from AccountManager.xhtml -->
+
 <!ENTITY accountManagerTitle.label "Konten-Einstellungen">
+
+<!ENTITY  accountManagerCloseButton.label "Schließen">
 
 <!ENTITY accountActionsButton.label "Konten-Aktionen">
 <!ENTITY accountActionsButton.accesskey "K">
@@ -22,6 +26,8 @@
 <!ENTITY removeButton.accesskey "o">
 
 <!-- AccountManager.xul -->
+
+<!-- AccountManager.xhtml -->
 <!-- LOCALIZATION NOTE : this is part of an inline-style attribute on the account
      setting dialog, which specifies the width and height in em units of the dialog.
      Localizers ONLY can increase these widths if they are having difficulty getting

@@ -18,14 +18,14 @@ namespace mozilla {
 using namespace dom;
 
 PlaceholderTransaction::PlaceholderTransaction(
-    EditorBase& aEditorBase, nsAtom* aName, Maybe<SelectionState>&& aSelState)
+    EditorBase& aEditorBase, nsStaticAtom& aName,
+    Maybe<SelectionState>&& aSelState)
     : mEditorBase(&aEditorBase),
-      mForwarding(nullptr),
       mCompositionTransaction(nullptr),
       mStartSel(*std::move(aSelState)),
       mAbsorb(true),
       mCommitted(false) {
-  mName = aName;
+  mName = &aName;
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(PlaceholderTransaction)
@@ -45,7 +45,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(PlaceholderTransaction,
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PlaceholderTransaction)
-  NS_INTERFACE_MAP_ENTRY(nsIAbsorbingTransaction)
 NS_INTERFACE_MAP_END_INHERITING(EditAggregateTransaction)
 
 NS_IMPL_ADDREF_INHERITED(PlaceholderTransaction, EditAggregateTransaction)
@@ -99,61 +98,64 @@ NS_IMETHODIMP PlaceholderTransaction::RedoTransaction() {
   return rv;
 }
 
-NS_IMETHODIMP PlaceholderTransaction::Merge(nsITransaction* aTransaction,
+NS_IMETHODIMP PlaceholderTransaction::Merge(nsITransaction* aOtherTransaction,
                                             bool* aDidMerge) {
-  if (NS_WARN_IF(!aDidMerge) || NS_WARN_IF(!aTransaction)) {
+  if (NS_WARN_IF(!aDidMerge) || NS_WARN_IF(!aOtherTransaction)) {
     return NS_ERROR_INVALID_ARG;
   }
 
   // set out param default value
   *aDidMerge = false;
 
-  if (mForwarding) {
+  if (mForwardingTransaction) {
     MOZ_ASSERT_UNREACHABLE(
         "tried to merge into a placeholder that was in "
         "forwarding mode!");
     return NS_ERROR_FAILURE;
   }
 
-  // XXX: hack, not safe!  need nsIEditTransaction!
-  EditTransactionBase* editTransactionBase =
-      reinterpret_cast<EditTransactionBase*>(aTransaction);
+  RefPtr<EditTransactionBase> otherTransactionBase =
+      aOtherTransaction->GetAsEditTransactionBase();
+  if (!otherTransactionBase) {
+    return NS_OK;
+  }
 
   // We are absorbing all transactions if mAbsorb is lit.
   if (mAbsorb) {
-    RefPtr<CompositionTransaction> otherTransaction =
-        do_QueryObject(aTransaction);
-    if (otherTransaction) {
+    if (CompositionTransaction* otherCompositionTransaction =
+            otherTransactionBase->GetAsCompositionTransaction()) {
       // special handling for CompositionTransaction's: they need to merge with
       // any previous CompositionTransaction in this placeholder, if possible.
       if (!mCompositionTransaction) {
         // this is the first IME txn in the placeholder
-        mCompositionTransaction = otherTransaction;
-        DebugOnly<nsresult> rvIgnored = AppendChild(editTransactionBase);
+        mCompositionTransaction = otherCompositionTransaction;
+        DebugOnly<nsresult> rvIgnored =
+            AppendChild(otherCompositionTransaction);
         NS_WARNING_ASSERTION(
             NS_SUCCEEDED(rvIgnored),
             "EditAggregateTransaction::AppendChild() failed, but ignored");
       } else {
         bool didMerge;
-        mCompositionTransaction->Merge(otherTransaction, &didMerge);
+        mCompositionTransaction->Merge(otherCompositionTransaction, &didMerge);
         if (!didMerge) {
           // it wouldn't merge.  Earlier IME txn is already committed and will
           // not absorb further IME txns.  So just stack this one after it
           // and remember it as a candidate for further merges.
-          mCompositionTransaction = otherTransaction;
-          DebugOnly<nsresult> rvIgnored = AppendChild(editTransactionBase);
+          mCompositionTransaction = otherCompositionTransaction;
+          DebugOnly<nsresult> rvIgnored =
+              AppendChild(otherCompositionTransaction);
           NS_WARNING_ASSERTION(
               NS_SUCCEEDED(rvIgnored),
               "EditAggregateTransaction::AppendChild() failed, but ignored");
         }
       }
     } else {
-      nsCOMPtr<nsIAbsorbingTransaction> absorbingTransaction =
-          do_QueryInterface(editTransactionBase);
-      if (!absorbingTransaction) {
+      PlaceholderTransaction* otherPlaceholderTransaction =
+          otherTransactionBase->GetAsPlaceholderTransaction();
+      if (!otherPlaceholderTransaction) {
         // See bug 171243: just drop incoming placeholders on the floor.
         // Their children will be swallowed by this preexisting one.
-        DebugOnly<nsresult> rvIgnored = AppendChild(editTransactionBase);
+        DebugOnly<nsresult> rvIgnored = AppendChild(otherTransactionBase);
         NS_WARNING_ASSERTION(
             NS_SUCCEEDED(rvIgnored),
             "EditAggregateTransaction::AppendChild() failed, but ignored");
@@ -168,34 +170,34 @@ NS_IMETHODIMP PlaceholderTransaction::Merge(nsITransaction* aTransaction,
   }
 
   // merge typing or IME or deletion transactions if the selection matches
-  if (mCommitted || (mName.get() != nsGkAtoms::TypingTxnName &&
-                     mName.get() != nsGkAtoms::IMETxnName &&
-                     mName.get() != nsGkAtoms::DeleteTxnName)) {
+  if (mCommitted ||
+      (mName != nsGkAtoms::TypingTxnName && mName != nsGkAtoms::IMETxnName &&
+       mName != nsGkAtoms::DeleteTxnName)) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsIAbsorbingTransaction> absorbingTransaction =
-      do_QueryInterface(editTransactionBase);
-  if (!absorbingTransaction) {
+  PlaceholderTransaction* otherPlaceholderTransaction =
+      otherTransactionBase->GetAsPlaceholderTransaction();
+  if (!otherPlaceholderTransaction) {
     return NS_OK;
   }
 
   RefPtr<nsAtom> otherTransactionName;
-  DebugOnly<nsresult> rvIgnored =
-      absorbingTransaction->GetTxnName(getter_AddRefs(otherTransactionName));
-  NS_WARNING_ASSERTION(
-      NS_SUCCEEDED(rvIgnored),
-      "nsIAbsorbingTransaction::GetTxnName() failed, but ignored");
-  if (!otherTransactionName || otherTransactionName != mName) {
+  DebugOnly<nsresult> rvIgnored = otherPlaceholderTransaction->GetName(
+      getter_AddRefs(otherTransactionName));
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
+                       "PlaceholderTransaction::GetName() failed, but ignored");
+  if (!otherTransactionName || otherTransactionName == nsGkAtoms::_empty ||
+      otherTransactionName != mName) {
     return NS_OK;
   }
   // check if start selection of next placeholder matches
   // end selection of this placeholder
-  if (!absorbingTransaction->StartSelectionEquals(mEndSel)) {
+  if (!otherPlaceholderTransaction->StartSelectionEquals(mEndSel)) {
     return NS_OK;
   }
   mAbsorb = true;  // we need to start absorbing again
-  absorbingTransaction->ForwardEndBatchTo(this);
+  otherPlaceholderTransaction->ForwardEndBatchTo(*this);
   // AppendChild(editTransactionBase);
   // see bug 171243: we don't need to merge placeholders
   // into placeholders.  We just reactivate merging in the
@@ -211,33 +213,24 @@ NS_IMETHODIMP PlaceholderTransaction::Merge(nsITransaction* aTransaction,
   return NS_OK;
 }
 
-NS_IMETHODIMP PlaceholderTransaction::GetTxnName(nsAtom** aName) {
-  nsresult rv = GetName(aName);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "EditAggregationTransaction::GetName() failed");
-  return rv;
-}
-
-NS_IMETHODIMP_(bool)
-PlaceholderTransaction::StartSelectionEquals(SelectionState& aSelectionState) {
+bool PlaceholderTransaction::StartSelectionEquals(
+    SelectionState& aSelectionState) {
   // determine if starting selection matches the given selection state.
   // note that we only care about collapsed selections.
   return mStartSel.IsCollapsed() && aSelectionState.IsCollapsed() &&
          mStartSel.Equals(aSelectionState);
 }
 
-NS_IMETHODIMP PlaceholderTransaction::EndPlaceHolderBatch() {
+nsresult PlaceholderTransaction::EndPlaceHolderBatch() {
   mAbsorb = false;
 
-  if (mForwarding) {
-    nsCOMPtr<nsIAbsorbingTransaction> forwardingTransaction =
-        do_QueryReferent(mForwarding);
-    if (forwardingTransaction) {
+  if (mForwardingTransaction) {
+    if (mForwardingTransaction) {
       DebugOnly<nsresult> rvIgnored =
-          forwardingTransaction->EndPlaceHolderBatch();
+          mForwardingTransaction->EndPlaceHolderBatch();
       NS_WARNING_ASSERTION(
           NS_SUCCEEDED(rvIgnored),
-          "nsIAbsorbingTransaction::EndPlaceHolderBatch() failed, but ignored");
+          "PlaceholderTransaction::EndPlaceHolderBatch() failed, but ignored");
     }
   }
   // remember our selection state.
@@ -247,14 +240,6 @@ NS_IMETHODIMP PlaceholderTransaction::EndPlaceHolderBatch() {
       "PlaceholderTransaction::RememberEndingSelection() failed");
   return rv;
 }
-
-NS_IMETHODIMP_(void)
-PlaceholderTransaction::ForwardEndBatchTo(
-    nsIAbsorbingTransaction* aForwardingAddress) {
-  mForwarding = do_GetWeakReference(aForwardingAddress);
-}
-
-NS_IMETHODIMP_(void) PlaceholderTransaction::Commit() { mCommitted = true; }
 
 nsresult PlaceholderTransaction::RememberEndingSelection() {
   if (NS_WARN_IF(!mEditorBase)) {

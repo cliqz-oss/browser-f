@@ -308,7 +308,7 @@ add_task(async function test_privacy_other_prefs() {
       "privacy.resistFingerprinting": true,
     },
     "websites.firstPartyIsolate": {
-      "privacy.firstparty.isolate": true,
+      "privacy.firstparty.isolate": false,
     },
     "websites.cookieConfig": {
       "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_ACCEPT,
@@ -334,6 +334,9 @@ add_task(async function test_privacy_other_prefs() {
       break;
     case cookieSvc.BEHAVIOR_REJECT_TRACKER:
       defaultBehavior = "reject_trackers";
+      break;
+    case cookieSvc.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN:
+      defaultBehavior = "reject_trackers_and_partition_foreign";
       break;
     default:
       ok(
@@ -362,6 +365,10 @@ add_task(async function test_privacy_other_prefs() {
           }
           settingData = await apiObj.get({});
           browser.test.sendMessage("settingData", settingData);
+          break;
+        case "get":
+          settingData = await apiObj.get({});
+          browser.test.sendMessage("gettingData", settingData);
           break;
       }
     });
@@ -416,6 +423,23 @@ add_task(async function test_privacy_other_prefs() {
     extension.sendMessage("set", { value: value }, setting);
     let data = await extension.awaitMessage("settingThrowsException");
     equal(data.message, expected);
+  }
+
+  async function testGetting(getting, expected, expectedValue) {
+    extension.sendMessage("get", null, getting);
+    let data = await extension.awaitMessage("gettingData");
+    deepEqual(
+      data.value,
+      expectedValue,
+      `Got expected result on getting ${getting}`
+    );
+    for (let pref in expected) {
+      equal(
+        Preferences.get(pref),
+        expected[pref],
+        `${pref} get correctly for ${expected[pref]}`
+      );
+    }
   }
 
   await testSetting(
@@ -480,13 +504,6 @@ add_task(async function test_privacy_other_prefs() {
   });
   await testSetting("websites.resistFingerprinting", true, {
     "privacy.resistFingerprinting": true,
-  });
-
-  await testSetting("websites.firstPartyIsolate", false, {
-    "privacy.firstparty.isolate": false,
-  });
-  await testSetting("websites.firstPartyIsolate", true, {
-    "privacy.firstparty.isolate": true,
   });
 
   await testSetting("websites.trackingProtectionMode", "always", {
@@ -591,6 +608,91 @@ add_task(async function test_privacy_other_prefs() {
     },
     { behavior: "reject_trackers", nonPersistentCookies: false }
   );
+  await testSetting(
+    "websites.cookieConfig",
+    { behavior: "reject_trackers_and_partition_foreign" },
+    {
+      "network.cookie.cookieBehavior":
+        cookieSvc.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    {
+      behavior: "reject_trackers_and_partition_foreign",
+      nonPersistentCookies: false,
+    }
+  );
+
+  // 1. Can't enable FPI when cookie behavior is "reject_trackers_and_partition_foreign"
+  await testSettingException(
+    "websites.firstPartyIsolate",
+    true,
+    "Can't enable firstPartyIsolate when cookieBehavior is 'reject_trackers_and_partition_foreign'"
+  );
+
+  // 2. Change cookieConfig to reject_trackers should work normally.
+  await testSetting(
+    "websites.cookieConfig",
+    { behavior: "reject_trackers" },
+    {
+      "network.cookie.cookieBehavior": cookieSvc.BEHAVIOR_REJECT_TRACKER,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    { behavior: "reject_trackers", nonPersistentCookies: false }
+  );
+
+  // 3. Enable FPI
+  await testSetting("websites.firstPartyIsolate", true, {
+    "privacy.firstparty.isolate": true,
+  });
+
+  // 4. When FPI is enabled, change setting to "reject_trackers_and_partition_foreign" is invalid
+  await testSettingException(
+    "websites.cookieConfig",
+    { behavior: "reject_trackers_and_partition_foreign" },
+    "Invalid cookieConfig 'reject_trackers_and_partition_foreign' when firstPartyIsolate is enabled"
+  );
+
+  // 5. Set conflict settings manually and check prefs.
+  Preferences.set("network.cookie.cookieBehavior", 5);
+  await testGetting(
+    "websites.firstPartyIsolate",
+    { "privacy.firstparty.isolate": true },
+    true
+  );
+  await testGetting(
+    "websites.cookieConfig",
+    {
+      "network.cookie.cookieBehavior":
+        cookieSvc.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    {
+      behavior: "reject_trackers_and_partition_foreign",
+      nonPersistentCookies: false,
+    }
+  );
+
+  // 6. It is okay to set current saved value.
+  await testSetting("websites.firstPartyIsolate", true, {
+    "privacy.firstparty.isolate": true,
+  });
+  await testSetting(
+    "websites.cookieConfig",
+    { behavior: "reject_trackers_and_partition_foreign" },
+    {
+      "network.cookie.cookieBehavior":
+        cookieSvc.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN,
+      "network.cookie.lifetimePolicy": cookieSvc.ACCEPT_NORMALLY,
+    },
+    {
+      behavior: "reject_trackers_and_partition_foreign",
+      nonPersistentCookies: false,
+    }
+  );
+
+  await testSetting("websites.firstPartyIsolate", false, {
+    "privacy.firstparty.isolate": false,
+  });
 
   await testSetting(
     "network.tlsVersionRestriction",
@@ -784,11 +886,11 @@ add_task(async function test_privacy_other_prefs() {
     "network.tlsVersionRestriction",
     {},
     {
-      "security.tls.version.min": 3,
+      "security.tls.version.min": tlsMinPref,
       "security.tls.version.max": 4,
     },
     {
-      minimum: "TLSv1.2",
+      minimum: tlsMinVer,
       maximum: "TLSv1.3",
     }
   );

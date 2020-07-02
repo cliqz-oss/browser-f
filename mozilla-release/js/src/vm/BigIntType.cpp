@@ -261,7 +261,7 @@ BigInt* BigInt::neg(JSContext* cx, HandleBigInt x) {
   if (!result) {
     return nullptr;
   }
-  result->toggleFlagBit(SignBit);
+  result->header_.toggleFlagBit(SignBit);
   return result;
 }
 
@@ -1446,14 +1446,15 @@ JSLinearString* BigInt::toStringGeneric(JSContext* cx, HandleBigInt x,
                                maximumCharactersRequired - writePos);
 }
 
-static void FreeDigits(JSContext* cx, BigInt* bi, BigInt::Digit* digits) {
+static void FreeDigits(JSContext* cx, BigInt* bi, BigInt::Digit* digits,
+                       size_t nbytes) {
   if (cx->isHelperThreadContext()) {
     js_free(digits);
   } else if (bi->isTenured()) {
     MOZ_ASSERT(!cx->nursery().isInside(digits));
     js_free(digits);
   } else {
-    cx->nursery().freeBuffer(digits);
+    cx->nursery().freeBuffer(digits, nbytes);
   }
 }
 
@@ -1497,9 +1498,9 @@ BigInt* BigInt::destructivelyTrimHighZeroDigits(JSContext* cx, BigInt* x) {
       Digit digits[InlineDigitsLength];
       std::copy_n(x->heapDigits_, InlineDigitsLength, digits);
 
-      FreeDigits(cx, x, x->heapDigits_);
-      RemoveCellMemory(x, x->digitLength() * sizeof(Digit),
-                       js::MemoryUse::BigIntDigits);
+      size_t nbytes = x->digitLength() * sizeof(Digit);
+      FreeDigits(cx, x, x->heapDigits_, nbytes);
+      RemoveCellMemory(x, nbytes, js::MemoryUse::BigIntDigits);
 
       std::copy_n(digits, InlineDigitsLength, x->inlineDigits_);
     }
@@ -1788,7 +1789,7 @@ BigInt* BigInt::createFromInt64(JSContext* cx, int64_t n) {
   }
 
   if (n < 0) {
-    res->setFlagBit(SignBit);
+    res->header_.setFlagBit(SignBit);
   }
   MOZ_ASSERT(res->isNegative() == (n < 0));
 
@@ -3546,7 +3547,8 @@ static inline BigInt* ParseStringBigIntLiteral(JSContext* cx,
       start++;
       return BigInt::parseLiteralDigits(cx, Range<const CharT>(start, end), 10,
                                         isNegative, haveParseError);
-    } else if (start[0] == '-') {
+    }
+    if (start[0] == '-') {
       bool isNegative = true;
       start++;
       return BigInt::parseLiteralDigits(cx, Range<const CharT>(start, end), 10,
@@ -3655,7 +3657,7 @@ JS::ubi::Node::Size JS::ubi::Concrete<BigInt>::size(
   BigInt& bi = get();
   size_t size = sizeof(JS::BigInt);
   if (IsInsideNursery(&bi)) {
-    size += Nursery::bigIntHeaderSize();
+    size += Nursery::nurseryCellHeaderSize();
     size += bi.sizeOfExcludingThisInNursery(mallocSizeOf);
   } else {
     size += bi.sizeOfExcludingThis(mallocSizeOf);

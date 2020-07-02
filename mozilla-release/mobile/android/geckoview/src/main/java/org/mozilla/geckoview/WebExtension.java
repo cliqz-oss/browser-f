@@ -58,8 +58,11 @@ public class WebExtension {
     // TODO: move to @NonNull when we remove registerWebExtension
     public final @Nullable MetaData metaData;
 
-    // TODO: make public
-    final boolean isBuiltIn;
+    /**
+     * Whether this extension is built-in. Built-in extension can be installed
+     * using {@link WebExtensionController#installBuiltIn}.
+     */
+    public final boolean isBuiltIn;
 
     /** Called whenever a delegate is set or unset on this {@link WebExtension} instance.
     /* package */ interface DelegateController {
@@ -86,6 +89,7 @@ public class WebExtension {
 
     private final static String LOGTAG = "WebExtension";
 
+    // Keep in sync with GeckoViewWebExtension.jsm
     public static class Flags {
         /*
          * Default flags for this WebExtension.
@@ -143,7 +147,11 @@ public class WebExtension {
      *           </ul>
      * @param flags {@link Flags} for this WebExtension.
      * @param controller the current {@link WebExtensionController} instance
+     *
+     * @deprecated Use the return value of {@link WebExtensionController#installBuiltIn} instead.
+     *             This method will be removed in GeckoView 81.
      */
+    @Deprecated
     public WebExtension(final @NonNull String location, final @NonNull String id,
                         final @WebExtensionFlags long flags,
                         final @NonNull WebExtensionController controller) {
@@ -169,7 +177,11 @@ public class WebExtension {
      *                 <code>resource:</code> URI to a folder inside the APK or
      *                 a <code>file:</code> URL to a <code>.xpi</code> file.
      * @param controller the current {@link WebExtensionController} instance
+     *
+     * @deprecated Use the return value of {@link WebExtensionController#installBuiltIn} instead.
+     *             This method will be removed in GeckoView 81.
      */
+    @Deprecated
     public WebExtension(final @NonNull String location,
                         final @NonNull WebExtensionController controller) {
         this(location, "{" + UUID.randomUUID().toString() + "}", Flags.NONE, controller);
@@ -534,6 +546,12 @@ public class WebExtension {
         @Nullable
         public final Boolean active;
         /**
+         * The CookieStoreId used for the tab. This option is only
+         * available if the extension has the "cookies" permission.
+         */
+        @Nullable
+        public final String cookieStoreId;
+        /**
          * Whether the tab is created and made visible in the tab bar
          * without any content loaded into memory, a state known as
          * discarded. The tab’s content should be loaded when the tab is
@@ -569,6 +587,7 @@ public class WebExtension {
         /** For testing. */
         protected CreateTabDetails() {
             active = null;
+            cookieStoreId = null;
             discarded = null;
             index = null;
             openInReaderMode = null;
@@ -578,6 +597,7 @@ public class WebExtension {
 
         /* package */ CreateTabDetails(final GeckoBundle bundle) {
             active = bundle.getBooleanObject("active");
+            cookieStoreId = bundle.getString("cookieStoreId");
             discarded = bundle.getBooleanObject("discarded");
             index = bundle.getInteger("index");
             openInReaderMode = bundle.getBooleanObject("openInReaderMode");
@@ -802,7 +822,6 @@ public class WebExtension {
         final private EventDispatcher mEventDispatcher;
 
         private boolean mActionDelegateRegistered = false;
-        private boolean mMessageDelegateRegistered = false;
         private boolean mTabDelegateRegistered = false;
 
         // TODO: remove Bug 1618987
@@ -837,6 +856,14 @@ public class WebExtension {
                     : EventDispatcher.getInstance();
             mSession = session;
             this.runtime = runtime;
+
+            // We queue these messages if the delegate has not been attached yet,
+            // so we need to start listening immediately.
+            mEventDispatcher.registerUiThreadListener(this,
+                    "GeckoView:WebExtension:Message",
+                    "GeckoView:WebExtension:PortMessage",
+                    "GeckoView:WebExtension:Connect",
+                    "GeckoView:WebExtension:Disconnect");
         }
 
         // TODO: remove Bug 1618987
@@ -907,15 +934,6 @@ public class WebExtension {
         public void setMessageDelegate(final WebExtension webExtension,
                                        final WebExtension.MessageDelegate delegate,
                                        final String nativeApp) {
-            if (!mMessageDelegateRegistered && delegate != null) {
-                mEventDispatcher.registerUiThreadListener(this,
-                        "GeckoView:WebExtension:Message",
-                        "GeckoView:WebExtension:PortMessage",
-                        "GeckoView:WebExtension:Connect",
-                        "GeckoView:WebExtension:Disconnect");
-                mMessageDelegateRegistered = true;
-            }
-
             mMessageDelegates.put(new Sender(webExtension.id, nativeApp), delegate);
         }
 
@@ -1578,8 +1596,10 @@ public class WebExtension {
         final GeckoBundle bundle = new GeckoBundle(1);
         bundle.putString("extensionId", id);
 
-        EventDispatcher.getInstance().dispatch(
-                "GeckoView:ActionDelegate:Attached", bundle);
+        if (delegate != null) {
+            EventDispatcher.getInstance().dispatch(
+                    "GeckoView:ActionDelegate:Attached", bundle);
+        }
     }
 
     /** Describes the signed status for a {@link WebExtension}.
@@ -1817,7 +1837,8 @@ public class WebExtension {
         }
 
         /* package */ MetaData(final GeckoBundle bundle) {
-            permissions = bundle.getStringArray("permissions");
+            // We only expose permissions that the embedder should prompt for
+            permissions = bundle.getStringArray("promptPermissions");
             origins = bundle.getStringArray("origins");
             description = bundle.getString("description");
             version = bundle.getString("version");

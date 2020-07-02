@@ -420,6 +420,8 @@ class ICStub {
   void updateCode(JitCode* stubCode);
   void trace(JSTracer* trc);
 
+  bool stubDataHasNurseryPointers(const CacheIRStubInfo* stubInfo);
+
   static const uint16_t EXPECTED_TRACE_MAGIC = 0b1100011;
 
   template <typename T, typename... Args>
@@ -630,6 +632,10 @@ class ICStub {
   static bool NonCacheIRStubMakesGCCalls(Kind kind);
   bool makesGCCalls() const;
 
+  // Returns the number of times this stub has been entered. Must only be called
+  // on stubs that have an enteredCount_ field (CacheIR or fallback stubs).
+  uint32_t getEnteredCount() const;
+
   // Optimized stubs get purged on GC.  But some stubs can be active on the
   // stack during GC - specifically the ones that can make calls.  To ensure
   // that these do not get purged, all stubs that can make calls are allocated
@@ -647,38 +653,23 @@ class ICFallbackStub : public ICStub {
   // Fallback stubs need these fields to easily add new stubs to
   // the linked list of stubs for an IC.
 
-  // The IC entry for this linked list of stubs.
-  ICEntry* icEntry_;
+  // The IC entry in JitScript for this linked list of stubs.
+  ICEntry* icEntry_ = nullptr;
 
   // The state of this IC
-  ICState state_;
+  ICState state_{};
 
   // Counts the number of times the stub was entered
   //
   // See Bug 1494473 comment 6 for a mechanism to handle overflow if overflow
   // becomes a concern.
-  uint32_t enteredCount_;
-
-  // A pointer to the location stub pointer that needs to be
-  // changed to add a new "last" stub immediately before the fallback
-  // stub.  This'll start out pointing to the icEntry's "firstStub_"
-  // field, and as new stubs are added, it'll point to the current
-  // last stub's "next_" field.
-  ICStub** lastStubPtrAddr_;
+  uint32_t enteredCount_ = 0;
 
   ICFallbackStub(Kind kind, TrampolinePtr stubCode)
-      : ICStub(kind, ICStub::Fallback, stubCode.value),
-        icEntry_(nullptr),
-        state_(),
-        enteredCount_(0),
-        lastStubPtrAddr_(nullptr) {}
+      : ICStub(kind, ICStub::Fallback, stubCode.value) {}
 
   ICFallbackStub(Kind kind, Trait trait, TrampolinePtr stubCode)
-      : ICStub(kind, trait, stubCode.value),
-        icEntry_(nullptr),
-        state_(),
-        enteredCount_(0),
-        lastStubPtrAddr_(nullptr) {
+      : ICStub(kind, trait, stubCode.value) {
     MOZ_ASSERT(trait == ICStub::Fallback || trait == ICStub::MonitoredFallback);
   }
 
@@ -689,24 +680,19 @@ class ICFallbackStub : public ICStub {
 
   ICState& state() { return state_; }
 
-  // The icEntry and lastStubPtrAddr_ fields can't be initialized when the stub
-  // is created since the stub is created at compile time, and we won't know the
-  // IC entry address until after compile when the JitScript is created.  This
-  // method allows these fields to be fixed up at that point.
+  // The icEntry_ field can't be initialized when the stub is created since we
+  // won't know the ICEntry address until we add the stub to JitScript. This
+  // method allows this field to be fixed up at that point.
   void fixupICEntry(ICEntry* icEntry) {
     MOZ_ASSERT(icEntry_ == nullptr);
-    MOZ_ASSERT(lastStubPtrAddr_ == nullptr);
     icEntry_ = icEntry;
-    lastStubPtrAddr_ = icEntry_->addressOfFirstStub();
   }
 
   // Add a new stub to the IC chain terminated by this fallback stub.
   void addNewStub(ICStub* stub) {
-    MOZ_ASSERT(*lastStubPtrAddr_ == this);
     MOZ_ASSERT(stub->next() == nullptr);
-    stub->setNext(this);
-    *lastStubPtrAddr_ = stub;
-    lastStubPtrAddr_ = stub->addressOfNext();
+    stub->setNext(icEntry_->firstStub());
+    icEntry_->setFirstStub(stub);
     state_.trackAttached();
   }
 
@@ -716,29 +702,9 @@ class ICFallbackStub : public ICStub {
 
   ICStubIterator beginChain() { return ICStubIterator(this); }
 
-  bool hasStub(ICStub::Kind kind) const {
-    for (ICStubConstIterator iter = beginChainConst(); !iter.atEnd(); iter++) {
-      if (iter->kind() == kind) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  unsigned numStubsWithKind(ICStub::Kind kind) const {
-    unsigned count = 0;
-    for (ICStubConstIterator iter = beginChainConst(); !iter.atEnd(); iter++) {
-      if (iter->kind() == kind) {
-        count++;
-      }
-    }
-    return count;
-  }
-
   void discardStubs(JSContext* cx);
 
   void unlinkStub(Zone* zone, ICStub* prev, ICStub* stub);
-  void unlinkStubsWithKind(JSContext* cx, ICStub::Kind kind);
 
   // Return the number of times this stub has successfully provided a value to
   // the caller.
@@ -1717,9 +1683,11 @@ class ICRest_Fallback : public ICFallbackStub {
 
 // UnaryArith
 //     JSOp::BitNot
+//     JSOp::Pos
 //     JSOp::Neg
 //     JSOp::Inc
 //     JSOp::Dec
+//     JSOp::ToNumeric
 
 class ICUnaryArith_Fallback : public ICFallbackStub {
   friend class ICStubSpace;
@@ -1750,7 +1718,7 @@ class ICCompare_Fallback : public ICFallbackStub {
 };
 
 // BinaryArith
-//      JSOp::Add, JSOp::Sub, JSOp::Mul, JOP_DIV, JSOp::Mod
+//      JSOp::Add, JSOp::Sub, JSOp::Mul, JSOp::Div, JSOp::Mod, JSOp::Pow,
 //      JSOp::BitAnd, JSOp::BitXor, JSOp::BitOr
 //      JSOp::Lsh, JSOp::Rsh, JSOp::Ursh
 
@@ -1774,7 +1742,7 @@ class ICBinaryArith_Fallback : public ICFallbackStub {
 class ICNewArray_Fallback : public ICFallbackStub {
   friend class ICStubSpace;
 
-  GCPtrObject templateObject_;
+  GCPtrArrayObject templateObject_;
 
   // The group used for objects created here is always available, even if the
   // template object itself is not.
@@ -1786,9 +1754,9 @@ class ICNewArray_Fallback : public ICFallbackStub {
         templateGroup_(templateGroup) {}
 
  public:
-  GCPtrObject& templateObject() { return templateObject_; }
+  GCPtrArrayObject& templateObject() { return templateObject_; }
 
-  void setTemplateObject(JSObject* obj) {
+  void setTemplateObject(ArrayObject* obj) {
     MOZ_ASSERT(obj->group() == templateGroup());
     templateObject_ = obj;
   }

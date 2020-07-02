@@ -45,6 +45,7 @@ MacroAssembler& CodeGeneratorShared::ensureMasm(MacroAssembler* masmArg) {
 CodeGeneratorShared::CodeGeneratorShared(MIRGenerator* gen, LIRGraph* graph,
                                          MacroAssembler* masmArg)
     : maybeMasm_(),
+      useWasmStackArgumentAbi_(false),
       masm(ensureMasm(masmArg)),
       gen(gen),
       graph(*graph),
@@ -83,9 +84,14 @@ CodeGeneratorShared::CodeGeneratorShared(MIRGenerator* gen, LIRGraph* graph,
     MOZ_ASSERT(graph->argumentSlotCount() == 0);
     frameDepth_ += gen->wasmMaxStackArgBytes();
 
-    static_assert(!SupportsSimd,
-                  "we need padding so that local slots are SIMD-aligned and "
-                  "the stack must be kept SIMD-aligned too.");
+#ifdef ENABLE_WASM_SIMD
+#  ifdef JS_CODEGEN_X64
+    // On X64, we don't need alignment for Wasm SIMD at this time.
+#  else
+#    error \
+        "we may need padding so that local slots are SIMD-aligned and the stack must be kept SIMD-aligned too."
+#  endif
+#endif
 
     if (gen->needsStaticStackAlignment()) {
       // An MWasmCall does not align the stack pointer at calls sites but
@@ -417,13 +423,7 @@ void CodeGeneratorShared::encodeAllocation(LSnapshot* snapshot,
       break;
     }
     case MIRType::Float32:
-    case MIRType::Int8x16:
-    case MIRType::Int16x8:
-    case MIRType::Int32x4:
-    case MIRType::Float32x4:
-    case MIRType::Bool8x16:
-    case MIRType::Bool16x8:
-    case MIRType::Bool32x4: {
+    case MIRType::Simd128: {
       LAllocation* payload = snapshot->payloadOfSlot(*allocIndex);
       if (payload->isConstant()) {
         MConstant* constant = mir->toConstant();
@@ -620,14 +620,12 @@ bool CodeGeneratorShared::assignBailoutId(LSnapshot* snapshot) {
 }
 
 bool CodeGeneratorShared::encodeSafepoints() {
-  for (SafepointIndex& index : safepointIndices_) {
+  for (CodegenSafepointIndex& index : safepointIndices_) {
     LSafepoint* safepoint = index.safepoint();
 
     if (!safepoint->encoded()) {
       safepoints_.encode(safepoint);
     }
-
-    index.resolve();
   }
 
   return !safepoints_.oom();
@@ -840,8 +838,8 @@ void CodeGeneratorShared::markSafepointAt(uint32_t offset, LInstruction* ins) {
   MOZ_ASSERT_IF(
       !safepointIndices_.empty() && !masm.oom(),
       offset - safepointIndices_.back().displacement() >= sizeof(uint32_t));
-  masm.propagateOOM(
-      safepointIndices_.append(SafepointIndex(offset, ins->safepoint())));
+  masm.propagateOOM(safepointIndices_.append(
+      CodegenSafepointIndex(offset, ins->safepoint())));
 }
 
 void CodeGeneratorShared::ensureOsiSpace() {
@@ -961,15 +959,12 @@ bool CodeGeneratorShared::omitOverRecursedCheck() const {
 }
 
 void CodeGeneratorShared::emitPreBarrier(Register elements,
-                                         const LAllocation* index,
-                                         int32_t offsetAdjustment) {
+                                         const LAllocation* index) {
   if (index->isConstant()) {
-    Address address(elements,
-                    ToInt32(index) * sizeof(Value) + offsetAdjustment);
+    Address address(elements, ToInt32(index) * sizeof(Value));
     masm.guardedCallPreBarrier(address, MIRType::Value);
   } else {
-    BaseObjectElementIndex address(elements, ToRegister(index),
-                                   offsetAdjustment);
+    BaseObjectElementIndex address(elements, ToRegister(index));
     masm.guardedCallPreBarrier(address, MIRType::Value);
   }
 }

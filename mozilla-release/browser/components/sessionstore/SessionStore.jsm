@@ -54,7 +54,6 @@ const OBSERVING = [
   "browser:purge-session-history-for-domain",
   "idle-daily",
   "clear-origin-attributes-data",
-  "channel-on-may-change-process",
 ];
 
 // XUL Window properties to (re)store
@@ -172,7 +171,7 @@ const TAB_EVENTS = [
   "TabUnpinned",
 ];
 
-const NS_XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 /**
  * When calling restoreTabContent, we can supply a reason why
@@ -317,14 +316,23 @@ var SessionStore = {
     aWindow,
     aTab,
     aDelta = 0,
-    aRestoreImmediately = true
+    aRestoreImmediately = true,
+    aOptions = {}
   ) {
     return SessionStoreInternal.duplicateTab(
       aWindow,
       aTab,
       aDelta,
-      aRestoreImmediately
+      aRestoreImmediately,
+      aOptions
     );
+  },
+
+  getLastClosedTabCount(aWindow) {
+    return SessionStoreInternal.getLastClosedTabCount(aWindow);
+  },
+  setLastClosedTabCount(aWindow, aNumber) {
+    return SessionStoreInternal.setLastClosedTabCount(aWindow, aNumber);
   },
 
   getClosedTabCount: function ss_getClosedTabCount(aWindow) {
@@ -518,9 +526,6 @@ var SessionStoreInternal = {
 
   // A counter to be used to generate a unique ID for each closed tab or window.
   _nextClosedId: 0,
-
-  // A monotonic value used to generate a unique ID for each process switch.
-  _switchIdMonotonic: 0,
 
   // During the initial restore and setBrowserState calls tracks the number of
   // windows yet to be restored
@@ -725,6 +730,7 @@ var SessionStoreInternal = {
 
     this._initPrefs();
     this._initialized = true;
+    this._closedTabCache = new WeakMap();
 
     Telemetry.getHistogramById("FX_SESSION_RESTORE_PRIVACY_LEVEL").add(
       Services.prefs.getIntPref("browser.sessionstore.privacy_level")
@@ -946,9 +952,6 @@ var SessionStoreInternal = {
         if (userContextId) {
           this._forgetTabsWithUserContextId(userContextId);
         }
-        break;
-      case "channel-on-may-change-process":
-        this.onMayChangeProcess(aSubject);
         break;
     }
   },
@@ -1567,7 +1570,7 @@ var SessionStoreInternal = {
         break;
       case "XULFrameLoaderCreated":
         if (
-          target.namespaceURI == NS_XUL &&
+          target.namespaceURI == XUL_NS &&
           target.localName == "browser" &&
           target.frameLoader &&
           target.permanentKey
@@ -2919,237 +2922,6 @@ var SessionStoreInternal = {
     }
   },
 
-  async _doTabProcessSwitch(
-    aBrowser,
-    aRemoteType,
-    aChannel,
-    aSwitchId,
-    aReplaceBrowsingContext
-  ) {
-    E10SUtils.log().info(
-      `performing switch from ${aBrowser.remoteType} to ${aRemoteType}`
-    );
-
-    // Don't try to switch tabs before delayed startup is completed.
-    await aBrowser.ownerGlobal.delayedStartupPromise;
-
-    // Perform a navigateAndRestore to trigger the process switch.
-    let tab = aBrowser.ownerGlobal.gBrowser.getTabForBrowser(aBrowser);
-    let loadArguments = {
-      newFrameloader: true, // Switch even if remoteType hasn't changed.
-      remoteType: aRemoteType, // Don't derive remoteType to switch to.
-
-      // Information about which channel should be performing the load.
-      redirectLoadSwitchId: aSwitchId,
-
-      // True if this is a process switch due to a policy mismatch, means we
-      // shouldn't preserve our browsing context.
-      replaceBrowsingContext: aReplaceBrowsingContext,
-    };
-
-    await SessionStore.navigateAndRestore(tab, loadArguments, -1);
-
-    // If the process switch seems to have failed, send an error over to our
-    // caller, to give it a chance to kill our channel.
-    if (
-      aBrowser.remoteType != aRemoteType ||
-      !aBrowser.frameLoader ||
-      !aBrowser.frameLoader.remoteTab
-    ) {
-      throw Cr.NS_ERROR_FAILURE;
-    }
-
-    // Tell our caller to redirect the load into this newly created process.
-    let remoteTab = aBrowser.frameLoader.remoteTab;
-    E10SUtils.log().debug(`new tabID: ${remoteTab.tabId}`);
-    return remoteTab.contentProcessId;
-  },
-
-  /**
-   * Perform a destructive process switch into a distinct process.
-   * This method is asynchronous, as it requires multiple calls into content
-   * processes.
-   */
-  async _doProcessSwitch(
-    aBrowsingContext,
-    aRemoteType,
-    aChannel,
-    aSwitchId,
-    aReplaceBrowsingContext
-  ) {
-    // There are two relevant cases when performing a process switch for a
-    // browsing context: in-process and out-of-process embedders.
-
-    // If our embedder is in-process (e.g. we're a xul:browser element embedded
-    // within <tabbrowser>), then we can perform a process switch using the
-    // traditional mechanism.
-    if (aBrowsingContext.embedderElement) {
-      return this._doTabProcessSwitch(
-        aBrowsingContext.embedderElement,
-        aRemoteType,
-        aChannel,
-        aSwitchId,
-        aReplaceBrowsingContext
-      );
-    }
-
-    return aBrowsingContext.changeFrameRemoteness(aRemoteType, aSwitchId);
-  },
-
-  // Examine the channel response to see if we should change the process
-  // performing the given load. aRequestor implements nsIProcessSwitchRequestor
-  onMayChangeProcess(aRequestor) {
-    if (!E10SUtils.documentChannel()) {
-      throw new Error("This code is only used by document channel");
-    }
-
-    let switchRequestor;
-    try {
-      switchRequestor = aRequestor.QueryInterface(Ci.nsIProcessSwitchRequestor);
-    } catch (e) {
-      E10SUtils.log().warn(`object not compatible with process switching `);
-      return;
-    }
-
-    const channel = switchRequestor.channel;
-    if (!channel.isDocument || !channel.loadInfo) {
-      return; // Not a document load.
-    }
-
-    // Check that the document has a corresponding BrowsingContext.
-    let browsingContext = channel.loadInfo.targetBrowsingContext;
-    let isSubframe =
-      channel.loadInfo.externalContentPolicyType !=
-      Ci.nsIContentPolicy.TYPE_DOCUMENT;
-
-    if (!browsingContext) {
-      E10SUtils.log().debug(`no BrowsingContext - ignoring`);
-      return;
-    }
-
-    // Determine if remote subframes should be used for this load.
-    let topBC = browsingContext.top;
-    if (!topBC.embedderElement) {
-      E10SUtils.log().debug(`no embedder for top - ignoring`);
-      return;
-    }
-
-    let topDocShell = topBC.embedderElement.ownerGlobal.docShell;
-    let { useRemoteSubframes } = topDocShell.QueryInterface(Ci.nsILoadContext);
-    if (!useRemoteSubframes && isSubframe) {
-      E10SUtils.log().debug(`remote subframes disabled - ignoring`);
-      return;
-    }
-
-    // Get principal for a document already loaded in the BrowsingContext.
-    let currentPrincipal = null;
-    if (browsingContext.currentWindowGlobal) {
-      currentPrincipal = browsingContext.currentWindowGlobal.documentPrincipal;
-    }
-
-    // We can only perform a process switch on in-process frames if they are
-    // embedded within a normal tab. We can't do one of these swaps for a
-    // cross-origin frame.
-    if (browsingContext.embedderElement) {
-      let tabbrowser = browsingContext.embedderElement.getTabBrowser();
-      if (!tabbrowser) {
-        E10SUtils.log().debug(
-          `cannot find tabbrowser for loading tab - ignoring`
-        );
-        return;
-      }
-
-      let tab = tabbrowser.getTabForBrowser(browsingContext.embedderElement);
-      if (!tab) {
-        E10SUtils.log().debug(
-          `not a normal tab, so cannot swap processes - ignoring`
-        );
-        return;
-      }
-    } else if (!browsingContext.parent) {
-      E10SUtils.log().debug(
-        `no parent or in-process embedder element - ignoring`
-      );
-      return;
-    }
-
-    // Get the current remote type for the BrowsingContext.
-    let currentRemoteType = browsingContext.currentRemoteType;
-    if (currentRemoteType == E10SUtils.NOT_REMOTE) {
-      E10SUtils.log().debug(`currently not remote - ignoring`);
-      return;
-    }
-
-    // Determine the process type the load should be performed in.
-    let resultPrincipal = Services.scriptSecurityManager.getChannelResultPrincipal(
-      channel
-    );
-
-    const isCOOPSwitch =
-      E10SUtils.useCrossOriginOpenerPolicy() &&
-      switchRequestor.hasCrossOriginOpenerPolicyMismatch();
-
-    let preferredRemoteType = currentRemoteType;
-    if (
-      E10SUtils.useCrossOriginOpenerPolicy() &&
-      switchRequestor.crossOriginOpenerPolicy ==
-        Ci.nsILoadInfo.OPENER_POLICY_SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP
-    ) {
-      // We want documents with a SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP
-      // COOP policy to be loaded in a separate process for which we can enable
-      // high resolution timers.
-      preferredRemoteType =
-        E10SUtils.WEB_REMOTE_COOP_COEP_TYPE_PREFIX + resultPrincipal.siteOrigin;
-    } else if (isCOOPSwitch) {
-      // If it is a coop switch, but doesn't have this flag, we want to switch
-      // to a default remoteType
-      preferredRemoteType = E10SUtils.DEFAULT_REMOTE_TYPE;
-    }
-    E10SUtils.log().info(
-      `currentRemoteType (${currentRemoteType}) preferredRemoteType: ${preferredRemoteType}`
-    );
-
-    let remoteType = E10SUtils.getRemoteTypeForPrincipal(
-      resultPrincipal,
-      true,
-      useRemoteSubframes,
-      preferredRemoteType,
-      currentPrincipal,
-      isSubframe
-    );
-
-    E10SUtils.log().debug(
-      `${currentRemoteType}, ${remoteType}, ${isCOOPSwitch}`
-    );
-
-    if (currentRemoteType == remoteType && !isCOOPSwitch) {
-      E10SUtils.log().debug(`type (${remoteType}) is compatible - ignoring`);
-      return;
-    }
-
-    if (
-      remoteType == E10SUtils.NOT_REMOTE ||
-      currentRemoteType == E10SUtils.NOT_REMOTE
-    ) {
-      E10SUtils.log().debug(`non-remote source/target - ignoring`);
-      return;
-    }
-
-    // ------------------------------------------------------------------------
-    // DANGER ZONE: Perform a process switch into the new process. This is
-    // destructive.
-    // ------------------------------------------------------------------------
-    let identifier = ++this._switchIdMonotonic;
-    let tabPromise = this._doProcessSwitch(
-      browsingContext,
-      remoteType,
-      channel,
-      identifier,
-      isCOOPSwitch
-    );
-    switchRequestor.switchProcessTo(tabPromise, identifier);
-  },
-
   /* ........ nsISessionStore API .............. */
 
   getBrowserState: function ssi_getBrowserState() {
@@ -3327,7 +3099,8 @@ var SessionStoreInternal = {
     aWindow,
     aTab,
     aDelta = 0,
-    aRestoreImmediately = true
+    aRestoreImmediately = true,
+    { index } = {}
   ) {
     if (!aTab || !aTab.ownerGlobal) {
       throw Components.Exception("Need a valid tab", Cr.NS_ERROR_INVALID_ARG);
@@ -3350,6 +3123,7 @@ var SessionStoreInternal = {
 
     let tabOptions = {
       userContextId,
+      index,
       ...(aTab == aWindow.gBrowser.selectedTab
         ? { relatedToCurrent: true, ownerTab: aTab }
         : {}),
@@ -3407,6 +3181,28 @@ var SessionStoreInternal = {
     });
 
     return newTab;
+  },
+
+  getLastClosedTabCount(aWindow) {
+    if ("__SSi" in aWindow) {
+      // Blank tabs cannot be undo-closed, so the number returned by
+      // the ClosedTabCache can be greater than the return value of
+      // getClosedTabCount. We won't restore blank tabs, so we return
+      // the minimum of these two values.
+      return Math.min(
+        this._closedTabCache.get(aWindow) || 1,
+        this.getClosedTabCount(aWindow)
+      );
+    }
+
+    throw (Components.returnCode = Cr.NS_ERROR_INVALID_ARG);
+  },
+  setLastClosedTabCount(aWindow, aNumber) {
+    if ("__SSi" in aWindow) {
+      return this._closedTabCache.set(aWindow, aNumber);
+    }
+
+    throw (Components.returnCode = Cr.NS_ERROR_INVALID_ARG);
   },
 
   getClosedTabCount: function ssi_getClosedTabCount(aWindow) {
@@ -4072,10 +3868,15 @@ var SessionStoreInternal = {
    */
   async _asyncNavigateAndRestore(tab) {
     let permanentKey = tab.linkedBrowser.permanentKey;
+    let browser = tab.linkedBrowser;
+
+    browser.messageManager.sendAsyncMessage(
+      "SessionStore:prepareForProcessChange"
+    );
 
     // NOTE: This is currently the only async operation used, but this is likely
     // to change in the future.
-    await TabStateFlusher.flush(tab.linkedBrowser);
+    await TabStateFlusher.flush(browser);
 
     // Now that we have flushed state, our loadArguments, etc. may have been
     // overwritten by multiple calls to navigateAndRestore. Load the most
@@ -4944,6 +4745,17 @@ var SessionStoreInternal = {
     // the ignored set anymore.
     this._crashedBrowsers.delete(browser.permanentKey);
 
+    // If we're in the midst of performing a process flip, then we must
+    // have initiated a navigation. This means that these userTyped*
+    // values are now out of date.
+    if (
+      options.restoreContentReason ==
+      RESTORE_TAB_CONTENT_REASON.NAVIGATE_AND_RESTORE
+    ) {
+      delete tabData.userTypedValue;
+      delete tabData.userTypedClear;
+    }
+
     // Update the persistent tab state cache with |tabData| information.
     TabStateCache.update(browser, {
       // NOTE: Copy the entries array shallowly, so as to not screw with the
@@ -5058,9 +4870,6 @@ var SessionStoreInternal = {
     let uri = activePageData ? activePageData.url || null : null;
     if (loadArguments) {
       uri = loadArguments.uri;
-      if (loadArguments.userContextId) {
-        browser.setAttribute("usercontextid", loadArguments.userContextId);
-      }
     }
 
     this.markTabAsRestoring(aTab);

@@ -100,6 +100,7 @@ async function continue_remove_tab(client, tab) {
   removeTab(tab);
 
   const tabs = await client.mainRoot.listTabs();
+
   // Verify that tabs are no longer included in listTabs.
   const foundTab1 = tabs.some(grip => grip.url == TAB1_URL);
   const foundTab2 = tabs.some(grip => grip.url == TAB2_URL);

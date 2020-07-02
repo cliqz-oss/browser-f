@@ -78,7 +78,7 @@ class WebConsoleFront extends FrontClassWithSpec(webconsoleSpec) {
   _onNetworkEvent(packet) {
     const actor = packet.eventActor;
     const networkInfo = {
-      _type: "NetworkEvent",
+      type: "networkEvent",
       timeStamp: actor.timeStamp,
       node: null,
       actor: actor.actor,
@@ -101,6 +101,7 @@ class WebConsoleFront extends FrontClassWithSpec(webconsoleSpec) {
       isThirdPartyTrackingResource: actor.isThirdPartyTrackingResource,
       referrerPolicy: actor.referrerPolicy,
       blockedReason: actor.blockedReason,
+      blockingExtension: actor.blockingExtension,
       channelId: actor.channelId,
     };
     this._networkRequests.set(actor.actor, networkInfo);
@@ -190,6 +191,11 @@ class WebConsoleFront extends FrontClassWithSpec(webconsoleSpec) {
    *        This is used by context menu entries to get a reference to an object, in order
    *        to perform some operation on it (copy it, store it as a global variable, …).
    *
+   *        - {Integer} innerWindowID: An optional window id to be used for the evaluation,
+   *        instead of the regular webConsoleActor.evalWindow.
+   *        This is used by functions that may want to evaluate in a different window (for
+   *        example a non-remote iframe), like getting the elements of a given document.
+   *
    * @return {Promise}: A promise that resolves with the response.
    */
   async evaluateJSAsync(string, opts = {}) {
@@ -199,6 +205,7 @@ class WebConsoleFront extends FrontClassWithSpec(webconsoleSpec) {
       url: opts.url,
       selectedNodeActor: opts.selectedNodeActor,
       selectedObjectActor: opts.selectedObjectActor,
+      innerWindowID: opts.innerWindowID,
       mapped: opts.mapped,
       eager: opts.eager,
     };
@@ -290,22 +297,35 @@ class WebConsoleFront extends FrontClassWithSpec(webconsoleSpec) {
         this
       );
     }
+
+    if (packet?.pageError?.exception) {
+      packet.pageError.exception = getAdHocFrontOrPrimitiveGrip(
+        packet.pageError.exception,
+        this
+      );
+    }
     return packet;
   }
 
   async getCachedMessages(messageTypes) {
     const response = await super.getCachedMessages(messageTypes);
     if (Array.isArray(response.messages)) {
-      response.messages = response.messages.map(message => {
-        if (!message || !Array.isArray(message.arguments)) {
-          return message;
+      response.messages = response.messages.map(packet => {
+        if (Array.isArray(packet?.message?.arguments)) {
+          // We might need to create fronts for each of the message arguments.
+          packet.message.arguments = packet.message.arguments.map(arg =>
+            getAdHocFrontOrPrimitiveGrip(arg, this)
+          );
         }
 
-        // We might need to create fronts for each of the message arguments.
-        message.arguments = message.arguments.map(arg =>
-          getAdHocFrontOrPrimitiveGrip(arg, this)
-        );
-        return message;
+        if (packet.pageError?.exception) {
+          packet.pageError.exception = getAdHocFrontOrPrimitiveGrip(
+            packet.pageError.exception,
+            this
+          );
+        }
+
+        return packet;
       });
     }
     return response;

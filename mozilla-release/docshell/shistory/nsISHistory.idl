@@ -18,7 +18,7 @@ struct EntriesAndBrowsingContextData;
 %}
 
 [ref] native nsDocshellIDArray(nsTArray<nsID>);
-native MaybeInt32(Maybe<int32_t>);
+native MaybeInt32(mozilla::Maybe<int32_t>);
 /**
  * An interface to the primary properties of the Session History
  * component. In an embedded browser environment, the nsIWebBrowser
@@ -149,13 +149,6 @@ interface nsISHistory: nsISupports
    *                          appear in the session history list.
    */
   void addEntry(in nsISHEntry aEntry, in boolean aPersist);
-
-  /**
-   * Clear the reference to the toplevel browsing context object that this
-   * SHistory object belongs to.
-   */
-  [noscript, notxpcom]
-  void ClearRootBrowsingContext();
 
   /**
    * Update the index maintained by sessionHistory

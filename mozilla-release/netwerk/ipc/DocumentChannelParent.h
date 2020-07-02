@@ -26,10 +26,10 @@ class DocumentChannelParent final : public ADocumentChannelBridge,
  public:
   NS_INLINE_DECL_REFCOUNTING(DocumentChannelParent, override);
 
-  explicit DocumentChannelParent(dom::CanonicalBrowsingContext* aContext,
-                                 nsILoadContext* aLoadContext);
+  explicit DocumentChannelParent();
 
-  bool Init(const DocumentChannelCreationArgs& aArgs);
+  bool Init(dom::CanonicalBrowsingContext* aContext,
+            const DocumentChannelCreationArgs& aArgs);
 
   // PDocumentChannelParent
   bool RecvCancel(const nsresult& aStatus) {
@@ -61,24 +61,15 @@ class DocumentChannelParent final : public ADocumentChannelBridge,
     }
   }
 
-  void CSPViolation(nsCSPContext* aContext, bool aIsCspToInherit,
-                    nsIURI* aBlockedURI,
-                    nsCSPContext::BlockedContentSource aBlockedContentSource,
-                    nsIURI* aOriginalURI, const nsAString& aViolatedDirective,
-                    uint32_t aViolatedPolicyIndex,
-                    const nsAString& aObserverSubject) override;
-
-  virtual ProcessId OtherPid() const override { return IProtocol::OtherPid(); }
-
-  virtual bool AttachStreamFilter(
-      Endpoint<mozilla::extensions::PStreamFilterParent>&& aEndpoint) override {
-    return SendAttachStreamFilter(std::move(aEndpoint));
-  }
+  ProcessId OtherPid() const override { return IProtocol::OtherPid(); }
 
   RefPtr<PDocumentChannelParent::RedirectToRealChannelPromise>
-  RedirectToRealChannel(uint32_t aRedirectFlags, uint32_t aLoadFlags) override;
+  RedirectToRealChannel(
+      nsTArray<ipc::Endpoint<extensions::PStreamFilterParent>>&&
+          aStreamFilterEndpoints,
+      uint32_t aRedirectFlags, uint32_t aLoadFlags) override;
 
-  ~DocumentChannelParent();
+  virtual ~DocumentChannelParent();
 
   RefPtr<DocumentLoadListener> mParent;
 };

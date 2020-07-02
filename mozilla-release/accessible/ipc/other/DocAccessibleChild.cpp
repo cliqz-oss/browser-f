@@ -1610,7 +1610,7 @@ mozilla::ipc::IPCResult DocAccessibleChild::RecvChildAtPoint(
   *aResultDoc = nullptr;
   *aResultID = 0;
   Accessible* acc = IdToAccessible(aID);
-  if (acc && !acc->IsDefunct() && !nsAccUtils::MustPrune(acc)) {
+  if (acc && !acc->IsDefunct()) {
     int32_t x = aX;
     int32_t y = aY;
     Accessible* result = acc->ChildAtPoint(
@@ -1619,7 +1619,8 @@ mozilla::ipc::IPCResult DocAccessibleChild::RecvChildAtPoint(
       // Accessible::ChildAtPoint can return an Accessible from a descendant
       // document.
       *aResultDoc = result->Document()->IPCDoc();
-      *aResultID = reinterpret_cast<uint64_t>(result->UniqueID());
+      *aResultID =
+          result->IsDoc() ? 0 : reinterpret_cast<uint64_t>(result->UniqueID());
     }
   }
 

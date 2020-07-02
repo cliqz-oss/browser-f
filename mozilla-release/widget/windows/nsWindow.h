@@ -30,6 +30,7 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "mozilla/dom/MouseEventBinding.h"
+#include "mozilla/UniquePtr.h"
 #include "nsMargin.h"
 #include "nsRegionFwd.h"
 
@@ -62,8 +63,31 @@ namespace widget {
 class NativeKey;
 class InProcessWinCompositorWidget;
 struct MSGResult;
+class DirectManipulationOwner;
 }  // namespace widget
 }  // namespace mozilla
+
+/**
+ * Forward Windows-internal definitions of otherwise incomplete ones provided by
+ * the SDK.
+ */
+const CLSID CLSID_ImmersiveShell = {
+    0xC2F03A33,
+    0x21F5,
+    0x47FA,
+    {0xB4, 0xBB, 0x15, 0x63, 0x62, 0xA2, 0xF2, 0x39}};
+
+// Virtual Desktop.
+
+EXTERN_C const IID IID_IVirtualDesktopManager;
+MIDL_INTERFACE("a5cd92ff-29be-454c-8d04-d82879fb3f1b")
+IVirtualDesktopManager : public IUnknown {
+ public:
+  virtual HRESULT STDMETHODCALLTYPE GetWindowDesktopId(
+      __RPC__in HWND topLevelWindow, __RPC__out GUID * desktopId) = 0;
+  virtual HRESULT STDMETHODCALLTYPE MoveWindowToDesktop(
+      __RPC__in HWND topLevelWindow, __RPC__in REFGUID desktopId) = 0;
+};
 
 /**
  * Native WIN32 window wrapper.
@@ -86,6 +110,8 @@ class nsWindow final : public nsWindowBase {
   NS_INLINE_DECL_REFCOUNTING_INHERITED(nsWindow, nsWindowBase)
 
   friend class nsWindowGfx;
+
+  void SendAnAPZEvent(mozilla::InputData& aEvent);
 
   // nsWindowBase
   virtual void InitEvent(mozilla::WidgetGUIEvent& aEvent,
@@ -141,6 +167,8 @@ class nsWindow final : public nsWindowBase {
   virtual void PlaceBehind(nsTopLevelWidgetZPlacement aPlacement,
                            nsIWidget* aWidget, bool aActivate) override;
   virtual void SetSizeMode(nsSizeMode aMode) override;
+  virtual void GetWorkspaceID(nsAString& workspaceID) override;
+  virtual void MoveToWorkspace(const nsAString& workspaceID) override;
   virtual void SuppressAnimation(bool aSuppress) override;
   virtual void Enable(bool aState) override;
   virtual bool IsEnabled() const override;
@@ -277,6 +305,10 @@ class nsWindow final : public nsWindowBase {
 
   void SetSmallIcon(HICON aIcon);
   void SetBigIcon(HICON aIcon);
+
+  static void SetIsRestoringSession(const bool aIsRestoringSession) {
+    sIsRestoringSession = aIsRestoringSession;
+  }
 
   /**
    * AssociateDefaultIMC() associates or disassociates the default IMC for
@@ -540,6 +572,10 @@ class nsWindow final : public nsWindowBase {
   void CreateCompositor() override;
   void RequestFxrOutput();
 
+  void RecreateDirectManipulationIfNeeded();
+  void ResizeDirectManipulationViewport();
+  void DestroyDirectManipulation();
+
  protected:
   nsCOMPtr<nsIWidget> mParent;
   nsIntSize mLastSize;
@@ -566,6 +602,7 @@ class nsWindow final : public nsWindowBase {
   bool mOpeningAnimationSuppressed;
   bool mAlwaysOnTop;
   bool mIsEarlyBlankWindow;
+  bool mResizable;
   DWORD_PTR mOldStyle;
   DWORD_PTR mOldExStyle;
   nsNativeDragTarget* mNativeDragTarget;
@@ -589,6 +626,7 @@ class nsWindow final : public nsWindowBase {
   static bool sJustGotActivate;
   static bool sIsInMouseCapture;
   static bool sHaveInitializedPrefs;
+  static bool sIsRestoringSession;
 
   PlatformCompositorWidgetDelegate* mCompositorWidgetDelegate;
 
@@ -704,6 +742,8 @@ class nsWindow final : public nsWindowBase {
   // When true, used to indicate an async call to RequestFxrOutput to the GPU
   // process after the Compositor is created
   bool mRequestFxrOutputPending;
+
+  mozilla::UniquePtr<mozilla::widget::DirectManipulationOwner> mDmOwner;
 };
 
 #endif  // Window_h__

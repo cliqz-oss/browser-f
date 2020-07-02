@@ -19,8 +19,7 @@ add_task(async function() {
   const client = await setupDebuggerClient();
   const mainRoot = client.mainRoot;
 
-  const tabs = await mainRoot.listTabs();
-  const tabDescriptors = tabs.map(tabTarget => tabTarget.descriptorFront);
+  const tabDescriptors = await mainRoot.listTabs();
 
   await testGetTargetWithConcurrentCalls(tabDescriptors, tabTarget => {
     // Tab Target is attached when it has a console front.
@@ -45,23 +44,6 @@ add_task(async function() {
   await testGetTargetWithConcurrentCalls(processes, processTarget => {
     // Content Process Target is attached when it has a console front.
     return !!processTarget.getCachedFront("console");
-  });
-
-  await client.close();
-});
-
-// Test against Frame targets
-add_task(async function() {
-  const client = await setupDebuggerClient();
-  const mainRoot = client.mainRoot;
-
-  const mainProcessDescriptor = await mainRoot.getMainProcess();
-  const mainProcess = await mainProcessDescriptor.getTarget();
-  const { frames } = await mainProcess.listRemoteFrames();
-
-  await testGetTargetWithConcurrentCalls(frames, frameTarget => {
-    // traits is one attribute to assert that a Frame Target is attached
-    return !!frameTarget.traits;
   });
 
   await client.close();
@@ -103,8 +85,8 @@ add_task(async function() {
     workers.map(workerTargetFront => {
       is(
         workerTargetFront.descriptorFront,
-        mainRoot,
-        "Got the Main Root as the descriptor for main root worker target."
+        null,
+        "For now, worker target don't have descriptor fronts (see bug 1573779)"
       );
     })
   );

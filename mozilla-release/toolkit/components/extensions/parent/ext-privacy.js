@@ -29,6 +29,10 @@ const cookieBehaviorValues = new Map([
   ["reject_all", cookieSvc.BEHAVIOR_REJECT],
   ["allow_visited", cookieSvc.BEHAVIOR_LIMIT_FOREIGN],
   ["reject_trackers", cookieSvc.BEHAVIOR_REJECT_TRACKER],
+  [
+    "reject_trackers_and_partition_foreign",
+    cookieSvc.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN,
+  ],
 ]);
 
 function isTLSMinVersionLowerOrEQThan(version) {
@@ -126,8 +130,23 @@ ExtensionPreferencesManager.addSetting("websites.cookieConfig", {
   prefNames: ["network.cookie.cookieBehavior", "network.cookie.lifetimePolicy"],
 
   setCallback(value) {
+    const cookieBehavior = cookieBehaviorValues.get(value.behavior);
+
+    // Intentionally use Preferences.get("network.cookie.cookieBehavior") here
+    // to read the "real" preference value.
+    const needUpdate =
+      cookieBehavior !== Preferences.get("network.cookie.cookieBehavior");
+    if (
+      needUpdate &&
+      Preferences.get("privacy.firstparty.isolate") &&
+      cookieBehavior === cookieSvc.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN
+    ) {
+      throw new ExtensionError(
+        `Invalid cookieConfig '${value.behavior}' when firstPartyIsolate is enabled`
+      );
+    }
     return {
-      "network.cookie.cookieBehavior": cookieBehaviorValues.get(value.behavior),
+      "network.cookie.cookieBehavior": cookieBehavior,
       "network.cookie.lifetimePolicy": value.nonPersistentCookies
         ? cookieSvc.ACCEPT_SESSION
         : cookieSvc.ACCEPT_NORMALLY,
@@ -140,6 +159,24 @@ ExtensionPreferencesManager.addSetting("websites.firstPartyIsolate", {
   prefNames: ["privacy.firstparty.isolate"],
 
   setCallback(value) {
+    // Intentionally use Preferences.get("network.cookie.cookieBehavior") here
+    // to read the "real" preference value.
+    const cookieBehavior = Preferences.get("network.cookie.cookieBehavior");
+
+    const needUpdate = value !== Preferences.get("privacy.firstparty.isolate");
+    if (
+      needUpdate &&
+      value &&
+      cookieBehavior === cookieSvc.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN
+    ) {
+      const behavior = Array.from(cookieBehaviorValues.entries()).find(
+        entry => entry[1] === cookieBehavior
+      )[0];
+      throw new ExtensionError(
+        `Can't enable firstPartyIsolate when cookieBehavior is '${behavior}'`
+      );
+    }
+
     return { [this.prefNames[0]]: value };
   },
 });
@@ -258,19 +295,6 @@ ExtensionPreferencesManager.addSetting("network.tlsVersionRestriction", {
 
 this.privacy = class extends ExtensionAPI {
   getAPI(context) {
-    let { extension } = context;
-
-    // eslint-disable-next-line mozilla/balanced-listeners
-    extension.on("remove-permissions", (ignoreEvent, permissions) => {
-      if (!permissions.permissions.includes("privacy")) {
-        return;
-      }
-      ExtensionPreferencesManager.removeSettingsForPermission(
-        extension.id,
-        "privacy"
-      );
-    });
-
     return {
       privacy: {
         network: {

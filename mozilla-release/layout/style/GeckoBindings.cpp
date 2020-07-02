@@ -60,7 +60,6 @@
 #include "mozilla/RestyleManager.h"
 #include "mozilla/SizeOfState.h"
 #include "mozilla/StyleAnimationValue.h"
-#include "mozilla/SystemGroup.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ServoTraversalStatistics.h"
 #include "mozilla/Telemetry.h"
@@ -487,8 +486,7 @@ bool Gecko_GetAnimationRule(const Element* aElement,
     return false;
   }
   nsPresContext* presContext = doc->GetPresContext();
-  if (!presContext || !presContext->IsDynamic()) {
-    // For print or print preview, ignore animations.
+  if (!presContext) {
     return false;
   }
 
@@ -718,7 +716,7 @@ bool Gecko_MatchLang(const Element* aElement, nsAtom* aOverrideLang,
   if (auto* language = aHasOverrideLang ? aOverrideLang : aElement->GetLang()) {
     return nsStyleUtil::DashMatchCompare(
         nsDependentAtomString(language), nsDependentString(aValue),
-        nsASCIICaseInsensitiveStringComparator());
+        nsASCIICaseInsensitiveStringComparator);
   }
 
   // Try to get the language from the HTTP header or if this
@@ -731,8 +729,8 @@ bool Gecko_MatchLang(const Element* aElement, nsAtom* aOverrideLang,
   nsDependentString langString(aValue);
   language.StripWhitespace();
   for (auto const& lang : language.Split(char16_t(','))) {
-    if (nsStyleUtil::DashMatchCompare(
-            lang, langString, nsASCIICaseInsensitiveStringComparator())) {
+    if (nsStyleUtil::DashMatchCompare(lang, langString,
+                                      nsASCIICaseInsensitiveStringComparator)) {
       return true;
     }
   }
@@ -838,14 +836,10 @@ static bool AttrEquals(Implementor* aElement, nsAtom* aNS, nsAtom* aName,
   return DoMatch(aElement, aNS, aName, match);
 }
 
-#define WITH_COMPARATOR(ignore_case_, c_, expr_) \
-  if (ignore_case_) {                            \
-    const nsCaseInsensitiveStringComparator c_;  \
-    return expr_;                                \
-  } else {                                       \
-    const nsDefaultStringComparator c_;          \
-    return expr_;                                \
-  }
+#define WITH_COMPARATOR(ignore_case_, c_, expr_)                  \
+  auto c_ = ignore_case_ ? nsASCIICaseInsensitiveStringComparator \
+                         : nsTDefaultStringComparator<char16_t>;  \
+  return expr_;
 
 template <typename Implementor>
 static bool AttrDashEquals(Implementor* aElement, nsAtom* aNS, nsAtom* aName,
@@ -877,10 +871,8 @@ template <typename Implementor>
 static bool AttrHasSubstring(Implementor* aElement, nsAtom* aNS, nsAtom* aName,
                              nsAtom* aStr, bool aIgnoreCase) {
   auto match = [aStr, aIgnoreCase](const nsAttrValue* aValue) {
-    nsAutoString str;
-    aValue->ToString(str);
-    WITH_COMPARATOR(aIgnoreCase, c,
-                    FindInReadable(nsDependentAtomString(aStr), str, c))
+    return aValue->HasSubstring(nsDependentAtomString(aStr),
+                                aIgnoreCase ? eIgnoreCase : eCaseMatters);
   };
   return DoMatch(aElement, aNS, aName, match);
 }
@@ -889,10 +881,8 @@ template <typename Implementor>
 static bool AttrHasPrefix(Implementor* aElement, nsAtom* aNS, nsAtom* aName,
                           nsAtom* aStr, bool aIgnoreCase) {
   auto match = [aStr, aIgnoreCase](const nsAttrValue* aValue) {
-    nsAutoString str;
-    aValue->ToString(str);
-    WITH_COMPARATOR(aIgnoreCase, c,
-                    StringBeginsWith(str, nsDependentAtomString(aStr), c))
+    return aValue->HasPrefix(nsDependentAtomString(aStr),
+                             aIgnoreCase ? eIgnoreCase : eCaseMatters);
   };
   return DoMatch(aElement, aNS, aName, match);
 }
@@ -901,10 +891,8 @@ template <typename Implementor>
 static bool AttrHasSuffix(Implementor* aElement, nsAtom* aNS, nsAtom* aName,
                           nsAtom* aStr, bool aIgnoreCase) {
   auto match = [aStr, aIgnoreCase](const nsAttrValue* aValue) {
-    nsAutoString str;
-    aValue->ToString(str);
-    WITH_COMPARATOR(aIgnoreCase, c,
-                    StringEndsWith(str, nsDependentAtomString(aStr), c))
+    return aValue->HasSuffix(nsDependentAtomString(aStr),
+                             aIgnoreCase ? eIgnoreCase : eCaseMatters);
   };
   return DoMatch(aElement, aNS, aName, match);
 }
@@ -1355,9 +1343,10 @@ void Gecko_nsStyleFont_PrioritizeUserFonts(
 
 nscoord Gecko_nsStyleFont_ComputeMinSize(const nsStyleFont* aFont,
                                          const Document* aDocument) {
-  // Don't change font-size:0, since that would un-hide hidden text, nor chrome
-  // docs, we assume those know what they do.
-  if (aFont->mSize == 0 || nsContentUtils::IsChromeDoc(aDocument)) {
+  // Don't change font-size:0, since that would un-hide hidden text,
+  // or SVG text, or chrome docs, we assume those know what they do.
+  if (aFont->mSize == 0 || !aFont->mAllowZoomAndMinSize ||
+      nsContentUtils::IsChromeDoc(aDocument)) {
     return 0;
   }
 

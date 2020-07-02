@@ -45,7 +45,8 @@ const BrowserStatusFilter = Components.Constructor(
 
 const WINDOW_TYPE = "navigator:geckoview";
 
-let tabTracker;
+// We need let to break cyclic dependency
+/* eslint-disable-next-line prefer-const */
 let windowTracker;
 
 /**
@@ -115,7 +116,7 @@ const PROGRESS_LISTENER_FLAGS =
 class ProgressListenerWrapper {
   constructor(window, listener) {
     this.listener = new BrowserProgressListener(
-      window.BrowserApp.selectedBrowser,
+      window.browser,
       listener,
       PROGRESS_LISTENER_FLAGS
     );
@@ -142,21 +143,21 @@ class WindowTracker extends WindowTrackerBase {
   }
 
   isBrowserWindow(window) {
-    let { documentElement } = window.document;
+    const { documentElement } = window.document;
     return documentElement.getAttribute("windowtype") === WINDOW_TYPE;
   }
 
   addProgressListener(window, listener) {
-    let listeners = this.progressListeners.get(window);
+    const listeners = this.progressListeners.get(window);
     if (!listeners.has(listener)) {
-      let wrapper = new ProgressListenerWrapper(window, listener);
+      const wrapper = new ProgressListenerWrapper(window, listener);
       listeners.set(listener, wrapper);
     }
   }
 
   removeProgressListener(window, listener) {
-    let listeners = this.progressListeners.get(window);
-    let wrapper = listeners.get(listener);
+    const listeners = this.progressListeners.get(window);
+    const wrapper = listeners.get(listener);
     if (wrapper) {
       wrapper.destroy();
       listeners.delete(listener);
@@ -193,7 +194,7 @@ global.makeGlobalEvent = function makeGlobalEvent(
     context,
     name,
     register: fire => {
-      let listener2 = {
+      const listener2 = {
         onEvent(event, data, callback) {
           listener(fire, data);
         },
@@ -215,17 +216,15 @@ class TabTracker extends TabTrackerBase {
     this.initialized = true;
 
     windowTracker.addOpenListener(window => {
-      const nativeTab = window.BrowserApp.selectedTab;
+      const nativeTab = window.tab;
       this.emit("tab-created", { nativeTab });
     });
 
     windowTracker.addCloseListener(window => {
-      const nativeTab = window.BrowserApp.selectedTab;
-      const { windowId, tabId } = this.getBrowserData(
-        window.BrowserApp.selectedBrowser
-      );
+      const { tab, browser } = window;
+      const { windowId, tabId } = this.getBrowserData(browser);
       this.emit("tab-removed", {
-        nativeTab,
+        tab,
         tabId,
         windowId,
         // In GeckoView, it is not meaningful to speak of "window closed", because a tab is a window.
@@ -242,12 +241,12 @@ class TabTracker extends TabTrackerBase {
 
   getTab(id, default_ = undefined) {
     const windowId = GeckoViewTabBridge.tabIdToWindowId(id);
-    const win = windowTracker.getWindow(windowId, null, false);
+    const window = windowTracker.getWindow(windowId, null, false);
 
-    if (win && win.BrowserApp) {
-      let nativeTab = win.BrowserApp.selectedTab;
-      if (nativeTab) {
-        return nativeTab;
+    if (window) {
+      const { tab } = window;
+      if (tab) {
+        return tab;
       }
     }
 
@@ -259,7 +258,8 @@ class TabTracker extends TabTrackerBase {
 
   getBrowserData(browser) {
     const window = browser.ownerGlobal;
-    if (!window.BrowserApp) {
+    const { tab } = window;
+    if (!tab) {
       return {
         tabId: -1,
         windowId: -1,
@@ -277,21 +277,21 @@ class TabTracker extends TabTrackerBase {
 
     return {
       windowId,
-      tabId: this.getId(window.BrowserApp.selectedTab),
+      tabId: this.getId(tab),
     };
   }
 
   get activeTab() {
-    let win = windowTracker.topWindow;
-    if (win && win.BrowserApp) {
-      return win.BrowserApp.selectedTab;
+    const window = windowTracker.topWindow;
+    if (window) {
+      return window.tab;
     }
     return null;
   }
 }
 
 windowTracker = new WindowTracker();
-tabTracker = new TabTracker();
+const tabTracker = new TabTracker();
 
 Object.assign(global, { tabTracker, windowTracker });
 
@@ -317,7 +317,8 @@ class Tab extends TabBase {
   }
 
   get cookieStoreId() {
-    return getCookieStoreIdForTab(this, this.nativeTab);
+    // Expose the same session context ID that the GeckoView app is sending to us.
+    return this.window.moduleManager.settings.unsafeSessionContextId;
   }
 
   get height() {
@@ -329,7 +330,7 @@ class Tab extends TabBase {
   }
 
   get index() {
-    return this.window.BrowserApp.tabs.indexOf(this.nativeTab);
+    return 0;
   }
 
   get mutedInfo() {
@@ -345,25 +346,6 @@ class Tab extends TabBase {
   }
 
   get active() {
-    // If there is an extension popup tab and it is active,
-    // then the parent tab of the extension popup tab is active
-    // (while the extension popup tab will not be included in the
-    // tabs.query results).
-    if (tabTracker.extensionPopupTab) {
-      if (
-        tabTracker.extensionPopupTab.getActive() &&
-        this.nativeTab.id === tabTracker.extensionPopupTab.parentId
-      ) {
-        return true;
-      }
-
-      // Never return true for an active extension popup, e.g. so that
-      // the popup tab will not be part of the results of querying
-      // all the active tabs.
-      if (tabTracker.extensionPopupTab === this.nativeTab) {
-        return false;
-      }
-    }
     return this.nativeTab.getActive();
   }
 
@@ -439,8 +421,7 @@ class TabContext extends EventEmitter {
       // location changes related to the top level frame (See Bug 1493470 for a rationale).
       return;
     }
-    const gBrowser = browser.ownerGlobal.gBrowser;
-    const tab = gBrowser.getTabForBrowser(browser);
+    const { tab } = browser.ownerGlobal;
     // fromBrowse will be false in case of e.g. a hash change or history.pushState
     const fromBrowse = !(
       flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT
@@ -459,7 +440,7 @@ class TabContext extends EventEmitter {
 
   get(tabId) {
     if (!this.tabData.has(tabId)) {
-      let data = Object.create(this.getDefaultPrototype(tabId));
+      const data = Object.create(this.getDefaultPrototype(tabId));
       this.tabData.set(tabId, data);
     }
 
@@ -513,11 +494,7 @@ class Window extends WindowBase {
   }
 
   *getTabs() {
-    let { tabManager } = this.extension;
-
-    for (let nativeTab of this.window.BrowserApp.tabs) {
-      yield tabManager.getWrapper(nativeTab);
-    }
+    yield this.activeTab;
   }
 
   *getHighlightedTabs() {
@@ -525,23 +502,13 @@ class Window extends WindowBase {
   }
 
   get activeTab() {
-    let { BrowserApp } = this.window;
-    let { selectedTab } = BrowserApp;
-
-    // If the current tab is an extension popup tab, we use the parentId to retrieve
-    // and return the tab that was selected when the popup tab has been opened.
-    if (selectedTab === tabTracker.extensionPopupTab) {
-      selectedTab = BrowserApp.getTabForId(selectedTab.parentId);
-    }
-
-    let { tabManager } = this.extension;
-    return tabManager.getWrapper(selectedTab);
+    const { tabManager } = this.extension;
+    return tabManager.getWrapper(this.window.tab);
   }
 
   getTabAtIndex(index) {
-    let nativeTab = this.window.BrowserApp.tabs[index];
-    if (nativeTab) {
-      return this.extension.tabManager.getWrapper(nativeTab);
+    if (index == 0) {
+      return this.activeTab;
     }
   }
 }
@@ -550,7 +517,7 @@ Object.assign(global, { Tab, TabContext, Window });
 
 class TabManager extends TabManagerBase {
   get(tabId, default_ = undefined) {
-    let nativeTab = tabTracker.getTab(tabId, default_);
+    const nativeTab = tabTracker.getTab(tabId, default_);
 
     if (nativeTab) {
       return this.getWrapper(nativeTab);
@@ -580,17 +547,17 @@ class TabManager extends TabManagerBase {
 
 class WindowManager extends WindowManagerBase {
   get(windowId, context) {
-    let window = windowTracker.getWindow(windowId, context);
+    const window = windowTracker.getWindow(windowId, context);
 
     return this.getWrapper(window);
   }
 
   *getAll(context) {
-    for (let window of windowTracker.browserWindows()) {
+    for (const window of windowTracker.browserWindows()) {
       if (!this.canAccessWindow(window, context)) {
         continue;
       }
-      let wrapped = this.getWrapper(window);
+      const wrapped = this.getWrapper(window);
       if (wrapped) {
         yield wrapped;
       }

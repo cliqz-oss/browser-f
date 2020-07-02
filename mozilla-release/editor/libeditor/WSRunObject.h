@@ -6,6 +6,7 @@
 #ifndef WSRunObject_h
 #define WSRunObject_h
 
+#include "HTMLEditUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/EditAction.h"
 #include "mozilla/EditorBase.h"
@@ -103,9 +104,9 @@ class MOZ_STACK_CLASS WSScanResult final {
         mReason == WSType::SpecialContent,
         mContent && ((mContent->IsText() && !mContent->IsEditable()) ||
                      (!mContent->IsHTMLElement(nsGkAtoms::br) &&
-                      !HTMLEditor::NodeIsBlockStatic(*mContent))));
+                      !HTMLEditUtils::IsBlockElement(*mContent))));
     MOZ_ASSERT_IF(mReason == WSType::OtherBlockBoundary,
-                  mContent && HTMLEditor::NodeIsBlockStatic(*mContent));
+                  mContent && HTMLEditUtils::IsBlockElement(*mContent));
     // If mReason is WSType::CurrentBlockBoundary, mContent can be any content.
     // In most cases, it's current block element which is editable.  However, if
     // there is no editable block parent, this is topmost editable inline
@@ -114,8 +115,8 @@ class MOZ_STACK_CLASS WSScanResult final {
     MOZ_ASSERT_IF(
         mReason == WSType::CurrentBlockBoundary,
         !mContent || !mContent->GetParentElement() ||
-            HTMLEditor::NodeIsBlockStatic(*mContent) ||
-            HTMLEditor::NodeIsBlockStatic(*mContent->GetParentElement()) ||
+            HTMLEditUtils::IsBlockElement(*mContent) ||
+            HTMLEditUtils::IsBlockElement(*mContent->GetParentElement()) ||
             !mContent->GetParentElement()->IsEditable());
 #endif  // #ifdef DEBUG
   }
@@ -408,9 +409,11 @@ class MOZ_STACK_CLASS WSRunScanner {
   /**
    * Active editing host when this instance is created.
    */
-  Element* GetEditingHost() const { return mEditingHost; }
+  dom::Element* GetEditingHost() const { return mEditingHost; }
 
  protected:
+  using EditorType = EditorBase::EditorType;
+
   // WSFragment represents a single run of ws (all leadingws, or all normalws,
   // or all trailingws, or all leading+trailingws).  Note that this single run
   // may still span multiple nodes.
@@ -433,10 +436,16 @@ class MOZ_STACK_CLASS WSRunScanner {
           mIsStartOfHardLine(StartOfHardLine::No),
           mIsEndOfHardLine(EndOfHardLine::No) {}
 
-    EditorRawDOMPoint StartPoint() const {
+    EditorDOMPoint StartPoint() const {
+      return EditorDOMPoint(mStartNode, mStartOffset);
+    }
+    EditorDOMPoint EndPoint() const {
+      return EditorDOMPoint(mEndNode, mEndOffset);
+    }
+    EditorRawDOMPoint RawStartPoint() const {
       return EditorRawDOMPoint(mStartNode, mStartOffset);
     }
-    EditorRawDOMPoint EndPoint() const {
+    EditorRawDOMPoint RawEndPoint() const {
       return EditorRawDOMPoint(mEndNode, mEndOffset);
     }
 
@@ -537,30 +546,24 @@ class MOZ_STACK_CLASS WSRunScanner {
                              bool aForward) const;
 
   /**
-   * GetNextCharPoint() and GetNextCharPointFromPointInText() return next
-   * character's point of aPoint.  If there is no character after aPoint,
-   * mTextNode is set to nullptr.
+   * GetInclusiveNextEditableCharPoint() returns aPoint if it points a character
+   * in an editable text node, or start of next editable text node otherwise.
+   * FYI: For the performance, this does not check whether given container
+   *      is not after mStartReasonContent or not.
    */
   template <typename PT, typename CT>
-  EditorDOMPointInText GetNextCharPoint(
+  EditorDOMPointInText GetInclusiveNextEditableCharPoint(
       const EditorDOMPointBase<PT, CT>& aPoint) const;
-  EditorDOMPointInText GetNextCharPointFromPointInText(
-      const EditorDOMPointInText& aPoint) const;
 
   /**
-   * LookForNextCharPointWithinAllTextNodes() and
-   * LookForPreviousCharPointWithinAllTextNodes() are helper methods of
-   * GetNextCharPoint(const EditorRawDOMPoint&) and GetPreviousCharPoint(const
-   * EditorRawDOMPoint&).  When the container isn't in mNodeArray, they call one
-   * of these methods.  Then, these methods look for nearest text node in
-   * mNodeArray from aPoint. Then, will call GetNextCharPointFromPointInText()
-   * or GetPreviousCharPointFromPointInText() and returns its result.
+   * GetPreviousEditableCharPoint() returns previous editable point in a
+   * text node.  Note that this returns last character point when it meets
+   * non-empty text node, otherwise, returns a point in an empty text node.
+   * FYI: For the performance, this does not check whether given container
+   *      is not before mEndReasonContent or not.
    */
   template <typename PT, typename CT>
-  EditorDOMPointInText LookForNextCharPointWithinAllTextNodes(
-      const EditorDOMPointBase<PT, CT>& aPoint) const;
-  template <typename PT, typename CT>
-  EditorDOMPointInText LookForPreviousCharPointWithinAllTextNodes(
+  EditorDOMPointInText GetPreviousEditableCharPoint(
       const EditorDOMPointBase<PT, CT>& aPoint) const;
 
   nsresult GetWSNodes();
@@ -572,27 +575,6 @@ class MOZ_STACK_CLASS WSRunScanner {
   nsIContent* GetEditableBlockParentOrTopmotEditableInlineContent(
       nsIContent* aContent) const;
 
-  static bool IsBlockNode(nsINode* aNode) {
-    return aNode && aNode->IsElement() && HTMLEditor::NodeIsBlockStatic(*aNode);
-  }
-
-  nsIContent* GetPreviousWSNodeInner(nsINode* aStartNode,
-                                     nsINode* aBlockParent) const;
-  nsIContent* GetPreviousWSNode(const EditorDOMPoint& aPoint,
-                                nsINode* aBlockParent) const;
-  nsIContent* GetNextWSNodeInner(nsINode* aStartNode,
-                                 nsINode* aBlockParent) const;
-  nsIContent* GetNextWSNode(const EditorDOMPoint& aPoint,
-                            nsINode* aBlockParent) const;
-
-  /**
-   * GetPreviousCharPoint() and GetPreviousCharPointFromPointInText() return
-   * previous character's point of of aPoint. If there is no character before
-   * aPoint, mTextNode is set to nullptr.
-   */
-  template <typename PT, typename CT>
-  EditorDOMPointInText GetPreviousCharPoint(
-      const EditorDOMPointBase<PT, CT>& aPoint) const;
   EditorDOMPointInText GetPreviousCharPointFromPointInText(
       const EditorDOMPointInText& aPoint) const;
 
@@ -605,9 +587,6 @@ class MOZ_STACK_CLASS WSRunScanner {
       WSFragment::StartOfHardLine aIsStartOfHardLine,
       WSFragment::EndOfHardLine aIsEndOfHardLine);
 
-  // The list of nodes containing ws in this run.
-  nsTArray<RefPtr<dom::Text>> mNodeArray;
-
   // The node passed to our constructor.
   EditorDOMPoint mScanStartPoint;
   EditorDOMPoint mScanEndPoint;
@@ -615,7 +594,7 @@ class MOZ_STACK_CLASS WSRunScanner {
   // info.
 
   // The editing host when the instance is created.
-  RefPtr<Element> mEditingHost;
+  RefPtr<dom::Element> mEditingHost;
 
   // true if we are in preformatted whitespace context.
   bool mPRE;
@@ -763,7 +742,7 @@ class MOZ_STACK_CLASS WSRunObject final : public WSRunScanner {
    *                        node, returns nullptr.
    */
   MOZ_CAN_RUN_SCRIPT already_AddRefed<dom::Element> InsertBreak(
-      Selection& aSelection, const EditorDOMPoint& aPointToInsert,
+      dom::Selection& aSelection, const EditorDOMPoint& aPointToInsert,
       nsIEditor::EDirection aSelect);
 
   /**
@@ -809,23 +788,15 @@ class MOZ_STACK_CLASS WSRunObject final : public WSRunScanner {
   MOZ_CAN_RUN_SCRIPT nsresult PrepareToSplitAcrossBlocksPriv();
 
   /**
-   * DeleteRange() removes the range between aStartPoint and aEndPoint.
-   * When aStartPoint and aEndPoint are same point, does nothing.
-   * When aStartPoint and aEndPoint are in same text node, removes characters
-   * between them.
-   * When aStartPoint is in a text node, removes the text data after the point.
-   * When aEndPoint is in a text node, removes the text data before the point.
-   * Removes any nodes between them.
+   * ReplaceASCIIWhitespacesWithOneNBSP() replaces all adjuscent ASCII
+   * whitespaces which includes aPointAtASCIIWitespace with an NBSP. Then, if
+   * Note that this may remove ASCII whitespaces which are not in container of
+   * aPointAtASCIIWhitespace.
+   *
+   * @param aPointAtASCIIWhitespace     Point of an ASCII whitespace.
    */
-  MOZ_CAN_RUN_SCRIPT nsresult DeleteRange(const EditorDOMPoint& aStartPoint,
-                                          const EditorDOMPoint& aEndPoint);
-
-  /**
-   * InsertNBSPAndRemoveFollowingASCIIWhitespaces() inserts an NBSP first.
-   * Then, if following characters are ASCII whitespaces, will remove them.
-   */
-  MOZ_CAN_RUN_SCRIPT nsresult InsertNBSPAndRemoveFollowingASCIIWhitespaces(
-      const EditorDOMPointInText& aPoint);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult ReplaceASCIIWhitespacesWithOneNBSP(
+      const EditorDOMPointInText& aPointAtASCIIWhitespace);
 
   /**
    * GetASCIIWhitespacesBounds() returns a range from start of whitespaces
@@ -843,21 +814,33 @@ class MOZ_STACK_CLASS WSRunObject final : public WSRunScanner {
   Tuple<EditorDOMPointInText, EditorDOMPointInText> GetASCIIWhitespacesBounds(
       int16_t aDir, const EditorDOMPointBase<PT, CT>& aPoint) const;
 
-  MOZ_CAN_RUN_SCRIPT nsresult CheckTrailingNBSPOfRun(WSFragment* aRun);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  NormalizeWhitespacesAtEndOf(const WSFragment& aRun);
 
   /**
-   * ReplacePreviousNBSPIfUnnecessary() replaces previous character of aPoint
-   * if it's a NBSP and it's unnecessary.
+   * MaybeReplacePreviousNBSPWithASCIIWhitespace() replaces previous character
+   * of aPoint if it's a NBSP and it's unnecessary.
    *
    * @param aRun        Current text run.  aPoint must be in this run.
    * @param aPoint      Current insertion point.  Its previous character is
    *                    unnecessary NBSP will be checked.
    */
-  MOZ_CAN_RUN_SCRIPT nsresult ReplacePreviousNBSPIfUnnecessary(
-      WSFragment* aRun, const EditorDOMPoint& aPoint);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  MaybeReplacePreviousNBSPWithASCIIWhitespace(const WSFragment& aRun,
+                                              const EditorDOMPoint& aPoint);
 
-  MOZ_CAN_RUN_SCRIPT nsresult CheckLeadingNBSP(WSFragment* aRun, nsINode* aNode,
-                                               int32_t aOffset);
+  /**
+   * MaybeReplaceInclusiveNextNBSPWithASCIIWhitespace() replaces an NBSP at
+   * the point with an ASCII whitespace only when the point is an NBSP and
+   * it's replaceable with an ASCII whitespace.
+   *
+   * @param aPoint      If point in a text node, the character is checked
+   *                    whether it's an NBSP or not.  Otherwise, first
+   *                    character of next editable text node is checked.
+   */
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  MaybeReplaceInclusiveNextNBSPWithASCIIWhitespace(
+      const WSFragment& aRun, const EditorDOMPoint& aPoint);
 
   MOZ_CAN_RUN_SCRIPT nsresult Scrub();
 

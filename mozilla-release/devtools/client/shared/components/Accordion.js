@@ -20,6 +20,7 @@ const {
 class Accordion extends Component {
   static get propTypes() {
     return {
+      className: PropTypes.string,
       // A list of all items to be rendered using an Accordion component.
       items: PropTypes.arrayOf(
         PropTypes.shape({
@@ -95,7 +96,8 @@ class Accordion extends Component {
     const updatedItems = this.props.items.filter(item => {
       const notExist = typeof this.state.opened[item.id] !== "boolean";
       if (typeof item.shouldOpen == "function") {
-        return notExist || this.state.opened[item.id] !== item.shouldOpen(item);
+        const currentState = this.state.opened[item.id];
+        return notExist || currentState !== item.shouldOpen(item, currentState);
       }
       return notExist;
     });
@@ -106,7 +108,7 @@ class Accordion extends Component {
       for (const item of updatedItems) {
         let itemOpen = item.opened;
         if (typeof item.shouldOpen == "function") {
-          itemOpen = item.shouldOpen(item);
+          itemOpen = item.shouldOpen(item, itemOpen);
         }
         everOpened[item.id] = itemOpen;
         opened[item.id] = itemOpen;
@@ -242,7 +244,9 @@ class Accordion extends Component {
   render() {
     return ul(
       {
-        className: "accordion",
+        className:
+          "accordion" +
+          (this.props.className ? ` ${this.props.className}` : ""),
         tabIndex: -1,
       },
       this.props.items.map(item => this.renderItem(item))

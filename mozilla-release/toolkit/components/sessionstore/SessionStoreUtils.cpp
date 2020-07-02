@@ -550,7 +550,7 @@ static void AppendValueToCollectedData(
     nsTArray<CollectedInputDataValue>& aIdVals) {
   CollectedInputDataValue entry;
   entry.type = aValueType;
-  entry.value = AsVariant(aValue);
+  entry.value = AsVariant(CopyableTArray(aValue.Clone()));
   AppendEntryToCollectedData(aNode, aId, entry, aNumXPath, aNumId, aXPathVals,
                              aIdVals);
 }
@@ -1097,13 +1097,13 @@ static void ReadAllEntriesFromStorage(nsPIDOMWindowOuter* aWindow,
     return;
   }
 
-  nsCOMPtr<nsIPrincipal> storagePrincipal = doc->EffectiveStoragePrincipal();
+  nsCOMPtr<nsIPrincipal> storagePrincipal = doc->IntrinsicStoragePrincipal();
   if (!storagePrincipal) {
     return;
   }
 
   nsAutoCString origin;
-  nsresult rv = principal->GetOrigin(origin);
+  nsresult rv = storagePrincipal->GetOrigin(origin);
   if (NS_FAILED(rv) || aOrigins.Contains(origin)) {
     // Don't read a host twice.
     return;
@@ -1169,7 +1169,7 @@ void SessionStoreUtils::CollectedSessionStorage(
   }
 
   // This is not going to work for fission. Bug 1572084 for tracking it.
-  for (BrowsingContext* child : aBrowsingContext->GetChildren()) {
+  for (BrowsingContext* child : aBrowsingContext->Children()) {
     window = child->GetDOMWindow();
     if (!window) {
       return;
@@ -1217,6 +1217,11 @@ void SessionStoreUtils::RestoreSessionStorage(
     if (!browsingContext) {
       return;
     }
+
+    nsCOMPtr<nsIPrincipal> storagePrincipal =
+        BasePrincipal::CreateContentPrincipal(
+            NS_ConvertUTF16toUTF8(entry.mKey));
+
     const RefPtr<SessionStorageManager> storageManager =
         browsingContext->GetSessionStorageManager();
     if (!storageManager) {
@@ -1229,8 +1234,9 @@ void SessionStoreUtils::RestoreSessionStorage(
     // followup bug to bug 600307.
     // Null window because the current window doesn't match the principal yet
     // and loads about:blank.
-    storageManager->CreateStorage(nullptr, principal, principal, EmptyString(),
-                                  false, getter_AddRefs(storage));
+    storageManager->CreateStorage(nullptr, principal, storagePrincipal,
+                                  EmptyString(), false,
+                                  getter_AddRefs(storage));
     if (!storage) {
       continue;
     }
@@ -1279,7 +1285,7 @@ static void CollectFrameTreeData(JSContext* aCx,
   uint32_t trailingNullCounter = 0;
 
   // This is not going to work for fission. Bug 1572084 for tracking it.
-  for (auto& child : aBrowsingContext->GetChildren()) {
+  for (auto& child : aBrowsingContext->Children()) {
     NullableRootedDictionary<CollectedData> data(aCx);
     CollectFrameTreeData(aCx, child, data, aFunc);
     if (data.IsNull()) {
@@ -1334,10 +1340,10 @@ static void CollectFrameTreeData(JSContext* aCx,
       selectVal.AppendElement(
           data.value.as<mozilla::dom::CollectedNonMultipleSelectValue>()
               .mValue);
-    } else if (data.value.is<nsTArray<nsString>>()) {
+    } else if (data.value.is<CopyableTArray<nsString>>()) {
       // The first valueIdx is "index of the first string value"
       valueIdx.AppendElement(strVal.Length());
-      strVal.AppendElements(data.value.as<nsTArray<nsString>>());
+      strVal.AppendElements(data.value.as<CopyableTArray<nsString>>());
       // The second valueIdx is "index of the last string value" + 1
       id.AppendElement(data.id);
       type.AppendElement(data.type);

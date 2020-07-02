@@ -18,12 +18,7 @@ const { AddonTestUtils } = ChromeUtils.import(
 
 AddonTestUtils.initMochitest(this);
 
-const MAIN_URL = `https://example.com/${RELATIVE_DIR}discovery.html`;
 const DISCOAPI_URL = `http://example.com/${RELATIVE_DIR}/discovery/api_response_empty.json`;
-
-// Clearing this pref is currently done from a cleanup function registered
-// by the head.js file.
-Services.prefs.setCharPref(PREF_DISCOVERURL, MAIN_URL);
 
 var gProvider = new MockProvider();
 gProvider.createAddons([
@@ -115,7 +110,7 @@ function is_in_detail(aManager, view, canGoBack, canGoForward) {
   check_state(canGoBack, canGoForward);
 }
 
-function is_in_discovery(aManager, url, canGoBack, canGoForward) {
+function is_in_discovery(aManager, canGoBack, canGoForward) {
   is(
     get_current_view(aManager).id,
     "html-view",
@@ -550,7 +545,7 @@ add_task(async function test_discopane_first_history_entry() {
   let aManager = await open_manager("addons://discover/");
   let categoryUtils = new CategoryUtilities(aManager);
   info("1");
-  is_in_discovery(aManager, MAIN_URL, false, false);
+  is_in_discovery(aManager, false, false);
 
   EventUtils.synthesizeMouseAtCenter(categoryUtils.get("plugin"), {}, aManager);
 
@@ -560,7 +555,7 @@ add_task(async function test_discopane_first_history_entry() {
   go_back();
   aManager = await wait_for_view_load(aManager);
 
-  is_in_discovery(aManager, MAIN_URL, false, true);
+  is_in_discovery(aManager, false, true);
 
   await close_manager(aManager);
 });
@@ -578,7 +573,7 @@ add_task(async function test_discopane_second_history_entry() {
   );
 
   aManager = await wait_for_view_load(aManager);
-  is_in_discovery(aManager, MAIN_URL, true, false);
+  is_in_discovery(aManager, true, false);
 
   EventUtils.synthesizeMouseAtCenter(categoryUtils.get("plugin"), {}, aManager);
 
@@ -588,7 +583,7 @@ add_task(async function test_discopane_second_history_entry() {
   go_back();
 
   aManager = await wait_for_view_load(aManager);
-  is_in_discovery(aManager, MAIN_URL, true, true);
+  is_in_discovery(aManager, true, true);
 
   go_back();
 

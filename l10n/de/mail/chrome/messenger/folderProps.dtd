@@ -49,6 +49,9 @@
 
 <!ENTITY folderProps.name.label                  "Name des Ordners:">
 <!ENTITY folderProps.name.accesskey              "O">
+<!ENTITY folderProps.color.label                 "Symbolfarbe:">
+<!ENTITY folderProps.color.accesskey             "S">
+<!ENTITY folderProps.reset.tooltip               "Standardfarbe wiederherstellen">
 <!ENTITY folderProps.location.label              "Adresse:">
 <!ENTITY folderProps.location.accesskey          "A">
 
@@ -56,6 +59,7 @@
 <!ENTITY privileges.button.label                 "Berechtigungen…">
 <!ENTITY privileges.button.accesskey             "B">
 <!ENTITY permissionsDesc.label                   "Sie haben folgende Berechtigungen:">
+<!ENTITY folderOtherUsers.label                  "Andere Personen mit Zugang zu diesem Ordner:">
 <!ENTITY folderType.label                        "Ordnertyp:">
 
 <!ENTITY folderQuotaTab.label                    "Kontingent">

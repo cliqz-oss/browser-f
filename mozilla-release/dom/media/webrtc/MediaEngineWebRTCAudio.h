@@ -93,7 +93,9 @@ class MediaEngineWebRTCMicrophoneSource : public MediaEngineSource {
    * Sent the AudioProcessingModule parameter for a given processing algorithm.
    */
   void UpdateAECSettings(bool aEnable, bool aUseAecMobile,
-                         webrtc::EchoCancellation::SuppressionLevel aLevel);
+                         webrtc::EchoCancellation::SuppressionLevel aLevel,
+                         webrtc::EchoControlMobile::RoutingMode aRoutingMode,
+                         bool aExperimentalInputProcessing);
   void UpdateAGCSettings(bool aEnable, webrtc::GainControl::Mode aMode);
   void UpdateHPFSettings(bool aEnable);
   void UpdateNSSettings(bool aEnable, webrtc::NoiseSuppression::Level aLevel);
@@ -190,7 +192,9 @@ class AudioInputProcessing : public AudioDataListener {
   // This allow changing the APM options, enabling or disabling processing
   // steps.
   void UpdateAECSettings(bool aEnable, bool aUseAecMobile,
-                         webrtc::EchoCancellation::SuppressionLevel aLevel);
+                         webrtc::EchoCancellation::SuppressionLevel aLevel,
+                         webrtc::EchoControlMobile::RoutingMode aRoutingMode,
+                         bool aExperimentalInputProcessing);
   void UpdateAGCSettings(bool aEnable, webrtc::GainControl::Mode aMode);
   void UpdateHPFSettings(bool aEnable);
   void UpdateNSSettings(bool aEnable, webrtc::NoiseSuppression::Level aLevel);
@@ -249,6 +253,9 @@ class AudioInputProcessing : public AudioDataListener {
   bool mEnabled;
   // Whether or not we've ended and removed the track in the SourceMediaTrack
   bool mEnded;
+  // Flag that diables extended filter and delay-agnostic AEC, and passes
+  // roundtrip time to the AEC.
+  bool mExperimentalInputProcessing;
 };
 
 // This class is created on the media thread, as part of Start(), then entirely

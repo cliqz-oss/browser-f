@@ -125,10 +125,6 @@ cfr-whatsnew-lockwise-take-link-text = Hol dir die App
 ## Search Bar
 
 cfr-whatsnew-searchbar-title = Weniger Tippen und mehr Finden mit der Adressleiste
-# Variables:
-#   $searchEngineName - Name of the current default search engine as also shown in the urlbar.
-cfr-whatsnew-searchbar-body-enginename = Rufe deine meistbesuchten Websites mit einem Klick in die Adressleiste auf. Werde schneller fündig mit Suchergebnissen von { $searchEngineName } und deiner Browser-Chronik.
-cfr-whatsnew-searchbar-body-generic = Rufe deine meistbesuchten Websites mit einem Klick in die Adressleiste auf. Werde schneller fündig mit Vorschlägen aus deiner Browser-Chronik.
 cfr-whatsnew-searchbar-body-topsites = Klicken Sie einfach in die Adressleiste, um ein Auswahlmenü mit Ihren „Wichtigen Seiten“ anzuzeigen.
 cfr-whatsnew-searchbar-icon-alt-text = Lupensymbol
 
@@ -221,11 +217,30 @@ cfr-doorhanger-milestone-ok-button = Alle anzeigen
 
 ## Lockwise message
 
+cfr-whatsnew-lockwise-header = Sichere Passwörter ganz einfach erstellen
+cfr-whatsnew-lockwise-body = Es ist schwierig, sich für jedes Benutzerkonto im Internet ein neues und sicheres Passwort auszudenken. Wenn du in Zukunft ein neues Passwort eingeben sollst, wähle das Eingabefeld für das Passwort, um ein sicheres Passwort durch { -brand-shorter-name } erstellen zu lassen.
 cfr-whatsnew-lockwise-icon-alt = { -lockwise-brand-short-name }-Symbol
 
 ## Vulnerable Passwords message
 
+cfr-whatsnew-passwords-header = Warnungen für gefährdete Passwörter erhalten
+cfr-whatsnew-passwords-body = Hacker wissen, dass Menschen Passwörter auf verschiedenen Seiten wiederverwenden. Falls du das gleiche Passwort auf mehreren Seiten verwendest und eine dieser Seiten von einem Datenleck betroffen ist, erhältst du eine Warnung in { -lockwise-brand-short-name }, die Passwörter für diese Websites zu ändern.
+cfr-whatsnew-passwords-icon-alt = Symbol für gefährdetes Passwort
 
 ## Picture-in-Picture fullscreen message
 
+cfr-whatsnew-pip-fullscreen-header = Vom Bild-im-Bild-Modus zum Vollbild wechseln
+cfr-whatsnew-pip-fullscreen-body = Nachdem du ein Video in ein schwebendes Bild-im-Bild-Fenster umgewandelt hast, kannst du auch jederzeit per Doppelklick auf das Video in den Vollbild-Modus wechseln.
 cfr-whatsnew-pip-fullscreen-icon-alt = Bild-im-Bild-Symbol
+
+## Protections Dashboard message
+
+cfr-whatsnew-protections-header = Schutzmaßnahmen auf einen Blick
+cfr-whatsnew-protections-body = Die Schutzmaßnahmen-Übersicht fasst Informationen über Datenlecks und die Passwortverwaltung zusammen. Sie können jetzt sehen, wie viele Probleme aus Datenlecks Sie behoben haben und ob einige Ihrer Passwörter in Datenlecks offengelegt wurden.
+cfr-whatsnew-protections-cta-link = Schutzmaßnahmen-Übersicht anzeigen
+cfr-whatsnew-protections-icon-alt = Schild-Symbol
+
+## Better PDF message
+
+cfr-whatsnew-better-pdf-header = Besseres PDF-Erlebnis
+cfr-whatsnew-better-pdf-body = PDF-Dokumente werden jetzt direkt in { -brand-short-name } geöffnet, damit Sie ohne ein Wechseln der Anwendung weiterarbeiten können.

@@ -4,6 +4,8 @@
 
 <!-- extracted from am-addressing.xul -->
 
+<!-- extracted from am-addressing.xhtml -->
+
 <!ENTITY addressing.label          "Verfassen &amp; Adressieren">
 <!ENTITY addressingGroupTitle.label "Adressieren">
 <!ENTITY addressingText.label      "Beim Suchen von Nachrichten:">
@@ -19,15 +21,14 @@
 
 <!-- am-addressing.xul -->
 
+<!-- am-addressing.xhtml -->
+
 <!ENTITY compositionGroupTitle.label "Verfassen">
 <!-- LOCALIZATION NOTE (useHtml.label) : do not translate "html" in below line -->
 <!ENTITY useHtml.label                        "Nachrichten im HTML-Format verfassen">
 <!ENTITY useHtml.accesskey                    "N">
 <!ENTITY autoQuote.label                      "Original-Nachricht beim Antworten automatisch zitieren">
 <!ENTITY autoQuote.accesskey                  "O">
-<!-- LOCALIZATION NOTE (then.label): This will concatenate with the 4 strings that follow. -->
-<!ENTITY then.label                           "Dabei">
-<!ENTITY then.accesskey                       "D">
 <!-- LOCALIZATION NOTE (quoting.label): This will concatenate with the 4 strings that follow. -->
 <!ENTITY quoting.label                        "Beim Zitieren">
 <!ENTITY quoting.accesskey                    "Z">

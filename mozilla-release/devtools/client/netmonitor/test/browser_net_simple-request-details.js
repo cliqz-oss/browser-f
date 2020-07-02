@@ -87,7 +87,7 @@ add_task(async function() {
     const tabEl = document.querySelectorAll(
       ".network-details-bar .tabs-menu a"
     )[0];
-    const tabpanel = document.querySelector(".network-details-bar .tab-panel");
+    const tabpanel = document.querySelector("#headers-panel");
 
     is(
       tabEl.getAttribute("aria-selected"),
@@ -96,21 +96,16 @@ add_task(async function() {
     );
     // Request URL
     is(
-      tabpanel.querySelectorAll(".tabpanel-summary-value")[0].innerText,
+      tabpanel.querySelector(".url-preview .url").innerText,
       SIMPLE_SJS,
       "The url summary value is incorrect."
     );
+
     // Request method
     is(
-      tabpanel.querySelectorAll(".tabpanel-summary-value")[1].innerText,
+      tabpanel.querySelectorAll(".treeLabel")[0].innerText,
       "GET",
       "The method summary value is incorrect."
-    );
-    // Remote address
-    is(
-      tabpanel.querySelectorAll(".tabpanel-summary-value")[2].innerText,
-      "127.0.0.1:8888",
-      "The remote address summary value is incorrect."
     );
     // Status code
     is(
@@ -119,13 +114,13 @@ add_task(async function() {
       "The status summary code is incorrect."
     );
     is(
-      tabpanel.querySelector(".status-text").getAttribute("value"),
+      tabpanel.querySelector(".status").childNodes[1].textContent,
       "Och Aye",
       "The status summary value is incorrect."
     );
     // Version
     is(
-      tabpanel.querySelectorAll(".tabpanel-summary-value")[4].innerText,
+      tabpanel.querySelectorAll(".tabpanel-summary-value")[1].innerText,
       "HTTP/1.1",
       "The HTTP version is incorrect."
     );
@@ -133,18 +128,18 @@ add_task(async function() {
     await waitForRequestData(store, ["requestHeaders", "responseHeaders"]);
 
     is(
-      tabpanel.querySelectorAll(".treeTable tbody .tree-section").length,
+      tabpanel.querySelectorAll(".accordion-item").length,
       2,
       "There should be 2 header scopes displayed in this tabpanel."
     );
 
     is(
-      tabpanel.querySelectorAll(":not(.tree-section) > .treeLabelCell").length,
+      tabpanel.querySelectorAll(".accordion .treeLabelCell").length,
       23,
       "There should be 23 header values displayed in this tabpanel."
     );
 
-    const headersTable = tabpanel.querySelector(".treeTable tbody");
+    const headersTable = tabpanel.querySelector(".accordion");
     const responseScope = headersTable.querySelectorAll(
       "tr[id^='/Response Headers']"
     );
@@ -152,19 +147,19 @@ add_task(async function() {
       "tr[id^='/Request Headers']"
     );
 
+    const headerLabels = headersTable.querySelectorAll(
+      ".accordion-item .accordion-header-label"
+    );
+
     ok(
-      headersTable
-        .querySelectorAll(".tree-section .treeLabel")[0]
-        .innerHTML.match(
-          new RegExp(L10N.getStr("responseHeaders") + " \\([0-9]+ .+\\)")
-        ),
+      headerLabels[0].innerHTML.match(
+        new RegExp(L10N.getStr("responseHeaders") + " \\([0-9]+ .+\\)")
+      ),
       "The response headers scope doesn't have the correct title."
     );
 
     ok(
-      headersTable
-        .querySelectorAll(".tree-section .treeLabel")[1]
-        .innerHTML.includes(L10N.getStr("requestHeaders") + " ("),
+      headerLabels[1].innerHTML.includes(L10N.getStr("requestHeaders") + " ("),
       "The request headers scope doesn't have the correct title."
     );
 
@@ -202,13 +197,13 @@ add_task(async function() {
     ];
     responseHeaders.forEach(header => {
       is(
-        responseScope[header.index].querySelector(".treeLabel").innerHTML,
+        responseScope[header.index - 1].querySelector(".treeLabel").innerHTML,
         header.name,
         `The ${header.pos} response header name was incorrect.`
       );
       is(
-        responseScope[header.index].querySelector(".objectBox").innerHTML,
-        header.value,
+        responseScope[header.index - 1].querySelector(".objectBox").innerHTML,
+        `${header.value}`,
         `The ${header.pos} response header value was incorrect.`
       );
     });
@@ -241,13 +236,13 @@ add_task(async function() {
     ];
     requestHeaders.forEach(header => {
       is(
-        requestScope[header.index].querySelector(".treeLabel").innerHTML,
+        requestScope[header.index - 1].querySelector(".treeLabel").innerHTML,
         header.name,
         `The ${header.pos} request header name was incorrect.`
       );
       is(
-        requestScope[header.index].querySelector(".objectBox").innerHTML,
-        header.value,
+        requestScope[header.index - 1].querySelector(".objectBox").innerHTML,
+        `${header.value}`,
         `The ${header.pos} request header value was incorrect.`
       );
     });
@@ -285,7 +280,7 @@ add_task(async function() {
   }
 
   async function testParamsTab() {
-    const tabpanel = await selectTab(PANELS.PARAMS, 2);
+    const tabpanel = await selectTab(PANELS.REQUEST, 2);
 
     is(
       tabpanel.querySelectorAll(".panel-container").length,

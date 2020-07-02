@@ -108,6 +108,9 @@
 #ifdef MOZ_WASM_SANDBOXING_GRAPHITE
 @BINPATH@/@DLL_PREFIX@graphitewasm@DLL_SUFFIX@
 #endif
+#ifdef MOZ_WASM_SANDBOXING_OGG
+@BINPATH@/@DLL_PREFIX@oggwasm@DLL_SUFFIX@
+#endif
 
 ; We don't have a complete view of which dlls to expect when doing an artifact
 ; build because we haven't run the relevant parts of configure, so we guess
@@ -459,13 +462,6 @@ bin/libfreebl_64int_3.so
 ; DMD
 @RESPATH@/dmd.py
 @RESPATH@/fix_stacks.py
-@RESPATH@/fix_stack_using_bpsyms.py
-#ifdef XP_MACOSX
-@RESPATH@/fix_macosx_stack.py
-#endif
-#ifdef XP_LINUX
-@RESPATH@/fix_linux_stack.py
-#endif
 #endif
 
 #ifdef PKG_LOCALE_MANIFEST

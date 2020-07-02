@@ -12,6 +12,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/RelativeTo.h"
 #include "mozilla/StaticPrefs_nglayout.h"
 #include "mozilla/TypedEnumBits.h"
 #include "mozilla/UniquePtr.h"
@@ -147,6 +148,8 @@ class nsLayoutUtils {
   typedef mozilla::layers::StackingContextHelper StackingContextHelper;
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
   typedef mozilla::IntrinsicSize IntrinsicSize;
+  typedef mozilla::RelativeTo RelativeTo;
+  typedef mozilla::ViewportType ViewportType;
   typedef mozilla::gfx::SourceSurface SourceSurface;
   typedef mozilla::gfx::sRGBColor sRGBColor;
   typedef mozilla::gfx::DrawTarget DrawTarget;
@@ -691,10 +694,16 @@ class nsLayoutUtils {
     SCROLLABLE_ALWAYS_MATCH_ROOT = 0x08,
     /**
      * If the SCROLLABLE_FIXEDPOS_FINDS_ROOT flag is set, then for fixed-pos
-     * frames that are in the root document (in the current process) return the
-     * root scrollable frame for that document.
+     * frames return the root scrollable frame for that document.
      */
-    SCROLLABLE_FIXEDPOS_FINDS_ROOT = 0x10
+    SCROLLABLE_FIXEDPOS_FINDS_ROOT = 0x10,
+    /**
+     * If the SCROLLABLE_STOP_AT_PAGE flag is set, then we stop searching
+     * for scrollable ancestors when seeing a nsPageFrame.  This can be used
+     * to avoid finding the viewport scroll frame in Print Preview (which
+     * would be undesirable as a 'position:sticky' container for content).
+     */
+    SCROLLABLE_STOP_AT_PAGE = 0x20,
   };
   /**
    * GetNearestScrollableFrame locates the first ancestor of aFrame
@@ -769,7 +778,7 @@ class nsLayoutUtils {
    * the event is not a GUI event).
    */
   static nsPoint GetEventCoordinatesRelativeTo(
-      const mozilla::WidgetEvent* aEvent, nsIFrame* aFrame);
+      const mozilla::WidgetEvent* aEvent, RelativeTo aFrame);
 
   /**
    * Get the coordinates of a given point relative to an event and a
@@ -783,7 +792,7 @@ class nsLayoutUtils {
    */
   static nsPoint GetEventCoordinatesRelativeTo(
       const mozilla::WidgetEvent* aEvent,
-      const mozilla::LayoutDeviceIntPoint& aPoint, nsIFrame* aFrame);
+      const mozilla::LayoutDeviceIntPoint& aPoint, RelativeTo aFrame);
 
   /**
    * Get the coordinates of a given point relative to a widget and a
@@ -797,7 +806,7 @@ class nsLayoutUtils {
    */
   static nsPoint GetEventCoordinatesRelativeTo(
       nsIWidget* aWidget, const mozilla::LayoutDeviceIntPoint& aPoint,
-      nsIFrame* aFrame);
+      RelativeTo aFrame);
 
   /**
    * Get the popup frame of a given native mouse event.
@@ -843,12 +852,13 @@ class nsLayoutUtils {
    * @param aPresContext the PresContext for the view
    * @param aView the view
    * @param aPt the point relative to the view
+   * @param aViewportType whether the point is in visual or layout coordinates
    * @param aWidget the widget to which returned coordinates are relative
    * @return the point in the view's coordinates
    */
   static mozilla::LayoutDeviceIntPoint TranslateViewToWidget(
       nsPresContext* aPresContext, nsView* aView, nsPoint aPt,
-      nsIWidget* aWidget);
+      ViewportType aViewportType, nsIWidget* aWidget);
 
   static mozilla::LayoutDeviceIntPoint WidgetToWidgetOffset(
       nsIWidget* aFromWidget, nsIWidget* aToWidget);
@@ -878,21 +888,23 @@ class nsLayoutUtils {
    * Given aFrame, the root frame of a stacking context, find its descendant
    * frame under the point aPt that receives a mouse event at that location,
    * or nullptr if there is no such frame.
-   * @param aPt the point, relative to the frame origin
+   * @param aPt the point, relative to the frame origin, in either visual
+   *            or layout coordinates depending on aRelativeTo.mViewportType
    * @param aFlags some combination of FrameForPointOption.
    */
-  static nsIFrame* GetFrameForPoint(nsIFrame* aFrame, nsPoint aPt,
+  static nsIFrame* GetFrameForPoint(RelativeTo aRelativeTo, nsPoint aPt,
                                     mozilla::EnumSet<FrameForPointOption> = {});
 
   /**
    * Given aFrame, the root frame of a stacking context, find all descendant
    * frames under the area of a rectangle that receives a mouse event,
    * or nullptr if there is no such frame.
-   * @param aRect the rect, relative to the frame origin
+   * @param aRect the rect, relative to the frame origin, in either visual
+   *              or layout coordinates depending on aRelativeTo.mViewportType
    * @param aOutFrames an array to add all the frames found
    * @param aFlags some combination of FrameForPointOption.
    */
-  static nsresult GetFramesForArea(nsIFrame* aFrame, const nsRect& aRect,
+  static nsresult GetFramesForArea(RelativeTo aRelativeTo, const nsRect& aRect,
                                    nsTArray<nsIFrame*>& aOutFrames,
                                    mozilla::EnumSet<FrameForPointOption> = {});
 
@@ -921,6 +933,17 @@ class nsLayoutUtils {
       bool* aPreservesAxisAlignedRectangles = nullptr,
       mozilla::Maybe<Matrix4x4Flagged>* aMatrixCache = nullptr,
       bool aStopAtStackingContextAndDisplayPortAndOOFFrame = false,
+      nsIFrame** aOutAncestor = nullptr) {
+    return TransformFrameRectToAncestor(
+        aFrame, aRect, RelativeTo{aAncestor}, aPreservesAxisAlignedRectangles,
+        aMatrixCache, aStopAtStackingContextAndDisplayPortAndOOFFrame,
+        aOutAncestor);
+  }
+  static nsRect TransformFrameRectToAncestor(
+      const nsIFrame* aFrame, const nsRect& aRect, RelativeTo aAncestor,
+      bool* aPreservesAxisAlignedRectangles = nullptr,
+      mozilla::Maybe<Matrix4x4Flagged>* aMatrixCache = nullptr,
+      bool aStopAtStackingContextAndDisplayPortAndOOFFrame = false,
       nsIFrame** aOutAncestor = nullptr);
 
   /**
@@ -929,9 +952,41 @@ class nsLayoutUtils {
    * flag in aFlags will return CSS pixels, by default it returns device
    * pixels.
    * More info can be found in nsIFrame::GetTransformMatrix.
+   *
+   * Some notes on the possible combinations of |aFrame.mViewportType| and
+   * |aAncestor.mViewportType|:
+   *
+   * | aFrame.       | aAncestor.    | Notes
+   * | mViewportType | mViewportType |
+   * ==========================================================================
+   * | Layout        | Layout        | Commonplace, when both source and target
+   * |               |               | are inside zoom boundary.
+   * |               |               |
+   * |               |               | Could also happen in non-e10s setups
+   * |               |               | when both source and target are outside
+   * |               |               | the zoom boundary and the code is
+   * |               |               | oblivious to the existence of a zoom
+   * |               |               | boundary.
+   * ==========================================================================
+   * | Layout        | Visual        | Commonplace, used when hit testing visual
+   * |               |               | coordinates (e.g. coming from user input
+   * |               |               | events). We expected to encounter a
+   * |               |               | zoomed content root during traversal and
+   * |               |               | apply a layout-to-visual transform.
+   * ==========================================================================
+   * | Visual        | Layout        | Should never happen, will assert.
+   * ==========================================================================
+   * | Visual        | Visual        | In e10s setups, should only happen if
+   * |               |               | aFrame and aAncestor are both the
+   * |               |               | RCD viewport frame.
+   * |               |               |
+   * |               |               | In non-e10s setups, could happen with
+   * |               |               | different frames if they are both
+   * |               |               | outside the zoom boundary.
+   * ==========================================================================
    */
   static Matrix4x4Flagged GetTransformToAncestor(
-      const nsIFrame* aFrame, const nsIFrame* aAncestor, uint32_t aFlags = 0,
+      RelativeTo aFrame, RelativeTo aAncestor, uint32_t aFlags = 0,
       nsIFrame** aOutAncestor = nullptr);
 
   /**
@@ -979,9 +1034,8 @@ class nsLayoutUtils {
    * Same as above function, but transform points in app units and
    * handle 1 point per call.
    */
-  static TransformResult TransformPoint(const nsIFrame* aFromFrame,
-                                        const nsIFrame* aToFrame,
-                                        nsPoint& aPoint);
+  static TransformResult TransformPoint(RelativeTo aFromFrame,
+                                        RelativeTo aToFrame, nsPoint& aPoint);
 
   /**
    * Transforms a rect from aFromFrame to aToFrame. In app units.
@@ -997,6 +1051,13 @@ class nsLayoutUtils {
    */
   static void PostTranslate(Matrix4x4& aTransform, const nsPoint& aOrigin,
                             float aAppUnitsPerPixel, bool aRounded);
+
+  /*
+   * Whether the frame should snap to grid. This will end up being passed
+   * as the aRounded parameter in PostTranslate above. SVG frames should
+   * not have their translation rounded.
+   */
+  static bool ShouldSnapToGrid(const nsIFrame* aFrame);
 
   /**
    * Get the border-box of aElement's primary frame, transformed it to be
@@ -1032,23 +1093,27 @@ class nsLayoutUtils {
    * in the coordinate system of aFrame.  This effectively inverts all
    * transforms between this point and the root frame.
    *
+   * @param aFromType Specifies whether |aPoint| is in layout or visual
+   * coordinates.
    * @param aFrame The frame that acts as the coordinate space container.
-   * @param aPoint The point, in the global space, to get in the frame-local
-   * space.
+   * @param aPoint The point, in global layout or visual coordinates (as per
+   * |aFromType|, to get in the frame-local space.
    * @return aPoint, expressed in aFrame's canonical coordinate space.
    */
-  static nsPoint TransformRootPointToFrame(nsIFrame* aFrame,
+  static nsPoint TransformRootPointToFrame(ViewportType aFromType,
+                                           RelativeTo aFrame,
                                            const nsPoint& aPoint) {
-    return TransformAncestorPointToFrame(aFrame, aPoint, nullptr);
+    return TransformAncestorPointToFrame(aFrame, aPoint,
+                                         RelativeTo{nullptr, aFromType});
   }
 
   /**
    * Transform aPoint relative to aAncestor down to the coordinate system of
    * aFrame.
    */
-  static nsPoint TransformAncestorPointToFrame(nsIFrame* aFrame,
+  static nsPoint TransformAncestorPointToFrame(RelativeTo aFrame,
                                                const nsPoint& aPoint,
-                                               nsIFrame* aAncestor);
+                                               RelativeTo aAncestor);
 
   /**
    * Helper function that, given a rectangle and a matrix, returns the smallest
@@ -2912,16 +2977,21 @@ class nsLayoutUtils {
   /**
    * Compute a rect to pre-render in cases where we want to render more of
    * something than what is visible (usually to support async transformation).
-   * @param aDirtyRect the area that's visible
-   * @param aOverflow the total size of the thing we're rendering
-   * @param aPrerenderSize how large of an area we're willing to render
+   * @param aFrame the target frame to be pre-rendered
+   * @param aDirtyRect the area that's visible in the coordinate system of
+   *        |aFrame|.
+   * @param aOverflow the total size of the thing we're rendering in the
+   *        coordinate system of |aFrame|.
+   * @param aPrerenderSize how large of an area we're willing to render in the
+   *        coordinate system of the root frame.
    * @return A rectangle that includes |aDirtyRect|, is clamped to |aOverflow|,
-   *         and is no larger than |aPrerenderSize| (unless |aPrerenderSize|
-   *         is smaller than |aDirtyRect|, in which case the returned rect
-   *         will still include |aDirtyRect| and thus be larger than
+   *         and is no larger than |aPrerenderSize| (unless |aPrerenderSize| is
+   *         smaller than |aDirtyRect|, in which case the returned rect will
+   *         still include |aDirtyRect| and thus be larger than
    *         |aPrerenderSize|).
    */
-  static nsRect ComputePartialPrerenderArea(const nsRect& aDirtyRect,
+  static nsRect ComputePartialPrerenderArea(nsIFrame* aFrame,
+                                            const nsRect& aDirtyRect,
                                             const nsRect& aOverflow,
                                             const nsSize& aPrerenderSize);
 
@@ -3095,14 +3165,15 @@ template <typename SizeType>
 
   // |aSize| might be the size expanded to the minimum-scale size whereas the
   // size for viewport units is not scaled so that we need to expand the |aSize|
-  // height with the aspect ratio of the size for viewport units instead of just
-  // expanding to the size for viewport units.
-  float ratio = (float)sizeForViewportUnits.height / sizeForViewportUnits.width;
+  // height by multiplying by the ratio of the viewport units height to the
+  // visible area height.
+  float vhExpansionRatio = (float)sizeForViewportUnits.height /
+                           aPresContext->GetVisibleArea().height;
 
-  MOZ_ASSERT(aSize.height <=
-             NSCoordSaturatingNonnegativeMultiply(aSize.width, ratio));
-  return SizeType(aSize.width,
-                  NSCoordSaturatingNonnegativeMultiply(aSize.width, ratio));
+  MOZ_ASSERT(aSize.height <= NSCoordSaturatingNonnegativeMultiply(
+                                 aSize.height, vhExpansionRatio));
+  return SizeType(aSize.width, NSCoordSaturatingNonnegativeMultiply(
+                                   aSize.height, vhExpansionRatio));
 }
 
 template <typename T>

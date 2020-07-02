@@ -33,14 +33,12 @@ class Localization : public nsIObserver,
   NS_DECL_NSIOBSERVER
 
   explicit Localization(nsIGlobalObject* aGlobal);
-  void Init(nsTArray<nsString>& aResourceIds, ErrorResult& aRv);
-  void Init(nsTArray<nsString>& aResourceIds,
-            JS::Handle<JS::Value> aGenerateMessages, ErrorResult& aRv);
+  void Activate(const bool aSync, const bool aEager,
+                const BundleGenerator& aBundleGenerator);
 
   static already_AddRefed<Localization> Constructor(
-      const GlobalObject& aGlobal,
-      const Optional<Sequence<nsString>>& aResourceIds,
-      const Optional<OwningNonNull<GenerateMessages>>& aGenerateMessages,
+      const GlobalObject& aGlobal, const Sequence<nsString>& aResourceIds,
+      const bool aSync, const BundleGenerator& aBundleGenerator,
       ErrorResult& aRv);
 
   nsIGlobalObject* GetParentObject() const;
@@ -48,12 +46,15 @@ class Localization : public nsIObserver,
   virtual JSObject* WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto) override;
 
+  uint32_t AddResourceId(const nsAString& aResourceId);
+  uint32_t RemoveResourceId(const nsAString& aResourceId);
+
   /**
    * Localization API
    *
    * Methods documentation in Localization.webidl
    */
-  uint32_t AddResourceIds(const nsTArray<nsString>& aResourceIds, bool aEager);
+  uint32_t AddResourceIds(const nsTArray<nsString>& aResourceIds);
 
   uint32_t RemoveResourceIds(const nsTArray<nsString>& aResourceIds);
 
@@ -68,6 +69,17 @@ class Localization : public nsIObserver,
   already_AddRefed<Promise> FormatMessages(JSContext* aCx,
                                            const Sequence<L10nKey>& aKeys,
                                            ErrorResult& aRv);
+
+  void SetIsSync(const bool aIsSync);
+
+  void FormatValueSync(JSContext* aCx, const nsACString& aId,
+                       const Optional<L10nArgs>& aArgs, nsACString& aRetVal,
+                       ErrorResult& aRv);
+  void FormatValuesSync(JSContext* aCx, const Sequence<L10nKey>& aKeys,
+                        nsTArray<nsCString>& aRetVal, ErrorResult& aRv);
+  void FormatMessagesSync(JSContext* aCx, const Sequence<L10nKey>& aKeys,
+                          nsTArray<Nullable<L10nMessage>>& aRetVal,
+                          ErrorResult& aRv);
 
  protected:
   virtual ~Localization();

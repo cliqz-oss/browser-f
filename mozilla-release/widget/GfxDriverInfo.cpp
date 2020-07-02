@@ -7,6 +7,7 @@
 
 #include "nsIGfxInfo.h"
 #include "nsTArray.h"
+#include "nsUnicharUtils.h"
 
 using namespace mozilla::widget;
 
@@ -120,7 +121,7 @@ void GfxDeviceFamily::AppendRange(int32_t aBeginDeviceId,
 
 nsresult GfxDeviceFamily::Contains(nsAString& aDeviceId) const {
   for (const auto& id : mIds) {
-    if (id.Equals(aDeviceId, nsCaseInsensitiveStringComparator())) {
+    if (id.Equals(aDeviceId, nsCaseInsensitiveStringComparator)) {
       return NS_OK;
     }
   }
@@ -454,6 +455,14 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_RANGE(0x06c0, INT32_MAX);
       break;
     case DeviceFamily::IntelRolloutWebRender:
+      // broadwell gt1 (gen8)
+      APPEND_DEVICE(0x1602);
+      APPEND_DEVICE(0x1606);
+      APPEND_DEVICE(0x160a);
+      APPEND_DEVICE(0x160b);
+      APPEND_DEVICE(0x160d);
+      APPEND_DEVICE(0x160e);
+
       // broadwell gt2+ (gen8)
       APPEND_DEVICE(0x1612);
       APPEND_DEVICE(0x1616);
@@ -474,8 +483,8 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x163d);
       APPEND_DEVICE(0x163e);
 
-#ifdef MOZ_WIDGET_GTK
-      // Gen7.5 not allowed until bug 1576637 is resolved.
+#ifdef EARLY_BETA_OR_EARLIER
+      // gen7.5 gt2
       APPEND_DEVICE(0x0412);
       APPEND_DEVICE(0x0416);
       APPEND_DEVICE(0x041a);
@@ -486,9 +495,92 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x0a1a);
       APPEND_DEVICE(0x0a1b);
       APPEND_DEVICE(0x0a1e);
+
+      // gen7.5 gt3
+      APPEND_DEVICE(0x0422);
+      APPEND_DEVICE(0x0426);
+      APPEND_DEVICE(0x042a);
+      APPEND_DEVICE(0x042b);
+      APPEND_DEVICE(0x042e);
+      APPEND_DEVICE(0x0a22);
+      APPEND_DEVICE(0x0a26);
+      APPEND_DEVICE(0x0a0a);
+      APPEND_DEVICE(0x0a1a);
+      APPEND_DEVICE(0x0a2a);
+      APPEND_DEVICE(0x0a2b);
+      APPEND_DEVICE(0x0a2e);
+      APPEND_DEVICE(0x0c22);
+      APPEND_DEVICE(0x0c26);
+      APPEND_DEVICE(0x0c2c);
+      APPEND_DEVICE(0x0c2b);
+      APPEND_DEVICE(0x0c2e);
+      APPEND_DEVICE(0x0d22);
+      APPEND_DEVICE(0x0d26);
+      APPEND_DEVICE(0x0d2b);
+      APPEND_DEVICE(0x0d2e);
+#endif
+
+#if defined(MOZ_WIDGET_GTK) || defined(NIGHTLY_BUILD)
+      // Gen7.5 not allowed until bug 1576637 is resolved.
+      // gen7.5 gt1
+      APPEND_DEVICE(0x0402);
+      APPEND_DEVICE(0x0406);
+      APPEND_DEVICE(0x040a);
+      APPEND_DEVICE(0x040b);
+      APPEND_DEVICE(0x040e);
+      APPEND_DEVICE(0x0a02);
+      APPEND_DEVICE(0x0a06);
+      APPEND_DEVICE(0x0a0a);
+      APPEND_DEVICE(0x0a0b);
+      APPEND_DEVICE(0x0a0e);
+      APPEND_DEVICE(0x0c02);
+      APPEND_DEVICE(0x0c06);
+      APPEND_DEVICE(0x0c0c);
+      APPEND_DEVICE(0x0c0b);
+      APPEND_DEVICE(0x0c0e);
+      APPEND_DEVICE(0x0d02);
+      APPEND_DEVICE(0x0d06);
+      APPEND_DEVICE(0x0d0a);
+      APPEND_DEVICE(0x0d0b);
+      APPEND_DEVICE(0x0d0e);
+
+      // gen7 gt1
+      APPEND_DEVICE(0x0152);
+      APPEND_DEVICE(0x0156);
+      APPEND_DEVICE(0x015a);
+
+      // gen7 gt2
+      APPEND_DEVICE(0x0162);
+      APPEND_DEVICE(0x0166);
+      APPEND_DEVICE(0x016a);
+
+      // gen6 gt2
+      APPEND_DEVICE(0x0112);
+      APPEND_DEVICE(0x0116);
+      APPEND_DEVICE(0x0122);
+      APPEND_DEVICE(0x0126);
 #endif
       [[fallthrough]];
     case DeviceFamily::IntelModernRolloutWebRender:
+#ifdef NIGHTLY_BUILD
+      // broxton (apollolake)
+      APPEND_DEVICE(0x0a84);
+      APPEND_DEVICE(0x1a84);
+      APPEND_DEVICE(0x1a85);
+      APPEND_DEVICE(0x5a84);
+      APPEND_DEVICE(0x5a85);
+
+      // geminilake
+      APPEND_DEVICE(0x3184);
+      APPEND_DEVICE(0x3185);
+#endif
+
+      // skylake gt1
+      APPEND_DEVICE(0x1902);
+      APPEND_DEVICE(0x1906);
+      APPEND_DEVICE(0x190a);
+      APPEND_DEVICE(0x190e);
+
       // skylake gt2+
       APPEND_DEVICE(0x1912);
       APPEND_DEVICE(0x1913);
@@ -508,10 +600,22 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x193b);
       APPEND_DEVICE(0x193d);
 
-      // kabylake gt2+
+      // kabylake gt1
+      APPEND_DEVICE(0x5902);
+      APPEND_DEVICE(0x5906);
+      APPEND_DEVICE(0x5908);
+      APPEND_DEVICE(0x590a);
+      APPEND_DEVICE(0x590b);
+      APPEND_DEVICE(0x590e);
+
+      // kabylake gt1.5
+      APPEND_DEVICE(0x5913);
+      APPEND_DEVICE(0x5915);
+      APPEND_DEVICE(0x5917);
+
+      // kabylake gt2
       APPEND_DEVICE(0x5912);
       APPEND_DEVICE(0x5916);
-      APPEND_DEVICE(0x5917);
       APPEND_DEVICE(0x591a);
       APPEND_DEVICE(0x591b);
       APPEND_DEVICE(0x591c);
@@ -522,6 +626,23 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x5923);
       APPEND_DEVICE(0x5927);
       APPEND_DEVICE(0x593b);
+
+      // coffeelake gt1
+      APPEND_DEVICE(0x3e90);
+      APPEND_DEVICE(0x3e93);
+      APPEND_DEVICE(0x3e99);
+      APPEND_DEVICE(0x3e9c);
+      APPEND_DEVICE(0x3ea1);
+      APPEND_DEVICE(0x3ea4);
+      APPEND_DEVICE(0x9b21);
+      APPEND_DEVICE(0x9ba0);
+      APPEND_DEVICE(0x9ba2);
+      APPEND_DEVICE(0x9ba4);
+      APPEND_DEVICE(0x9ba5);
+      APPEND_DEVICE(0x9ba8);
+      APPEND_DEVICE(0x9baa);
+      APPEND_DEVICE(0x9bab);
+      APPEND_DEVICE(0x9bac);
 
       // coffeelake gt2+
       APPEND_RANGE(0x3e91, 0x3e92);
@@ -540,6 +661,8 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x9bc8);
       APPEND_RANGE(0x9bca, 0x9bcc);
 
+      // icelake gt1,gt1.5,gt2
+      APPEND_RANGE(0x8a50, 0x8a5d);
       break;
     case DeviceFamily::AtiRolloutWebRender:
       APPEND_RANGE(0x6600, 0x66af);
@@ -551,6 +674,20 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_RANGE(0x7310, 0x731f);
       APPEND_RANGE(0x9830, 0x986f);
       APPEND_RANGE(0x9900, 0x99ff);
+      // Raven
+      APPEND_DEVICE(0x15dd);
+      APPEND_DEVICE(0x15d8);
+
+#if defined(NIGHTLY_BUILD)
+      // Evergreen
+      APPEND_RANGE(0x6840, 0x684b);
+      APPEND_RANGE(0x6850, 0x685f);
+      APPEND_RANGE(0x6880, 0x68ff);
+      APPEND_RANGE(0x9800, 0x980a);
+      APPEND_RANGE(0x9640, 0x964f);
+      APPEND_RANGE(0x6720, 0x677f);
+#endif
+
       break;
     // This should never happen, but we get a warning if we don't handle this.
     case DeviceFamily::Max:

@@ -562,6 +562,10 @@ class ImageSurfaceCache {
       MOZ_ASSERT_UNREACHABLE("Expected valid native size!");
       return aSize;
     }
+    if (image->GetOrientation().SwapsWidthAndHeight() &&
+        image->HandledOrientation()) {
+      std::swap(factorSize.width, factorSize.height);
+    }
 
     if (mIsVectorImage) {
       // Ensure the aspect ratio matches the native size before forcing the
@@ -1416,8 +1420,7 @@ class SurfaceCacheImpl final : public nsIMemoryReporter {
     explicit SurfaceTracker(uint32_t aSurfaceCacheExpirationTimeMS)
         : ExpirationTrackerImpl<CachedSurface, 2, StaticMutex,
                                 StaticMutexAutoLock>(
-              aSurfaceCacheExpirationTimeMS, "SurfaceTracker",
-              SystemGroup::EventTargetFor(TaskCategory::Other)) {}
+              aSurfaceCacheExpirationTimeMS, "SurfaceTracker") {}
 
    protected:
     void NotifyExpiredLocked(CachedSurface* aSurface,

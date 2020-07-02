@@ -33,7 +33,10 @@ using namespace mozilla;
 using namespace mozilla::scache;
 using mozilla::intl::LocaleService;
 
-static bool gDisableXULCache = false;  // enabled by default
+#define XUL_CACHE_DISABLED_DEFAULT false
+
+static bool gDisableXULCache =
+    XUL_CACHE_DISABLED_DEFAULT;  // enabled by default
 static const char kDisableXULCachePref[] = "nglayout.debug.disable_xul_cache";
 static const char kXULCacheInfoKey[] = "nsXULPrototypeCache.startupCache";
 static const char kXULCachePrefix[] = "xulcache";
@@ -43,7 +46,7 @@ static const char kXULCachePrefix[] = "xulcache";
 static void UpdategDisableXULCache() {
   // Get the value of "nglayout.debug.disable_xul_cache" preference
   gDisableXULCache =
-      Preferences::GetBool(kDisableXULCachePref, gDisableXULCache);
+      Preferences::GetBool(kDisableXULCachePref, XUL_CACHE_DISABLED_DEFAULT);
 
   // Sets the flag if the XUL cache is disabled
   if (gDisableXULCache) {
@@ -166,9 +169,9 @@ mozilla::StyleSheet* nsXULPrototypeCache::GetStyleSheet(nsIURI* aURI) {
   return mStyleSheetTable.GetWeak(aURI);
 }
 
-nsresult nsXULPrototypeCache::PutStyleSheet(StyleSheet* aStyleSheet) {
+nsresult nsXULPrototypeCache::PutStyleSheet(RefPtr<StyleSheet>&& aStyleSheet) {
   nsIURI* uri = aStyleSheet->GetSheetURI();
-  mStyleSheetTable.Put(uri, RefPtr{aStyleSheet});
+  mStyleSheetTable.Put(uri, std::move(aStyleSheet));
   return NS_OK;
 }
 
@@ -504,7 +507,13 @@ void nsXULPrototypeCache::CollectMemoryReports(
   // TODO Report content in mPrototypeTable?
 
   other += sInstance->mStyleSheetTable.ShallowSizeOfExcludingThis(mallocSizeOf);
-  // TODO Report content inside mStyleSheetTable?
+  for (auto iter = sInstance->mStyleSheetTable.ConstIter(); !iter.Done();
+       iter.Next()) {
+    // NOTE: If Loader::DoSheetComplete() is ever modified to stop clongin
+    // sheets before inserting into this cache, we will need to stop using
+    // SizeOfIncludingThis()
+    other += iter.Data()->SizeOfIncludingThis(mallocSizeOf);
+  }
 
   other += sInstance->mScriptTable.ShallowSizeOfExcludingThis(mallocSizeOf);
   // TODO Report content inside mScriptTable?

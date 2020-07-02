@@ -62,6 +62,7 @@ ChromeUtils.defineModuleGetter(
 );
 
 const DEFAULT_SITES_PREF = "default.sites";
+const SHOWN_ON_NEWTAB_PREF = "feeds.topsites";
 const DEFAULT_TOP_SITES = [];
 const FRECENCY_THRESHOLD = 100 + 1; // 1 visit (skip first-run/one-time pages)
 const MIN_FAVICON_SIZE = 96;
@@ -84,6 +85,13 @@ const SEARCH_FILTERS = [
   "ask",
   "duckduckgo",
 ];
+let SEARCH_TILE_OVERRIDE_PREFS = new Map();
+for (let searchProvider of ["amazon", "google"]) {
+  SEARCH_TILE_OVERRIDE_PREFS.set(
+    `browser.newtabpage.searchTileOverride.${searchProvider}.url`,
+    searchProvider
+  );
+}
 
 function getShortURLForCurrentSearch() {
   const url = shortURL({ url: Services.search.defaultEngine.searchForm });
@@ -122,11 +130,17 @@ this.TopSitesFeed = class TopSitesFeed {
     this._storage = this.store.dbStorage.getDbTable("sectionPrefs");
     this.refresh({ broadcast: true });
     Services.obs.addObserver(this, "browser-search-engine-modified");
+    for (let [pref] of SEARCH_TILE_OVERRIDE_PREFS) {
+      Services.prefs.addObserver(pref, this);
+    }
   }
 
   uninit() {
     PageThumbs.removeExpirationFilter(this);
     Services.obs.removeObserver(this, "browser-search-engine-modified");
+    for (let [pref] of SEARCH_TILE_OVERRIDE_PREFS) {
+      Services.prefs.removeObserver(pref, this);
+    }
   }
 
   observe(subj, topic, data) {
@@ -139,6 +153,11 @@ this.TopSitesFeed = class TopSitesFeed {
     ) {
       delete this._currentSearchHostname;
       this._currentSearchHostname = getShortURLForCurrentSearch();
+      this.refresh({ broadcast: true });
+    } else if (
+      topic === "nsPref:changed" &&
+      SEARCH_TILE_OVERRIDE_PREFS.has(data)
+    ) {
       this.refresh({ broadcast: true });
     }
   }
@@ -396,6 +415,22 @@ this.TopSitesFeed = class TopSitesFeed {
     // Insert the original pinned sites into the deduped frecent and defaults
     const withPinned = insertPinned(checkedAdult, pinned).slice(0, numItems);
 
+    let searchTileOverrideURLs = new Map();
+    for (let [pref, hostname] of SEARCH_TILE_OVERRIDE_PREFS) {
+      let url = Services.prefs.getStringPref(pref, "");
+      if (url) {
+        let date = new Date();
+        let pad = number => number.toString().padStart(2, "0");
+        url = url.replace(
+          "%YYYYMMDD%",
+          String(date.getFullYear()) +
+            pad(date.getMonth() + 1) +
+            pad(date.getDate())
+        );
+        searchTileOverrideURLs.set(hostname, url);
+      }
+    }
+
     // Now, get a tippy top icon, a rich icon, or screenshot for every item
     for (const link of withPinned) {
       if (link) {
@@ -413,6 +448,20 @@ this.TopSitesFeed = class TopSitesFeed {
 
         // Indicate that these links should get a frecency bonus when clicked
         link.typedBonus = true;
+
+        for (let [hostname, url] of searchTileOverrideURLs) {
+          // The `searchVendor` property is set if the engine was re-added manually.
+          if (
+            link.searchTopSite &&
+            !link.searchVendor &&
+            link.hostname === hostname
+          ) {
+            delete link.searchTopSite;
+            delete link.label;
+            link.url = url;
+            link.overriddenSearchTopSite = true;
+          }
+        }
       }
     }
 
@@ -521,7 +570,11 @@ this.TopSitesFeed = class TopSitesFeed {
    * @param url where to fetch the image from
    */
   async _fetchScreenshot(link, url) {
-    if (link.screenshot) {
+    // We shouldn't bother caching screenshots if they won't be shown.
+    if (
+      link.screenshot ||
+      !this.store.getState().Prefs.values[SHOWN_ON_NEWTAB_PREF]
+    ) {
       return;
     }
     await Screenshots.maybeCacheScreenshot(

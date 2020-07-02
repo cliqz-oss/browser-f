@@ -30,7 +30,7 @@ class OriginAttributes : public dom::OriginAttributesDictionary {
   void SetFirstPartyDomain(const bool aIsTopLevelDocument,
                            const nsACString& aDomain);
   void SetFirstPartyDomain(const bool aIsTopLevelDocument,
-                           const nsAString& aDomain);
+                           const nsAString& aDomain, bool aForced = false);
 
   enum {
     STRIP_FIRST_PARTY_DOMAIN = 0x01,
@@ -94,6 +94,13 @@ class OriginAttributes : public dom::OriginAttributesDictionary {
   // check if "privacy.firstparty.isolate" is enabled.
   static inline bool IsFirstPartyEnabled() {
     return StaticPrefs::privacy_firstparty_isolate();
+  }
+
+  static inline bool UseSiteForFirstPartyDomain() {
+    if (IsFirstPartyEnabled()) {
+      return StaticPrefs::privacy_firstparty_isolate_use_site();
+    }
+    return StaticPrefs::privacy_dynamic_firstparty_use_site();
   }
 
   // check if the access of window.opener across different FPDs is restricted.

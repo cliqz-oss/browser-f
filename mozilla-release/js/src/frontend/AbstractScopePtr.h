@@ -20,6 +20,7 @@ namespace js {
 class Scope;
 class GlobalScope;
 class EvalScope;
+struct FieldInitializers;
 class GCMarker;
 
 namespace frontend {
@@ -102,7 +103,7 @@ class AbstractScopePtr {
   // or otherwise would reify to a particular scope type.
   template <typename T>
   bool is() const {
-    static_assert(std::is_base_of<Scope, T>::value,
+    static_assert(std::is_base_of_v<Scope, T>,
                   "Trying to ask about non-Scope type");
     if (isNullptr()) {
       return false;
@@ -116,7 +117,6 @@ class AbstractScopePtr {
   uint32_t nextFrameSlot() const;
   // Valid iff is<FunctionScope>
   bool isArrow() const;
-  JSFunction* canonicalFunction() const;
 
   bool hasOnChain(ScopeKind kind) const {
     for (AbstractScopePtr it = *this; it; it = it.enclosing()) {

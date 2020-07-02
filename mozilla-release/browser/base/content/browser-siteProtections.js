@@ -1136,7 +1136,6 @@ var SocialTracking = {
  * Utility object to handle manipulations of the protections indicators in the UI
  */
 var gProtectionsHandler = {
-  PREF_ANIMATIONS_ENABLED: "toolkit.cosmeticAnimations.enabled",
   PREF_REPORT_BREAKAGE_URL: "browser.contentblocking.reportBreakage.url",
   PREF_CB_CATEGORY: "browser.contentblocking.category",
 
@@ -1249,6 +1248,12 @@ var gProtectionsHandler = {
       "protections-popup-trackers-blocked-counter-description"
     ));
   },
+  get _protectionsPopupFooterProtectionTypeLabel() {
+    delete this._protectionsPopupFooterProtectionTypeLabel;
+    return (this._protectionsPopupFooterProtectionTypeLabel = document.getElementById(
+      "protections-popup-footer-protection-type-label"
+    ));
+  },
   get _protectionsPopupSiteNotWorkingTPSwitch() {
     delete this._protectionsPopupSiteNotWorkingTPSwitch;
     return (this._protectionsPopupSiteNotWorkingTPSwitch = document.getElementById(
@@ -1259,12 +1264,6 @@ var gProtectionsHandler = {
     delete this._protectionsPopupSiteNotWorkingReportError;
     return (this._protectionsPopupSiteNotWorkingReportError = document.getElementById(
       "protections-popup-sendReportView-report-error"
-    ));
-  },
-  get _protectionsPopupSendReportLearnMore() {
-    delete this._protectionsPopupSendReportLearnMore;
-    return (this._protectionsPopupSendReportLearnMore = document.getElementById(
-      "protections-popup-sendReportView-learn-more"
     ));
   },
   get _protectionsPopupSendReportURL() {
@@ -1365,13 +1364,6 @@ var gProtectionsHandler = {
       this.iconBox.removeAttribute("animate")
     );
 
-    this.updateAnimationsEnabled = () => {
-      this.iconBox.toggleAttribute(
-        "animationsenabled",
-        Services.prefs.getBoolPref(this.PREF_ANIMATIONS_ENABLED, false)
-      );
-    };
-
     XPCOMUtils.defineLazyPreferenceGetter(
       this,
       "_protectionsPopupToastTimeout",
@@ -1421,16 +1413,10 @@ var gProtectionsHandler = {
       }
     }
 
-    this.updateAnimationsEnabled();
-
-    Services.prefs.addObserver(
-      this.PREF_ANIMATIONS_ENABLED,
-      this.updateAnimationsEnabled
-    );
-
     let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
-    gProtectionsHandler._protectionsPopupSendReportLearnMore.href =
-      baseURL + "blocking-breakage";
+    document.getElementById(
+      "protections-popup-sendReportView-learn-more"
+    ).href = baseURL + "blocking-breakage";
 
     // Add an observer to observe that the history has been cleared.
     Services.obs.addObserver(this, "browser:purge-session-history");
@@ -1443,12 +1429,22 @@ var gProtectionsHandler = {
       }
     }
 
-    Services.prefs.removeObserver(
-      this.PREF_ANIMATIONS_ENABLED,
-      this.updateAnimationsEnabled
-    );
-
     Services.obs.removeObserver(this, "browser:purge-session-history");
+  },
+
+  getTrackingProtectionLabel() {
+    const value = Services.prefs.getStringPref(this.PREF_CB_CATEGORY);
+
+    switch (value) {
+      case "strict":
+        return "protections-popup-footer-protection-label-strict";
+      case "custom":
+        return "protections-popup-footer-protection-label-custom";
+      case "standard":
+      /* fall through */
+      default:
+        return "protections-popup-footer-protection-label-standard";
+    }
   },
 
   openPreferences(origin) {
@@ -1598,6 +1594,11 @@ var gProtectionsHandler = {
     // Get the tracker count and set it to the counter in the footer.
     const trackerCount = await TrackingDBService.sumAllEvents();
     this.setTrackersBlockedCounter(trackerCount);
+
+    // Set tracking protection label
+    const l10nId = this.getTrackingProtectionLabel();
+    const elem = this._protectionsPopupFooterProtectionTypeLabel;
+    document.l10n.setAttributes(elem, l10nId);
 
     // Try to get the earliest recorded date in case that there was no record
     // during the initiation but new records come after that.

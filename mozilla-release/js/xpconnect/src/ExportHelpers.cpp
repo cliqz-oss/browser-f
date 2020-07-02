@@ -8,6 +8,7 @@
 #include "WrapperFactory.h"
 #include "AccessCheck.h"
 #include "jsfriendapi.h"
+#include "js/Exception.h"
 #include "js/Proxy.h"
 #include "js/Wrapper.h"
 #include "mozilla/ErrorResult.h"
@@ -133,9 +134,9 @@ class MOZ_STACK_CLASS StackScopedCloneData : public StructuredCloneHolderBase {
         BlobImpl* blobImpl = blob->Impl();
         MOZ_ASSERT(blobImpl);
 
-        if (!mBlobImpls.AppendElement(blobImpl)) {
-          return false;
-        }
+        // XXX(Bug 1631371) Check if this should use a fallible operation as it
+        // pretended earlier.
+        mBlobImpls.AppendElement(blobImpl);
 
         size_t idx = mBlobImpls.Length() - 1;
         return JS_WriteUint32Pair(aWriter, SCTAG_BLOB, 0) &&
@@ -277,34 +278,34 @@ static void MaybeSanitizeException(JSContext* cx,
   // don't end up unnecessarily wrapping exceptions.
   {  // Scope for JSAutoRealm
     JSAutoRealm ar(cx, unwrappedFun);
-    JS::Rooted<JS::Value> exn(cx);
-    // If JS_GetPendingException returns false, this was an uncatchable
+
+    JS::ExceptionStack exnStack(cx);
+    // If JS::GetPendingExceptionStack returns false, this was an uncatchable
     // exception, or we somehow failed to wrap the exception into our
     // compartment.  In either case, treating this as uncatchable exception,
     // by returning without setting any exception on the JSContext,
     // seems fine.
-    if (!JS_GetPendingException(cx, &exn)) {
+    if (!JS::GetPendingExceptionStack(cx, &exnStack)) {
       JS_ClearPendingException(cx);
       return;
     }
 
     // Let through non-objects as-is, because some APIs rely on
     // that and accidental exceptions are never non-objects.
-    if (!exn.isObject() ||
+    if (!exnStack.exception().isObject() ||
         callerPrincipal->Subsumes(nsContentUtils::ObjectPrincipal(
-            js::UncheckedUnwrap(&exn.toObject())))) {
+            js::UncheckedUnwrap(&exnStack.exception().toObject())))) {
       // Just leave exn as-is.
       return;
     }
 
     // Whoever we are throwing the exception to should not have access to
-    // the exception.  Sanitize it.  First report the existing exception.
-    JS::Rooted<JSObject*> exnStack(cx, JS::GetPendingExceptionStack(cx));
+    // the exception.  Sanitize it. First clear the existing exception.
     JS_ClearPendingException(cx);
     {  // Scope for AutoJSAPI
       AutoJSAPI jsapi;
       if (jsapi.Init(unwrappedFun)) {
-        JS::SetPendingExceptionAndStack(cx, exn, exnStack);
+        JS::SetPendingExceptionStack(cx, exnStack);
       }
       // If Init() fails, we can't report the exception, but oh, well.
 

@@ -9,6 +9,7 @@ interface nsITransportSecurityInfo;
 interface nsIURI;
 interface nsIWebProgress;
 interface nsIReferrerInfo;
+interface nsIOpenWindowInfo;
 
 webidl FrameLoader;
 
@@ -23,6 +24,12 @@ interface nsIBrowser : nsISupports
    * they are loaded in the same process as the content.
    */
   readonly attribute FrameLoader sameProcessAsFrameLoader;
+
+  /**
+   * Gets the optional open window information provided by the window creation
+   * code and used to initialize a new browser.
+   */
+  attribute nsIOpenWindowInfo openWindowInfo;
 
   /*
    * Called by the child to inform the parent that links are dropped into
@@ -154,16 +161,23 @@ interface nsIBrowser : nsISupports
                                in AString aContentType);
 
   /**
-   * Called by Gecko when a security chang event needs to update the event
-   * state stored in the security UI object stored in the parent process.
+   * Called by Gecko when it wants to change the process which is currently
+   * being used to render content in this tab.
    *
-   * @param aSecurityInfo the transport security information from the content
-   *                      process
-   * @param aState the flags from the OnSecurityChange event that triggered
-   *               this method, as outlined in nsIWebProgressListener
-   * @param aIsSecureContext whether or not the context is secure
+   * Returns a promise which will be resolved with the ChildID of the new
+   * process.
+   *
+   * @param aRemoteType the new remote type to switch this browser into
+   * @param aPendingSwitchId unique identifier for the ongoing
+   *                         process-switching load
+   * @param aReplaceBrowsingContext if true, do not preserve the
+   *                                BrowsingContext loaded inside this
+   *                                browser after changing processes.
    */
-  void updateSecurityUIForSecurityChange(in nsITransportSecurityInfo aSecurityInfo,
-                                         in uint32_t aState,
-                                         in boolean aIsSecureContext);
+  Promise performProcessSwitch(in AString aRemoteType,
+                               in uint64_t aPendingSwitchId,
+                               in boolean aReplaceBrowsingContext);
+
+  /** If `true`, this browser supports the `performProcessSwitch` method */
+  readonly attribute bool canPerformProcessSwitch;
 };

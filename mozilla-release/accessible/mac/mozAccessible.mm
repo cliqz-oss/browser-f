@@ -10,7 +10,6 @@
 
 #include "Accessible-inl.h"
 #include "nsAccUtils.h"
-#include "xpcAccessibleMacInterface.h"
 #include "nsIPersistentProperties2.h"
 #include "DocAccessibleParent.h"
 #include "Relation.h"
@@ -33,71 +32,20 @@
 using namespace mozilla;
 using namespace mozilla::a11y;
 
-#define NSAccessibilityARIACurrentAttribute @"AXARIACurrent"
-#define NSAccessibilityDOMIdentifierAttribute @"AXDOMIdentifier"
-#define NSAccessibilityHasPopupAttribute @"AXHasPopup"
-#define NSAccessibilityMathRootRadicandAttribute @"AXMathRootRadicand"
-#define NSAccessibilityMathRootIndexAttribute @"AXMathRootIndex"
-#define NSAccessibilityMathFractionNumeratorAttribute @"AXMathFractionNumerator"
-#define NSAccessibilityMathFractionDenominatorAttribute @"AXMathFractionDenominator"
-#define NSAccessibilityMathBaseAttribute @"AXMathBase"
-#define NSAccessibilityMathSubscriptAttribute @"AXMathSubscript"
-#define NSAccessibilityMathSuperscriptAttribute @"AXMathSuperscript"
-#define NSAccessibilityMathUnderAttribute @"AXMathUnder"
-#define NSAccessibilityMathOverAttribute @"AXMathOver"
-#define NSAccessibilityMathLineThicknessAttribute @"AXMathLineThickness"
-#define NSAccessibilityScrollToVisibleAction @"AXScrollToVisible"
-
-// XXX WebKit also defines the following attributes.
-// See bugs 1176970 and 1176983.
-// - NSAccessibilityMathFencedOpenAttribute @"AXMathFencedOpen"
-// - NSAccessibilityMathFencedCloseAttribute @"AXMathFencedClose"
-// - NSAccessibilityMathPrescriptsAttribute @"AXMathPrescripts"
-// - NSAccessibilityMathPostscriptsAttribute @"AXMathPostscripts"
-
-// convert an array of Gecko accessibles to an NSArray of native accessibles
-static inline NSMutableArray* ConvertToNSArray(nsTArray<Accessible*>& aArray) {
-  NSMutableArray* nativeArray = [[NSMutableArray alloc] init];
-
-  // iterate through the list, and get each native accessible.
-  size_t totalCount = aArray.Length();
-  for (size_t i = 0; i < totalCount; i++) {
-    Accessible* curAccessible = aArray.ElementAt(i);
-    mozAccessible* curNative = GetNativeFromGeckoAccessible(curAccessible);
-    if (curNative) [nativeArray addObject:GetObjectOrRepresentedView(curNative)];
-  }
-
-  return nativeArray;
-}
-
-// convert an array of Gecko proxy accessibles to an NSArray of native accessibles
-static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArray) {
-  NSMutableArray* nativeArray = [[NSMutableArray alloc] init];
-
-  // iterate through the list, and get each native accessible.
-  size_t totalCount = aArray.Length();
-  for (size_t i = 0; i < totalCount; i++) {
-    ProxyAccessible* curAccessible = aArray.ElementAt(i);
-    mozAccessible* curNative = GetNativeFromProxy(curAccessible);
-    if (curNative) [nativeArray addObject:GetObjectOrRepresentedView(curNative)];
-  }
-
-  return nativeArray;
-}
-
 #pragma mark -
+
+@interface mozAccessible ()
+- (BOOL)providesLabelNotTitle;
+@end
 
 @implementation mozAccessible
 
-- (id)initWithAccessible:(uintptr_t)aGeckoAccessible {
+- (id)initWithAccessible:(AccessibleOrProxy)aAccOrProxy {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
-
+  MOZ_ASSERT(!aAccOrProxy.IsNull(), "Cannot init mozAccessible with null");
   if ((self = [super init])) {
-    mGeckoAccessible = aGeckoAccessible;
-    if (aGeckoAccessible & IS_PROXY)
-      mRole = [self getProxyAccessible]->Role();
-    else
-      mRole = [self getGeckoAccessible]->Role();
+    mGeckoAccessible = aAccOrProxy;
+    mRole = aAccOrProxy.Role();
   }
 
   return self;
@@ -108,154 +56,84 @@ static inline NSMutableArray* ConvertToNSArray(nsTArray<ProxyAccessible*>& aArra
 - (void)dealloc {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
 
-  [mChildren release];
   [super dealloc];
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
-- (mozilla::a11y::AccessibleWrap*)getGeckoAccessible {
-  // Check if mGeckoAccessible points at a proxy
-  if (mGeckoAccessible & IS_PROXY) return nil;
+#pragma mark - mozAccessible widget
 
-  return reinterpret_cast<AccessibleWrap*>(mGeckoAccessible);
+- (BOOL)hasRepresentedView {
+  return NO;
 }
 
-- (mozilla::a11y::ProxyAccessible*)getProxyAccessible {
-  // Check if mGeckoAccessible points at a proxy
-  if (!(mGeckoAccessible & IS_PROXY)) return nil;
+- (id)representedView {
+  return nil;
+}
 
-  return reinterpret_cast<ProxyAccessible*>(mGeckoAccessible & ~IS_PROXY);
+- (BOOL)isRoot {
+  return NO;
 }
 
 #pragma mark -
 
-- (BOOL)accessibilityIsIgnored {
+- (BOOL)isAccessibilityElement {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_RETURN;
 
-  // unknown (either unimplemented, or irrelevant) elements are marked as ignored
-  // as well as expired elements.
+  if ([self isExpired]) {
+    return ![self ignoreWithParent:nil];
+  }
 
-  return [[self role] isEqualToString:NSAccessibilityUnknownRole] &&
-         [self stateWithMask:states::FOCUSABLE];
+  mozAccessible* parent = nil;
+  AccessibleOrProxy p = mGeckoAccessible.Parent();
+
+  if (!p.IsNull()) {
+    parent = GetNativeFromGeckoAccessible(p);
+  }
+
+  return ![self ignoreWithParent:parent];
 
   NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(NO);
 }
 
-- (NSArray*)additionalAccessibilityAttributeNames {
-  NSMutableArray* additional = [NSMutableArray array];
-  [additional addObject:NSAccessibilityDOMIdentifierAttribute];
-  switch (mRole) {
-    case roles::SUMMARY:
-      [additional addObject:NSAccessibilityExpandedAttribute];
-      break;
-    case roles::MATHML_ROOT:
-      [additional addObject:NSAccessibilityMathRootIndexAttribute];
-      [additional addObject:NSAccessibilityMathRootRadicandAttribute];
-      break;
-    case roles::MATHML_SQUARE_ROOT:
-      [additional addObject:NSAccessibilityMathRootRadicandAttribute];
-      break;
-    case roles::MATHML_FRACTION:
-      [additional addObject:NSAccessibilityMathFractionNumeratorAttribute];
-      [additional addObject:NSAccessibilityMathFractionDenominatorAttribute];
-      [additional addObject:NSAccessibilityMathLineThicknessAttribute];
-      break;
-    case roles::MATHML_SUB:
-    case roles::MATHML_SUP:
-    case roles::MATHML_SUB_SUP:
-      [additional addObject:NSAccessibilityMathBaseAttribute];
-      [additional addObject:NSAccessibilityMathSubscriptAttribute];
-      [additional addObject:NSAccessibilityMathSuperscriptAttribute];
-      break;
-    case roles::MATHML_UNDER:
-    case roles::MATHML_OVER:
-    case roles::MATHML_UNDER_OVER:
-      [additional addObject:NSAccessibilityMathBaseAttribute];
-      [additional addObject:NSAccessibilityMathUnderAttribute];
-      [additional addObject:NSAccessibilityMathOverAttribute];
-      break;
-    // XXX bug 1176983
-    // roles::MATHML_MULTISCRIPTS should also have the following attributes:
-    // - NSAccessibilityMathPrescriptsAttribute
-    // - NSAccessibilityMathPostscriptsAttribute
-    // XXX bug 1176970
-    // roles::MATHML_FENCED should also have the following attributes:
-    // - NSAccessibilityMathFencedOpenAttribute
-    // - NSAccessibilityMathFencedCloseAttribute
-    default:
-      break;
+- (BOOL)ignoreWithParent:(mozAccessible*)parent {
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    if (acc->IsContent() && acc->GetContent()->IsXULElement()) {
+      if (acc->VisibilityState() & states::INVISIBLE) {
+        return YES;
+      }
+    }
   }
 
-  return additional;
+  return [parent ignoreChild:self];
 }
 
-- (NSArray*)accessibilityAttributeNames {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
-
-  // if we're expired, we don't support any attributes.
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
-  if (!accWrap && !proxy) return [NSArray array];
-
-  static NSArray* generalAttributes = nil;
-
-  if (!generalAttributes) {
-    // standard attributes that are shared and supported by all generic elements.
-    generalAttributes = [[NSArray alloc]
-        initWithObjects:NSAccessibilityChildrenAttribute, NSAccessibilityParentAttribute,
-                        NSAccessibilityRoleAttribute, NSAccessibilityTitleAttribute,
-                        NSAccessibilityValueAttribute, NSAccessibilitySubroleAttribute,
-                        NSAccessibilityRoleDescriptionAttribute, NSAccessibilityPositionAttribute,
-                        NSAccessibilityEnabledAttribute, NSAccessibilitySizeAttribute,
-                        NSAccessibilityWindowAttribute, NSAccessibilityFocusedAttribute,
-                        NSAccessibilityHelpAttribute, NSAccessibilityTitleUIElementAttribute,
-                        NSAccessibilityTopLevelUIElementAttribute, NSAccessibilityHasPopupAttribute,
-                        NSAccessibilityARIACurrentAttribute,
-#if DEBUG
-                        @"AXMozDescription",
-#endif
-                        nil];
-  }
-
-  NSArray* objectAttributes = generalAttributes;
-
-  NSArray* additionalAttributes = [self additionalAccessibilityAttributeNames];
-  if ([additionalAttributes count])
-    objectAttributes = [objectAttributes arrayByAddingObjectsFromArray:additionalAttributes];
-
-  return objectAttributes;
-
-  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+- (BOOL)ignoreChild:(mozAccessible*)child {
+  return NO;
 }
 
 - (id)childAt:(uint32_t)i {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
-    Accessible* child = accWrap->GetChildAt(i);
-    return child ? GetNativeFromGeckoAccessible(child) : nil;
-  } else if (ProxyAccessible* proxy = [self getProxyAccessible]) {
-    ProxyAccessible* child = proxy->ChildAt(i);
-    return child ? GetNativeFromProxy(child) : nil;
-  }
-
-  return nil;
+  AccessibleOrProxy child = mGeckoAccessible.ChildAt(i);
+  return !child.IsNull() ? GetNativeFromGeckoAccessible(child) : nil;
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
 static const uint64_t kCachedStates = states::CHECKED | states::PRESSED | states::MIXED |
-                                      states::EXPANDED | states::CURRENT | states::SELECTED;
+                                      states::EXPANDED | states::CURRENT | states::SELECTED |
+                                      states::TRAVERSED | states::LINKED | states::HASPOPUP;
 static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
 
 - (uint64_t)state {
   uint64_t state = 0;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
-    state = accWrap->State();
+
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    state = acc->State();
   }
 
-  if (ProxyAccessible* proxy = [self getProxyAccessible]) {
+  if (ProxyAccessible* proxy = mGeckoAccessible.AsProxy()) {
     state = proxy->State();
   }
 
@@ -296,209 +174,74 @@ static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
   mCachedState = 0;
 }
 
-- (id)accessibilityAttributeValue:(NSString*)attribute {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
+- (BOOL)providesLabelNotTitle {
+  // These accessible types are the exception to the rule of label vs. title:
+  // They may be named explicitly, but they still provide a label not a title.
+  return mRole == roles::GROUPING || mRole == roles::RADIO_GROUP || mRole == roles::FIGURE ||
+         mRole == roles::GRAPHIC;
+}
 
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
-  if (!accWrap && !proxy) return nil;
+- (mozilla::a11y::AccessibleOrProxy)geckoAccessible {
+  return mGeckoAccessible;
+}
 
-#if DEBUG
-  if ([attribute isEqualToString:@"AXMozDescription"])
-    return [NSString stringWithFormat:@"role = %u native = %@", mRole, [self class]];
-#endif
+#pragma mark - MOXAccessible protocol
 
-  if ([attribute isEqualToString:NSAccessibilityChildrenAttribute]) return [self children];
-  if ([attribute isEqualToString:NSAccessibilityExpandedAttribute]) {
-    return [NSNumber numberWithBool:[self stateWithMask:states::EXPANDED] != 0];
+- (BOOL)moxBlockSelector:(SEL)selector {
+  if (selector == @selector(moxPerformPress)) {
+    uint8_t actionCount = mGeckoAccessible.IsAccessible()
+                              ? mGeckoAccessible.AsAccessible()->ActionCount()
+                              : mGeckoAccessible.AsProxy()->ActionCount();
+
+    // If we have no action, we don't support press, so return YES.
+    return actionCount == 0;
   }
-  if ([attribute isEqualToString:NSAccessibilityParentAttribute]) return [self parent];
 
-#ifdef DEBUG_hakan
-  NSLog(@"(%@ responding to attr %@)", self, attribute);
-#endif
-
-  if ([attribute isEqualToString:NSAccessibilityRoleAttribute]) return [self role];
-  if ([attribute isEqualToString:NSAccessibilityPositionAttribute]) return [self position];
-  if ([attribute isEqualToString:NSAccessibilitySubroleAttribute]) return [self subrole];
-  if ([attribute isEqualToString:NSAccessibilityEnabledAttribute])
-    return [NSNumber numberWithBool:[self isEnabled]];
-  if ([attribute isEqualToString:NSAccessibilityHasPopupAttribute]) {
-    return [NSNumber numberWithBool:[self stateWithMask:states::HASPOPUP] != 0];
+  if (selector == @selector(moxSetFocused)) {
+    return [self stateWithMask:states::FOCUSABLE] == 0;
   }
-  if ([attribute isEqualToString:NSAccessibilityValueAttribute]) return [self value];
-  if ([attribute isEqualToString:NSAccessibilityARIACurrentAttribute]) {
-    if ([self stateWithMask:states::CURRENT]) {
-      return utils::GetAccAttr(self, "current");
+
+  return [super moxBlockSelector:selector];
+}
+
+- (id)moxFocusedUIElement {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
+
+  Accessible* acc = mGeckoAccessible.AsAccessible();
+  ProxyAccessible* proxy = mGeckoAccessible.AsProxy();
+
+  mozAccessible* focusedChild = nil;
+  if (acc) {
+    Accessible* focusedGeckoChild = acc->FocusedChild();
+    if (focusedGeckoChild) {
+      focusedChild = GetNativeFromGeckoAccessible(focusedGeckoChild);
     } else {
-      return nil;
-    }
-  }
-  if ([attribute isEqualToString:NSAccessibilityRoleDescriptionAttribute])
-    return [self roleDescription];
-  if ([attribute isEqualToString:NSAccessibilityFocusedAttribute])
-    return [NSNumber numberWithBool:[self isFocused]];
-  if ([attribute isEqualToString:NSAccessibilitySizeAttribute]) return [self size];
-  if ([attribute isEqualToString:NSAccessibilityWindowAttribute]) return [self window];
-  if ([attribute isEqualToString:NSAccessibilityTopLevelUIElementAttribute]) return [self window];
-  if ([attribute isEqualToString:NSAccessibilityTitleAttribute]) return [self title];
-  if ([attribute isEqualToString:NSAccessibilityTitleUIElementAttribute]) {
-    /* If our accessible is labelled by more than one item, its label
-     * should be set by accessibilityLabel instead of here, so we return nil.
-     */
-    if (accWrap) {
-      Relation rel = accWrap->RelationByType(RelationType::LABELLED_BY);
-      Accessible* tempAcc = rel.Next();
-      if (tempAcc && !rel.Next()) {
-        return GetNativeFromGeckoAccessible(tempAcc);
-      } else {
-        return nil;
-      }
-    }
-    nsTArray<ProxyAccessible*> rel = proxy->RelationByType(RelationType::LABELLED_BY);
-    ProxyAccessible* tempProxy = rel.SafeElementAt(0);
-    if (tempProxy && rel.Length() <= 1) {
-      return GetNativeFromProxy(tempProxy);
-    } else {
-      return nil;
-    }
-  }
-  if ([attribute isEqualToString:NSAccessibilityHelpAttribute]) return [self help];
-  if ([attribute isEqualToString:NSAccessibilityOrientationAttribute]) return [self orientation];
-
-  if ([attribute isEqualToString:NSAccessibilityDOMIdentifierAttribute]) {
-    nsAutoString id;
-    if (accWrap && accWrap->GetContent())
-      nsCoreUtils::GetID(accWrap->GetContent(), id);
-    else
-      proxy->DOMNodeID(id);
-    return nsCocoaUtils::ToNSString(id);
-  }
-
-  switch (mRole) {
-    case roles::MATHML_ROOT:
-      if ([attribute isEqualToString:NSAccessibilityMathRootRadicandAttribute])
-        return [self childAt:0];
-      if ([attribute isEqualToString:NSAccessibilityMathRootIndexAttribute])
-        return [self childAt:1];
-      break;
-    case roles::MATHML_SQUARE_ROOT:
-      if ([attribute isEqualToString:NSAccessibilityMathRootRadicandAttribute])
-        return [self childAt:0];
-      break;
-    case roles::MATHML_FRACTION:
-      if ([attribute isEqualToString:NSAccessibilityMathFractionNumeratorAttribute])
-        return [self childAt:0];
-      if ([attribute isEqualToString:NSAccessibilityMathFractionDenominatorAttribute])
-        return [self childAt:1];
-      if ([attribute isEqualToString:NSAccessibilityMathLineThicknessAttribute]) {
-        // WebKit sets line thickness to some logical value parsed in the
-        // renderer object of the <mfrac> element. It's not clear whether the
-        // exact value is relevant to assistive technologies. From a semantic
-        // point of view, the only important point is to distinguish between
-        // <mfrac> elements that have a fraction bar and those that do not.
-        // Per the MathML 3 spec, the latter happens iff the linethickness
-        // attribute is of the form [zero-float][optional-unit]. In that case we
-        // set line thickness to zero and in the other cases we set it to one.
-        if (NSString* thickness = utils::GetAccAttr(self, "thickness")) {
-          NSNumberFormatter* formatter = [[[NSNumberFormatter alloc] init] autorelease];
-          NSNumber* value = [formatter numberFromString:thickness];
-          return [NSNumber numberWithBool:[value boolValue]];
-        } else {
-          return [NSNumber numberWithInteger:0];
+      dom::BrowserParent* browser = dom::BrowserParent::GetFocused();
+      if (browser) {
+        a11y::DocAccessibleParent* proxyDoc = browser->GetTopLevelDocAccessible();
+        if (proxyDoc) {
+          mozAccessible* nativeRemoteChild = GetNativeFromGeckoAccessible(proxyDoc);
+          return [nativeRemoteChild accessibilityFocusedUIElement];
         }
       }
-      break;
-    case roles::MATHML_SUB:
-      if ([attribute isEqualToString:NSAccessibilityMathBaseAttribute]) return [self childAt:0];
-      if ([attribute isEqualToString:NSAccessibilityMathSubscriptAttribute])
-        return [self childAt:1];
-#ifdef DEBUG
-      if ([attribute isEqualToString:NSAccessibilityMathSuperscriptAttribute]) return nil;
-#endif
-      break;
-    case roles::MATHML_SUP:
-      if ([attribute isEqualToString:NSAccessibilityMathBaseAttribute]) return [self childAt:0];
-#ifdef DEBUG
-      if ([attribute isEqualToString:NSAccessibilityMathSubscriptAttribute]) return nil;
-#endif
-      if ([attribute isEqualToString:NSAccessibilityMathSuperscriptAttribute])
-        return [self childAt:1];
-      break;
-    case roles::MATHML_SUB_SUP:
-      if ([attribute isEqualToString:NSAccessibilityMathBaseAttribute]) return [self childAt:0];
-      if ([attribute isEqualToString:NSAccessibilityMathSubscriptAttribute])
-        return [self childAt:1];
-      if ([attribute isEqualToString:NSAccessibilityMathSuperscriptAttribute])
-        return [self childAt:2];
-      break;
-    case roles::MATHML_UNDER:
-      if ([attribute isEqualToString:NSAccessibilityMathBaseAttribute]) return [self childAt:0];
-      if ([attribute isEqualToString:NSAccessibilityMathUnderAttribute]) return [self childAt:1];
-#ifdef DEBUG
-      if ([attribute isEqualToString:NSAccessibilityMathOverAttribute]) return nil;
-#endif
-      break;
-    case roles::MATHML_OVER:
-      if ([attribute isEqualToString:NSAccessibilityMathBaseAttribute]) return [self childAt:0];
-#ifdef DEBUG
-      if ([attribute isEqualToString:NSAccessibilityMathUnderAttribute]) return nil;
-#endif
-      if ([attribute isEqualToString:NSAccessibilityMathOverAttribute]) return [self childAt:1];
-      break;
-    case roles::MATHML_UNDER_OVER:
-      if ([attribute isEqualToString:NSAccessibilityMathBaseAttribute]) return [self childAt:0];
-      if ([attribute isEqualToString:NSAccessibilityMathUnderAttribute]) return [self childAt:1];
-      if ([attribute isEqualToString:NSAccessibilityMathOverAttribute]) return [self childAt:2];
-      break;
-    // XXX bug 1176983
-    // roles::MATHML_MULTISCRIPTS should also have the following attributes:
-    // - NSAccessibilityMathPrescriptsAttribute
-    // - NSAccessibilityMathPostscriptsAttribute
-    // XXX bug 1176970
-    // roles::MATHML_FENCED should also have the following attributes:
-    // - NSAccessibilityMathFencedOpenAttribute
-    // - NSAccessibilityMathFencedCloseAttribute
-    default:
-      break;
+    }
+  } else if (proxy) {
+    ProxyAccessible* focusedGeckoChild = proxy->FocusedChild();
+    if (focusedGeckoChild) {
+      focusedChild = GetNativeFromGeckoAccessible(focusedGeckoChild);
+    }
   }
 
-#ifdef DEBUG
-  NSLog(@"!!! %@ can't respond to attribute %@", self, attribute);
-#endif
-  return nil;
+  if ([focusedChild isAccessibilityElement]) {
+    return focusedChild;
+  }
 
-  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+  // return ourself if we can't get a native focused child.
+  return self;
 }
 
-- (BOOL)accessibilityIsAttributeSettable:(NSString*)attribute {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_RETURN;
-
-  if ([attribute isEqualToString:NSAccessibilityFocusedAttribute]) return [self canBeFocused];
-
-  return NO;
-
-  NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(NO);
-}
-
-- (void)accessibilitySetValue:(id)value forAttribute:(NSString*)attribute {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-#ifdef DEBUG_hakan
-  NSLog(@"[%@] %@='%@'", self, attribute, value);
-#endif
-
-  // we only support focusing elements so far.
-  if ([attribute isEqualToString:NSAccessibilityFocusedAttribute] && [value boolValue])
-    [self focus];
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
-- (id)accessibilityHitTest:(NSPoint)point {
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
-  if (!accWrap && !proxy) return nil;
+- (id)moxHitTest:(NSPoint)point {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
 
   // Convert the given screen-global point in the cocoa coordinate system (with
   // origin in the bottom-left corner of the screen) into point in the Gecko
@@ -508,291 +251,78 @@ static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
   LayoutDeviceIntPoint geckoPoint =
       nsCocoaUtils::CocoaPointsToDevPixels(tmpPoint, nsCocoaUtils::GetBackingScaleFactor(mainView));
 
-  mozAccessible* nativeChild = nil;
-  if (accWrap) {
-    Accessible* child =
-        accWrap->ChildAtPoint(geckoPoint.x, geckoPoint.y, Accessible::eDeepestChild);
-    // If this is an outer doc, drill down further into proxies to find deepest remote child.
-    if (OuterDocAccessible* docOwner = child->AsOuterDoc()) {
-      if (ProxyAccessible* proxyDoc = docOwner->RemoteChildDoc()) {
-        mozAccessible* nativeRemoteChild = GetNativeFromProxy(proxyDoc);
-        return [nativeRemoteChild accessibilityHitTest:point];
-      }
-    } else if (child) {
-      nativeChild = GetNativeFromGeckoAccessible(child);
-    }
-  } else if (proxy) {
-    ProxyAccessible* child =
-        proxy->ChildAtPoint(geckoPoint.x, geckoPoint.y, Accessible::eDeepestChild);
-    if (child) nativeChild = GetNativeFromProxy(child);
-  }
+  AccessibleOrProxy child =
+      mGeckoAccessible.ChildAtPoint(geckoPoint.x, geckoPoint.y, Accessible::eDeepestChild);
 
-  if (nativeChild) return nativeChild;
+  if (!child.IsNull()) {
+    mozAccessible* nativeChild = GetNativeFromGeckoAccessible(child);
+    return [nativeChild isAccessibilityElement] ? nativeChild : [nativeChild moxParent];
+  }
 
   // if we didn't find anything, return ourself or child view.
-  return GetObjectOrRepresentedView(self);
+  return self;
 }
 
-- (NSArray*)accessibilityActionNames {
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
-  // Create actions array
-  NSMutableArray* actions = [NSMutableArray new];
-  if (!accWrap && !proxy) return actions;
-
-  uint8_t count = 0;
-  if (accWrap) {
-    count = accWrap->ActionCount();
-  } else if (proxy) {
-    count = proxy->ActionCount();
-  }
-
-  // Check if the accessible has an existing gecko
-  // action, and add the corresponding Mac action to
-  // the actions array. `count` is guaranteed to be 0 or 1
-  if (count) {
-    nsAutoString name;
-    if (accWrap) {
-      accWrap->ActionNameAt(0, name);
-    } else if (proxy) {
-      proxy->ActionNameAt(0, name);
-    }
-    if (name.EqualsLiteral("select")) {
-      [actions addObject:NSAccessibilityPickAction];
-    } else {
-      [actions addObject:NSAccessibilityPressAction];
-    }
-  }
-
-  // Regardless of `count`, add actions that should be
-  // performable on all accessibles. If we added a press
-  // action, it will be first in the list. We append other
-  // actions here to maintain that invariant.
-  [actions addObject:NSAccessibilityScrollToVisibleAction];
-  [actions addObject:NSAccessibilityShowMenuAction];
-
-  return actions;
-}
-
-- (NSString*)accessibilityActionDescription:(NSString*)action {
-  // by default we return whatever the MacOS API know about.
-  // if you have custom actions, override.
-  return NSAccessibilityActionDescription(action);
-}
-
-- (NSString*)accessibilityLabel {
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
-  if (!accWrap && !proxy) {
-    return nil;
-  }
-
-  nsAutoString name;
-
-  /* If our accessible is:
-   * 1. Named by invisible text, or
-   * 2. Has more than one labeling relation, or
-   * 3. Is a grouping
-   *   ... return its name as a label (AXDescription).
-   */
-  if (accWrap) {
-    ENameValueFlag flag = accWrap->Name(name);
-    if (flag == eNameFromSubtree) {
-      return nil;
-    }
-
-    if (mRole != roles::GROUPING && mRole != roles::RADIO_GROUP) {
-      Relation rel = accWrap->RelationByType(RelationType::LABELLED_BY);
-      if (rel.Next() && !rel.Next()) {
-        return nil;
-      }
-    }
-  } else if (proxy) {
-    uint32_t flag = proxy->Name(name);
-    if (flag == eNameFromSubtree) {
-      return nil;
-    }
-
-    if (mRole != roles::GROUPING && mRole != roles::RADIO_GROUP) {
-      nsTArray<ProxyAccessible*> rels = proxy->RelationByType(RelationType::LABELLED_BY);
-      if (rels.Length() == 1) {
-        return nil;
-      }
-    }
-  }
-
-  return nsCocoaUtils::ToNSString(name);
-}
-
-- (void)accessibilityPerformAction:(NSString*)action {
-  RefPtr<AccessibleWrap> accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
-
-  if ([action isEqualToString:NSAccessibilityScrollToVisibleAction]) {
-    if (accWrap) {
-      accWrap->ScrollTo(nsIAccessibleScrollType::SCROLL_TYPE_ANYWHERE);
-    } else if (proxy) {
-      proxy->ScrollTo(nsIAccessibleScrollType::SCROLL_TYPE_ANYWHERE);
-    }
-  } else if ([action isEqualToString:NSAccessibilityShowMenuAction]) {
-    // We don't need to convert this rect into mac coordinates because the
-    // mouse event synthesizer expects layout (gecko) coordinates.
-    LayoutDeviceIntRect geckoRect;
-    id objOrView = nil;
-    if (accWrap) {
-      geckoRect = LayoutDeviceIntRect::FromUnknownRect(accWrap->Bounds());
-      objOrView =
-          GetObjectOrRepresentedView(GetNativeFromGeckoAccessible(accWrap->RootAccessible()));
-    } else if (proxy) {
-      geckoRect = LayoutDeviceIntRect::FromUnknownRect(proxy->Bounds());
-      objOrView = GetObjectOrRepresentedView(
-          GetNativeFromGeckoAccessible(proxy->OuterDocOfRemoteBrowser()->RootAccessible()));
-    }
-
-    LayoutDeviceIntPoint p = LayoutDeviceIntPoint(geckoRect.X() + (geckoRect.Width() / 2),
-                                                  geckoRect.Y() + (geckoRect.Height() / 2));
-    nsIWidget* widget = [objOrView widget];
-    // XXX: NSRightMouseDown is depreciated in 10.12, should be
-    // changed to NSEventTypeRightMouseDown after refactoring.
-    widget->SynthesizeNativeMouseEvent(p, NSRightMouseDown, 0, nullptr);
-
-  } else {
-    if (accWrap) {
-      accWrap->DoAction(0);
-    } else if (proxy) {
-      proxy->DoAction(0);
-    }
-    // Activating accessible may alter its state.
-    [self invalidateState];
-  }
-}
-
-- (id)accessibilityFocusedUIElement {
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
-  if (!accWrap && !proxy) return nil;
-
-  mozAccessible* focusedChild = nil;
-  if (accWrap) {
-    Accessible* focusedGeckoChild = accWrap->FocusedChild();
-    if (focusedGeckoChild) {
-      focusedChild = GetNativeFromGeckoAccessible(focusedGeckoChild);
-    } else {
-      dom::BrowserParent* browser = dom::BrowserParent::GetFocused();
-      if (browser) {
-        a11y::DocAccessibleParent* proxyDoc = browser->GetTopLevelDocAccessible();
-        if (proxyDoc) {
-          mozAccessible* nativeRemoteChild = GetNativeFromProxy(proxyDoc);
-          return [nativeRemoteChild accessibilityFocusedUIElement];
-        }
-      }
-    }
-  } else if (proxy) {
-    ProxyAccessible* focusedGeckoChild = proxy->FocusedChild();
-    if (focusedGeckoChild) focusedChild = GetNativeFromProxy(focusedGeckoChild);
-  }
-
-  if (focusedChild) return GetObjectOrRepresentedView(focusedChild);
-
-  // return ourself if we can't get a native focused child.
-  return GetObjectOrRepresentedView(self);
-}
-
-#pragma mark -
-
-- (id<mozAccessible>)parent {
+- (id<mozAccessible>)moxParent {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
-
-  id nativeParent = nil;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
-    Accessible* accessibleParent = accWrap->Parent();
-    if (accessibleParent) nativeParent = GetNativeFromGeckoAccessible(accessibleParent);
-    if (nativeParent) return GetObjectOrRepresentedView(nativeParent);
-
-    // Return native of root accessible if we have no direct parent
-    nativeParent = GetNativeFromGeckoAccessible(accWrap->RootAccessible());
-  } else if (ProxyAccessible* proxy = [self getProxyAccessible]) {
-    if (ProxyAccessible* proxyParent = proxy->Parent()) {
-      nativeParent = GetNativeFromProxy(proxyParent);
-    }
-
-    if (nativeParent) return GetObjectOrRepresentedView(nativeParent);
-
-    Accessible* outerDoc = proxy->OuterDocOfRemoteBrowser();
-    nativeParent = outerDoc ? GetNativeFromGeckoAccessible(outerDoc) : nil;
-  } else {
+  if ([self isExpired]) {
     return nil;
   }
 
-  NSAssert1(nativeParent, @"!!! we can't find a parent for %@", self);
+  AccessibleOrProxy parent = mGeckoAccessible.Parent();
+
+  if (parent.IsNull()) {
+    return nil;
+  }
+
+  id nativeParent = GetNativeFromGeckoAccessible(parent);
+  if (!nativeParent && mGeckoAccessible.IsAccessible()) {
+    // Return native of root accessible if we have no direct parent.
+    // XXX: need to return a sensible fallback in proxy case as well
+    nativeParent = GetNativeFromGeckoAccessible(mGeckoAccessible.AsAccessible()->RootAccessible());
+  }
+
+  if (![nativeParent isAccessibilityElement]) {
+    nativeParent = [nativeParent moxParent];
+  }
 
   return GetObjectOrRepresentedView(nativeParent);
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-- (BOOL)hasRepresentedView {
-  return NO;
-}
-
-- (id)representedView {
-  return nil;
-}
-
-- (BOOL)isRoot {
-  return NO;
-}
-
 // gets our native children lazily.
-// returns nil when there are no children.
-- (NSArray*)children {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
+- (NSArray*)moxChildren {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
 
-  if (mChildren) return mChildren;
+  NSMutableArray* children =
+      [[NSMutableArray alloc] initWithCapacity:mGeckoAccessible.ChildCount()];
 
-  // get the array of children.
-  mChildren = [[NSMutableArray alloc] init];
-
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  if (accWrap) {
-    uint32_t childCount = accWrap->ChildCount();
-    for (uint32_t childIdx = 0; childIdx < childCount; childIdx++) {
-      mozAccessible* nativeChild = GetNativeFromGeckoAccessible(accWrap->GetChildAt(childIdx));
-      if (nativeChild) [mChildren addObject:nativeChild];
+  for (uint32_t childIdx = 0; childIdx < mGeckoAccessible.ChildCount(); childIdx++) {
+    AccessibleOrProxy child = mGeckoAccessible.ChildAt(childIdx);
+    mozAccessible* nativeChild = GetNativeFromGeckoAccessible(child);
+    if (!nativeChild) {
+      continue;
     }
 
-    // children from child if this is an outerdoc
-    OuterDocAccessible* docOwner = accWrap->AsOuterDoc();
-    if (docOwner) {
-      if (ProxyAccessible* proxyDoc = docOwner->RemoteChildDoc()) {
-        mozAccessible* nativeRemoteChild = GetNativeFromProxy(proxyDoc);
-        [mChildren insertObject:nativeRemoteChild atIndex:0];
-        NSAssert1(nativeRemoteChild, @"%@ found a child remote doc missing a native\n", self);
-      }
-    }
-  } else if (ProxyAccessible* proxy = [self getProxyAccessible]) {
-    uint32_t childCount = proxy->ChildrenCount();
-    for (uint32_t childIdx = 0; childIdx < childCount; childIdx++) {
-      mozAccessible* nativeChild = GetNativeFromProxy(proxy->ChildAt(childIdx));
-      if (nativeChild) [mChildren addObject:nativeChild];
+    if ([nativeChild ignoreWithParent:self]) {
+      // If this child should be ignored get its unignored children.
+      // This will in turn recurse to any unignored descendants if the
+      // child is ignored.
+      [children addObjectsFromArray:[nativeChild moxChildren]];
+    } else {
+      [children addObject:nativeChild];
     }
   }
 
-  return mChildren;
-
-  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+  return children;
 }
 
-- (NSValue*)position {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
+- (NSValue*)moxPosition {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
 
-  nsIntRect rect;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    rect = accWrap->Bounds();
-  else if (ProxyAccessible* proxy = [self getProxyAccessible])
-    rect = proxy->Bounds();
-  else
-    return nil;
+  nsIntRect rect = mGeckoAccessible.IsAccessible() ? mGeckoAccessible.AsAccessible()->Bounds()
+                                                   : mGeckoAccessible.AsProxy()->Bounds();
 
   NSScreen* mainView = [[NSScreen screens] objectAtIndex:0];
   CGFloat scaleFactor = nsCocoaUtils::GetBackingScaleFactor(mainView);
@@ -801,39 +331,20 @@ static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
       [mainView frame].size.height - static_cast<CGFloat>(rect.y + rect.height) / scaleFactor);
 
   return [NSValue valueWithPoint:p];
-
-  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-- (NSValue*)size {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
+- (NSValue*)moxSize {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
 
-  nsIntRect rect;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    rect = accWrap->Bounds();
-  else if (ProxyAccessible* proxy = [self getProxyAccessible])
-    rect = proxy->Bounds();
-  else
-    return nil;
+  nsIntRect rect = mGeckoAccessible.IsAccessible() ? mGeckoAccessible.AsAccessible()->Bounds()
+                                                   : mGeckoAccessible.AsProxy()->Bounds();
 
   CGFloat scaleFactor = nsCocoaUtils::GetBackingScaleFactor([[NSScreen screens] objectAtIndex:0]);
   return [NSValue valueWithSize:NSMakeSize(static_cast<CGFloat>(rect.width) / scaleFactor,
                                            static_cast<CGFloat>(rect.height) / scaleFactor)];
-
-  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-- (NSString*)role {
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  if (accWrap) {
-#ifdef DEBUG_A11Y
-    NS_ASSERTION(nsAccUtils::IsTextInterfaceSupportCorrect(accWrap),
-                 "Does not support Text when it should");
-#endif
-  } else if (![self getProxyAccessible]) {
-    return nil;
-  }
-
+- (NSString*)moxRole {
 #define ROLE(geckoRole, stringRole, atkRole, macRole, msaaRole, ia2Role, androidClass, nameRule) \
   case roles::geckoRole:                                                                         \
     return macRole;
@@ -848,68 +359,37 @@ static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
 #undef ROLE
 }
 
-- (NSString*)subrole {
-  AccessibleWrap* accWrap = [self getGeckoAccessible];
-  ProxyAccessible* proxy = [self getProxyAccessible];
+- (NSString*)moxSubrole {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
+
+  Accessible* acc = mGeckoAccessible.AsAccessible();
+  ProxyAccessible* proxy = mGeckoAccessible.AsProxy();
 
   // Deal with landmarks first
-  nsAtom* landmark = nullptr;
-  if (accWrap)
-    landmark = accWrap->LandmarkRole();
-  else if (proxy)
-    landmark = proxy->LandmarkRole();
-
-  // HTML Elements treated as landmarks, and ARIA landmarks.
-  if (landmark) {
-    if (landmark == nsGkAtoms::application) return @"AXLandmarkApplication";
-    if (landmark == nsGkAtoms::banner) return @"AXLandmarkBanner";
-    if (landmark == nsGkAtoms::complementary) return @"AXLandmarkComplementary";
-    if (landmark == nsGkAtoms::contentinfo) return @"AXLandmarkContentInfo";
-    if (landmark == nsGkAtoms::form) return @"AXLandmarkForm";
-    if (landmark == nsGkAtoms::main) return @"AXLandmarkMain";
-    if (landmark == nsGkAtoms::navigation) return @"AXLandmarkNavigation";
-    if (landmark == nsGkAtoms::search) return @"AXLandmarkSearch";
-    if (landmark == nsGkAtoms::searchbox) return @"AXSearchField";
-  }
-
   // macOS groups the specific landmark types of DPub ARIA into two broad
   // categories with corresponding subroles: Navigation and region/container.
   if (mRole == roles::NAVIGATION) return @"AXLandmarkNavigation";
-  if (mRole == roles::LANDMARK) return @"AXLandmarkRegion";
+  if (mRole == roles::LANDMARK) {
+    nsAtom* landmark = acc ? acc->LandmarkRole() : proxy->LandmarkRole();
+    // HTML Elements treated as landmarks, and ARIA landmarks.
+    if (landmark) {
+      if (landmark == nsGkAtoms::banner) return @"AXLandmarkBanner";
+      if (landmark == nsGkAtoms::complementary) return @"AXLandmarkComplementary";
+      if (landmark == nsGkAtoms::contentinfo) return @"AXLandmarkContentInfo";
+      if (landmark == nsGkAtoms::main) return @"AXLandmarkMain";
+      if (landmark == nsGkAtoms::navigation) return @"AXLandmarkNavigation";
+      if (landmark == nsGkAtoms::search) return @"AXLandmarkSearch";
+    }
+
+    // None of the above, so assume DPub ARIA.
+    return @"AXLandmarkRegion";
+  }
 
   // Now, deal with widget roles
   nsStaticAtom* roleAtom = nullptr;
-  if (accWrap && accWrap->HasARIARole()) {
-    const nsRoleMapEntry* roleMap = accWrap->ARIARoleMap();
-    roleAtom = roleMap->roleAtom;
-  }
-  if (proxy) roleAtom = proxy->ARIARoleAtom();
-
-  if (roleAtom) {
-    if (roleAtom == nsGkAtoms::alert) return @"AXApplicationAlert";
-    if (roleAtom == nsGkAtoms::alertdialog) return @"AXApplicationAlertDialog";
-    if (roleAtom == nsGkAtoms::article) return @"AXDocumentArticle";
-    if (roleAtom == nsGkAtoms::dialog) return @"AXApplicationDialog";
-    if (roleAtom == nsGkAtoms::document) return @"AXDocument";
-    if (roleAtom == nsGkAtoms::log_) return @"AXApplicationLog";
-    if (roleAtom == nsGkAtoms::marquee) return @"AXApplicationMarquee";
-    if (roleAtom == nsGkAtoms::math) return @"AXDocumentMath";
-    if (roleAtom == nsGkAtoms::note_) return @"AXDocumentNote";
-    if (roleAtom == nsGkAtoms::region) return mRole == roles::REGION ? @"AXLandmarkRegion" : nil;
-    if (roleAtom == nsGkAtoms::status) return @"AXApplicationStatus";
-    if (roleAtom == nsGkAtoms::tabpanel) return @"AXTabPanel";
-    if (roleAtom == nsGkAtoms::timer) return @"AXApplicationTimer";
-    if (roleAtom == nsGkAtoms::tooltip) return @"AXUserInterfaceTooltip";
-  }
-
   switch (mRole) {
     case roles::LIST:
       return @"AXContentList";  // 10.6+ NSAccessibilityContentListSubrole;
-
-    case roles::ENTRY:
-      if ((accWrap && accWrap->IsSearchbox()) || (proxy && proxy->IsSearchbox()))
-        return @"AXSearchField";
-      break;
 
     case roles::DEFINITION_LIST:
       return @"AXDefinitionList";  // 10.6+ NSAccessibilityDefinitionListSubrole;
@@ -991,8 +471,53 @@ static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
     case roles::ALERT:
       return @"AXApplicationAlert";
 
+    case roles::DIALOG:
+      if (acc && acc->HasARIARole()) {
+        const nsRoleMapEntry* roleMap = acc->ARIARoleMap();
+        roleAtom = roleMap->roleAtom;
+      }
+      if (proxy) roleAtom = proxy->ARIARoleAtom();
+      if (roleAtom) {
+        if (roleAtom == nsGkAtoms::alertdialog) return @"AXApplicationAlertDialog";
+        if (roleAtom == nsGkAtoms::dialog) return @"AXApplicationDialog";
+      }
+      break;
+
+    case roles::APPLICATION:
+      return @"AXLandmarkApplication";
+
+    case roles::FORM:
+      // This only gets exposed as a landmark if the role comes from ARIA.
+      if (acc && acc->HasARIARole()) {
+        const nsRoleMapEntry* roleMap = acc->ARIARoleMap();
+        roleAtom = roleMap->roleAtom;
+      }
+      if (proxy) roleAtom = proxy->ARIARoleAtom();
+      if (roleAtom && roleAtom == nsGkAtoms::form) return @"AXLandmarkForm";
+      break;
+
+    case roles::FORM_LANDMARK:
+      // This is a form element that got landmark properties via an accessible
+      // name.
+      return @"AXLandmarkForm";
+
+    case roles::ANIMATION:
+      return @"AXApplicationMarquee";
+
+    case roles::FLAT_EQUATION:
+      return @"AXDocumentMath";
+
+    case roles::REGION:
+      return @"AXLandmarkRegion";
+
+    case roles::STATUSBAR:
+      return @"AXApplicationStatus";
+
     case roles::PROPERTYPAGE:
       return @"AXTabPanel";
+
+    case roles::TOOLTIP:
+      return @"AXUserInterfaceTooltip";
 
     case roles::DETAILS:
       return @"AXDetails";
@@ -1012,14 +537,6 @@ static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
     case roles::NON_NATIVE_DOCUMENT:
       return @"AXDocument";
 
-    // macOS added an AXSubrole value to distinguish generic AXGroup objects
-    // from those which are AXGroups as a result of an explicit ARIA role,
-    // such as the non-landmark, non-listitem text containers in DPub ARIA.
-    case roles::FOOTNOTE:
-    case roles::SECTION:
-      if (roleAtom) return @"AXApplicationGroup";
-      break;
-
     case roles::CONTENT_DELETION:
       return @"AXDeleteStyleGroup";
 
@@ -1035,7 +552,28 @@ static const uint64_t kCacheInitialized = ((uint64_t)0x1) << 63;
     case roles::PAGETAB:
       return @"AXTabButton";
 
+    case roles::SEPARATOR:
+      return @"AXContentSeparator";
+
     default:
+      // These are special. They map to roles::NOTHING
+      // and are instructed by the ARIA map to use the native host role.
+      if (acc && acc->HasARIARole()) {
+        const nsRoleMapEntry* roleMap = acc->ARIARoleMap();
+        roleAtom = roleMap->roleAtom;
+      }
+      if (proxy) roleAtom = proxy->ARIARoleAtom();
+
+      if (roleAtom) {
+        if (roleAtom == nsGkAtoms::log_) return @"AXApplicationLog";
+        if (roleAtom == nsGkAtoms::timer) return @"AXApplicationTimer";
+        // macOS added an AXSubrole value to distinguish generic AXGroup objects
+        // from those which are AXGroups as a result of an explicit ARIA role,
+        // such as the non-landmark, non-listitem text containers in DPub ARIA.
+        if (mRole == roles::FOOTNOTE || mRole == roles::SECTION) {
+          return @"AXApplicationGroup";
+        }
+      }
       break;
   }
 
@@ -1050,6 +588,7 @@ struct RoleDescrMap {
 static const RoleDescrMap sRoleDescrMap[] = {
     {@"AXApplicationAlert", NS_LITERAL_STRING("alert")},
     {@"AXApplicationAlertDialog", NS_LITERAL_STRING("alertDialog")},
+    {@"AXApplicationDialog", NS_LITERAL_STRING("dialog")},
     {@"AXApplicationLog", NS_LITERAL_STRING("log")},
     {@"AXApplicationMarquee", NS_LITERAL_STRING("marquee")},
     {@"AXApplicationStatus", NS_LITERAL_STRING("status")},
@@ -1081,7 +620,7 @@ struct RoleDescrComparator {
   int operator()(const RoleDescrMap& aEntry) const { return [mRole compare:aEntry.role]; }
 };
 
-- (NSString*)roleDescription {
+- (NSString*)moxRoleDescription {
   if (mRole == roles::DOCUMENT) return utils::LocalizedString(NS_LITERAL_STRING("htmlContent"));
 
   if (mRole == roles::FIGURE) return utils::LocalizedString(NS_LITERAL_STRING("figure"));
@@ -1092,7 +631,7 @@ struct RoleDescrComparator {
     return utils::LocalizedString(NS_LITERAL_STRING("highlight"));
   }
 
-  NSString* subrole = [self subrole];
+  NSString* subrole = [self moxSubrole];
 
   if (subrole) {
     size_t idx = 0;
@@ -1102,158 +641,115 @@ struct RoleDescrComparator {
     }
   }
 
-  return NSAccessibilityRoleDescription([self role], subrole);
+  return NSAccessibilityRoleDescription([self moxRole], subrole);
 }
 
-- (NSString*)title {
+- (NSString*)moxLabel {
+  if ([self isExpired]) {
+    return nil;
+  }
+
+  Accessible* acc = mGeckoAccessible.AsAccessible();
+  ProxyAccessible* proxy = mGeckoAccessible.AsProxy();
+  nsAutoString name;
+
+  /* If our accessible is:
+   * 1. Named by invisible text, or
+   * 2. Has more than one labeling relation, or
+   * 3. Is a special role defined in providesLabelNotTitle
+   *   ... return its name as a label (AXDescription).
+   */
+  if (acc) {
+    ENameValueFlag flag = acc->Name(name);
+    if (flag == eNameFromSubtree) {
+      return nil;
+    }
+
+    if (![self providesLabelNotTitle]) {
+      Relation rel = acc->RelationByType(RelationType::LABELLED_BY);
+      if (rel.Next() && !rel.Next()) {
+        return nil;
+      }
+    }
+  } else if (proxy) {
+    uint32_t flag = proxy->Name(name);
+    if (flag == eNameFromSubtree) {
+      return nil;
+    }
+
+    if (![self providesLabelNotTitle]) {
+      nsTArray<ProxyAccessible*> rels = proxy->RelationByType(RelationType::LABELLED_BY);
+      if (rels.Length() == 1) {
+        return nil;
+      }
+    }
+  }
+
+  return nsCocoaUtils::ToNSString(name);
+}
+
+- (NSString*)moxTitle {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
-  // If this is a grouping we provide the name in the label (AXDescription).
-  if (mRole == roles::GROUPING || mRole == roles::RADIO_GROUP) {
+  // In some special cases we provide the name in the label (AXDescription).
+  if ([self providesLabelNotTitle]) {
     return nil;
   }
 
   nsAutoString title;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    accWrap->Name(title);
-  else if (ProxyAccessible* proxy = [self getProxyAccessible])
-    proxy->Name(title);
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    acc->Name(title);
+  } else {
+    mGeckoAccessible.AsProxy()->Name(title);
+  }
 
   return nsCocoaUtils::ToNSString(title);
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-- (id)value {
+- (id)moxValue {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
   nsAutoString value;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    accWrap->Value(value);
-  else if (ProxyAccessible* proxy = [self getProxyAccessible])
-    proxy->Value(value);
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    acc->Value(value);
+  } else {
+    mGeckoAccessible.AsProxy()->Value(value);
+  }
 
   return nsCocoaUtils::ToNSString(value);
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-- (NSString*)help {
+- (NSString*)moxHelp {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
   // What needs to go here is actually the accDescription of an item.
   // The MSAA acc_help method has nothing to do with this one.
   nsAutoString helpText;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    accWrap->Description(helpText);
-  else if (ProxyAccessible* proxy = [self getProxyAccessible])
-    proxy->Description(helpText);
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    acc->Description(helpText);
+  } else {
+    mGeckoAccessible.AsProxy()->Description(helpText);
+  }
 
   return nsCocoaUtils::ToNSString(helpText);
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-- (NSString*)orientation {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
-
-  uint64_t state = [self stateWithMask:(states::HORIZONTAL | states::VERTICAL)];
-
-  if (state & states::HORIZONTAL) {
-    return NSAccessibilityHorizontalOrientationValue;
-  }
-
-  if (state & states::VERTICAL) {
-    return NSAccessibilityVerticalOrientationValue;
-  }
-
-  return NSAccessibilityUnknownOrientationValue;
-
-  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
-}
-
-// objc-style description (from NSObject); not to be confused with the accessible description above.
-- (NSString*)description {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
-
-  return [NSString stringWithFormat:@"(%p) %@", self, [self role]];
-
-  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
-}
-
-- (BOOL)isFocused {
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
-    return FocusMgr()->IsFocused(accWrap);
-  }
-
-  return false;  // XXX: proxy implementation is needed.
-}
-
-- (BOOL)canBeFocused {
-  return [self stateWithMask:states::FOCUSABLE] != 0;
-}
-
-- (BOOL)focus {
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible])
-    accWrap->TakeFocus();
-  else if (ProxyAccessible* proxy = [self getProxyAccessible])
-    proxy->TakeFocus();
-  else
-    return NO;
-
-  return YES;
-}
-
-- (BOOL)isEnabled {
-  return [self stateWithMask:states::UNAVAILABLE] == 0;
-}
-
-- (void)firePlatformEvent:(uint32_t)eventType {
-  switch (eventType) {
-    case nsIAccessibleEvent::EVENT_FOCUS:
-      [self postNotification:NSAccessibilityFocusedUIElementChangedNotification];
-      break;
-    case nsIAccessibleEvent::EVENT_DOCUMENT_LOAD_COMPLETE:
-      [self postNotification:NSAccessibilityFocusedUIElementChangedNotification];
-      [self postNotification:@"AXLoadComplete"];
-      [self postNotification:@"AXLayoutComplete"];
-      break;
-    case nsIAccessibleEvent::EVENT_MENUPOPUP_START:
-      [self postNotification:@"AXMenuOpened"];
-      break;
-    case nsIAccessibleEvent::EVENT_MENUPOPUP_END:
-      [self postNotification:@"AXMenuClosed"];
-      break;
-    case nsIAccessibleEvent::EVENT_SELECTION:
-    case nsIAccessibleEvent::EVENT_SELECTION_ADD:
-    case nsIAccessibleEvent::EVENT_SELECTION_REMOVE:
-      [self postNotification:NSAccessibilitySelectedChildrenChangedNotification];
-      break;
-  }
-}
-
-- (void)postNotification:(NSString*)notification {
-  // This sends events via nsIObserverService to be consumed by our mochitests.
-  xpcAccessibleMacInterface::FireEvent(self, notification);
-
-  if (gfxPlatform::IsHeadless()) {
-    // Using a headless toolkit for tests and whatnot, posting accessibility
-    // notification won't work.
-    return;
-  }
-
-  NSAccessibilityPostNotification(GetObjectOrRepresentedView(self), notification);
-}
-
-- (NSWindow*)window {
+- (NSWindow*)moxWindow {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
   // Get a pointer to the native window (NSWindow) we reside in.
   NSWindow* nativeWindow = nil;
   DocAccessible* docAcc = nullptr;
-  if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
-    docAcc = accWrap->Document();
-  } else if (ProxyAccessible* proxy = [self getProxyAccessible]) {
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    docAcc = acc->Document();
+  } else {
+    ProxyAccessible* proxy = mGeckoAccessible.AsProxy();
     Accessible* outerDoc = proxy->OuterDocOfRemoteBrowser();
     if (outerDoc) docAcc = outerDoc->Document();
   }
@@ -1266,118 +762,199 @@ struct RoleDescrComparator {
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
 }
 
-- (void)invalidateChildren {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
+- (NSNumber*)moxEnabled {
+  if ([self stateWithMask:states::UNAVAILABLE]) {
+    return @NO;
+  }
 
-  // make room for new children
-  [mChildren release];
-  mChildren = nil;
+  if (![self isRoot]) {
+    mozAccessible* parent = (mozAccessible*)[self moxParent];
+    if (![parent isRoot]) {
+      return @(![parent disableChild:self]);
+    }
+  }
 
-  NS_OBJC_END_TRY_ABORT_BLOCK;
+  return @YES;
 }
 
-- (void)appendChild:(Accessible*)aAccessible {
-  // if mChildren is nil, then we don't even need to bother
-  if (!mChildren) return;
+- (NSNumber*)moxFocused {
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    return FocusMgr()->IsFocused(acc) ? @YES : @NO;
+  }
 
-  mozAccessible* curNative = GetNativeFromGeckoAccessible(aAccessible);
-  if (curNative) [mChildren addObject:curNative];
+  return @NO;  // XXX: proxy implementation is needed.
 }
 
-- (BOOL)accessibilityNotifiesWhenDestroyed {
-  return YES;
+- (NSNumber*)moxSelected {
+  return @NO;
+}
+
+- (NSString*)moxARIACurrent {
+  if (![self stateWithMask:states::CURRENT]) {
+    return nil;
+  }
+
+  return utils::GetAccAttr(self, "current");
+}
+
+- (id)moxTitleUIElement {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
+
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    Relation rel = acc->RelationByType(RelationType::LABELLED_BY);
+    Accessible* tempAcc = rel.Next();
+    if (tempAcc && !rel.Next()) {
+      mozAccessible* label = GetNativeFromGeckoAccessible(tempAcc);
+      return [label isAccessibilityElement] ? label : nil;
+    }
+
+    return nil;
+  }
+
+  ProxyAccessible* proxy = mGeckoAccessible.AsProxy();
+  nsTArray<ProxyAccessible*> rel = proxy->RelationByType(RelationType::LABELLED_BY);
+  ProxyAccessible* tempProxy = rel.SafeElementAt(0);
+  if (tempProxy && rel.Length() <= 1) {
+    mozAccessible* label = GetNativeFromGeckoAccessible(tempProxy);
+    return [label isAccessibilityElement] ? label : nil;
+  }
+
+  return nil;
+}
+
+- (NSString*)moxDOMIdentifier {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
+
+  nsAutoString id;
+  if (Accessible* acc = mGeckoAccessible.AsAccessible()) {
+    if (acc->GetContent()) {
+      nsCoreUtils::GetID(acc->GetContent(), id);
+    }
+  } else {
+    mGeckoAccessible.AsProxy()->DOMNodeID(id);
+  }
+
+  return nsCocoaUtils::ToNSString(id);
+}
+
+- (NSNumber*)moxRequired {
+  return @([self stateWithMask:states::REQUIRED] != 0);
+}
+
+- (void)moxSetFocused:(NSNumber*)focused {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
+
+  if ([focused boolValue]) {
+    if (mGeckoAccessible.IsAccessible()) {
+      mGeckoAccessible.AsAccessible()->TakeFocus();
+    } else {
+      mGeckoAccessible.AsProxy()->TakeFocus();
+    }
+  }
+}
+
+- (void)moxPerformScrollToVisible {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
+
+  if (mGeckoAccessible.IsAccessible()) {
+    // Need strong ref because of MOZ_CAN_RUN_SCRIPT
+    RefPtr<Accessible> acc = mGeckoAccessible.AsAccessible();
+    acc->ScrollTo(nsIAccessibleScrollType::SCROLL_TYPE_ANYWHERE);
+  } else {
+    mGeckoAccessible.AsProxy()->ScrollTo(nsIAccessibleScrollType::SCROLL_TYPE_ANYWHERE);
+  }
+}
+
+- (void)moxPerformShowMenu {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
+
+  nsIntRect bounds = mGeckoAccessible.IsAccessible() ? mGeckoAccessible.AsAccessible()->Bounds()
+                                                     : mGeckoAccessible.AsProxy()->Bounds();
+  // We don't need to convert this rect into mac coordinates because the
+  // mouse event synthesizer expects layout (gecko) coordinates.
+  LayoutDeviceIntRect geckoRect = LayoutDeviceIntRect::FromUnknownRect(bounds);
+
+  Accessible* rootAcc =
+      mGeckoAccessible.IsAccessible()
+          ? mGeckoAccessible.AsAccessible()->RootAccessible()
+          : mGeckoAccessible.AsProxy()->OuterDocOfRemoteBrowser()->RootAccessible();
+  id objOrView = GetObjectOrRepresentedView(GetNativeFromGeckoAccessible(rootAcc));
+
+  LayoutDeviceIntPoint p = LayoutDeviceIntPoint(geckoRect.X() + (geckoRect.Width() / 2),
+                                                geckoRect.Y() + (geckoRect.Height() / 2));
+  nsIWidget* widget = [objOrView widget];
+  // XXX: NSRightMouseDown is depreciated in 10.12, should be
+  // changed to NSEventTypeRightMouseDown after refactoring.
+  widget->SynthesizeNativeMouseEvent(p, NSRightMouseDown, 0, nullptr);
+}
+
+- (void)moxPerformPress {
+  MOZ_ASSERT(!mGeckoAccessible.IsNull());
+
+  if (mGeckoAccessible.IsAccessible()) {
+    mGeckoAccessible.AsAccessible()->DoAction(0);
+  } else {
+    mGeckoAccessible.AsProxy()->DoAction(0);
+  }
+
+  // Activating accessible may alter its state.
+  [self invalidateState];
+}
+
+#pragma mark -
+
+// objc-style description (from NSObject); not to be confused with the accessible description above.
+- (NSString*)description {
+  NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
+
+  return [NSString stringWithFormat:@"(%p) %@", self, [self moxRole]];
+
+  NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+}
+
+- (BOOL)disableChild:(mozAccessible*)child {
+  return NO;
+}
+
+- (void)handleAccessibleEvent:(uint32_t)eventType {
+  switch (eventType) {
+    case nsIAccessibleEvent::EVENT_FOCUS:
+      [self moxPostNotification:NSAccessibilityFocusedUIElementChangedNotification];
+      break;
+    case nsIAccessibleEvent::EVENT_DOCUMENT_LOAD_COMPLETE:
+      [self moxPostNotification:NSAccessibilityFocusedUIElementChangedNotification];
+      [self moxPostNotification:@"AXLoadComplete"];
+      [self moxPostNotification:@"AXLayoutComplete"];
+      break;
+    case nsIAccessibleEvent::EVENT_MENUPOPUP_START:
+      [self moxPostNotification:@"AXMenuOpened"];
+      break;
+    case nsIAccessibleEvent::EVENT_MENUPOPUP_END:
+      [self moxPostNotification:@"AXMenuClosed"];
+      break;
+    case nsIAccessibleEvent::EVENT_SELECTION:
+    case nsIAccessibleEvent::EVENT_SELECTION_ADD:
+    case nsIAccessibleEvent::EVENT_SELECTION_REMOVE:
+    case nsIAccessibleEvent::EVENT_SELECTION_WITHIN:
+      [self moxPostNotification:NSAccessibilitySelectedChildrenChangedNotification];
+      break;
+  }
 }
 
 - (void)expire {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
 
-  [self invalidateChildren];
-
   [self invalidateState];
 
-  mGeckoAccessible = 0;
+  mGeckoAccessible.SetBits(0);
 
-  [self postNotification:NSAccessibilityUIElementDestroyedNotification];
+  [self moxPostNotification:NSAccessibilityUIElementDestroyedNotification];
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
 - (BOOL)isExpired {
-  return ![self getGeckoAccessible] && ![self getProxyAccessible];
+  return !mGeckoAccessible.AsAccessible() && !mGeckoAccessible.AsProxy();
 }
-
-#pragma mark -
-#pragma mark Debug methods
-#pragma mark -
-
-#ifdef DEBUG
-
-// will check that our children actually reference us as their
-// parent.
-- (void)sanityCheckChildren:(NSArray*)children {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  NSEnumerator* iter = [children objectEnumerator];
-  mozAccessible* curObj = nil;
-
-  NSLog(@"sanity checking %@", self);
-
-  while ((curObj = [iter nextObject])) {
-    id realSelf = GetObjectOrRepresentedView(self);
-    NSLog(@"checking %@", realSelf);
-    NSAssert2([curObj parent] == realSelf,
-              @"!!! %@ not returning %@ as AXParent, even though it is a AXChild of it!", curObj,
-              realSelf);
-  }
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
-- (void)sanityCheckChildren {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  [self sanityCheckChildren:[self children]];
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
-- (void)printHierarchy {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  [self printHierarchyWithLevel:0];
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
-- (void)printHierarchyWithLevel:(unsigned)level {
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  NSAssert(![self isExpired], @"!!! trying to print hierarchy of expired object!");
-
-  // print this node
-  NSMutableString* indent = [NSMutableString stringWithCapacity:level];
-  unsigned i = 0;
-  for (; i < level; i++) [indent appendString:@" "];
-
-  NSLog(@"%@(#%i) %@", indent, level, self);
-
-  // use |children| method to make sure our children are lazily fetched first.
-  NSArray* children = [self children];
-  if (!children) return;
-
-  [self sanityCheckChildren];
-
-  NSEnumerator* iter = [children objectEnumerator];
-  mozAccessible* object = nil;
-
-  while (iter && (object = [iter nextObject]))
-    // print every child node's subtree, increasing the indenting
-    // by two for every level.
-    [object printHierarchyWithLevel:(level + 1)];
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
-#endif /* DEBUG */
 
 @end

@@ -225,6 +225,10 @@ class BuildMonitor(MozbuildObject):
         self.instance_warnings = WarningsDatabase()
 
         def on_warning(warning):
+            # Skip `errors`
+            if warning['type'] == 'error':
+                return
+
             filename = warning['filename']
 
             if not os.path.exists(filename):
@@ -549,7 +553,8 @@ class BuildMonitor(MozbuildObject):
         ccache = mozfile.which('ccache')
         if ccache:
             try:
-                output = subprocess.check_output([ccache, '-s'])
+                output = subprocess.check_output(
+                    [ccache, '-s'], universal_newlines=True)
                 ccache_stats = CCacheStats(output)
             except ValueError as e:
                 self.log(logging.WARNING, 'ccache', {'msg': str(e)}, '{msg}')
@@ -861,6 +866,7 @@ class CCacheStats(object):
                 self._parse_line(line)
 
     def _parse_line(self, line):
+        line = six.ensure_text(line)
         if line.startswith(self.DIRECTORY_DESCRIPTION):
             self.cache_dir = self._strip_prefix(line, self.DIRECTORY_DESCRIPTION)
         elif line.startswith(self.PRIMARY_CONFIG_DESCRIPTION):
@@ -1092,7 +1098,7 @@ class BuildDriver(MozbuildObject):
                                                            backend))
                      for backend in all_backends])):
                 print('Build configuration changed. Regenerating backend.')
-                args = [config.substs['PYTHON'],
+                args = [config.substs['PYTHON3'],
                         mozpath.join(self.topobjdir, 'config.status')]
                 self.run_process(args, cwd=self.topobjdir, pass_thru=True)
 
@@ -1381,7 +1387,7 @@ class BuildDriver(MozbuildObject):
 
         return status
 
-    def install_tests(self, test_objs):
+    def install_tests(self):
         """Install test files."""
 
         if self.is_clobber_needed():
@@ -1390,7 +1396,7 @@ class BuildDriver(MozbuildObject):
             sys.exit(1)
 
         install_test_files(mozpath.normpath(self.topsrcdir), self.topobjdir,
-                           '_tests', test_objs)
+                           '_tests')
 
     def _clobber_configure(self):
         # This is an optimistic treatment of the CLOBBER file for when we have
@@ -1444,6 +1450,11 @@ class BuildDriver(MozbuildObject):
                 'topobjdir': self.topobjdir,
                 'mozconfig': self.mozconfig,
             }, sort_keys=True, indent=2))
+            # json.dumps in python2 inserts some trailing whitespace while
+            # json.dumps in python3 does not, which defeats the FileAvoidWrite
+            # mechanism. Strip the trailing whitespace to avoid rewriting this
+            # file unnecessarily.
+            to_write = '\n'.join([line.rstrip() for line in to_write.splitlines()])
             fh.write(to_write)
 
     def _run_client_mk(self, target=None, line_handler=None, jobs=0,

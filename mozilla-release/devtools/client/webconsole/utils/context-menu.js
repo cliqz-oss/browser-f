@@ -70,7 +70,9 @@ function createContextMenu(event, message, webConsoleWrapper) {
   const rootActor = rootObjectInspector
     ? rootObjectInspector.querySelector("[data-link-actor-id]")
     : null;
-  const rootActorId = rootActor ? rootActor.dataset.linkActorId : null;
+  // We can have object which are not displayed inside an ObjectInspector (e.g. Errors),
+  // so let's default to `actor`.
+  const rootActorId = rootActor ? rootActor.dataset.linkActorId : actor;
 
   const elementNode =
     target.closest(".objectBox-node") || target.closest(".objectBox-textNode");
@@ -263,7 +265,7 @@ function createContextMenu(event, message, webConsoleWrapper) {
     menu.append(
       new MenuItem({
         id: "console-menu-open-sidebar",
-        label: l10n.getStr("webconsole.menu.openInSidebar.label"),
+        label: l10n.getStr("webconsole.menu.openInSidebar.label1"),
         accesskey: l10n.getStr("webconsole.menu.openInSidebar.accesskey"),
         disabled: !rootActorId,
         click: () => dispatch(actions.openSidebar(messageId, rootActorId)),

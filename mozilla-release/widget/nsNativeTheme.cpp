@@ -62,33 +62,14 @@ EventStates nsNativeTheme::GetContentState(nsIFrame* aFrame,
     }
   }
 
-  if (isXULCheckboxRadio && aAppearance == StyleAppearance::Radio) {
-    if (IsFocused(aFrame)) flags |= NS_EVENT_STATE_FOCUS;
+  if (isXULCheckboxRadio && aAppearance == StyleAppearance::Radio &&
+      IsFocused(aFrame)) {
+    flags |= NS_EVENT_STATE_FOCUS;
+    nsPIDOMWindowOuter* window = aFrame->GetContent()->OwnerDoc()->GetWindow();
+    if (window && window->ShouldShowFocusRing()) {
+      flags |= NS_EVENT_STATE_FOCUSRING;
+    }
   }
-
-  // On Windows and Mac, only draw focus rings if they should be shown. This
-  // means that focus rings are only shown once the keyboard has been used to
-  // focus something in the window.
-#if defined(XP_MACOSX)
-  // Mac always draws focus rings for textboxes and lists.
-  if (aAppearance == StyleAppearance::MenulistTextfield ||
-      aAppearance == StyleAppearance::NumberInput ||
-      aAppearance == StyleAppearance::Textfield ||
-      aAppearance == StyleAppearance::Textarea ||
-      aAppearance == StyleAppearance::Searchfield ||
-      aAppearance == StyleAppearance::Listbox) {
-    return flags;
-  }
-#endif
-#if defined(XP_WIN)
-  // On Windows, focused buttons are always drawn as such by the native theme.
-  if (aAppearance == StyleAppearance::Button) return flags;
-#endif
-#if defined(XP_MACOSX) || defined(XP_WIN)
-  Document* doc = aFrame->GetContent()->OwnerDoc();
-  nsPIDOMWindowOuter* window = doc->GetWindow();
-  if (window && !window->ShouldShowFocusRing()) flags &= ~NS_EVENT_STATE_FOCUS;
-#endif
 
   return flags;
 }
@@ -557,10 +538,9 @@ bool nsNativeTheme::QueueAnimatedContentForRefresh(nsIContent* aContent,
     mAnimatedContentTimeout = timeout;
   }
 
-  if (!mAnimatedContentList.AppendElement(aContent)) {
-    NS_WARNING("Out of memory!");
-    return false;
-  }
+  // XXX(Bug 1631371) Check if this should use a fallible operation as it
+  // pretended earlier.
+  mAnimatedContentList.AppendElement(aContent);
 
   return true;
 }

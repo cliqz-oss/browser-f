@@ -212,6 +212,7 @@ static already_AddRefed<Element> MakeAnonButton(Document* aDoc,
   // NOTE: SetIsNativeAnonymousRoot() has to be called before setting any
   // attribute.
   button->SetIsNativeAnonymousRoot();
+  button->SetPseudoElementType(PseudoStyleType::fileChooserButton);
 
   // Set the file picking button text depending on the current locale.
   nsAutoString buttonTxt;
@@ -256,9 +257,12 @@ nsresult nsFileControlFrame::CreateAnonymousContent(
   fileContent->GetAccessKey(accessKey);
 
   mBrowseFilesOrDirs = MakeAnonButton(doc, "Browse", fileContent, accessKey);
-  if (!mBrowseFilesOrDirs || !aElements.AppendElement(mBrowseFilesOrDirs)) {
+  if (!mBrowseFilesOrDirs) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
+  // XXX(Bug 1631371) Check if this should use a fallible operation as it
+  // pretended earlier, or change the return type to void.
+  aElements.AppendElement(mBrowseFilesOrDirs);
 
   // Create and setup the text showing the selected files.
   mTextContent = doc->CreateHTMLElement(nsGkAtoms::label);

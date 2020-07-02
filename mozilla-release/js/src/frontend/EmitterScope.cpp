@@ -29,13 +29,6 @@ EmitterScope::EmitterScope(BytecodeEmitter* bce)
       scopeIndex_(ScopeNote::NoScopeIndex),
       noteIndex_(ScopeNote::NoScopeNoteIndex) {}
 
-static inline void MarkAllBindingsClosedOver(LexicalScope::Data& data) {
-  TrailingNamesArray& names = data.trailingNames;
-  for (uint32_t i = 0; i < data.length; i++) {
-    names[i] = BindingName(names[i].name(), true);
-  }
-}
-
 bool EmitterScope::ensureCache(BytecodeEmitter* bce) {
   return nameCache_.acquire(bce->cx);
 }
@@ -465,20 +458,6 @@ bool EmitterScope::enterLexical(BytecodeEmitter* bce, ScopeKind kind,
     return false;
   }
 
-  // Marks all names as closed over if the context requires it. This
-  // cannot be done in the Parser as we may not know if the context requires
-  // all bindings to be closed over until after parsing is finished. For
-  // example, legacy generators require all bindings to be closed over but
-  // it is unknown if a function is a legacy generator until the first
-  // 'yield' expression is parsed.
-  //
-  // This is not a problem with other scopes, as all other scopes with
-  // bindings are body-level. At the time of their creation, whether or not
-  // the context requires all bindings to be closed over is already known.
-  if (bce->sc->allBindingsClosedOver()) {
-    MarkAllBindingsClosedOver(*bindings);
-  }
-
   // Resolve bindings.
   TDZCheckCache* tdzCache = bce->innermostTDZCheckCache;
   uint32_t firstFrameSlot = frameSlotStart();
@@ -542,11 +521,6 @@ bool EmitterScope::enterNamedLambda(BytecodeEmitter* bce, FunctionBox* funbox) {
     return false;
   }
 
-  // See comment in enterLexical about allBindingsClosedOver.
-  if (funbox->allBindingsClosedOver()) {
-    MarkAllBindingsClosedOver(*funbox->namedLambdaBindings());
-  }
-
   BindingIter bi(*funbox->namedLambdaBindings(), LOCALNO_LIMIT,
                  /* isNamedLambda = */ true);
   MOZ_ASSERT(bi.kind() == BindingKind::NamedLambdaCallee);
@@ -582,7 +556,7 @@ bool EmitterScope::enterFunction(BytecodeEmitter* bce, FunctionBox* funbox) {
   MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
 
   // If there are parameter expressions, there is an extra var scope.
-  if (!funbox->hasExtraBodyVarScope()) {
+  if (!funbox->functionHasExtraBodyVarScope()) {
     bce->setVarEmitterScope(this);
   }
 
@@ -629,7 +603,7 @@ bool EmitterScope::enterFunction(BytecodeEmitter* bce, FunctionBox* funbox) {
   // If the function's scope may be extended at runtime due to sloppy direct
   // eval, any names beyond the function scope must be accessed dynamically as
   // we don't know if the name will become a 'var' binding due to direct eval.
-  if (funbox->hasExtensibleScope()) {
+  if (funbox->funHasExtensibleScope()) {
     fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
   }
 
@@ -709,7 +683,7 @@ bool EmitterScope::enterFunctionExtraBodyVar(BytecodeEmitter* bce,
   // direct eval, any names beyond the var scope must be accessed
   // dynamically as we don't know if the name will become a 'var' binding
   // due to direct eval.
-  if (funbox->hasExtensibleScope()) {
+  if (funbox->funHasExtensibleScope()) {
     fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
   }
 
@@ -788,6 +762,21 @@ bool EmitterScope::enterGlobal(BytecodeEmitter* bce,
     return internEmptyGlobalScopeAsBody(bce);
   }
 
+  auto createScope = [globalsc, bce](JSContext* cx,
+                                     Handle<AbstractScopePtr> enclosing,
+                                     ScopeIndex* index) {
+    MOZ_ASSERT(!enclosing.get());
+    return ScopeCreationData::create(cx, bce->compilationInfo,
+                                     globalsc->scopeKind(), globalsc->bindings,
+                                     index);
+  };
+  if (!internBodyScopeCreationData(bce, createScope)) {
+    return false;
+  }
+
+  // See: JSScript::outermostScope.
+  MOZ_ASSERT(bce->bodyScopeIndex == 0, "Global scope must be index 0");
+
   // Resolve binding names and emit Def{Var,Let,Const} prologue ops.
   if (globalsc->bindings) {
     // Check for declaration conflicts before the Def* ops.
@@ -823,15 +812,7 @@ bool EmitterScope::enterGlobal(BytecodeEmitter* bce,
     fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
   }
 
-  auto createScope = [globalsc, bce](JSContext* cx,
-                                     Handle<AbstractScopePtr> enclosing,
-                                     ScopeIndex* index) {
-    MOZ_ASSERT(!enclosing.get());
-    return ScopeCreationData::create(cx, bce->compilationInfo,
-                                     globalsc->scopeKind(), globalsc->bindings,
-                                     index);
-  };
-  return internBodyScopeCreationData(bce, createScope);
+  return true;
 }
 
 bool EmitterScope::enterEval(BytecodeEmitter* bce, EvalSharedContext* evalsc) {

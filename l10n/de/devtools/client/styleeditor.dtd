@@ -15,6 +15,7 @@
 <!ENTITY newButton.accesskey        "N">
 
 <!ENTITY importButton.label         "Importieren…">
+
 <!ENTITY importButton.tooltip       "Ein Stil-Dokument importieren und auf die Webseite anwenden">
 <!ENTITY importButton.accesskey     "m">
 
@@ -25,22 +26,6 @@
 <!ENTITY saveButton.accesskey       "S">
 
 <!ENTITY optionsButton.tooltip      "Einstellungen für Stilbearbeitung">
-
-<!-- LOCALIZATION NOTE  (showOriginalSources.label): This is the label on the context
-     menu item to toggle showing original sources in the editor. -->
-<!ENTITY showOriginalSources.label     "Ursprüngliche Quellen anzeigen">
-
-<!-- LOCALIZATION NOTE  (showOriginalSources.accesskey): This is the access key for
-     the menu item to toggle showing original sources in the editor. -->
-<!ENTITY showOriginalSources.accesskey  "U">
-
-<!-- LOCALIZATION NOTE  (showMediaSidebar.label): This is the label on the context
-     menu item to toggle showing @media rule shortcuts in a sidebar. -->
-<!ENTITY showMediaSidebar.label     "@media-Sidebar anzeigen">
-
-<!-- LOCALIZATION NOTE  (showMediaSidebar.accesskey): This is the access key for
-     the menu item to toggle showing the @media sidebar. -->
-<!ENTITY showMediaSidebar.accesskey     "m">
 
 <!-- LOCALICATION NOTE  (mediaRules.label): This is shown above the list of @media rules
      in each stylesheet editor sidebar. -->

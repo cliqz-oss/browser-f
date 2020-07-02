@@ -4,7 +4,7 @@
 
 "use strict";
 
-const { Cc, Ci, Cr } = require("chrome");
+const { Cc, Ci, Cr, Cu, components: Components } = require("chrome");
 const ChromeUtils = require("ChromeUtils");
 const Services = require("Services");
 
@@ -25,6 +25,11 @@ loader.lazyRequireGetter(
   true
 );
 loader.lazyImporter(this, "NetUtil", "resource://gre/modules/NetUtil.jsm");
+loader.lazyGetter(
+  this,
+  "WebExtensionPolicy",
+  () => Cu.getGlobalForObject(Cu).WebExtensionPolicy
+);
 
 // Network logging
 
@@ -83,7 +88,7 @@ NetworkResponseListener.prototype = {
     if (this._wrappedNotificationCallbacks) {
       return this._wrappedNotificationCallbacks.getInterface(iid);
     }
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 
   /**
@@ -503,9 +508,27 @@ NetworkResponseListener.prototype = {
 
     this.receivedData = "";
 
+    let id;
+    let reason;
+
+    try {
+      const properties = this.request.QueryInterface(Ci.nsIPropertyBag);
+      reason = this.request.loadInfo.requestBlockingReason;
+      id = properties.getProperty("cancelledByExtension");
+
+      // WebExtensionPolicy is not available for workers
+      if (typeof WebExtensionPolicy !== "undefined") {
+        id = WebExtensionPolicy.getByID(id).name;
+      }
+    } catch (err) {
+      // "cancelledByExtension" doesn't have to be available.
+    }
+
     this.httpActivity.owner.addResponseContent(response, {
       discardResponseBody: this.httpActivity.discardResponseBody,
       truncated: this.truncated,
+      blockedReason: reason,
+      blockingExtension: id,
     });
 
     this._wrappedNotificationCallbacks = null;

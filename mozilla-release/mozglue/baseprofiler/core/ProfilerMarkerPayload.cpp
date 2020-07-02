@@ -3,20 +3,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "BaseProfilerMarkerPayload.h"
+
+#include <inttypes.h>
+
+#include "mozilla/Maybe.h"
+#include "mozilla/Sprintf.h"
+
 #include "BaseProfiler.h"
-
-#ifdef MOZ_BASE_PROFILER
-
-#  include "BaseProfilerMarkerPayload.h"
-
-#  include "ProfileBufferEntry.h"
-#  include "BaseProfileJSONWriter.h"
-#  include "ProfilerBacktrace.h"
-
-#  include "mozilla/Maybe.h"
-#  include "mozilla/Sprintf.h"
-
-#  include <inttypes.h>
+#include "BaseProfileJSONWriter.h"
+#include "ProfileBufferEntry.h"
+#include "ProfilerBacktrace.h"
 
 namespace mozilla {
 namespace baseprofiler {
@@ -467,6 +464,52 @@ void LogMarkerPayload::StreamPayload(SpliceableJSONWriter& aWriter,
   aWriter.StringProperty("module", mModule.c_str());
 }
 
+MediaSampleMarkerPayload::MediaSampleMarkerPayload(
+    const int64_t aSampleStartTimeUs, const int64_t aSampleEndTimeUs)
+    : mSampleStartTimeUs(aSampleStartTimeUs),
+      mSampleEndTimeUs(aSampleEndTimeUs) {}
+
+MediaSampleMarkerPayload::MediaSampleMarkerPayload(
+    CommonProps&& aCommonProps, const int64_t aSampleStartTimeUs,
+    const int64_t aSampleEndTimeUs)
+    : ProfilerMarkerPayload(std::move(aCommonProps)),
+      mSampleStartTimeUs(aSampleStartTimeUs),
+      mSampleEndTimeUs(aSampleEndTimeUs) {}
+
+ProfileBufferEntryWriter::Length
+MediaSampleMarkerPayload::TagAndSerializationBytes() const {
+  return CommonPropsTagAndSerializationBytes() +
+         ProfileBufferEntryWriter::SumBytes(mSampleStartTimeUs,
+                                            mSampleEndTimeUs);
+}
+
+void MediaSampleMarkerPayload::SerializeTagAndPayload(
+    ProfileBufferEntryWriter& aEntryWriter) const {
+  static const DeserializerTag tag = TagForDeserializer(Deserialize);
+  SerializeTagAndCommonProps(tag, aEntryWriter);
+  aEntryWriter.WriteObject(mSampleStartTimeUs);
+  aEntryWriter.WriteObject(mSampleEndTimeUs);
+}
+
+/* static */
+UniquePtr<ProfilerMarkerPayload> MediaSampleMarkerPayload::Deserialize(
+    ProfileBufferEntryReader& aEntryReader) {
+  ProfilerMarkerPayload::CommonProps props =
+      DeserializeCommonProps(aEntryReader);
+  auto sampleStartTimeUs = aEntryReader.ReadObject<int64_t>();
+  auto sampleEndTimeUs = aEntryReader.ReadObject<int64_t>();
+  return UniquePtr<ProfilerMarkerPayload>(new MediaSampleMarkerPayload(
+      std::move(props), sampleStartTimeUs, sampleEndTimeUs));
+}
+
+void MediaSampleMarkerPayload::StreamPayload(
+    SpliceableJSONWriter& aWriter, const TimeStamp& aProcessStartTime,
+    UniqueStacks& aUniqueStacks) const {
+  StreamCommonProps("MediaSample", aWriter, aProcessStartTime, aUniqueStacks);
+  aWriter.IntProperty("sampleStartTimeUs", mSampleStartTimeUs);
+  aWriter.IntProperty("sampleEndTimeUs", mSampleEndTimeUs);
+}
+
 HangMarkerPayload::HangMarkerPayload(const TimeStamp& aStartTime,
                                      const TimeStamp& aEndTime)
     : ProfilerMarkerPayload(aStartTime, aEndTime) {}
@@ -542,5 +585,3 @@ void LongTaskMarkerPayload::StreamPayload(SpliceableJSONWriter& aWriter,
 
 }  // namespace baseprofiler
 }  // namespace mozilla
-
-#endif  // MOZ_BASE_PROFILER

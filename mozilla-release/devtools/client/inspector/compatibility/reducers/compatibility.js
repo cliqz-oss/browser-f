@@ -6,11 +6,14 @@
 
 const {
   COMPATIBILITY_APPEND_NODE,
+  COMPATIBILITY_INIT_USER_SETTINGS_SUCCESS,
+  COMPATIBILITY_INIT_USER_SETTINGS_FAILURE,
   COMPATIBILITY_UPDATE_NODE,
   COMPATIBILITY_UPDATE_NODES_FAILURE,
   COMPATIBILITY_UPDATE_SELECTED_NODE_SUCCESS,
   COMPATIBILITY_UPDATE_SELECTED_NODE_FAILURE,
   COMPATIBILITY_UPDATE_SELECTED_NODE_ISSUES,
+  COMPATIBILITY_UPDATE_SETTINGS_VISIBILITY,
   COMPATIBILITY_UPDATE_TARGET_BROWSERS_START,
   COMPATIBILITY_UPDATE_TARGET_BROWSERS_SUCCESS,
   COMPATIBILITY_UPDATE_TARGET_BROWSERS_FAILURE,
@@ -22,6 +25,8 @@ const {
 } = require("devtools/client/inspector/compatibility/actions/index");
 
 const INITIAL_STATE = {
+  defaultTargetBrowsers: [],
+  isSettingsVisibile: false,
   isTopLevelTargetProcessing: false,
   selectedNode: null,
   selectedNodeIssues: [],
@@ -38,6 +43,16 @@ const reducers = {
       issues
     );
     return Object.assign({}, state, { topLevelTargetIssues });
+  },
+  [COMPATIBILITY_INIT_USER_SETTINGS_SUCCESS](
+    state,
+    { defaultTargetBrowsers, targetBrowsers }
+  ) {
+    return Object.assign({}, state, { defaultTargetBrowsers, targetBrowsers });
+  },
+  [COMPATIBILITY_INIT_USER_SETTINGS_FAILURE](state, { error }) {
+    _showError(COMPATIBILITY_INIT_USER_SETTINGS_FAILURE, error);
+    return state;
   },
   [COMPATIBILITY_UPDATE_NODE](state, { node, issues }) {
     const topLevelTargetIssues = _updateTopLebelTargetIssues(
@@ -61,8 +76,14 @@ const reducers = {
   [COMPATIBILITY_UPDATE_SELECTED_NODE_ISSUES](state, { issues }) {
     return Object.assign({}, state, { selectedNodeIssues: issues });
   },
+  [COMPATIBILITY_UPDATE_SETTINGS_VISIBILITY](state, { visibility }) {
+    return Object.assign({}, state, { isSettingsVisibile: visibility });
+  },
   [COMPATIBILITY_UPDATE_TARGET_BROWSERS_START](state) {
-    return Object.assign({}, state, { isTopLevelTargetProcessing: true });
+    return Object.assign({}, state, {
+      isTopLevelTargetProcessing: true,
+      topLevelTargetIssues: [],
+    });
   },
   [COMPATIBILITY_UPDATE_TARGET_BROWSERS_SUCCESS](state, { targetBrowsers }) {
     return Object.assign({}, state, { targetBrowsers });

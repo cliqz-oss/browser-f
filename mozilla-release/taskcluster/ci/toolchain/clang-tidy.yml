@@ -10,7 +10,7 @@ job-defaults:
     worker:
         max-run-time: 3600
     run:
-        toolchain-artifact: public/build/clang-tidy.tar.xz
+        toolchain-artifact: public/build/clang-tidy.tar.zst
         resources:
             - 'build/clang-plugin/**/*.cpp'
             - 'build/clang-plugin/**/*.h'
@@ -21,10 +21,9 @@ job-defaults:
             - 'build/build-clang/build-clang.py'
     run-on-projects:
         - trunk
-        - try
     fetches:
         fetch:
-            - clang-9
+            - clang-10
 
 linux64-clang-tidy:
     index:
@@ -63,8 +62,8 @@ macosx64-clang-tidy:
     fetches:
         toolchain:
             - linux64-binutils
-            - linux64-cctools-port
-            - linux64-clang-9
+            - linux64-cctools-clang-10-port
+            - linux64-clang-10
             - linux64-gcc-7
             - linux64-node
 
@@ -86,7 +85,6 @@ win64-clang-tidy:
             - 'build/build-clang/clang-tidy-win64.json'
         resources:
             - 'build/build-clang/clang-tidy-win64.json'
-        toolchain-artifact: public/build/clang-tidy.tar.bz2
         tooltool-downloads: internal
     fetches:
         fetch:

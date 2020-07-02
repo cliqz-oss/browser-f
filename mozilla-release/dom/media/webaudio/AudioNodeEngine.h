@@ -233,11 +233,16 @@ void AudioBlockPanStereoToStereo(const float aInputL[WEBAUDIO_BLOCK_SIZE],
                                  float aOutputR[WEBAUDIO_BLOCK_SIZE]);
 void AudioBlockPanStereoToStereo(const float aInputL[WEBAUDIO_BLOCK_SIZE],
                                  const float aInputR[WEBAUDIO_BLOCK_SIZE],
-                                 float aGainL[WEBAUDIO_BLOCK_SIZE],
-                                 float aGainR[WEBAUDIO_BLOCK_SIZE],
-                                 bool aIsOnTheLeft[WEBAUDIO_BLOCK_SIZE],
+                                 const float aGainL[WEBAUDIO_BLOCK_SIZE],
+                                 const float aGainR[WEBAUDIO_BLOCK_SIZE],
+                                 const bool aIsOnTheLeft[WEBAUDIO_BLOCK_SIZE],
                                  float aOutputL[WEBAUDIO_BLOCK_SIZE],
                                  float aOutputR[WEBAUDIO_BLOCK_SIZE]);
+
+/**
+ * Replace NaN by zeros in aSamples.
+ */
+void NaNToZeroInPlace(float* aSamples, size_t aCount);
 
 /**
  * Return the sum of squares of all of the samples in the input.

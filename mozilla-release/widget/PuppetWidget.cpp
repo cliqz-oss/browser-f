@@ -10,7 +10,6 @@
 #include "ClientLayerManager.h"
 #include "gfxPlatform.h"
 #include "mozilla/dom/BrowserChild.h"
-#include "mozilla/dom/TabGroup.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/Hal.h"
 #include "mozilla/IMEStateManager.h"
@@ -19,6 +18,7 @@
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/TextComposition.h"
 #include "mozilla/TextEventDispatcher.h"
@@ -273,7 +273,7 @@ void PuppetWidget::Invalidate(const LayoutDeviceIntRect& aRect) {
   if (mBrowserChild && !mDirtyRegion.IsEmpty() && !mPaintTask.IsPending()) {
     mPaintTask = new PaintTask(this);
     nsCOMPtr<nsIRunnable> event(mPaintTask.get());
-    mBrowserChild->TabGroup()->Dispatch(TaskCategory::Other, event.forget());
+    SchedulerGroup::Dispatch(TaskCategory::Other, event.forget());
     return;
   }
 }
@@ -393,15 +393,6 @@ nsEventStatus PuppetWidget::DispatchInputEvent(WidgetInputEvent* aEvent) {
 
   if (!mBrowserChild) {
     return nsEventStatus_eIgnore;
-  }
-
-  if (PresShell* presShell = mBrowserChild->GetTopLevelPresShell()) {
-    // Because the root resolution is conceptually at the parent/child process
-    // boundary, we need to apply that resolution here because we're sending
-    // the event from the child to the parent process.
-    LayoutDevicePoint pt(aEvent->mRefPoint);
-    pt = pt * presShell->GetResolution();
-    aEvent->mRefPoint = LayoutDeviceIntPoint::Round(pt);
   }
 
   switch (aEvent->mClass) {
@@ -781,7 +772,7 @@ nsresult PuppetWidget::NotifyIMEOfFocusChange(
   RefPtr<PuppetWidget> self = this;
   mBrowserChild->SendNotifyIMEFocus(mContentCache, aIMENotification)
       ->Then(
-          mBrowserChild->TabGroup()->EventTargetFor(TaskCategory::UI), __func__,
+          GetMainThreadSerialEventTarget(), __func__,
           [self](IMENotificationRequests&& aRequests) {
             self->mIMENotificationRequestsOfParent = aRequests;
             if (TextEventDispatcher* dispatcher =
@@ -1454,24 +1445,6 @@ nsresult PuppetWidget::GetSystemFont(nsCString& aFontName) {
     return NS_ERROR_FAILURE;
   }
   mBrowserChild->SendGetSystemFont(&aFontName);
-  return NS_OK;
-}
-
-nsresult PuppetWidget::SetPrefersReducedMotionOverrideForTest(bool aValue) {
-  if (!mBrowserChild) {
-    return NS_ERROR_FAILURE;
-  }
-
-  mBrowserChild->SendSetPrefersReducedMotionOverrideForTest(aValue);
-  return NS_OK;
-}
-
-nsresult PuppetWidget::ResetPrefersReducedMotionOverrideForTest() {
-  if (!mBrowserChild) {
-    return NS_ERROR_FAILURE;
-  }
-
-  mBrowserChild->SendResetPrefersReducedMotionOverrideForTest();
   return NS_OK;
 }
 

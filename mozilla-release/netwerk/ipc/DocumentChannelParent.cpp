@@ -9,6 +9,7 @@
 #include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/ClientInfo.h"
+#include "mozilla/dom/ContentParent.h"
 
 extern mozilla::LazyLogModule gDocumentChannelLog;
 #define LOG(fmt) MOZ_LOG(gDocumentChannelLog, mozilla::LogLevel::Verbose, fmt)
@@ -18,43 +19,41 @@ using namespace mozilla::dom;
 namespace mozilla {
 namespace net {
 
-DocumentChannelParent::DocumentChannelParent(CanonicalBrowsingContext* aContext,
-                                             nsILoadContext* aLoadContext) {
+DocumentChannelParent::DocumentChannelParent() {
   LOG(("DocumentChannelParent ctor [this=%p]", this));
-  // Sometime we can get this called without a BrowsingContext, so that we have
-  // an actor to call SendFailedAsyncOpen on.
-  if (aContext) {
-    mParent = new DocumentLoadListener(aContext, aLoadContext, this);
-  }
 }
 
 DocumentChannelParent::~DocumentChannelParent() {
   LOG(("DocumentChannelParent dtor [this=%p]", this));
 }
 
-bool DocumentChannelParent::Init(const DocumentChannelCreationArgs& aArgs) {
-  MOZ_ASSERT(mParent);
+bool DocumentChannelParent::Init(dom::CanonicalBrowsingContext* aContext,
+                                 const DocumentChannelCreationArgs& aArgs) {
   RefPtr<nsDocShellLoadState> loadState =
       new nsDocShellLoadState(aArgs.loadState());
   LOG(("DocumentChannelParent Init [this=%p, uri=%s]", this,
        loadState->URI()->GetSpecOrDefault().get()));
 
-  RefPtr<class LoadInfo> loadInfo;
-  nsresult rv = mozilla::ipc::LoadInfoArgsToLoadInfo(Some(aArgs.loadInfo()),
-                                                     getter_AddRefs(loadInfo));
+  if (loadState->GetLoadIdentifier()) {
+    mParent = DocumentLoadListener::ClaimParentLoad(
+        loadState->GetLoadIdentifier(), this);
+    return !!mParent;
+  }
+
+  mParent = new DocumentLoadListener(aContext, this);
 
   Maybe<ClientInfo> clientInfo;
   if (aArgs.initialClientInfo().isSome()) {
     clientInfo.emplace(ClientInfo(aArgs.initialClientInfo().ref()));
   }
 
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
-
-  rv = NS_ERROR_UNEXPECTED;
-  if (!mParent->Open(loadState, loadInfo, aArgs.loadFlags(), aArgs.cacheKey(),
-                     aArgs.channelId(), aArgs.asyncOpenTime(),
-                     aArgs.timing().refOr(nullptr), std::move(clientInfo),
-                     aArgs.outerWindowId(), &rv)) {
+  nsresult rv = NS_ERROR_UNEXPECTED;
+  if (!mParent->Open(loadState, aArgs.cacheKey(), Some(aArgs.channelId()),
+                     aArgs.asyncOpenTime(), aArgs.timing().refOr(nullptr),
+                     std::move(clientInfo), aArgs.outerWindowId(),
+                     aArgs.hasValidTransientUserAction(),
+                     Some(aArgs.uriModified()), Some(aArgs.isXFOError()),
+                     &rv)) {
     return SendFailedAsyncOpen(rv);
   }
 
@@ -62,28 +61,19 @@ bool DocumentChannelParent::Init(const DocumentChannelCreationArgs& aArgs) {
 }
 
 RefPtr<PDocumentChannelParent::RedirectToRealChannelPromise>
-DocumentChannelParent::RedirectToRealChannel(uint32_t aRedirectFlags,
-                                             uint32_t aLoadFlags) {
-  if (!CanSend()) {
+DocumentChannelParent::RedirectToRealChannel(
+    nsTArray<ipc::Endpoint<extensions::PStreamFilterParent>>&&
+        aStreamFilterEndpoints,
+    uint32_t aRedirectFlags, uint32_t aLoadFlags) {
+  if (!CanSend() || !mParent) {
     return PDocumentChannelParent::RedirectToRealChannelPromise::
         CreateAndReject(ResponseRejectReason::ChannelClosed, __func__);
   }
   RedirectToRealChannelArgs args;
-  mParent->SerializeRedirectData(args, false, aRedirectFlags, aLoadFlags);
-  return SendRedirectToRealChannel(args);
-}
-
-void DocumentChannelParent::CSPViolation(
-    nsCSPContext* aContext, bool aIsCspToInherit, nsIURI* aBlockedURI,
-    nsCSPContext::BlockedContentSource aBlockedContentSource,
-    nsIURI* aOriginalURI, const nsAString& aViolatedDirective,
-    uint32_t aViolatedPolicyIndex, const nsAString& aObserverSubject) {
-  CSPInfo cspInfo;
-  Unused << NS_WARN_IF(NS_FAILED(CSPToCSPInfo(aContext, &cspInfo)));
-  Unused << SendCSPViolation(
-      cspInfo, aIsCspToInherit, aBlockedURI, aBlockedContentSource,
-      aOriginalURI, PromiseFlatString(aViolatedDirective), aViolatedPolicyIndex,
-      PromiseFlatString(aObserverSubject));
+  mParent->SerializeRedirectData(
+      args, false, aRedirectFlags, aLoadFlags,
+      static_cast<ContentParent*>(Manager()->Manager()));
+  return SendRedirectToRealChannel(args, std::move(aStreamFilterEndpoints));
 }
 
 }  // namespace net

@@ -26,8 +26,10 @@
 #include "unicode/ulistformatter.h"
 #include "unicode/utypes.h"
 #include "vm/JSContext.h"
-#include "vm/Runtime.h"  // js::ReportAllocationOverflow
+#include "vm/PlainObject.h"  // js::PlainObject
+#include "vm/Runtime.h"      // js::ReportAllocationOverflow
 #include "vm/SelfHosting.h"
+#include "vm/Stack.h"
 #include "vm/StringType.h"
 
 #include "vm/JSObject-inl.h"
@@ -79,9 +81,7 @@ static const JSFunctionSpec listFormat_methods[] = {
     JS_SELF_HOSTED_FN("resolvedOptions", "Intl_ListFormat_resolvedOptions", 0,
                       0),
     JS_SELF_HOSTED_FN("format", "Intl_ListFormat_format", 1, 0),
-#ifndef U_HIDE_DRAFT_API
     JS_SELF_HOSTED_FN("formatToParts", "Intl_ListFormat_formatToParts", 1, 0),
-#endif
     JS_FN(js_toSource_str, listFormat_toSource, 0, 0), JS_FS_END};
 
 static const JSPropertySpec listFormat_properties[] = {
@@ -99,6 +99,36 @@ const ClassSpec ListFormatObject::classSpec_ = {
     listFormat_properties,
     nullptr,
     ClassSpec::DontDefineConstructor};
+
+enum class ListFormatOptions {
+  SupportsTypeAndStyle,
+  NoTypeAndStyle,
+};
+
+/**
+ * Initialize a new Intl.ListFormat object using the named self-hosted function.
+ */
+static bool InitializeListFormatObject(JSContext* cx, HandleObject obj,
+                                       HandlePropertyName initializer,
+                                       HandleValue locales, HandleValue options,
+                                       ListFormatOptions lfoptions) {
+  FixedInvokeArgs<4> args(cx);
+
+  args[0].setObject(*obj);
+  args[1].set(locales);
+  args[2].set(options);
+  args[3].setBoolean(lfoptions == ListFormatOptions::SupportsTypeAndStyle);
+
+  RootedValue ignored(cx);
+  if (!CallSelfHostedFunction(cx, initializer, JS::NullHandleValue, args,
+                              &ignored)) {
+    return false;
+  }
+
+  MOZ_ASSERT(ignored.isUndefined(),
+             "Unexpected return value from non-legacy Intl object initializer");
+  return true;
+}
 
 /**
  * Intl.ListFormat([ locales [, options]])
@@ -127,9 +157,18 @@ static bool ListFormat(JSContext* cx, unsigned argc, Value* vp) {
   HandleValue locales = args.get(0);
   HandleValue options = args.get(1);
 
+  constexpr ListFormatOptions lfoptions =
+#ifndef U_HIDE_DRAFT_API
+      ListFormatOptions::SupportsTypeAndStyle
+#else
+      ListFormatOptions::NoTypeAndStyle
+#endif
+      ;
+
   // Step 3.
-  if (!intl::InitializeObject(cx, listFormat, cx->names().InitializeListFormat,
-                              locales, options)) {
+  if (!InitializeListFormatObject(cx, listFormat,
+                                  cx->names().InitializeListFormat, locales,
+                                  options, lfoptions)) {
     return false;
   }
 
@@ -145,16 +184,6 @@ void js::ListFormatObject::finalize(JSFreeOp* fop, JSObject* obj) {
 
     ulistfmt_close(lf);
   }
-}
-
-bool js::AddListFormatConstructor(JSContext* cx, JS::Handle<JSObject*> intl) {
-  JSObject* ctor = GlobalObject::getOrCreateConstructor(cx, JSProto_ListFormat);
-  if (!ctor) {
-    return false;
-  }
-
-  RootedValue ctorValue(cx, ObjectValue(*ctor));
-  return DefineDataProperty(cx, intl, cx->names().ListFormat, ctorValue, 0);
 }
 
 /**
@@ -222,16 +251,47 @@ static UListFormatter* NewUListFormatter(JSContext* cx,
     }
   }
 
-  // We're currently only supporting "conjunctive-long" list formatters due to
-  // missing ICU APIs: https://unicode-org.atlassian.net/browse/ICU-12863
+  UErrorCode status = U_ZERO_ERROR;
+  UListFormatter* lf;
+
+#ifndef U_HIDE_DRAFT_API
+  UListFormatterType utype;
+  switch (type) {
+    case ListFormatType::Conjunction:
+      utype = ULISTFMT_TYPE_AND;
+      break;
+    case ListFormatType::Disjunction:
+      utype = ULISTFMT_TYPE_OR;
+      break;
+    case ListFormatType::Unit:
+      utype = ULISTFMT_TYPE_UNITS;
+      break;
+  }
+
+  UListFormatterWidth uwidth;
+  switch (style) {
+    case ListFormatStyle::Long:
+      uwidth = ULISTFMT_WIDTH_WIDE;
+      break;
+    case ListFormatStyle::Short:
+      uwidth = ULISTFMT_WIDTH_SHORT;
+      break;
+    case ListFormatStyle::Narrow:
+      uwidth = ULISTFMT_WIDTH_NARROW;
+      break;
+  }
+
+  lf = ulistfmt_openForType(IcuLocale(locale.get()), utype, uwidth, &status);
+#else
   MOZ_ASSERT(type == ListFormatType::Conjunction);
   MOZ_ASSERT(style == ListFormatStyle::Long);
 
   mozilla::Unused << type;
   mozilla::Unused << style;
 
-  UErrorCode status = U_ZERO_ERROR;
-  UListFormatter* lf = ulistfmt_open(IcuLocale(locale.get()), &status);
+  lf = ulistfmt_open(IcuLocale(locale.get()), &status);
+#endif
+
   if (U_FAILURE(status)) {
     intl::ReportInternalError(cx);
     return nullptr;
@@ -273,7 +333,6 @@ static bool FormatList(JSContext* cx, UListFormatter* lf,
   return true;
 }
 
-#ifndef U_HIDE_DRAFT_API
 static JSString* FormattedValueToString(JSContext* cx,
                                         const UFormattedValue* formattedValue) {
   UErrorCode status = U_ZERO_ERROR;
@@ -433,7 +492,6 @@ static bool FormatListToParts(JSContext* cx, UListFormatter* lf,
   result.setObject(*partsArray);
   return true;
 }
-#endif  // U_HIDE_DRAFT_API
 
 bool js::intl_FormatList(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
@@ -504,13 +562,8 @@ bool js::intl_FormatList(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   // Use the UListFormatter to actually format the strings.
-#ifndef U_HIDE_DRAFT_API
   if (formatToParts) {
     return FormatListToParts(cx, lf, strings, stringLengths, args.rval());
   }
-#else
-  MOZ_ASSERT(!formatToParts);
-#endif
-
   return FormatList(cx, lf, strings, stringLengths, args.rval());
 }

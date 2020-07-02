@@ -102,6 +102,10 @@ class nsBlockFrame : public nsContainerFrame {
     return mLines.rbegin(aList);
   }
 
+  // Methods declared to be used in 'range-based-for-loop'
+  nsLineList& Lines() { return mLines; }
+  const nsLineList& Lines() const { return mLines; }
+
   friend nsBlockFrame* NS_NewBlockFrame(mozilla::PresShell* aPresShell,
                                         ComputedStyle* aStyle);
 
@@ -158,7 +162,7 @@ class nsBlockFrame : public nsContainerFrame {
 
 #ifdef DEBUG_FRAME_DUMP
   void List(FILE* out = stderr, const char* aPrefix = "",
-            uint32_t aFlags = 0) const override;
+            ListFlags aFlags = ListFlags()) const override;
   nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 

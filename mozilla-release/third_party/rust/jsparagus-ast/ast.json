@@ -35,6 +35,9 @@
   },
   "CompoundAssignmentOperator": {
     "_type": "enum",
+    "LogicalOr": null,
+    "LogicalAnd": null,
+    "Coalesce": null,
     "Add": null,
     "Sub": null,
     "Mul": null,
@@ -146,7 +149,7 @@
       "block": "Box<Statement>"
     },
     "IfStatement": "IfStatement",
-    "LabeledStatement": {
+    "LabelledStatement": {
       "label": "Label",
       "body": "Box<Statement>"
     },
@@ -198,10 +201,11 @@
     "LiteralNullExpression": null,
     "LiteralNumericExpression": "NumericLiteral",
     "LiteralRegExpExpression": {
-      "pattern": "SourceAtomSetIndex",
+      "pattern": "SourceSliceIndex",
       "global": "bool",
       "ignore_case": "bool",
       "multi_line": "bool",
+      "dot_all": "bool",
       "sticky": "bool",
       "unicode": "bool"
     },

@@ -351,10 +351,10 @@ class AsyncCloseConnection final : public Runnable {
   }
 
   ~AsyncCloseConnection() override {
-    NS_ReleaseOnMainThreadSystemGroup("AsyncCloseConnection::mConnection",
-                                      mConnection.forget());
-    NS_ReleaseOnMainThreadSystemGroup("AsyncCloseConnection::mCallbackEvent",
-                                      mCallbackEvent.forget());
+    NS_ReleaseOnMainThread("AsyncCloseConnection::mConnection",
+                           mConnection.forget());
+    NS_ReleaseOnMainThread("AsyncCloseConnection::mCallbackEvent",
+                           mCallbackEvent.forget());
   }
 
  private:
@@ -1866,7 +1866,7 @@ Connection::ExecuteAsync(
                  "Statement must be from this database connection!");
 
     // Now append it to our array.
-    NS_ENSURE_TRUE(stmts.AppendElement(data), NS_ERROR_OUT_OF_MEMORY);
+    stmts.AppendElement(data);
   }
 
   // Dispatch to the background

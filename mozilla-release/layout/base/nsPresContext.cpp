@@ -19,6 +19,7 @@
 #include "mozilla/EventStateManager.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/PresShellInlines.h"
+#include "mozilla/dom/ContentParent.h"
 
 #include "base/basictypes.h"
 
@@ -251,6 +252,12 @@ nsPresContext::nsPresContext(dom::Document* aDocument, nsPresContextType aType)
   // maybe we could throttle and only collect stats on 1% of page-loads,
   // or something like that.
   mFontStats = MakeUnique<FontMatchingStats>();
+
+  if (StaticPrefs::layout_dynamic_toolbar_max_height() > 0) {
+    // The pref for dynamic toolbar max height is only used in reftests so it's
+    // fine to set here.
+    mDynamicToolbarMaxHeight = StaticPrefs::layout_dynamic_toolbar_max_height();
+  }
 }
 
 static const char* gExactCallbackPrefs[] = {
@@ -615,7 +622,9 @@ nsresult nsPresContext::Init(nsDeviceContext* aDeviceContext) {
     RestyleManager::ClearServoDataFromSubtree(root);
   }
 
-  if (mDeviceContext->SetFullZoom(mFullZoom)) mDeviceContext->FlushFontCache();
+  if (mDeviceContext->SetFullZoom(mFullZoom)) {
+    mDeviceContext->FlushFontCache();
+  }
   mCurAppUnitsPerDevPixel = mDeviceContext->AppUnitsPerDevPixel();
 
   mEventManager = new mozilla::EventStateManager();
@@ -641,8 +650,9 @@ nsresult nsPresContext::Init(nsDeviceContext* aDeviceContext) {
         "How did we end up with a presshell if our parent doesn't "
         "have one?");
     if (parent && parent->GetPresContext()) {
-      dom::BrowsingContext* ourItem = mDocument->GetBrowsingContext();
-      if (ourItem && !ourItem->IsTop()) {
+      // XXX the document can change in AttachPresShell, does this work?
+      dom::BrowsingContext* browsingContext = mDocument->GetBrowsingContext();
+      if (browsingContext && !browsingContext->IsTop()) {
         Element* containingElement =
             parent->FindContentForSubDocument(mDocument);
         if (!containingElement->IsXULElement() ||
@@ -720,6 +730,30 @@ void nsPresContext::AttachPresShell(mozilla::PresShell* aPresShell) {
   }
 
   UpdateCharSet(doc->GetDocumentCharacterSet());
+}
+
+void nsPresContext::RecomputeBrowsingContextDependentData() {
+  MOZ_ASSERT(mDocument);
+  dom::Document* doc = mDocument;
+  // Resource documents inherit all this state from their display document.
+  while (dom::Document* outer = doc->GetDisplayDocument()) {
+    doc = outer;
+  }
+  auto* browsingContext = doc->GetBrowsingContext();
+  if (!browsingContext) {
+    // This can legitimately happen for e.g. SVG images. Those just get scaled
+    // as a result of the zoom on the embedder document so it doesn't really
+    // matter...
+    return;
+  }
+  SetFullZoom(browsingContext->FullZoom());
+  SetTextZoom(browsingContext->TextZoom());
+  mDocument->EnumerateExternalResources([](dom::Document& aSubResource) {
+    if (nsPresContext* subResourcePc = aSubResource.GetPresContext()) {
+      subResourcePc->RecomputeBrowsingContextDependentData();
+    }
+    return CallState::Continue;
+  });
 }
 
 void nsPresContext::DetachPresShell() {
@@ -979,8 +1013,13 @@ void nsPresContext::SetFullZoom(float aZoom) {
   mDeviceContext->SetFullZoom(aZoom);
 
   NS_ASSERTION(!mSuppressResizeReflow,
-               "two zooms happening at the same time? impossible!");
-  mSuppressResizeReflow = true;
+               "two zooms happening at the same time? Impossible!");
+
+  // We can't suppress the resize reflow if we support APZ zooming, as MVM
+  // relies on ResizeReflowIgnoreOverride() actually updating layout to update
+  // the viewport based on that.
+  RefPtr<MobileViewportManager> mvm = mPresShell->GetMobileViewportManager();
+  mSuppressResizeReflow = !mvm;
 
   mFullZoom = aZoom;
 
@@ -1315,22 +1354,19 @@ void nsPresContext::ThemeChangedInternal() {
     // surfaces. (We could add a vector image only version of DiscardAll, but
     // in bug 940625 we decided theme changes are rare enough not to bother.)
     image::SurfaceCacheUtils::DiscardAll();
+
+    if (XRE_IsParentProcess()) {
+      nsTArray<ContentParent*> cp;
+      ContentParent::GetAll(cp);
+      auto cache = LookAndFeel::GetIntCache();
+      for (ContentParent* c : cp) {
+        Unused << c->SendThemeChanged(cache);
+      }
+    }
   }
 
   RefreshSystemMetrics();
   PreferenceSheet::Refresh();
-
-  // Recursively notify all remote leaf descendants that the
-  // system theme has changed.
-  if (nsPIDOMWindowOuter* window = mDocument->GetWindow()) {
-    if (RefPtr<nsPIWindowRoot> topLevelWin = window->GetTopWindowRoot()) {
-      topLevelWin->EnumerateBrowsers(
-          [](nsIRemoteTab* aBrowserParent, void*) {
-            aBrowserParent->NotifyThemeChanged();
-          },
-          nullptr);
-    }
-  }
 }
 
 void nsPresContext::SysColorChanged() {

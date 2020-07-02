@@ -19,10 +19,6 @@ class MemoryReport;
 class MemoryReportRequestHost;
 }  // namespace dom
 
-namespace ipc {
-class CrashReporterHost;
-}  // namespace ipc
-
 namespace net {
 
 class SocketProcessHost;
@@ -98,6 +94,24 @@ class SocketProcessParent final
       Endpoint<PBackgroundParent>&& aEndpoint);
 
   already_AddRefed<PAltServiceParent> AllocPAltServiceParent();
+
+  mozilla::ipc::IPCResult RecvGetTLSClientCert(
+      const nsCString& aHostName, const OriginAttributes& aOriginAttributes,
+      const int32_t& aPort, const uint32_t& aProviderFlags,
+      const uint32_t& aProviderTlsFlags, const ByteArray& aServerCert,
+      Maybe<ByteArray>&& aClientCert, nsTArray<ByteArray>&& aCollectedCANames,
+      bool* aSucceeded, ByteArray* aOutCert, ByteArray* aOutKey,
+      nsTArray<ByteArray>* aBuiltChain);
+
+  already_AddRefed<PProxyConfigLookupParent> AllocPProxyConfigLookupParent(
+      nsIURI* aURI, const uint32_t& aProxyResolveFlags);
+  mozilla::ipc::IPCResult RecvPProxyConfigLookupConstructor(
+      PProxyConfigLookupParent* aActor, nsIURI* aURI,
+      const uint32_t& aProxyResolveFlags) override;
+
+  mozilla::ipc::IPCResult RecvCachePushCheck(
+      nsIURI* aPushedURL, OriginAttributes&& aOriginAttributes,
+      nsCString&& aRequestString, CachePushCheckResolver&& aResolver);
 
  private:
   SocketProcessHost* mHost;

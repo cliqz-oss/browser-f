@@ -57,7 +57,7 @@
 
 <!ENTITY  genericBackgroundError.label    "Es konnte nicht festgestellt werden, ob ein Update zur Verfügung steht. Bitte
                                            stellen Sie sicher, dass Sie die letzte Version von &brandShortName; haben, von:">
-
+                                           
 <!ENTITY  finishedPage.title              "Update bereit zur Installation">
 <!ENTITY  finishedPage.text               "Das Update wird beim nächsten &brandShortName;-Start installiert. Sie können
                                            &brandShortName; jetzt neu starten oder weiterarbeiten und später neu starten.">
@@ -70,6 +70,3 @@
                                            &brandShortName; jetzt neu starten oder weiterarbeiten und später neu starten.">
 <!ENTITY  finishedBackground.moreElevated "Dieses Update benötigt Administrator-Berechtigungen. Es wird beim nächsten Neustart von &brandShortName; installiert. Sie können &brandShortName; jetzt neu starten oder weiterarbeiten und später neu starten oder dieses Update ablehnen.">
 
-<!ENTITY  update.details.label            "Details">
-<!ENTITY  update.installedOn.label        "Installiert am:">
-<!ENTITY  update.status.label             "Status:">

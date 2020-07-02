@@ -44,10 +44,6 @@ class UrlbarView {
     this.document = this.panel.ownerDocument;
     this.window = this.document.defaultView;
 
-    if (this.input.megabar) {
-      this.panel.classList.add("megabar");
-    }
-
     this._mainContainer = this.panel.querySelector(".urlbarView-body-inner");
     this._rows = this.panel.querySelector(".urlbarView-results");
 
@@ -358,14 +354,9 @@ class UrlbarView {
 
     this.removeAccessibleFocus();
     this.input.inputField.setAttribute("aria-expanded", "false");
-    this.input.dropmarker.removeAttribute("open");
 
     this.input.removeAttribute("open");
     this.input.endLayoutExtend();
-
-    if (!this.input.megabar && this.input._toolbar) {
-      this.input._toolbar.removeAttribute("urlbar-exceeds-toolbar-bounds");
-    }
 
     // Search Tips can open the view without the Urlbar being focused. If the
     // tip is ignored (e.g. the page content is clicked or the window loses
@@ -398,7 +389,7 @@ class UrlbarView {
       return false;
     }
 
-    if (!this.input.openViewOnFocus || !queryOptions.event) {
+    if (!queryOptions.event) {
       return false;
     }
 
@@ -448,7 +439,13 @@ class UrlbarView {
     queryOptions.autofillIgnoresSelection = true;
     queryOptions.event.interactionType = "returned";
 
-    this._openPanel();
+    if (
+      this._queryContext &&
+      this._queryContext.results &&
+      this._queryContext.results.length
+    ) {
+      this._openPanel();
+    }
 
     // If we had cached results, this will just refresh them, avoiding results
     // flicker, otherwise there may be some noise.
@@ -459,6 +456,7 @@ class UrlbarView {
   // UrlbarController listener methods.
   onQueryStarted(queryContext) {
     this._queryWasCancelled = false;
+    this._queryUpdatedResults = false;
     this._startRemoveStaleRowsTimer();
   }
 
@@ -469,9 +467,16 @@ class UrlbarView {
 
   onQueryFinished(queryContext) {
     this._cancelRemoveStaleRowsTimer();
-    // If the query has not been canceled, remove stale rows immediately.
     if (!this._queryWasCancelled) {
-      this._removeStaleRows();
+      // If the query has not been canceled and returned some results, remove
+      // stale rows immediately. If no results were returned, just clear and
+      // close the view.
+      if (this._queryUpdatedResults) {
+        this._removeStaleRows();
+      } else {
+        this.clear();
+        this.close();
+      }
     }
   }
 
@@ -482,6 +487,7 @@ class UrlbarView {
     if (!this.isOpen) {
       this.clear();
     }
+    this._queryUpdatedResults = true;
     this._updateResults(queryContext);
 
     let firstResult = queryContext.results[0];
@@ -503,9 +509,8 @@ class UrlbarView {
             trimmedValue.length != 1)
       );
 
-      // The input field applies autofill on input, without waiting for results.
-      // Once we get results, we can ask it to correct wrong predictions.
-      this.input.maybeClearAutofillPlaceholder(firstResult);
+      // Notify the input, so it can make adjustments based on the first result.
+      this.input.onFirstResult(firstResult);
     }
 
     if (
@@ -600,87 +605,15 @@ class UrlbarView {
 
     this.panel.removeAttribute("actionoverride");
 
-    if (!this.input.megabar) {
-      let px = number => number.toFixed(2) + "px";
-      let inputRect = getBoundsWithoutFlushing(this.input.textbox);
-
-      // Make the panel span the width of the window.
-      let documentRect = getBoundsWithoutFlushing(
-        this.document.documentElement
-      );
-      let width = documentRect.right - documentRect.left;
-
-      // Keep the popup items' site icons aligned with the input's identity
-      // icon if it's not too far from the edge of the window.  We define
-      // "too far" as "more than 30% of the window's width AND more than
-      // 250px".
-      let boundToCheck = this.window.RTL_UI ? "right" : "left";
-      let startOffset = Math.abs(
-        inputRect[boundToCheck] - documentRect[boundToCheck]
-      );
-      let alignSiteIcons = startOffset / width <= 0.3 || startOffset <= 250;
-
-      if (alignSiteIcons) {
-        // Calculate the end margin if we have a start margin.
-        let boundToCheckEnd = this.window.RTL_UI ? "left" : "right";
-        let endOffset = Math.abs(
-          inputRect[boundToCheckEnd] - documentRect[boundToCheckEnd]
-        );
-        if (endOffset > startOffset * 2) {
-          // Provide more space when aligning would result in an unbalanced
-          // margin. This allows the location bar to be moved to the start
-          // of the navigation toolbar to reclaim space for results.
-          endOffset = startOffset;
-        }
-
-        // Align the view's icons with the tracking protection or identity icon,
-        // whichever is visible.
-        let alignRect;
-        for (let id of ["tracking-protection-icon-box", "identity-icon"]) {
-          alignRect = getBoundsWithoutFlushing(
-            this.document.getElementById(id)
-          );
-          if (alignRect.width > 0) {
-            break;
-          }
-        }
-        let start = this.window.RTL_UI
-          ? documentRect.right - alignRect.right
-          : alignRect.left;
-
-        this.panel.style.setProperty("--item-padding-start", px(start));
-        this.panel.style.setProperty("--item-padding-end", px(endOffset));
-      } else {
-        this.panel.style.removeProperty("--item-padding-start");
-        this.panel.style.removeProperty("--item-padding-end");
-      }
-
-      // Align the panel with the parent toolbar.
-      this.panel.style.top = px(
-        getBoundsWithoutFlushing(this.input._toolbar).bottom
-      );
-
-      this._mainContainer.style.maxWidth = px(width);
-
-      if (this.input._toolbar) {
-        this.input._toolbar.setAttribute(
-          "urlbar-exceeds-toolbar-bounds",
-          "true"
-        );
-      }
-    }
-
     this._enableOrDisableRowWrap();
 
     this.input.inputField.setAttribute("aria-expanded", "true");
-    this.input.dropmarker.setAttribute("open", "true");
 
     this.input.setAttribute("open", "true");
     this.input.startLayoutExtend();
 
     this.window.addEventListener("resize", this);
     this.window.addEventListener("blur", this);
-    this._windowOuterWidth = this.window.outerWidth;
 
     this.controller.notify(this.controller.NOTIFICATIONS.VIEW_OPEN);
   }
@@ -815,21 +748,32 @@ class UrlbarView {
     noWrap.className = "urlbarView-no-wrap";
     item._content.appendChild(noWrap);
 
-    let typeIcon = this._createElement("span");
-    typeIcon.className = "urlbarView-type-icon";
-
-    if (!this.input.megabar) {
-      noWrap.appendChild(typeIcon);
-    }
-
     let favicon = this._createElement("img");
     favicon.className = "urlbarView-favicon";
     noWrap.appendChild(favicon);
     item._elements.set("favicon", favicon);
 
-    if (this.input.megabar) {
-      noWrap.appendChild(typeIcon);
-    }
+    let typeIcon = this._createElement("span");
+    typeIcon.className = "urlbarView-type-icon";
+    noWrap.appendChild(typeIcon);
+
+    let tailPrefix = this._createElement("span");
+    tailPrefix.className = "urlbarView-tail-prefix";
+    noWrap.appendChild(tailPrefix);
+    item._elements.set("tailPrefix", tailPrefix);
+    // tailPrefix holds text only for alignment purposes so it should never be
+    // read to screen readers.
+    tailPrefix.toggleAttribute("aria-hidden", true);
+
+    let tailPrefixStr = this._createElement("span");
+    tailPrefixStr.className = "urlbarView-tail-prefix-string";
+    tailPrefix.appendChild(tailPrefixStr);
+    item._elements.set("tailPrefixStr", tailPrefixStr);
+
+    let tailPrefixChar = this._createElement("span");
+    tailPrefixChar.className = "urlbarView-tail-prefix-char";
+    tailPrefix.appendChild(tailPrefixChar);
+    item._elements.set("tailPrefixChar", tailPrefixChar);
 
     let title = this._createElement("span");
     title.className = "urlbarView-title";
@@ -951,9 +895,15 @@ class UrlbarView {
       result.type == UrlbarUtils.RESULT_TYPE.SEARCH ||
       result.type == UrlbarUtils.RESULT_TYPE.KEYWORD
     ) {
-      favicon.src = result.payload.icon || UrlbarUtils.ICON.SEARCH_GLASS;
+      favicon.src = this._iconForSearchResult(result);
     } else {
       favicon.src = result.payload.icon || UrlbarUtils.ICON.DEFAULT;
+    }
+
+    if (result.payload.isPinned) {
+      item.toggleAttribute("pinned", true);
+    } else {
+      item.removeAttribute("pinned");
     }
 
     let title = item._elements.get("title");
@@ -962,6 +912,16 @@ class UrlbarView {
       result.title,
       result.titleHighlights
     );
+
+    if (result.payload.tail && result.payload.tailOffsetIndex >= 0) {
+      this._fillTailSuggestionPrefix(item, result);
+      title.setAttribute("aria-label", result.payload.suggestion);
+      item.toggleAttribute("tail-suggestion", true);
+    } else {
+      item.removeAttribute("tail-suggestion");
+      title.removeAttribute("aria-label");
+    }
+
     title._tooltip = result.title;
     if (title.hasAttribute("overflow")) {
       title.setAttribute("title", title._tooltip);
@@ -1063,6 +1023,18 @@ class UrlbarView {
     }
 
     item._elements.get("titleSeparator").hidden = !action && !setURL;
+  }
+
+  _iconForSearchResult(result, engineOverride = null) {
+    return (
+      (result.source == UrlbarUtils.RESULT_SOURCE.HISTORY &&
+        UrlbarUtils.ICON.HISTORY) ||
+      (engineOverride &&
+        engineOverride.iconURI &&
+        engineOverride.iconURI.spec) ||
+      result.payload.icon ||
+      UrlbarUtils.ICON.SEARCH_GLASS
+    );
   }
 
   _updateRowForTip(item, result) {
@@ -1197,7 +1169,7 @@ class UrlbarView {
     this._selectedElement = item;
 
     if (updateInput) {
-      this.input.setValueFromResult(item && item.result);
+      this.input.setValueFromResult(item?.result);
     }
   }
 
@@ -1391,8 +1363,27 @@ class UrlbarView {
     }
   }
 
+  /**
+   * Adds markup for a tail suggestion prefix to a row.
+   * @param {Node} item
+   *   The node for the result row.
+   * @param {UrlbarResult} result
+   *   A UrlbarResult representing a tail suggestion.
+   */
+  _fillTailSuggestionPrefix(item, result) {
+    let tailPrefixStrNode = item._elements.get("tailPrefixStr");
+    let tailPrefixStr = result.payload.suggestion.substring(
+      0,
+      result.payload.tailOffsetIndex
+    );
+    tailPrefixStrNode.textContent = tailPrefixStr;
+
+    let tailPrefixCharNode = item._elements.get("tailPrefixChar");
+    tailPrefixCharNode.textContent = result.payload.tailPrefix;
+  }
+
   _enableOrDisableOneOffSearches(enable = true) {
-    if (enable && UrlbarPrefs.get("oneOffSearches")) {
+    if (enable) {
       this.oneOffSearchButtons.telemetryOrigin = "urlbar";
       this.oneOffSearchButtons.style.display = "";
       this.oneOffSearchButtons.textbox = this.input.inputField;
@@ -1406,7 +1397,7 @@ class UrlbarView {
   }
 
   _enableOrDisableRowWrap() {
-    if (getBoundsWithoutFlushing(this.input.textbox).width <= 500) {
+    if (getBoundsWithoutFlushing(this.input.textbox).width < 650) {
       this._rows.setAttribute("wrap", "true");
     } else {
       this._rows.removeAttribute("wrap");
@@ -1466,12 +1457,13 @@ class UrlbarView {
     let engine =
       this.oneOffSearchButtons.selectedButton &&
       this.oneOffSearchButtons.selectedButton.engine;
-    for (let i = 0; i < this._queryContext.results.length; i++) {
-      let result = this._queryContext.results[i];
+
+    for (let item of this._rows.children) {
+      let result = item.result;
       if (
         result.type != UrlbarUtils.RESULT_TYPE.SEARCH ||
         (!result.heuristic &&
-          !result.payload.suggestion &&
+          (!result.payload.suggestion || result.payload.isSearchHistory) &&
           (!result.payload.inPrivateWindow || result.payload.isPrivateEngine))
       ) {
         continue;
@@ -1485,7 +1477,6 @@ class UrlbarView {
         result.payload.engine = result.payload.originalEngine;
         delete result.payload.originalEngine;
       }
-      let item = this._rows.children[i];
       // If a one-off button is the only selection, force the heuristic result
       // to show its action text, so the engine name is visible.
       if (result.heuristic && engine && !this.selectedElement) {
@@ -1512,6 +1503,7 @@ class UrlbarView {
       } else if (!engine) {
         favicon.src = result.payload.icon || UrlbarUtils.ICON.SEARCH_GLASS;
       }
+      favicon.src = this._iconForSearchResult(result, engine);
     }
   }
 
@@ -1519,7 +1511,9 @@ class UrlbarView {
     // If the view is open without the input being focused, it will not close
     // automatically when the window loses focus. We might be in this state
     // after a Search Tip is shown on an engine homepage.
-    this.close();
+    if (!UrlbarPrefs.get("ui.popup.disable_autohide")) {
+      this.close();
+    }
   }
 
   _on_mousedown(event) {
@@ -1574,22 +1568,7 @@ class UrlbarView {
   }
 
   _on_resize() {
-    if (this.input.megabar) {
-      this._enableOrDisableRowWrap();
-      return;
-    }
-
-    if (this._windowOuterWidth == this.window.outerWidth) {
-      // Sometimes a resize event is fired when the window's size doesn't
-      // actually change; at least, browser_tabMatchesInAwesomebar.js triggers
-      // it intermittently, which causes that test to hang or fail.  Ignore
-      // those events.
-      return;
-    }
-
-    // Close the popup as it would be wrongly sized. This can
-    // happen when using special OS resize functions like Win+Arrow.
-    this.close();
+    this._enableOrDisableRowWrap();
   }
 }
 

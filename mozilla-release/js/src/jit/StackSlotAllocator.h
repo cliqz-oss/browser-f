@@ -29,7 +29,6 @@ class StackSlotAllocator {
   }
 
   uint32_t allocateQuadSlot() {
-    MOZ_ASSERT(SupportsSimd);
     // This relies on the fact that any architecture specific
     // alignment of the stack pointer is done a priori.
     if (height_ % 8 != 0) {
@@ -107,8 +106,7 @@ class StackSlotAllocator {
 #endif
       case LDefinition::DOUBLE:
         return 8;
-      case LDefinition::SIMD128INT:
-      case LDefinition::SIMD128FLOAT:
+      case LDefinition::SIMD128:
         return 16;
       case LDefinition::STACKRESULTS:
         MOZ_CRASH("Stack results area must be allocated manually");

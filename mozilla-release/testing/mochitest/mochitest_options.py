@@ -11,6 +11,7 @@ from urlparse import urlparse
 import json
 import os
 import tempfile
+import sys
 
 from mozprofile import DEFAULT_PORTS
 import mozinfo
@@ -545,12 +546,6 @@ class MochitestArguments(ArgumentContainer):
           "help": "Filter out tests that don't have the given tag. Can be used multiple "
                   "times in which case the test must contain at least one of the given tags.",
           }],
-        [["--enable-cpow-warnings"],
-         {"action": "store_true",
-          "dest": "enableCPOWWarnings",
-          "help": "Enable logging of unsafe CPOW usage, which is disabled by default for tests",
-          "suppress": True,
-          }],
         [["--marionette"],
          {"default": None,
           "help": "host:port to use when connecting to Marionette",
@@ -607,6 +602,22 @@ class MochitestArguments(ArgumentContainer):
           "default": False,
           "help": "Enable the WebRender compositor in Gecko.",
           }],
+        [["--profiler"],
+         {"action": "store_true",
+          "dest": "profiler",
+          "default": False,
+          "help": "Run the Firefox Profiler and get a performance profile of the "
+                  "mochitest. This is useful to find performance issues, and also "
+                  "to see what exactly the test is doing. To get profiler options run: "
+                  "`MOZ_PROFILER_HELP=1 ./mach run`"
+          }],
+        [["--profiler-save-only"],
+         {"action": "store_true",
+          "dest": "profilerSaveOnly",
+          "default": False,
+          "help": "Run the Firefox Profiler and save it to the path specified by the "
+                  "MOZ_UPLOAD_DIR environment variable."
+          }],
     ]
 
     defaults = {
@@ -632,7 +643,12 @@ class MochitestArguments(ArgumentContainer):
         if parser.app != 'android':
             if options.app is None:
                 if build_obj:
-                    options.app = build_obj.get_binary_path()
+                    from mozbuild.base import BinaryNotFoundException
+                    try:
+                        options.app = build_obj.get_binary_path()
+                    except BinaryNotFoundException as e:
+                        print('{}\n\n{}\n'.format(e, e.help()))
+                        sys.exit(1)
                 else:
                     parser.error(
                         "could not find the application path, --appname must be specified")

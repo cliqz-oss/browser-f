@@ -366,6 +366,7 @@
 <!ENTITY calendarproperties.firealarms.label               "Erinnerungen anzeigen">
 <!ENTITY calendarproperties.cache3.label                   "Offline-Unterstützung">
 <!ENTITY calendarproperties.enabled.label                  "Diesen Kalender aktivieren">
+<!ENTITY calendarproperties.enabled2.label                 "Diesen Kalender aktivieren">
 <!ENTITY calendarproperties.forceDisabled.label            "Der Provider für diesen Kalender konnte nicht gefunden werden. Ursache hierfür ist häufig, dass Sie bestimmte Add-ons deaktiviert oder deinstalliert haben.">
 <!ENTITY calendarproperties.unsubscribe.label              "Abbestellen">
 <!ENTITY calendarproperties.unsubscribe.accesskey          "A">

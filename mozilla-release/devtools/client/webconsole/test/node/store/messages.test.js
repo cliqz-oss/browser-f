@@ -1101,9 +1101,9 @@ describe("Message reducer:", () => {
       const packet3 = clonePacket(stubPackets.get(key1));
 
       // Repeat ID must be the same even if the timestamp is different.
-      packet1.message.timeStamp = 1;
-      packet2.message.timeStamp = 2;
-      packet3.message.timeStamp = 3;
+      packet1.message.timeStamp = packet1.message.timeStamp + 1;
+      packet2.message.timeStamp = packet2.message.timeStamp + 2;
+      packet3.message.timeStamp = packet3.message.timeStamp + 3;
       dispatch(actions.messagesAdd([packet1, packet2, packet3]));
 
       // There is still only two messages being logged,
@@ -1114,6 +1114,32 @@ describe("Message reducer:", () => {
       const repeat = getAllRepeatById(getState());
       expect(repeat[getFirstMessage(getState()).id]).toBe(3);
       expect(repeat[getLastMessage(getState()).id]).toBe(undefined);
+    });
+  });
+
+  describe("messageRemove", () => {
+    it("removes the message from the store", () => {
+      const { dispatch, getState } = setupStore([
+        "console.trace()",
+        "console.log(undefined)",
+        "console.trace()",
+        "console.log(undefined)",
+      ]);
+
+      let expanded = getAllMessagesUiById(getState());
+      expect(expanded.length).toBe(2);
+
+      const secondTraceMessage = getMessageAt(getState(), 2);
+      dispatch(actions.messageRemove(secondTraceMessage.id));
+
+      const messages = getAllMessagesById(getState());
+      // The messages was removed
+      expect(messages.size).toBe(3);
+
+      // Its id was removed from the messagesUI property as well
+      expanded = getAllMessagesUiById(getState());
+      expect(expanded.length).toBe(1);
+      expect(expanded.includes(secondTraceMessage.id)).toBeFalsy();
     });
   });
 });

@@ -47,6 +47,7 @@ appmenu-addon-private-browsing =
     .secondarybuttonaccesskey = O
 appmenu-addon-private-browsing-message = Neu in { -brand-shorter-name } installierte Erweiterungen sind in privaten Fenstern nicht verfügbar, bis sie durch Sie für die privaten Fenster freigegeben werden.
 appmenu-addon-private-browsing-learn-more = Weitere Informationen zur Verwaltung von Erweiterungseinstellungen
+    
 appmenu-new-tab-controlled =
     .label = Startseite neuer Tabs wurde geändert
     .buttonlabel = Änderung beibehalten

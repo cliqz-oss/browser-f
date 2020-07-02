@@ -11,11 +11,13 @@
 #include "vm/JSContext-inl.h"
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/CheckedInt.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/TextUtils.h"
 #include "mozilla/Unused.h"
+#include "mozilla/Utf8.h"  // mozilla::ConvertUtf16ToUtf8
 
 #include <stdarg.h>
 #include <string.h>
@@ -40,11 +42,17 @@
 #include "js/CharacterEncoding.h"
 #include "js/ContextOptions.h"  // JS::ContextOptions
 #include "js/Printf.h"
+#ifdef JS_SIMULATOR_ARM
+#  include "jit/arm/Simulator-arm.h"
+#endif
 #ifdef JS_SIMULATOR_ARM64
 #  include "jit/arm64/vixl/Simulator-vixl.h"
 #endif
-#ifdef JS_SIMULATOR_ARM
-#  include "jit/arm/Simulator-arm.h"
+#ifdef JS_SIMULATOR_MIPS32
+#  include "jit/mips32/Simulator-mips32.h"
+#endif
+#ifdef JS_SIMULATOR_MIPS64
+#  include "jit/mips64/Simulator-mips64.h"
 #endif
 #ifdef ENABLE_NEW_REGEXP
 #  include "new-regexp/RegExpAPI.h"
@@ -62,6 +70,7 @@
 #include "vm/JSFunction.h"
 #include "vm/JSObject.h"
 #include "vm/JSScript.h"
+#include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/Realm.h"
 #include "vm/Shape.h"
 #include "vm/StringType.h"  // StringToNewUTF8CharsZ
@@ -115,12 +124,7 @@ bool JSContext::init(ContextKind kind) {
     TlsContext.set(this);
     currentThread_ = ThreadId::ThisThreadId();
 
-#ifdef ENABLE_NEW_REGEXP
-    isolate = irregexp::CreateIsolate(this);
-    if (!isolate) {
-      return false;
-    }
-#else
+#ifndef ENABLE_NEW_REGEXP
     if (!regexpStack.ref().init()) {
       return false;
     }
@@ -143,6 +147,13 @@ bool JSContext::init(ContextKind kind) {
       return false;
     }
   }
+
+#ifdef ENABLE_NEW_REGEXP
+  isolate = irregexp::CreateIsolate(this);
+  if (!isolate) {
+    return false;
+  }
+#endif
 
   // Set the ContextKind last, so that ProtectedData checks will allow us to
   // initialize this context before it becomes the runtime's active context.
@@ -345,7 +356,33 @@ enum class PrintErrorKind { Error, Warning, Note };
 static void PrintErrorLine(FILE* file, const char* prefix,
                            JSErrorReport* report) {
   if (const char16_t* linebuf = report->linebuf()) {
-    size_t n = report->linebufLength();
+    UniqueChars line;
+    size_t n;
+    {
+      size_t linebufLen = report->linebufLength();
+
+      // This function is only used for shell command-line sorts of stuff where
+      // performance doesn't really matter, so just encode into max-sized
+      // memory.
+      mozilla::CheckedInt<size_t> utf8Len(linebufLen);
+      utf8Len *= 3;
+      if (utf8Len.isValid()) {
+        line = UniqueChars(js_pod_malloc<char>(utf8Len.value()));
+        if (line) {
+          n = mozilla::ConvertUtf16toUtf8({linebuf, linebufLen},
+                                          {line.get(), utf8Len.value()});
+        }
+      }
+    }
+
+    const char* utf8buf;
+    if (line) {
+      utf8buf = line.get();
+    } else {
+      static const char unavailableStr[] = "<context unavailable>";
+      utf8buf = unavailableStr;
+      n = mozilla::ArrayLength(unavailableStr) - 1;
+    }
 
     fputs(":\n", file);
     if (prefix) {
@@ -353,11 +390,11 @@ static void PrintErrorLine(FILE* file, const char* prefix,
     }
 
     for (size_t i = 0; i < n; i++) {
-      fputc(static_cast<char>(linebuf[i]), file);
+      fputc(utf8buf[i], file);
     }
 
-    // linebuf usually ends with a newline. If not, add one here.
-    if (n == 0 || linebuf[n - 1] != '\n') {
+    // linebuf/utf8buf usually ends with a newline. If not, add one here.
+    if (n == 0 || utf8buf[n - 1] != '\n') {
       fputc('\n', file);
     }
 
@@ -367,7 +404,7 @@ static void PrintErrorLine(FILE* file, const char* prefix,
 
     n = report->tokenOffset();
     for (size_t i = 0, j = 0; i < n; i++) {
-      if (linebuf[i] == '\t') {
+      if (utf8buf[i] == '\t') {
         for (size_t k = (j + 8) & ~7; j < k; j++) {
           fputc('.', file);
         }
@@ -439,9 +476,9 @@ static void PrintSingleError(JSContext* cx, FILE* file,
   fflush(file);
 }
 
-void js::PrintError(JSContext* cx, FILE* file,
-                    JS::ConstUTF8CharsZ toStringResult, JSErrorReport* report,
-                    bool reportWarnings) {
+static void PrintErrorImpl(JSContext* cx, FILE* file,
+                           JS::ConstUTF8CharsZ toStringResult,
+                           JSErrorReport* report, bool reportWarnings) {
   MOZ_ASSERT(report);
 
   /* Conditionally ignore reported warnings. */
@@ -461,6 +498,18 @@ void js::PrintError(JSContext* cx, FILE* file,
                        PrintErrorKind::Note);
     }
   }
+}
+
+JS_PUBLIC_API void JS::PrintError(JSContext* cx, FILE* file,
+                                  JSErrorReport* report, bool reportWarnings) {
+  PrintErrorImpl(cx, file, JS::ConstUTF8CharsZ(), report, reportWarnings);
+}
+
+JS_PUBLIC_API void JS::PrintError(JSContext* cx, FILE* file,
+                                  const JS::ErrorReportBuilder& builder,
+                                  bool reportWarnings) {
+  PrintErrorImpl(cx, file, builder.toStringResult(), builder.report(),
+                 reportWarnings);
 }
 
 void js::ReportIsNotDefined(JSContext* cx, HandleId id) {
@@ -965,6 +1014,10 @@ JSContext::~JSContext() {
   }
 #endif
 
+#ifdef ENABLE_NEW_REGEXP
+  irregexp::DestroyIsolate(isolate.ref());
+#endif
+
   js_delete(atomsZoneFreeLists_.ref());
 
   TlsContext.set(nullptr);
@@ -1173,6 +1226,12 @@ AutoKeepAtoms::AutoKeepAtoms(
 }
 
 AutoKeepAtoms::~AutoKeepAtoms() { cx->zone()->releaseAtoms(); };
+
+void ExternalValueArray::trace(JSTracer* trc) {
+  if (Value* vp = begin()) {
+    TraceRootRange(trc, length(), vp, "js::ExternalValueArray");
+  }
+}
 
 #ifdef DEBUG
 AutoUnsafeCallWithABI::AutoUnsafeCallWithABI(UnsafeABIStrictness strictness)

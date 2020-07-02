@@ -122,7 +122,19 @@ impl ToComputedValue for LineHeight {
 }
 
 /// A generic value for the `text-overflow` property.
-#[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss, ToResolvedValue, ToShmem)]
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    PartialEq,
+    Parse,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
 #[repr(C, u8)]
 pub enum TextOverflowSide {
     /// Clip inline content.
@@ -131,30 +143,6 @@ pub enum TextOverflowSide {
     Ellipsis,
     /// Render a given string to represent clipped inline content.
     String(crate::OwnedStr),
-}
-
-impl Parse for TextOverflowSide {
-    fn parse<'i, 't>(
-        _context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<TextOverflowSide, ParseError<'i>> {
-        let location = input.current_source_location();
-        match *input.next()? {
-            Token::Ident(ref ident) => {
-                match_ignore_ascii_case! { ident,
-                    "clip" => Ok(TextOverflowSide::Clip),
-                    "ellipsis" => Ok(TextOverflowSide::Ellipsis),
-                    _ => Err(location.new_custom_error(
-                        SelectorParseErrorKind::UnexpectedIdent(ident.clone())
-                    ))
-                }
-            },
-            Token::QuotedString(ref v) => {
-                Ok(TextOverflowSide::String(v.as_ref().to_owned().into()))
-            },
-            ref t => Err(location.new_unexpected_token_error(t.clone())),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss, ToShmem)]
@@ -217,7 +205,7 @@ impl ToComputedValue for TextOverflow {
 }
 
 bitflags! {
-    #[derive(MallocSizeOf, SpecifiedValueInfo, ToComputedValue, ToResolvedValue, ToShmem)]
+    #[derive(MallocSizeOf, Serialize, SpecifiedValueInfo, ToComputedValue, ToResolvedValue, ToShmem)]
     #[value_info(other_values = "none,underline,overline,line-through,blink")]
     #[repr(C)]
     /// Specified keyword values for the text-decoration-line property.
@@ -241,6 +229,12 @@ bitflags! {
         /// a red text decoration
         #[cfg(feature = "gecko")]
         const COLOR_OVERRIDE = 0x10;
+    }
+}
+
+impl Default for TextDecorationLine {
+    fn default() -> Self {
+        TextDecorationLine::NONE
     }
 }
 
@@ -681,7 +675,19 @@ pub enum TextEmphasisStyle {
 }
 
 /// Fill mode for the text-emphasis-style property
-#[derive(Clone, Copy, Debug, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss, ToComputedValue, ToResolvedValue, ToShmem)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToCss,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
 #[repr(u8)]
 pub enum TextEmphasisFillMode {
     /// `filled`

@@ -14,6 +14,12 @@
 #include "mozilla/Tuple.h"
 #include <utility>
 
+class PickleIterator;
+
+namespace IPC {
+class Message;
+}  // namespace IPC
+
 namespace mozilla {
 namespace ipc {
 class IProtocol;
@@ -46,7 +52,7 @@ class Transaction {
   }
 
   // Apply the changes from this transaction to the specified Context in all
-  // processes. This method will call the correct `MaySet` and `DidSet` methods,
+  // processes. This method will call the correct `CanSet` and `DidSet` methods,
   // as well as move the value.
   //
   // If the target has been discarded, changes will be ignored.

@@ -494,7 +494,7 @@ class SendMessageEventRunnable final : public ExtendableEventWorkerRunnable {
     // https://w3c.github.io/ServiceWorker/#service-worker-postmessage
     if (!deserializationFailed) {
       init.mData = messageData;
-      init.mPorts = ports;
+      init.mPorts = std::move(ports);
     }
 
     init.mSource.SetValue().SetAsClient() =
@@ -816,7 +816,7 @@ class SendPushEventRunnable final
       : ExtendableFunctionalEventWorkerRunnable(aWorkerPrivate, aKeepAliveToken,
                                                 aRegistration),
         mMessageId(aMessageId),
-        mData(aData) {
+        mData(aData ? Some(aData->Clone()) : Nothing()) {
     MOZ_ASSERT(NS_IsMainThread());
     MOZ_ASSERT(aWorkerPrivate);
     MOZ_ASSERT(aWorkerPrivate->IsServiceWorker());
@@ -1422,7 +1422,7 @@ class FetchEventRunnable : public ExtendableFunctionalEventWorkerRunnable,
       result.SuppressException();
       return false;
     }
-    RefPtr<InternalRequest> internalReq = new InternalRequest(
+    auto internalReq = MakeSafeRefPtr<InternalRequest>(
         mSpec, mFragment, mMethod, internalHeaders.forget(), mCacheMode,
         mRequestMode, mRequestRedirect, mRequestCredentials, mReferrer,
         mReferrerPolicy, mContentPolicyType, mIntegrity);
@@ -1449,7 +1449,8 @@ class FetchEventRunnable : public ExtendableFunctionalEventWorkerRunnable,
 
     // TODO This request object should be created with a AbortSignal object
     // which should be aborted if the loading is aborted. See bug 1394102.
-    RefPtr<Request> request = new Request(global, internalReq, nullptr);
+    RefPtr<Request> request =
+        new Request(global, internalReq.clonePtr(), nullptr);
 
     MOZ_ASSERT_IF(internalReq->IsNavigationRequest(),
                   request->Redirect() == RequestRedirect::Manual);

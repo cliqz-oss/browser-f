@@ -197,9 +197,16 @@ class Schema(voluptuous.Schema):
 OptimizationSchema = voluptuous.Any(
     # always run this task (default)
     None,
+    # always optimize this task
+    {'always': None},
+    # optimize strategy aliases for build kind
+    {'build': list(schedules.ALL_COMPONENTS)},
+    {'build-fuzzing': None},
     # search the index for the given index namespaces, and replace this task if found
     # the search occurs in order, with the first match winning
     {'index-search': [text_type]},
+    {'push-interval-10': list(schedules.ALL_COMPONENTS)},
+    {'push-interval-25': list(schedules.ALL_COMPONENTS)},
     # consult SETA and skip this task if it is low-value
     {'seta': None},
     # skip this task if none of the given file patterns match
@@ -207,10 +214,9 @@ OptimizationSchema = voluptuous.Any(
     # skip this task if unless the change files' SCHEDULES contains any of these components
     {'skip-unless-schedules': list(schedules.ALL_COMPONENTS)},
     # optimize strategy aliases for the test kind
-    {'test': list(schedules.ALL_COMPONENTS)},
+    {'test': (list(schedules.ALL_COMPONENTS), dict)},
     {'test-inclusive': list(schedules.ALL_COMPONENTS)},
     {'test-try': list(schedules.ALL_COMPONENTS)},
-    {'fuzzing-builds': list(schedules.ALL_COMPONENTS)},
 )
 
 # shortcut for a string where task references are allowed

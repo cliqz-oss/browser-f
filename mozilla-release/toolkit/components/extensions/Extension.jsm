@@ -61,7 +61,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FileSource: "resource://gre/modules/L10nRegistry.jsm",
   L10nRegistry: "resource://gre/modules/L10nRegistry.jsm",
   LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
-  Localization: "resource://gre/modules/Localization.jsm",
   Log: "resource://gre/modules/Log.jsm",
   MessageChannel: "resource://gre/modules/MessageChannel.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
@@ -137,6 +136,17 @@ XPCOMUtils.defineLazyGetter(
   () => ExtensionCommon.LocaleData
 );
 
+XPCOMUtils.defineLazyGetter(this, "LAZY_NO_PROMPT_PERMISSIONS", async () => {
+  // Wait until all extension API schemas have been loaded and parsed.
+  await Management.lazyInit();
+  return new Set(
+    Schemas.getPermissionNames([
+      "PermissionNoPrompt",
+      "OptionalPermissionNoPrompt",
+    ])
+  );
+});
+
 const { sharedData } = Services.ppmm;
 
 const PRIVATE_ALLOWED_PERMISSION = "internal:privateBrowsingAllowed";
@@ -156,6 +166,7 @@ const PRIVILEGED_PERMS = new Set([
   "geckoViewAddons",
   "telemetry",
   "urlbar",
+  "nativeMessagingFromContent",
   "normandyAddonStudy",
   "networkStatus",
 ]);
@@ -625,7 +636,10 @@ class ExtensionData {
       this.manifest.permissions
     );
 
-    if (this.manifest.devtools_page) {
+    if (
+      this.manifest.devtools_page &&
+      !this.manifest.optional_permissions.includes("devtools")
+    ) {
       permissions.add("devtools");
     }
 
@@ -642,6 +656,10 @@ class ExtensionData {
   }
 
   get manifestOptionalPermissions() {
+    if (this.type !== "extension") {
+      return null;
+    }
+
     let { permissions, origins } = this.permissionsObject(
       this.manifest.optional_permissions
     );
@@ -675,6 +693,11 @@ class ExtensionData {
       p => !result.origins.includes(p) && !EXP_PATTERN.test(p)
     );
     return result;
+  }
+
+  // Returns whether the front end should prompt for this permission
+  static async shouldPromptFor(permission) {
+    return !(await LAZY_NO_PROMPT_PERMISSIONS).has(permission);
   }
 
   // Compute the difference between two sets of permissions, suitable
@@ -751,12 +774,11 @@ class ExtensionData {
     );
 
     let removed = oldPerms.filter(x => !permSet.has(x));
-    if (removed.length) {
-      await Management.asyncLoadSettingsModules();
-      for (let name of removed) {
-        await ExtensionPreferencesManager.removeSettingsForPermission(id, name);
-      }
-    }
+    // Force the removal here to ensure the settings are removed prior
+    // to startup.  This will remove both required or optional permissions,
+    // whereas the call from within ExtensionPermissions would only result
+    // in a removal for optional permissions that were removed.
+    await ExtensionPreferencesManager.removeSettingsForPermissions(id, removed);
 
     // Remove any optional permissions that have been removed from the manifest.
     await ExtensionPermissions.remove(id, {
@@ -1647,14 +1669,20 @@ class BootstrapScope {
   }
 
   async update(data, reason) {
-    // Retain any previously granted permissions that may have migrated into the optional list.
-    await ExtensionData.migratePermissions(
-      data.id,
-      data.oldPermissions,
-      data.oldOptionalPermissions,
-      data.userPermissions,
-      data.optionalPermissions
-    );
+    // Retain any previously granted permissions that may have migrated
+    // into the optional list.
+    if (data.oldPermissions) {
+      // New permissions may be null, ensure we have an empty
+      // permission set in that case.
+      let emptyPermissions = { permissions: [], origins: [] };
+      await ExtensionData.migratePermissions(
+        data.id,
+        data.oldPermissions,
+        data.oldOptionalPermissions,
+        data.userPermissions || emptyPermissions,
+        data.optionalPermissions || emptyPermissions
+      );
+    }
 
     return Management.emit("update", {
       id: data.id,
@@ -2409,6 +2437,18 @@ class Extension extends ExtensionData {
           });
           this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
         }
+      }
+
+      // Ensure devtools permission is set
+      if (
+        this.manifest.devtools_page &&
+        !this.manifest.optional_permissions.includes("devtools")
+      ) {
+        ExtensionPermissions.add(this.id, {
+          permissions: ["devtools"],
+          origins: [],
+        });
+        this.permissions.add("devtools");
       }
 
       GlobalManager.init(this);

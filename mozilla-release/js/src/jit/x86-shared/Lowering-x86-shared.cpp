@@ -342,6 +342,7 @@ void LIRGenerator::visitAsmJSStoreHeap(MAsmJSStoreHeap* ins) {
                           limitAlloc, memoryBaseAlloc);
       break;
     case Scalar::Int64:
+    case Scalar::Simd128:
       MOZ_CRASH("NYI");
     case Scalar::Uint8Clamped:
     case Scalar::BigInt64:

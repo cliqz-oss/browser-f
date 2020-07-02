@@ -55,12 +55,13 @@ static int testBinASTReaderFuzz(const uint8_t* buf, size_t size) {
     return 0;
   }
 
+  SourceExtent extent;
   Directives directives(false);
   GlobalSharedContext globalsc(gCx, ScopeKind::Global, binCompilationInfo,
-                               directives);
+                               directives, extent);
 
   BinASTParser<js::frontend::BinASTTokenReaderMultipart> reader(
-      gCx, binCompilationInfo, options, binCompilationInfo.sourceObject);
+      gCx, binCompilationInfo, options);
 
   // Will be deallocated once `reader` goes out of scope.
   auto binParsed = reader.parse(&globalsc, binSource);

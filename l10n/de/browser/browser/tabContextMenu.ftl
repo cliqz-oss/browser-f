@@ -56,6 +56,16 @@ move-to-new-window =
 undo-close-tab =
     .label = Geschlossenen Tab wiederherstellen
     .accesskey = G
+tab-context-close-multiple-tabs =
+    .label = Mehrere Tabs schließen
+    .accesskey = M
+tab-context-undo-close-tabs =
+    .label =
+        { $tabCount ->
+            [1] Geschlossenen Tab wiederherstellen
+           *[other] Geschlossene Tabs wiederherstellen
+        }
+    .accesskey = G
 close-tab =
     .label = Tab schließen
     .accesskey = c

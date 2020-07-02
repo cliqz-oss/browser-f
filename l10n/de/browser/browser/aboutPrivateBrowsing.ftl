@@ -4,6 +4,7 @@
 
 about-private-browsing-learn-more = Weitere Informationen zu <a data-l10n-name="learn-more">privatem Surfen</a>.
 about-private-browsing-info-visited = Besuchte Seiten
+
 privatebrowsingpage-open-private-window-label = Neues privates Fenster öffnen
     .accesskey = F
 about-private-browsing-info-notsaved = Wenn Sie in einem privaten Fenster surfen, so wird { -brand-short-name } <strong>Folgendes nicht speichern</strong>:
@@ -26,6 +27,7 @@ about-private-browsing-not-private = Sie befinden sich derzeit nicht in einem pr
 content-blocking-title = Seitenelemente blockieren
 content-blocking-description = Einige Websites verwenden Elemente zur Aktivitätenverfolgung, um Ihr Surfverhalten quer über das Internet zu verfolgen. In privaten Fenstern ist { -brand-short-name }s Blockieren von Seitenelementen automatisch aktiv und verhindert das Laden vieler Elemente zur Aktivitätenverfolgung, welche sonst Informationen über Ihr Surfverhalten sammeln können.
 about-private-browsing-info-description = { -brand-short-name } leert die eingegebenen Suchbegriffe und besuchten Webseiten beim Beenden der Anwendung oder wenn alle privaten Tabs und Fenster geschlossen wurden. Das macht Sie gegenüber Website-Betreibern und Internetanbietern nicht anonym, aber erleichtert es Ihnen, dass andere Nutzer des Computers Ihre Aktivitäten nicht einsehen können.
+
 # This string is the title for the banner for search engine selection
 # in a private window.
 # Variables:

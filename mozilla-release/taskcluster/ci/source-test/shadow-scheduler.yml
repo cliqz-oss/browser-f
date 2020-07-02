@@ -4,7 +4,7 @@
 ---
 job-defaults:
     platform: gecko-decision/opt
-    worker-type: t-linux-xlarge
+    worker-type: t-linux-xlarge-source
     worker:
         docker-image: {in-tree: "lint"}
         max-run-time: 3600
@@ -33,27 +33,93 @@ relevant_tests:
         env:
             TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.relevant_tests
 
-bugbug_push_schedules:
-    description: Runs the bugbug.all optimization strategy instead of the default.
+bugbug_all:
+    description: Runs the bugbug_all optimization strategy instead of the default.
     treeherder:
-        symbol: SS(bugbug_push_schedules)
+        symbol: SS(bugbug_all)
     index:
         product: source
-        job-name: shadow-scheduler-bugbug_push_schedules
+        job-name: shadow-scheduler-bugbug_all
     worker:
         env:
-            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug.all
+            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug_all
 
-bugbug_debug:
-    description: Runs the bugbug.debug optimization strategy instead of the default.
+bugbug_all_high:
+    description: Runs the bugbug_all optimization strategy (with a high confidence threshold) instead of the default.
     treeherder:
-        symbol: SS(bugbug_debug)
+        symbol: SS(bugbug_all_high)
     index:
         product: source
-        job-name: shadow-scheduler-bugbug_debug
+        job-name: shadow-scheduler-bugbug_all_high
     worker:
         env:
-            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug.debug
+            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug_all_high
+
+bugbug_debug_disperse:
+    description: Runs the bugbug_debug_disperse optimization strategy instead of the default.
+    treeherder:
+        symbol: SS(bugbug_debug_disperse)
+    index:
+        product: source
+        job-name: shadow-scheduler-bugbug_debug_disperse
+    worker:
+        env:
+            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug_debug_disperse
+
+bugbug_disperse_low:
+    description: Runs the bugbug_disperse_low optimization strategy instead of the default.
+    treeherder:
+        symbol: SS(bugbug_disperse_low)
+    index:
+        product: source
+        job-name: shadow-scheduler-bugbug_disperse_low
+    worker:
+        env:
+            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug_disperse_low
+
+bugbug_disperse_high:
+    description: Runs the bugbug_disperse_high optimization strategy instead of the default.
+    treeherder:
+        symbol: SS(bugbug_disperse_high)
+    index:
+        product: source
+        job-name: shadow-scheduler-bugbug_disperse_high
+    worker:
+        env:
+            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug_disperse_high
+
+bugbug_disperse:
+    description: Runs the bugbug_disperse optimization strategy instead of the default.
+    treeherder:
+        symbol: SS(bugbug_disperse)
+    index:
+        product: source
+        job-name: shadow-scheduler-bugbug_disperse
+    worker:
+        env:
+            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug_disperse
+
+bugbug_reduced:
+    description: Runs the bugbug_reduced optimization strategy instead of the default.
+    treeherder:
+        symbol: SS(bugbug_reduced)
+    index:
+        product: source
+        job-name: shadow-scheduler-bugbug_reduced
+    worker:
+        env:
+            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug_reduced
+
+bugbug_reduced_high:
+    description: Runs the bugbug_reduced optimization strategy (with a low confidence threshold) instead of the default.
+    treeherder:
+        symbol: SS(bugbug_reduced_high)
+    index:
+        product: source
+        job-name: shadow-scheduler-bugbug_reduced_high
+    worker:
+        env:
+            TASKGRAPH_OPTIMIZE_STRATEGIES: taskgraph.optimize:experimental.bugbug_reduced_high
 
 seta:
     description: Runs the SETA optimization strategy instead of the default.

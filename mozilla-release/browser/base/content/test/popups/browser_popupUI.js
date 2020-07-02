@@ -24,12 +24,6 @@ add_task(async function toolbar_ui_visibility() {
     "'open location' command is not disabled in the popup"
   );
 
-  is(
-    win.gURLBar.dropmarker.clientWidth,
-    0,
-    "history dropdown button is hidden in the popup"
-  );
-
   EventUtils.synthesizeKey("t", { accelKey: true }, win);
   is(
     win.gBrowser.browsers.length,
@@ -147,4 +141,52 @@ add_task(async function titlebar_buttons_visibility() {
   CustomizableUI.setToolbarVisibility("toolbar-menubar", false);
   Services.prefs.clearUserPref("browser.tabs.drawInTitlebar");
   Services.prefs.clearUserPref("browser.link.open_newwindow");
+});
+
+// Test only `visibility` rule here, to verify bug 1636229 fix.
+// Other styles and ancestors can be different for each OS.
+function isVisible(element) {
+  const style = element.ownerGlobal.getComputedStyle(element);
+  return style.visibility == "visible";
+}
+
+async function testTabBarVisibility() {
+  SpecialPowers.pushPrefEnv({ set: [["dom.disable_open_during_load", false]] });
+
+  const popupOpened = BrowserTestUtils.waitForNewWindow({ url: "about:blank" });
+  BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    "data:text/html,<html><script>popup=open('about:blank','','width=300,height=200')</script>"
+  );
+  const win = await popupOpened;
+  const doc = win.document;
+
+  ok(
+    !isVisible(doc.getElementById("TabsToolbar")),
+    "tabbar should be hidden for popup"
+  );
+
+  const closedPopupPromise = BrowserTestUtils.windowClosed(win);
+  win.close();
+  await closedPopupPromise;
+
+  gBrowser.removeCurrentTab();
+}
+
+add_task(async function tabbar_visibility() {
+  await testTabBarVisibility();
+});
+
+add_task(async function tabbar_visibility_with_theme() {
+  const extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      theme: {},
+    },
+  });
+
+  await extension.startup();
+
+  await testTabBarVisibility();
+
+  await extension.unload();
 });

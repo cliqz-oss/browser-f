@@ -23,10 +23,9 @@ add_task(async function testPolicyOverride() {
     "Policy engine is active."
   );
 
+  let prefPromise = TestUtils.waitForPrefChange(prefs.DOH_SKIP_HEURISTICS_PREF);
   Preferences.set(prefs.DOH_ENABLED_PREF, true);
-  await BrowserTestUtils.waitForCondition(() => {
-    return Preferences.get(prefs.DOH_SKIP_HEURISTICS_PREF, false);
-  });
+  await prefPromise;
   is(
     Preferences.get(prefs.DOH_SKIP_HEURISTICS_PREF, false),
     true,
@@ -37,6 +36,12 @@ add_task(async function testPolicyOverride() {
     undefined,
     "Breadcrumb not saved."
   );
+  is(
+    Preferences.get(prefs.DOH_TRR_SELECT_URI_PREF),
+    undefined,
+    "TRR selection not performed."
+  );
+  ensureNoTRRSelectionTelemetry();
   await ensureNoTRRModeChange(0);
   await checkHeuristicsTelemetry("policy_without_doh", "first_run");
 
@@ -47,6 +52,7 @@ add_task(async function testPolicyOverride() {
 
   // Restart for good measure.
   await restartAddon();
+  ensureNoTRRSelectionTelemetry();
   await ensureNoTRRModeChange(0);
   ensureNoHeuristicsTelemetry();
 

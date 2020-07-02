@@ -121,6 +121,7 @@ class MochitestRunner(MozbuildObject):
 
         options = Namespace(**kwargs)
         options.topsrcdir = self.topsrcdir
+        options.topobjdir = self.topobjdir
 
         from manifestparser import TestManifest
         if tests and not options.manifestFile:
@@ -284,6 +285,10 @@ class MachCommands(MachCommandBase):
         from mozlog.handlers import StreamHandler
         from moztest.resolve import get_suite_definition
 
+        # TODO: This is only strictly necessary while mochitest is using Python
+        # 2 and can be removed once the command is migrated to Python 3.
+        self._activate_virtualenv()
+
         buildapp = None
         for app in SUPPORTED_APPS:
             if conditions.is_buildapp_in(self, apps=[app]):
@@ -332,7 +337,7 @@ class MachCommands(MachCommandBase):
                     handler.formatter.inner.summary_on_shutdown = True
 
         driver = self._spawn(BuildDriver)
-        driver.install_tests(tests)
+        driver.install_tests()
 
         subsuite = kwargs.get('subsuite')
         if subsuite == 'default':
@@ -420,12 +425,16 @@ class MachCommands(MachCommandBase):
 
         overall = None
         for (flavor, subsuite), tests in sorted(suites.items()):
-            _, suite = get_suite_definition(flavor, subsuite)
+            suite_name, suite = get_suite_definition(flavor, subsuite)
             if 'test_paths' in suite['kwargs']:
                 del suite['kwargs']['test_paths']
 
             harness_args = kwargs.copy()
             harness_args.update(suite['kwargs'])
+            # Pass in the full suite name as defined in moztest/resolve.py in case
+            # chunk-by-runtime is called, in which case runtime information for
+            # specific mochitest suite has to be loaded. See Bug 1637463.
+            harness_args.update({'suite_name': suite_name})
 
             result = run_mochitest(
                 self._mach_context,

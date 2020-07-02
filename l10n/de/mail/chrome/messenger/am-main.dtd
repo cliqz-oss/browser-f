@@ -4,6 +4,8 @@
 
 <!-- extracted from am-main.xul -->
 
+<!-- extracted from am-main.xhtml -->
+
 <!ENTITY accountTitle.label "Konten-Einstellungen">
 <!ENTITY accountName.label "Konten-Bezeichnung:">
 <!ENTITY accountName.accesskey "B">
@@ -13,6 +15,8 @@
 <!ENTITY name.accesskey "N">
 <!ENTITY email.label "E-Mail-Adresse:">
 <!ENTITY email.accesskey "E">
+<!ENTITY catchAll.label "Mit dieser Identität antworten, falls eine Empfänger-Kopfzeile übereinstimmt mit:">
+<!ENTITY catchAll.accesskey "K">
 <!ENTITY replyTo.label "Antwortadresse:">
 <!ENTITY replyTo.accesskey "A">
 <!ENTITY replyTo.placeholder "Empfänger sollen an diese Adresse antworten">

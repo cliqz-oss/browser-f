@@ -181,6 +181,24 @@ static bool IsDescendant(nsIFrame* aFrame, nsIContent* aAncestor,
 static nsIContent* GetClickableAncestor(
     nsIFrame* aFrame, nsAtom* stopAt = nullptr,
     nsAutoString* aLabelTargetId = nullptr) {
+  // If the frame is `cursor:pointer` or inherits `cursor:pointer` from an
+  // ancestor, treat it as clickable. This is a heuristic to deal with pages
+  // where the click event listener is on the <body> or <html> element but it
+  // triggers an action on some specific element. We want the specific element
+  // to be considered clickable, and at least some pages that do this indicate
+  // the clickability by setting `cursor:pointer`, so we use that here.
+  // Note that descendants of `cursor:pointer` elements that override the
+  // inherited `pointer` to `auto` or any other value are NOT treated as
+  // clickable, because it seems like the content author is trying to express
+  // non-clickability on that sub-element.
+  // In the future depending on real-world cases it might make sense to expand
+  // this check to any non-auto cursor. Such a change would also pick up things
+  // like contenteditable or input fields, which can then be removed from the
+  // loop below, and would have better performance.
+  if (aFrame->StyleUI()->mCursor.keyword == StyleCursorKind::Pointer) {
+    return aFrame->GetContent();
+  }
+
   // Input events propagate up the content tree so we'll follow the content
   // ancestors to look for elements accepting the click.
   for (nsIContent* content = aFrame->GetContent(); content;
@@ -242,12 +260,14 @@ static nsIContent* GetClickableAncestor(
   return nullptr;
 }
 
-static nscoord AppUnitsFromMM(nsIFrame* aFrame, uint32_t aMM) {
-  nsPresContext* pc = aFrame->PresContext();
-  PresShell* presShell = pc->PresShell();
+static nscoord AppUnitsFromMM(RelativeTo aFrame, uint32_t aMM) {
+  nsPresContext* pc = aFrame.mFrame->PresContext();
   float result = float(aMM) * (pc->DeviceContext()->AppUnitsPerPhysicalInch() /
                                MM_PER_INCH_FLOAT);
-  result = result / presShell->GetResolution();
+  if (aFrame.mViewportType == ViewportType::Layout) {
+    PresShell* presShell = pc->PresShell();
+    result = result / presShell->GetResolution();
+  }
   return NSToCoordRound(result);
 }
 
@@ -255,7 +275,7 @@ static nscoord AppUnitsFromMM(nsIFrame* aFrame, uint32_t aMM) {
  * Clip aRect with the bounds of aFrame in the coordinate system of
  * aRootFrame. aRootFrame is an ancestor of aFrame.
  */
-static nsRect ClipToFrame(nsIFrame* aRootFrame, nsIFrame* aFrame,
+static nsRect ClipToFrame(RelativeTo aRootFrame, const nsIFrame* aFrame,
                           nsRect& aRect) {
   nsRect bound = nsLayoutUtils::TransformFrameRectToAncestor(
       aFrame, nsRect(nsPoint(0, 0), aFrame->GetSize()), aRootFrame);
@@ -263,9 +283,9 @@ static nsRect ClipToFrame(nsIFrame* aRootFrame, nsIFrame* aFrame,
   return result;
 }
 
-static nsRect GetTargetRect(nsIFrame* aRootFrame,
+static nsRect GetTargetRect(RelativeTo aRootFrame,
                             const nsPoint& aPointRelativeToRootFrame,
-                            nsIFrame* aRestrictToDescendants,
+                            const nsIFrame* aRestrictToDescendants,
                             const EventRadiusPrefs* aPrefs, uint32_t aFlags) {
   nsMargin m(AppUnitsFromMM(aRootFrame, aPrefs->mSideRadii[0]),
              AppUnitsFromMM(aRootFrame, aPrefs->mSideRadii[1]),
@@ -321,11 +341,11 @@ static void SubtractFromExposedRegion(nsRegion* aExposedRegion,
   }
 }
 
-static nsIFrame* GetClosest(nsIFrame* aRoot,
+static nsIFrame* GetClosest(RelativeTo aRoot,
                             const nsPoint& aPointRelativeToRootFrame,
                             const nsRect& aTargetRect,
                             const EventRadiusPrefs* aPrefs,
-                            nsIFrame* aRestrictToDescendants,
+                            const nsIFrame* aRestrictToDescendants,
                             nsIContent* aClickableAncestor,
                             nsTArray<nsIFrame*>& aCandidates) {
   nsIFrame* bestTarget = nullptr;
@@ -369,13 +389,13 @@ static nsIFrame* GetClosest(nsIFrame* aRoot,
     }
     // If our current closest frame is a descendant of 'f', skip 'f' (prefer
     // the nested frame).
-    if (bestTarget &&
-        nsLayoutUtils::IsProperAncestorFrameCrossDoc(f, bestTarget, aRoot)) {
+    if (bestTarget && nsLayoutUtils::IsProperAncestorFrameCrossDoc(
+                          f, bestTarget, aRoot.mFrame)) {
       PET_LOG("  candidate %p was ancestor for bestTarget %p\n", f, bestTarget);
       continue;
     }
     if (!aClickableAncestor && !nsLayoutUtils::IsAncestorFrameCrossDoc(
-                                   aRestrictToDescendants, f, aRoot)) {
+                                   aRestrictToDescendants, f, aRoot.mFrame)) {
       PET_LOG("  candidate %p was not descendant of restrictroot %p\n", f,
               aRestrictToDescendants);
       continue;
@@ -400,7 +420,7 @@ static nsIFrame* GetClosest(nsIFrame* aRoot,
 }
 
 nsIFrame* FindFrameTargetedByInputEvent(
-    WidgetGUIEvent* aEvent, nsIFrame* aRootFrame,
+    WidgetGUIEvent* aEvent, RelativeTo aRootFrame,
     const nsPoint& aPointRelativeToRootFrame, uint32_t aFlags) {
   using FrameForPointOption = nsLayoutUtils::FrameForPointOption;
   EnumSet<FrameForPointOption> options;
@@ -411,10 +431,10 @@ nsIFrame* FindFrameTargetedByInputEvent(
       aRootFrame, aPointRelativeToRootFrame, options);
   PET_LOG(
       "Found initial target %p for event class %s message %s point %s "
-      "relative to root frame %p\n",
+      "relative to root frame %s\n",
       target, ToChar(aEvent->mClass), ToChar(aEvent->mMessage),
       mozilla::layers::Stringify(aPointRelativeToRootFrame).c_str(),
-      aRootFrame);
+      ToString(aRootFrame).c_str());
 
   const EventRadiusPrefs* prefs = GetPrefsFor(aEvent->mClass);
   if (!prefs || !prefs->mEnabled || EventRetargetSuppression::IsActive()) {
@@ -448,8 +468,8 @@ nsIFrame* FindFrameTargetedByInputEvent(
   // a mouse event handler for example, targets that are !GetClickableAncestor
   // can never be targeted --- something nsSubDocumentFrame in an ancestor
   // document would be targeted instead.
-  nsIFrame* restrictToDescendants =
-      target ? target->PresShell()->GetRootFrame() : aRootFrame;
+  const nsIFrame* restrictToDescendants =
+      target ? target->PresShell()->GetRootFrame() : aRootFrame.mFrame;
 
   nsRect targetRect = GetTargetRect(aRootFrame, aPointRelativeToRootFrame,
                                     restrictToDescendants, prefs, aFlags);
@@ -475,7 +495,7 @@ nsIFrame* FindFrameTargetedByInputEvent(
   // Note that dumping the frame tree at the top of the function may flood
   // logcat on Android devices and cause the PET_LOGs to get dropped.
   if (MOZ_LOG_TEST(sEvtTgtLog, LogLevel::Verbose)) {
-    aRootFrame->DumpFrameTree();
+    aRootFrame.mFrame->DumpFrameTree();
   }
 #endif
 
@@ -488,22 +508,23 @@ nsIFrame* FindFrameTargetedByInputEvent(
   // clamp it to the bounds, and then make it relative to the root frame again.
   nsPoint point = aPointRelativeToRootFrame;
   if (nsLayoutUtils::TRANSFORM_SUCCEEDED !=
-      nsLayoutUtils::TransformPoint(aRootFrame, target, point)) {
+      nsLayoutUtils::TransformPoint(aRootFrame, RelativeTo{target}, point)) {
     return target;
   }
   point = target->GetRectRelativeToSelf().ClampPoint(point);
   if (nsLayoutUtils::TRANSFORM_SUCCEEDED !=
-      nsLayoutUtils::TransformPoint(target, aRootFrame, point)) {
+      nsLayoutUtils::TransformPoint(RelativeTo{target}, aRootFrame, point)) {
     return target;
   }
   // Now we basically undo the operations in GetEventCoordinatesRelativeTo, to
   // get back the (now-clamped) coordinates in the event's widget's space.
-  nsView* view = aRootFrame->GetView();
+  nsView* view = aRootFrame.mFrame->GetView();
   if (!view) {
     return target;
   }
   LayoutDeviceIntPoint widgetPoint = nsLayoutUtils::TranslateViewToWidget(
-      aRootFrame->PresContext(), view, point, aEvent->mWidget);
+      aRootFrame.mFrame->PresContext(), view, point, aRootFrame.mViewportType,
+      aEvent->mWidget);
   if (widgetPoint.x != NS_UNCONSTRAINEDSIZE) {
     // If that succeeded, we update the point in the event
     aEvent->mRefPoint = widgetPoint;

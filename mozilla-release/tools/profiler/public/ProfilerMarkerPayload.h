@@ -216,17 +216,23 @@ class TracingMarkerPayload : public ProfilerMarkerPayload {
 
 class FileIOMarkerPayload : public ProfilerMarkerPayload {
  public:
-  FileIOMarkerPayload(const char* aOperation, const char* aSource,
-                      const char* aFilename,
-                      const mozilla::TimeStamp& aStartTime,
-                      const mozilla::TimeStamp& aEndTime,
-                      UniqueProfilerBacktrace aStack)
+  FileIOMarkerPayload(
+      const char* aOperation, const char* aSource, const char* aFilename,
+      const mozilla::TimeStamp& aStartTime, const mozilla::TimeStamp& aEndTime,
+      UniqueProfilerBacktrace aStack,
+      const mozilla::Maybe<int>& aIOThreadId = mozilla::Nothing())
       : ProfilerMarkerPayload(aStartTime, aEndTime, mozilla::Nothing(),
                               std::move(aStack)),
         mSource(aSource),
         mOperation(aOperation ? strdup(aOperation) : nullptr),
-        mFilename(aFilename ? strdup(aFilename) : nullptr) {
+        mFilename(aFilename ? strdup(aFilename) : nullptr),
+        mIOThreadId(aIOThreadId) {
     MOZ_ASSERT(aSource);
+  }
+
+  // In some cases, the thread id needs to be set after the payload is created.
+  void SetIOThreadId(int aIOThreadId) {
+    mIOThreadId = mozilla::Some(aIOThreadId);
   }
 
   DECL_STREAM_PAYLOAD
@@ -234,15 +240,18 @@ class FileIOMarkerPayload : public ProfilerMarkerPayload {
  private:
   FileIOMarkerPayload(CommonProps&& aCommonProps, const char* aSource,
                       mozilla::UniqueFreePtr<char>&& aOperation,
-                      mozilla::UniqueFreePtr<char>&& aFilename)
+                      mozilla::UniqueFreePtr<char>&& aFilename,
+                      const mozilla::Maybe<int>& aIOThreadId)
       : ProfilerMarkerPayload(std::move(aCommonProps)),
         mSource(aSource),
         mOperation(std::move(aOperation)),
-        mFilename(std::move(aFilename)) {}
+        mFilename(std::move(aFilename)),
+        mIOThreadId(aIOThreadId) {}
 
   const char* mSource;
   mozilla::UniqueFreePtr<char> mOperation;
   mozilla::UniqueFreePtr<char> mFilename;
+  mozilla::Maybe<int> mIOThreadId;
 };
 
 class DOMEventMarkerPayload : public TracingMarkerPayload {
@@ -401,7 +410,9 @@ class NetworkMarkerPayload : public ProfilerMarkerPayload {
                        uint64_t aInnerWindowID,
                        const mozilla::net::TimingStruct* aTimings = nullptr,
                        const char* aRedirectURI = nullptr,
-                       UniqueProfilerBacktrace aSource = nullptr)
+                       UniqueProfilerBacktrace aSource = nullptr,
+                       const mozilla::Maybe<nsDependentCString>& aContentType =
+                           mozilla::Nothing())
       : ProfilerMarkerPayload(aStartTime, aEndTime,
                               mozilla::Some(aInnerWindowID),
                               std::move(aSource)),
@@ -413,7 +424,8 @@ class NetworkMarkerPayload : public ProfilerMarkerPayload {
         mType(aType),
         mPri(aPri),
         mCount(aCount),
-        mCacheDisposition(aCacheDisposition) {
+        mCacheDisposition(aCacheDisposition),
+        mContentType(aContentType) {
     if (aTimings) {
       mTimings = *aTimings;
     }
@@ -427,7 +439,8 @@ class NetworkMarkerPayload : public ProfilerMarkerPayload {
                        mozilla::UniqueFreePtr<char>&& aRedirectURI,
                        NetworkLoadType aType, int32_t aPri, int64_t aCount,
                        mozilla::net::TimingStruct aTimings,
-                       mozilla::net::CacheDisposition aCacheDisposition)
+                       mozilla::net::CacheDisposition aCacheDisposition,
+                       mozilla::Maybe<nsAutoCString>&& aContentType)
       : ProfilerMarkerPayload(std::move(aCommonProps)),
         mID(aID),
         mURI(std::move(aURI)),
@@ -436,7 +449,8 @@ class NetworkMarkerPayload : public ProfilerMarkerPayload {
         mPri(aPri),
         mCount(aCount),
         mTimings(aTimings),
-        mCacheDisposition(aCacheDisposition) {}
+        mCacheDisposition(aCacheDisposition),
+        mContentType(std::move(aContentType)) {}
 
   int64_t mID;
   mozilla::UniqueFreePtr<char> mURI;
@@ -446,6 +460,10 @@ class NetworkMarkerPayload : public ProfilerMarkerPayload {
   int64_t mCount;
   mozilla::net::TimingStruct mTimings;
   mozilla::net::CacheDisposition mCacheDisposition;
+  // Content type is usually short, so we use nsAutoCString to reduce
+  // heap usage; the bigger object size is acceptable here because
+  // markers are short-lived on-stack objects.
+  mozilla::Maybe<nsAutoCString> mContentType;
 };
 
 class ScreenshotPayload : public ProfilerMarkerPayload {
@@ -653,6 +671,21 @@ class LogMarkerPayload : public ProfilerMarkerPayload {
 
   nsAutoCStringN<32> mModule;  // longest known LazyLogModule name is ~24
   nsCString mText;
+};
+
+class MediaSampleMarkerPayload : public ProfilerMarkerPayload {
+ public:
+  MediaSampleMarkerPayload(const int64_t aSampleStartTimeUs,
+                           const int64_t aSampleEndTimeUs);
+  DECL_STREAM_PAYLOAD
+
+ private:
+  MediaSampleMarkerPayload(CommonProps&& aCommonProps,
+                           const int64_t aSampleStartTimeUs,
+                           const int64_t aSampleEndTimeUs);
+
+  int64_t mSampleStartTimeUs;
+  int64_t mSampleEndTimeUs;
 };
 
 class JsAllocationMarkerPayload : public ProfilerMarkerPayload {

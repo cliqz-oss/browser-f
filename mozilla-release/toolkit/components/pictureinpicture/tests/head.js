@@ -14,6 +14,7 @@ const TEST_ROOT_2 = getRootDirectory(gTestPath).replace(
 const TEST_PAGE = TEST_ROOT + "test-page.html";
 const TEST_PAGE_2 = TEST_ROOT_2 + "test-page.html";
 const TEST_PAGE_WITH_IFRAME = TEST_ROOT_2 + "test-page-with-iframe.html";
+const TEST_PAGE_WITH_SOUND = TEST_ROOT + "test-page-with-sound.html";
 const WINDOW_TYPE = "Toolkit:PictureInPicture";
 const TOGGLE_ID = "pictureInPictureToggleButton";
 const HOVER_VIDEO_OPACITY = 0.8;
@@ -34,7 +35,7 @@ const HOVER_TOGGLE_OPACITY = 1.0;
  * @resolves With the Picture-in-Picture window when ready.
  */
 async function triggerPictureInPicture(browser, videoID) {
-  let domWindowOpened = BrowserTestUtils.domWindowOpened(null);
+  let domWindowOpened = BrowserTestUtils.domWindowOpenedAndLoaded(null);
   let videoReady = SpecialPowers.spawn(browser, [videoID], async videoID => {
     let video = content.document.getElementById(videoID);
     let event = new content.CustomEvent("MozTogglePictureInPicture", {
@@ -46,7 +47,6 @@ async function triggerPictureInPicture(browser, videoID) {
     }, "Video is being cloned visually.");
   });
   let win = await domWindowOpened;
-  await BrowserTestUtils.waitForEvent(win, "load");
   await win.promiseDocumentFlushed(() => {});
   await videoReady;
   return win;
@@ -499,7 +499,7 @@ async function testToggleHelper(browser, videoID, canToggle, policy) {
     info(
       "Clicking on toggle, and expecting a Picture-in-Picture window to open"
     );
-    let domWindowOpened = BrowserTestUtils.domWindowOpened(null);
+    let domWindowOpened = BrowserTestUtils.domWindowOpenedAndLoaded(null);
     await BrowserTestUtils.synthesizeMouseAtPoint(
       toggleLeft,
       toggleTop,

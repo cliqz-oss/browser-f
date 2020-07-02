@@ -8,6 +8,7 @@
 $break-point-medium: 610px;
 $break-point-large: 866px;
 $break-point-widest: 1122px;
+$logo-size: 112px;
 
 html {
   height: 100%;
@@ -16,13 +17,17 @@ html {
 body {
   // sass-lint:disable no-color-literals
   --grey-subtitle: #4A4A4F;
+  --grey-subtitle-1: #80808F;
   --newtab-background-color: #EDEDF0;
+  --newtab-background-color-1: #F9F9FA;
   --newtab-text-primary-color: #0C0C0D;
   --newtab-text-conditional-color: #4A4A4F;
   --newtab-button-primary-color: #0060DF;
+  --newtab-button-secondary-color: #0060DF;
   --newtab-card-background-color: #FFF;
   --newtab-card-shadow: 0 1px 4px 0 rgba(12, 12, 13, 0.1);
   --welcome-header-text-color: #2B2156;
+  --welcome-header-text-color-1: #20133A;
   --welcome-card-button-background-color: rgba(12, 12, 13, 0.1);
   --welcome-card-button-background-hover-color: rgba(12, 12, 13, 0.2);
   --welcome-card-button-background-active-color: rgba(12, 12, 13, 0.3);
@@ -43,12 +48,16 @@ body {
 
   &[lwt-newtab-brighttext] {
     --newtab-background-color: #2A2A2E;
+    --newtab-background-color-1: #1D1133;
     --newtab-text-primary-color: #F9F9FA;
     --newtab-text-conditional-color: #F9F9FA;
+    --grey-subtitle-1: #FFF;
     --newtab-button-primary-color: #0060DF;
+    --newtab-button-secondary-color: #FFF;
     --newtab-card-background-color: #38383D;
     --newtab-card-shadow: 0 1px 8px 0 rgba(12, 12, 13, 0.2);
     --welcome-header-text-color: rgba(255, 255, 255, 0.6);
+    --welcome-header-text-color-1: #7542E5;
     --welcome-card-button-background-color: rgba(12, 12, 13, 0.3);
     --welcome-card-button-background-hover-color: rgba(12, 12, 13, 0.5);
     --welcome-card-button-background-active-color: rgba(12, 12, 13, 0.7);
@@ -61,14 +70,9 @@ body {
   margin-top: 32px;
   display: grid;
   grid-gap: 32px;
-  opacity: 0;
   transition: opacity 0.4s;
   transition-delay: 0.1s;
   grid-auto-rows: 1fr;
-
-  &.show {
-    opacity: 1;
-  }
 
   @media (min-width: $break-point-medium) {
     grid-template-columns: repeat(auto-fit, 224px);
@@ -235,5 +239,217 @@ body {
 
   &:active {
     background: var(--welcome-button-background-active-color);
+  }
+}
+
+
+.multistageContainer {
+  text-align: center;
+  overflow-x: auto;
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--newtab-background-color-1);
+
+  .screen {
+    display: flex;
+    flex-flow: column nowrap;
+    height: 100%;
+  }
+
+  .brand-logo {
+    background: url('chrome://branding/content/about-logo.png') top
+    center / $logo-size no-repeat;
+    padding: $logo-size 0 20px;
+    margin-top: 60px;
+
+    &.cta-top {
+      margin-top: 25px;
+    }
+  }
+
+  .welcome-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+
+    h1,
+    h2 {
+      width: 860px;
+      @media (max-width: $break-point-large) {
+        width: 530px;
+      }
+
+      @media (max-width: $break-point-medium) {
+        width: 430px;
+      }
+    }
+
+    h1 {
+      font-size: 48px;
+      line-height: 56px;
+      font-weight: bold;
+      margin: 0 6px;
+      color: var(--welcome-header-text-color-1);
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: normal;
+      margin: 0 6px;
+      color: var(--grey-subtitle-1);
+      line-height: 28px;
+    }
+  }
+
+  .tiles-section {
+    $host-size: 12px;
+    $tile-size: 96px;
+
+    display: grid;
+    grid-gap: $tile-size / 4;
+    grid-template-columns: repeat(5, auto);
+    margin: 0 auto;
+
+    @media (max-width: $break-point-medium) {
+      grid-template-columns: repeat(3, auto);
+    }
+
+    .site {
+      width: $tile-size;
+    }
+
+    .icon {
+      background-size: cover;
+      border-radius: 4px;
+      box-shadow: var(--newtab-card-shadow);
+      color: rgba(255, 255, 255, 0.5);
+      font-size: $host-size * 2;
+      font-weight: bold;
+      height: $tile-size;
+      line-height: $tile-size;
+    }
+
+    .host {
+      font-size: $host-size;
+      line-height: $host-size * 3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .site:nth-child(1) .icon {
+      background-color: #7542E5;
+    }
+
+    .site:nth-child(2) .icon {
+      background-color: #952BB9;
+    }
+
+    .site:nth-child(3) .icon {
+      background-color: #E31587;
+    }
+
+    .site:nth-child(4) .icon {
+      background-color: #E25920;
+    }
+
+    .site:nth-child(5) .icon {
+      background-color: #0250BB;
+    }
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: 0;
+
+    &.primary {
+      font-size: 16px;
+      margin-inline-start: 12px;
+      margin: 26px 0 0;
+      padding: 12px 20px;
+      white-space: nowrap;
+      background-color: var(--newtab-button-primary-color);
+      color: var(--welcome-button-text-color);
+      border-radius: 4px;
+
+      &:focus {
+        background: var(--welcome-button-background-hover-color);
+        box-shadow: 0 0 0 1px var(--welcome-button-box-shadow-inset-color) inset,
+        0 0 0 1px var(--welcome-button-box-shadow-inset-color),
+        0 0 0 4px var(--welcome-button-box-shadow-color);
+      }
+
+      &:hover {
+        background: var(--welcome-button-background-hover-color);
+      }
+
+      &:active {
+        background: var(--welcome-button-background-active-color);
+      }
+    }
+
+    &.secondary {
+      background-color: initial;
+      text-decoration: underline;
+      display: block;
+      padding: 0;
+      width: auto;
+      color: var(--newtab-button-secondary-color);
+      margin-top: 14px;
+
+      &:hover,
+      &:focus,
+      &:active {
+        background-color: initial;
+      }
+    }
+  }
+
+  .secondary-cta {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    font-size: 14px;
+
+    &.top {
+      justify-content: end;
+      align-items: end;
+      padding-inline-end: 30px;
+      padding-top: 4px;
+
+      @media (max-width: $break-point-medium) {
+        justify-content: center;
+      }
+    }
+
+    span {
+      color: var(--grey-subtitle-1);
+      margin: 0 4px;
+    }
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    margin-top: auto;
+    padding: 32px 0;
+
+    .indicator {
+      width: 60px;
+      height: 4px;
+      margin-inline-end: 4px;
+      margin-inline-start: 4px;
+      background: var(--grey-subtitle-1);
+      border-radius: 5px;
+      opacity: 0.25;
+
+      &.current {
+        opacity: 1;
+      }
+    }
   }
 }

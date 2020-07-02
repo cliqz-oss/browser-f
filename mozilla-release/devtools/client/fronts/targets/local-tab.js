@@ -35,6 +35,10 @@ class LocalTabTargetFront extends BrowsingContextTargetFront {
     this._teardownTabListeners = this._teardownTabListeners.bind(this);
     this._handleTabEvent = this._handleTabEvent.bind(this);
 
+    // This flag will be set true from DevToolsExtensionPageContextParent
+    // if this target is created for DevTools extension page.
+    this.isDevToolsExtensionContext = false;
+
     this._tab = tab;
     this._setupTabListeners();
 
@@ -109,6 +113,11 @@ class LocalTabTargetFront extends BrowsingContextTargetFront {
       return;
     }
 
+    // The front that was created for DevTools page extension does not have corresponding toolbox.
+    if (this.isDevToolsExtensionContext) {
+      return;
+    }
+
     const toolbox = gDevTools.getToolbox(this);
 
     const targetSwitchingEnabled = Services.prefs.getBoolPref(
@@ -131,7 +140,7 @@ class LocalTabTargetFront extends BrowsingContextTargetFront {
 
       // If we support target switching, only wait for the target to be
       // destroyed so that TargetFactory clears its memoized target for this tab
-      await this.once("close");
+      await this.once("target-destroyed");
     } else {
       // Otherwise, if we don't support target switching, ensure the toolbox is destroyed.
       // We need to wait for the toolbox destruction because the TargetFactory memoized the targets,
@@ -151,9 +160,6 @@ class LocalTabTargetFront extends BrowsingContextTargetFront {
     // reopen a brand new toolbox against the new target we switched to, or
     // only communicate the new target to the toolbox.
     if (targetSwitchingEnabled) {
-      // Restore automatic destruction of the client on target destroy
-      // so that the client is closed when the toolbox closes.
-      this.shouldCloseClient = true;
       toolbox.switchToTarget(newTarget);
     } else {
       gDevTools.showToolbox(newTarget);

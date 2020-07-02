@@ -36,7 +36,8 @@ nsScriptErrorBase::nsScriptErrorBase()
       mTimeStamp(0),
       mInitializedOnMainThread(false),
       mIsFromPrivateWindow(false),
-      mIsFromChromeContext(false) {}
+      mIsFromChromeContext(false),
+      mIsPromiseRejection(false) {}
 
 nsScriptErrorBase::~nsScriptErrorBase() = default;
 
@@ -152,6 +153,23 @@ NS_IMETHODIMP
 nsScriptErrorBase::GetCategory(char** result) {
   *result = ToNewCString(mCategory);
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsScriptErrorBase::GetHasException(bool* aHasException) {
+  *aHasException = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsScriptErrorBase::GetException(JS::MutableHandleValue aException) {
+  aException.setUndefined();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsScriptErrorBase::SetException(JS::HandleValue aStack) {
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
@@ -388,6 +406,18 @@ nsScriptErrorBase::GetIsFromChromeContext(bool* aIsFromChromeContext) {
     InitializeOnMainThread();
   }
   *aIsFromChromeContext = mIsFromChromeContext;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsScriptErrorBase::GetIsPromiseRejection(bool* aIsPromiseRejection) {
+  *aIsPromiseRejection = mIsPromiseRejection;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsScriptErrorBase::InitIsPromiseRejection(bool aIsPromiseRejection) {
+  mIsPromiseRejection = aIsPromiseRejection;
   return NS_OK;
 }
 

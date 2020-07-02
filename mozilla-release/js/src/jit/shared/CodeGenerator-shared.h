@@ -42,6 +42,8 @@ class CodeGeneratorShared : public LElementVisitor {
   MacroAssembler& ensureMasm(MacroAssembler* masm);
   mozilla::Maybe<IonHeapMacroAssembler> maybeMasm_;
 
+  bool useWasmStackArgumentAbi_;
+
  public:
   MacroAssembler& masm;
 
@@ -63,7 +65,7 @@ class CodeGeneratorShared : public LElementVisitor {
   // Label for the common return path.
   NonAssertingLabel returnLabel_;
 
-  js::Vector<SafepointIndex, 0, SystemAllocPolicy> safepointIndices_;
+  js::Vector<CodegenSafepointIndex, 0, SystemAllocPolicy> safepointIndices_;
   js::Vector<OsiIndex, 0, SystemAllocPolicy> osiIndices_;
 
   // Mapping from bailout table ID to an offset in the snapshot buffer.
@@ -109,6 +111,8 @@ class CodeGeneratorShared : public LElementVisitor {
 
   bool stringsCanBeInNursery() const { return gen->stringsCanBeInNursery(); }
 
+  bool bigIntsCanBeInNursery() const { return gen->bigIntsCanBeInNursery(); }
+
  protected:
   // The offset of the first instruction of the OSR entry block from the
   // beginning of the code buffer.
@@ -134,7 +138,8 @@ class CodeGeneratorShared : public LElementVisitor {
     return skipArgCheckEntryOffset_;
   }
 
-  typedef js::Vector<SafepointIndex, 8, SystemAllocPolicy> SafepointIndices;
+  typedef js::Vector<CodegenSafepointIndex, 8, SystemAllocPolicy>
+      SafepointIndices;
 
  protected:
 #ifdef CHECK_OSIPOINT_REGISTERS
@@ -164,8 +169,13 @@ class CodeGeneratorShared : public LElementVisitor {
   inline int32_t ToStackOffset(LAllocation a) const;
   inline int32_t ToStackOffset(const LAllocation* a) const;
 
-  inline Address ToAddress(const LAllocation& a);
-  inline Address ToAddress(const LAllocation* a);
+  inline Address ToAddress(const LAllocation& a) const;
+  inline Address ToAddress(const LAllocation* a) const;
+
+  // Returns the offset from FP to address incoming stack arguments
+  // when we use wasm stack argument abi (useWasmStackArgumentAbi()).
+  inline int32_t ToFramePointerOffset(LAllocation a) const;
+  inline int32_t ToFramePointerOffset(const LAllocation* a) const;
 
   uint32_t frameSize() const {
     return frameClass_ == FrameSizeClass::None() ? frameDepth_
@@ -176,6 +186,10 @@ class CodeGeneratorShared : public LElementVisitor {
   bool addNativeToBytecodeEntry(const BytecodeSite* site);
   void dumpNativeToBytecodeEntries();
   void dumpNativeToBytecodeEntry(uint32_t idx);
+
+  void setUseWasmStackArgumentAbi() { useWasmStackArgumentAbi_ = true; }
+
+  bool useWasmStackArgumentAbi() const { return useWasmStackArgumentAbi_; }
 
  public:
   MIRGenerator& mirGen() const { return *gen; }
@@ -209,8 +223,7 @@ class CodeGeneratorShared : public LElementVisitor {
 
   template <typename T>
   inline size_t allocateIC(const T& cache) {
-    static_assert(std::is_base_of<IonIC, T>::value,
-                  "T must inherit from IonIC");
+    static_assert(std::is_base_of_v<IonIC, T>, "T must inherit from IonIC");
     size_t index;
     masm.propagateOOM(
         allocateData(sizeof(mozilla::AlignedStorage2<T>), &index));
@@ -271,8 +284,7 @@ class CodeGeneratorShared : public LElementVisitor {
   void emitTruncateFloat32(FloatRegister src, Register dest,
                            MTruncateToInt32* mir);
 
-  void emitPreBarrier(Register elements, const LAllocation* index,
-                      int32_t offsetAdjustment);
+  void emitPreBarrier(Register elements, const LAllocation* index);
   void emitPreBarrier(Address address);
 
   // We don't emit code for trivial blocks, so if we want to branch to the

@@ -20,7 +20,11 @@ const EXPECTED_REFLOWS = [
  * uninterruptible reflows when closing new tabs.
  */
 add_task(async function() {
+  // Force-enable tab animations
+  gReduceMotionOverride = false;
+
   await ensureNoPreloadedBrowser();
+  await disableFxaBadge();
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
   await TestUtils.waitForCondition(() => tab._fullyOpen);

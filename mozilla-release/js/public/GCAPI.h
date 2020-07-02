@@ -130,10 +130,10 @@ typedef enum JSGCParamKey {
    *   GrowthFactor: A number above 1, calculated based on some of the
    *                 following parameters.
    *                 See computeZoneHeapGrowthFactorForHeapSize() in GC.cpp
-   *   ThresholdFactor: 1.0 for incremental collections or
-   *                    JSGC_NON_INCREMENTAL_FACTOR or
-   *                    JSGC_AVOID_INTERRUPT_FACTOR for non-incremental
-   *                    collections.
+   *   ThresholdFactor: 1.0 to trigger an incremental collections or between
+   *                    JSGC_SMALL_HEAP_INCREMENTAL_LIMIT and
+   *                    JSGC_LARGE_HEAP_INCREMENTAL_LIMIT to trigger a
+   *                    non-incremental collection.
    *
    * The RHS of the equation above is calculated and sets
    * zone->gcHeapThreshold.bytes(). When gcHeapSize.bytes() exeeds
@@ -150,61 +150,55 @@ typedef enum JSGCParamKey {
   JSGC_HIGH_FREQUENCY_TIME_LIMIT = 11,
 
   /**
-   * Start of dynamic heap growth (MB).
+   * Upper limit for classifying a heap as small (MB).
    *
-   * Pref: javascript.options.mem.gc_high_frequency_low_limit_mb
-   * Default: HighFrequencyLowLimitBytes
+   * Dynamic heap growth thresholds are based on whether the heap is small,
+   * medium or large. Heaps smaller than this size are classified as small;
+   * larger heaps are classified as medium or large.
+   *
+   * Pref: javascript.options.mem.gc_small_heap_size_max_mb
+   * Default: SmallHeapSizeMaxBytes
    */
-  JSGC_HIGH_FREQUENCY_LOW_LIMIT = 12,
+  JSGC_SMALL_HEAP_SIZE_MAX = 12,
 
   /**
-   * End of dynamic heap growth (MB).
+   * Lower limit for classifying a heap as large (MB).
    *
-   * Pref: javascript.options.mem.gc_high_frequency_high_limit_mb
-   * Default: HighFrequencyHighLimitBytes
+   * Dynamic heap growth thresholds are based on whether the heap is small,
+   * medium or large. Heaps larger than this size are classified as large;
+   * smaller heaps are classified as small or medium.
+   *
+   * Pref: javascript.options.mem.gc_large_heap_size_min_mb
+   * Default: LargeHeapSizeMinBytes
    */
-  JSGC_HIGH_FREQUENCY_HIGH_LIMIT = 13,
+  JSGC_LARGE_HEAP_SIZE_MIN = 13,
 
   /**
-   * Upper bound of heap growth percentage.
+   * Heap growth factor for small heaps in the high-frequency GC state.
    *
-   * Pref: javascript.options.mem.gc_high_frequency_heap_growth_max
-   * Default: HighFrequencyHeapGrowthMax
+   * Pref: javascript.options.mem.gc_high_frequency_small_heap_growth
+   * Default: HighFrequencySmallHeapGrowth
    */
-  JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MAX = 14,
+  JSGC_HIGH_FREQUENCY_SMALL_HEAP_GROWTH = 14,
 
   /**
-   * Lower bound of heap growth percentage.
+   * Heap growth factor for large heaps in the high-frequency GC state.
    *
-   * Pref: javascript.options.mem.gc_high_frequency_heap_growth_min
-   * Default: HighFrequencyHeapGrowthMin
+   * Pref: javascript.options.mem.gc_high_frequency_large_heap_growth
+   * Default: HighFrequencyLargeHeapGrowth
    */
-  JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MIN = 15,
+  JSGC_HIGH_FREQUENCY_LARGE_HEAP_GROWTH = 15,
 
   /**
-   * Heap growth percentage for low frequency GCs.
+   * Heap growth factor for low frequency GCs.
+   *
+   * This factor is applied regardless of the size of the heap when not in the
+   * high-frequency GC state.
    *
    * Pref: javascript.options.mem.gc_low_frequency_heap_growth
    * Default: LowFrequencyHeapGrowth
    */
   JSGC_LOW_FREQUENCY_HEAP_GROWTH = 16,
-
-  /**
-   * If false, the heap growth factor is fixed at 3. If true, it is determined
-   * based on whether GCs are high- or low- frequency.
-   *
-   * Pref: javascript.options.mem.gc_dynamic_heap_growth
-   * Default: DynamicHeapGrowthEnabled
-   */
-  JSGC_DYNAMIC_HEAP_GROWTH = 17,
-
-  /**
-   * If true, high-frequency GCs will use a longer mark slice.
-   *
-   * Pref: javascript.options.mem.gc_dynamic_mark_slice
-   * Default: DynamicMarkSliceEnabled
-   */
-  JSGC_DYNAMIC_MARK_SLICE = 18,
 
   /**
    * Lower limit for collecting a zone.
@@ -243,26 +237,26 @@ typedef enum JSGCParamKey {
   JSGC_COMPACTING_ENABLED = 23,
 
   /**
-   * Percentage for how far over a trigger threshold we go before triggering a
-   * non-incremental GC.
+   * Limit of how far over the incremental trigger threshold we allow the heap
+   * to grow before finishing a collection non-incrementally, for small heaps.
    *
    * We trigger an incremental GC when a trigger threshold is reached but the
    * collection may not be fast enough to keep up with the mutator. At some
    * point we finish the collection non-incrementally.
    *
-   * Default: NonIncrementalFactor
-   * Pref: None
+   * Default: SmallHeapIncrementalLimit
+   * Pref: javascript.options.mem.gc_small_heap_incremental_limit
    */
-  JSGC_NON_INCREMENTAL_FACTOR = 25,
+  JSGC_SMALL_HEAP_INCREMENTAL_LIMIT = 25,
 
   /**
-   * Percentage for how far over a trigger threshold we go before triggering an
-   * incremental collection that would reset an in-progress collection.
+   * Limit of how far over the incremental trigger threshold we allow the heap
+   * to grow before finishing a collection non-incrementally, for large heaps.
    *
-   * Default: AvoidInterruptFactor
-   * Pref: None
+   * Default: LargeHeapIncrementalLimit
+   * Pref: javascript.options.mem.gc_large_heap_incremental_limit
    */
-  JSGC_AVOID_INTERRUPT_FACTOR = 26,
+  JSGC_LARGE_HEAP_INCREMENTAL_LIMIT = 26,
 
   /**
    * Attempt to run a minor GC in the idle time if the free space falls
@@ -346,6 +340,14 @@ typedef enum JSGCParamKey {
    * Default: MallocGrowthFactor
    */
   JSGC_MALLOC_GROWTH_FACTOR = 36,
+
+  /**
+   * Whether incremental weakmap marking is enabled.
+   *
+   * Pref: javascript.options.mem.incremental_weakmap
+   * Default: IncrementalWeakMarkEnabled
+   */
+  JSGC_INCREMENTAL_WEAKMAP_ENABLED = 37,
 } JSGCParamKey;
 
 /*
@@ -446,7 +448,7 @@ namespace JS {
   D(DELAYED_ATOMS_GC, 12)                   \
   D(SHARED_MEMORY_LIMIT, 13)                \
   D(IDLE_TIME_COLLECTION, 14)               \
-  D(INCREMENTAL_TOO_SLOW, 15)               \
+  D(BG_TASK_FINISHED, 15)                   \
   D(ABORT_GC, 16)                           \
   D(FULL_WHOLE_CELL_BUFFER, 17)             \
   D(FULL_GENERIC_BUFFER, 18)                \
@@ -463,9 +465,7 @@ namespace JS {
   D(TOO_MUCH_JIT_CODE, 29)                  \
   D(FULL_CELL_PTR_BIGINT_BUFFER, 30)        \
   D(INIT_SELF_HOSTING, 31)                  \
-                                            \
-  /* These are reserved for future use. */  \
-  D(RESERVED8, 32)                          \
+  D(NURSERY_MALLOC_BUFFERS, 32)             \
                                             \
   /* Reasons from Firefox */                \
   D(DOM_WINDOW_UTILS, FIRST_FIREFOX_REASON) \
@@ -1113,6 +1113,8 @@ extern JS_PUBLIC_API void SetHostCleanupFinalizationRegistryCallback(
  * https://tc39.es/proposal-weakrefs/#sec-clear-kept-objects
  */
 extern JS_PUBLIC_API void ClearKeptObjects(JSContext* cx);
+
+extern JS_PUBLIC_API bool ZoneIsCollecting(Zone* zone);
 
 }  // namespace JS
 

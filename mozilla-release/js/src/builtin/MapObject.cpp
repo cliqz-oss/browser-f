@@ -177,7 +177,8 @@ bool GlobalObject::initMapIteratorProto(JSContext* cx,
   if (!base) {
     return false;
   }
-  RootedPlainObject proto(cx, NewObjectWithGivenProto<PlainObject>(cx, base));
+  RootedPlainObject proto(
+      cx, GlobalObject::createBlankPrototypeInheriting<PlainObject>(cx, base));
   if (!proto) {
     return false;
   }
@@ -210,40 +211,38 @@ MapIteratorObject* MapIteratorObject::create(JSContext* cx, HandleObject obj,
     return nullptr;
   }
 
-  Nursery& nursery = cx->nursery();
+  MapIteratorObject* iterobj =
+      NewObjectWithGivenProto<MapIteratorObject>(cx, proto);
+  if (!iterobj) {
+    return nullptr;
+  }
 
-  MapIteratorObject* iterobj;
-  void* buffer;
-  NewObjectKind objectKind = GenericObject;
-  while (true) {
-    iterobj = NewObjectWithGivenProto<MapIteratorObject>(cx, proto, objectKind);
+  iterobj->init(mapobj, kind);
+
+  constexpr size_t BufferSize =
+      RoundUp(sizeof(ValueMap::Range), gc::CellAlignBytes);
+
+  Nursery& nursery = cx->nursery();
+  void* buffer = nursery.allocateBufferSameLocation(iterobj, BufferSize);
+  if (!buffer) {
+    // Retry with |iterobj| and |buffer| forcibly tenured.
+    iterobj = NewTenuredObjectWithGivenProto<MapIteratorObject>(cx, proto);
     if (!iterobj) {
       return nullptr;
     }
 
-    iterobj->setSlot(TargetSlot, ObjectValue(*mapobj));
-    iterobj->setSlot(RangeSlot, PrivateValue(nullptr));
-    iterobj->setSlot(KindSlot, Int32Value(int32_t(kind)));
+    iterobj->init(mapobj, kind);
 
-    const size_t size = RoundUp(sizeof(ValueMap::Range), gc::CellAlignBytes);
-    buffer = nursery.allocateBufferSameLocation(iterobj, size);
-    if (buffer) {
-      break;
-    }
-
-    if (!IsInsideNursery(iterobj)) {
+    buffer = nursery.allocateBufferSameLocation(iterobj, BufferSize);
+    if (!buffer) {
       ReportOutOfMemory(cx);
       return nullptr;
     }
-
-    // There was space in the nursery for the object but not the
-    // Range. Try again in the tenured heap.
-    MOZ_ASSERT(objectKind == GenericObject);
-    objectKind = TenuredObject;
   }
 
   bool insideNursery = IsInsideNursery(iterobj);
   MOZ_ASSERT(insideNursery == nursery.isInside(buffer));
+
   if (insideNursery && !HasNurseryMemory(mapobj.get())) {
     if (!cx->nursery().addMapWithNurseryMemory(mapobj)) {
       ReportOutOfMemory(cx);
@@ -283,7 +282,7 @@ size_t MapIteratorObject::objectMoved(JSObject* obj, JSObject* old) {
 
   Nursery& nursery = iter->runtimeFromMainThread()->gc.nursery();
   if (!nursery.isInside(range)) {
-    nursery.removeMallocedBuffer(range);
+    nursery.removeMallocedBufferDuringMinorGC(range);
     return 0;
   }
 
@@ -961,7 +960,8 @@ bool GlobalObject::initSetIteratorProto(JSContext* cx,
   if (!base) {
     return false;
   }
-  RootedPlainObject proto(cx, NewObjectWithGivenProto<PlainObject>(cx, base));
+  RootedPlainObject proto(
+      cx, GlobalObject::createBlankPrototypeInheriting<PlainObject>(cx, base));
   if (!proto) {
     return false;
   }
@@ -986,40 +986,38 @@ SetIteratorObject* SetIteratorObject::create(JSContext* cx, HandleObject obj,
     return nullptr;
   }
 
-  Nursery& nursery = cx->nursery();
+  SetIteratorObject* iterobj =
+      NewObjectWithGivenProto<SetIteratorObject>(cx, proto);
+  if (!iterobj) {
+    return nullptr;
+  }
 
-  SetIteratorObject* iterobj;
-  void* buffer;
-  NewObjectKind objectKind = GenericObject;
-  while (true) {
-    iterobj = NewObjectWithGivenProto<SetIteratorObject>(cx, proto, objectKind);
+  iterobj->init(setobj, kind);
+
+  constexpr size_t BufferSize =
+      RoundUp(sizeof(ValueSet::Range), gc::CellAlignBytes);
+
+  Nursery& nursery = cx->nursery();
+  void* buffer = nursery.allocateBufferSameLocation(iterobj, BufferSize);
+  if (!buffer) {
+    // Retry with |iterobj| and |buffer| forcibly tenured.
+    iterobj = NewTenuredObjectWithGivenProto<SetIteratorObject>(cx, proto);
     if (!iterobj) {
       return nullptr;
     }
 
-    iterobj->setSlot(TargetSlot, ObjectValue(*setobj));
-    iterobj->setSlot(RangeSlot, PrivateValue(nullptr));
-    iterobj->setSlot(KindSlot, Int32Value(int32_t(kind)));
+    iterobj->init(setobj, kind);
 
-    const size_t size = RoundUp(sizeof(ValueSet::Range), gc::CellAlignBytes);
-    buffer = nursery.allocateBufferSameLocation(iterobj, size);
-    if (buffer) {
-      break;
-    }
-
-    if (!IsInsideNursery(iterobj)) {
+    buffer = nursery.allocateBufferSameLocation(iterobj, BufferSize);
+    if (!buffer) {
       ReportOutOfMemory(cx);
       return nullptr;
     }
-
-    // There was space in the nursery for the object but not the
-    // Range. Try again in the tenured heap.
-    MOZ_ASSERT(objectKind == GenericObject);
-    objectKind = TenuredObject;
   }
 
   bool insideNursery = IsInsideNursery(iterobj);
   MOZ_ASSERT(insideNursery == nursery.isInside(buffer));
+
   if (insideNursery && !HasNurseryMemory(setobj.get())) {
     if (!cx->nursery().addSetWithNurseryMemory(setobj)) {
       ReportOutOfMemory(cx);
@@ -1059,7 +1057,7 @@ size_t SetIteratorObject::objectMoved(JSObject* obj, JSObject* old) {
 
   Nursery& nursery = iter->runtimeFromMainThread()->gc.nursery();
   if (!nursery.isInside(range)) {
-    nursery.removeMallocedBuffer(range);
+    nursery.removeMallocedBufferDuringMinorGC(range);
     return 0;
   }
 

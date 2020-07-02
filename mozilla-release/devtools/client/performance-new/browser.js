@@ -17,39 +17,25 @@
  * @typedef {import("./@types/perf").RestartBrowserWithEnvironmentVariable} RestartBrowserWithEnvironmentVariable
  * @typedef {import("./@types/perf").GetEnvironmentVariable} GetEnvironmentVariable
  * @typedef {import("./@types/perf").GetActiveBrowsingContextID} GetActiveBrowsingContextID
+ * @typedef {import("./@types/perf").MinimallyTypedGeckoProfile} MinimallyTypedGeckoProfile
  */
 
-/**
- * TS-TODO
- *
- * This function replaces lazyRequireGetter, and TypeScript can understand it. It's
- * currently duplicated until we have consensus that TypeScript is a good idea.
- *
- * @template T
- * @type {(callback: () => T) => () => T}
- */
-function requireLazy(callback) {
-  /** @type {T | undefined} */
-  let cache;
-  return () => {
-    if (cache === undefined) {
-      cache = callback();
-    }
-    return cache;
-  };
-}
-
-const lazyServices = requireLazy(() =>
-  require("resource://gre/modules/Services.jsm")
+const ChromeUtils = require("ChromeUtils");
+const { createLazyLoaders } = ChromeUtils.import(
+  "resource://devtools/client/performance-new/typescript-lazy-load.jsm.js"
 );
 
-const lazyChrome = requireLazy(() => require("chrome"));
-
-const lazyOS = requireLazy(() => require("resource://gre/modules/osfile.jsm"));
-
-const lazyProfilerGetSymbols = requireLazy(() =>
-  require("resource://gre/modules/ProfilerGetSymbols.jsm")
-);
+const lazy = createLazyLoaders({
+  Chrome: () => require("chrome"),
+  Services: () => require("Services"),
+  OS: () => ChromeUtils.import("resource://gre/modules/osfile.jsm"),
+  ProfilerGetSymbols: () =>
+    ChromeUtils.import("resource://gre/modules/ProfilerGetSymbols.jsm"),
+  PerfSymbolication: () =>
+    ChromeUtils.import(
+      "resource://devtools/client/performance-new/symbolication.jsm.js"
+    ),
+});
 
 const TRANSFER_EVENT = "devtools:perf-html-transfer-profile";
 const SYMBOL_TABLE_REQUEST_EVENT = "devtools:perf-html-request-symbol-table";
@@ -75,7 +61,7 @@ const UI_BASE_URL_PATH_DEFAULT = "/from-addon";
  * profiler.firefox.com to be analyzed. This function opens up profiler.firefox.com
  * into a new browser tab, and injects the profile via a frame script.
  *
- * @param {object} profile - The Gecko profile.
+ * @param {MinimallyTypedGeckoProfile} profile - The Gecko profile.
  * @param {GetSymbolTableCallback} getSymbolTableCallback - A callback function with the signature
  *   (debugName, breakpadId) => Promise<SymbolTableAsTuple>, which will be invoked
  *   when profiler.firefox.com sends SYMBOL_TABLE_REQUEST_EVENT messages to us. This
@@ -83,7 +69,7 @@ const UI_BASE_URL_PATH_DEFAULT = "/from-addon";
  *   returned promise with it.
  */
 function receiveProfile(profile, getSymbolTableCallback) {
-  const { Services } = lazyServices();
+  const Services = lazy.Services();
   // Find the most recently used window, as the DevTools client could be in a variety
   // of hosts.
   const win = Services.wm.getMostRecentWindow("navigator:browser");
@@ -168,14 +154,14 @@ function receiveProfile(profile, getSymbolTableCallback) {
  *    retains it on the returned closure so that it can be consulted after the
  *    profile has been passed to the UI.
  *
- * @param {object} profile - The profile JSON object
+ * @param {MinimallyTypedGeckoProfile} profile - The profile JSON object
  * @returns {(debugName: string, breakpadId: string) => Library | undefined}
  */
 function createLibraryMap(profile) {
   const map = new Map();
 
   /**
-   * @param {object} processProfile
+   * @param {MinimallyTypedGeckoProfile} processProfile
    */
   function fillMapForProcessRecursive(processProfile) {
     for (const lib of processProfile.libs) {
@@ -196,104 +182,10 @@ function createLibraryMap(profile) {
 }
 
 /**
- * @param {PerfFront} perfFront
- * @param {string} path
- * @param {string} breakpadId
- * @returns {Promise<SymbolTableAsTuple>}
- */
-async function getSymbolTableFromDebuggee(perfFront, path, breakpadId) {
-  const [addresses, index, buffer] = await perfFront.getSymbolTable(
-    path,
-    breakpadId
-  );
-  // The protocol transmits these arrays as plain JavaScript arrays of
-  // numbers, but we want to pass them on as typed arrays. Convert them now.
-  return [
-    new Uint32Array(addresses),
-    new Uint32Array(index),
-    new Uint8Array(buffer),
-  ];
-}
-
-/**
- * @param {string} path
- * @returns {Promise<boolean>}
- */
-async function doesFileExistAtPath(path) {
-  const { OS } = lazyOS();
-  try {
-    const result = await OS.File.stat(path);
-    return !result.isDir;
-  } catch (e) {
-    if (e instanceof OS.File.Error && e.becauseNoSuchFile) {
-      return false;
-    }
-    throw e;
-  }
-}
-
-/**
- * Retrieve a symbol table from a binary on the host machine, by looking up
- * relevant build artifacts in the specified objdirs.
- * This is needed if the debuggee is a build running on a remote machine that
- * was compiled by the developer on *this* machine (the "host machine"). In
- * that case, the objdir will contain the compiled binary with full symbol and
- * debug information, whereas the binary on the device may not exist in
- * uncompressed form or may have been stripped of debug information and some
- * symbol information.
- * An objdir, or "object directory", is a directory on the host machine that's
- * used to store build artifacts ("object files") from the compilation process.
+ * Return a function `getSymbolTable` that calls getSymbolTableMultiModal with the
+ * right arguments.
  *
- * @param {string[]} objdirs An array of objdir paths on the host machine
- *   that should be searched for relevant build artifacts.
- * @param {string} filename The file name of the binary.
- * @param {string} breakpadId The breakpad ID of the binary.
- * @returns {Promise<SymbolTableAsTuple>} The symbol table of the first encountered binary with a
- *   matching breakpad ID, in SymbolTableAsTuple format. An exception is thrown (the
- *   promise is rejected) if nothing was found.
- */
-async function getSymbolTableFromLocalBinary(objdirs, filename, breakpadId) {
-  const { OS } = lazyOS();
-  const candidatePaths = [];
-  for (const objdirPath of objdirs) {
-    // Binaries are usually expected to exist at objdir/dist/bin/filename.
-    candidatePaths.push(OS.Path.join(objdirPath, "dist", "bin", filename));
-    // Also search in the "objdir" directory itself (not just in dist/bin).
-    // If, for some unforeseen reason, the relevant binary is not inside the
-    // objdirs dist/bin/ directory, this provides a way out because it lets the
-    // user specify the actual location.
-    candidatePaths.push(OS.Path.join(objdirPath, filename));
-  }
-
-  for (const path of candidatePaths) {
-    if (await doesFileExistAtPath(path)) {
-      const { ProfilerGetSymbols } = lazyProfilerGetSymbols();
-      try {
-        return await ProfilerGetSymbols.getSymbolTable(path, path, breakpadId);
-      } catch (e) {
-        // ProfilerGetSymbols.getSymbolTable was unsuccessful. So either the
-        // file wasn't parseable or its contents didn't match the specified
-        // breakpadId, or some other error occurred.
-        // Advance to the next candidate path.
-      }
-    }
-  }
-  throw new Error("Could not find any matching binary.");
-}
-
-/**
- * Profiling through the DevTools remote debugging protocol supports multiple
- * different modes. This function is specialized to handle various profiling
- * modes such as:
- *
- *   1) Profiling the same browser on the same machine.
- *   2) Profiling a remote browser on the same machine.
- *   3) Profiling a remote browser on a different device.
- *
- * The profiler popup uses a more simplified version of this function as
- * it's dealing with a simpler situation.
- *
- * @param {object} profile - The raw profie (not gzipped).
+ * @param {MinimallyTypedGeckoProfile} profile - The raw profie (not gzipped).
  * @param {() => string[]} getObjdirs - A function that returns an array of objdir paths
  *   on the host machine that should be searched for relevant build artifacts.
  * @param {PerfFront} perfFront
@@ -303,48 +195,15 @@ function createMultiModalGetSymbolTableFn(profile, getObjdirs, perfFront) {
   const libraryGetter = createLibraryMap(profile);
 
   return async function getSymbolTable(debugName, breakpadId) {
-    const result = libraryGetter(debugName, breakpadId);
-    if (!result) {
+    const lib = libraryGetter(debugName, breakpadId);
+    if (!lib) {
       throw new Error(
         `Could not find the library for "${debugName}", "${breakpadId}".`
       );
     }
-    const { name, path, debugPath } = result;
-    if (await doesFileExistAtPath(path)) {
-      const { ProfilerGetSymbols } = lazyProfilerGetSymbols();
-      // This profile was obtained from this machine, and not from a
-      // different device (e.g. an Android phone). Dump symbols from the file
-      // on this machine directly.
-      return ProfilerGetSymbols.getSymbolTable(path, debugPath, breakpadId);
-    }
-    // The file does not exist, which probably indicates that the profile was
-    // obtained on a different machine, i.e. the debuggee is truly remote
-    // (e.g. on an Android phone).
-    try {
-      // First, try to find a binary with a matching file name and breakpadId
-      // on the host machine. This works if the profiled build is a developer
-      // build that has been compiled on this machine, and if the binary is
-      // one of the Gecko binaries and not a system library.
-      // The other place where we could obtain symbols is the debuggee device;
-      // that's handled in the catch branch below.
-      // We check the host machine first, because if this is a developer
-      // build, then the objdir files will contain more symbol information
-      // than the files that get pushed to the device.
-      const objdirs = getObjdirs();
-      return await getSymbolTableFromLocalBinary(objdirs, name, breakpadId);
-    } catch (e) {
-      // No matching file was found on the host machine.
-      // Try to obtain the symbol table on the debuggee. We get into this
-      // branch in the following cases:
-      //  - Android system libraries
-      //  - Firefox binaries that have no matching equivalent on the host
-      //    machine, for example because the user didn't point us at the
-      //    corresponding objdir, or if the build was compiled somewhere
-      //    else, or if the build on the device is outdated.
-      // For now, this path is not used on Windows, which is why we don't
-      // need to pass the library's debugPath.
-      return getSymbolTableFromDebuggee(perfFront, path, breakpadId);
-    }
+    const objdirs = getObjdirs();
+    const { getSymbolTableMultiModal } = lazy.PerfSymbolication();
+    return getSymbolTableMultiModal(lib, objdirs, perfFront);
   };
 }
 
@@ -354,8 +213,8 @@ function createMultiModalGetSymbolTableFn(profile, getObjdirs, perfFront) {
  * @type {RestartBrowserWithEnvironmentVariable}
  */
 function restartBrowserWithEnvironmentVariable(envName, value) {
-  const { Services } = lazyServices();
-  const { Cc, Ci } = lazyChrome();
+  const Services = lazy.Services();
+  const { Cc, Ci } = lazy.Chrome();
   const env = Cc["@mozilla.org/process/environment;1"].getService(
     Ci.nsIEnvironment
   );
@@ -372,7 +231,7 @@ function restartBrowserWithEnvironmentVariable(envName, value) {
  * @type {GetEnvironmentVariable}
  */
 function getEnvironmentVariable(envName) {
-  const { Cc, Ci } = lazyChrome();
+  const { Cc, Ci } = lazy.Chrome();
   const env = Cc["@mozilla.org/process/environment;1"].getService(
     Ci.nsIEnvironment
   );
@@ -385,7 +244,7 @@ function getEnvironmentVariable(envName) {
  * @param {(objdirs: string[]) => unknown} changeObjdirs
  */
 function openFilePickerForObjdir(window, objdirs, changeObjdirs) {
-  const { Cc, Ci } = lazyChrome();
+  const { Cc, Ci } = lazy.Chrome();
   const FilePicker = Cc["@mozilla.org/filepicker;1"].createInstance(
     Ci.nsIFilePicker
   );

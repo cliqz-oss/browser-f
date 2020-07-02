@@ -8,8 +8,10 @@
 #include "mozilla/net/SocketProcessChild.h"
 #include "mozilla/net/SocketProcessParent.h"
 #include "nsHttpActivityDistributor.h"
+#include "nsHttpHandler.h"
 #include "nsCOMPtr.h"
 #include "nsIOService.h"
+#include "nsQueryObject.h"
 #include "nsThreadUtils.h"
 #include "NullHttpChannel.h"
 
@@ -144,7 +146,9 @@ nsHttpActivityDistributor::AddObserver(nsIHttpActivityObserver* aObserver) {
   {
     MutexAutoLock lock(mLock);
     wasEmpty = mObservers.IsEmpty();
-    if (!mObservers.AppendElement(observer)) return NS_ERROR_OUT_OF_MEMORY;
+    // XXX(Bug 1631371) Check if this should use a fallible operation as it
+    // pretended earlier.
+    mObservers.AppendElement(observer);
   }
 
   if (nsIOService::UseSocketProcess() && wasEmpty) {

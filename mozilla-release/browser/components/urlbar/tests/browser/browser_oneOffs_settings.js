@@ -11,16 +11,15 @@
 let gMaxResults;
 
 add_task(async function init() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.oneOffSearches", true]],
-  });
   gMaxResults = Services.prefs.getIntPref("browser.urlbar.maxRichResults");
 
   registerCleanupFunction(async function() {
     await PlacesUtils.history.clear();
+    await UrlbarTestUtils.formHistory.clear();
   });
 
   await PlacesUtils.history.clear();
+  await UrlbarTestUtils.formHistory.clear();
 
   let visits = [];
   for (let i = 0; i < gMaxResults; i++) {

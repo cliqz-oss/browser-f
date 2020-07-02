@@ -15,9 +15,11 @@
 <!-- Specific error messages -->
 
 <!ENTITY connectionFailure.title "Fehler: Verbindung fehlgeschlagen">
+
 <!ENTITY connectionFailure.longDesc "&sharedLongDesc;">
 
 <!ENTITY deniedPortAccess.title "Fehler: Port aus Sicherheitsgründen blockiert">
+
 <!ENTITY deniedPortAccess.longDesc "">
 
 <!ENTITY dnsNotFound.pageTitle "Server nicht gefunden">
@@ -33,6 +35,7 @@
 ">
 
 <!ENTITY fileNotFound.title "Fehler: Datei nicht gefunden">
+
 <!ENTITY fileNotFound.longDesc "
 <ul>
   <li>Bitte überprüfen Sie die Adresse auf Rechtschreib-, Groß-/Kleinschreibungs- oder andere Fehler.</li>
@@ -41,6 +44,7 @@
 ">
 
 <!ENTITY fileAccessDenied.title "Zugriff auf die Datei wurde verweigert">
+
 <!ENTITY fileAccessDenied.longDesc "
 <ul>
   <li>Sie wurde möglicherweise entfernt, verschoben, oder Dateiberechtigungen könnten den Zugriff verhindern.</li>
@@ -48,6 +52,7 @@
 ">
 
 <!ENTITY generic.title "Fehler: Anfrage konnte nicht ausgeführt werden">
+
 <!ENTITY generic.longDesc "
 <p>&brandShortName; konnte die Seite aus unbekanntem Grund nicht laden.</p>
 ">
@@ -64,12 +69,15 @@
 <!ENTITY malformedURI.title1 "Diese Adresse scheint nicht korrekt zu sein.">
 
 <!ENTITY netInterrupt.title "Fehler: Datenübertragung unterbrochen">
+
 <!ENTITY netInterrupt.longDesc "&sharedLongDesc;">
 
 <!ENTITY notCached.title "Dokument erloschen">
+
 <!ENTITY notCached.longDesc "<p>Das angefragte Dokument ist nicht im Browser-Cache verfügbar.</p><ul><li>Als Sicherheitsmaßnahme fordert der Browser vertrauliche Dokumente nicht automatisch erneut an.</li><li>Klicken Sie auf &quot;Nochmals versuchen&quot;, um das Dokument erneut von der Website anzufordern.</li></ul>">
 
 <!ENTITY netOffline.title "Fehler: Offline-Modus">
+
 <!ENTITY netOffline.longDesc2 "
 <ul>
   <li>Wählen Sie &quot;Nochmals versuchen&quot;, um in den Online-Modus zu wechseln und die Seite erneut zu laden.</li>
@@ -77,6 +85,7 @@
 ">
 
 <!ENTITY contentEncodingError.title "Content-Encoding-Fehler">
+
 <!ENTITY contentEncodingError.longDesc "
 <ul>
   <li>Kontaktieren Sie bitte den Inhaber der Website, um ihn über dieses Problem zu informieren.</li> 
@@ -84,6 +93,7 @@
 ">
 
 <!ENTITY unsafeContentType.title "Unsicherer Dateityp">
+
 <!ENTITY unsafeContentType.longDesc "
 <ul>
   <li>Bitte kontaktieren Sie die Webseitenbetreiber, um sie über dieses Problem zu informieren.</li>
@@ -91,12 +101,15 @@
 ">
 
 <!ENTITY netReset.title "Fehler: Verbindung unterbrochen">
+
 <!ENTITY netReset.longDesc "&sharedLongDesc;">
 
 <!ENTITY netTimeout.title "Fehler: Netzwerk-Zeitüberschreitung">
+
 <!ENTITY netTimeout.longDesc "&sharedLongDesc;">
 
 <!ENTITY unknownProtocolFound.title "Adresse nicht erkannt">
+
 <!ENTITY unknownProtocolFound.longDesc "
 <ul>
   <li>Eventuell müssen Sie andere Software installieren, um diese Adresse aufrufen zu können.</li>
@@ -104,6 +117,7 @@
 ">
 
 <!ENTITY proxyConnectFailure.title "Fehler: Proxy-Server verweigert die Verbindung">
+
 <!ENTITY proxyConnectFailure.longDesc "
 <ul>
   <li>Überprüfen Sie bitte, ob die Proxy-Einstellungen korrekt sind</li>
@@ -113,6 +127,7 @@
 ">
 
 <!ENTITY proxyResolveFailure.title "Fehler: Proxy-Server nicht gefunden">
+
 <!ENTITY proxyResolveFailure.longDesc "
 <ul>
   <li>Überprüfen Sie bitte, ob die Proxy-Einstellungen korrekt sind.</li>
@@ -123,6 +138,7 @@
 ">
 
 <!ENTITY redirectLoop.title "Fehler: Umleitungsfehler">
+
 <!ENTITY redirectLoop.longDesc "
 <ul>
   <li>Dieses Problem kann manchmal auftreten, wenn Cookies deaktiviert oder abgelehnt 
@@ -131,6 +147,7 @@
 ">
 
 <!ENTITY unknownSocketType.title "Fehler: Unerwartete Antwort">
+
 <!ENTITY unknownSocketType.longDesc "
 <ul>
   <li>Bitte stellen Sie sicher, dass auf Ihrem System der Personal-Security-Manager 
@@ -140,6 +157,7 @@
 ">
 
 <!ENTITY nssFailure2.title "Fehler: Gesicherte Verbindung fehlgeschlagen">
+
 <!ENTITY nssFailure2.longDesc2 "
 <ul>
   <li>Die Website kann nicht angezeigt werden, da die Authentizität der erhaltenen Daten nicht verifiziert werden konnte.</li>
@@ -149,6 +167,7 @@
 
 <!ENTITY certerror.longpagetitle2 "Warnung: Mögliches Sicherheitsrisiko erkannt">
 <!ENTITY certerror.sts.longpagetitle  "Kein Verbindungsversuch unternommen: Mögliches Sicherheitsproblem">
+
 <!-- Localization note (certerror.introPara2) - The text content of the span tag
 will be replaced at runtime with the name of the server to which the user
 was trying to connect. -->
@@ -187,12 +206,13 @@ was trying to connect. -->
 ">
 
 <!ENTITY cspBlocked.title "Blockiert von der Inhaltsicherheitsrichtlinie (CSP)">
+
 <!ENTITY cspBlocked.longDesc "<p>&brandShortName; hat diese Webseite daran gehindert, auf diese Weise geladen zu werden, weil die Webseite eine Inhaltsicherheitsrichtlinie (Content Security Policy) hat, die dies nicht erlaubt.</p>">
 
-<!ENTITY xfoBlocked.title "Blockiert durch X-Frame-Options-Richtlinie">
+<!ENTITY corruptedContentErrorv2.title "Fehler: Beschädigte Inhalte">
+
 <!ENTITY xfoBlocked.longDesc "<p>&brandShortName;  hat das Laden dieser Seite in diesem Kontext verhindert, da die Seite über eine X-Frame-Options-Richtlinie verfügt, die dies verbietet.</p>">
 
-<!ENTITY corruptedContentErrorv2.title "Fehler: Beschädigte Inhalte">
 <!ENTITY corruptedContentErrorv2.longDesc "<p>Die Seite, die Sie anzusehen versuchen, kann nicht angezeigt werden, da ein Fehler in der Datenübertragung festgestellt wurde.</p><ul><li>Bitte kontaktieren Sie die Website-Betreiber, um sie über dieses Problem zu verständigen.</li></ul>">
 
 <!ENTITY securityOverride.exceptionButton1Label "Risiko akzeptieren und fortfahren">
@@ -201,9 +221,11 @@ was trying to connect. -->
 <!ENTITY errorReporting.learnMore "Weitere Informationen…">
 
 <!ENTITY remoteXUL.title "Remote-XUL">
+
 <!ENTITY remoteXUL.longDesc "<p><ul><li>Bitte informieren Sie den Website-Inhaber über dieses Problem.</li></ul></p>">
 
 <!ENTITY sslv3Used.title "Keine sichere Verbindung möglich">
+
 <!-- LOCALIZATION NOTE (sslv3Used.longDesc2) - Do not translate
      "SSL_ERROR_UNSUPPORTED_VERSION". -->
 <!ENTITY sslv3Used.longDesc2 "Weitere Informationen: SSL_ERROR_UNSUPPORTED_VERSION">
@@ -214,6 +236,7 @@ was trying to connect. -->
 <!ENTITY certerror.copyToClipboard.label "In Zwischenablage kopieren">
 
 <!ENTITY inadequateSecurityError.title "Diese Verbindung ist nicht sicher">
+
 <!-- LOCALIZATION NOTE (inadequateSecurityError.longDesc) - Do not translate
      "NS_ERROR_NET_INADEQUATE_SECURITY". -->
 <!ENTITY inadequateSecurityError.longDesc "<p><span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten. Der Website-Administrator muss dieses Problem auf dem Server beheben, bevor Sie die Seite aufrufen können.</p><p>Fehlercode: NS_ERROR_NET_INADEQUATE_SECURITY</p>">
@@ -221,6 +244,7 @@ was trying to connect. -->
 <!ENTITY blockedByPolicy.title "Blockierte Seite">
 
 <!ENTITY certerror.mitm.title "Software hindert &brandShortName; am Aufbauen einer sicheren Verbindung mit dieser Website">
+
 <!ENTITY certerror.mitm.longDesc "<span class='hostname'></span> ist wahrscheinlich eine sichere Website, aber es konnte keine sichere Verbindung aufgebaut werden. Dies wird durch <span class='mitm-name'/> verursacht, welches entweder auf dem Computer installierte Software oder Ihr Netzwerk ist.">
 <!ENTITY certerror.mitm.whatCanYouDoAboutIt1 "Falls die verwendete Antivirus-Software eine Funktion zum Untersuchen verschlüsselter Verbindungen enthält (oft als &quot;Browser Safety&quot; oder &quot;Untersuchung von sicheren Verbindungen&quot; bezeichnet), können Sie diese Funktion deaktivieren. Falls dies das Problem nicht behebt, können Sie die Antivirus-Software deinstallieren und neu installieren.">
 <!ENTITY certerror.mitm.whatCanYouDoAboutIt2 "Falls Sie ein Firmennetzwerk verwenden, kontaktieren Sie bitte Ihre IT-Abteilung.">
@@ -228,14 +252,16 @@ was trying to connect. -->
 <!ENTITY certerror.mitm.sts.whatCanYouDoAboutIt3 "Falls Sie mit <span class='mitm-name'/> nicht vertraut sind, könnte dies ein Angriff sein und Sie können nichts unternehmen, um diese Seite zu laden.">
 
 <!ENTITY clockSkewError.title "Datum und/oder Uhrzeit Ihres Computers sind nicht korrekt">
+
 <!ENTITY clockSkewError.longDesc "Datum und Uhrzeit Ihres Computers sind auf <span id='wrongSystemTime_systemDate1'/> gesetzt, was &brandShortName; am Herstellen einer gesicherten Verbindung hindert. Setzen Sie Datum, Uhrzeit und Zeitzone in den Systemeinstellungen korrekt und laden Sie anschließend <span class='hostname'></span> neu.">
 
 <!ENTITY prefReset.longDesc "Dies könnte durch die Netzwerk-Sicherheitseinstellungen verursacht werden. Sollen die Standardeinstellungen wiederhergestellt werden?">
 <!ENTITY prefReset.label "Standardeinstellungen wiederherstellen">
 
+<!ENTITY networkProtocolError.title "Netzwerkprotokoll-Fehler">
+
 <!ENTITY enableTls10.longDesc "Diese Website unterstützt eventuell Version 1.2 des TLS-Protokolls nicht, welche die niedrigste von &brandShortName; unterstützte Version ist. Nach dem Aktivieren von TLS 1.0 und 1.1 ist die Verbindung möglicherweise erfolgreich.">
 <!ENTITY enableTls10.note "TLS 1.0 und TLS 1.1 werden in einer zukünftigen Version dauerhaft deaktiviert.">
 <!ENTITY enableTls10.label "TLS 1.0 und 1.1 aktivieren">
 
-<!ENTITY networkProtocolError.title "Netzwerkprotokoll-Fehler">
 <!ENTITY networkProtocolError.longDesc "<p>Die angeforderte Seite kann nicht angezeigt werden, da ein Fehler bei der Verwendung des Netzwerkprotokolls festgestellt wurde.</p><ul><li>Kontaktieren Sie bitte die Betreiber der Website, um sie über dieses Problem zu informieren.</li></ul>">

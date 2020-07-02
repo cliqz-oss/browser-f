@@ -32,6 +32,7 @@
 
 #include "CanvasUtils.h"
 #include "gfxUtils.h"
+#include "MozFramebuffer.h"
 
 #include "jsfriendapi.h"
 
@@ -50,6 +51,7 @@
 #include "mozilla/EndianUtils.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtrExtensions.h"
+#include "mozilla/StaticPrefs_webgl.h"
 
 namespace mozilla {
 
@@ -338,6 +340,9 @@ void WebGLContext::FramebufferAttach(const GLenum target,
   }
 
   auto safeToAttach = toAttach;
+  if (!toAttach.rb && !toAttach.tex) {
+    safeToAttach = {};
+  }
   if (!IsWebGL2() &&
       !IsExtensionEnabled(WebGLExtensionID::OES_fbo_render_mipmap)) {
     safeToAttach.mipLevel = 0;
@@ -816,7 +821,6 @@ void WebGLContext::PixelStorei(GLenum pname, uint32_t param) {
   }
 
   ErrorInvalidEnumInfo("pname", pname);
-  return;
 }
 
 bool WebGLContext::DoReadPixelsAndConvert(
@@ -1375,6 +1379,24 @@ RefPtr<WebGLFramebuffer> WebGLContext::CreateFramebuffer() {
   gl->fGenFramebuffers(1, &fbo);
 
   return new WebGLFramebuffer(this, fbo);
+}
+
+RefPtr<WebGLFramebuffer> WebGLContext::CreateOpaqueFramebuffer(
+    const webgl::OpaqueFramebufferOptions& options) {
+  const FuncScope funcScope(*this, "createOpaqueFramebuffer");
+  if (IsContextLost()) return nullptr;
+
+  uint32_t samples = options.antialias ? StaticPrefs::webgl_msaa_samples() : 0;
+  samples = std::min(samples, gl->MaxSamples());
+  const gfx::IntSize size = {options.width, options.height};
+
+  auto fbo =
+      gl::MozFramebuffer::Create(gl, size, samples, options.depthStencil);
+  if (!fbo) {
+    return nullptr;
+  }
+
+  return new WebGLFramebuffer(this, std::move(fbo));
 }
 
 RefPtr<WebGLRenderbuffer> WebGLContext::CreateRenderbuffer() {

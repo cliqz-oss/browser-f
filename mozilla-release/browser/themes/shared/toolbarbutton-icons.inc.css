@@ -28,6 +28,7 @@ toolbar[brighttext] {
   position: absolute;
   overflow: hidden;
   z-index: 2;
+  pointer-events: none;
 }
 
 .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
@@ -256,15 +257,32 @@ toolbar[brighttext] {
 }
 
 #profiler-button {
-  list-style-image: url("chrome://devtools/skin/images/profiler-stopwatch.svg");
+  list-style-image: url("chrome://devtools/skin/images/tool-profiler.svg");
 }
 
-#PanelUI-profilerIframe {
-  width: 450px;
+#profiler-button:not(.profiler-active) > image {
+  transform: scaleX(-1);
+}
+
+#profiler-button.profiler-active {
+  fill: #0060df;
+  fill-opacity: 1;
+}
+
+#profiler-button.profiler-active image {
+  background-color: #0060df33;
+}
+
+#profiler-button.profiler-active:hover image {
+  background-color: #0060df22;
+}
+
+#profiler-button.profiler-paused image {
+  opacity: 0.4;
 }
 
 #preferences-button {
-  list-style-image: url("chrome://browser/skin/settings.svg");
+  list-style-image: url("chrome://global/skin/icons/settings.svg");
 }
 
 #PanelUI-menu-button {
@@ -603,4 +621,7 @@ toolbarbutton.bookmark-item {
 
 #whats-new-menu-button {
   list-style-image: url("chrome://browser/skin/whatsnew.svg");
+}
+#pioneer-button {
+  list-style-image: url("chrome://browser/skin/pioneer.svg");
 }

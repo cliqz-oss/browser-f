@@ -172,6 +172,11 @@ async function setErrorPageStrings(err) {
     title = err + "-sts-title";
   }
 
+  let cspXfoError = err === "cspBlocked" || err === "xfoBlocked";
+  if (cspXfoError) {
+    title = "csp-xfo-error-title";
+  }
+
   let [errorCodeTitle] = await document.l10n.formatValues([
     {
       id: title,
@@ -290,6 +295,23 @@ function initPage() {
     // Remove the "Try again" button for XFO and CSP violations,
     // since it's almost certainly useless. (Bug 553180)
     document.getElementById("netErrorButtonContainer").style.display = "none";
+
+    // Adding a button for opening websites blocked for CSP and XFO violations
+    // in a new window. (Bug 1461195)
+    document.getElementById("errorShortDesc").style.display = "none";
+
+    let hostString = document.location.hostname;
+    let longDescription = document.getElementById("errorLongDesc");
+    document.l10n.setAttributes(longDescription, "csp-xfo-blocked-long-desc", {
+      hostname: hostString,
+    });
+
+    document.getElementById("openInNewWindowContainer").style.display = "block";
+
+    let openInNewWindowButton = document.getElementById(
+      "openInNewWindowButton"
+    );
+    openInNewWindowButton.href = document.location.href;
   }
 
   setNetErrorMessageFromCode();
@@ -425,18 +447,20 @@ async function setNetErrorMessageFromCode() {
 
   let desc = document.getElementById("errorShortDescText");
   let errorCodeStr = securityInfo.errorCodeString || "";
-
-  let [errorCodeMsg] = await document.l10n.formatValues([
-    {
-      id: errorCodeStr
-        .split("_")
-        .join("-")
-        .toLowerCase(),
-    },
-  ]);
+  let errorCodeMsg = "";
+  if (errorCodeStr) {
+    [errorCodeMsg] = await document.l10n.formatValues([
+      {
+        id: errorCodeStr
+          .split("_")
+          .join("-")
+          .toLowerCase(),
+      },
+    ]);
+  }
 
   if (!errorCodeMsg) {
-    console.error("No strings exist for this error type");
+    console.warn("This error page has no error code in its security info");
     document.l10n.setAttributes(desc, "ssl-connection-error", {
       errorMessage: errorCodeStr,
       hostname: hostString,
@@ -448,6 +472,7 @@ async function setNetErrorMessageFromCode() {
     errorMessage: errorCodeMsg,
     hostname: hostString,
   });
+
   let desc2 = document.getElementById("errorShortDescText2");
   document.l10n.setAttributes(desc2, "cert-error-code-prefix", {
     error: errorCodeStr,

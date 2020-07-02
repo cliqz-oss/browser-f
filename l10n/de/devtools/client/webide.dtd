@@ -36,8 +36,6 @@
 <!ENTITY runtimeMenu_takeScreenshot_accesskey "S">
 <!ENTITY runtimeMenu_showDetails_label "Informationen zur Laufzeitumgebung">
 <!ENTITY runtimeMenu_showDetails_accesskey "n">
-<!ENTITY runtimeMenu_showMonitor_label "Diagramme">
-<!ENTITY runtimeMenu_showMonitor_accesskey "D">
 <!ENTITY runtimeMenu_showDevicePrefs_label "Einstellungen der Geräteplattform">
 <!ENTITY runtimeMenu_showDevicePrefs_accesskey "E">
 <!ENTITY runtimeMenu_showSettings_label "Einstellungen der Apps auf dem Gerät">
@@ -56,6 +54,7 @@
 <!ENTITY viewMenu_resetzoom_accesskey "N">
 
 <!ENTITY projectButton_label "App öffnen">
+
 <!ENTITY runtimeButton_label "Laufzeitumgebung auswählen">
 
 <!-- We try to repicate Firefox' bindings: -->
@@ -78,10 +77,7 @@
 <!ENTITY projectPanel_tabs "Tabs">
 <!ENTITY runtimePanel_usb "USB-Geräte">
 <!ENTITY runtimePanel_wifi "WLAN-Geräte">
-<!ENTITY runtimePanel_simulator "Simulatoren">
 <!ENTITY runtimePanel_other "Sonstige">
-<!ENTITY runtimePanel_installsimulator "Simulator installieren">
-<!ENTITY runtimePanel_noadbhelper "ADB Helper installieren">
 <!ENTITY runtimePanel_nousbdevice "Wird Ihr Gerät nicht angezeigt?">
 <!ENTITY runtimePanel_refreshDevices_label "Geräte neu erkennen">
 
@@ -124,12 +120,6 @@
 
 <!-- Runtime Details -->
 <!ENTITY runtimedetails_title "Informationen zur Laufzeitumgebung">
-<!ENTITY runtimedetails_adbIsRoot "ADB ist Root: ">
-<!ENTITY runtimedetails_summonADBRoot "Gerät rooten">
-<!ENTITY runtimedetails_ADBRootWarning "(erfordert entsperrten Bootloader)">
-<!ENTITY runtimedetails_unrestrictedPrivileges "Uneingeschränkte Entwicklerwerkzeug-Berechtigungen: ">
-<!ENTITY runtimedetails_requestPrivileges "Höhere Berechtigungen anfordern">
-<!ENTITY runtimedetails_privilegesWarning "(Wird Gerät neu starten und benötigt Root-Zugriff.)">
 
 <!-- Device Preferences and Settings -->
 <!ENTITY device_typeboolean "Boolean">
@@ -151,10 +141,6 @@
 <!ENTITY devicesetting_newname "Name der neuen Einstellung">
 <!ENTITY devicesetting_newtext "Wert der Einstellung">
 <!ENTITY devicesetting_addnew "Neue Einstellung hinzufügen">
-
-<!-- Monitor -->
-<!ENTITY monitor_title "Diagramme">
-<!ENTITY monitor_help "Hilfe">
 
 <!-- WiFi Authentication -->
 <!-- LOCALIZATION NOTE (wifi_auth_header): The header displayed on the dialog
@@ -178,18 +164,3 @@
 <!-- Logs panel -->
 <!ENTITY logs_title "Protokolle der Prozesse vor dem Packen">
 
-<!-- Simulator Options -->
-<!ENTITY simulator_title "Simulator-Einstellungen">
-<!ENTITY simulator_remove "Simulator entfernen">
-<!ENTITY simulator_reset "Standard wiederherstellen">
-<!ENTITY simulator_name "Name">
-<!ENTITY simulator_software "Software">
-<!ENTITY simulator_version "Version">
-<!ENTITY simulator_profile "Profil">
-<!ENTITY simulator_hardware "Hardware">
-<!ENTITY simulator_device "Gerät">
-<!ENTITY simulator_screenSize "Bildschirm">
-<!ENTITY simulator_pixelRatio "Pixel-Verhältnis">
-<!ENTITY simulator_tv_data "TV-Simulation">
-<!ENTITY simulator_tv_data_open "Einstellungsdaten">
-<!ENTITY simulator_tv_data_open_button "Einstellungsordner öffnen…">

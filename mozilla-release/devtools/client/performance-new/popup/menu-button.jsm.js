@@ -5,55 +5,28 @@
 "use strict";
 
 /**
- * @typedef {import("../@types/perf").PerformancePref} PerformancePref
- */
-
-/**
  * This file controls the enabling and disabling of the menu button for the profiler.
  * Care should be taken to keep it minimal as it can be run with browser initialization.
  */
 
-/**
- * TS-TODO
- *
- * This function replaces lazyRequireGetter, and TypeScript can understand it. It's
- * currently duplicated until we have consensus that TypeScript is a good idea.
- *
- * @template T
- * @type {(callback: () => T) => () => T}
- */
-function requireLazy(callback) {
-  /** @type {T | undefined} */
-  let cache;
-  return () => {
-    if (cache === undefined) {
-      cache = callback();
-    }
-    return cache;
-  };
-}
-
 // Provide an exports object for the JSM to be properly read by TypeScript.
 /** @type {any} */ (this).exports = {};
 
-const lazyServices = requireLazy(() =>
-  /** @type {import("resource://gre/modules/Services.jsm")} */
-  (ChromeUtils.import("resource://gre/modules/Services.jsm"))
+const { createLazyLoaders } = ChromeUtils.import(
+  "resource://devtools/client/performance-new/typescript-lazy-load.jsm.js"
 );
-const lazyCustomizableUI = requireLazy(() =>
-  /** @type {import("resource:///modules/CustomizableUI.jsm")} */
-  (ChromeUtils.import("resource:///modules/CustomizableUI.jsm"))
-);
-const lazyCustomizableWidgets = requireLazy(() =>
-  /** @type {import("resource:///modules/CustomizableWidgets.jsm")} */
-  (ChromeUtils.import("resource:///modules/CustomizableWidgets.jsm"))
-);
-const lazyPopupPanel = requireLazy(() =>
-  /** @type {import("devtools/client/performance-new/popup/panel.jsm.js")} */
-  (ChromeUtils.import(
-    "resource://devtools/client/performance-new/popup/panel.jsm.js"
-  ))
-);
+
+const lazy = createLazyLoaders({
+  Services: () => ChromeUtils.import("resource://gre/modules/Services.jsm"),
+  CustomizableUI: () =>
+    ChromeUtils.import("resource:///modules/CustomizableUI.jsm"),
+  CustomizableWidgets: () =>
+    ChromeUtils.import("resource:///modules/CustomizableWidgets.jsm"),
+  PopupPanel: () =>
+    ChromeUtils.import(
+      "resource://devtools/client/performance-new/popup/panel.jsm.js"
+    ),
+});
 
 const WIDGET_ID = "profiler-button";
 
@@ -64,7 +37,7 @@ const WIDGET_ID = "profiler-button";
  * @return {void}
  */
 function addToNavbar(document) {
-  const { CustomizableUI } = lazyCustomizableUI();
+  const { CustomizableUI } = lazy.CustomizableUI();
 
   CustomizableUI.addWidgetToArea(WIDGET_ID, CustomizableUI.AREA_NAVBAR);
 }
@@ -76,7 +49,7 @@ function addToNavbar(document) {
  * @return {void}
  */
 function remove() {
-  const { CustomizableUI } = lazyCustomizableUI();
+  const { CustomizableUI } = lazy.CustomizableUI();
   CustomizableUI.removeWidgetFromArea(WIDGET_ID);
 }
 
@@ -87,7 +60,7 @@ function remove() {
  * @return {boolean}
  */
 function isInNavbar() {
-  const { CustomizableUI } = lazyCustomizableUI();
+  const { CustomizableUI } = lazy.CustomizableUI();
   return Boolean(CustomizableUI.getPlacementOfWidget("profiler-button"));
 }
 
@@ -112,9 +85,9 @@ function openPopup(document) {
  * @return {void}
  */
 function initialize(toggleProfilerKeyShortcuts) {
-  const { CustomizableUI } = lazyCustomizableUI();
-  const { CustomizableWidgets } = lazyCustomizableWidgets();
-  const { Services } = lazyServices();
+  const { CustomizableUI } = lazy.CustomizableUI();
+  const { CustomizableWidgets } = lazy.CustomizableWidgets();
+  const { Services } = lazy.Services();
 
   const widget = CustomizableUI.getWidget(WIDGET_ID);
   if (widget && widget.provider == CustomizableUI.PROVIDER_API) {
@@ -147,7 +120,7 @@ function initialize(toggleProfilerKeyShortcuts) {
     if (!isEnabled) {
       // The profiler menu button is no longer in the navbar, make sure that the
       // "intro-displayed" preference is reset.
-      /** @type {PerformancePref["PopupIntroDisplayed"]} */
+      /** @type {import("../@types/perf").PerformancePref["PopupIntroDisplayed"]} */
       const popupIntroDisplayedPref =
         "devtools.performance.popup.intro-displayed";
       Services.prefs.setBoolPref(popupIntroDisplayedPref, false);
@@ -183,7 +156,7 @@ function initialize(toggleProfilerKeyShortcuts) {
             createViewControllers,
             addPopupEventHandlers,
             initializePopup,
-          } = lazyPopupPanel();
+          } = lazy.PopupPanel();
 
           const panelElements = selectElementsInPanelview(event.target);
           const panelView = createViewControllers(panelState, panelElements);
@@ -213,7 +186,7 @@ function initialize(toggleProfilerKeyShortcuts) {
      * @type {(document: HTMLDocument) => void}
      */
     onBeforeCreated: document => {
-      /** @type {PerformancePref["PopupIntroDisplayed"]} */
+      /** @type {import("../@types/perf").PerformancePref["PopupIntroDisplayed"]} */
       const popupIntroDisplayedPref =
         "devtools.performance.popup.intro-displayed";
 
@@ -248,23 +221,58 @@ function initialize(toggleProfilerKeyShortcuts) {
      * @type {(buttonElement: HTMLElement) => void}
      */
     onCreated: buttonElement => {
-      const window = buttonElement.ownerDocument.defaultView;
-
-      function updateButtonColor() {
-        // Use photon blue-60 when active.
-        buttonElement.style.fill = Services.profiler.IsActive()
-          ? "#0060df"
-          : "";
+      const window = buttonElement?.ownerDocument?.defaultView;
+      if (!window) {
+        console.error(
+          "Unable to find the window of the profiler button element."
+        );
+        return;
       }
 
-      updateButtonColor();
+      // This class is needed to show the subview arrow when our button
+      // is in the overflow menu.
+      buttonElement.classList.add("subviewbutton-nav");
 
-      Services.obs.addObserver(updateButtonColor, "profiler-started");
-      Services.obs.addObserver(updateButtonColor, "profiler-stopped");
+      function setButtonActive() {
+        buttonElement.setAttribute(
+          "tooltiptext",
+          "The profiler is recording a profile"
+        );
+        buttonElement.classList.toggle("profiler-active", true);
+        buttonElement.classList.toggle("profiler-paused", false);
+      }
+      function setButtonPaused() {
+        buttonElement.setAttribute(
+          "tooltiptext",
+          "The profiler is capturing a profile"
+        );
+        buttonElement.classList.toggle("profiler-active", false);
+        buttonElement.classList.toggle("profiler-paused", true);
+      }
+      function setButtonInactive() {
+        buttonElement.setAttribute(
+          "tooltiptext",
+          "Record a performance profile"
+        );
+        buttonElement.classList.toggle("profiler-active", false);
+        buttonElement.classList.toggle("profiler-paused", false);
+      }
+
+      if (Services.profiler.IsPaused()) {
+        setButtonPaused();
+      }
+      if (Services.profiler.IsActive()) {
+        setButtonActive();
+      }
+
+      Services.obs.addObserver(setButtonActive, "profiler-started");
+      Services.obs.addObserver(setButtonInactive, "profiler-stopped");
+      Services.obs.addObserver(setButtonPaused, "profiler-paused");
 
       window.addEventListener("unload", () => {
-        Services.obs.removeObserver(updateButtonColor, "profiler-started");
-        Services.obs.removeObserver(updateButtonColor, "profiler-stopped");
+        Services.obs.removeObserver(setButtonActive, "profiler-started");
+        Services.obs.removeObserver(setButtonInactive, "profiler-stopped");
+        Services.obs.removeObserver(setButtonPaused, "profiler-paused");
       });
     },
   };

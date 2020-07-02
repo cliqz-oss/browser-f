@@ -8,7 +8,9 @@
 #include "TRRServiceChannel.h"
 
 #include "HttpLog.h"
+#include "AltServiceChild.h"
 #include "mozilla/StaticPrefs_network.h"
+#include "mozilla/Unused.h"
 #include "nsDNSPrefetch.h"
 #include "nsEscape.h"
 #include "nsHttpTransaction.h"
@@ -18,6 +20,7 @@
 #include "nsIOService.h"
 #include "nsISeekableStream.h"
 #include "nsURLHelper.h"
+#include "ProxyConfigLookup.h"
 #include "TRRLoadInfo.h"
 #include "ReferrerInfo.h"
 #include "TRR.h"
@@ -26,7 +29,43 @@ namespace mozilla {
 namespace net {
 
 NS_IMPL_ADDREF(TRRServiceChannel)
-NS_IMPL_RELEASE(TRRServiceChannel)
+
+// Because nsSupportsWeakReference isn't thread-safe we must ensure that
+// TRRServiceChannel is destroyed on the target thread. Any Release() called
+// on a different thread is dispatched to the target thread.
+bool TRRServiceChannel::DispatchRelease() {
+  if (mCurrentEventTarget->IsOnCurrentThread()) {
+    return false;
+  }
+
+  mCurrentEventTarget->Dispatch(
+      NewNonOwningRunnableMethod("net::TRRServiceChannel::Release", this,
+                                 &TRRServiceChannel::Release),
+      NS_DISPATCH_NORMAL);
+
+  return true;
+}
+
+NS_IMETHODIMP_(MozExternalRefCountType)
+TRRServiceChannel::Release() {
+  nsrefcnt count = mRefCnt - 1;
+  if (DispatchRelease()) {
+    // Redispatched to the target thread.
+    return count;
+  }
+
+  MOZ_ASSERT(0 != mRefCnt, "dup release");
+  count = --mRefCnt;
+  NS_LOG_RELEASE(this, count, "TRRServiceChannel");
+
+  if (0 == count) {
+    mRefCnt = 1;
+    delete (this);
+    return 0;
+  }
+
+  return count;
+}
 
 NS_INTERFACE_MAP_BEGIN(TRRServiceChannel)
   NS_INTERFACE_MAP_ENTRY(nsIRequest)
@@ -49,6 +88,7 @@ TRRServiceChannel::TRRServiceChannel()
     : HttpAsyncAborter<TRRServiceChannel>(this),
       mTopWindowOriginComputed(false),
       mPushedStreamId(0),
+      mProxyRequest(nullptr, "TRRServiceChannel::mProxyRequest"),
       mCurrentEventTarget(GetCurrentThreadEventTarget()) {
   LOG(("TRRServiceChannel ctor [this=%p]\n", this));
 }
@@ -68,15 +108,21 @@ TRRServiceChannel::Cancel(nsresult status) {
 
   mCanceled = true;
   mStatus = status;
-  if (mProxyRequest) {
-    nsCOMPtr<nsICancelable> proxyRequet;
-    proxyRequet.swap(mProxyRequest);
+
+  nsCOMPtr<nsICancelable> proxyRequest;
+  {
+    auto req = mProxyRequest.Lock();
+    proxyRequest.swap(*req);
+  }
+
+  if (proxyRequest) {
     NS_DispatchToMainThread(
         NS_NewRunnableFunction(
             "CancelProxyRequest",
-            [proxyRequet, status]() { proxyRequet->Cancel(status); }),
+            [proxyRequest, status]() { proxyRequest->Cancel(status); }),
         NS_DISPATCH_NORMAL);
   }
+
   CancelNetworkRequest(status);
   return NS_OK;
 }
@@ -207,37 +253,37 @@ nsresult TRRServiceChannel::ResolveProxy() {
 
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsresult rv;
-  nsCOMPtr<nsIChannel> channel;
-  rv = NS_NewChannel(getter_AddRefs(channel), mURI,
-                     nsContentUtils::GetSystemPrincipal(),
-                     nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
-                     nsIContentPolicy::TYPE_OTHER);
-  if (NS_SUCCEEDED(rv)) {
-    nsCOMPtr<nsIProtocolProxyService> pps =
-        do_GetService(NS_PROTOCOLPROXYSERVICE_CONTRACTID, &rv);
-    if (NS_SUCCEEDED(rv)) {
-      // using the nsIProtocolProxyService2 allows a minor performance
-      // optimization, but if an add-on has only provided the original interface
-      // then it is ok to use that version.
-      nsCOMPtr<nsIProtocolProxyService2> pps2 = do_QueryInterface(pps);
-      if (pps2) {
-        rv = pps2->AsyncResolve2(channel, mProxyResolveFlags, this, nullptr,
-                                 getter_AddRefs(mProxyRequest));
-      } else {
-        rv = pps->AsyncResolve(channel, mProxyResolveFlags, this, nullptr,
-                               getter_AddRefs(mProxyRequest));
-      }
-    }
-  }
+  // TODO: bug 1625171. Consider moving proxy resolution to socket process.
+  RefPtr<TRRServiceChannel> self = this;
+  nsCOMPtr<nsICancelable> proxyRequest;
+  nsresult rv = ProxyConfigLookup::Create(
+      [self](nsIProxyInfo* aProxyInfo, nsresult aStatus) {
+        self->OnProxyAvailable(nullptr, nullptr, aProxyInfo, aStatus);
+      },
+      mURI, mProxyResolveFlags, getter_AddRefs(proxyRequest));
 
   if (NS_FAILED(rv)) {
     if (!mCurrentEventTarget->IsOnCurrentThread()) {
-      mCurrentEventTarget->Dispatch(
+      return mCurrentEventTarget->Dispatch(
           NewRunnableMethod<nsresult>("TRRServiceChannel::AsyncAbort", this,
                                       &TRRServiceChannel::AsyncAbort, rv),
           NS_DISPATCH_NORMAL);
     }
+  }
+
+  {
+    auto req = mProxyRequest.Lock();
+    // We only set mProxyRequest if the channel hasn't already been cancelled
+    // on another thread.
+    if (!mCanceled) {
+      *req = proxyRequest.forget();
+    }
+  }
+
+  // If the channel has been cancelled, we go ahead and cancel the proxy
+  // request right here.
+  if (proxyRequest) {
+    proxyRequest->Cancel(mStatus);
   }
 
   return rv;
@@ -265,7 +311,10 @@ TRRServiceChannel::OnProxyAvailable(nsICancelable* request, nsIChannel* channel,
 
   MOZ_ASSERT(mCurrentEventTarget->IsOnCurrentThread());
 
-  mProxyRequest = nullptr;
+  {
+    auto proxyRequest = mProxyRequest.Lock();
+    *proxyRequest = nullptr;
+  }
 
   nsresult rv;
 
@@ -317,11 +366,13 @@ nsresult TRRServiceChannel::BeginConnect() {
   rv = mURI->GetScheme(scheme);
   if (NS_SUCCEEDED(rv)) rv = mURI->GetAsciiHost(host);
   if (NS_SUCCEEDED(rv)) rv = mURI->GetPort(&port);
-  if (NS_SUCCEEDED(rv)) mURI->GetUsername(mUsername);
   if (NS_SUCCEEDED(rv)) rv = mURI->GetAsciiSpec(mSpec);
   if (NS_FAILED(rv)) {
     return rv;
   }
+
+  // Just a warning here because some nsIURIs do not implement this method.
+  Unused << NS_WARN_IF(NS_FAILED(mURI->GetUsername(mUsername)));
 
   // Reject the URL if it doesn't specify a host
   if (host.IsEmpty()) {
@@ -340,7 +391,9 @@ nsresult TRRServiceChannel::BeginConnect() {
   RefPtr<nsHttpConnectionInfo> connInfo = new nsHttpConnectionInfo(
       host, port, EmptyCString(), mUsername, GetTopWindowOrigin(), proxyInfo,
       OriginAttributes(), isHttps);
-  mAllowAltSvc = (mAllowAltSvc && !gHttpHandler->IsSpdyBlacklisted(connInfo));
+  // TODO: Bug 1622778 for using AltService in socket process.
+  mAllowAltSvc = XRE_IsParentProcess() &&
+                 (mAllowAltSvc && !gHttpHandler->IsSpdyBlacklisted(connInfo));
 
   RefPtr<AltSvcMapping> mapping;
   if (!mConnectionInfo && mAllowAltSvc &&  // per channel
@@ -789,6 +842,19 @@ nsresult TRRServiceChannel::CallOnStartRequest() {
     return NS_OK;
   }
 
+  // DoApplyContentConversions can only be called on the main thread.
+  if (NS_IsMainThread()) {
+    nsCOMPtr<nsIStreamListener> listener;
+    rv =
+        DoApplyContentConversions(mListener, getter_AddRefs(listener), nullptr);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+
+    AfterApplyContentConversions(rv, listener);
+    return NS_OK;
+  }
+
   Suspend();
 
   RefPtr<TRRServiceChannel> self = this;
@@ -820,13 +886,12 @@ void TRRServiceChannel::AfterApplyContentConversions(
         NS_NewRunnableFunction(
             "TRRServiceChannel::AfterApplyContentConversions",
             [self, aResult, listener]() {
+              self->Resume();
               self->AfterApplyContentConversions(aResult, listener);
             }),
         NS_DISPATCH_NORMAL);
     return;
   }
-
-  Resume();
 
   if (mCanceled) {
     return;
@@ -899,6 +964,14 @@ void TRRServiceChannel::ProcessAltService() {
                             userName(mUsername), topWindowOrigin,
                             privateBrowsing(mPrivateBrowsing), isIsolated,
                             callbacks, proxyInfo, caps(mCaps)]() {
+    if (XRE_IsSocketProcess()) {
+      AltServiceChild::ProcessHeader(
+          altSvc, scheme, originHost, originPort, userName, topWindowOrigin,
+          privateBrowsing, isIsolated, callbacks, proxyInfo,
+          caps & NS_HTTP_DISALLOW_SPDY, OriginAttributes());
+      return;
+    }
+
     AltSvcMapping::ProcessHeader(
         altSvc, scheme, originHost, originPort, userName, topWindowOrigin,
         privateBrowsing, isIsolated, callbacks, proxyInfo,
@@ -952,6 +1025,8 @@ TRRServiceChannel::OnStartRequest(nsIRequest* request) {
 
       if (httpStatus == 300 || httpStatus == 301 || httpStatus == 302 ||
           httpStatus == 303 || httpStatus == 307 || httpStatus == 308) {
+        Telemetry::AccumulateCategorical(
+            Telemetry::LABELS_DNS_TRR_REDIRECTED::Redirected);
         nsresult rv = SyncProcessRedirection(httpStatus);
         if (NS_SUCCEEDED(rv)) {
           return rv;
@@ -961,6 +1036,8 @@ TRRServiceChannel::OnStartRequest(nsIRequest* request) {
         DoNotifyListener();
         return rv;
       }
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_DNS_TRR_REDIRECTED::None);
     } else {
       NS_WARNING("No response head in OnStartRequest");
     }
@@ -1177,13 +1254,6 @@ TRRServiceChannel::OnLookupComplete(nsICancelable* request, nsIDNSRecord* rec,
     }
   }
 
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-TRRServiceChannel::OnLookupByTypeComplete(nsICancelable* aRequest,
-                                          nsIDNSByTypeRecord* aRes,
-                                          nsresult aStatus) {
   return NS_OK;
 }
 
@@ -1450,6 +1520,8 @@ TRRServiceChannel::TimingAllowCheck(nsIPrincipal* aOrigin, bool* aResult) {
   *aResult = true;
   return NS_OK;
 }
+
+bool TRRServiceChannel::SameOriginWithOriginalUri(nsIURI* aURI) { return true; }
 
 }  // namespace net
 }  // namespace mozilla

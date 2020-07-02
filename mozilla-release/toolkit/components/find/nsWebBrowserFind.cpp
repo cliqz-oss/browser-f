@@ -444,7 +444,7 @@ nsresult nsWebBrowserFind::GetSearchLimits(nsRange* aSearchRange,
   // There are four possible range endpoints we might use:
   // DocumentStart, SelectionStart, SelectionEnd, DocumentEnd.
 
-  RefPtr<nsRange> range;
+  RefPtr<const nsRange> range;
   nsCOMPtr<nsINode> node;
   uint32_t offset;
 
@@ -742,13 +742,12 @@ nsresult nsWebBrowserFind::OnFind(nsPIDOMWindowOuter* aFoundWindow) {
     ClearFrameSelection(lastFocusedWindow);
   }
 
-  nsFocusManager* fm = nsFocusManager::GetFocusManager();
-  if (fm) {
+  if (nsFocusManager* fm = nsFocusManager::GetFocusManager()) {
     // get the containing frame and focus it. For top-level windows, the right
     // window should already be focused.
-    RefPtr<Element> frameElement = aFoundWindow->GetFrameElementInternal();
-    if (frameElement) {
-      fm->SetFocus(frameElement, nsIFocusManager::FLAG_BYELEMENTFOCUS);
+    if (RefPtr<Element> frameElement =
+            aFoundWindow->GetFrameElementInternal()) {
+      fm->SetFocus(frameElement, 0);
     }
 
     mLastFocusedWindow = do_GetWeakReference(aFoundWindow);

@@ -31,8 +31,6 @@ class nsINetworkInterceptController;
 class nsIEventTarget;
 struct ConsoleMsgQueueElem;
 
-MOZ_DECLARE_COPY_CONSTRUCTIBLE(ConsoleMsgQueueElem)
-
 namespace mozilla {
 namespace dom {
 class Element;
@@ -119,16 +117,8 @@ class nsCSPContext : public nsIContentSecurityPolicy {
     eSelf,
   };
 
-  using AsyncReportViolationCallback = std::function<nsresult(
-      nsCSPContext* aContext, mozilla::dom::Element* aTriggeringElement,
-      nsICSPEventListener* aCSPEventListener, nsIURI* aBlockedURI,
-      BlockedContentSource aBlockedContentSource, nsIURI* aOriginalURI,
-      const nsAString& aViolatedDirective, uint32_t aViolatedPolicyIndex,
-      const nsAString& aObserverSubject, const nsAString& aSourceFile,
-      const nsAString& aScriptSample, uint32_t aLineNum, uint32_t aColumnNum)>;
-
-  static nsresult AsyncReportViolation(
-      nsCSPContext* aContext, mozilla::dom::Element* aTriggeringElement,
+  nsresult AsyncReportViolation(
+      mozilla::dom::Element* aTriggeringElement,
       nsICSPEventListener* aCSPEventListener, nsIURI* aBlockedURI,
       BlockedContentSource aBlockedContentSource, nsIURI* aOriginalURI,
       const nsAString& aViolatedDirective, uint32_t aViolatedPolicyIndex,
@@ -148,25 +138,14 @@ class nsCSPContext : public nsIContentSecurityPolicy {
         0);
   }
 
-  nsresult GetAllowsNavigateTo(const AsyncReportViolationCallback& aCallback,
-                               nsIURI* aURI, bool aIsFormSubmission,
-                               bool aWasRedirected, bool aEnforceWhitelist,
-                               bool* outAllowsNavigateTo);
-
-  nsresult ShouldLoad(const AsyncReportViolationCallback& aCallback,
-                      nsContentPolicyType aContentType,
-                      nsICSPEventListener* aCSPEventListener,
-                      nsIURI* aContentLocation, nsISupports* aRequestContext,
-                      const nsACString& aMimeTypeGuess,
-                      nsIURI* aOriginalURIIfRedirect,
-                      bool aSendViolationReports, const nsAString& aNonce,
-                      int16_t* outDecision);
+  void AddIPCPolicy(const mozilla::ipc::ContentSecurityPolicy& aPolicy);
+  void SerializePolicies(
+      nsTArray<mozilla::ipc::ContentSecurityPolicy>& aPolicies);
 
  private:
   void EnsureIPCPoliciesRead();
 
-  bool permitsInternal(const AsyncReportViolationCallback& aCallback,
-                       CSPDirective aDir,
+  bool permitsInternal(CSPDirective aDir,
                        mozilla::dom::Element* aTriggeringElement,
                        nsICSPEventListener* aCSPEventListener,
                        nsIURI* aContentLocation, nsIURI* aOriginalURIIfRedirect,

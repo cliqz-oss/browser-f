@@ -294,6 +294,7 @@
 <!ENTITY findToolbarCmd.tooltip "Zeichenkette in Seite suchen">
 <!ENTITY spellToolbarCmd.label "Rechtschr.">
 <!ENTITY spellToolbarCmd.tooltip "Rechtschreibung von Auswahl oder ganzer Seite prüfen">
+
 <!ENTITY imageToolbarCmd.label "Grafik">
 <!ENTITY imageToolbarCmd.tooltip "Neue Grafik einfügen oder Eigenschaften der gewählten Grafik bearbeiten">
 <!ENTITY hruleToolbarCmd.label "H.Linie">
@@ -306,7 +307,7 @@
 <!ENTITY anchorToolbarCmd.tooltip "Neuen Anker einfügen oder Eigenschaften des gewählten Ankers bearbeiten">
 <!ENTITY TextColorButton.tooltip "Farbe für Text auswählen">
 <!ENTITY BackgroundColorButton.tooltip "Farbe für Hintergrund auswählen">
-<!ENTITY throbber.tooltip "&vendorShortName;-Homepage aufrufen">
+<!ENTITY throbber.tooltip2 "&brandShortName;-Internetseite öffnen">
 <!ENTITY HighlightColorButton.tooltip "Farbe für hervorgehobenen Text wählen">
 
 <!-- Editor toolbar -->

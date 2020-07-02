@@ -48,7 +48,6 @@ import org.yaml.snakeyaml.error.YAMLException;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
@@ -172,12 +171,12 @@ public final class GeckoRuntime implements Parcelable {
     private final WebExtensionController mWebExtensionController;
     private WebPushController mPushController;
     private final ContentBlockingController mContentBlockingController;
-    private final LoginStorage.Proxy mLoginStorageProxy;
+    private final Autocomplete.LoginStorageProxy mLoginStorageProxy;
 
     private GeckoRuntime() {
         mWebExtensionController = new WebExtensionController(this);
         mContentBlockingController = new ContentBlockingController();
-        mLoginStorageProxy = new LoginStorage.Proxy();
+        mLoginStorageProxy = new Autocomplete.LoginStorageProxy();
 
         if (sRuntime != null) {
             throw new IllegalStateException("Only one GeckoRuntime instance is allowed");
@@ -195,26 +194,24 @@ public final class GeckoRuntime implements Parcelable {
     /**
      * Called by mozilla::dom::ClientOpenWindow to retrieve the window id to use
      * for a ServiceWorkerClients.openWindow() request.
-     * @param baseUrl The base Url for the request.
-     * @param url Url being requested to be opened in a new window.
+     * @param url validated Url being requested to be opened in a new window.
      * @return SessionID to use for the request.
      */
     @WrapForJNI(calledFrom = "gecko")
-    private static @NonNull GeckoResult<String> serviceWorkerOpenWindow(final @NonNull String baseUrl, final @NonNull String url) {
+    private static @NonNull GeckoResult<String> serviceWorkerOpenWindow(final @NonNull String url) {
         if (sRuntime != null && sRuntime.mServiceWorkerDelegate != null) {
-            final URI actual = URI.create(baseUrl).resolve(url);
             GeckoResult<String> result = new GeckoResult<>();
             // perform the onOpenWindow call in the UI thread
             ThreadUtils.runOnUiThread(() -> {
                 sRuntime
                     .mServiceWorkerDelegate
-                    .onOpenWindow(actual.toString())
+                    .onOpenWindow(url)
                     .accept( session -> {
                         if (session != null) {
                             if (!session.isOpen()) {
                                 result.completeExceptionally(new RuntimeException("Returned GeckoSession must be open."));
                             } else {
-                                session.loadUri(actual.toString());
+                                session.loadUri(url);
                                 result.complete(session.getId());
                             }
                         } else {
@@ -485,7 +482,11 @@ public final class GeckoRuntime implements Parcelable {
      *
      * @return A {@link GeckoResult} that will complete when the WebExtension
      * has been installed.
+     *
+     * @deprecated Use {@link WebExtensionController#installBuiltIn} instead. This method will
+     * be removed in GeckoView 81.
      */
+    @Deprecated // Bug 1634504
     @UiThread
     public @NonNull GeckoResult<Void> registerWebExtension(
             final @NonNull WebExtension webExtension) {
@@ -518,7 +519,11 @@ public final class GeckoRuntime implements Parcelable {
      *
      * @return A {@link GeckoResult} that will complete when the WebExtension
      * has been unregistered.
+     *
+     * @deprecated Use {@link WebExtensionController#uninstall} instead. This method will
+     * be removed in GeckoView 81.
      */
+    @Deprecated // Bug 1634504
     @UiThread
     public @NonNull GeckoResult<Void> unregisterWebExtension(
             final @NonNull WebExtension webExtension) {
@@ -614,26 +619,26 @@ public final class GeckoRuntime implements Parcelable {
     }
 
     /**
-     * Set the {@link LoginStorage.Delegate} instance on this runtime.
+     * Set the {@link Autocomplete.LoginStorageDelegate} instance on this runtime.
      * This delegate is required for handling login storage requests.
      *
-     * @param delegate The {@link LoginStorage.Delegate} handling login storage
+     * @param delegate The {@link Autocomplete.LoginStorageDelegate} handling login storage
      *                 requests.
      */
     @UiThread
     public void setLoginStorageDelegate(
-            final @Nullable LoginStorage.Delegate delegate) {
+            final @Nullable Autocomplete.LoginStorageDelegate delegate) {
         ThreadUtils.assertOnUiThread();
         mLoginStorageProxy.setDelegate(delegate);
     }
 
     /**
-     * Get the {@link LoginStorage.Delegate} instance set on this runtime.
+     * Get the {@link Autocomplete.LoginStorageDelegate} instance set on this runtime.
      *
-     * @return The {@link LoginStorage.Delegate} set on this runtime.
+     * @return The {@link Autocomplete.LoginStorageDelegate} set on this runtime.
      */
     @UiThread
-    public @Nullable LoginStorage.Delegate getLoginStorageDelegate() {
+    public @Nullable Autocomplete.LoginStorageDelegate getLoginStorageDelegate() {
         ThreadUtils.assertOnUiThread();
         return mLoginStorageProxy.getDelegate();
     }
@@ -813,6 +818,23 @@ public final class GeckoRuntime implements Parcelable {
         }
 
         return mPushController;
+    }
+
+    /**
+     * Appends notes to crash report.
+     * @param notes The application notes to append to the crash report.
+     */
+    @AnyThread
+    public void appendAppNotesToCrashReport(@NonNull final String notes) {
+        final String notesWithNewLine = notes + "\n";
+        if (GeckoThread.isStateAtLeast(GeckoThread.State.PROFILE_READY)) {
+            GeckoAppShell.nativeAppendAppNotesToCrashReport(notesWithNewLine);
+        } else {
+            GeckoThread.queueNativeCallUntil(GeckoThread.State.PROFILE_READY, GeckoAppShell.class,
+                    "nativeAppendAppNotesToCrashReport", String.class, notesWithNewLine);
+        }
+        // This function already adds a newline
+        GeckoAppShell.appendAppNotesToCrashReport(notes);
     }
 
     @Override // Parcelable

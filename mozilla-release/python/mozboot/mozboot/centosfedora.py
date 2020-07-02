@@ -7,27 +7,11 @@ from __future__ import absolute_import, print_function, unicode_literals
 import platform
 
 from mozboot.base import BaseBootstrapper
-from mozboot.linux_common import (
-    ClangStaticAnalysisInstall,
-    FixStacksInstall,
-    LucetcInstall,
-    NasmInstall,
-    NodeInstall,
-    SccacheInstall,
-    StyloInstall,
-    WasiSysrootInstall,
-)
+from mozboot.linux_common import LinuxBootstrapper
 
 
 class CentOSFedoraBootstrapper(
-        ClangStaticAnalysisInstall,
-        FixStacksInstall,
-        LucetcInstall,
-        NasmInstall,
-        NodeInstall,
-        SccacheInstall,
-        StyloInstall,
-        WasiSysrootInstall,
+        LinuxBootstrapper,
         BaseBootstrapper):
 
     def __init__(self, distro, version, dist_id, **kwargs):
@@ -105,10 +89,6 @@ class CentOSFedoraBootstrapper(
                     'Development Tools',
                 ]
 
-                self.browser_packages += [
-                    'python-dbus',
-                ]
-
         elif self.distro == 'fedora':
             self.group_packages += [
                 'C Development Tools and Libraries',
@@ -118,10 +98,6 @@ class CentOSFedoraBootstrapper(
                 'npm',
                 'python2-devel',
                 'redhat-rpm-config',
-            ]
-
-            self.browser_packages += [
-                'python-dbus',
             ]
 
             self.mobile_android_packages += [

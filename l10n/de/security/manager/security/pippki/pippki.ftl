@@ -8,6 +8,7 @@ password-quality-meter = Passwort-Qualitätsmessung
 
 change-password-window =
     .title = Master-Passwort ändern
+
 # Variables:
 # $tokenName (String) - Security device of the change password dialog
 change-password-token = Kryptographie-Modul: { $tokenName }

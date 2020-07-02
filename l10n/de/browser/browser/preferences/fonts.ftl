@@ -4,6 +4,7 @@
 
 fonts-window =
     .title = Schriftarten
+
 fonts-window-close =
     .key = w
 
@@ -11,6 +12,7 @@ fonts-window-close =
 
 fonts-langgroup-header = Schriftarten für
     .accesskey = S
+
 fonts-langgroup-arabic =
     .label = Arabisch
 fonts-langgroup-armenian =
@@ -75,24 +77,33 @@ fonts-langgroup-other =
 
 fonts-proportional-header = Proportional:
     .accesskey = P
+
 fonts-default-serif =
     .label = Serif
 fonts-default-sans-serif =
     .label = Sans Serif
+
 fonts-proportional-size = Größe
     .accesskey = G
+
 fonts-serif = Serif:
     .accesskey = e
+
 fonts-sans-serif = Sans Serif:
     .accesskey = a
+
 fonts-monospace = Feste Breite:
     .accesskey = F
+
 fonts-monospace-size = Größe
     .accesskey = r
+
 fonts-minsize = Mindestschriftgröße:
     .accesskey = M
+
 fonts-minsize-none =
     .label = Keine
+
 fonts-allow-own =
     .label = Seiten das Verwenden von eigenen statt der oben gewählten Schriftarten erlauben
     .accesskey = d
@@ -104,8 +115,10 @@ fonts-allow-own =
 
 fonts-languages-fallback-header = Textkodierung für veralteten Inhalt
 fonts-languages-fallback-desc = Diese Zeichenkodierung wird für veraltete Inhalte verwendet, welche ihre Zeichenkodierung nicht angeben.
+
 fonts-languages-fallback-label = Ersatz-Textkodierung:
     .accesskey = T
+
 fonts-languages-fallback-name-auto =
     .label = Standard für derzeitige Sprache
 fonts-languages-fallback-name-arabic =
@@ -138,9 +151,7 @@ fonts-languages-fallback-name-vietnamese =
     .label = Vietnamesisch
 fonts-languages-fallback-name-other =
     .label = Andere (einschließlich Westeuropäisch)
-fonts-very-large-warning-title = Große Mindestschriftgröße
-fonts-very-large-warning-message = Es wurde eine große Mindestschriftgröße ausgewählt (mehr als 24 Pixel). Dies kann es schwierig oder unmöglich machen, auf wichtige Einstellungsseiten wie diese zuzugreifen.
-fonts-very-large-warning-accept = Änderungen trotzdem übernehmen
+
 # Variables:
 #   $name {string, "Arial"} - Name of the default font
 fonts-label-default =

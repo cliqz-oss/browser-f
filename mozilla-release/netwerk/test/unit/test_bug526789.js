@@ -1,7 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-function run_test() {
+"use strict";
+
+add_task(async () => {
   var cs = Cc["@mozilla.org/cookieService;1"].getService(Ci.nsICookieService);
   var cm = Cc["@mozilla.org/cookiemanager;1"].getService(Ci.nsICookieManager);
   var expiry = (Date.now() + 1000) * 1000;
@@ -134,10 +136,23 @@ function run_test() {
 
   cm.removeAll();
 
+  CookieXPCShellUtils.createServer({
+    hosts: ["baz.com", "192.168.0.1", "localhost", "co.uk", "foo.com"],
+  });
+
   var uri = NetUtil.newURI("http://baz.com/");
+  const principal = Services.scriptSecurityManager.createContentPrincipal(
+    uri,
+    {}
+  );
+
   Assert.equal(uri.asciiHost, "baz.com");
-  cs.setCookieString(uri, "foo=bar", null);
-  Assert.equal(cs.getCookieString(uri, null), "foo=bar");
+
+  await CookieXPCShellUtils.setCookieToDocument(uri.spec, "foo=bar");
+  const docCookies = await CookieXPCShellUtils.getCookieStringFromDocument(
+    uri.spec
+  );
+  Assert.equal(docCookies, "foo=bar");
 
   Assert.equal(cm.countCookiesFromHost(""), 0);
   do_check_throws(function() {
@@ -166,38 +181,6 @@ function run_test() {
   }, Cr.NS_ERROR_ILLEGAL_VALUE);
   do_check_throws(function() {
     cm.getCookiesFromHost("..", {});
-  }, Cr.NS_ERROR_ILLEGAL_VALUE);
-
-  cm.removeAll();
-
-  // test that an empty file:// host works
-  emptyuri = NetUtil.newURI("file:///");
-  Assert.equal(emptyuri.asciiHost, "");
-  Assert.equal(NetUtil.newURI("file://./").asciiHost, "");
-  Assert.equal(NetUtil.newURI("file://foo.bar/").asciiHost, "");
-  cs.setCookieString(emptyuri, "foo2=bar", null);
-  Assert.equal(getCookieCount(), 1);
-  cs.setCookieString(emptyuri, "foo3=bar; domain=", null);
-  Assert.equal(getCookieCount(), 2);
-  cs.setCookieString(emptyuri, "foo4=bar; domain=.", null);
-  Assert.equal(getCookieCount(), 2);
-  cs.setCookieString(emptyuri, "foo5=bar; domain=bar.com", null);
-  Assert.equal(getCookieCount(), 2);
-
-  Assert.equal(cs.getCookieString(emptyuri, null), "foo2=bar; foo3=bar");
-
-  Assert.equal(cm.countCookiesFromHost("baz.com"), 0);
-  Assert.equal(cm.countCookiesFromHost(""), 2);
-  do_check_throws(function() {
-    cm.countCookiesFromHost(".");
-  }, Cr.NS_ERROR_ILLEGAL_VALUE);
-
-  cookies = cm.getCookiesFromHost("baz.com", {});
-  Assert.ok(!cookies.length);
-  cookies = cm.getCookiesFromHost("", {});
-  Assert.equal(cookies.length, 2);
-  do_check_throws(function() {
-    cm.getCookiesFromHost(".", {});
   }, Cr.NS_ERROR_ILLEGAL_VALUE);
 
   cm.removeAll();
@@ -242,17 +225,17 @@ function run_test() {
   // test that the 'domain' attribute accepts a leading dot for IP addresses,
   // aliases such as 'localhost', and eTLD's such as 'co.uk'; but that the
   // resulting cookie is for the exact host only.
-  testDomainCookie("http://192.168.0.1/", "192.168.0.1");
-  testDomainCookie("http://localhost/", "localhost");
-  testDomainCookie("http://co.uk/", "co.uk");
+  await testDomainCookie("http://192.168.0.1/", "192.168.0.1");
+  await testDomainCookie("http://localhost/", "localhost");
+  await testDomainCookie("http://co.uk/", "co.uk");
 
   // Test that trailing dots are treated differently for purposes of the
-  // 'domain' attribute when using setCookieString.
-  testTrailingDotCookie("http://localhost", "localhost");
-  testTrailingDotCookie("http://foo.com", "foo.com");
+  // 'domain' attribute when using setCookieStringFromDocument.
+  await testTrailingDotCookie("http://localhost/", "localhost");
+  await testTrailingDotCookie("http://foo.com/", "foo.com");
 
   cm.removeAll();
-}
+});
 
 function getCookieCount() {
   var count = 0;
@@ -263,40 +246,44 @@ function getCookieCount() {
   return count;
 }
 
-function testDomainCookie(uriString, domain) {
+async function testDomainCookie(uriString, domain) {
   var cs = Cc["@mozilla.org/cookieService;1"].getService(Ci.nsICookieService);
   var cm = Cc["@mozilla.org/cookiemanager;1"].getService(Ci.nsICookieManager);
 
   cm.removeAll();
 
-  var uri = NetUtil.newURI(uriString);
-  cs.setCookieString(uri, "foo=bar; domain=" + domain, null);
+  await CookieXPCShellUtils.setCookieToDocument(
+    uriString,
+    "foo=bar; domain=" + domain
+  );
+
   var cookies = cm.getCookiesFromHost(domain, {});
   Assert.ok(cookies.length);
   Assert.equal(cookies[0].host, domain);
   cm.removeAll();
 
-  cs.setCookieString(uri, "foo=bar; domain=." + domain, null);
+  await CookieXPCShellUtils.setCookieToDocument(
+    uriString,
+    "foo=bar; domain=." + domain
+  );
+
   cookies = cm.getCookiesFromHost(domain, {});
   Assert.ok(cookies.length);
   Assert.equal(cookies[0].host, domain);
   cm.removeAll();
 }
 
-function testTrailingDotCookie(uriString, domain) {
+async function testTrailingDotCookie(uriString, domain) {
   var cs = Cc["@mozilla.org/cookieService;1"].getService(Ci.nsICookieService);
   var cm = Cc["@mozilla.org/cookiemanager;1"].getService(Ci.nsICookieManager);
 
   cm.removeAll();
 
-  var uri = NetUtil.newURI(uriString);
-  cs.setCookieString(uri, "foo=bar; domain=" + domain + ".", null);
-  Assert.equal(cm.countCookiesFromHost(domain), 0);
-  Assert.equal(cm.countCookiesFromHost(domain + "."), 0);
-  cm.removeAll();
+  await CookieXPCShellUtils.setCookieToDocument(
+    uriString,
+    "foo=bar; domain=" + domain + "/"
+  );
 
-  uri = NetUtil.newURI(uriString + ".");
-  cs.setCookieString(uri, "foo=bar; domain=" + domain, null);
   Assert.equal(cm.countCookiesFromHost(domain), 0);
   Assert.equal(cm.countCookiesFromHost(domain + "."), 0);
   cm.removeAll();

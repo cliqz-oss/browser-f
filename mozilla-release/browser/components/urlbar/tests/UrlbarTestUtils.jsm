@@ -10,10 +10,18 @@ const { XPCOMUtils } = ChromeUtils.import(
 );
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  AddonTestUtils: "resource://testing-common/AddonTestUtils.jsm",
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   BrowserTestUtils: "resource://testing-common/BrowserTestUtils.jsm",
+  BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
+  FormHistory: "resource://gre/modules/FormHistory.jsm",
+  PlacesSearchAutocompleteProvider:
+    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
   setTimeout: "resource://gre/modules/Timer.jsm",
+  TestUtils: "resource://testing-common/TestUtils.jsm",
   UrlbarController: "resource:///modules/UrlbarController.jsm",
+  UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarProvider: "resource:///modules/UrlbarUtils.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
 });
@@ -50,27 +58,28 @@ var UrlbarTestUtils = {
     selectionEnd = -1,
   } = {}) {
     await new Promise(resolve => waitForFocus(resolve, window));
-    let lastSearchString = window.gURLBar._lastSearchString;
     window.gURLBar.inputField.focus();
-    window.gURLBar.value = value;
+    // Using the value setter in some cases may trim and fetch unexpected
+    // results, then pick an alternate path.
+    if (UrlbarPrefs.get("trimURLs") && value != BrowserUtils.trimURL(value)) {
+      window.gURLBar.inputField.value = value;
+      fireInputEvent = true;
+    } else {
+      window.gURLBar.value = value;
+    }
     if (selectionStart >= 0 && selectionEnd >= 0) {
       window.gURLBar.selectionEnd = selectionEnd;
       window.gURLBar.selectionStart = selectionStart;
     }
+
+    // An input event will start a new search, so be careful not to start a
+    // search if we fired an input event since that would start two searches.
     if (fireInputEvent) {
       // This is necessary to get the urlbar to set gBrowser.userTypedValue.
       this.fireInputEvent(window);
     } else {
       window.gURLBar.setPageProxyState("invalid");
-    }
-    // An input event will start a new search, with a couple of exceptions, so
-    // be careful not to call _startSearch if we fired an input event since that
-    // would start two searches.  The first exception is when the new search and
-    // old search are the same.  Many tests do consecutive searches with the
-    // same string and expect new searches to start, so call _startSearch
-    // directly then.
-    if (!fireInputEvent || value == lastSearchString) {
-      this._startSearch(window.gURLBar, value, selectionStart, selectionEnd);
+      window.gURLBar.startQuery();
     }
     return this.promiseSearchComplete(window);
   },
@@ -108,16 +117,6 @@ var UrlbarTestUtils = {
    */
   getOneOffSearchButtonsVisible(win) {
     return this.getOneOffSearchButtons(win).style.display != "none";
-  },
-
-  _startSearch(urlbar, text, selectionStart = -1, selectionEnd = -1) {
-    urlbar.value = text;
-    if (selectionStart >= 0 && selectionEnd >= 0) {
-      urlbar.selectionEnd = selectionEnd;
-      urlbar.selectionStart = selectionStart;
-    }
-    urlbar.setPageProxyState("invalid");
-    urlbar.startQuery();
   },
 
   /**
@@ -167,6 +166,7 @@ var UrlbarTestUtils = {
         keyword: result.payload.keyword,
         query: result.payload.query,
         suggestion: result.payload.suggestion,
+        isSearchHistory: result.payload.isSearchHistory,
         inPrivateWindow: result.payload.inPrivateWindow,
         isPrivateEngine: result.payload.isPrivateEngine,
       };
@@ -375,6 +375,183 @@ var UrlbarTestUtils = {
         options
       )
     );
+  },
+
+  /**
+   * Initializes some external components used by the urlbar.  This is necessary
+   * in xpcshell tests but not in browser tests.
+   */
+  async initXPCShellDependencies() {
+    // The FormHistoryStartup component must be initialized since urlbar uses
+    // form history.
+    Cc["@mozilla.org/satchel/form-history-startup;1"]
+      .getService(Ci.nsIObserver)
+      .observe(null, "profile-after-change", null);
+
+    // These two calls are necessary because UrlbarMuxerUnifiedComplete.sort
+    // calls PlacesSearchAutocompleteProvider.parseSubmissionURL, so we need
+    // engines and PlacesSearchAutocompleteProvider.
+    try {
+      await AddonTestUtils.promiseStartupManager();
+    } catch (error) {
+      if (!error.message.includes("already started")) {
+        throw error;
+      }
+    }
+    await PlacesSearchAutocompleteProvider.ensureReady();
+  },
+};
+
+UrlbarTestUtils.formHistory = {
+  /**
+   * Performs an operation on the urlbar's form history.
+   *
+   * @param {object} updateObject
+   *   An object describing the form history operation.  See FormHistory.jsm.
+   * @param {object} window
+   *   The window containing the urlbar.
+   */
+  async update(
+    updateObject = {},
+    window = BrowserWindowTracker.getTopWindow()
+  ) {
+    await new Promise((resolve, reject) => {
+      FormHistory.update(
+        Object.assign(
+          {
+            fieldname: this.getFormHistoryName(window),
+          },
+          updateObject
+        ),
+        {
+          handleError(error) {
+            reject(error);
+          },
+          handleCompletion(errored) {
+            if (!errored) {
+              resolve();
+            }
+          },
+        }
+      );
+    });
+  },
+
+  /**
+   * Adds values to the urlbar's form history.
+   *
+   * @param {array} values
+   *   The form history string values to remove.
+   * @param {object} window
+   *   The window containing the urlbar.
+   */
+  async add(values = [], window = BrowserWindowTracker.getTopWindow()) {
+    for (let value of values) {
+      await this.update(
+        {
+          value,
+          op: "bump",
+        },
+        window
+      );
+    }
+  },
+
+  /**
+   * Removes values from the urlbar's form history.  If you want to remove all
+   * history, use clearFormHistory.
+   *
+   * @param {array} values
+   *   The form history string values to remove.
+   * @param {object} window
+   *   The window containing the urlbar.
+   */
+  async remove(values = [], window = BrowserWindowTracker.getTopWindow()) {
+    for (let value of values) {
+      await this.update(
+        {
+          value,
+          op: "remove",
+        },
+        window
+      );
+    }
+  },
+
+  /**
+   * Removes all values from the urlbar's form history.  If you want to remove
+   * individual values, use removeFormHistory.
+   *
+   * @param {object} window
+   *   The window containing the urlbar.
+   */
+  async clear(window = BrowserWindowTracker.getTopWindow()) {
+    await this.update({ op: "remove" }, window);
+  },
+
+  /**
+   * Searches the urlbar's form history.
+   *
+   * @param {object} criteria
+   *   Criteria to narrow the search.  See FormHistory.search.
+   * @param {object} window
+   *   The window containing the urlbar.
+   * @returns {Promise}
+   *   A promise resolved with an array of found form history entries.
+   */
+  search(criteria = {}, window = BrowserWindowTracker.getTopWindow()) {
+    return new Promise((resolve, reject) => {
+      let results = [];
+      FormHistory.search(
+        null,
+        Object.assign(
+          {
+            fieldname: this.getFormHistoryName(window),
+          },
+          criteria
+        ),
+        {
+          handleResult(result) {
+            results.push(result);
+          },
+          handleError(error) {
+            reject(error);
+          },
+          handleCompletion(errored) {
+            if (!errored) {
+              resolve(results);
+            }
+          },
+        }
+      );
+    });
+  },
+
+  /**
+   * Returns a promise that's resolved on the next form history change.
+   *
+   * @param {string} change
+   *   Null to listen for any change, or one of: add, remove, update
+   * @returns {Promise}
+   *   Resolved on the next specified form history change.
+   */
+  promiseChanged(change = null) {
+    return TestUtils.topicObserved(
+      "satchel-storage-changed",
+      (subject, data) => !change || data == "formhistory-" + change
+    );
+  },
+
+  /**
+   * Returns the form history name for the urlbar in a window.
+   *
+   * @param {object} window
+   *   The window.
+   * @returns {string}
+   *   The form history name of the urlbar in the window.
+   */
+  getFormHistoryName(window = BrowserWindowTracker.getTopWindow()) {
+    return window ? window.gURLBar.formHistoryName : "searchbar-history";
   },
 };
 

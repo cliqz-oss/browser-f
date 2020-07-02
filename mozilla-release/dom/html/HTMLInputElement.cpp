@@ -169,26 +169,6 @@ static const nsAttrValue::EnumTable kInputTypeTable[] = {
 static const nsAttrValue::EnumTable* kInputDefaultType =
     &kInputTypeTable[ArrayLength(kInputTypeTable) - 2];
 
-static const uint8_t NS_INPUT_INPUTMODE_NONE = 1;
-static const uint8_t NS_INPUT_INPUTMODE_TEXT = 2;
-static const uint8_t NS_INPUT_INPUTMODE_TEL = 3;
-static const uint8_t NS_INPUT_INPUTMODE_URL = 4;
-static const uint8_t NS_INPUT_INPUTMODE_EMAIL = 5;
-static const uint8_t NS_INPUT_INPUTMODE_NUMERIC = 6;
-static const uint8_t NS_INPUT_INPUTMODE_DECIMAL = 7;
-static const uint8_t NS_INPUT_INPUTMODE_SEARCH = 8;
-
-static const nsAttrValue::EnumTable kInputInputmodeTable[] = {
-    {"none", NS_INPUT_INPUTMODE_NONE},
-    {"text", NS_INPUT_INPUTMODE_TEXT},
-    {"tel", NS_INPUT_INPUTMODE_TEL},
-    {"url", NS_INPUT_INPUTMODE_URL},
-    {"email", NS_INPUT_INPUTMODE_EMAIL},
-    {"numeric", NS_INPUT_INPUTMODE_NUMERIC},
-    {"decimal", NS_INPUT_INPUTMODE_DECIMAL},
-    {"search", NS_INPUT_INPUTMODE_SEARCH},
-    {nullptr, 0}};
-
 static const nsAttrValue::EnumTable kCaptureTable[] = {
     {"user", static_cast<int16_t>(nsIFilePicker::captureUser)},
     {"environment", static_cast<int16_t>(nsIFilePicker::captureEnv)},
@@ -1352,6 +1332,26 @@ void HTMLInputElement::AfterClearForm(bool aUnbindOrDelete) {
   }
 }
 
+void HTMLInputElement::ResultForDialogSubmit(nsAString& aResult) {
+  if (mType == NS_FORM_INPUT_IMAGE) {
+    // Get a property set by the frame to find out where it was clicked.
+    nsIntPoint* lastClickedPoint =
+        static_cast<nsIntPoint*>(GetProperty(nsGkAtoms::imageClickedPoint));
+    int32_t x, y;
+    if (lastClickedPoint) {
+      x = lastClickedPoint->x;
+      y = lastClickedPoint->y;
+    } else {
+      x = y = 0;
+    }
+    aResult.AppendInt(x);
+    aResult.AppendLiteral(",");
+    aResult.AppendInt(y);
+  } else {
+    GetAttr(kNameSpaceID_None, nsGkAtoms::value, aResult);
+  }
+}
+
 void HTMLInputElement::GetAutocomplete(nsAString& aValue) {
   if (!DoesAutocompleteApply()) {
     return;
@@ -1385,10 +1385,6 @@ void HTMLInputElement::GetFormEnctype(nsAString& aValue) {
 
 void HTMLInputElement::GetFormMethod(nsAString& aValue) {
   GetEnumAttr(nsGkAtoms::formmethod, "", kFormDefaultMethod->tag, aValue);
-}
-
-void HTMLInputElement::GetInputMode(nsAString& aValue) {
-  GetEnumAttr(nsGkAtoms::inputmode, nullptr, aValue);
 }
 
 void HTMLInputElement::GetType(nsAString& aValue) {
@@ -1565,9 +1561,8 @@ void HTMLInputElement::SetValue(const nsAString& aValue, CallerType aCallerType,
 
       MozSetFileNameArray(list, aRv);
       return;
-    } else {
-      ClearFiles(true);
     }
+    ClearFiles(true);
   } else {
     if (MayFireChangeOnBlur()) {
       // If the value has been set by a script, we basically want to keep the
@@ -2045,7 +2040,7 @@ void HTMLInputElement::MozSetFileNameArray(const Sequence<nsString>& aFileNames,
     nsCOMPtr<nsIFile> file;
 
     if (StringBeginsWith(aFileNames[i], NS_LITERAL_STRING("file:"),
-                         nsASCIICaseInsensitiveStringComparator())) {
+                         nsASCIICaseInsensitiveStringComparator)) {
       // Converts the URL string into the corresponding nsIFile if possible
       // A local file will be created if the URL string begins with file://
       NS_GetFileFromURLSpec(NS_ConvertUTF16toUTF8(aFileNames[i]),
@@ -2245,7 +2240,13 @@ void HTMLInputElement::SetUserInput(const nsAString& aValue,
   }
 }
 
-nsIEditor* HTMLInputElement::GetEditor() { return GetTextEditorFromState(); }
+nsIEditor* HTMLInputElement::GetEditorForBindings() {
+  if (!GetPrimaryFrame()) {
+    // Ensure we construct frames (and thus an editor) if needed.
+    GetPrimaryFrame(FlushType::Frames);
+  }
+  return GetTextEditorFromState();
+}
 
 bool HTMLInputElement::HasEditor() { return !!GetTextEditorWithoutCreation(); }
 
@@ -2861,7 +2862,7 @@ nsIRadioGroupContainer* HTMLInputElement::GetRadioGroupContainer() const {
     return mForm;
   }
 
-  if (IsInAnonymousSubtree()) {
+  if (IsInNativeAnonymousSubtree()) {
     return nullptr;
   }
 
@@ -2987,10 +2988,9 @@ bool HTMLInputElement::IsNodeApzAwareInternal() const {
 }
 #endif
 
-bool HTMLInputElement::IsInteractiveHTMLContent(bool aIgnoreTabindex) const {
+bool HTMLInputElement::IsInteractiveHTMLContent() const {
   return mType != NS_FORM_INPUT_HIDDEN ||
-         nsGenericHTMLFormElementWithState::IsInteractiveHTMLContent(
-             aIgnoreTabindex);
+         nsGenericHTMLFormElementWithState::IsInteractiveHTMLContent();
 }
 
 void HTMLInputElement::AsyncEventRunning(AsyncEventDispatcher* aEvent) {
@@ -5141,6 +5141,10 @@ bool HTMLInputElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
       return ParseAlignValue(aValue, aResult);
     }
     if (aAttribute == nsGkAtoms::formmethod) {
+      if (StaticPrefs::dom_dialog_element_enabled()) {
+        return aResult.ParseEnumValue(aValue, kFormMethodTableDialogEnabled,
+                                      false);
+      }
       return aResult.ParseEnumValue(aValue, kFormMethodTable, false);
     }
     if (aAttribute == nsGkAtoms::formenctype) {
@@ -5149,9 +5153,6 @@ bool HTMLInputElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
     if (aAttribute == nsGkAtoms::autocomplete) {
       aResult.ParseAtomArray(aValue);
       return true;
-    }
-    if (aAttribute == nsGkAtoms::inputmode) {
-      return aResult.ParseEnumValue(aValue, kInputInputmodeTable, false);
     }
     if (aAttribute == nsGkAtoms::capture) {
       return aResult.ParseEnumValue(aValue, kCaptureTable, false,
@@ -5806,7 +5807,8 @@ HTMLInputElement::SaveState() {
         }
       }
 
-      state->contentData() = std::move(value);
+      state->contentData() =
+          TextContentData(value, mLastValueChangeWasInteractive);
       break;
   }
 
@@ -6023,12 +6025,16 @@ bool HTMLInputElement::RestoreState(PresState* aState) {
         break;
       }
 
-      if (inputState.type() == PresContentData::TnsString) {
+      if (inputState.type() == PresContentData::TTextContentData) {
         // TODO: What should we do if SetValueInternal fails?  (The allocation
         // may potentially be big, but most likely we've failed to allocate
         // before the type change.)
-        SetValueInternal(inputState.get_nsString(),
+        SetValueInternal(inputState.get_TextContentData().value(),
                          TextControlState::eSetValue_Notify);
+        if (inputState.get_TextContentData().lastValueChangeWasInteractive()) {
+          mLastValueChangeWasInteractive = true;
+          UpdateState(true);
+        }
       }
       break;
   }
@@ -6053,8 +6059,8 @@ bool HTMLInputElement::AllowDrop() {
 void HTMLInputElement::AddedToRadioGroup() {
   // If the element is neither in a form nor a document, there is no group so we
   // should just stop here.
-  if (!mForm &&
-      (!GetUncomposedDocOrConnectedShadowRoot() || IsInAnonymousSubtree())) {
+  if (!mForm && (!GetUncomposedDocOrConnectedShadowRoot() ||
+                 IsInNativeAnonymousSubtree())) {
     return;
   }
 
@@ -6832,8 +6838,7 @@ void HTMLInputElement::SetFilePickerFiltersFromAccept(
 
   // Remove similar filters
   // Iterate over a copy, as we might modify the original filters list
-  nsTArray<nsFilePickerFilter> filtersCopy;
-  filtersCopy = filters;
+  const nsTArray<nsFilePickerFilter> filtersCopy = filters.Clone();
   for (uint32_t i = 0; i < filtersCopy.Length(); ++i) {
     const nsFilePickerFilter& filterToCheck = filtersCopy[i];
     if (filterToCheck.mFilterMask) {

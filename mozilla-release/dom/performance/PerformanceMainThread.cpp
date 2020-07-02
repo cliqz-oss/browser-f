@@ -7,6 +7,7 @@
 #include "PerformanceMainThread.h"
 #include "PerformanceNavigation.h"
 #include "mozilla/StaticPrefs_dom.h"
+#include "mozilla/StaticPrefs_privacy.h"
 
 namespace mozilla {
 namespace dom {
@@ -72,7 +73,8 @@ PerformanceMainThread::PerformanceMainThread(nsPIDOMWindowInner* aWindow,
                                              bool aPrincipal)
     : Performance(aWindow, aPrincipal),
       mDOMTiming(aDOMTiming),
-      mChannel(aChannel) {
+      mChannel(aChannel),
+      mCrossOriginIsolated(aWindow->AsGlobal()->CrossOriginIsolated()) {
   MOZ_ASSERT(aWindow, "Parent window object should be provided");
   CreateNavigationTimingEntry();
 }
@@ -84,10 +86,17 @@ PerformanceMainThread::~PerformanceMainThread() {
 void PerformanceMainThread::GetMozMemory(JSContext* aCx,
                                          JS::MutableHandle<JSObject*> aObj) {
   if (!mMozMemory) {
-    mMozMemory = js::gc::NewMemoryInfoObject(aCx);
-    if (mMozMemory) {
-      mozilla::HoldJSObjects(this);
+    JS::Rooted<JSObject*> mozMemoryObj(aCx, JS_NewPlainObject(aCx));
+    JS::Rooted<JSObject*> gcMemoryObj(aCx, js::gc::NewMemoryInfoObject(aCx));
+    if (!mozMemoryObj || !gcMemoryObj) {
+      MOZ_CRASH("out of memory creating performance.mozMemory");
     }
+    if (!JS_DefineProperty(aCx, mozMemoryObj, "gc", gcMemoryObj,
+                           JSPROP_ENUMERATE)) {
+      MOZ_CRASH("out of memory creating performance.mozMemory");
+    }
+    mMozMemory = mozMemoryObj;
+    mozilla::HoldJSObjects(this);
   }
 
   aObj.set(mMozMemory);
@@ -256,8 +265,9 @@ DOMHighResTimeStamp PerformanceMainThread::GetPerformanceTimingFromString(
         "out "
         "of sync");
   }
-  return nsRFPService::ReduceTimePrecisionAsMSecs(retValue,
-                                                  GetRandomTimelineSeed());
+  return nsRFPService::ReduceTimePrecisionAsMSecs(
+      retValue, GetRandomTimelineSeed(), /* aIsSystemPrinciapl */ false,
+      CrossOriginIsolated());
 }
 
 void PerformanceMainThread::InsertUserEntry(PerformanceEntry* aEntry) {
@@ -303,7 +313,8 @@ DOMHighResTimeStamp PerformanceMainThread::CreationTime() const {
 void PerformanceMainThread::CreateNavigationTimingEntry() {
   MOZ_ASSERT(!mDocEntry, "mDocEntry should be null.");
 
-  if (!StaticPrefs::dom_enable_performance_navigation_timing()) {
+  if (!StaticPrefs::dom_enable_performance_navigation_timing() ||
+      StaticPrefs::privacy_resistFingerprinting()) {
     return;
   }
 
@@ -335,6 +346,10 @@ void PerformanceMainThread::QueueNavigationTimingEntry() {
   QueueEntry(mDocEntry);
 }
 
+bool PerformanceMainThread::CrossOriginIsolated() const {
+  return mCrossOriginIsolated;
+}
+
 void PerformanceMainThread::GetEntries(
     nsTArray<RefPtr<PerformanceEntry>>& aRetval) {
   // We return an empty list when 'privacy.resistFingerprinting' is on.
@@ -343,7 +358,7 @@ void PerformanceMainThread::GetEntries(
     return;
   }
 
-  aRetval = mResourceEntries;
+  aRetval = mResourceEntries.Clone();
   aRetval.AppendElements(mUserEntries);
 
   if (mDocEntry) {

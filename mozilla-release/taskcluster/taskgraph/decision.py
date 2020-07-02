@@ -25,6 +25,7 @@ from .parameters import Parameters, get_version, get_app_version
 from .taskgraph import TaskGraph
 from taskgraph.util.python_path import find_object
 from .try_option_syntax import parse_message
+from .util.bugbug import push_schedules
 from .util.chunking import resolver
 from .util.hg import get_hg_revision_branch, get_hg_commit_message
 from .util.partials import populate_release_history
@@ -47,6 +48,10 @@ PER_PROJECT_PARAMETERS = {
     },
 
     'try-comm-central': {
+        'target_tasks_method': 'try_tasks',
+    },
+
+    'kaios-try': {
         'target_tasks_method': 'try_tasks',
     },
 
@@ -87,6 +92,11 @@ PER_PROJECT_PARAMETERS = {
         'release_type': 'esr68',
     },
 
+    'mozilla-esr78': {
+        'target_tasks_method': 'mozilla_esr78_tasks',
+        'release_type': 'esr78',
+    },
+
     'comm-central': {
         'target_tasks_method': 'default',
         'release_type': 'nightly',
@@ -104,6 +114,10 @@ PER_PROJECT_PARAMETERS = {
 
     'pine': {
         'target_tasks_method': 'pine_tasks',
+    },
+
+    'kaios': {
+        'target_tasks_method': 'kaios_tasks',
     },
 
     # the default parameters are used for projects that do not match above.
@@ -235,6 +249,10 @@ def taskgraph_decision(options, parameters=None):
     write_artifact('task-graph.json', tgg.morphed_task_graph.to_json())
     write_artifact('label-to-taskid.json', tgg.label_to_taskid)
 
+    # write bugbug scheduling information if it was invoked
+    if len(push_schedules) > 0:
+        write_artifact("bugbug-push-schedules.json", push_schedules.popitem()[1])
+
     # actually create the graph
     create_tasks(tgg.graph_config, tgg.morphed_task_graph, tgg.label_to_taskid, tgg.parameters)
 
@@ -297,6 +315,7 @@ def get_decision_parameters(graph_config, options):
     parameters['release_product'] = None
     parameters['required_signoffs'] = []
     parameters['signoff_urls'] = {}
+    parameters['test_manifest_loader'] = 'default'
     parameters['try_mode'] = None
     parameters['try_task_config'] = {}
     parameters['try_options'] = None

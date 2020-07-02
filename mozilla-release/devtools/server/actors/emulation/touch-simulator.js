@@ -25,7 +25,6 @@ var systemAppOrigin = (function() {
   return systemOrigin;
 })();
 
-var threshold = Services.prefs.getIntPref("ui.dragThresholdX", 25);
 var isClickHoldEnabled = Services.prefs.getBoolPref(
   "ui.click_hold_context_menus"
 );
@@ -33,6 +32,16 @@ var clickHoldDelay = Services.prefs.getIntPref(
   "ui.click_hold_context_menus.delay",
   500
 );
+
+// Touch state constants are derived from values defined in: nsIDOMWindowUtils.idl
+const TOUCH_CONTACT = 0x02;
+const TOUCH_REMOVE = 0x04;
+
+const TOUCH_STATES = {
+  touchstart: TOUCH_CONTACT,
+  touchmove: TOUCH_CONTACT,
+  touchend: TOUCH_REMOVE,
+};
 
 const kStateHover = 0x00000004; // NS_EVENT_STATE_HOVER
 
@@ -67,15 +76,6 @@ TouchSimulator.prototype = {
     if (this.enabled) {
       // Simulator is already started
       return;
-    }
-
-    // Only simulate touch gestures if enabled.
-    if (
-      Services.prefs.getBoolPref(
-        "devtools.responsive.touchGestureSimulation.enabled"
-      )
-    ) {
-      this.events.push("dblclick");
     }
 
     this.events.forEach(evt => {
@@ -229,7 +229,6 @@ TouchSimulator.prototype = {
           this.contextMenuTimeout = this.sendContextMenu(evt);
         }
 
-        this.cancelClick = false;
         this.startX = evt.pageX;
         this.startY = evt.pageY;
 
@@ -245,16 +244,6 @@ TouchSimulator.prototype = {
           // Don't propagate mousemove event when touchstart event isn't fired
           evt.stopPropagation();
           return;
-        }
-
-        if (!this.cancelClick) {
-          if (
-            Math.abs(this.startX - evt.pageX) > threshold ||
-            Math.abs(this.startY - evt.pageY) > threshold
-          ) {
-            this.cancelClick = true;
-            content.clearTimeout(this.contextMenuTimeout);
-          }
         }
 
         type = "touchmove";
@@ -273,76 +262,28 @@ TouchSimulator.prototype = {
         // catching only real user click. (Especially ignore click
         // being dispatched on form submit)
         if (evt.detail == 1) {
-          this.simulatorTarget.addEventListener("click", this, true, false);
+          this.simulatorTarget.addEventListener("click", this, {
+            capture: true,
+            once: true,
+          });
         }
         break;
-
-      case "click":
-        // Mouse events has been cancelled so dispatch a sequence
-        // of events to where touchend has been fired
-        evt.preventDefault();
-        evt.stopImmediatePropagation();
-
-        this.simulatorTarget.removeEventListener("click", this, true, false);
-
-        if (this.cancelClick) {
-          return;
-        }
-
-        content.setTimeout(
-          function dispatchMouseEvents(self) {
-            try {
-              self.fireMouseEvent("mousedown", evt);
-              self.fireMouseEvent("mousemove", evt);
-              self.fireMouseEvent("mouseup", evt);
-            } catch (e) {
-              console.error("Exception in touch event helper: " + e);
-            }
-          },
-          this.getDelayBeforeMouseEvent(evt),
-          this
-        );
-        return;
-      case "dblclick":
-        evt.preventDefault();
-        evt.stopImmediatePropagation();
-        const win = this.getContent(evt.target);
-
-        // Bug 1621108: need to have an added delay between the "dblclick" and
-        // calls to synthesizeNativeTap, otherwise zoom animations are interrupted.
-        setTimeout(() => {
-          this.synthesizeNativeTap(win, evt.clientX, evt.clientY);
-          this.synthesizeNativeTap(win, evt.clientX, evt.clientY);
-        }, this.getDelayBeforeMouseEvent(evt));
-
-        return;
     }
 
     const target = eventTarget || this.target;
     if (target && type) {
-      this.sendTouchEvent(evt, target, type);
+      this.synthesizeNativeTouch(
+        this.getContent(evt.target),
+        evt.clientX,
+        evt.clientY,
+        type
+      );
     }
 
     if (!isSystemWindow) {
       evt.preventDefault();
       evt.stopImmediatePropagation();
     }
-  },
-
-  fireMouseEvent(type, evt) {
-    const content = this.getContent(evt.target);
-    const utils = content.windowUtils;
-    utils.sendMouseEvent(
-      type,
-      evt.clientX,
-      evt.clientY,
-      0,
-      1,
-      0,
-      true,
-      0,
-      evt.MOZ_SOURCE_TOUCH
-    );
   },
 
   sendContextMenu({ target, clientX, clientY, screenX, screenY }) {
@@ -360,7 +301,6 @@ TouchSimulator.prototype = {
     const content = this.getContent(target);
     const timeout = content.setTimeout(() => {
       target.dispatchEvent(evt);
-      this.cancelClick = true;
     }, clickHoldDelay);
 
     return timeout;
@@ -388,6 +328,13 @@ TouchSimulator.prototype = {
     // that setting the full-zoom to 100% will produce expected behavior. So let's
     // leave this note here and revisit when this issue gets resolved.
     utils.sendNativeTouchTap(pt.x, pt.y, false, null);
+    return true;
+  },
+
+  synthesizeNativeTouch(win, x, y, type) {
+    const pt = this.coordinatesRelativeToScreen(win, x, y);
+    const utils = win.windowUtils;
+    utils.sendNativeTouchPoint(0, TOUCH_STATES[type], pt.x, pt.y, 1, 90, null);
     return true;
   },
 
@@ -430,41 +377,21 @@ TouchSimulator.prototype = {
       return;
     }
 
-    const point = new win.Touch({
-      identifier: 0,
-      target,
-      pageX: evt.pageX,
-      pageY: evt.pageY,
-      screenX: evt.screenX,
-      screenY: evt.screenY,
-      clientX: evt.clientX,
-      clientY: evt.clientY,
-      radiusX: 1,
-      radiusY: 1,
-      rotationAngle: 0,
-      force: 1,
-    });
-
-    let touches = [point];
-    let targetTouches = touches;
-    let changedTouches = touches;
-
-    if (name === "touchend" || name === "touchcancel") {
-      // "touchend" and "touchcancel" events should not have the removed touch
-      // neither in touches nor in targetTouches
-      touches = targetTouches = changedTouches = [];
-    }
-
-    // Initialize TouchEvent and dispatch.
-    const touchEvent = new win.TouchEvent(name, {
-      touches,
-      targetTouches,
-      changedTouches,
-      bubbles: true,
-      cancelable: true,
-      view: win,
-    });
-    target.dispatchEvent(touchEvent);
+    // To avoid duplicating logic for creating and dispatching touch events on the JS
+    // side, we should use what's already implemented for WindowUtils.sendTouchEvent.
+    const utils = win.windowUtils;
+    utils.sendTouchEvent(
+      name,
+      [0],
+      [evt.clientX],
+      [evt.clientY],
+      [1],
+      [1],
+      [0],
+      [1],
+      0,
+      false
+    );
   },
 
   getContent(target) {

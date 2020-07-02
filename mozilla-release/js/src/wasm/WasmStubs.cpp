@@ -54,6 +54,10 @@ static uint32_t ResultStackSize(ValType type) {
       return ABIResult::StackSizeOfFloat;
     case ValType::F64:
       return ABIResult::StackSizeOfDouble;
+#ifdef ENABLE_WASM_SIMD
+    case ValType::V128:
+      return ABIResult::StackSizeOfV128;
+#endif
     case ValType::Ref:
       return ABIResult::StackSizeOfPtr;
     default:
@@ -65,9 +69,9 @@ uint32_t ABIResult::size() const { return ResultStackSize(type()); }
 
 void ABIResultIter::settleRegister(ValType type) {
   MOZ_ASSERT(!done());
-  MOZ_ASSERT_IF(direction_ == Next, index() < RegisterResultCount);
-  MOZ_ASSERT_IF(direction_ == Prev, index() >= count_ - RegisterResultCount);
-  static_assert(RegisterResultCount == 1, "expected a single register result");
+  MOZ_ASSERT_IF(direction_ == Next, index() < MaxRegisterResults);
+  MOZ_ASSERT_IF(direction_ == Prev, index() >= count_ - MaxRegisterResults);
+  static_assert(MaxRegisterResults == 1, "expected a single register result");
 
   switch (type.kind()) {
     case ValType::I32:
@@ -85,6 +89,11 @@ void ABIResultIter::settleRegister(ValType type) {
     case ValType::Ref:
       cur_ = ABIResult(type, ReturnReg);
       break;
+#ifdef ENABLE_WASM_SIMD
+    case ValType::V128:
+      cur_ = ABIResult(type, ReturnSimd128Reg);
+      break;
+#endif
     default:
       MOZ_CRASH("Unexpected result type");
   }
@@ -97,7 +106,7 @@ void ABIResultIter::settleNext() {
   uint32_t typeIndex = count_ - index_ - 1;
   ValType type = type_[typeIndex];
 
-  if (index_ < RegisterResultCount) {
+  if (index_ < MaxRegisterResults) {
     settleRegister(type);
     return;
   }
@@ -112,7 +121,7 @@ void ABIResultIter::settlePrev() {
   uint32_t typeIndex = index_;
   ValType type = type_[typeIndex];
 
-  if (count_ - index_ - 1 < RegisterResultCount) {
+  if (count_ - index_ - 1 < MaxRegisterResults) {
     settleRegister(type);
     return;
   }
@@ -240,6 +249,15 @@ static void GenPrintF64(DebugChannel channel, MacroAssembler& masm,
     }
   });
 }
+
+#  ifdef ENABLE_WASM_SIMD
+static void GenPrintV128(DebugChannel channel, MacroAssembler& masm,
+                         const FloatRegister& src) {
+  // TODO: We might try to do something meaningful here once SIMD data are
+  // aligned and hence C++-ABI compliant.  For now, just make ourselves visible.
+  GenPrintf(channel, masm, "v128");
+}
+#  endif
 #else
 static void GenPrintf(DebugChannel channel, MacroAssembler& masm,
                       const char* fmt, ...) {}
@@ -253,6 +271,10 @@ static void GenPrintF32(DebugChannel channel, MacroAssembler& masm,
                         const FloatRegister& src) {}
 static void GenPrintF64(DebugChannel channel, MacroAssembler& masm,
                         const FloatRegister& src) {}
+#  ifdef ENABLE_WASM_SIMD
+static void GenPrintV128(DebugChannel channel, MacroAssembler& masm,
+                         const FloatRegister& src) {}
+#  endif
 #endif
 
 static bool FinishOffsets(MacroAssembler& masm, Offsets* offsets) {
@@ -302,6 +324,9 @@ static void SetupABIArguments(MacroAssembler& masm, const FuncExport& fe,
                               Register argv, Register scratch) {
   // Copy parameters out of argv and into the registers/stack-slots specified by
   // the system ABI.
+  //
+  // SetupABIArguments are only used for C++ -> wasm calls through callExport(),
+  // and V128 and Ref types (other than anyref) are not currently allowed.
   ArgTypeVector args(fe.funcType());
   for (ABIArgIter iter(args); !iter.done(); iter++) {
     unsigned argOffset = iter.index() * sizeof(ExportArg);
@@ -341,6 +366,16 @@ static void SetupABIArguments(MacroAssembler& masm, const FuncExport& fe,
           case MIRType::Float32:
             masm.loadFloat32(src, iter->fpu());
             break;
+          case MIRType::Simd128:
+#ifdef ENABLE_WASM_SIMD
+            // We will reach this point when we generate interpreter entry stubs
+            // for exports that receive v128 values, but the code will never be
+            // executed because such exports cannot be called from JS.
+            masm.breakpoint();
+            break;
+#else
+            MOZ_CRASH("V128 not supported in SetupABIArguments");
+#endif
           default:
             MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("unexpected FPU type");
             break;
@@ -378,6 +413,17 @@ static void SetupABIArguments(MacroAssembler& masm, const FuncExport& fe,
                                                  iter->offsetFromArgBase()));
             break;
           }
+          case MIRType::Simd128: {
+#ifdef ENABLE_WASM_SIMD
+            // We will reach this point when we generate interpreter entry stubs
+            // for exports that receive v128 values, but the code will never be
+            // executed because such exports cannot be called from JS.
+            masm.breakpoint();
+            break;
+#else
+            MOZ_CRASH("V128 not supported in SetupABIArguments");
+#endif
+          }
           case MIRType::StackResults: {
             MOZ_ASSERT(args.isSyntheticStackResultPointerArg(iter.index()));
             masm.loadPtr(src, scratch);
@@ -412,6 +458,13 @@ static void StoreRegisterResult(MacroAssembler& masm, const FuncExport& fe,
         case ValType::I64:
           masm.store64(result.gpr64(), Address(loc, 0));
           break;
+        case ValType::V128:
+#ifdef ENABLE_WASM_SIMD
+          masm.storeUnalignedSimd128(result.fpr(), Address(loc, 0));
+          break;
+#else
+          MOZ_CRASH("V128 not supported in StoreABIReturn");
+#endif
         case ValType::F32:
           masm.canonicalizeFloat(result.fpr());
           masm.storeFloat32(result.fpr(), Address(loc, 0));
@@ -841,16 +894,15 @@ static void GenerateJitEntryThrow(MacroAssembler& masm, unsigned frameSize) {
 // Helper function for allocating a BigInt and initializing it from an I64
 // in GenerateJitEntry and GenerateImportInterpExit. The return result is
 // written to scratch.
-#ifdef ENABLE_WASM_BIGINT
 static void GenerateBigIntInitialization(MacroAssembler& masm, unsigned offset,
                                          Register64 input, Register scratch,
                                          const FuncExport* fe, Label* fail) {
-#  if JS_BITS_PER_WORD == 32
+#if JS_BITS_PER_WORD == 32
   MOZ_ASSERT(input.low != scratch);
   MOZ_ASSERT(input.high != scratch);
-#  else
+#else
   MOZ_ASSERT(input.reg != scratch);
-#  endif
+#endif
 
   // We need to avoid clobbering other argument registers and the input.
   AllocatableRegisterSet regs(RegisterSet::Volatile());
@@ -881,7 +933,6 @@ static void GenerateBigIntInitialization(MacroAssembler& masm, unsigned offset,
 
   masm.initializeBigInt64(Scalar::BigInt64, scratch, input);
 }
-#endif
 
 // Generate a stub that enters wasm from a jit code caller via the jit ABI.
 //
@@ -891,7 +942,7 @@ static void GenerateBigIntInitialization(MacroAssembler& masm, unsigned offset,
 
 static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
                              const FuncExport& fe, const Maybe<ImmPtr>& funcPtr,
-                             bool bigIntEnabled, Offsets* offsets) {
+                             Offsets* offsets) {
   AssertExpectedSP(masm);
 
   RegisterOrSP sp = masm.getStackPointer();
@@ -923,12 +974,14 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
 
   GenerateJitEntryLoadTls(masm, frameSize);
 
-  if (fe.funcType().hasI64ArgOrRet() && !bigIntEnabled) {
+#ifdef ENABLE_WASM_SIMD
+  if (fe.funcType().hasV128ArgOrRet()) {
     CallSymbolicAddress(masm, !fe.hasEagerStubs(),
-                        SymbolicAddress::ReportInt64JSCall);
+                        SymbolicAddress::ReportV128JSCall);
     GenerateJitEntryThrow(masm, frameSize);
     return FinishOffsets(masm, offsets);
   }
+#endif
 
   FloatRegister scratchF = ABINonArgDoubleReg;
   Register scratchG = ScratchIonEntry;
@@ -994,7 +1047,6 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
         }
         break;
       }
-#ifdef ENABLE_WASM_BIGINT
       case ValType::I64: {
         ScratchTagScope tag(masm, scratchV);
         masm.splitTagForTest(scratchV, tag);
@@ -1005,7 +1057,6 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
         masm.jump(&next);
         break;
       }
-#endif
       case ValType::F32:
       case ValType::F64: {
         // Note we can reuse the same code for f32/f64 here, since for the
@@ -1075,13 +1126,16 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
             break;
           }
           case RefType::Func:
-          case RefType::Null:
           case RefType::TypeIndex: {
             // Guarded against by temporarilyUnsupportedReftypeForEntry()
             MOZ_CRASH("unexpected argument type when calling from the jit");
           }
         }
         break;
+      }
+      case ValType::V128: {
+        // Guarded against by hasV128ArgOrRet()
+        MOZ_CRASH("unexpected argument type when calling from the jit");
       }
       default: {
         MOZ_CRASH("unexpected argument type when calling from the jit");
@@ -1111,18 +1165,17 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
         }
         break;
       }
-#ifdef ENABLE_WASM_BIGINT
       case MIRType::Int64: {
         // The coercion has provided a BigInt value by this point, which
         // we need to convert to an I64 here.
         if (isStackArg) {
           Address dst(sp, iter->offsetFromArgBase());
           Register src = scratchV.payloadOrValueReg();
-#  if JS_BITS_PER_WORD == 64
+#if JS_BITS_PER_WORD == 64
           Register64 scratch64(scratchG);
-#  else
+#else
           Register64 scratch64(scratchG, ABINonArgReg3);
-#  endif
+#endif
           masm.unboxBigInt(argv, src);
           masm.loadBigInt64(src, scratch64);
           GenPrintI64(DebugChannel::Function, masm, scratch64);
@@ -1136,7 +1189,6 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
         }
         break;
       }
-#endif
       case MIRType::Float32: {
         FloatRegister target = isStackArg ? ABINonArgDoubleReg : iter->fpu();
         masm.unboxDouble(argv, ABINonArgDoubleReg);
@@ -1222,22 +1274,19 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
         break;
       }
       case ValType::I64: {
-#ifdef ENABLE_WASM_BIGINT
         GenPrintI64(DebugChannel::Function, masm, ReturnReg64);
         GenerateBigIntInitialization(masm, 0, ReturnReg64, scratchG, &fe,
                                      &exception);
         masm.boxNonDouble(JSVAL_TYPE_BIGINT, scratchG, JSReturnOperand);
         break;
-#else
+      }
+      case ValType::V128: {
         MOZ_CRASH("unexpected return type when calling from ion to wasm");
-#endif
       }
       case ValType::Ref: {
         switch (results[0].refTypeKind()) {
           case RefType::Func:
             // For FuncRef use the AnyRef path for now, since that will work.
-          case RefType::Null:
-            // For NullRef, ditto
           case RefType::Any:
             // Per comment above, the call may have clobbered the Tls register,
             // so reload since unboxing will need it.
@@ -1376,6 +1425,9 @@ void wasm::GenerateDirectCallFromJit(MacroAssembler& masm, const FuncExport& fe,
         case MIRType::Int32:
           GenPrintIsize(DebugChannel::Function, masm, iter->gpr());
           break;
+        case MIRType::Int64:
+          GenPrintI64(DebugChannel::Function, masm, iter->gpr64());
+          break;
         case MIRType::Float32:
           GenPrintF32(DebugChannel::Function, masm, iter->fpu());
           break;
@@ -1508,6 +1560,10 @@ void wasm::GenerateDirectCallFromJit(MacroAssembler& masm, const FuncExport& fe,
         // The return value is in ReturnReg, which is what Ion expects.
         GenPrintIsize(DebugChannel::Function, masm, ReturnReg);
         break;
+      case wasm::ValType::I64:
+        // The return value is in ReturnReg64, which is what Ion expects.
+        GenPrintI64(DebugChannel::Function, masm, ReturnReg64);
+        break;
       case wasm::ValType::F32:
         masm.canonicalizeFloat(ReturnFloat32Reg);
         GenPrintF32(DebugChannel::Function, masm, ReturnFloat32Reg);
@@ -1520,8 +1576,6 @@ void wasm::GenerateDirectCallFromJit(MacroAssembler& masm, const FuncExport& fe,
         switch (results[0].refTypeKind()) {
           case wasm::RefType::Func:
             // For FuncRef, use the AnyRef path for now, since that will work.
-          case wasm::RefType::Null:
-            // For NullRef, ditto.
           case wasm::RefType::Any:
             // The call to wasm above preserves the WasmTlsReg, we don't need to
             // reload it here.
@@ -1532,7 +1586,7 @@ void wasm::GenerateDirectCallFromJit(MacroAssembler& masm, const FuncExport& fe,
             MOZ_CRASH("unexpected return type when calling from ion to wasm");
         }
         break;
-      case wasm::ValType::I64:
+      case wasm::ValType::V128:
         MOZ_CRASH("unexpected return type when calling from ion to wasm");
     }
   }
@@ -1587,6 +1641,13 @@ static void StackCopy(MacroAssembler& masm, MIRType type, Register scratch,
     masm.loadDouble(src, fpscratch);
     GenPrintF64(DebugChannel::Import, masm, fpscratch);
     masm.storeDouble(fpscratch, dst);
+#ifdef ENABLE_WASM_SIMD
+  } else if (type == MIRType::Simd128) {
+    ScratchSimd128Scope fpscratch(masm);
+    masm.loadUnalignedSimd128(src, fpscratch);
+    GenPrintV128(DebugChannel::Import, masm, fpscratch);
+    masm.storeUnalignedSimd128(fpscratch, dst);
+#endif
   } else {
     MOZ_CRASH("StackCopy: unexpected type");
   }
@@ -1631,15 +1692,10 @@ static void FillArgumentArrayForExit(
           GenPrintI64(DebugChannel::Import, masm, i->gpr64());
 
           if (toValue) {
-#ifdef ENABLE_WASM_BIGINT
             GenerateBigIntInitialization(masm, offsetToCallerStackArgs,
                                          i->gpr64(), scratch, nullptr,
                                          throwLabel);
             masm.storeValue(JSVAL_TYPE_BIGINT, scratch, dst);
-#else
-            // Should be unreachable as I64 cases should error earlier.
-            masm.breakpoint();
-#endif
           } else {
             masm.store64(i->gpr64(), dst);
           }
@@ -1667,14 +1723,10 @@ static void FillArgumentArrayForExit(
           GenPrintI64(DebugChannel::Import, masm, i->gpr64());
 
           if (toValue) {
-#  ifdef ENABLE_WASM_BIGINT
             GenerateBigIntInitialization(masm, offsetToCallerStackArgs,
                                          i->gpr64(), scratch, nullptr,
                                          throwLabel);
             masm.storeValue(JSVAL_TYPE_BIGINT, scratch, dst);
-#  else
-            masm.breakpoint();
-#  endif
           } else {
             masm.store64(i->gpr64(), dst);
           }
@@ -1684,7 +1736,6 @@ static void FillArgumentArrayForExit(
         break;
 #endif
       case ABIArg::FPU: {
-        MOZ_ASSERT(IsFloatingPointType(type));
         FloatRegister srcReg = i->fpu();
         if (type == MIRType::Double) {
           if (toValue) {
@@ -1698,8 +1749,7 @@ static void FillArgumentArrayForExit(
             GenPrintF64(DebugChannel::Import, masm, srcReg);
             masm.storeDouble(srcReg, dst);
           }
-        } else {
-          MOZ_ASSERT(type == MIRType::Float32);
+        } else if (type == MIRType::Float32) {
           if (toValue) {
             // JS::Values can't store Float32, so convert to a Double.
             ScratchDoubleScope fpscratch(masm);
@@ -1712,6 +1762,21 @@ static void FillArgumentArrayForExit(
             GenPrintF32(DebugChannel::Import, masm, srcReg);
             masm.storeFloat32(srcReg, dst);
           }
+        } else if (type == MIRType::Simd128) {
+          // The value should never escape; the call will be stopped later as
+          // the import is being called.  But we should generate something sane
+          // here for the boxed case since a debugger or the stack walker may
+          // observe something.
+          ScratchDoubleScope dscratch(masm);
+          masm.loadConstantDouble(0, dscratch);
+          GenPrintF64(DebugChannel::Import, masm, dscratch);
+          if (toValue) {
+            masm.boxDouble(dscratch, dst);
+          } else {
+            masm.storeDouble(dscratch, dst);
+          }
+        } else {
+          MOZ_CRASH("Unknown MIRType in wasm exit stub");
         }
         break;
       }
@@ -1724,21 +1789,17 @@ static void FillArgumentArrayForExit(
             GenPrintIsize(DebugChannel::Import, masm, scratch);
             masm.storeValue(JSVAL_TYPE_INT32, scratch, dst);
           } else if (type == MIRType::Int64) {
-#ifdef ENABLE_WASM_BIGINT
-#  if JS_BITS_PER_WORD == 64
+#if JS_BITS_PER_WORD == 64
             Register64 scratch64(scratch2);
-#  else
+#else
             Register64 scratch64(scratch2, scratch3);
-#  endif
+#endif
             masm.load64(src, scratch64);
             GenPrintI64(DebugChannel::Import, masm, scratch64);
             GenerateBigIntInitialization(masm, offsetToCallerStackArgs,
                                          scratch64, scratch, nullptr,
                                          throwLabel);
             masm.storeValue(JSVAL_TYPE_BIGINT, scratch, dst);
-#else
-            masm.breakpoint();
-#endif
           } else if (type == MIRType::RefOrNull) {
             // This works also for FuncRef because it is distinguishable from a
             // boxed AnyRef.
@@ -1754,6 +1815,15 @@ static void FillArgumentArrayForExit(
               masm.loadDouble(src, dscratch);
             }
             masm.canonicalizeDouble(dscratch);
+            GenPrintF64(DebugChannel::Import, masm, dscratch);
+            masm.boxDouble(dscratch, dst);
+          } else if (type == MIRType::Simd128) {
+            // The value should never escape; the call will be stopped later as
+            // the import is being called.  But we should generate something
+            // sane here for the boxed case since a debugger or the stack walker
+            // may observe something.
+            ScratchDoubleScope dscratch(masm);
+            masm.loadConstantDouble(0, dscratch);
             GenPrintF64(DebugChannel::Import, masm, dscratch);
             masm.boxDouble(dscratch, dst);
           } else {
@@ -1888,7 +1958,7 @@ static bool GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi,
   unsigned argOffset =
       AlignBytes(StackArgBytes(invokeArgTypes), sizeof(double));
   // The abiArgCount includes a stack result pointer argument if needed.
-  unsigned abiArgCount = ArgTypeVector(fi.funcType()).length();
+  unsigned abiArgCount = ArgTypeVector(fi.funcType()).lengthWithStackResults();
   unsigned argBytes = std::max<size_t>(1, abiArgCount) * sizeof(Value);
   unsigned framePushed =
       StackDecrementForCall(ABIStackAlignment,
@@ -1988,6 +2058,11 @@ static bool GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi,
                   funcImportIndex);
         GenPrintI64(DebugChannel::Import, masm, ReturnReg64);
         break;
+      case ValType::V128:
+        // Note, CallImport_V128 currently always throws.
+        masm.call(SymbolicAddress::CallImport_V128);
+        masm.jump(throwLabel);
+        break;
       case ValType::F32:
         masm.call(SymbolicAddress::CallImport_F64);
         masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
@@ -2018,15 +2093,6 @@ static bool GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi,
             break;
           case RefType::Any:
             masm.call(SymbolicAddress::CallImport_AnyRef);
-            masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg,
-                              throwLabel);
-            masm.loadPtr(argv, ReturnReg);
-            GenPrintf(DebugChannel::Import, masm, "wasm-import[%u]; returns ",
-                      funcImportIndex);
-            GenPrintPtr(DebugChannel::Import, masm, ReturnReg);
-            break;
-          case RefType::Null:
-            masm.call(SymbolicAddress::CallImport_NullRef);
             masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg,
                               throwLabel);
             masm.loadPtr(argv, ReturnReg);
@@ -2238,13 +2304,12 @@ static bool GenerateImportJitExit(MacroAssembler& masm, const FuncImport& fi,
         GenPrintIsize(DebugChannel::Import, masm, ReturnReg);
         break;
       case ValType::I64:
-#ifdef ENABLE_WASM_BIGINT
         // No fastpath for now, go immediately to ool case
         masm.jump(&oolConvert);
-#else
+        break;
+      case ValType::V128:
         // Unreachable as callImport should not call the stub.
         masm.breakpoint();
-#endif
         break;
       case ValType::F32:
         masm.convertValueToFloat(JSReturnOperand, ReturnFloat32Reg,
@@ -2263,7 +2328,6 @@ static bool GenerateImportJitExit(MacroAssembler& masm, const FuncImport& fi,
             GenPrintPtr(DebugChannel::Import, masm, ReturnReg);
             break;
           case RefType::Func:
-          case RefType::Null:
           case RefType::TypeIndex:
             MOZ_CRASH("typed reference returned by import (jit exit) NYI");
         }
@@ -2341,7 +2405,6 @@ static bool GenerateImportJitExit(MacroAssembler& masm, const FuncImport& fi,
           masm.unboxInt32(Address(masm.getStackPointer(), offsetToCoerceArgv),
                           ReturnReg);
           break;
-#ifdef ENABLE_WASM_BIGINT
         case ValType::I64: {
           masm.call(SymbolicAddress::CoerceInPlace_ToBigInt);
           masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
@@ -2350,7 +2413,6 @@ static bool GenerateImportJitExit(MacroAssembler& masm, const FuncImport& fi,
           masm.loadBigInt64(scratch, ReturnReg64);
           break;
         }
-#endif
         case ValType::F64:
         case ValType::F32:
           masm.call(SymbolicAddress::CoerceInPlace_ToNumber);
@@ -2369,7 +2431,6 @@ static bool GenerateImportJitExit(MacroAssembler& masm, const FuncImport& fi,
                                 throwLabel);
               break;
             case RefType::Func:
-            case RefType::Null:
             case RefType::TypeIndex:
               MOZ_CRASH("Unsupported convert type");
           }
@@ -2491,8 +2552,9 @@ static const LiveRegisterSet RegsToPreserve(
     GeneralRegisterSet(Registers::AllMask & ~((uint32_t(1) << Registers::sp) |
                                               (uint32_t(1) << Registers::pc))),
     FloatRegisterSet(FloatRegisters::AllDoubleMask));
-static_assert(!SupportsSimd,
-              "high lanes of SIMD registers need to be saved too.");
+#  ifdef ENABLE_WASM_SIMD
+#    error "high lanes of SIMD registers need to be saved too."
+#  endif
 #elif defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
 static const LiveRegisterSet RegsToPreserve(
     GeneralRegisterSet(Registers::AllMask &
@@ -2501,8 +2563,9 @@ static const LiveRegisterSet RegsToPreserve(
                          (uint32_t(1) << Registers::sp) |
                          (uint32_t(1) << Registers::zero))),
     FloatRegisterSet(FloatRegisters::AllDoubleMask));
-static_assert(!SupportsSimd,
-              "high lanes of SIMD registers need to be saved too.");
+#  ifdef ENABLE_WASM_SIMD
+#    error "high lanes of SIMD registers need to be saved too."
+#  endif
 #elif defined(JS_CODEGEN_ARM64)
 // We assume that traps do not happen while lr is live. This both ensures that
 // the size of RegsToPreserve is a multiple of 2 (preserving WasmStackAlignment)
@@ -2512,15 +2575,23 @@ static const LiveRegisterSet RegsToPreserve(
                        ~((uint32_t(1) << Registers::StackPointer) |
                          (uint32_t(1) << Registers::lr))),
     FloatRegisterSet(FloatRegisters::AllDoubleMask));
-static_assert(!SupportsSimd,
-              "high lanes of SIMD registers need to be saved too");
-#else
+#  ifdef ENABLE_WASM_SIMD
+#    error "high lanes of SIMD registers need to be saved too."
+#  endif
+#elif defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
+// It's correct to use FloatRegisters::AllMask even when SIMD is not enabled;
+// PushRegsInMask strips out the high lanes of the XMM registers in this case,
+// while the singles will be stripped as they are aliased by the larger doubles.
 static const LiveRegisterSet RegsToPreserve(
     GeneralRegisterSet(Registers::AllMask &
                        ~(uint32_t(1) << Registers::StackPointer)),
-    FloatRegisterSet(FloatRegisters::AllDoubleMask));
-static_assert(!SupportsSimd,
-              "high lanes of SIMD registers need to be saved too");
+    FloatRegisterSet(FloatRegisters::AllMask));
+#else
+static const LiveRegisterSet RegsToPreserve(
+    GeneralRegisterSet(0), FloatRegisterSet(FloatRegisters::AllDoubleMask));
+#  ifdef ENABLE_WASM_SIMD
+#    error "no SIMD support"
+#  endif
 #endif
 
 // Generate a MachineState which describes the locations of the GPRs as saved
@@ -2691,8 +2762,7 @@ static bool GenerateDebugTrapStub(MacroAssembler& masm, Label* throwLabel,
 
 bool wasm::GenerateEntryStubs(MacroAssembler& masm, size_t funcExportIndex,
                               const FuncExport& fe, const Maybe<ImmPtr>& callee,
-                              bool isAsmJS, bool bigIntEnabled,
-                              CodeRangeVector* codeRanges) {
+                              bool isAsmJS, CodeRangeVector* codeRanges) {
   MOZ_ASSERT(!callee == fe.hasEagerStubs());
   MOZ_ASSERT_IF(isAsmJS, fe.hasEagerStubs());
 
@@ -2709,14 +2779,20 @@ bool wasm::GenerateEntryStubs(MacroAssembler& masm, size_t funcExportIndex,
     return true;
   }
 
+#ifdef ENABLE_WASM_SIMD
+  // SIMD spec requires JS calls to exports with V128 in the signature to throw.
+  if (fe.funcType().hasV128ArgOrRet()) {
+    return true;
+  }
+#endif
+
   // Returning multiple values to JS JIT code not yet implemented (see
   // bug 1595031).
   if (fe.funcType().temporarilyUnsupportedResultCountForJitEntry()) {
     return true;
   }
 
-  if (!GenerateJitEntry(masm, funcExportIndex, fe, callee, bigIntEnabled,
-                        &offsets)) {
+  if (!GenerateJitEntry(masm, funcExportIndex, fe, callee, &offsets)) {
     return false;
   }
   if (!codeRanges->emplaceBack(CodeRange::JitEntry, fe.funcIndex(), offsets)) {
@@ -2755,6 +2831,14 @@ bool wasm::GenerateStubs(const ModuleEnvironment& env,
       return false;
     }
 
+#ifdef ENABLE_WASM_SIMD
+    // SIMD spec requires calls to JS functions with V128 in the signature to
+    // throw.
+    if (fi.funcType().hasV128ArgOrRet()) {
+      continue;
+    }
+#endif
+
     if (fi.funcType().temporarilyUnsupportedReftypeForExit()) {
       continue;
     }
@@ -2783,7 +2867,7 @@ bool wasm::GenerateStubs(const ModuleEnvironment& env,
       continue;
     }
     if (!GenerateEntryStubs(masm, i, fe, noAbsolute, env.isAsmJS(),
-                            env.bigIntEnabled(), &code->codeRanges)) {
+                            &code->codeRanges)) {
       return false;
     }
   }

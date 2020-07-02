@@ -10,6 +10,7 @@
 #include "nsIDNSByTypeRecord.h"
 #include "nsICancelable.h"
 #include "nsIPrefBranch.h"
+#include "nsIOService.h"
 #include "nsIXPConnect.h"
 #include "nsProxyRelease.h"
 #include "nsReadableUtils.h"
@@ -39,6 +40,7 @@
 #include "mozilla/net/DNSListenerProxy.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/SyncRunnable.h"
 #include "mozilla/TextUtils.h"
 #include "mozilla/Utf8.h"
 
@@ -318,10 +320,15 @@ nsDNSRecord::ReportUnusable(uint16_t aPort) {
   return NS_OK;
 }
 
-class nsDNSByTypeRecord : public nsIDNSByTypeRecord {
+class nsDNSByTypeRecord : public nsIDNSByTypeRecord,
+                          public nsIDNSTXTRecord,
+                          public nsIDNSHTTPSSVCRecord {
  public:
   NS_DECL_THREADSAFE_ISUPPORTS
+  NS_FORWARD_SAFE_NSIDNSRECORD(((nsIDNSRecord*)nullptr))
   NS_DECL_NSIDNSBYTYPERECORD
+  NS_DECL_NSIDNSTXTRECORD
+  NS_DECL_NSIDNSHTTPSSVCRECORD
 
   explicit nsDNSByTypeRecord(nsHostRecord* hostRecord) {
     mHostRecord = do_QueryObject(hostRecord);
@@ -332,19 +339,35 @@ class nsDNSByTypeRecord : public nsIDNSByTypeRecord {
   RefPtr<TypeHostRecord> mHostRecord;
 };
 
-NS_IMPL_ISUPPORTS(nsDNSByTypeRecord, nsIDNSByTypeRecord)
+NS_IMPL_ISUPPORTS(nsDNSByTypeRecord, nsIDNSRecord, nsIDNSByTypeRecord,
+                  nsIDNSTXTRecord, nsIDNSHTTPSSVCRecord)
 
 NS_IMETHODIMP
-nsDNSByTypeRecord::GetRecords(nsTArray<nsCString>& aRecords) {
-  // deep copy
-  mHostRecord->GetRecords(aRecords);
+nsDNSByTypeRecord::GetType(uint32_t* aType) {
+  *aType = mHostRecord->GetType();
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDNSByTypeRecord::GetRecords(CopyableTArray<nsCString>& aRecords) {
+  // deep copy
+  return mHostRecord->GetRecords(aRecords);
 }
 
 NS_IMETHODIMP
 nsDNSByTypeRecord::GetRecordsAsOneString(nsACString& aRecords) {
   // deep copy
-  mHostRecord->GetRecordsAsOneString(aRecords);
+  return mHostRecord->GetRecordsAsOneString(aRecords);
+}
+
+NS_IMETHODIMP
+nsDNSByTypeRecord::GetRecords(nsTArray<RefPtr<nsISVCBRecord>>& aRecords) {
+  return mHostRecord->GetRecords(aRecords);
+}
+
+NS_IMETHODIMP
+nsDNSByTypeRecord::GetResults(mozilla::net::TypeRecordResultType* aResults) {
+  *aResults = mHostRecord->GetResults();
   return NS_OK;
 }
 
@@ -396,36 +419,32 @@ NS_IMPL_ISUPPORTS(nsDNSAsyncRequest, nsICancelable)
 void nsDNSAsyncRequest::OnResolveHostComplete(nsHostResolver* resolver,
                                               nsHostRecord* hostRecord,
                                               nsresult status) {
-  if (hostRecord->type != nsDNSService::RESOLVE_TYPE_DEFAULT) {
-    nsCOMPtr<nsIDNSByTypeRecord> rec;
-    if (NS_SUCCEEDED(status)) {
-      MOZ_ASSERT(hostRecord, "no host record");
+  // need to have an owning ref when we issue the callback to enable
+  // the caller to be able to addref/release multiple times without
+  // destroying the record prematurely.
+  nsCOMPtr<nsIDNSRecord> rec;
+  if (NS_SUCCEEDED(status)) {
+    MOZ_ASSERT(hostRecord, "no host record");
+    if (hostRecord->type != nsDNSService::RESOLVE_TYPE_DEFAULT) {
       rec = new nsDNSByTypeRecord(hostRecord);
-    }
-    mListener->OnLookupByTypeComplete(this, rec, status);
-  } else {
-    // need to have an owning ref when we issue the callback to enable
-    // the caller to be able to addref/release multiple times without
-    // destroying the record prematurely.
-    nsCOMPtr<nsIDNSRecord> rec;
-    if (NS_SUCCEEDED(status)) {
-      NS_ASSERTION(hostRecord, "no host record");
+    } else {
       rec = new nsDNSRecord(hostRecord);
     }
-
-    mListener->OnLookupComplete(this, rec, status);
   }
+
+  mListener->OnLookupComplete(this, rec, status);
   mListener = nullptr;
 }
 
 bool nsDNSAsyncRequest::EqualsAsyncListener(nsIDNSListener* aListener) {
-  nsCOMPtr<nsIDNSListenerProxy> wrapper = do_QueryInterface(mListener);
+  uintptr_t originalListenerAddr = reinterpret_cast<uintptr_t>(mListener.get());
+  RefPtr<DNSListenerProxy> wrapper = do_QueryObject(mListener);
   if (wrapper) {
-    nsCOMPtr<nsIDNSListener> originalListener;
-    wrapper->GetOriginalListener(getter_AddRefs(originalListener));
-    return aListener == originalListener;
+    originalListenerAddr = wrapper->GetOriginalListenerAddress();
   }
-  return (aListener == mListener);
+
+  uintptr_t listenerAddr = reinterpret_cast<uintptr_t>(aListener);
+  return (listenerAddr == originalListenerAddr);
 }
 
 size_t nsDNSAsyncRequest::SizeOfIncludingThis(MallocSizeOf mallocSizeOf) const {
@@ -549,6 +568,18 @@ NS_IMPL_ISUPPORTS(nsDNSService, nsIDNSService, nsPIDNSService, nsIObserver,
 static StaticRefPtr<nsDNSService> gDNSService;
 
 already_AddRefed<nsIDNSService> nsDNSService::GetXPCOMSingleton() {
+  if (nsIOService::UseSocketProcess()) {
+    if (XRE_IsSocketProcess()) {
+      return GetSingleton();
+    }
+
+    if (XRE_IsContentProcess() || XRE_IsParentProcess()) {
+      return ChildDNSService::GetSingleton();
+    }
+
+    return nullptr;
+  }
+
   if (XRE_IsParentProcess()) {
     return GetSingleton();
   }
@@ -561,14 +592,31 @@ already_AddRefed<nsIDNSService> nsDNSService::GetXPCOMSingleton() {
 }
 
 already_AddRefed<nsDNSService> nsDNSService::GetSingleton() {
-  NS_ASSERTION(XRE_IsParentProcess(), "not a parent process");
+  MOZ_ASSERT_IF(nsIOService::UseSocketProcess(), XRE_IsSocketProcess());
+  MOZ_ASSERT_IF(!nsIOService::UseSocketProcess(), XRE_IsParentProcess());
 
   if (!gDNSService) {
-    gDNSService = new nsDNSService();
-    if (NS_SUCCEEDED(gDNSService->Init())) {
-      ClearOnShutdown(&gDNSService);
+    auto initTask = []() {
+      gDNSService = new nsDNSService();
+      if (NS_SUCCEEDED(gDNSService->Init())) {
+        ClearOnShutdown(&gDNSService);
+      } else {
+        gDNSService = nullptr;
+      }
+    };
+
+    if (!NS_IsMainThread()) {
+      // Forward to the main thread synchronously.
+      RefPtr<nsIThread> mainThread = do_GetMainThread();
+      if (!mainThread) {
+        return nullptr;
+      }
+
+      SyncRunnable::DispatchToThread(mainThread,
+                                     new SyncRunnable(NS_NewRunnableFunction(
+                                         "nsDNSService::Init", initTask)));
     } else {
-      gDNSService = nullptr;
+      initTask();
     }
   }
 
@@ -841,7 +889,8 @@ nsresult nsDNSService::AsyncResolveInternal(
 
   if (!res) return NS_ERROR_OFFLINE;
 
-  if ((type != RESOLVE_TYPE_DEFAULT) && (type != RESOLVE_TYPE_TXT)) {
+  if ((type != RESOLVE_TYPE_DEFAULT) && (type != RESOLVE_TYPE_TXT) &&
+      (type != RESOLVE_TYPE_HTTPSSVC)) {
     return NS_ERROR_INVALID_ARG;
   }
 
@@ -1302,7 +1351,33 @@ nsDNSService::ClearCache(bool aTrrToo) {
 NS_IMETHODIMP
 nsDNSService::ReloadParentalControlEnabled() {
   if (mTrrService) {
-    mTrrService->GetParentalControlEnabledInternal();
+    mTrrService->mParentalControlEnabled =
+        TRRService::GetParentalControlEnabledInternal();
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDNSService::SetDetectedTrrURI(const nsACString& aURI) {
+  if (mTrrService) {
+    mTrrService->SetDetectedTrrURI(aURI);
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDNSService::GetCurrentTrrURI(nsACString& aURI) {
+  if (mTrrService) {
+    return mTrrService->GetURI(aURI);
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDNSService::GetCurrentTrrMode(uint32_t* aMode) {
+  *aMode = 0;  // The default mode.
+  if (mTrrService) {
+    *aMode = mTrrService->Mode();
   }
   return NS_OK;
 }

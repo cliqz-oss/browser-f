@@ -8,18 +8,19 @@ import * as timings from "./timings";
 import { prefs, asyncStore, features } from "./prefs";
 import { isDevelopment, isTesting } from "devtools-environment";
 import { getDocument } from "./editor/source-documents";
-import type { URL } from "../types";
+import type { Source, URL } from "../types";
+import type { ThreadFront } from "../client/firefox/types";
 
-function getThreadFront(dbg: Object) {
+function getThreadFront(dbg: Object): ThreadFront {
   return dbg.connection.targetList.targetFront.threadFront;
 }
 
-function findSource(dbg: any, url: URL) {
+function findSource(dbg: any, url: URL): Source {
   const sources = dbg.selectors.getSourceList();
   return sources.find(s => (s.url || "").includes(url));
 }
 
-function findSources(dbg: any, url: URL) {
+function findSources(dbg: any, url: URL): Source[] {
   const sources = dbg.selectors.getSourceList();
   return sources.filter(s => (s.url || "").includes(url));
 }
@@ -47,7 +48,7 @@ function bindSelectors(obj: Object): Object {
   }, {});
 }
 
-function getCM() {
+function getCM(): Object {
   const cm: any = document.querySelector(".CodeMirror");
   return cm?.CodeMirror;
 }
@@ -77,6 +78,8 @@ function getDocumentForUrl(dbg, url) {
   return getDocument(source.id);
 }
 
+const diff = (a, b) => Object.keys(a).filter(key => !Object.is(a[key], b[key]));
+
 export function setupHelper(obj: Object) {
   const selectors = bindSelectors(obj);
   const dbg: Object = {
@@ -104,6 +107,7 @@ export function setupHelper(obj: Object) {
     _telemetry: {
       events: {},
     },
+    diff,
   };
 
   window.dbg = dbg;

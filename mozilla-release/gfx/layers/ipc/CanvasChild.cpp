@@ -11,6 +11,7 @@
 #include "mozilla/gfx/Tools.h"
 #include "mozilla/gfx/Rect.h"
 #include "mozilla/gfx/Point.h"
+#include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/layers/CanvasDrawEventRecorder.h"
 #include "nsIObserverService.h"
 #include "RecordedCanvasEventImpl.h"
@@ -27,7 +28,8 @@ class RingBufferWriterServices final
   ~RingBufferWriterServices() final = default;
 
   bool ReaderClosed() final {
-    return !mCanvasChild->GetIPCChannel()->CanSend();
+    return !mCanvasChild->GetIPCChannel()->CanSend() ||
+           ipc::ProcessChild::ExpectingShutdown();
   }
 
   void ResumeReader() final { mCanvasChild->ResumeTranslation(); }
@@ -212,7 +214,7 @@ void CanvasChild::EndTransaction() {
 
 bool CanvasChild::ShouldBeCleanedUp() const {
   // We can only be cleaned up if nothing else references our recorder.
-  if (!mRecorder->hasOneRef()) {
+  if (mRecorder && !mRecorder->hasOneRef()) {
     return false;
   }
 

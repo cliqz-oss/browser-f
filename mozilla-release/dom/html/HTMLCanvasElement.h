@@ -43,6 +43,9 @@ namespace gfx {
 class SourceSurface;
 class VRLayerChild;
 }  // namespace gfx
+namespace webgpu {
+class CanvasContext;
+}  // namespace webgpu
 
 namespace dom {
 class BlobCallback;
@@ -116,7 +119,8 @@ class FrameCaptureListener : public SupportsWeakPtr<FrameCaptureListener> {
 };
 
 class HTMLCanvasElement final : public nsGenericHTMLElement,
-                                public CanvasRenderingContextHelper {
+                                public CanvasRenderingContextHelper,
+                                public SupportsWeakPtr<HTMLCanvasElement> {
   enum { DEFAULT_CANVAS_WIDTH = 300, DEFAULT_CANVAS_HEIGHT = 150 };
 
   typedef layers::AsyncCanvasRenderer AsyncCanvasRenderer;
@@ -138,6 +142,9 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
   // CC
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(HTMLCanvasElement,
                                            nsGenericHTMLElement)
+
+  // WeakPtr
+  MOZ_DECLARE_WEAKREFERENCE_TYPENAME(HTMLCanvasElement)
 
   // WebIDL
   uint32_t Height() {
@@ -374,6 +381,7 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
 
  public:
   ClientWebGLContext* GetWebGLContext();
+  webgpu::CanvasContext* GetWebGPUContext();
 
  protected:
   bool mResetLayer;

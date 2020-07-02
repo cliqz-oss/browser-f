@@ -7,7 +7,9 @@ about-config-warning-title = Warnung!
 about-config-warning-text = Änderungen der Standardwerte dieser erweiterten Einstellungen können die Stabilität, Sicherheit und Geschwindigkeit dieser Anwendung gefährden. Sie sollten nur fortfahren, wenn Sie genau wissen, was Sie tun.
 about-config-warning-checkbox = Erneut warnen
 about-config-warning-button = Ich bin mir der Gefahren bewusst
+
 about-config2-title = Erweiterte Konfiguration
+
 about-config-search-input =
     .placeholder = Suchen
 
@@ -20,18 +22,24 @@ about-config-intro-warning-button = Risiko akzeptieren und fortfahren
 
 
 
+##
+
 # This is shown on the page before searching but after the warning is accepted.
 about-config-caution-text = Das Ändern dieser Einstellungen kann sich auf die Leistung und Sicherheit von { -brand-short-name } auswirken.
+
 about-config-page-title = Erweiterte Einstellungen
+
 about-config-search-input1 =
     .placeholder = Einstellungsname suchen
 about-config-show-all = Alle Einstellungen anzeigen
+
 about-config-pref-add = Hinzufügen
 about-config-pref-toggle = Umschalten
 about-config-pref-edit = Bearbeiten
 about-config-pref-save = Speichern
 about-config-pref-reset = Zurücksetzen
 about-config-pref-delete = Löschen
+
 about-config-pref-add-button =
     .title = Hinzufügen
 about-config-pref-toggle-button =

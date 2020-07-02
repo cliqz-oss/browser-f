@@ -73,9 +73,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(CompositionTransaction, EditTransactionBase,
 // mRangeList can't lead to cycles
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(CompositionTransaction)
-  NS_INTERFACE_MAP_ENTRY_CONCRETE(CompositionTransaction)
 NS_INTERFACE_MAP_END_INHERITING(EditTransactionBase)
-
 NS_IMPL_ADDREF_INHERITED(CompositionTransaction, EditTransactionBase)
 NS_IMPL_RELEASE_INHERITED(CompositionTransaction, EditTransactionBase)
 
@@ -101,8 +99,11 @@ NS_IMETHODIMP CompositionTransaction::DoTransaction() {
       return error.StealNSResult();
     }
     editorBase->RangeUpdaterRef().SelAdjInsertText(textNode, mOffset,
-                                                   mStringToInsert);
+                                                   mStringToInsert.Length());
   } else {
+    // If composition string is split to multiple text nodes, we should put
+    // whole new composition string to the first text node and remove the
+    // compostion string in other nodes.
     uint32_t replaceableLength = textNode->TextLength() - mOffset;
     ErrorResult error;
     editorBase->DoReplaceText(textNode, mOffset, mReplaceLength,
@@ -111,33 +112,38 @@ NS_IMETHODIMP CompositionTransaction::DoTransaction() {
       NS_WARNING("EditorBase::DoReplaceText() failed");
       return error.StealNSResult();
     }
-    DebugOnly<nsresult> rvIgnored =
-        editorBase->RangeUpdaterRef().SelAdjDeleteText(textNode, mOffset,
-                                                       mReplaceLength);
-    NS_WARNING_ASSERTION(
-        NS_SUCCEEDED(rvIgnored),
-        "RangeUpdater::SelAdjDeleteText() failed, but ignored");
-    editorBase->RangeUpdaterRef().SelAdjInsertText(textNode, mOffset,
-                                                   mStringToInsert);
 
-    // If IME text node is multiple node, ReplaceData doesn't remove all IME
-    // text.  So we need remove remained text into other text node.
-    // XXX I think that this shouldn't occur.  Composition string should be
-    //     in a text node.
+    // Don't use RangeUpdaterRef().SelAdjReplaceText() here because undoing
+    // this transaction will remove whole composition string.  Therefore,
+    // selection should be restored at start of composition string.
+    // XXX Perhaps, this is a bug of our selection managemnt at undoing.
+    editorBase->RangeUpdaterRef().SelAdjDeleteText(textNode, mOffset,
+                                                   replaceableLength);
+    // But some ranges which after the composition string should be restored
+    // as-is.
+    editorBase->RangeUpdaterRef().SelAdjInsertText(textNode, mOffset,
+                                                   mStringToInsert.Length());
+
     if (replaceableLength < mReplaceLength) {
+      // XXX Perhaps, scanning following sibling text nodes with composition
+      //     string length which we know is wrong because there may be
+      //     non-empty text nodes which are inserted by JS.  Instead, we
+      //     should remove all text in the ranges of IME selections.
       int32_t remainLength = mReplaceLength - replaceableLength;
       IgnoredErrorResult ignoredError;
       for (nsIContent* nextSibling = textNode->GetNextSibling();
            nextSibling && nextSibling->IsText() && remainLength;
            nextSibling = nextSibling->GetNextSibling()) {
-        OwningNonNull<Text> textNode = *static_cast<Text*>(nextSibling);
-        uint32_t textLength = textNode->TextLength();
-        editorBase->DoDeleteText(textNode, 0, remainLength, ignoredError);
+        OwningNonNull<Text> followingTextNode =
+            *static_cast<Text*>(nextSibling);
+        uint32_t textLength = followingTextNode->TextLength();
+        editorBase->DoDeleteText(followingTextNode, 0, remainLength,
+                                 ignoredError);
         NS_WARNING_ASSERTION(!ignoredError.Failed(),
                              "EditorBase::DoDeleteText() failed, but ignored");
         ignoredError.SuppressException();
         // XXX Needs to check whether the text is deleted as expected.
-        editorBase->RangeUpdaterRef().SelAdjDeleteText(textNode, 0,
+        editorBase->RangeUpdaterRef().SelAdjDeleteText(followingTextNode, 0,
                                                        remainLength);
         remainLength -= textLength;
       }
@@ -178,30 +184,35 @@ NS_IMETHODIMP CompositionTransaction::UndoTransaction() {
   return rv;
 }
 
-NS_IMETHODIMP CompositionTransaction::Merge(nsITransaction* aTransaction,
+NS_IMETHODIMP CompositionTransaction::Merge(nsITransaction* aOtherTransaction,
                                             bool* aDidMerge) {
-  if (NS_WARN_IF(!aTransaction) || NS_WARN_IF(!aDidMerge)) {
+  if (NS_WARN_IF(!aOtherTransaction) || NS_WARN_IF(!aDidMerge)) {
     return NS_ERROR_INVALID_ARG;
   }
-
-  // Check to make sure we aren't fixed, if we are then nothing gets absorbed
-  if (mFixed) {
-    *aDidMerge = false;
-    return NS_OK;
-  }
-
-  // If aTransaction is another CompositionTransaction then absorb it
-  RefPtr<CompositionTransaction> otherTransaction =
-      do_QueryObject(aTransaction);
-  if (otherTransaction) {
-    // We absorb the next IME transaction by adopting its insert string
-    mStringToInsert = otherTransaction->mStringToInsert;
-    mRanges = otherTransaction->mRanges;
-    *aDidMerge = true;
-    return NS_OK;
-  }
-
   *aDidMerge = false;
+
+  // Check to make sure we aren't fixed, if we are then nothing gets merged.
+  if (mFixed) {
+    return NS_OK;
+  }
+
+  RefPtr<EditTransactionBase> otherTransactionBase =
+      aOtherTransaction->GetAsEditTransactionBase();
+  if (!otherTransactionBase) {
+    return NS_OK;
+  }
+
+  // If aTransaction is another CompositionTransaction then merge it
+  CompositionTransaction* otherCompositionTransaction =
+      otherTransactionBase->GetAsCompositionTransaction();
+  if (!otherCompositionTransaction) {
+    return NS_OK;
+  }
+
+  // We merge the next IME transaction by adopting its insert string.
+  mStringToInsert = otherCompositionTransaction->mStringToInsert;
+  mRanges = otherCompositionTransaction->mRanges;
+  *aDidMerge = true;
   return NS_OK;
 }
 

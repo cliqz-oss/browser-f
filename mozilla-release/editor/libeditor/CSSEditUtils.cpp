@@ -443,61 +443,74 @@ nsresult CSSEditUtils::RemoveCSSProperty(Element& aElement, nsAtom& aProperty,
 }
 
 // static
-nsresult CSSEditUtils::GetSpecifiedProperty(nsINode& aNode, nsAtom& aProperty,
+nsresult CSSEditUtils::GetSpecifiedProperty(nsIContent& aContent,
+                                            nsAtom& aCSSProperty,
                                             nsAString& aValue) {
   nsresult rv =
-      GetCSSInlinePropertyBase(&aNode, &aProperty, aValue, eSpecified);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "CSSEditUtils::GetCSSInlinePropertyBase() failed");
+      GetSpecifiedCSSInlinePropertyBase(aContent, aCSSProperty, aValue);
+  NS_WARNING_ASSERTION(
+      NS_SUCCEEDED(rv),
+      "CSSEditUtils::GeSpecifiedCSSInlinePropertyBase() failed");
   return rv;
 }
 
 // static
-nsresult CSSEditUtils::GetComputedProperty(nsINode& aNode, nsAtom& aProperty,
+nsresult CSSEditUtils::GetComputedProperty(nsIContent& aContent,
+                                           nsAtom& aCSSProperty,
                                            nsAString& aValue) {
-  nsresult rv = GetCSSInlinePropertyBase(&aNode, &aProperty, aValue, eComputed);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "CSSEditUtils::GetCSSInlinePropertyBase() failed");
+  nsresult rv =
+      GetComputedCSSInlinePropertyBase(aContent, aCSSProperty, aValue);
+  NS_WARNING_ASSERTION(
+      NS_SUCCEEDED(rv),
+      "CSSEditUtils::GetComputedCSSInlinePropertyBase() failed");
   return rv;
 }
 
 // static
-nsresult CSSEditUtils::GetCSSInlinePropertyBase(nsINode* aNode,
-                                                nsAtom* aProperty,
-                                                nsAString& aValue,
-                                                StyleType aStyleType) {
-  MOZ_ASSERT(aNode && aProperty);
+nsresult CSSEditUtils::GetComputedCSSInlinePropertyBase(nsIContent& aContent,
+                                                        nsAtom& aCSSProperty,
+                                                        nsAString& aValue) {
   aValue.Truncate();
 
-  RefPtr<Element> element = aNode->GetAsElementOrParentElement();
+  RefPtr<Element> element = aContent.GetAsElementOrParentElement();
   if (NS_WARN_IF(!element)) {
     return NS_ERROR_INVALID_ARG;
   }
 
-  if (aStyleType == eComputed) {
-    // Get the all the computed css styles attached to the element node
-    RefPtr<nsComputedDOMStyle> computedDOMStyle = GetComputedStyle(element);
-    if (NS_WARN_IF(!computedDOMStyle)) {
-      return NS_ERROR_INVALID_ARG;
-    }
-
-    // from these declarations, get the one we want and that one only
-    //
-    // FIXME(bug 1606994): nsAtomCString copies, we should just keep around the
-    // property id.
-    MOZ_ALWAYS_SUCCEEDS(
-        computedDOMStyle->GetPropertyValue(nsAtomCString(aProperty), aValue));
-
-    return NS_OK;
+  // Get the all the computed css styles attached to the element node
+  RefPtr<nsComputedDOMStyle> computedDOMStyle = GetComputedStyle(element);
+  if (NS_WARN_IF(!computedDOMStyle)) {
+    return NS_ERROR_INVALID_ARG;
   }
 
-  MOZ_ASSERT(aStyleType == eSpecified);
+  // from these declarations, get the one we want and that one only
+  //
+  // FIXME(bug 1606994): nsAtomCString copies, we should just keep around the
+  // property id.
+  MOZ_ALWAYS_SUCCEEDS(
+      computedDOMStyle->GetPropertyValue(nsAtomCString(&aCSSProperty), aValue));
+
+  return NS_OK;
+}
+
+// static
+nsresult CSSEditUtils::GetSpecifiedCSSInlinePropertyBase(nsIContent& aContent,
+                                                         nsAtom& aCSSProperty,
+                                                         nsAString& aValue) {
+  aValue.Truncate();
+
+  RefPtr<Element> element = aContent.GetAsElementOrParentElement();
+  if (NS_WARN_IF(!element)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
   RefPtr<DeclarationBlock> decl = element->GetInlineStyleDeclaration();
   if (!decl) {
     return NS_OK;
   }
 
-  nsCSSPropertyID prop = nsCSSProps::LookupProperty(nsAtomCString(aProperty));
+  nsCSSPropertyID prop =
+      nsCSSProps::LookupProperty(nsAtomCString(&aCSSProperty));
   MOZ_ASSERT(prop != eCSSProperty_UNKNOWN);
 
   decl->GetPropertyValueByID(prop, aValue);
@@ -541,7 +554,7 @@ nsresult CSSEditUtils::RemoveCSSInlineStyle(nsINode& aNode, nsAtom* aProperty,
   OwningNonNull<HTMLEditor> htmlEditor(*mHTMLEditor);
   rv = htmlEditor->RemoveContainerWithTransaction(element);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "EditorBase::RemoveContainerWithTransaction() failed");
+                       "HTMLEditor::RemoveContainerWithTransaction() failed");
   return rv;
 }
 
@@ -641,85 +654,67 @@ void CSSEditUtils::ParseLength(const nsAString& aString, float* aValue,
 }
 
 // static
-void CSSEditUtils::GetCSSPropertyAtom(nsCSSEditableProperty aProperty,
-                                      nsAtom** aAtom) {
-  *aAtom = nullptr;
+nsStaticAtom* CSSEditUtils::GetCSSPropertyAtom(
+    nsCSSEditableProperty aProperty) {
   switch (aProperty) {
     case eCSSEditableProperty_background_color:
-      *aAtom = nsGkAtoms::backgroundColor;
-      break;
+      return nsGkAtoms::backgroundColor;
     case eCSSEditableProperty_background_image:
-      *aAtom = nsGkAtoms::background_image;
-      break;
+      return nsGkAtoms::background_image;
     case eCSSEditableProperty_border:
-      *aAtom = nsGkAtoms::border;
-      break;
+      return nsGkAtoms::border;
     case eCSSEditableProperty_caption_side:
-      *aAtom = nsGkAtoms::caption_side;
-      break;
+      return nsGkAtoms::caption_side;
     case eCSSEditableProperty_color:
-      *aAtom = nsGkAtoms::color;
-      break;
+      return nsGkAtoms::color;
     case eCSSEditableProperty_float:
-      *aAtom = nsGkAtoms::_float;
-      break;
+      return nsGkAtoms::_float;
     case eCSSEditableProperty_font_family:
-      *aAtom = nsGkAtoms::font_family;
-      break;
+      return nsGkAtoms::font_family;
     case eCSSEditableProperty_font_size:
-      *aAtom = nsGkAtoms::font_size;
-      break;
+      return nsGkAtoms::font_size;
     case eCSSEditableProperty_font_style:
-      *aAtom = nsGkAtoms::font_style;
-      break;
+      return nsGkAtoms::font_style;
     case eCSSEditableProperty_font_weight:
-      *aAtom = nsGkAtoms::fontWeight;
-      break;
+      return nsGkAtoms::fontWeight;
     case eCSSEditableProperty_height:
-      *aAtom = nsGkAtoms::height;
-      break;
+      return nsGkAtoms::height;
     case eCSSEditableProperty_list_style_type:
-      *aAtom = nsGkAtoms::list_style_type;
-      break;
+      return nsGkAtoms::list_style_type;
     case eCSSEditableProperty_margin_left:
-      *aAtom = nsGkAtoms::marginLeft;
-      break;
+      return nsGkAtoms::marginLeft;
     case eCSSEditableProperty_margin_right:
-      *aAtom = nsGkAtoms::marginRight;
-      break;
+      return nsGkAtoms::marginRight;
     case eCSSEditableProperty_text_align:
-      *aAtom = nsGkAtoms::textAlign;
-      break;
+      return nsGkAtoms::textAlign;
     case eCSSEditableProperty_text_decoration:
-      *aAtom = nsGkAtoms::text_decoration;
-      break;
+      return nsGkAtoms::text_decoration;
     case eCSSEditableProperty_vertical_align:
-      *aAtom = nsGkAtoms::vertical_align;
-      break;
+      return nsGkAtoms::vertical_align;
     case eCSSEditableProperty_whitespace:
-      *aAtom = nsGkAtoms::white_space;
-      break;
+      return nsGkAtoms::white_space;
     case eCSSEditableProperty_width:
-      *aAtom = nsGkAtoms::width;
-      break;
+      return nsGkAtoms::width;
     case eCSSEditableProperty_NONE:
       // intentionally empty
-      break;
+      return nullptr;
   }
+  MOZ_ASSERT_UNREACHABLE("Got unknown property");
+  return nullptr;
 }
 
-// Populate aProperty and aValueArray with the CSS declarations equivalent to
-// the value aValue according to the equivalence table aEquivTable
+// Populate aOutArrayOfCSSProperty and aOutArrayOfCSSValue with the CSS
+// declarations equivalent to the value aValue according to the equivalence
+// table aEquivTable
 
 // static
-void CSSEditUtils::BuildCSSDeclarations(nsTArray<nsAtom*>& aPropertyArray,
-                                        nsTArray<nsString>& aValueArray,
-                                        const CSSEquivTable* aEquivTable,
-                                        const nsAString* aValue,
-                                        bool aGetOrRemoveRequest) {
+void CSSEditUtils::BuildCSSDeclarations(
+    nsTArray<nsStaticAtom*>& aOutArrayOfCSSProperty,
+    nsTArray<nsString>& aOutArrayOfCSSValue, const CSSEquivTable* aEquivTable,
+    const nsAString* aValue, bool aGetOrRemoveRequest) {
   // clear arrays
-  aPropertyArray.Clear();
-  aValueArray.Clear();
+  aOutArrayOfCSSProperty.Clear();
+  aOutArrayOfCSSValue.Clear();
 
   // if we have an input value, let's use it
   nsAutoString value, lowerCasedValue;
@@ -734,7 +729,6 @@ void CSSEditUtils::BuildCSSDeclarations(nsTArray<nsAtom*>& aPropertyArray,
   while (cssProperty) {
     if (!aGetOrRemoveRequest || aEquivTable[index].gettable) {
       nsAutoString cssValue, cssPropertyString;
-      nsAtom* cssPropertyAtom;
       // find the equivalent css value for the index-th property in
       // the equivalence table
       (*aEquivTable[index].processValueFunctor)(
@@ -743,24 +737,22 @@ void CSSEditUtils::BuildCSSDeclarations(nsTArray<nsAtom*>& aPropertyArray,
               : &lowerCasedValue,
           cssValue, aEquivTable[index].defaultValue,
           aEquivTable[index].prependValue, aEquivTable[index].appendValue);
-      GetCSSPropertyAtom(cssProperty, &cssPropertyAtom);
-      aPropertyArray.AppendElement(cssPropertyAtom);
-      aValueArray.AppendElement(cssValue);
+      aOutArrayOfCSSProperty.AppendElement(GetCSSPropertyAtom(cssProperty));
+      aOutArrayOfCSSValue.AppendElement(cssValue);
     }
     index++;
     cssProperty = aEquivTable[index].cssProperty;
   }
 }
 
-// Populate cssPropertyArray and cssValueArray with the declarations equivalent
-// to aHTMLProperty/aAttribute/aValue for the node aNode
+// Populate aOutArrayOfCSSProperty and aOutArrayOfCSSValue with the declarations
+// equivalent to aHTMLProperty/aAttribute/aValue for the node aNode
 
 // static
 void CSSEditUtils::GenerateCSSDeclarationsFromHTMLStyle(
-    Element* aElement, nsAtom* aHTMLProperty, nsAtom* aAttribute,
-    const nsAString* aValue, nsTArray<nsAtom*>& cssPropertyArray,
-    nsTArray<nsString>& cssValueArray, bool aGetOrRemoveRequest) {
-  MOZ_ASSERT(aElement);
+    Element& aElement, nsAtom* aHTMLProperty, nsAtom* aAttribute,
+    const nsAString* aValue, nsTArray<nsStaticAtom*>& aOutArrayOfCSSProperty,
+    nsTArray<nsString>& aOutArrayOfCSSValue, bool aGetOrRemoveRequest) {
   const CSSEditUtils::CSSEquivTable* equivTable = nullptr;
 
   if (nsGkAtoms::b == aHTMLProperty) {
@@ -788,12 +780,12 @@ void CSSEditUtils::GenerateCSSDeclarationsFromHTMLStyle(
     } else if (aAttribute == nsGkAtoms::border) {
       equivTable = borderEquivTable;
     } else if (aAttribute == nsGkAtoms::align) {
-      if (aElement->IsHTMLElement(nsGkAtoms::table)) {
+      if (aElement.IsHTMLElement(nsGkAtoms::table)) {
         equivTable = tableAlignEquivTable;
-      } else if (aElement->IsHTMLElement(nsGkAtoms::hr)) {
+      } else if (aElement.IsHTMLElement(nsGkAtoms::hr)) {
         equivTable = hrAlignEquivTable;
-      } else if (aElement->IsAnyOfHTMLElements(nsGkAtoms::legend,
-                                               nsGkAtoms::caption)) {
+      } else if (aElement.IsAnyOfHTMLElements(nsGkAtoms::legend,
+                                              nsGkAtoms::caption)) {
         equivTable = captionAlignEquivTable;
       } else {
         equivTable = textAlignEquivTable;
@@ -805,18 +797,18 @@ void CSSEditUtils::GenerateCSSDeclarationsFromHTMLStyle(
     } else if (aAttribute == nsGkAtoms::width) {
       equivTable = widthEquivTable;
     } else if (aAttribute == nsGkAtoms::height ||
-               (aElement->IsHTMLElement(nsGkAtoms::hr) &&
+               (aElement.IsHTMLElement(nsGkAtoms::hr) &&
                 aAttribute == nsGkAtoms::size)) {
       equivTable = heightEquivTable;
     } else if (aAttribute == nsGkAtoms::type &&
-               aElement->IsAnyOfHTMLElements(nsGkAtoms::ol, nsGkAtoms::ul,
-                                             nsGkAtoms::li)) {
+               aElement.IsAnyOfHTMLElements(nsGkAtoms::ol, nsGkAtoms::ul,
+                                            nsGkAtoms::li)) {
       equivTable = listStyleTypeEquivTable;
     }
   }
   if (equivTable) {
-    BuildCSSDeclarations(cssPropertyArray, cssValueArray, equivTable, aValue,
-                         aGetOrRemoveRequest);
+    BuildCSSDeclarations(aOutArrayOfCSSProperty, aOutArrayOfCSSValue,
+                         equivTable, aValue, aGetOrRemoveRequest);
   }
 }
 
@@ -838,9 +830,9 @@ int32_t CSSEditUtils::SetCSSEquivalentToHTMLStyle(Element* aElement,
   // an equivalence for the requested HTML style in this implementation
 
   // Find the CSS equivalence to the HTML style
-  nsTArray<nsAtom*> cssPropertyArray;
+  nsTArray<nsStaticAtom*> cssPropertyArray;
   nsTArray<nsString> cssValueArray;
-  GenerateCSSDeclarationsFromHTMLStyle(aElement, aHTMLProperty, aAttribute,
+  GenerateCSSDeclarationsFromHTMLStyle(*aElement, aHTMLProperty, aAttribute,
                                        aValue, cssPropertyArray, cssValueArray,
                                        false);
 
@@ -875,9 +867,9 @@ nsresult CSSEditUtils::RemoveCSSEquivalentToHTMLStyle(
   // an equivalence for the requested HTML style in this implementation
 
   // Find the CSS equivalence to the HTML style
-  nsTArray<nsAtom*> cssPropertyArray;
+  nsTArray<nsStaticAtom*> cssPropertyArray;
   nsTArray<nsString> cssValueArray;
-  GenerateCSSDeclarationsFromHTMLStyle(aElement, aHTMLProperty, aAttribute,
+  GenerateCSSDeclarationsFromHTMLStyle(*aElement, aHTMLProperty, aAttribute,
                                        aValue, cssPropertyArray, cssValueArray,
                                        true);
 
@@ -895,17 +887,19 @@ nsresult CSSEditUtils::RemoveCSSEquivalentToHTMLStyle(
   return NS_OK;
 }
 
-// returns in aValueString the list of values for the CSS equivalences to
-// the HTML style aHTMLProperty/aAttribute/aValueString for the node aNode;
+// returns in aValue the list of values for the CSS equivalences to
+// the HTML style aHTMLProperty/aAttribute/aValue for the node aNode;
 // the value of aStyleType controls the styles we retrieve : specified or
 // computed.
 
 // static
-nsresult CSSEditUtils::GetCSSEquivalentToHTMLInlineStyleSet(
-    nsINode* aNode, nsAtom* aHTMLProperty, nsAtom* aAttribute,
-    nsAString& aValueString, StyleType aStyleType) {
-  aValueString.Truncate();
-  RefPtr<Element> theElement = aNode->GetAsElementOrParentElement();
+nsresult CSSEditUtils::GetCSSEquivalentToHTMLInlineStyleSetInternal(
+    nsIContent& aContent, nsAtom* aHTMLProperty, nsAtom* aAttribute,
+    nsAString& aValue, StyleType aStyleType) {
+  MOZ_ASSERT(aHTMLProperty || aAttribute);
+
+  aValue.Truncate();
+  RefPtr<Element> theElement = aContent.GetAsElementOrParentElement();
   if (NS_WARN_IF(!theElement)) {
     return NS_ERROR_INVALID_ARG;
   }
@@ -916,128 +910,121 @@ nsresult CSSEditUtils::GetCSSEquivalentToHTMLInlineStyleSet(
   }
 
   // Yes, the requested HTML style has a CSS equivalence in this implementation
-  nsTArray<nsAtom*> cssPropertyArray;
+  nsTArray<nsStaticAtom*> cssPropertyArray;
   nsTArray<nsString> cssValueArray;
   // get the CSS equivalence with last param true indicating we want only the
   // "gettable" properties
-  GenerateCSSDeclarationsFromHTMLStyle(theElement, aHTMLProperty, aAttribute,
+  GenerateCSSDeclarationsFromHTMLStyle(*theElement, aHTMLProperty, aAttribute,
                                        nullptr, cssPropertyArray, cssValueArray,
                                        true);
   int32_t count = cssPropertyArray.Length();
   for (int32_t index = 0; index < count; index++) {
     nsAutoString valueString;
     // retrieve the specified/computed value of the property
-    nsresult rv = GetCSSInlinePropertyBase(theElement, cssPropertyArray[index],
-                                           valueString, aStyleType);
-    if (NS_FAILED(rv)) {
-      NS_WARNING("CSSEditUtils::GetCSSInlinePropertyBase() failed");
-      return rv;
+    if (aStyleType == StyleType::Computed) {
+      nsresult rv = GetComputedCSSInlinePropertyBase(
+          *theElement, MOZ_KnownLive(*cssPropertyArray[index]), valueString);
+      if (NS_FAILED(rv)) {
+        NS_WARNING("CSSEditUtils::GetComputedCSSInlinePropertyBase() failed");
+        return rv;
+      }
+    } else {
+      nsresult rv = GetSpecifiedCSSInlinePropertyBase(
+          *theElement, *cssPropertyArray[index], valueString);
+      if (NS_FAILED(rv)) {
+        NS_WARNING("CSSEditUtils::GetSpecifiedCSSInlinePropertyBase() failed");
+        return rv;
+      }
     }
-    // append the value to aValueString (possibly with a leading whitespace)
+    // append the value to aValue (possibly with a leading whitespace)
     if (index) {
-      aValueString.Append(char16_t(' '));
+      aValue.Append(char16_t(' '));
     }
-    aValueString.Append(valueString);
+    aValue.Append(valueString);
   }
   return NS_OK;
 }
 
-// Does the node aNode (or its parent, if it's not an element node) have a CSS
-// style equivalent to the HTML style aHTMLProperty/aHTMLAttribute/valueString?
-// The value of aStyleType controls the styles we retrieve: specified or
-// computed. The return value aIsSet is true if the CSS styles are set.
+// Does the node aContent (or its parent, if it's not an element node) have a
+// CSS style equivalent to the HTML style
+// aHTMLProperty/aAttribute/valueString? The value of aStyleType controls
+// the styles we retrieve: specified or computed. The return value aIsSet is
+// true if the CSS styles are set.
 //
 // The nsIContent variant returns aIsSet instead of using an out parameter, and
 // does not modify aValue.
 
 // static
-bool CSSEditUtils::IsCSSEquivalentToHTMLInlineStyleSet(nsINode* aNode,
-                                                       nsAtom* aProperty,
-                                                       nsAtom* aAttribute,
-                                                       const nsAString& aValue,
-                                                       StyleType aStyleType) {
-  // Use aValue as only an in param, not in-out
-  nsAutoString value(aValue);
-  return IsCSSEquivalentToHTMLInlineStyleSet(aNode, aProperty, aAttribute,
-                                             value, aStyleType);
-}
-
-// static
-bool CSSEditUtils::IsCSSEquivalentToHTMLInlineStyleSet(
-    nsINode* aNode, nsAtom* aProperty, const nsAString* aAttribute,
+bool CSSEditUtils::IsCSSEquivalentToHTMLInlineStyleSetInternal(
+    nsIContent& aContent, nsAtom* aHTMLProperty, nsAtom* aAttribute,
     nsAString& aValue, StyleType aStyleType) {
-  MOZ_ASSERT(aNode && aProperty);
-  RefPtr<nsAtom> attribute = aAttribute ? NS_Atomize(*aAttribute) : nullptr;
-  return IsCSSEquivalentToHTMLInlineStyleSet(aNode, aProperty, attribute,
-                                             aValue, aStyleType);
-}
+  MOZ_ASSERT(aHTMLProperty || aAttribute);
 
-// static
-bool CSSEditUtils::IsCSSEquivalentToHTMLInlineStyleSet(nsINode* aNode,
-                                                       nsAtom* aHTMLProperty,
-                                                       nsAtom* aHTMLAttribute,
-                                                       nsAString& valueString,
-                                                       StyleType aStyleType) {
-  if (NS_WARN_IF(!aNode)) {
-    return false;
-  }
-
-  nsAutoString htmlValueString(valueString);
+  nsAutoString htmlValueString(aValue);
   bool isSet = false;
-  do {
-    valueString.Assign(htmlValueString);
+  // FYI: Cannot use InclusiveAncestorsOfType here because
+  //      GetCSSEquivalentToHTMLInlineStyleSetInternal() may flush pending
+  //      notifications.
+  for (nsCOMPtr<nsIContent> content = &aContent; content;
+       content = content->GetParentElement()) {
+    nsCOMPtr<nsINode> parentNode = content->GetParentNode();
+    aValue.Assign(htmlValueString);
     // get the value of the CSS equivalent styles
-    nsresult rv = GetCSSEquivalentToHTMLInlineStyleSet(
-        aNode, aHTMLProperty, aHTMLAttribute, valueString, aStyleType);
+    nsresult rv = GetCSSEquivalentToHTMLInlineStyleSetInternal(
+        *content, aHTMLProperty, aAttribute, aValue, aStyleType);
     if (NS_FAILED(rv)) {
-      NS_WARNING("CSSEditUtils::GetCSSEquivalentToHTMLInlineStyleSet() failed");
+      NS_WARNING(
+          "CSSEditUtils::GetCSSEquivalentToHTMLInlineStyleSetInternal() "
+          "failed");
+      return false;
+    }
+    if (NS_WARN_IF(parentNode != content->GetParentNode())) {
       return false;
     }
 
     // early way out if we can
-    if (valueString.IsEmpty()) {
+    if (aValue.IsEmpty()) {
       return isSet;
     }
 
     if (nsGkAtoms::b == aHTMLProperty) {
-      if (valueString.EqualsLiteral("bold")) {
+      if (aValue.EqualsLiteral("bold")) {
         isSet = true;
-      } else if (valueString.EqualsLiteral("normal")) {
+      } else if (aValue.EqualsLiteral("normal")) {
         isSet = false;
-      } else if (valueString.EqualsLiteral("bolder")) {
+      } else if (aValue.EqualsLiteral("bolder")) {
         isSet = true;
-        valueString.AssignLiteral("bold");
+        aValue.AssignLiteral("bold");
       } else {
         int32_t weight = 0;
         nsresult rvIgnored;
-        nsAutoString value(valueString);
+        nsAutoString value(aValue);
         weight = value.ToInteger(&rvIgnored);
         NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                              "nsAString::ToInteger() failed, but ignored");
         if (400 < weight) {
           isSet = true;
-          valueString.AssignLiteral("bold");
+          aValue.AssignLiteral("bold");
         } else {
           isSet = false;
-          valueString.AssignLiteral("normal");
+          aValue.AssignLiteral("normal");
         }
       }
     } else if (nsGkAtoms::i == aHTMLProperty) {
-      if (valueString.EqualsLiteral("italic") ||
-          valueString.EqualsLiteral("oblique")) {
+      if (aValue.EqualsLiteral("italic") || aValue.EqualsLiteral("oblique")) {
         isSet = true;
       }
     } else if (nsGkAtoms::u == aHTMLProperty) {
       nsAutoString val;
       val.AssignLiteral("underline");
-      isSet = ChangeStyleTransaction::ValueIncludes(valueString, val);
+      isSet = ChangeStyleTransaction::ValueIncludes(aValue, val);
     } else if (nsGkAtoms::strike == aHTMLProperty) {
       nsAutoString val;
       val.AssignLiteral("line-through");
-      isSet = ChangeStyleTransaction::ValueIncludes(valueString, val);
+      isSet = ChangeStyleTransaction::ValueIncludes(aValue, val);
     } else if ((nsGkAtoms::font == aHTMLProperty &&
-                aHTMLAttribute == nsGkAtoms::color) ||
-               aHTMLAttribute == nsGkAtoms::bgcolor) {
+                aAttribute == nsGkAtoms::color) ||
+               aAttribute == nsGkAtoms::bgcolor) {
       if (htmlValueString.IsEmpty()) {
         isSet = true;
       } else {
@@ -1073,38 +1060,36 @@ bool CSSEditUtils::IsCSSEquivalentToHTMLInlineStyleSet(nsINode* aNode,
             htmlColor.Append(char16_t(')'));
           }
 
-          isSet = htmlColor.Equals(valueString,
-                                   nsCaseInsensitiveStringComparator());
+          isSet = htmlColor.Equals(aValue, nsCaseInsensitiveStringComparator);
         } else {
-          isSet = htmlValueString.Equals(valueString,
-                                         nsCaseInsensitiveStringComparator());
+          isSet =
+              htmlValueString.Equals(aValue, nsCaseInsensitiveStringComparator);
         }
       }
     } else if (nsGkAtoms::tt == aHTMLProperty) {
-      isSet = StringBeginsWith(valueString, NS_LITERAL_STRING("monospace"));
-    } else if (nsGkAtoms::font == aHTMLProperty && aHTMLAttribute &&
-               aHTMLAttribute == nsGkAtoms::face) {
+      isSet = StringBeginsWith(aValue, NS_LITERAL_STRING("monospace"));
+    } else if (nsGkAtoms::font == aHTMLProperty && aAttribute &&
+               aAttribute == nsGkAtoms::face) {
       if (!htmlValueString.IsEmpty()) {
         const char16_t commaSpace[] = {char16_t(','), char16_t(' '), 0};
         const char16_t comma[] = {char16_t(','), 0};
         htmlValueString.ReplaceSubstring(commaSpace, comma);
-        nsAutoString valueStringNorm(valueString);
+        nsAutoString valueStringNorm(aValue);
         valueStringNorm.ReplaceSubstring(commaSpace, comma);
         isSet = htmlValueString.Equals(valueStringNorm,
-                                       nsCaseInsensitiveStringComparator());
+                                       nsCaseInsensitiveStringComparator);
       } else {
         isSet = true;
       }
       return isSet;
-    } else if (aHTMLAttribute == nsGkAtoms::align) {
+    } else if (aAttribute == nsGkAtoms::align) {
       isSet = true;
     } else {
       return false;
     }
 
     if (!htmlValueString.IsEmpty() &&
-        htmlValueString.Equals(valueString,
-                               nsCaseInsensitiveStringComparator())) {
+        htmlValueString.Equals(aValue, nsCaseInsensitiveStringComparator)) {
       isSet = true;
     }
 
@@ -1112,31 +1097,44 @@ bool CSSEditUtils::IsCSSEquivalentToHTMLInlineStyleSet(nsINode* aNode,
       isSet = !isSet;
     }
 
-    if (nsGkAtoms::u == aHTMLProperty || nsGkAtoms::strike == aHTMLProperty) {
-      // unfortunately, the value of the text-decoration property is not
-      // inherited. that means that we have to look at ancestors of node to see
-      // if they are underlined
-      aNode =
-          aNode->GetParentElement();  // set to null if it's not a dom element
+    if (isSet) {
+      return true;
     }
-  } while (
-      (nsGkAtoms::u == aHTMLProperty || nsGkAtoms::strike == aHTMLProperty) &&
-      !isSet && aNode);
+
+    if (nsGkAtoms::u != aHTMLProperty && nsGkAtoms::strike != aHTMLProperty) {
+      return isSet;
+    }
+
+    // Unfortunately, the value of the text-decoration property is not
+    // inherited. that means that we have to look at ancestors of node to see
+    // if they are underlined.
+  }
   return isSet;
 }
 
-bool CSSEditUtils::HaveCSSEquivalentStyles(nsINode& aNode,
-                                           nsAtom* aHTMLProperty,
-                                           nsAtom* aHTMLAttribute,
-                                           StyleType aStyleType) {
+bool CSSEditUtils::HaveCSSEquivalentStylesInternal(nsIContent& aContent,
+                                                   nsAtom* aHTMLProperty,
+                                                   nsAtom* aAttribute,
+                                                   StyleType aStyleType) {
+  MOZ_ASSERT(aHTMLProperty || aAttribute);
+
+  // FYI: Unfortunately, we cannot use InclusiveAncestorsOfType here
+  //      because GetCSSEquivalentToHTMLInlineStyleSetInternal() may flush
+  //      pending notifications.
   nsAutoString valueString;
-  nsCOMPtr<nsINode> node = &aNode;
-  do {
+  for (nsCOMPtr<nsIContent> content = &aContent; content;
+       content = content->GetParentElement()) {
+    nsCOMPtr<nsINode> parentNode = content->GetParentNode();
     // get the value of the CSS equivalent styles
-    nsresult rv = GetCSSEquivalentToHTMLInlineStyleSet(
-        node, aHTMLProperty, aHTMLAttribute, valueString, aStyleType);
+    nsresult rv = GetCSSEquivalentToHTMLInlineStyleSetInternal(
+        *content, aHTMLProperty, aAttribute, valueString, aStyleType);
     if (NS_FAILED(rv)) {
-      NS_WARNING("CSSEditUtils::GetCSSEquivalentToHTMLInlineStyleSet() failed");
+      NS_WARNING(
+          "CSSEditUtils::GetCSSEquivalentToHTMLInlineStyleSetInternal() "
+          "failed");
+      return false;
+    }
+    if (NS_WARN_IF(parentNode != content->GetParentNode())) {
       return false;
     }
 
@@ -1148,14 +1146,11 @@ bool CSSEditUtils::HaveCSSEquivalentStyles(nsINode& aNode,
       return false;
     }
 
-    // unfortunately, the value of the text-decoration property is not
+    // 'nfortunately, the value of the text-decoration property is not
     // inherited.
     // that means that we have to look at ancestors of node to see if they
-    // are underlined
-
-    // set to null if it's not a dom element
-    node = node->GetParentElement();
-  } while (node);
+    // are underlined.
+  }
 
   return false;
 }
@@ -1172,26 +1167,23 @@ bool CSSEditUtils::IsCSSPrefChecked() const { return mIsCSSPrefChecked; }
 // class
 
 // static
-bool CSSEditUtils::ElementsSameStyle(Element* aFirstElement,
-                                     Element* aSecondElement) {
-  MOZ_ASSERT(aFirstElement);
-  MOZ_ASSERT(aSecondElement);
-
-  if (aFirstElement->HasAttr(kNameSpaceID_None, nsGkAtoms::id) ||
-      aSecondElement->HasAttr(kNameSpaceID_None, nsGkAtoms::id)) {
+bool CSSEditUtils::DoElementsHaveSameStyle(const Element& aElement,
+                                           const Element& aOtherElement) {
+  if (aElement.HasAttr(kNameSpaceID_None, nsGkAtoms::id) ||
+      aOtherElement.HasAttr(kNameSpaceID_None, nsGkAtoms::id)) {
     // at least one of the spans carries an ID ; suspect a CSS rule applies to
     // it and refuse to merge the nodes
     return false;
   }
 
-  nsAutoString firstClass, secondClass;
-  bool isFirstClassSet =
-      aFirstElement->GetAttr(kNameSpaceID_None, nsGkAtoms::_class, firstClass);
-  bool isSecondClassSet = aSecondElement->GetAttr(
-      kNameSpaceID_None, nsGkAtoms::_class, secondClass);
-  if (isFirstClassSet && isSecondClassSet) {
+  nsAutoString firstClass, otherClass;
+  bool isElementClassSet =
+      aElement.GetAttr(kNameSpaceID_None, nsGkAtoms::_class, firstClass);
+  bool isOtherElementClassSet =
+      aOtherElement.GetAttr(kNameSpaceID_None, nsGkAtoms::_class, otherClass);
+  if (isElementClassSet && isOtherElementClassSet) {
     // both spans carry a class, let's compare them
-    if (!firstClass.Equals(secondClass)) {
+    if (!firstClass.Equals(otherClass)) {
       // WARNING : technically, the comparison just above is questionable :
       // from a pure HTML/CSS point of view class="a b" is NOT the same than
       // class="b a" because a CSS rule could test the exact value of the class
@@ -1200,27 +1192,27 @@ bool CSSEditUtils::ElementsSameStyle(Element* aFirstElement,
       // need to discuss this issue before any modification.
       return false;
     }
-  } else if (isFirstClassSet || isSecondClassSet) {
+  } else if (isElementClassSet || isOtherElementClassSet) {
     // one span only carries a class, early way out
     return false;
   }
 
-  nsCOMPtr<nsICSSDeclaration> firstCSSDecl, secondCSSDecl;
-  uint32_t firstLength, secondLength;
-  nsresult rv = GetInlineStyles(aFirstElement, getter_AddRefs(firstCSSDecl),
-                                &firstLength);
+  nsCOMPtr<nsICSSDeclaration> firstCSSDecl, otherCSSDecl;
+  uint32_t firstLength, otherLength;
+  nsresult rv =
+      GetInlineStyles(aElement, getter_AddRefs(firstCSSDecl), &firstLength);
   if (NS_FAILED(rv) || !firstCSSDecl) {
-    NS_WARNING("CSSEditUtils::GetInlineStyle() failed");
+    NS_WARNING("CSSEditUtils::GetInlineStyles() failed");
     return false;
   }
-  rv = GetInlineStyles(aSecondElement, getter_AddRefs(secondCSSDecl),
-                       &secondLength);
-  if (NS_FAILED(rv) || !secondCSSDecl) {
+  rv = GetInlineStyles(aOtherElement, getter_AddRefs(otherCSSDecl),
+                       &otherLength);
+  if (NS_FAILED(rv) || !otherCSSDecl) {
     NS_WARNING("CSSEditUtils::GetInlineStyles() failed");
     return false;
   }
 
-  if (firstLength != secondLength) {
+  if (firstLength != otherLength) {
     // early way out if we can
     return false;
   }
@@ -1231,7 +1223,7 @@ bool CSSEditUtils::ElementsSameStyle(Element* aFirstElement,
   }
 
   nsAutoCString propertyNameString;
-  nsAutoString firstValue, secondValue;
+  nsAutoString firstValue, otherValue;
   for (uint32_t i = 0; i < firstLength; i++) {
     firstCSSDecl->Item(i, propertyNameString);
     DebugOnly<nsresult> rvIgnored =
@@ -1239,19 +1231,18 @@ bool CSSEditUtils::ElementsSameStyle(Element* aFirstElement,
     NS_WARNING_ASSERTION(
         NS_SUCCEEDED(rvIgnored),
         "nsICSSDeclaration::GetPropertyValue() failed, but ignored");
-    rvIgnored =
-        secondCSSDecl->GetPropertyValue(propertyNameString, secondValue);
+    rvIgnored = otherCSSDecl->GetPropertyValue(propertyNameString, otherValue);
     NS_WARNING_ASSERTION(
         NS_SUCCEEDED(rvIgnored),
         "nsICSSDeclaration::GetPropertyValue() failed, but ignored");
-    if (!firstValue.Equals(secondValue)) {
+    if (!firstValue.Equals(otherValue)) {
       return false;
     }
   }
-  for (uint32_t i = 0; i < secondLength; i++) {
-    secondCSSDecl->Item(i, propertyNameString);
+  for (uint32_t i = 0; i < otherLength; i++) {
+    otherCSSDecl->Item(i, propertyNameString);
     DebugOnly<nsresult> rvIgnored =
-        secondCSSDecl->GetPropertyValue(propertyNameString, secondValue);
+        otherCSSDecl->GetPropertyValue(propertyNameString, otherValue);
     NS_WARNING_ASSERTION(
         NS_SUCCEEDED(rvIgnored),
         "nsICSSDeclaration::GetPropertyValue() failed, but ignored");
@@ -1259,7 +1250,7 @@ bool CSSEditUtils::ElementsSameStyle(Element* aFirstElement,
     NS_WARNING_ASSERTION(
         NS_SUCCEEDED(rvIgnored),
         "nsICSSDeclaration::GetPropertyValue() failed, but ignored");
-    if (!firstValue.Equals(secondValue)) {
+    if (!firstValue.Equals(otherValue)) {
       return false;
     }
   }
@@ -1268,15 +1259,16 @@ bool CSSEditUtils::ElementsSameStyle(Element* aFirstElement,
 }
 
 // static
-nsresult CSSEditUtils::GetInlineStyles(Element* aElement,
+nsresult CSSEditUtils::GetInlineStyles(const Element& aElement,
                                        nsICSSDeclaration** aCssDecl,
                                        uint32_t* aLength) {
-  if (NS_WARN_IF(!aElement) || NS_WARN_IF(!aLength)) {
+  if (NS_WARN_IF(!aLength)) {
     return NS_ERROR_INVALID_ARG;
   }
   *aLength = 0;
   // TODO: Perhaps, this method should take nsStyledElement& instead.
-  nsCOMPtr<nsStyledElement> styledElement = do_QueryInterface(aElement);
+  nsCOMPtr<nsStyledElement> styledElement =
+      do_QueryInterface(const_cast<Element*>(&aElement));
   if (NS_WARN_IF(!styledElement)) {
     return NS_ERROR_INVALID_ARG;
   }

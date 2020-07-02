@@ -58,6 +58,7 @@ SIGNING_SCOPE_ALIAS_TO_PROJECT = [[
         'mozilla-beta',
         'mozilla-release',
         'mozilla-esr68',
+        'mozilla-esr78',
         'comm-beta',
         'comm-esr68',
     ])
@@ -95,6 +96,7 @@ BEETMOVER_SCOPE_ALIAS_TO_PROJECT = [[
         'mozilla-beta',
         'mozilla-release',
         'mozilla-esr68',
+        'mozilla-esr78',
         'comm-beta',
         'comm-esr68',
     ])
@@ -144,6 +146,10 @@ BALROG_SCOPE_ALIAS_TO_PROJECT = [[
     'esr68', set([
         'mozilla-esr68',
     ])
+], [
+    'esr78', set([
+        'mozilla-esr78',
+    ])
 ]]
 
 """Map the balrog scope aliases to the actual scopes.
@@ -155,29 +161,6 @@ BALROG_SERVER_SCOPES = {
     'release': 'balrog:server:release',
     'esr68': 'balrog:server:esr',
     'default': 'balrog:server:dep',
-}
-
-
-PUSH_APK_SCOPE_ALIAS_TO_PROJECT = [[
-    'central', set([
-        'mozilla-central',
-    ])
-], [
-    'beta', set([
-        'mozilla-beta',
-    ])
-], [
-    'release', set([
-        'mozilla-release',
-    ])
-]]
-
-
-PUSH_APK_SCOPES = {
-    'central': 'googleplay:aurora',
-    'beta': 'googleplay:beta',
-    'release': 'googleplay:release',
-    'default': 'googleplay:dep',
 }
 
 
@@ -317,12 +300,6 @@ get_balrog_server_scope = functools.partial(
     alias_to_scope_map=BALROG_SERVER_SCOPES,
 )
 
-get_push_apk_scope = functools.partial(
-    get_scope_from_project,
-    alias_to_project_map=PUSH_APK_SCOPE_ALIAS_TO_PROJECT,
-    alias_to_scope_map=PUSH_APK_SCOPES,
-)
-
 cached_load_yaml = memoize(load_yaml)
 
 
@@ -365,10 +342,10 @@ def get_release_config(config):
     return release_config
 
 
-def get_signing_cert_scope_per_platform(build_platform, is_nightly, config):
+def get_signing_cert_scope_per_platform(build_platform, is_shippable, config):
     if 'devedition' in build_platform:
         return get_devedition_signing_cert_scope(config)
-    elif is_nightly:
+    elif is_shippable:
         return get_signing_cert_scope(config)
     else:
         return add_scope_prefix(config, 'signing:cert:dep-signing')

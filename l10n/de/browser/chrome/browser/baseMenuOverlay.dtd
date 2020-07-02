@@ -14,6 +14,7 @@
                        for the help button in the menubar but Gnome does not.   -->
 <!ENTITY helpMenuWin.label        "Hilfe"> 
 <!ENTITY helpMenuWin.accesskey    "H">
+
 <!ENTITY aboutProduct2.label      "Über &brandShorterName;">
 <!ENTITY aboutProduct2.accesskey  "e">
 <!ENTITY productHelp2.label       "&brandShorterName;-Hilfe">
@@ -27,9 +28,6 @@
 <!ENTITY helpSafeMode.accesskey   "A">
 <!ENTITY helpSafeMode.stop.label       "Mit aktivierten Add-ons neu starten">
 <!ENTITY helpSafeMode.stop.accesskey   "A">
-
-<!ENTITY healthReport2.label      "&brandShorterName;-Statusbericht">
-<!ENTITY healthReport2.accesskey  "b">
 
 <!ENTITY helpTroubleshootingInfo.label      "Informationen zur Fehlerbehebung">
 <!ENTITY helpTroubleshootingInfo.accesskey  "z">

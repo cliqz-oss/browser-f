@@ -21,6 +21,7 @@
 #include "builtin/streams/WritableStream.h"        // js::WritableStream
 #include "builtin/streams/WritableStreamDefaultWriter.h"  // js::CreateWritableStreamDefaultWriter, js::WritableStreamDefaultWriter
 #include "builtin/streams/WritableStreamOperations.h"  // js::WritableStreamCloseQueuedOrInFlight
+#include "builtin/streams/WritableStreamWriterOperations.h"  // js::WritableStreamDefaultWriter{GetDesiredSize,Write}
 #include "js/CallArgs.h"       // JS::CallArgsFromVp, JS::CallArgs
 #include "js/Class.h"          // JSClass, JSCLASS_HAS_RESERVED_SLOTS
 #include "js/Promise.h"        // JS::AddPromiseReactions
@@ -49,6 +50,7 @@ using JS::Value;
 using js::GetErrorMessage;
 using js::NewHandler;
 using js::PipeToState;
+using js::PromiseObject;
 using js::ReadableStream;
 using js::ReadableStreamDefaultReader;
 using js::TargetFromHandler;
@@ -57,6 +59,7 @@ using js::UnwrapStreamFromWriter;
 using js::UnwrapWriterFromStream;
 using js::WritableStream;
 using js::WritableStreamDefaultWriter;
+using js::WritableStreamDefaultWriterWrite;
 
 // This typedef is undoubtedly not the right one for the long run, but it's
 // enough to be placeholder for now.
@@ -447,12 +450,246 @@ static inline JSObject* GetClosedPromise(
   return unwrappedAccessor->closedPromise();
 }
 
+static MOZ_MUST_USE bool ReadFromSource(JSContext* cx,
+                                        Handle<PipeToState*> state);
+
+static bool ReadFulfilled(JSContext* cx, Handle<PipeToState*> state,
+                          Handle<JSObject*> result) {
+  cx->check(state);
+  cx->check(result);
+
+  state->clearReadPending();
+
+  // In general, "Shutdown must stop activity: if shuttingDown becomes true, the
+  // user agent must not initiate further reads from reader, and must only
+  // perform writes of already-read chunks".  But we "perform writes of already-
+  // read chunks" here, so we ignore |state->shuttingDown()|.
+
+  {
+    bool done;
+    {
+      Rooted<Value> doneVal(cx);
+      if (!GetProperty(cx, result, result, cx->names().done, &doneVal)) {
+        return false;
+      }
+      done = doneVal.toBoolean();
+    }
+
+    if (done) {
+      // All chunks have been read from |reader| and written to |writer| (but
+      // not necessarily fulfilled yet, in the latter case).  Proceed as if
+      // |source| is now closed.  (This will asynchronously wait until any
+      // pending writes have fulfilled.)
+      return OnSourceClosed(cx, state);
+    }
+  }
+
+  // A chunk was read, and *at the time the read was requested*, |dest| was
+  // ready to accept a write.  (Only one read is processed at a time per
+  // |state->isReadPending()|, so this condition remains true now.)  Write the
+  // chunk to |dest|.
+  {
+    Rooted<Value> chunk(cx);
+    if (!GetProperty(cx, result, result, cx->names().value, &chunk)) {
+      return false;
+    }
+
+    Rooted<WritableStreamDefaultWriter*> writer(cx, state->writer());
+    cx->check(writer);
+
+    PromiseObject* writeRequest =
+        WritableStreamDefaultWriterWrite(cx, writer, chunk);
+    if (!writeRequest) {
+      return false;
+    }
+
+    // Stash away this new last write request.  (The shutdown process will react
+    // to this write request to finish shutdown only once all pending writes are
+    // completed.)
+    state->updateLastWriteRequest(writeRequest);
+  }
+
+  // Read another chunk if this write didn't fill up |dest|.
+  //
+  // While we (properly) ignored |state->shuttingDown()| earlier, this call will
+  // *not* initiate a fresh read if |!state->shuttingDown()|.
+  return ReadFromSource(cx, state);
+}
+
+static bool ReadFulfilled(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  MOZ_ASSERT(args.length() == 1);
+
+  Rooted<PipeToState*> state(cx, TargetFromHandler<PipeToState>(args));
+  cx->check(state);
+
+  Rooted<JSObject*> result(cx, &args[0].toObject());
+  cx->check(result);
+
+  if (!ReadFulfilled(cx, state, result)) {
+    return false;
+  }
+
+  args.rval().setUndefined();
+  return true;
+}
+
+static bool ReadRejected(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  MOZ_ASSERT(args.length() == 1);
+
+  Rooted<PipeToState*> state(cx, TargetFromHandler<PipeToState>(args));
+  cx->check(state);
+
+  state->clearReadPending();
+
+  // XXX fill me in!
+
+  args.rval().setUndefined();
+  return true;
+}
+
+static bool ReadFromSource(JSContext* cx, unsigned argc, Value* vp);
+
+static MOZ_MUST_USE bool ReadFromSource(JSContext* cx,
+                                        Handle<PipeToState*> state) {
+  cx->check(state);
+
+  MOZ_ASSERT(!state->isReadPending(),
+             "should only have one read in flight at a time, because multiple "
+             "reads could cause the latter read to ignore backpressure "
+             "signals");
+
+  // "Shutdown must stop activity: if shuttingDown becomes true, the user agent
+  // must not initiate further reads from reader..."
+  if (state->shuttingDown()) {
+    return true;
+  }
+
+  Rooted<WritableStreamDefaultWriter*> writer(cx, state->writer());
+  cx->check(writer);
+
+  // "While WritableStreamDefaultWriterGetDesiredSize(writer) is ≤ 0 or is null,
+  // the user agent must not read from reader."
+  Rooted<Value> desiredSize(cx);
+  if (!WritableStreamDefaultWriterGetDesiredSize(cx, writer, &desiredSize)) {
+    return false;
+  }
+
+  // If we're in the middle of erroring or are fully errored, either way the
+  // |dest|-closed reaction queued up in |StartPiping| will do the right
+  // thing, so do nothing here.
+  if (desiredSize.isNull()) {
+#ifdef DEBUG
+    {
+      WritableStream* unwrappedDest = GetUnwrappedDest(cx, state);
+      if (!unwrappedDest) {
+        return false;
+      }
+
+      MOZ_ASSERT(unwrappedDest->erroring() || unwrappedDest->errored());
+    }
+#endif
+
+    return true;
+  }
+
+  // If |dest| isn't ready to receive writes yet (i.e. backpressure applies),
+  // resume when it is.
+  MOZ_ASSERT(desiredSize.isNumber());
+  if (desiredSize.toNumber() <= 0) {
+    Rooted<JSObject*> readyPromise(cx, writer->readyPromise());
+    cx->check(readyPromise);
+
+    Rooted<JSFunction*> readFromSource(cx,
+                                       NewHandler(cx, ReadFromSource, state));
+    if (!readFromSource) {
+      return false;
+    }
+
+    // Resume when there's writable capacity.  Don't bother handling rejection:
+    // if this happens, the stream is going to be errored shortly anyway, and
+    // |StartPiping| has us ready to react to that already.
+    //
+    // XXX Double-check the claim that we need not handle rejections and that a
+    //     rejection of [[readyPromise]] *necessarily* is always followed by
+    //     rejection of [[closedPromise]].
+    return JS::AddPromiseReactionsIgnoringUnhandledRejection(
+        cx, readyPromise, readFromSource, nullptr);
+  }
+
+  // |dest| is ready to receive at least one write.  Read one chunk from the
+  // reader now that we're not subject to backpressure.
+  Rooted<ReadableStreamDefaultReader*> reader(cx, state->reader());
+  cx->check(reader);
+
+  Rooted<PromiseObject*> readRequest(
+      cx, js::ReadableStreamDefaultReaderRead(cx, reader));
+  if (!readRequest) {
+    return false;
+  }
+
+  Rooted<JSFunction*> readFulfilled(cx, NewHandler(cx, ReadFulfilled, state));
+  if (!readFulfilled) {
+    return false;
+  }
+
+  Rooted<JSFunction*> readRejected(cx, NewHandler(cx, ReadRejected, state));
+  if (!readRejected) {
+    return false;
+  }
+
+  // Once the chunk is read, immediately write it and attempt to read more.
+  // Don't bother handling a rejection: |source| will be closed/errored, and
+  // |StartPiping| poised us to react to that already.
+  if (!JS::AddPromiseReactionsIgnoringUnhandledRejection(
+          cx, readRequest, readFulfilled, readRejected)) {
+    return false;
+  }
+
+  // The spec is clear that a write started before an error/stream-closure is
+  // encountered must be completed before shutdown.  It is *not* clear that a
+  // read that hasn't yet fulfilled should delay shutdown (or until that read's
+  // successive write is completed).
+  //
+  // It seems easiest to explain, both from a user perspective (no read is ever
+  // just dropped on the ground) and an implementer perspective (if we *don't*
+  // delay, then a read could be started, a shutdown could be started, then the
+  // read could finish but we can't write it which arguably conflicts with the
+  // requirement that chunks that have been read must be written before shutdown
+  // completes), to delay.  XXX file a spec issue to require this!
+  state->setReadPending();
+  return true;
+}
+
+static bool ReadFromSource(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  Rooted<PipeToState*> state(cx, TargetFromHandler<PipeToState>(args));
+  cx->check(state);
+
+  if (!ReadFromSource(cx, state)) {
+    return false;
+  }
+
+  args.rval().setUndefined();
+  return true;
+}
+
 static MOZ_MUST_USE bool StartPiping(JSContext* cx, Handle<PipeToState*> state,
                                      Handle<ReadableStream*> unwrappedSource,
                                      Handle<WritableStream*> unwrappedDest) {
   cx->check(state);
 
-  // If source/dest are closed or errored, don't start piping.
+  // "Shutdown must stop activity: if shuttingDown becomes true, the user agent
+  // must not initiate further reads from reader..."
+  MOZ_ASSERT(!state->shuttingDown(), "can't be shutting down when starting");
+
+  // "Error and close states must be propagated: the following conditions must
+  // be applied in order."
+  //
+  // Before piping has started, we have to check for source/dest being errored
+  // or closed manually.
   bool erroredOrClosed;
   if (!SourceOrDestErroredOrClosed(cx, state, unwrappedSource, unwrappedDest,
                                    &erroredOrClosed)) {
@@ -462,8 +699,8 @@ static MOZ_MUST_USE bool StartPiping(JSContext* cx, Handle<PipeToState*> state,
     return true;
   }
 
-  // In the long run, react to source/dest becoming errored or closed using
-  // separate promises.
+  // *After* piping has started, add reactions to respond to source/dest
+  // becoming errored or closed.
   {
     Rooted<JSObject*> unwrappedClosedPromise(cx);
     Rooted<JSObject*> onClosed(cx);
@@ -507,11 +744,7 @@ static MOZ_MUST_USE bool StartPiping(JSContext* cx, Handle<PipeToState*> state,
     }
   }
 
-  // XXX Operations extending beyond preconditions are not yet implemented.
-  JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                            JSMSG_READABLESTREAM_METHOD_NOT_IMPLEMENTED,
-                            "pipeTo");
-  return false;
+  return ReadFromSource(cx, state);
 }
 
 /**

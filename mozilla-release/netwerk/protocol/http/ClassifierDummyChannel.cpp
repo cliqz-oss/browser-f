@@ -93,12 +93,11 @@ ClassifierDummyChannel::ClassifierDummyChannel(nsIURI* aURI,
 }
 
 ClassifierDummyChannel::~ClassifierDummyChannel() {
-  NS_ReleaseOnMainThreadSystemGroup("ClassifierDummyChannel::mLoadInfo",
-                                    mLoadInfo.forget());
-  NS_ReleaseOnMainThreadSystemGroup("ClassifierDummyChannel::mURI",
-                                    mURI.forget());
-  NS_ReleaseOnMainThreadSystemGroup("ClassifierDummyChannel::mTopWindowURI",
-                                    mTopWindowURI.forget());
+  NS_ReleaseOnMainThread("ClassifierDummyChannel::mLoadInfo",
+                         mLoadInfo.forget());
+  NS_ReleaseOnMainThread("ClassifierDummyChannel::mURI", mURI.forget());
+  NS_ReleaseOnMainThread("ClassifierDummyChannel::mTopWindowURI",
+                         mTopWindowURI.forget());
 }
 
 void ClassifierDummyChannel::AddClassificationFlags(
@@ -581,6 +580,7 @@ void ClassifierDummyChannel::SetCorsPreflightParameters(
     const nsTArray<nsCString>& aUnsafeHeaders) {}
 
 void ClassifierDummyChannel::SetAltDataForChild(bool aIsForChild) {}
+void ClassifierDummyChannel::DisableAltDataCache() {}
 
 NS_IMETHODIMP
 ClassifierDummyChannel::GetBlockAuthPrompt(bool* aBlockAuthPrompt) {
@@ -654,6 +654,11 @@ NS_IMETHODIMP ClassifierDummyChannel::ComputeCrossOriginOpenerPolicy(
 NS_IMETHODIMP
 ClassifierDummyChannel::GetCrossOriginOpenerPolicy(
     nsILoadInfo::CrossOriginOpenerPolicy* aPolicy) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP ClassifierDummyChannel::HasCrossOriginOpenerPolicyMismatch(
+    bool* aIsMismatch) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -731,6 +736,13 @@ NS_IMETHODIMP ClassifierDummyChannel::IsThirdPartySocialTrackingResource(
       UrlClassifierCommon::IsSocialTrackingClassificationFlag(
           mThirdPartyClassificationFlags);
   return NS_OK;
+}
+
+void ClassifierDummyChannel::DoDiagnosticAssertWhenOnStopNotCalledOnDestroy() {}
+
+NS_IMETHODIMP ClassifierDummyChannel::GetResponseEmbedderPolicy(
+    nsILoadInfo::CrossOriginEmbedderPolicy* aOutPolicy) {
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 }  // namespace net

@@ -235,10 +235,10 @@ class MainThreadConsoleData final {
 
  private:
   ~MainThreadConsoleData() {
-    NS_ReleaseOnMainThreadSystemGroup("MainThreadConsoleData::mStorage",
-                                      mStorage.forget());
-    NS_ReleaseOnMainThreadSystemGroup("MainThreadConsoleData::mSandbox",
-                                      mSandbox.forget());
+    NS_ReleaseOnMainThread("MainThreadConsoleData::mStorage",
+                           mStorage.forget());
+    NS_ReleaseOnMainThread("MainThreadConsoleData::mSandbox",
+                           mSandbox.forget());
   }
 
   // All members, except for mRefCnt, are accessed only on the main thread,
@@ -2919,10 +2919,8 @@ bool Console::ArgumentData::Initialize(JSContext* aCx,
                                        const Sequence<JS::Value>& aArguments) {
   mGlobal = JS::CurrentGlobalOrNull(aCx);
 
-  for (uint32_t i = 0; i < aArguments.Length(); ++i) {
-    if (NS_WARN_IF(!mArguments.AppendElement(aArguments[i]))) {
-      return false;
-    }
+  if (NS_WARN_IF(!mArguments.AppendElements(aArguments, fallible))) {
+    return false;
   }
 
   return true;

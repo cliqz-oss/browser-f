@@ -440,9 +440,16 @@ void nsImageLoadingContent::MaybeResolveDecodePromises() {
   // before LOAD_COMPLETE because we want to start as soon as possible.
   uint32_t flags = imgIContainer::FLAG_HIGH_QUALITY_SCALING |
                    imgIContainer::FLAG_AVOID_REDECODE_FOR_SIZE;
-  if (!mCurrentRequest->RequestDecodeWithResult(flags)) {
+  imgIContainer::DecodeResult decodeResult =
+      mCurrentRequest->RequestDecodeWithResult(flags);
+  if (decodeResult == imgIContainer::DECODE_REQUESTED) {
     return;
   }
+  if (decodeResult == imgIContainer::DECODE_REQUEST_FAILED) {
+    RejectDecodePromises(NS_ERROR_DOM_IMAGE_BROKEN);
+    return;
+  }
+  MOZ_ASSERT(decodeResult == imgIContainer::DECODE_SURFACE_AVAILABLE);
 
   // We can only fulfill the promises once we have all the data.
   if (!(status & imgIRequest::STATUS_LOAD_COMPLETE)) {
@@ -714,7 +721,7 @@ void nsImageLoadingContent::ClearScriptedRequests(int32_t aRequestType,
     return;
   }
 
-  nsTArray<RefPtr<ScriptedImageObserver>> observers(mScriptedObservers);
+  nsTArray<RefPtr<ScriptedImageObserver>> observers(mScriptedObservers.Clone());
   auto i = observers.Length();
   do {
     --i;
@@ -755,7 +762,7 @@ void nsImageLoadingContent::CloneScriptedRequests(imgRequestProxy* aRequest) {
     return;
   }
 
-  nsTArray<RefPtr<ScriptedImageObserver>> observers(mScriptedObservers);
+  nsTArray<RefPtr<ScriptedImageObserver>> observers(mScriptedObservers.Clone());
   auto i = observers.Length();
   do {
     --i;
@@ -780,7 +787,7 @@ void nsImageLoadingContent::MakePendingScriptedRequestsCurrent() {
     return;
   }
 
-  nsTArray<RefPtr<ScriptedImageObserver>> observers(mScriptedObservers);
+  nsTArray<RefPtr<ScriptedImageObserver>> observers(mScriptedObservers.Clone());
   auto i = observers.Length();
   do {
     --i;
@@ -970,8 +977,8 @@ nsImageLoadingContent::LoadImageWithChannel(nsIChannel* aChannel,
 
   // Do the load.
   RefPtr<imgRequestProxy>& req = PrepareNextRequest(eImageLoadType_Normal);
-  nsresult rv = loader->LoadImageWithChannel(aChannel, this, ToSupports(doc),
-                                             aListener, getter_AddRefs(req));
+  nsresult rv = loader->LoadImageWithChannel(aChannel, this, doc, aListener,
+                                             getter_AddRefs(req));
   if (NS_SUCCEEDED(rv)) {
     CloneScriptedRequests(req);
     TrackImage(req);
@@ -1138,22 +1145,17 @@ nsresult nsImageLoadingContent::LoadImage(nsIURI* aNewURI, bool aForce,
   //
   // We use the principal of aDocument to avoid having to QI |this| an extra
   // time. It should always be the same as the principal of this node.
-#ifdef DEBUG
-  nsIContent* thisContent = AsContent();
-  MOZ_ASSERT(thisContent->NodePrincipal() == aDocument->NodePrincipal(),
+  Element* element = AsContent()->AsElement();
+  MOZ_ASSERT(element->NodePrincipal() == aDocument->NodePrincipal(),
              "Principal mismatch?");
-#endif
 
   nsLoadFlags loadFlags =
       aLoadFlags | nsContentUtils::CORSModeToLoadImageFlags(GetCORSMode());
 
   RefPtr<imgRequestProxy>& req = PrepareNextRequest(aImageLoadType);
-  nsCOMPtr<nsIContent> content =
-      do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
-
   nsCOMPtr<nsIPrincipal> triggeringPrincipal;
   bool result = nsContentUtils::QueryTriggeringPrincipal(
-      content, aTriggeringPrincipal, getter_AddRefs(triggeringPrincipal));
+      element, aTriggeringPrincipal, getter_AddRefs(triggeringPrincipal));
 
   // If result is true, which means this node has specified
   // 'triggeringprincipal' attribute on it, so we use favicon as the policy
@@ -1162,14 +1164,10 @@ nsresult nsImageLoadingContent::LoadImage(nsIURI* aNewURI, bool aForce,
       result ? nsIContentPolicy::TYPE_INTERNAL_IMAGE_FAVICON
              : PolicyTypeForLoad(aImageLoadType);
 
-  nsCOMPtr<nsINode> thisNode =
-      do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
-  nsCOMPtr<nsIReferrerInfo> referrerInfo = new ReferrerInfo();
-  referrerInfo->InitWithNode(thisNode);
-
+  auto referrerInfo = MakeRefPtr<ReferrerInfo>(*element);
   nsresult rv = nsContentUtils::LoadImage(
-      aNewURI, thisNode, aDocument, triggeringPrincipal, 0, referrerInfo, this,
-      loadFlags, content->LocalName(), getter_AddRefs(req), policyType,
+      aNewURI, element, aDocument, triggeringPrincipal, 0, referrerInfo, this,
+      loadFlags, element->LocalName(), getter_AddRefs(req), policyType,
       mUseUrgentStartForChannel);
 
   // Reset the flag to avoid loading from XPCOM or somewhere again else without
@@ -1230,12 +1228,17 @@ uint32_t nsImageLoadingContent::NaturalWidth() {
     mCurrentRequest->GetImage(getter_AddRefs(image));
   }
 
-  int32_t width;
-  if (image && NS_SUCCEEDED(image->GetWidth(&width))) {
-    return width;
+  int32_t size = 0;
+  if (image) {
+    if (image->GetOrientation().SwapsWidthAndHeight() &&
+        !image->HandledOrientation() &&
+        StaticPrefs::image_honor_orientation_metadata_natural_size()) {
+      Unused << image->GetHeight(&size);
+    } else {
+      Unused << image->GetWidth(&size);
+    }
   }
-
-  return 0;
+  return size;
 }
 
 uint32_t nsImageLoadingContent::NaturalHeight() {
@@ -1244,12 +1247,17 @@ uint32_t nsImageLoadingContent::NaturalHeight() {
     mCurrentRequest->GetImage(getter_AddRefs(image));
   }
 
-  int32_t height;
-  if (image && NS_SUCCEEDED(image->GetHeight(&height))) {
-    return height;
+  int32_t size = 0;
+  if (image) {
+    if (image->GetOrientation().SwapsWidthAndHeight() &&
+        !image->HandledOrientation() &&
+        StaticPrefs::image_honor_orientation_metadata_natural_size()) {
+      Unused << image->GetWidth(&size);
+    } else {
+      Unused << image->GetHeight(&size);
+    }
   }
-
-  return 0;
+  return size;
 }
 
 EventStates nsImageLoadingContent::ImageState() const {
@@ -1315,7 +1323,6 @@ void nsImageLoadingContent::UpdateImageState(bool aNotify) {
     }
   }
 
-  NS_ASSERTION(thisContent->IsElement(), "Not an element?");
   thisContent->AsElement()->UpdateState(aNotify);
 }
 
@@ -1788,12 +1795,6 @@ bool nsImageLoadingContent::ScriptedImageObserver::CancelRequests() {
     cancelled = true;
   }
   return cancelled;
-}
-
-// Only HTMLInputElement.h overrides this for <img> tags
-// all other subclasses use this one, i.e. ignore referrer attributes
-mozilla::dom::ReferrerPolicy nsImageLoadingContent::GetImageReferrerPolicy() {
-  return mozilla::dom::ReferrerPolicy::_empty;
 }
 
 Element* nsImageLoadingContent::FindImageMap() {

@@ -263,7 +263,7 @@ static bool SerializeEvent(JSContext* aCx, JS::MutableHandleValue aElement,
   // the associated module's mSanitizedDllName
   if (!aEvent.mRequestedDllName.IsEmpty() &&
       !aEvent.mRequestedDllName.Equals(aEvent.mModule->mSanitizedDllName,
-                                       nsCaseInsensitiveStringComparator())) {
+                                       nsCaseInsensitiveStringComparator)) {
     if (!AddLengthLimitedStringProp(aCx, obj, "requestedDllName",
                                     aEvent.mRequestedDllName)) {
       return false;
@@ -289,6 +289,13 @@ static bool SerializeEvent(JSContext* aCx, JS::MutableHandleValue aElement,
   JS::RootedValue jsModuleIndex(aCx);
   jsModuleIndex.setNumber(index);
   if (!JS_DefineProperty(aCx, obj, "moduleIndex", jsModuleIndex,
+                         JSPROP_ENUMERATE)) {
+    return false;
+  }
+
+  JS::RootedValue jsIsDependent(aCx);
+  jsIsDependent.setBoolean(aEvent.mIsDependent);
+  if (!JS_DefineProperty(aCx, obj, "isDependent", jsIsDependent,
                          JSPROP_ENUMERATE)) {
     return false;
   }

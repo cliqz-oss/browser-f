@@ -15,6 +15,8 @@
  *   response header sent
  */
 
+"use strict";
+
 const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
 
 const pps = Cc["@mozilla.org/network/protocol-proxy-service;1"].getService();
@@ -30,7 +32,7 @@ class ProxyFilter {
     this._flags = flags;
     this.QueryInterface = ChromeUtils.generateQI([Ci.nsIProtocolProxyFilter]);
   }
-  applyFilter(pps, uri, pi, cb) {
+  applyFilter(uri, pi, cb) {
     if (uri.spec.match(/(\/proxy-session-counter)/)) {
       cb.onProxyFilterResult(pi);
       return;
@@ -57,7 +59,7 @@ class UnxpectedAuthPrompt2 {
   }
   asyncPromptAuth() {
     this.signal.triggered = true;
-    throw Cr.ERROR_UNEXPECTED;
+    throw Components.Exception("", Cr.ERROR_UNEXPECTED);
   }
 }
 
@@ -70,7 +72,7 @@ class AuthRequestor {
     if (iid.equals(Ci.nsIAuthPrompt2)) {
       return this.prompt();
     }
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   }
 }
 

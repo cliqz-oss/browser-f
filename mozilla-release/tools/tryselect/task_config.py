@@ -230,6 +230,11 @@ class Rebuild(TryConfig):
         if not rebuild:
             return
 
+        if kwargs.get('full') and rebuild > 3:
+            print('warning: limiting --rebuild to 3 when using --full. '
+                  'Use custom push actions to add more.')
+            rebuild = 3
+
         return {
             'rebuild': rebuild,
         }
@@ -318,7 +323,7 @@ class OptimizeStrategies(TryConfig):
     def try_config(self, strategy, **kwargs):
         if strategy:
             if ':' not in strategy:
-                strategy = "taskgraph.optimize:experimental.{}".format(strategy)
+                strategy = "taskgraph.optimize:tryselect.{}".format(strategy)
 
             try:
                 obj = find_object(strategy)

@@ -4,6 +4,8 @@
 
 <!-- extracted from am-advanced.xul -->
 
+<!-- extracted from am-advanced.xhtml -->
+
 <!-- LOCALIZATION NOTE (smtpServer.label): do not translate "SMTP" in below line -->
 <!ENTITY smtpServer.label "Postausgangs-Server (SMTP)">
 

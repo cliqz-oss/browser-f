@@ -7,11 +7,15 @@
 
 #include "nsAppRunner.h"
 #include "nsIObserverService.h"
+#include "nsIOService.h"
 #include "SocketProcessParent.h"
+#include "ProcessUtils.h"
+#include "mozilla/ipc/FileDescriptor.h"
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/SandboxBroker.h"
 #  include "mozilla/SandboxBrokerPolicyFactory.h"
+#  include "mozilla/SandboxSettings.h"
 #endif
 
 #ifdef MOZ_GECKO_PROFILER
@@ -21,6 +25,8 @@
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
 #  include "mozilla/Sandbox.h"
 #endif
+
+using namespace mozilla::ipc;
 
 namespace mozilla {
 namespace net {
@@ -211,18 +217,20 @@ void SocketProcessHost::InitAfterConnect(bool aSucceeded) {
     Maybe<FileDescriptor> brokerFd;
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
-    auto policy = SandboxBrokerPolicyFactory::GetSocketProcessPolicy(
-        GetActor()->OtherPid());
-    if (policy != nullptr) {
-      brokerFd = Some(FileDescriptor());
-      mSandboxBroker = SandboxBroker::Create(
-          std::move(policy), GetActor()->OtherPid(), brokerFd.ref());
-      // This is unlikely to fail and probably indicates OS resource
-      // exhaustion.
-      Unused << NS_WARN_IF(mSandboxBroker == nullptr);
-      MOZ_ASSERT(brokerFd.ref().IsValid());
+    if (GetEffectiveSocketProcessSandboxLevel() > 0) {
+      auto policy = SandboxBrokerPolicyFactory::GetSocketProcessPolicy(
+          GetActor()->OtherPid());
+      if (policy != nullptr) {
+        brokerFd = Some(FileDescriptor());
+        mSandboxBroker = SandboxBroker::Create(
+            std::move(policy), GetActor()->OtherPid(), brokerFd.ref());
+        // This is unlikely to fail and probably indicates OS resource
+        // exhaustion.
+        Unused << NS_WARN_IF(mSandboxBroker == nullptr);
+        MOZ_ASSERT(brokerFd.ref().IsValid());
+      }
+      Unused << GetActor()->SendInitLinuxSandbox(brokerFd);
     }
-    Unused << GetActor()->SendInitLinuxSandbox(brokerFd);
 #endif  // XP_LINUX && MOZ_SANDBOX
 
 #ifdef MOZ_GECKO_PROFILER

@@ -115,24 +115,6 @@ public class GeckoAppShell {
         }
 
         @Override
-        protected Bundle getCrashExtras(final Thread thread, final Throwable exc) {
-            final Bundle extras = super.getCrashExtras(thread, exc);
-
-            extras.putString("ProductName", BuildConfig.MOZ_APP_BASENAME);
-            extras.putString("ProductID", BuildConfig.MOZ_APP_ID);
-            extras.putString("Version", BuildConfig.MOZ_APP_VERSION);
-            extras.putString("BuildID", BuildConfig.MOZ_APP_BUILDID);
-            extras.putString("Vendor", BuildConfig.MOZ_APP_VENDOR);
-            extras.putString("ReleaseChannel", BuildConfig.MOZ_UPDATE_CHANNEL);
-
-            final String appNotes = getAppNotes();
-            if (appNotes != null) {
-                extras.putString("Notes", appNotes);
-            }
-            return extras;
-        }
-
-        @Override
         public boolean reportException(final Thread thread, final Throwable exc) {
             try {
                 if (exc instanceof OutOfMemoryError) {
@@ -258,6 +240,9 @@ public class GeckoAppShell {
 
     @WrapForJNI(stubName = "NotifyObservers", dispatchTo = "gecko")
     private static native void nativeNotifyObservers(String topic, String data);
+
+    @WrapForJNI(stubName = "AppendAppNotesToCrashReport", dispatchTo = "gecko")
+    public static native void nativeAppendAppNotesToCrashReport(final String notes);
 
     @RobocopTarget
     public static void notifyObservers(final String topic, final String data) {
@@ -1146,12 +1131,20 @@ public class GeckoAppShell {
         }
     }
 
+    private static ConnectivityManager sConnectivityManager;
+
+    private static void ensureConnectivityManager() {
+        if (sConnectivityManager == null) {
+            sConnectivityManager = (ConnectivityManager)
+                getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        }
+    }
+
     @WrapForJNI(calledFrom = "gecko")
     private static boolean isNetworkLinkUp() {
-        ConnectivityManager cm = (ConnectivityManager)
-                getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        ensureConnectivityManager();
         try {
-            NetworkInfo info = cm.getActiveNetworkInfo();
+            NetworkInfo info = sConnectivityManager.getActiveNetworkInfo();
             if (info == null || !info.isConnected())
                 return false;
         } catch (SecurityException se) {
@@ -1162,10 +1155,9 @@ public class GeckoAppShell {
 
     @WrapForJNI(calledFrom = "gecko")
     private static boolean isNetworkLinkKnown() {
-        ConnectivityManager cm = (ConnectivityManager)
-            getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        ensureConnectivityManager();
         try {
-            if (cm.getActiveNetworkInfo() == null)
+            if (sConnectivityManager.getActiveNetworkInfo() == null)
                 return false;
         } catch (SecurityException se) {
             return false;
@@ -1175,9 +1167,8 @@ public class GeckoAppShell {
 
     @WrapForJNI(calledFrom = "gecko")
     private static int getNetworkLinkType() {
-        ConnectivityManager cm = (ConnectivityManager)
-            getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
-        NetworkInfo info = cm.getActiveNetworkInfo();
+        ensureConnectivityManager();
+        NetworkInfo info = sConnectivityManager.getActiveNetworkInfo();
         if (info == null) {
             return LINK_TYPE_UNKNOWN;
         }
@@ -1238,14 +1229,13 @@ public class GeckoAppShell {
             return "";
         }
 
-        ConnectivityManager cm = (ConnectivityManager)
-            getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
-        Network net = cm.getActiveNetwork();
+        ensureConnectivityManager();
+        Network net = sConnectivityManager.getActiveNetwork();
         if (net == null) {
             return "";
         }
 
-        LinkProperties lp = cm.getLinkProperties(net);
+        LinkProperties lp = sConnectivityManager.getLinkProperties(net);
         if (lp == null) {
             return "";
         }
@@ -1257,7 +1247,6 @@ public class GeckoAppShell {
     private static int[] getSystemColors() {
         // attrsAppearance[] must correspond to AndroidSystemColors structure in android/AndroidBridge.h
         final int[] attrsAppearance = {
-            android.R.attr.textColor,
             android.R.attr.textColorPrimary,
             android.R.attr.textColorPrimaryInverse,
             android.R.attr.textColorSecondary,

@@ -31,6 +31,7 @@
 #include "util/CompleteFile.h"     // js::FileContents, js::ReadCompleteFile
 #include "util/StringBuffer.h"     // js::StringBuffer
 #include "vm/EnvironmentObject.h"  // js::CreateNonSyntacticEnvironmentChain
+#include "vm/FunctionFlags.h"      // js::FunctionFlags
 #include "vm/Interpreter.h"        // js::Execute
 #include "vm/JSContext.h"          // JSContext
 
@@ -72,8 +73,10 @@ static JSScript* CompileSourceBuffer(JSContext* cx,
     return nullptr;
   }
 
+  SourceExtent extent =
+      SourceExtent::makeGlobalExtent(srcBuf.length(), options);
   frontend::GlobalSharedContext globalsc(cx, scopeKind, compilationInfo,
-                                         compilationInfo.directives);
+                                         compilationInfo.directives, extent);
   return frontend::CompileGlobalScript(compilationInfo, globalsc, srcBuf);
 }
 
@@ -170,8 +173,7 @@ JS_PUBLIC_API bool JS_Utf8BufferIsCompilableUnit(JSContext* cx,
   JS::AutoSuppressWarningReporter suppressWarnings(cx);
   Parser<FullParseHandler, char16_t> parser(cx, options, chars.get(), length,
                                             /* foldConstants = */ true,
-                                            compilationInfo, nullptr, nullptr,
-                                            compilationInfo.sourceObject);
+                                            compilationInfo, nullptr, nullptr);
   if (!parser.checkOptions() || !parser.parse()) {
     // We ran into an error. If it was because we ran out of source, we
     // return false so our caller knows to try to collect more buffered
@@ -259,7 +261,7 @@ class FunctionCompiler {
   }
 
   JSFunction* finish(HandleObjectVector envChain,
-                     const ReadOnlyCompileOptions& options) {
+                     const ReadOnlyCompileOptions& optionsArg) {
     if (!funStr_.append(FunctionConstructorFinalBrace)) {
       return nullptr;
     }
@@ -298,6 +300,10 @@ class FunctionCompiler {
     // non-syntactic scope.
     MOZ_ASSERT_IF(!IsGlobalLexicalEnvironment(enclosingEnv),
                   enclosingScope->hasOnChain(ScopeKind::NonSyntactic));
+
+    CompileOptions options(cx_, optionsArg);
+    options.setNonSyntacticScope(
+        enclosingScope->hasOnChain(ScopeKind::NonSyntactic));
 
     if (!js::frontend::CompileStandaloneFunction(
             cx_, &fun, options, newSrcBuf, mozilla::Some(parameterListEnd_),
@@ -353,19 +359,6 @@ JS_PUBLIC_API JSFunction* JS::CompileFunctionUtf8(
   return CompileFunction(cx, envChain, options, name, nargs, argnames, srcBuf);
 }
 
-JS_PUBLIC_API bool JS::InitScriptSourceElement(JSContext* cx,
-                                               HandleScript script,
-                                               HandleObject element,
-                                               HandleString elementAttrName) {
-  MOZ_ASSERT(cx);
-  MOZ_ASSERT(CurrentThreadCanAccessRuntime(cx->runtime()));
-
-  RootedScriptSourceObject sso(
-      cx, &script->sourceObject()->as<ScriptSourceObject>());
-  return ScriptSourceObject::initElementProperties(cx, sso, element,
-                                                   elementAttrName);
-}
-
 JS_PUBLIC_API void JS::ExposeScriptToDebugger(JSContext* cx,
                                               HandleScript script) {
   MOZ_ASSERT(cx);
@@ -374,19 +367,26 @@ JS_PUBLIC_API void JS::ExposeScriptToDebugger(JSContext* cx,
   DebugAPI::onNewScript(cx, script);
 }
 
-MOZ_NEVER_INLINE static bool ExecuteScript(JSContext* cx, HandleObject scope,
-                                           HandleScript script, Value* rval) {
+JS_PUBLIC_API void JS::SetGetElementCallback(JSContext* cx,
+                                             JSGetElementCallback callback) {
+  MOZ_ASSERT(cx->runtime());
+  cx->runtime()->setElementCallback(cx->runtime(), callback);
+}
+
+MOZ_NEVER_INLINE static bool ExecuteScript(JSContext* cx, HandleObject envChain,
+                                           HandleScript script,
+                                           MutableHandleValue rval) {
   MOZ_ASSERT(!cx->zone()->isAtomsZone());
   AssertHeapIsIdle();
   CHECK_THREAD(cx);
-  cx->check(scope, script);
-  MOZ_ASSERT_IF(!IsGlobalLexicalEnvironment(scope),
+  cx->check(envChain, script);
+  MOZ_ASSERT_IF(!IsGlobalLexicalEnvironment(envChain),
                 script->hasNonSyntacticScope());
-  return Execute(cx, script, *scope, rval);
+  return Execute(cx, script, envChain, rval);
 }
 
 static bool ExecuteScript(JSContext* cx, HandleObjectVector envChain,
-                          HandleScript scriptArg, Value* rval) {
+                          HandleScript scriptArg, MutableHandleValue rval) {
   RootedObject env(cx);
   RootedScope dummy(cx);
   if (!CreateNonSyntacticEnvironmentChain(cx, envChain, &env, &dummy)) {
@@ -408,24 +408,26 @@ MOZ_NEVER_INLINE JS_PUBLIC_API bool JS_ExecuteScript(JSContext* cx,
                                                      HandleScript scriptArg,
                                                      MutableHandleValue rval) {
   RootedObject globalLexical(cx, &cx->global()->lexicalEnvironment());
-  return ExecuteScript(cx, globalLexical, scriptArg, rval.address());
+  return ExecuteScript(cx, globalLexical, scriptArg, rval);
 }
 
 MOZ_NEVER_INLINE JS_PUBLIC_API bool JS_ExecuteScript(JSContext* cx,
                                                      HandleScript scriptArg) {
   RootedObject globalLexical(cx, &cx->global()->lexicalEnvironment());
-  return ExecuteScript(cx, globalLexical, scriptArg, nullptr);
+  RootedValue rval(cx);
+  return ExecuteScript(cx, globalLexical, scriptArg, &rval);
 }
 
 MOZ_NEVER_INLINE JS_PUBLIC_API bool JS_ExecuteScript(
     JSContext* cx, HandleObjectVector envChain, HandleScript scriptArg,
     MutableHandleValue rval) {
-  return ExecuteScript(cx, envChain, scriptArg, rval.address());
+  return ExecuteScript(cx, envChain, scriptArg, rval);
 }
 
 MOZ_NEVER_INLINE JS_PUBLIC_API bool JS_ExecuteScript(
     JSContext* cx, HandleObjectVector envChain, HandleScript scriptArg) {
-  return ExecuteScript(cx, envChain, scriptArg, nullptr);
+  RootedValue rval(cx);
+  return ExecuteScript(cx, envChain, scriptArg, &rval);
 }
 
 JS_PUBLIC_API bool JS::CloneAndExecuteScript(JSContext* cx,
@@ -440,7 +442,7 @@ JS_PUBLIC_API bool JS::CloneAndExecuteScript(JSContext* cx,
       return false;
     }
   }
-  return ExecuteScript(cx, globalLexical, script, rval.address());
+  return ExecuteScript(cx, globalLexical, script, rval);
 }
 
 JS_PUBLIC_API bool JS::CloneAndExecuteScript(JSContext* cx,
@@ -455,7 +457,7 @@ JS_PUBLIC_API bool JS::CloneAndExecuteScript(JSContext* cx,
       return false;
     }
   }
-  return ExecuteScript(cx, envChain, script, rval.address());
+  return ExecuteScript(cx, envChain, script, rval);
 }
 
 template <typename Unit>
@@ -472,6 +474,7 @@ static bool EvaluateSourceBuffer(JSContext* cx, ScopeKind scopeKind,
   MOZ_ASSERT_IF(!IsGlobalLexicalEnvironment(env),
                 scopeKind == ScopeKind::NonSyntactic);
 
+  options.setNonSyntacticScope(scopeKind == ScopeKind::NonSyntactic);
   options.setIsRunOnce(true);
 
   RootedScript script(cx);
@@ -482,16 +485,17 @@ static bool EvaluateSourceBuffer(JSContext* cx, ScopeKind scopeKind,
       return false;
     }
 
+    SourceExtent extent =
+        SourceExtent::makeGlobalExtent(srcBuf.length(), options);
     frontend::GlobalSharedContext globalsc(cx, scopeKind, compilationInfo,
-                                           compilationInfo.directives);
+                                           compilationInfo.directives, extent);
     script = frontend::CompileGlobalScript(compilationInfo, globalsc, srcBuf);
     if (!script) {
       return false;
     }
   }
 
-  return Execute(cx, script, *env,
-                 options.noScriptRval ? nullptr : rval.address());
+  return Execute(cx, script, env, rval);
 }
 
 JS_PUBLIC_API bool JS::Evaluate(JSContext* cx,

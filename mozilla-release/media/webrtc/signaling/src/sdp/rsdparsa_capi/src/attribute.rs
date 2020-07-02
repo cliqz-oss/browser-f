@@ -292,6 +292,69 @@ pub unsafe extern "C" fn sdp_get_ssrcs(
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+pub enum RustSdpSsrcGroupSemantic {
+    Duplication,
+    FlowIdentification,
+    ForwardErrorCorrection,
+    ForwardErrorCorrectionFR,
+    SIM,
+}
+
+impl<'a> From<&'a SdpSsrcGroupSemantic> for RustSdpSsrcGroupSemantic {
+    fn from(other: &SdpSsrcGroupSemantic) -> Self {
+        match *other {
+            SdpSsrcGroupSemantic::Duplication => RustSdpSsrcGroupSemantic::Duplication,
+            SdpSsrcGroupSemantic::FlowIdentification => {
+                RustSdpSsrcGroupSemantic::FlowIdentification
+            }
+            SdpSsrcGroupSemantic::ForwardErrorCorrection => {
+                RustSdpSsrcGroupSemantic::ForwardErrorCorrection
+            }
+            SdpSsrcGroupSemantic::ForwardErrorCorrectionFR => {
+                RustSdpSsrcGroupSemantic::ForwardErrorCorrectionFR
+            }
+            SdpSsrcGroupSemantic::SIM => RustSdpSsrcGroupSemantic::SIM,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RustSdpSsrcGroup {
+    pub semantic: RustSdpSsrcGroupSemantic,
+    pub ssrcs: *const Vec<SdpAttributeSsrc>,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sdp_get_ssrc_group_count(attributes: *const Vec<SdpAttribute>) -> size_t {
+    count_attribute((*attributes).as_slice(), SdpAttributeType::SsrcGroup)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sdp_get_ssrc_groups(
+    attributes: *const Vec<SdpAttribute>,
+    ret_size: size_t,
+    ret_ssrc_groups: *mut RustSdpSsrcGroup,
+) {
+    let attrs: Vec<_> = (*attributes)
+        .iter()
+        .filter_map(|x| {
+            if let SdpAttribute::SsrcGroup(ref semantic, ref ssrcs) = *x {
+                Some(RustSdpSsrcGroup {
+                    semantic: RustSdpSsrcGroupSemantic::from(semantic),
+                    ssrcs: ssrcs,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    let ssrc_groups = slice::from_raw_parts_mut(ret_ssrc_groups, ret_size);
+    ssrc_groups.copy_from_slice(attrs.as_slice());
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct RustSdpAttributeRtpmap {
     pub payload_type: u8,
     pub codec_name: StringView,
@@ -337,6 +400,14 @@ pub unsafe extern "C" fn sdp_get_rtpmaps(
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+pub struct RustRtxFmtpParameters {
+    pub apt: u8,
+    pub has_rtx_time: bool,
+    pub rtx_time: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct RustSdpAttributeFmtpParameters {
     // H264
     pub packetization_mode: u32,
@@ -354,13 +425,20 @@ pub struct RustSdpAttributeFmtpParameters {
 
     // Opus
     pub maxplaybackrate: u32,
+    pub maxaveragebitrate: u32,
     pub usedtx: bool,
     pub stereo: bool,
     pub useinbandfec: bool,
     pub cbr: bool,
+    pub ptime: u32,
+    pub minptime: u32,
+    pub maxptime: u32,
 
     // telephone-event
     pub dtmf_tones: StringView,
+
+    // RTX
+    pub rtx: RustRtxFmtpParameters,
 
     // Red
     pub encodings: *const Vec<u8>,
@@ -371,6 +449,20 @@ pub struct RustSdpAttributeFmtpParameters {
 
 impl<'a> From<&'a SdpAttributeFmtpParameters> for RustSdpAttributeFmtpParameters {
     fn from(other: &SdpAttributeFmtpParameters) -> Self {
+        let rtx = if let Some(rtx) = other.rtx {
+            RustRtxFmtpParameters {
+                apt: rtx.apt,
+                has_rtx_time: rtx.rtx_time.is_some(),
+                rtx_time: rtx.rtx_time.unwrap_or(0),
+            }
+        } else {
+            RustRtxFmtpParameters {
+                apt: 0,
+                has_rtx_time: false,
+                rtx_time: 0,
+            }
+        };
+
         RustSdpAttributeFmtpParameters {
             packetization_mode: other.packetization_mode,
             level_asymmetry_allowed: other.level_asymmetry_allowed,
@@ -386,7 +478,12 @@ impl<'a> From<&'a SdpAttributeFmtpParameters> for RustSdpAttributeFmtpParameters
             cbr: other.cbr,
             max_fr: other.max_fr,
             maxplaybackrate: other.maxplaybackrate,
+            maxaveragebitrate: other.maxaveragebitrate,
+            ptime: other.ptime,
+            minptime: other.minptime,
+            maxptime: other.maxptime,
             dtmf_tones: StringView::from(other.dtmf_tones.as_str()),
+            rtx,
             encodings: &other.encodings,
             unknown_tokens: &other.unknown_tokens,
         }

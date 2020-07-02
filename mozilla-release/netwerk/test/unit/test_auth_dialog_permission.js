@@ -6,6 +6,8 @@
 //       but don't allow it for cross-origin sub-resources
 //   2 - allow the cross-origin authentication as well.
 
+"use strict";
+
 const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
 
 var prefs = Cc["@mozilla.org/preferences-service;1"].getService(
@@ -93,7 +95,7 @@ Requestor.prototype = {
       return this.prompter;
     }
 
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 
   prompter: null,
@@ -157,7 +159,7 @@ Test.prototype = {
       do_throw("Unexpected exception: " + e);
     }
 
-    throw Cr.NS_ERROR_ABORT;
+    throw Components.Exception("", Cr.NS_ERROR_ABORT);
   },
 
   onDataAvailable(request, stream, offset, count) {

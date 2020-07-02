@@ -213,9 +213,9 @@ function requestTabs() {
           })
         : [];
 
-      // Fetch the favicon for all tabs.
+      // Fetch the missing information for all tabs.
       await Promise.all(
-        tabs.map(async tab => (tab.favicon = await getTabFavicon(tab)))
+        tabs.map(descriptorFront => descriptorFront.retrieveAsyncFormData())
       );
 
       dispatch({ type: REQUEST_TABS_SUCCESS, tabs });
@@ -223,29 +223,6 @@ function requestTabs() {
       dispatch({ type: REQUEST_TABS_FAILURE, error: e });
     }
   };
-}
-
-async function getTabFavicon(targetFront) {
-  const { descriptorFront } = targetFront;
-  if (!descriptorFront || !descriptorFront.traits.getFavicon) {
-    // Backward compatibility for FF75 or older.
-    // The favicon used to be included directly on the target form.
-    // Starting with Firefox 76, consumers should retrieve the favicon
-    // using the getFavicon request.
-    return targetFront.favicon;
-  }
-
-  try {
-    const favicon = await descriptorFront.getFavicon();
-    return favicon;
-  } catch (e) {
-    // We might request the favicon for a tab which is going to be destroyed.
-    // In this case targetFront.actorID will be null. Otherwise log an error.
-    if (targetFront.actorID) {
-      console.error("Failed to retrieve the favicon for " + targetFront.url, e);
-    }
-    return "";
-  }
 }
 
 function requestExtensions() {
@@ -337,8 +314,16 @@ function requestWorkers() {
           continue;
         }
 
-        const subscription = await registrationFront.getPushSubscription();
-        serviceWorker.subscription = subscription;
+        try {
+          const subscription = await registrationFront.getPushSubscription();
+          serviceWorker.subscription = subscription;
+        } catch (e) {
+          // See Bug 1637687. On GeckoView, some PushSubscription methods are
+          // not implemented. PushSubscriptionActor was patched in FF78 to avoid
+          // throwing, but old servers might still throw.
+          // Backward-compatibility: remove when FF78 hits release.
+          console.error("Failed to retrieve service worker subscription", e);
+        }
       }
 
       dispatch({

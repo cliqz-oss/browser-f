@@ -91,12 +91,6 @@
 #define QM_LOG_TEST() MOZ_LOG_TEST(GetQuotaManagerLogger(), LogLevel::Info)
 #define QM_LOG(_args) MOZ_LOG(GetQuotaManagerLogger(), LogLevel::Info, _args)
 
-#define UNKNOWN_FILE_WARNING(_leafName)                                       \
-  NS_WARNING(                                                                 \
-      nsPrintfCString("Something (%s) in the directory that doesn't belong!", \
-                      NS_ConvertUTF16toUTF8(_leafName).get())                 \
-          .get())
-
 // The amount of time, in milliseconds, that our IO thread will stay alive
 // after the last event it processes.
 #define DEFAULT_THREAD_TIMEOUT_MS 30000
@@ -197,14 +191,14 @@ constexpr auto kPersistentOriginTelemetryKey =
 constexpr auto kTemporaryOriginTelemetryKey =
     NS_LITERAL_CSTRING("TemporaryOrigin");
 
+constexpr auto kStorageName = NS_LITERAL_STRING("storage");
+constexpr auto kSQLiteSuffix = NS_LITERAL_STRING(".sqlite");
+
 #define INDEXEDDB_DIRECTORY_NAME "indexedDB"
-#define STORAGE_DIRECTORY_NAME "storage"
 #define PERSISTENT_DIRECTORY_NAME "persistent"
 #define PERMANENT_DIRECTORY_NAME "permanent"
 #define TEMPORARY_DIRECTORY_NAME "temporary"
 #define DEFAULT_DIRECTORY_NAME "default"
-
-#define STORAGE_FILE_NAME "storage.sqlite"
 
 // The name of the file that we use to load/save the last access time of an
 // origin.
@@ -853,6 +847,7 @@ namespace {
 
 }  // namespace
 
+// XXX Change this not to derive from AutoTArray.
 class ClientUsageArray final
     : public AutoTArray<Maybe<uint64_t>, Client::TYPE_MAX> {
  public:
@@ -861,6 +856,12 @@ class ClientUsageArray final
   void Serialize(nsACString& aText) const;
 
   nsresult Deserialize(const nsACString& aText);
+
+  ClientUsageArray Clone() const {
+    ClientUsageArray res;
+    res.Assign(*this);
+    return res;
+  }
 };
 
 class OriginInfo final {
@@ -1200,7 +1201,7 @@ class OriginOperationBase : public BackgroundThreadObject, public Runnable {
 
   nsresult DirectoryOpen();
 
-  virtual nsresult DoDirectoryWork(QuotaManager* aQuotaManager) = 0;
+  virtual nsresult DoDirectoryWork(QuotaManager& aQuotaManager) = 0;
 
   void Finish(nsresult aResult);
 
@@ -1237,7 +1238,7 @@ class FinalizeOriginEvictionOp : public OriginOperationBase {
 
   virtual void Open() override;
 
-  virtual nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  virtual nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   virtual void UnblockOpen() override;
 };
@@ -1309,7 +1310,7 @@ class SaveOriginAccessTimeOp : public NormalOriginOperationBase {
  private:
   ~SaveOriginAccessTimeOp() = default;
 
-  virtual nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  virtual nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   virtual void SendResults() override;
 };
@@ -1371,7 +1372,7 @@ class QuotaUsageRequestBase : public NormalOriginOperationBase,
  public:
   // May be overridden by subclasses if they need to perform work on the
   // background thread before being run.
-  virtual void Init(Quota* aQuota);
+  virtual void Init(Quota& aQuota);
 
  protected:
   QuotaUsageRequestBase()
@@ -1379,15 +1380,19 @@ class QuotaUsageRequestBase : public NormalOriginOperationBase,
                                   OriginScope::FromNull(),
                                   /* aExclusive */ false) {}
 
-  nsresult GetUsageForOrigin(QuotaManager* aQuotaManager,
-                             PersistenceType aPersistenceType,
-                             const nsACString& aGroup,
-                             const nsACString& aOrigin, UsageInfo* aUsageInfo);
+  mozilla::Result<UsageInfo, nsresult> GetUsageForOrigin(
+      QuotaManager& aQuotaManager, PersistenceType aPersistenceType,
+      const nsACString& aGroup, const nsACString& aOrigin);
 
   // Subclasses use this override to set the IPDL response value.
   virtual void GetResponse(UsageRequestResponse& aResponse) = 0;
 
  private:
+  mozilla::Result<UsageInfo, nsresult> GetUsageForOriginEntries(
+      QuotaManager& aQuotaManager, PersistenceType aPersistenceType,
+      const nsACString& aGroup, const nsACString& aOrigin,
+      nsIDirectoryEnumerator& aEntries, bool aInitialized);
+
   void SendResults() override;
 
   // IPDL methods.
@@ -1409,14 +1414,14 @@ class TraverseRepositoryHelper {
 
   // If ProcessOrigin returns an error, TraverseRepository will immediately
   // terminate and return the received error code to its caller.
-  nsresult TraverseRepository(QuotaManager* aQuotaManager,
+  nsresult TraverseRepository(QuotaManager& aQuotaManager,
                               PersistenceType aPersistenceType);
 
  private:
   virtual bool IsCanceled() = 0;
 
-  virtual nsresult ProcessOrigin(QuotaManager* aQuotaManager,
-                                 nsIFile* aOriginDir, const bool aPersistent,
+  virtual nsresult ProcessOrigin(QuotaManager& aQuotaManager,
+                                 nsIFile& aOriginDir, const bool aPersistent,
                                  const PersistenceType aPersistenceType) = 0;
 };
 
@@ -1439,11 +1444,11 @@ class GetUsageOp final : public QuotaUsageRequestBase,
                              const int64_t aTimestamp, const bool aPersisted,
                              const uint64_t aUsage);
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   bool IsCanceled() override;
 
-  nsresult ProcessOrigin(QuotaManager* aQuotaManager, nsIFile* aOriginDir,
+  nsresult ProcessOrigin(QuotaManager& aQuotaManager, nsIFile& aOriginDir,
                          const bool aPersistent,
                          const PersistenceType aPersistenceType) override;
 
@@ -1463,7 +1468,7 @@ class GetOriginUsageOp final : public QuotaUsageRequestBase {
  private:
   ~GetOriginUsageOp() = default;
 
-  virtual nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  virtual nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(UsageRequestResponse& aResponse) override;
 };
@@ -1473,7 +1478,7 @@ class QuotaRequestBase : public NormalOriginOperationBase,
  public:
   // May be overridden by subclasses if they need to perform work on the
   // background thread before being run.
-  virtual void Init(Quota* aQuota);
+  virtual void Init(Quota& aQuota);
 
  protected:
   explicit QuotaRequestBase(bool aExclusive)
@@ -1490,12 +1495,28 @@ class QuotaRequestBase : public NormalOriginOperationBase,
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 };
 
+class StorageNameOp final : public QuotaRequestBase {
+  nsString mName;
+
+ public:
+  StorageNameOp();
+
+  void Init(Quota& aQuota) override;
+
+ private:
+  ~StorageNameOp() = default;
+
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
+
+  void GetResponse(RequestResponse& aResponse) override;
+};
+
 class InitializedRequestBase : public QuotaRequestBase {
  protected:
   bool mInitialized;
 
  public:
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  protected:
   InitializedRequestBase();
@@ -1505,7 +1526,7 @@ class StorageInitializedOp final : public InitializedRequestBase {
  private:
   ~StorageInitializedOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1514,7 +1535,7 @@ class TemporaryStorageInitializedOp final : public InitializedRequestBase {
  private:
   ~TemporaryStorageInitializedOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1523,12 +1544,12 @@ class InitOp final : public QuotaRequestBase {
  public:
   InitOp();
 
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  private:
   ~InitOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1537,12 +1558,12 @@ class InitTemporaryStorageOp final : public QuotaRequestBase {
  public:
   InitTemporaryStorageOp();
 
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  private:
   ~InitTemporaryStorageOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1555,12 +1576,12 @@ class InitStorageAndOriginOp final : public QuotaRequestBase {
  public:
   explicit InitStorageAndOriginOp(const RequestParams& aParams);
 
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  private:
   ~InitStorageAndOriginOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1571,16 +1592,16 @@ class ResetOrClearOp final : public QuotaRequestBase {
  public:
   explicit ResetOrClearOp(bool aClear);
 
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  private:
   ~ResetOrClearOp() = default;
 
-  void DeleteFiles(QuotaManager* aQuotaManager);
+  void DeleteFiles(QuotaManager& aQuotaManager);
 
-  void DeleteStorageFile(QuotaManager* aQuotaManager);
+  void DeleteStorageFile(QuotaManager& aQuotaManager);
 
-  virtual nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  virtual nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   virtual void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1591,10 +1612,10 @@ class ClearRequestBase : public QuotaRequestBase {
     AssertIsOnOwningThread();
   }
 
-  void DeleteFiles(QuotaManager* aQuotaManager,
+  void DeleteFiles(QuotaManager& aQuotaManager,
                    PersistenceType aPersistenceType);
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 };
 
 class ClearOriginOp final : public ClearRequestBase {
@@ -1604,7 +1625,7 @@ class ClearOriginOp final : public ClearRequestBase {
  public:
   explicit ClearOriginOp(const RequestParams& aParams);
 
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  private:
   ~ClearOriginOp() = default;
@@ -1618,7 +1639,7 @@ class ClearDataOp final : public ClearRequestBase {
  public:
   explicit ClearDataOp(const RequestParams& aParams);
 
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  private:
   ~ClearDataOp() = default;
@@ -1630,12 +1651,12 @@ class ResetOriginOp final : public QuotaRequestBase {
  public:
   explicit ResetOriginOp(const RequestParams& aParams);
 
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  private:
   ~ResetOriginOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1648,7 +1669,7 @@ class PersistRequestBase : public QuotaRequestBase {
   nsCString mGroup;
 
  public:
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  protected:
   explicit PersistRequestBase(const PrincipalInfo& aPrincipalInfo);
@@ -1663,7 +1684,7 @@ class PersistedOp final : public PersistRequestBase {
  private:
   ~PersistedOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1675,7 +1696,7 @@ class PersistOp final : public PersistRequestBase {
  private:
   ~PersistOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1691,7 +1712,7 @@ class EstimateOp final : public QuotaRequestBase {
  private:
   ~EstimateOp() = default;
 
-  virtual nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  virtual nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   void GetResponse(RequestResponse& aResponse) override;
 };
@@ -1704,16 +1725,16 @@ class ListOriginsOp final : public QuotaRequestBase,
  public:
   ListOriginsOp();
 
-  void Init(Quota* aQuota) override;
+  void Init(Quota& aQuota) override;
 
  private:
   ~ListOriginsOp() = default;
 
-  nsresult DoDirectoryWork(QuotaManager* aQuotaManager) override;
+  nsresult DoDirectoryWork(QuotaManager& aQuotaManager) override;
 
   bool IsCanceled() override;
 
-  nsresult ProcessOrigin(QuotaManager* aQuotaManager, nsIFile* aOriginDir,
+  nsresult ProcessOrigin(QuotaManager& aQuotaManager, nsIFile& aOriginDir,
                          const bool aPersistent,
                          const PersistenceType aPersistenceType) override;
 
@@ -1949,7 +1970,8 @@ void ReportInternalError(const char* aFile, uint32_t aLine, const char* aStr) {
 namespace {
 
 bool gInvalidateQuotaCache = false;
-StaticAutoPtr<nsString> gBaseDirPath;
+StaticAutoPtr<nsString> gBasePath;
+StaticAutoPtr<nsString> gStorageName;
 StaticAutoPtr<nsCString> gBuildId;
 
 #ifdef DEBUG
@@ -1967,21 +1989,21 @@ StaticAutoPtr<NormalOriginOpArray> gNormalOriginOps;
 // Constants for temporary storage limit computing.
 static const uint32_t kDefaultChunkSizeKB = 10 * 1024;
 
-void RegisterNormalOriginOp(NormalOriginOperationBase* aNormalOriginOp) {
+void RegisterNormalOriginOp(NormalOriginOperationBase& aNormalOriginOp) {
   AssertIsOnBackgroundThread();
 
   if (!gNormalOriginOps) {
     gNormalOriginOps = new NormalOriginOpArray();
   }
 
-  gNormalOriginOps->AppendElement(aNormalOriginOp);
+  gNormalOriginOps->AppendElement(&aNormalOriginOp);
 }
 
-void UnregisterNormalOriginOp(NormalOriginOperationBase* aNormalOriginOp) {
+void UnregisterNormalOriginOp(NormalOriginOperationBase& aNormalOriginOp) {
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(gNormalOriginOps);
 
-  gNormalOriginOps->RemoveElement(aNormalOriginOp);
+  gNormalOriginOps->RemoveElement(&aNormalOriginOp);
 
   if (gNormalOriginOps->IsEmpty()) {
     gNormalOriginOps = nullptr;
@@ -2778,7 +2800,7 @@ PQuotaParent* AllocPQuotaParent() {
     return nullptr;
   }
 
-  RefPtr<Quota> actor = new Quota();
+  auto actor = MakeRefPtr<Quota>();
 
   return actor.forget().take();
 }
@@ -3142,14 +3164,14 @@ QuotaManager::Observer::Observe(nsISupports* aSubject, const char* aTopic,
   nsresult rv;
 
   if (!strcmp(aTopic, kProfileDoChangeTopic)) {
-    if (NS_WARN_IF(gBaseDirPath)) {
+    if (NS_WARN_IF(gBasePath)) {
       NS_WARNING(
           "profile-before-change-qm must precede repeated "
           "profile-do-change!");
       return NS_OK;
     }
 
-    gBaseDirPath = new nsString();
+    gBasePath = new nsString();
 
     nsCOMPtr<nsIFile> baseDir;
     rv = NS_GetSpecialDirectory(NS_APP_INDEXEDDB_PARENT_DIR,
@@ -3162,9 +3184,16 @@ QuotaManager::Observer::Observe(nsISupports* aSubject, const char* aTopic,
       return rv;
     }
 
-    rv = baseDir->GetPath(*gBaseDirPath);
+    rv = baseDir->GetPath(*gBasePath);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
+    }
+
+    gStorageName = new nsString();
+
+    rv = Preferences::GetString("dom.quotaManager.storageName", *gStorageName);
+    if (NS_FAILED(rv)) {
+      *gStorageName = kStorageName;
     }
 
     gBuildId = new nsCString();
@@ -3184,7 +3213,7 @@ QuotaManager::Observer::Observe(nsISupports* aSubject, const char* aTopic,
   }
 
   if (!strcmp(aTopic, PROFILE_BEFORE_CHANGE_QM_OBSERVER_ID)) {
-    if (NS_WARN_IF(!gBaseDirPath)) {
+    if (NS_WARN_IF(!gBasePath)) {
       NS_WARNING("profile-do-change must precede profile-before-change-qm!");
       return NS_OK;
     }
@@ -3212,7 +3241,9 @@ QuotaManager::Observer::Observe(nsISupports* aSubject, const char* aTopic,
 
     MOZ_ALWAYS_TRUE(SpinEventLoopUntil([&]() { return mShutdownComplete; }));
 
-    gBaseDirPath = nullptr;
+    gBasePath = nullptr;
+
+    gStorageName = nullptr;
 
     gBuildId = nullptr;
 
@@ -3551,8 +3582,11 @@ bool QuotaObject::LockedMaybeUpdateSize(int64_t aSize, bool aTruncate) {
  * Quota manager
  ******************************************************************************/
 
-QuotaManager::QuotaManager()
+QuotaManager::QuotaManager(const nsAString& aBasePath,
+                           const nsAString& aStorageName)
     : mQuotaMutex("QuotaManager.mQuotaMutex"),
+      mBasePath(aBasePath),
+      mStorageName(aStorageName),
       mTemporaryStorageLimit(0),
       mTemporaryStorageUsage(0),
       mNextDirectoryLockId(0),
@@ -3588,15 +3622,15 @@ void QuotaManager::GetOrCreate(nsIRunnable* aCallback,
     return;
   }
 
-  if (NS_WARN_IF(!gBaseDirPath)) {
+  if (NS_WARN_IF(!gBasePath)) {
     NS_WARNING("profile-do-change must precede QuotaManager::GetOrCreate()");
     MOZ_ASSERT(!gInstance);
   } else if (gInstance || gCreateFailed) {
     MOZ_ASSERT_IF(gCreateFailed, !gInstance);
   } else {
-    RefPtr<QuotaManager> manager = new QuotaManager();
+    RefPtr<QuotaManager> manager = new QuotaManager(*gBasePath, *gStorageName);
 
-    nsresult rv = manager->Init(*gBaseDirPath);
+    nsresult rv = manager->Init();
     if (NS_WARN_IF(NS_FAILED(rv))) {
       gCreateFailed = true;
     } else {
@@ -3937,14 +3971,14 @@ void QuotaManager::CollectPendingOriginsForListing(P aPredicate) {
   }
 }
 
-nsresult QuotaManager::Init(const nsAString& aBasePath) {
-  mBasePath = aBasePath;
+nsresult QuotaManager::Init() {
+  AssertIsOnOwningThread();
 
 #ifdef XP_WIN
   CacheUseDOSDevicePathSyntaxPrefValue();
 #endif
 
-  auto baseDirOrErr = QM_NewLocalFile(aBasePath);
+  auto baseDirOrErr = QM_NewLocalFile(mBasePath);
   if (NS_WARN_IF(baseDirOrErr.isErr())) {
     return baseDirOrErr.unwrapErr();
   }
@@ -3957,7 +3991,7 @@ nsresult QuotaManager::Init(const nsAString& aBasePath) {
     return rv;
   }
 
-  rv = baseDir->Append(NS_LITERAL_STRING(STORAGE_DIRECTORY_NAME));
+  rv = baseDir->Append(mStorageName);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4252,10 +4286,10 @@ void QuotaManager::UpdateOriginAccessTime(PersistenceType aPersistenceType,
 
     MutexAutoUnlock autoUnlock(mQuotaMutex);
 
-    RefPtr<SaveOriginAccessTimeOp> op =
-        new SaveOriginAccessTimeOp(aPersistenceType, aOrigin, timestamp);
+    auto op = MakeRefPtr<SaveOriginAccessTimeOp>(aPersistenceType, aOrigin,
+                                                 timestamp);
 
-    RegisterNormalOriginOp(op);
+    RegisterNormalOriginOp(*op);
 
     op->RunImmediately();
   }
@@ -5273,8 +5307,7 @@ nsresult QuotaManager::InitializeOrigin(PersistenceType aPersistenceType,
     UsageInfo usageInfo;
     rv = mClients[clientType]->InitOrigin(aPersistenceType, aGroup, aOrigin,
                                           /* aCanceled */ Atomic<bool>(false),
-                                          trackQuota ? &usageInfo : nullptr,
-                                          /* aForGetUsage */ false);
+                                          trackQuota ? &usageInfo : nullptr);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       // error should have reported in InitOrigin
       RECORD_IN_NIGHTLY(statusKeeper, rv);
@@ -6304,7 +6337,7 @@ nsresult QuotaManager::EnsureStorageIsInitialized() {
 
   const auto autoRecord = mInitializationInfo.RecordFirstInitializationAttempt(
       Initialization::Storage,
-      [& self = *this] { return static_cast<bool>(self.mStorageConnection); });
+      [&self = *this] { return static_cast<bool>(self.mStorageConnection); });
 
   auto storageFileOrErr = QM_NewLocalFile(mBasePath);
   if (NS_WARN_IF(storageFileOrErr.isErr())) {
@@ -6313,7 +6346,7 @@ nsresult QuotaManager::EnsureStorageIsInitialized() {
 
   nsCOMPtr<nsIFile> storageFile = storageFileOrErr.unwrap();
 
-  nsresult rv = storageFile->Append(NS_LITERAL_STRING(STORAGE_FILE_NAME));
+  nsresult rv = storageFile->Append(mStorageName + kSQLiteSuffix);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -7006,7 +7039,7 @@ nsresult QuotaManager::EnsureTemporaryStorageIsInitialized() {
 
   const auto autoRecord = mInitializationInfo.RecordFirstInitializationAttempt(
       Initialization::TemporaryStorage,
-      [& self = *this] { return self.mTemporaryStorageInitialized; });
+      [&self = *this] { return self.mTemporaryStorageInitialized; });
 
   nsresult rv;
 
@@ -7925,7 +7958,7 @@ OriginInfo::OriginInfo(GroupInfo* aGroupInfo, const nsACString& aOrigin,
                        const ClientUsageArray& aClientUsages, uint64_t aUsage,
                        int64_t aAccessTime, bool aPersisted,
                        bool aDirectoryExists)
-    : mClientUsages(aClientUsages),
+    : mClientUsages(aClientUsages.Clone()),
       mGroupInfo(aGroupInfo),
       mOrigin(aOrigin),
       mUsage(aUsage),
@@ -8353,7 +8386,7 @@ nsresult OriginOperationBase::DirectoryWork() {
     }
   }
 
-  rv = DoDirectoryWork(quotaManager);
+  rv = DoDirectoryWork(*quotaManager);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -8388,13 +8421,13 @@ void FinalizeOriginEvictionOp::RunOnIOThreadImmediately() {
 void FinalizeOriginEvictionOp::Open() { MOZ_CRASH("Shouldn't get here!"); }
 
 nsresult FinalizeOriginEvictionOp::DoDirectoryWork(
-    QuotaManager* aQuotaManager) {
+    QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
 
   AUTO_PROFILER_LABEL("FinalizeOriginEvictionOp::DoDirectoryWork", OTHER);
 
   for (RefPtr<DirectoryLockImpl>& lock : mLocks) {
-    aQuotaManager->OriginClearCompleted(
+    aQuotaManager.OriginClearCompleted(
         lock->GetPersistenceType(), lock->Origin(), Nullable<Client::Type>());
   }
 
@@ -8446,7 +8479,7 @@ void NormalOriginOperationBase::UnblockOpen() {
     mDirectoryLock = nullptr;
   }
 
-  UnregisterNormalOriginOp(this);
+  UnregisterNormalOriginOp(*this);
 
   AdvanceState();
 }
@@ -8474,7 +8507,7 @@ void NormalOriginOperationBase::DirectoryLockFailed() {
   Finish(NS_ERROR_FAILURE);
 }
 
-nsresult SaveOriginAccessTimeOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult SaveOriginAccessTimeOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
   MOZ_ASSERT(!mPersistenceType.IsNull());
   MOZ_ASSERT(mOriginScope.IsOrigin());
@@ -8482,7 +8515,7 @@ nsresult SaveOriginAccessTimeOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   AUTO_PROFILER_LABEL("SaveOriginAccessTimeOp::DoDirectoryWork", OTHER);
 
   nsCOMPtr<nsIFile> file;
-  nsresult rv = aQuotaManager->GetDirectoryForOrigin(
+  nsresult rv = aQuotaManager.GetDirectoryForOrigin(
       mPersistenceType.Value(), mOriginScope.GetOrigin(), getter_AddRefs(file));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -8595,6 +8628,7 @@ bool Quota::VerifyRequestParams(const RequestParams& aParams) const {
   MOZ_ASSERT(aParams.type() != RequestParams::T__None);
 
   switch (aParams.type()) {
+    case RequestParams::TStorageNameParams:
     case RequestParams::TStorageInitializedParams:
     case RequestParams::TTemporaryStorageInitializedParams:
     case RequestParams::TInitParams:
@@ -8766,24 +8800,22 @@ PQuotaUsageRequestParent* Quota::AllocPQuotaUsageRequestParent(
     return nullptr;
   }
 
-  RefPtr<QuotaUsageRequestBase> actor;
+  auto actor = [&]() -> RefPtr<QuotaUsageRequestBase> {
+    switch (aParams.type()) {
+      case UsageRequestParams::TAllUsageParams:
+        return MakeRefPtr<GetUsageOp>(aParams);
 
-  switch (aParams.type()) {
-    case UsageRequestParams::TAllUsageParams:
-      actor = new GetUsageOp(aParams);
-      break;
+      case UsageRequestParams::TOriginUsageParams:
+        return MakeRefPtr<GetOriginUsageOp>(aParams);
 
-    case UsageRequestParams::TOriginUsageParams:
-      actor = new GetOriginUsageOp(aParams);
-      break;
-
-    default:
-      MOZ_CRASH("Should never get here!");
-  }
+      default:
+        MOZ_CRASH("Should never get here!");
+    }
+  }();
 
   MOZ_ASSERT(actor);
 
-  RegisterNormalOriginOp(actor);
+  RegisterNormalOriginOp(*actor);
 
   // Transfer ownership to IPDL.
   return actor.forget().take();
@@ -8798,7 +8830,7 @@ mozilla::ipc::IPCResult Quota::RecvPQuotaUsageRequestConstructor(
 
   auto* op = static_cast<QuotaUsageRequestBase*>(aActor);
 
-  op->Init(this);
+  op->Init(*this);
 
   op->RunImmediately();
   return IPC_OK();
@@ -8835,72 +8867,61 @@ PQuotaRequestParent* Quota::AllocPQuotaRequestParent(
     return nullptr;
   }
 
-  RefPtr<QuotaRequestBase> actor;
+  auto actor = [&]() -> RefPtr<QuotaRequestBase> {
+    switch (aParams.type()) {
+      case RequestParams::TStorageNameParams:
+        return MakeRefPtr<StorageNameOp>();
 
-  switch (aParams.type()) {
-    case RequestParams::TStorageInitializedParams:
-      actor = new StorageInitializedOp();
-      break;
+      case RequestParams::TStorageInitializedParams:
+        return MakeRefPtr<StorageInitializedOp>();
 
-    case RequestParams::TTemporaryStorageInitializedParams:
-      actor = new TemporaryStorageInitializedOp();
-      break;
+      case RequestParams::TTemporaryStorageInitializedParams:
+        return MakeRefPtr<TemporaryStorageInitializedOp>();
 
-    case RequestParams::TInitParams:
-      actor = new InitOp();
-      break;
+      case RequestParams::TInitParams:
+        return MakeRefPtr<InitOp>();
 
-    case RequestParams::TInitTemporaryStorageParams:
-      actor = new InitTemporaryStorageOp();
-      break;
+      case RequestParams::TInitTemporaryStorageParams:
+        return MakeRefPtr<InitTemporaryStorageOp>();
 
-    case RequestParams::TInitStorageAndOriginParams:
-      actor = new InitStorageAndOriginOp(aParams);
-      break;
+      case RequestParams::TInitStorageAndOriginParams:
+        return MakeRefPtr<InitStorageAndOriginOp>(aParams);
 
-    case RequestParams::TClearOriginParams:
-      actor = new ClearOriginOp(aParams);
-      break;
+      case RequestParams::TClearOriginParams:
+        return MakeRefPtr<ClearOriginOp>(aParams);
 
-    case RequestParams::TResetOriginParams:
-      actor = new ResetOriginOp(aParams);
-      break;
+      case RequestParams::TResetOriginParams:
+        return MakeRefPtr<ResetOriginOp>(aParams);
 
-    case RequestParams::TClearDataParams:
-      actor = new ClearDataOp(aParams);
-      break;
+      case RequestParams::TClearDataParams:
+        return MakeRefPtr<ClearDataOp>(aParams);
 
-    case RequestParams::TClearAllParams:
-      actor = new ResetOrClearOp(/* aClear */ true);
-      break;
+      case RequestParams::TClearAllParams:
+        return MakeRefPtr<ResetOrClearOp>(/* aClear */ true);
 
-    case RequestParams::TResetAllParams:
-      actor = new ResetOrClearOp(/* aClear */ false);
-      break;
+      case RequestParams::TResetAllParams:
+        return MakeRefPtr<ResetOrClearOp>(/* aClear */ false);
 
-    case RequestParams::TPersistedParams:
-      actor = new PersistedOp(aParams);
-      break;
+      case RequestParams::TPersistedParams:
+        return MakeRefPtr<PersistedOp>(aParams);
 
-    case RequestParams::TPersistParams:
-      actor = new PersistOp(aParams);
-      break;
+      case RequestParams::TPersistParams:
+        return MakeRefPtr<PersistOp>(aParams);
 
-    case RequestParams::TEstimateParams:
-      actor = new EstimateOp(aParams);
-      break;
+      case RequestParams::TEstimateParams:
+        return MakeRefPtr<EstimateOp>(aParams);
 
-    case RequestParams::TListOriginsParams:
-      actor = new ListOriginsOp();
-      break;
+      case RequestParams::TListOriginsParams:
+        return MakeRefPtr<ListOriginsOp>();
 
-    default:
-      MOZ_CRASH("Should never get here!");
-  }
+      default:
+        MOZ_CRASH("Should never get here!");
+    }
+  }();
 
   MOZ_ASSERT(actor);
 
-  RegisterNormalOriginOp(actor);
+  RegisterNormalOriginOp(*actor);
 
   // Transfer ownership to IPDL.
   return actor.forget().take();
@@ -8915,7 +8936,7 @@ mozilla::ipc::IPCResult Quota::RecvPQuotaRequestConstructor(
 
   auto* op = static_cast<QuotaRequestBase*>(aActor);
 
-  op->Init(this);
+  op->Init(*this);
 
   op->RunImmediately();
   return IPC_OK();
@@ -9012,115 +9033,134 @@ mozilla::ipc::IPCResult Quota::RecvAbortOperationsForProcess(
   return IPC_OK();
 }
 
-void QuotaUsageRequestBase::Init(Quota* aQuota) {
+void QuotaUsageRequestBase::Init(Quota& aQuota) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
 
   mNeedsQuotaManagerInit = true;
   mNeedsStorageInit = true;
 }
 
-nsresult QuotaUsageRequestBase::GetUsageForOrigin(
-    QuotaManager* aQuotaManager, PersistenceType aPersistenceType,
-    const nsACString& aGroup, const nsACString& aOrigin,
-    UsageInfo* aUsageInfo) {
+Result<UsageInfo, nsresult> QuotaUsageRequestBase::GetUsageForOrigin(
+    QuotaManager& aQuotaManager, PersistenceType aPersistenceType,
+    const nsACString& aGroup, const nsACString& aOrigin) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  MOZ_ASSERT(aUsageInfo);
 
   nsCOMPtr<nsIFile> directory;
-  nsresult rv = aQuotaManager->GetDirectoryForOrigin(aPersistenceType, aOrigin,
-                                                     getter_AddRefs(directory));
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsresult rv = aQuotaManager.GetDirectoryForOrigin(aPersistenceType, aOrigin,
+                                                    getter_AddRefs(directory));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return Err(rv);
+  }
 
   bool exists;
   rv = directory->Exists(&exists);
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return Err(rv);
+  }
+
+  if (!exists || mCanceled) {
+    return UsageInfo();
+  }
 
   // If the directory exists then enumerate all the files inside, adding up
   // the sizes to get the final usage statistic.
-  if (exists && !mCanceled) {
-    bool initialized;
+  bool initialized;
 
-    if (aPersistenceType == PERSISTENCE_TYPE_PERSISTENT) {
-      initialized = aQuotaManager->IsOriginInitialized(aOrigin);
-    } else {
-      initialized = aQuotaManager->IsTemporaryStorageInitialized();
-    }
-
-    nsCOMPtr<nsIDirectoryEnumerator> entries;
-    rv = directory->GetDirectoryEntries(getter_AddRefs(entries));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    nsCOMPtr<nsIFile> file;
-    while (NS_SUCCEEDED((rv = entries->GetNextFile(getter_AddRefs(file)))) &&
-           file && !mCanceled) {
-      bool isDirectory;
-      rv = file->IsDirectory(&isDirectory);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
-
-      nsString leafName;
-      rv = file->GetLeafName(leafName);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
-
-      if (!isDirectory) {
-        // We are maintaining existing behavior here (failing if the origin is
-        // not yet initialized or just continuing otherwise).
-        // This can possibly be used by developers to add temporary backups into
-        // origin directories without losing get usage functionality.
-        if (IsOriginMetadata(leafName)) {
-          continue;
-        }
-
-        if (IsTempMetadata(leafName)) {
-          if (!initialized) {
-            rv = file->Remove(/* recursive */ false);
-            if (NS_WARN_IF(NS_FAILED(rv))) {
-              return rv;
-            }
-          }
-
-          continue;
-        }
-
-        if (IsOSMetadata(leafName) || IsDotFile(leafName)) {
-          continue;
-        }
-
-        // Unknown files during getting usage for an origin (even for an
-        // uninitialized origin) are now allowed. Just warn if we find them.
-        UNKNOWN_FILE_WARNING(leafName);
-        continue;
-      }
-
-      Client::Type clientType;
-      bool ok = Client::TypeFromText(leafName, clientType, fallible);
-      if (!ok) {
-        // Unknown directories during getting usage for an origin (even for an
-        // uninitialized origin) are now allowed. Just warn if we find them.
-        UNKNOWN_FILE_WARNING(leafName);
-        continue;
-      }
-
-      Client* client = aQuotaManager->GetClient(clientType);
-      MOZ_ASSERT(client);
-
-      if (initialized) {
-        rv = client->GetUsageForOrigin(aPersistenceType, aGroup, aOrigin,
-                                       mCanceled, aUsageInfo);
-      } else {
-        rv = client->InitOrigin(aPersistenceType, aGroup, aOrigin, mCanceled,
-                                aUsageInfo, /* aForGetUsage */ true);
-      }
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
+  if (aPersistenceType == PERSISTENCE_TYPE_PERSISTENT) {
+    initialized = aQuotaManager.IsOriginInitialized(aOrigin);
+  } else {
+    initialized = aQuotaManager.IsTemporaryStorageInitialized();
   }
 
-  return NS_OK;
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
+  rv = directory->GetDirectoryEntries(getter_AddRefs(entries));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return Err(rv);
+  }
+
+  return GetUsageForOriginEntries(aQuotaManager, aPersistenceType, aGroup,
+                                  aOrigin, *entries, initialized);
+}
+
+Result<UsageInfo, nsresult> QuotaUsageRequestBase::GetUsageForOriginEntries(
+    QuotaManager& aQuotaManager, PersistenceType aPersistenceType,
+    const nsACString& aGroup, const nsACString& aOrigin,
+    nsIDirectoryEnumerator& aEntries, const bool aInitialized) {
+  AssertIsOnIOThread();
+
+  UsageInfo usageInfo;
+
+  nsresult rv;
+  nsCOMPtr<nsIFile> file;
+  while (NS_SUCCEEDED((rv = aEntries.GetNextFile(getter_AddRefs(file)))) &&
+         file && !mCanceled) {
+    bool isDirectory;
+    rv = file->IsDirectory(&isDirectory);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return Err(rv);
+    }
+
+    nsString leafName;
+    rv = file->GetLeafName(leafName);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return Err(rv);
+    }
+
+    if (!isDirectory) {
+      // We are maintaining existing behavior for unknown files here (just
+      // continuing).
+      // This can possibly be used by developers to add temporary backups into
+      // origin directories without losing get usage functionality.
+      if (IsTempMetadata(leafName)) {
+        if (!aInitialized) {
+          rv = file->Remove(/* recursive */ false);
+          if (NS_WARN_IF(NS_FAILED(rv))) {
+            return Err(rv);
+          }
+        }
+
+        continue;
+      }
+
+      if (IsOriginMetadata(leafName) || IsOSMetadata(leafName) ||
+          IsDotFile(leafName)) {
+        continue;
+      }
+
+      // Unknown files during getting usage for an origin (even for an
+      // uninitialized origin) are now allowed. Just warn if we find them.
+      UNKNOWN_FILE_WARNING(leafName);
+      continue;
+    }
+
+    Client::Type clientType;
+    bool ok = Client::TypeFromText(leafName, clientType, fallible);
+    if (!ok) {
+      // Unknown directories during getting usage for an origin (even for an
+      // uninitialized origin) are now allowed. Just warn if we find them.
+      UNKNOWN_FILE_WARNING(leafName);
+      continue;
+    }
+
+    Client* client = aQuotaManager.GetClient(clientType);
+    MOZ_ASSERT(client);
+
+    if (aInitialized) {
+      rv = client->GetUsageForOrigin(aPersistenceType, aGroup, aOrigin,
+                                     mCanceled, &usageInfo);
+    } else {
+      rv = client->InitOrigin(aPersistenceType, aGroup, aOrigin, mCanceled,
+                              &usageInfo);
+    }
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return Err(rv);
+    }
+  }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return Err(rv);
+  }
+
+  return usageInfo;
 }
 
 void QuotaUsageRequestBase::SendResults() {
@@ -9165,12 +9205,11 @@ mozilla::ipc::IPCResult QuotaUsageRequestBase::RecvCancel() {
 }
 
 nsresult TraverseRepositoryHelper::TraverseRepository(
-    QuotaManager* aQuotaManager, PersistenceType aPersistenceType) {
+    QuotaManager& aQuotaManager, PersistenceType aPersistenceType) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
 
   auto directoryOrErr =
-      QM_NewLocalFile(aQuotaManager->GetStoragePath(aPersistenceType));
+      QM_NewLocalFile(aQuotaManager.GetStoragePath(aPersistenceType));
   if (NS_WARN_IF(directoryOrErr.isErr())) {
     return directoryOrErr.unwrapErr();
   }
@@ -9219,7 +9258,7 @@ nsresult TraverseRepositoryHelper::TraverseRepository(
       continue;
     }
 
-    rv = ProcessOrigin(aQuotaManager, originDir, persistent, aPersistenceType);
+    rv = ProcessOrigin(aQuotaManager, *originDir, persistent, aPersistenceType);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -9284,41 +9323,38 @@ bool GetUsageOp::IsCanceled() {
   return mCanceled;
 }
 
-nsresult GetUsageOp::ProcessOrigin(QuotaManager* aQuotaManager,
-                                   nsIFile* aOriginDir, const bool aPersistent,
+nsresult GetUsageOp::ProcessOrigin(QuotaManager& aQuotaManager,
+                                   nsIFile& aOriginDir, const bool aPersistent,
                                    const PersistenceType aPersistenceType) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  MOZ_ASSERT(aOriginDir);
 
   int64_t timestamp;
   bool persisted;
   nsCString suffix;
   nsCString group;
   nsCString origin;
-  nsresult rv = aQuotaManager->GetDirectoryMetadata2WithRestore(
-      aOriginDir, aPersistent, &timestamp, &persisted, suffix, group, origin);
+  nsresult rv = aQuotaManager.GetDirectoryMetadata2WithRestore(
+      &aOriginDir, aPersistent, &timestamp, &persisted, suffix, group, origin);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
 
-  UsageInfo usageInfo;
-  rv = GetUsageForOrigin(aQuotaManager, aPersistenceType, group, origin,
-                         &usageInfo);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+  auto usageInfoOrErr =
+      GetUsageForOrigin(aQuotaManager, aPersistenceType, group, origin);
+  if (NS_WARN_IF(usageInfoOrErr.isErr())) {
+    return usageInfoOrErr.unwrapErr();
   }
 
-  ProcessOriginInternal(aQuotaManager, aPersistenceType, origin, timestamp,
-                        persisted, usageInfo.TotalUsage().valueOr(0));
+  ProcessOriginInternal(&aQuotaManager, aPersistenceType, origin, timestamp,
+                        persisted,
+                        usageInfoOrErr.unwrap().TotalUsage().valueOr(0));
 
   return NS_OK;
 }
 
-nsresult GetUsageOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult GetUsageOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  aQuotaManager->AssertStorageIsInitialized();
+  aQuotaManager.AssertStorageIsInitialized();
 
   AUTO_PROFILER_LABEL("GetUsageOp::DoDirectoryWork", OTHER);
 
@@ -9336,9 +9372,9 @@ nsresult GetUsageOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   // LocalStorage writes for an origin which didn't previously have any
   // LocalStorage data.
 
-  aQuotaManager->CollectPendingOriginsForListing([&](OriginInfo* aOriginInfo) {
+  aQuotaManager.CollectPendingOriginsForListing([&](OriginInfo* aOriginInfo) {
     ProcessOriginInternal(
-        aQuotaManager, aOriginInfo->GetGroupInfo()->GetPersistenceType(),
+        &aQuotaManager, aOriginInfo->GetGroupInfo()->GetPersistenceType(),
         aOriginInfo->Origin(), aOriginInfo->LockedAccessTime(),
         aOriginInfo->LockedPersisted(), aOriginInfo->LockedUsage());
   });
@@ -9381,29 +9417,26 @@ GetOriginUsageOp::GetOriginUsageOp(const UsageRequestParams& aParams)
   mNeedsStorageInit = true;
 }
 
-nsresult GetOriginUsageOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult GetOriginUsageOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  aQuotaManager->AssertStorageIsInitialized();
+  aQuotaManager.AssertStorageIsInitialized();
   MOZ_ASSERT(mUsage == 0);
   MOZ_ASSERT(mFileUsage == 0);
 
   AUTO_PROFILER_LABEL("GetOriginUsageOp::DoDirectoryWork", OTHER);
 
-  nsresult rv;
-
   if (mFromMemory) {
     // Ensure temporary storage is initialized. If temporary storage hasn't been
     // initialized yet, the method will initialize it by traversing the
     // repositories for temporary and default storage (including our origin).
-    rv = aQuotaManager->EnsureTemporaryStorageIsInitialized();
+    nsresult rv = aQuotaManager.EnsureTemporaryStorageIsInitialized();
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
 
     // Get cached usage (the method doesn't have to stat any files). File usage
     // is not tracked in memory separately, so just add to the total usage.
-    mUsage = aQuotaManager->GetOriginUsage(mGroup, mOriginScope.GetOrigin());
+    mUsage = aQuotaManager.GetOriginUsage(mGroup, mOriginScope.GetOrigin());
 
     return NS_OK;
   }
@@ -9412,11 +9445,13 @@ nsresult GetOriginUsageOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
 
   // Add all the persistent/temporary/default storage files we care about.
   for (const PersistenceType type : kAllPersistenceTypes) {
-    rv = GetUsageForOrigin(aQuotaManager, type, mGroup,
-                           mOriginScope.GetOrigin(), &usageInfo);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    auto usageInfoOrErr = GetUsageForOrigin(aQuotaManager, type, mGroup,
+                                            mOriginScope.GetOrigin());
+    if (NS_WARN_IF(usageInfoOrErr.isErr())) {
+      return usageInfoOrErr.unwrapErr();
     }
+
+    usageInfo.Append(usageInfoOrErr.unwrap());
   }
 
   mUsage = usageInfo.TotalUsage().valueOr(0);
@@ -9436,9 +9471,8 @@ void GetOriginUsageOp::GetResponse(UsageRequestResponse& aResponse) {
   aResponse = usageResponse;
 }
 
-void QuotaRequestBase::Init(Quota* aQuota) {
+void QuotaRequestBase::Init(Quota& aQuota) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
 
   mNeedsQuotaManagerInit = true;
   mNeedsStorageInit = true;
@@ -9470,6 +9504,39 @@ void QuotaRequestBase::ActorDestroy(ActorDestroyReason aWhy) {
   NoteActorDestroyed();
 }
 
+StorageNameOp::StorageNameOp() : QuotaRequestBase(/* aExclusive */ false) {
+  AssertIsOnOwningThread();
+
+  // Overwrite NormalOriginOperationBase default values.
+  mNeedsDirectoryLocking = false;
+
+  // Overwrite OriginOperationBase default values.
+  mNeedsQuotaManagerInit = true;
+  mNeedsStorageInit = false;
+}
+
+void StorageNameOp::Init(Quota& aQuota) { AssertIsOnOwningThread(); }
+
+nsresult StorageNameOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
+  AssertIsOnIOThread();
+
+  AUTO_PROFILER_LABEL("StorageNameOp::DoDirectoryWork", OTHER);
+
+  mName = aQuotaManager.GetStorageName();
+
+  return NS_OK;
+}
+
+void StorageNameOp::GetResponse(RequestResponse& aResponse) {
+  AssertIsOnOwningThread();
+
+  StorageNameResponse storageNameResponse;
+
+  storageNameResponse.name() = mName;
+
+  aResponse = storageNameResponse;
+}
+
 InitializedRequestBase::InitializedRequestBase()
     : QuotaRequestBase(/* aExclusive */ false), mInitialized(false) {
   AssertIsOnOwningThread();
@@ -9482,17 +9549,14 @@ InitializedRequestBase::InitializedRequestBase()
   mNeedsStorageInit = false;
 }
 
-void InitializedRequestBase::Init(Quota* aQuota) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
-}
+void InitializedRequestBase::Init(Quota& aQuota) { AssertIsOnOwningThread(); }
 
-nsresult StorageInitializedOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult StorageInitializedOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
 
   AUTO_PROFILER_LABEL("StorageInitializedOp::DoDirectoryWork", OTHER);
 
-  mInitialized = aQuotaManager->IsStorageInitialized();
+  mInitialized = aQuotaManager.IsStorageInitialized();
 
   return NS_OK;
 }
@@ -9508,12 +9572,12 @@ void StorageInitializedOp::GetResponse(RequestResponse& aResponse) {
 }
 
 nsresult TemporaryStorageInitializedOp::DoDirectoryWork(
-    QuotaManager* aQuotaManager) {
+    QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
 
   AUTO_PROFILER_LABEL("TemporaryStorageInitializedOp::DoDirectoryWork", OTHER);
 
-  mInitialized = aQuotaManager->IsTemporaryStorageInitialized();
+  mInitialized = aQuotaManager.IsTemporaryStorageInitialized();
 
   return NS_OK;
 }
@@ -9536,17 +9600,14 @@ InitOp::InitOp() : QuotaRequestBase(/* aExclusive */ false) {
   mNeedsStorageInit = false;
 }
 
-void InitOp::Init(Quota* aQuota) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
-}
+void InitOp::Init(Quota& aQuota) { AssertIsOnOwningThread(); }
 
-nsresult InitOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult InitOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
 
   AUTO_PROFILER_LABEL("InitOp::DoDirectoryWork", OTHER);
 
-  nsresult rv = aQuotaManager->EnsureStorageIsInitialized();
+  nsresult rv = aQuotaManager.EnsureStorageIsInitialized();
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -9569,21 +9630,18 @@ InitTemporaryStorageOp::InitTemporaryStorageOp()
   mNeedsStorageInit = false;
 }
 
-void InitTemporaryStorageOp::Init(Quota* aQuota) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
-}
+void InitTemporaryStorageOp::Init(Quota& aQuota) { AssertIsOnOwningThread(); }
 
-nsresult InitTemporaryStorageOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult InitTemporaryStorageOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
 
   AUTO_PROFILER_LABEL("InitTemporaryStorageOp::DoDirectoryWork", OTHER);
 
-  if (NS_WARN_IF(!aQuotaManager->IsStorageInitialized())) {
+  if (NS_WARN_IF(!aQuotaManager.IsStorageInitialized())) {
     return NS_ERROR_FAILURE;
   }
 
-  nsresult rv = aQuotaManager->EnsureTemporaryStorageIsInitialized();
+  nsresult rv = aQuotaManager.EnsureTemporaryStorageIsInitialized();
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -9629,12 +9687,9 @@ InitStorageAndOriginOp::InitStorageAndOriginOp(const RequestParams& aParams)
   mGroup = group;
 }
 
-void InitStorageAndOriginOp::Init(Quota* aQuota) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
-}
+void InitStorageAndOriginOp::Init(Quota& aQuota) { AssertIsOnOwningThread(); }
 
-nsresult InitStorageAndOriginOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult InitStorageAndOriginOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
   MOZ_ASSERT(!mPersistenceType.IsNull());
 
@@ -9642,7 +9697,7 @@ nsresult InitStorageAndOriginOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
 
   nsCOMPtr<nsIFile> directory;
   bool created;
-  nsresult rv = aQuotaManager->EnsureStorageAndOriginIsInitializedInternal(
+  nsresult rv = aQuotaManager.EnsureStorageAndOriginIsInitializedInternal(
       mPersistenceType.Value(), mSuffix, mGroup, mOriginScope.GetOrigin(),
       mClientType, getter_AddRefs(directory), &created);
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -9673,23 +9728,19 @@ ResetOrClearOp::ResetOrClearOp(bool aClear)
   mNeedsStorageInit = false;
 }
 
-void ResetOrClearOp::Init(Quota* aQuota) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
-}
+void ResetOrClearOp::Init(Quota& aQuota) { AssertIsOnOwningThread(); }
 
-void ResetOrClearOp::DeleteFiles(QuotaManager* aQuotaManager) {
+void ResetOrClearOp::DeleteFiles(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
 
-  nsresult rv = aQuotaManager->AboutToClearOrigins(Nullable<PersistenceType>(),
-                                                   OriginScope::FromNull(),
-                                                   Nullable<Client::Type>());
+  nsresult rv = aQuotaManager.AboutToClearOrigins(Nullable<PersistenceType>(),
+                                                  OriginScope::FromNull(),
+                                                  Nullable<Client::Type>());
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
 
-  auto directoryOrErr = QM_NewLocalFile(aQuotaManager->GetStoragePath());
+  auto directoryOrErr = QM_NewLocalFile(aQuotaManager.GetStoragePath());
   if (NS_WARN_IF(directoryOrErr.isErr())) {
     return;
   }
@@ -9705,18 +9756,18 @@ void ResetOrClearOp::DeleteFiles(QuotaManager* aQuotaManager) {
   }
 }
 
-void ResetOrClearOp::DeleteStorageFile(QuotaManager* aQuotaManager) {
+void ResetOrClearOp::DeleteStorageFile(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
 
-  auto storageFileOrErr = QM_NewLocalFile(aQuotaManager->GetBasePath());
+  auto storageFileOrErr = QM_NewLocalFile(aQuotaManager.GetBasePath());
   if (NS_WARN_IF(storageFileOrErr.isErr())) {
     return;
   }
 
   nsCOMPtr<nsIFile> storageFile = storageFileOrErr.unwrap();
 
-  nsresult rv = storageFile->Append(NS_LITERAL_STRING(STORAGE_FILE_NAME));
+  nsresult rv =
+      storageFile->Append(aQuotaManager.GetStorageName() + kSQLiteSuffix);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -9730,7 +9781,7 @@ void ResetOrClearOp::DeleteStorageFile(QuotaManager* aQuotaManager) {
   }
 }
 
-nsresult ResetOrClearOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult ResetOrClearOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
 
   AUTO_PROFILER_LABEL("ResetOrClearOp::DoDirectoryWork", OTHER);
@@ -9738,10 +9789,10 @@ nsresult ResetOrClearOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   if (mClear) {
     DeleteFiles(aQuotaManager);
 
-    aQuotaManager->RemoveQuota();
+    aQuotaManager.RemoveQuota();
   }
 
-  aQuotaManager->ShutdownStorage();
+  aQuotaManager.ShutdownStorage();
 
   if (mClear) {
     DeleteStorageFile(aQuotaManager);
@@ -9759,19 +9810,18 @@ void ResetOrClearOp::GetResponse(RequestResponse& aResponse) {
   }
 }
 
-void ClearRequestBase::DeleteFiles(QuotaManager* aQuotaManager,
+void ClearRequestBase::DeleteFiles(QuotaManager& aQuotaManager,
                                    PersistenceType aPersistenceType) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
 
-  nsresult rv = aQuotaManager->AboutToClearOrigins(
+  nsresult rv = aQuotaManager.AboutToClearOrigins(
       Nullable<PersistenceType>(aPersistenceType), mOriginScope, mClientType);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
 
   auto directoryOrErr =
-      QM_NewLocalFile(aQuotaManager->GetStoragePath(aPersistenceType));
+      QM_NewLocalFile(aQuotaManager.GetStoragePath(aPersistenceType));
   if (NS_WARN_IF(directoryOrErr.isErr())) {
     return;
   }
@@ -9832,7 +9882,7 @@ void ClearRequestBase::DeleteFiles(QuotaManager* aQuotaManager,
     nsCString group;
     nsCString origin;
     bool persisted;
-    rv = aQuotaManager->GetDirectoryMetadata2WithRestore(
+    rv = aQuotaManager.GetDirectoryMetadata2WithRestore(
         file, persistent, &timestamp, &persisted, suffix, group, origin);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return;
@@ -9879,9 +9929,9 @@ void ClearRequestBase::DeleteFiles(QuotaManager* aQuotaManager,
 
     bool initialized;
     if (aPersistenceType == PERSISTENCE_TYPE_PERSISTENT) {
-      initialized = aQuotaManager->IsOriginInitialized(origin);
+      initialized = aQuotaManager.IsOriginInitialized(origin);
     } else {
-      initialized = aQuotaManager->IsTemporaryStorageInitialized();
+      initialized = aQuotaManager.IsTemporaryStorageInitialized();
     }
 
     // If it hasn't been initialized, we don't need to update the quota and
@@ -9892,21 +9942,20 @@ void ClearRequestBase::DeleteFiles(QuotaManager* aQuotaManager,
 
     if (aPersistenceType != PERSISTENCE_TYPE_PERSISTENT) {
       if (mClientType.IsNull()) {
-        aQuotaManager->RemoveQuotaForOrigin(aPersistenceType, group, origin);
+        aQuotaManager.RemoveQuotaForOrigin(aPersistenceType, group, origin);
       } else {
-        aQuotaManager->ResetUsageForClient(aPersistenceType, group, origin,
-                                           mClientType.Value());
+        aQuotaManager.ResetUsageForClient(aPersistenceType, group, origin,
+                                          mClientType.Value());
       }
     }
 
-    aQuotaManager->OriginClearCompleted(aPersistenceType, origin, mClientType);
+    aQuotaManager.OriginClearCompleted(aPersistenceType, origin, mClientType);
   }
 }
 
-nsresult ClearRequestBase::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult ClearRequestBase::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  aQuotaManager->AssertStorageIsInitialized();
+  aQuotaManager.AssertStorageIsInitialized();
 
   AUTO_PROFILER_LABEL("ClearRequestBase::DoDirectoryWork", OTHER);
 
@@ -9928,9 +9977,8 @@ ClearOriginOp::ClearOriginOp(const RequestParams& aParams)
   MOZ_ASSERT(aParams.type() == RequestParams::TClearOriginParams);
 }
 
-void ClearOriginOp::Init(Quota* aQuota) {
+void ClearOriginOp::Init(Quota& aQuota) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
 
   QuotaRequestBase::Init(aQuota);
 
@@ -9965,9 +10013,8 @@ ClearDataOp::ClearDataOp(const RequestParams& aParams)
   MOZ_ASSERT(aParams.type() == RequestParams::TClearDataParams);
 }
 
-void ClearDataOp::Init(Quota* aQuota) {
+void ClearDataOp::Init(Quota& aQuota) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
 
   QuotaRequestBase::Init(aQuota);
 
@@ -10008,12 +10055,9 @@ ResetOriginOp::ResetOriginOp(const RequestParams& aParams)
   }
 }
 
-void ResetOriginOp::Init(Quota* aQuota) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
-}
+void ResetOriginOp::Init(Quota& aQuota) { AssertIsOnOwningThread(); }
 
-nsresult ResetOriginOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult ResetOriginOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
 
   AUTO_PROFILER_LABEL("ResetOriginOp::DoDirectoryWork", OTHER);
@@ -10036,9 +10080,8 @@ PersistRequestBase::PersistRequestBase(const PrincipalInfo& aPrincipalInfo)
   AssertIsOnOwningThread();
 }
 
-void PersistRequestBase::Init(Quota* aQuota) {
+void PersistRequestBase::Init(Quota& aQuota) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
 
   QuotaRequestBase::Init(aQuota);
 
@@ -10058,10 +10101,9 @@ PersistedOp::PersistedOp(const RequestParams& aParams)
   MOZ_ASSERT(aParams.type() == RequestParams::TPersistedParams);
 }
 
-nsresult PersistedOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult PersistedOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  aQuotaManager->AssertStorageIsInitialized();
+  aQuotaManager.AssertStorageIsInitialized();
   MOZ_ASSERT(!mPersistenceType.IsNull());
   MOZ_ASSERT(mPersistenceType.Value() == PERSISTENCE_TYPE_DEFAULT);
   MOZ_ASSERT(mOriginScope.IsOrigin());
@@ -10069,7 +10111,7 @@ nsresult PersistedOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   AUTO_PROFILER_LABEL("PersistedOp::DoDirectoryWork", OTHER);
 
   Nullable<bool> persisted =
-      aQuotaManager->OriginPersisted(mGroup, mOriginScope.GetOrigin());
+      aQuotaManager.OriginPersisted(mGroup, mOriginScope.GetOrigin());
 
   if (!persisted.IsNull()) {
     mPersisted = persisted.Value();
@@ -10080,9 +10122,9 @@ nsresult PersistedOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   // Try to get the persisted flag from directory metadata on disk.
 
   nsCOMPtr<nsIFile> directory;
-  nsresult rv = aQuotaManager->GetDirectoryForOrigin(mPersistenceType.Value(),
-                                                     mOriginScope.GetOrigin(),
-                                                     getter_AddRefs(directory));
+  nsresult rv = aQuotaManager.GetDirectoryForOrigin(mPersistenceType.Value(),
+                                                    mOriginScope.GetOrigin(),
+                                                    getter_AddRefs(directory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -10096,7 +10138,7 @@ nsresult PersistedOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   if (exists) {
     // Get the persisted flag.
     bool persisted;
-    rv = aQuotaManager->GetDirectoryMetadata2WithRestore(
+    rv = aQuotaManager.GetDirectoryMetadata2WithRestore(
         directory,
         /* aPersistent */ false,
         /* aTimestamp */ nullptr, &persisted);
@@ -10127,10 +10169,9 @@ PersistOp::PersistOp(const RequestParams& aParams)
   MOZ_ASSERT(aParams.type() == RequestParams::TPersistParams);
 }
 
-nsresult PersistOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult PersistOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  aQuotaManager->AssertStorageIsInitialized();
+  aQuotaManager.AssertStorageIsInitialized();
   MOZ_ASSERT(!mPersistenceType.IsNull());
   MOZ_ASSERT(mPersistenceType.Value() == PERSISTENCE_TYPE_DEFAULT);
   MOZ_ASSERT(mOriginScope.IsOrigin());
@@ -10140,15 +10181,15 @@ nsresult PersistOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   // Update directory metadata on disk first. Then, create/update the originInfo
   // if needed.
   nsCOMPtr<nsIFile> directory;
-  nsresult rv = aQuotaManager->GetDirectoryForOrigin(mPersistenceType.Value(),
-                                                     mOriginScope.GetOrigin(),
-                                                     getter_AddRefs(directory));
+  nsresult rv = aQuotaManager.GetDirectoryForOrigin(mPersistenceType.Value(),
+                                                    mOriginScope.GetOrigin(),
+                                                    getter_AddRefs(directory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
 
   bool created;
-  rv = aQuotaManager->EnsureOriginDirectory(directory, &created);
+  rv = aQuotaManager.EnsureOriginDirectory(directory, &created);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -10158,8 +10199,8 @@ nsresult PersistOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
 
     // Origin directory has been successfully created.
     // Create OriginInfo too if temporary storage was already initialized.
-    if (aQuotaManager->IsTemporaryStorageInitialized()) {
-      aQuotaManager->NoteOriginDirectoryCreated(
+    if (aQuotaManager.IsTemporaryStorageInitialized()) {
+      aQuotaManager.NoteOriginDirectoryCreated(
           mPersistenceType.Value(), mGroup, mOriginScope.GetOrigin(),
           /* aPersisted */ true, timestamp);
     } else {
@@ -10174,7 +10215,7 @@ nsresult PersistOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   } else {
     // Get the persisted flag (restore the metadata file if necessary).
     bool persisted;
-    rv = aQuotaManager->GetDirectoryMetadata2WithRestore(
+    rv = aQuotaManager.GetDirectoryMetadata2WithRestore(
         directory,
         /* aPersistent */ false,
         /* aTimestamp */ nullptr, &persisted);
@@ -10217,8 +10258,8 @@ nsresult PersistOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
 
     // Directory metadata has been successfully updated.
     // Update OriginInfo too if temporary storage was already initialized.
-    if (aQuotaManager->IsTemporaryStorageInitialized()) {
-      aQuotaManager->PersistOrigin(mGroup, mOriginScope.GetOrigin());
+    if (aQuotaManager.IsTemporaryStorageInitialized()) {
+      aQuotaManager.PersistOrigin(mGroup, mOriginScope.GetOrigin());
     }
   }
 
@@ -10247,10 +10288,9 @@ EstimateOp::EstimateOp(const RequestParams& aParams)
   mNeedsStorageInit = true;
 }
 
-nsresult EstimateOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult EstimateOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  aQuotaManager->AssertStorageIsInitialized();
+  aQuotaManager.AssertStorageIsInitialized();
 
   AUTO_PROFILER_LABEL("EstimateOp::DoDirectoryWork", OTHER);
 
@@ -10258,15 +10298,15 @@ nsresult EstimateOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   // initialized yet, the method will initialize it by traversing the
   // repositories for temporary and default storage (including origins belonging
   // to our group).
-  nsresult rv = aQuotaManager->EnsureTemporaryStorageIsInitialized();
+  nsresult rv = aQuotaManager.EnsureTemporaryStorageIsInitialized();
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
 
   // Get cached usage (the method doesn't have to stat any files).
-  mUsage = aQuotaManager->GetGroupUsage(mGroup);
+  mUsage = aQuotaManager.GetGroupUsage(mGroup);
 
-  mLimit = aQuotaManager->GetGroupLimit();
+  mLimit = aQuotaManager.GetGroupLimit();
 
   return NS_OK;
 }
@@ -10287,18 +10327,16 @@ ListOriginsOp::ListOriginsOp()
   AssertIsOnOwningThread();
 }
 
-void ListOriginsOp::Init(Quota* aQuota) {
+void ListOriginsOp::Init(Quota& aQuota) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuota);
 
   mNeedsQuotaManagerInit = true;
   mNeedsStorageInit = true;
 }
 
-nsresult ListOriginsOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
+nsresult ListOriginsOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  aQuotaManager->AssertStorageIsInitialized();
+  aQuotaManager.AssertStorageIsInitialized();
 
   AUTO_PROFILER_LABEL("ListOriginsOp::DoDirectoryWork", OTHER);
 
@@ -10315,7 +10353,7 @@ nsresult ListOriginsOp::DoDirectoryWork(QuotaManager* aQuotaManager) {
   // known origins, but we also need to include origins that have pending quota
   // usage.
 
-  aQuotaManager->CollectPendingOriginsForListing([&](OriginInfo* aOriginInfo) {
+  aQuotaManager.CollectPendingOriginsForListing([&](OriginInfo* aOriginInfo) {
     mOrigins.AppendElement(aOriginInfo->Origin());
   });
 
@@ -10328,26 +10366,24 @@ bool ListOriginsOp::IsCanceled() {
   return mCanceled;
 }
 
-nsresult ListOriginsOp::ProcessOrigin(QuotaManager* aQuotaManager,
-                                      nsIFile* aOriginDir,
+nsresult ListOriginsOp::ProcessOrigin(QuotaManager& aQuotaManager,
+                                      nsIFile& aOriginDir,
                                       const bool aPersistent,
                                       const PersistenceType aPersistenceType) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aQuotaManager);
-  MOZ_ASSERT(aOriginDir);
 
   int64_t timestamp;
   bool persisted;
   nsCString suffix;
   nsCString group;
   nsCString origin;
-  nsresult rv = aQuotaManager->GetDirectoryMetadata2WithRestore(
-      aOriginDir, aPersistent, &timestamp, &persisted, suffix, group, origin);
+  nsresult rv = aQuotaManager.GetDirectoryMetadata2WithRestore(
+      &aOriginDir, aPersistent, &timestamp, &persisted, suffix, group, origin);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
 
-  if (aQuotaManager->IsOriginInternal(origin)) {
+  if (aQuotaManager.IsOriginInternal(origin)) {
     return NS_OK;
   }
 

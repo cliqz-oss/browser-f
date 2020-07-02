@@ -534,7 +534,7 @@ class CompileFlags(TargetCompileFlags):
              ('CXXFLAGS', 'CFLAGS')),
             ('OS_INCLUDES', list(itertools.chain(*(context.config.substs.get(v, []) for v in (
                 'NSPR_CFLAGS', 'NSS_CFLAGS', 'MOZ_JPEG_CFLAGS', 'MOZ_PNG_CFLAGS',
-                'MOZ_ZLIB_CFLAGS', 'MOZ_PIXMAN_CFLAGS')))),
+                'MOZ_ZLIB_CFLAGS', 'MOZ_PIXMAN_CFLAGS', 'MOZ_ICU_CFLAGS')))),
              ('CXXFLAGS', 'CFLAGS')),
             ('DSO', context.config.substs.get('DSO_CFLAGS'),
              ('CXXFLAGS', 'CFLAGS')),
@@ -1040,8 +1040,8 @@ GeneratedFilesList = StrictOrderingOnAppendListWithFlagsFactory({
     'script': six.text_type,
     'inputs': list,
     'force': bool,
-    'py2': bool,
-    'flags': list, })
+    'flags': list,
+})
 
 
 class Files(SubContext):
@@ -1468,7 +1468,8 @@ VARIABLES = {
         When the ``force`` attribute is present, the file is generated every
         build, regardless of whether it is stale.  This is special to the
         RecursiveMake backend and intended for special situations only (e.g.,
-        localization).  Please consult a build peer before using ``force``.
+        localization).  Please consult a build peer (on the #build channel at
+        https://chat.mozilla.org) before using ``force``.
         """
         ),
 
@@ -1621,7 +1622,7 @@ VARIABLES = {
         ``OBJDIR_FILES`` is similar to FINAL_TARGET_FILES, but it allows copying
         anywhere in the object directory. This is intended for various one-off
         cases, not for general use. If you wish to add entries to OBJDIR_FILES,
-        please consult a build peer.
+        please consult a build peer (on the #build channel at https://chat.mozilla.org).
         """),
 
     'OBJDIR_PP_FILES': (ContextDerivedTypedHierarchicalStringList(Path), list,
@@ -2060,10 +2061,6 @@ VARIABLES = {
         These are commonly named crashtests.list.
         """),
 
-    'WEBRTC_SIGNALLING_TEST_MANIFESTS': (ManifestparserManifestList, list,
-                                         """List of manifest files defining WebRTC signalling tests.
-        """),
-
     'XPCSHELL_TESTS_MANIFESTS': (ManifestparserManifestList, list,
                                  """List of manifest files defining xpcshell tests.
         """),
@@ -2474,8 +2471,8 @@ FUNCTIONS = {
         This function is limited to the upper-case variables that have special
         meaning in moz.build files.
 
-        NOTE: Please consult with a build peer before adding a new use of this
-        function.
+        NOTE: Please consult with a build peer (on the #build channel at
+        https://chat.mozilla.org) before adding a new use of this function.
 
         Example usage
         ^^^^^^^^^^^^^

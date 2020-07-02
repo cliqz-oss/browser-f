@@ -3,17 +3,20 @@
 import io
 import re
 import unittest
+import typing
+
 import jsparagus
-from jsparagus import gen, lexer
+from jsparagus import gen, lexer, rewrites
 from jsparagus.grammar import (Grammar, Production, CallMethod, Nt,
                                Optional, LookaheadRule, NtDef, Var)
+from js_parser.parse_esgrammar import parse_esgrammar
 
 
 LispTokenizer = lexer.LexicalGrammar("( )", SYMBOL=r'[!%&*+:<=>?@A-Z^_a-z~]+')
 
 
 def prod(body, method_name):
-    return Production(body, CallMethod(method_name, list(range(len(body))), "AstBuilder", False))
+    return Production(body, CallMethod(method_name, list(range(len(body)))))
 
 
 class GenTestCase(unittest.TestCase):
@@ -55,16 +58,18 @@ class GenTestCase(unittest.TestCase):
             lambda: self.parse(s, **kwargs))
 
     def testSimple(self):
-        grammar = Grammar({
-            'expr': [
-                ['SYMBOL'],
-                ['(', 'tail'],
-            ],
-            'tail': [
-                [')'],
-                ['expr', 'tail'],
-            ],
-        })
+        grammar = parse_esgrammar(
+            """
+            expr :
+                SYMBOL  => $0
+                `(` tail
+
+            tail :
+                `)`  => $0
+                expr tail
+            """,
+            terminal_names=["SYMBOL"]
+        )
         self.compile(LispTokenizer, grammar)
 
         self.assertParse(
@@ -385,18 +390,18 @@ class GenTestCase(unittest.TestCase):
     def testExpandOptional(self):
         grammar = Grammar({'goal': [[]]})
         empties = {}
-        # Unit test for gen.expand_optional_symbols_in_rhs
+        # Unit test for rewrites.expand_optional_symbols_in_rhs
         self.assertEqual(
-            list(gen.expand_optional_symbols_in_rhs(['ONE', 'TWO', '3'],
-                                                    grammar, empties)),
+            list(rewrites.expand_optional_symbols_in_rhs(['ONE', 'TWO', '3'],
+                                                         grammar, empties)),
             [(['ONE', 'TWO', '3'], {})])
         self.assertEqual(
-            list(gen.expand_optional_symbols_in_rhs(
+            list(rewrites.expand_optional_symbols_in_rhs(
                 ['a', 'b', Optional('c')], grammar, empties)),
             [(['a', 'b'], {2: None}),
              (['a', 'b', 'c'], {})])
         self.assertEqual(
-            list(gen.expand_optional_symbols_in_rhs(
+            list(rewrites.expand_optional_symbols_in_rhs(
                 [Optional('a'), Optional('b')], grammar, empties)),
             [([], {0: None, 1: None}),
              (['a'], {1: None}),
@@ -591,9 +596,16 @@ class GenTestCase(unittest.TestCase):
                 ['IF', '(', 'X', ')', 'stmt', 'ELSE', 'stmt'],
             ],
         })
-        def stmt_0(): return ('stmt_0', 'OTHER', ';')
-        def stmt_1(t): return ('stmt_1', 'IF', '(', 'X', ')', t)
-        def stmt_2(t, e): return ('stmt_2', 'IF', '(', 'X', ')', t, 'ELSE', e)
+
+        def stmt_0():
+            return ('stmt_0', 'OTHER', ';')
+
+        def stmt_1(t):
+            return ('stmt_1', 'IF', '(', 'X', ')', t)
+
+        def stmt_2(t, e):
+            return ('stmt_2', 'IF', '(', 'X', ')', t, 'ELSE', e)
+
         self.compile(tokenize, grammar)
         self.assertParse('IF(X) OTHER;', stmt_1(stmt_0()))
         self.assertParse('IF(X) OTHER; ELSE OTHER;',
@@ -698,7 +710,7 @@ class GenTestCase(unittest.TestCase):
         # not forward the restriction from producting a Function to the
         # Primitive rule. Therefore, `Function [lookahead: ;]` is incorrectly
         # reduced to a `Primitive [lookahead: ;]`
-        #self.assertNoParse("function x() {}++;", message="got ';'")
+        # self.assertNoParse("function x() {}++;", message="got ';'")
         self.assertParse("function x() {} ++x;")
 
     # XXX to test: combination of lookaheads, ++, +-, -+, --
@@ -835,7 +847,7 @@ class GenTestCase(unittest.TestCase):
                 [name, "(", ")", ";"],
                 [name, "=", name, ";"],
                 Production(["yield", name, ";"],
-                           reducer=CallMethod("yield_stmt", [1], "AstBuilder", False),
+                           reducer=CallMethod("yield_stmt", [1]),
                            condition=('Yield', True)),
             ], None),
             'name': NtDef(('Yield',), [
@@ -843,7 +855,7 @@ class GenTestCase(unittest.TestCase):
                 # Specifically ask for a method here, because otherwise we
                 # wouldn't get one and then type checking would fail.
                 Production(["yield"],
-                           CallMethod("yield_as_name", [], "AstBuilder", False),
+                           CallMethod("yield_as_name", []),
                            condition=('Yield', False)),
             ], None),
         }, variable_terminals=["IDENT"])
@@ -1072,7 +1084,7 @@ class GenTestCase(unittest.TestCase):
         """A method can be called only in an intermediate reduce expression."""
 
         # The reduce expression `f(g($0))`.
-        reducer = CallMethod("f", [CallMethod("g", [0], "AstBuilder", False)], "AstBuilder", False)
+        reducer = CallMethod("f", [CallMethod("g", [0])])
 
         # The grammar `goal ::= NAME => f(g($1))`.
         grammar = Grammar(
@@ -1111,6 +1123,81 @@ class GenTestCase(unittest.TestCase):
         })
         self.compile(tokenize, grammar)
         self.assertParse("{}", ('goal', '{', ('xlist_0',), '}'))
+
+    def compile_as_js(
+            self,
+            grammar_source: str,
+            goals: typing.Optional[typing.Iterable[str]] = None,
+            verbose: bool = False,
+    ) -> None:
+        """Like self.compile(), but generate a parser from ESGrammar,
+        with ASI support, using the JS lexer.
+        """
+        from js_parser.lexer import JSLexer
+        from js_parser import load_es_grammar
+        from js_parser import generate_js_parser_tables
+
+        grammar = parse_esgrammar(
+            grammar_source,
+            filename="es-simplified.esgrammar",
+            extensions=[],
+            goals=goals,
+            synthetic_terminals=load_es_grammar.ECMASCRIPT_SYNTHETIC_TERMINALS,
+            terminal_names=load_es_grammar.TERMINAL_NAMES_FOR_SYNTACTIC_GRAMMAR)
+        grammar = generate_js_parser_tables.hack_grammar(grammar)
+        base_parser_class = gen.compile(grammar, verbose=verbose)
+
+        # "type: ignore" because poor mypy can't cope with the runtime codegen
+        # we're doing here.
+        class JSParser(base_parser_class):  # type: ignore
+            def __init__(self, goal='Script', builder=None):
+                super().__init__(goal, builder)
+                self._goal = goal
+                # self.debug = True
+
+            def clone(self):
+                return JSParser(self._goal, self.methods)
+
+            def on_recover(self, error_code, lexer, stv):
+                """Check that ASI error recovery is really acceptable."""
+                if error_code == 'asi':
+                    if not self.closed and stv.term != '}' and not lexer.saw_line_terminator():
+                        lexer.throw("missing semicolon")
+                else:
+                    assert error_code == 'do_while_asi'
+
+        self.tokenize = JSLexer
+        self.parser_class = JSParser
+
+    def testExtraGoal(self):
+
+        grammar_source = """
+StuffToIgnore_ThisWorksAroundAnUnrelatedBug:
+  Identifier
+  IdentifierName
+
+Hat :
+  `^`
+
+ArrowFunction :
+  `^` `=>`
+  Hat `*` `=>`
+
+Script :
+  `?` `?` ArrowFunction
+  `?` `?` [lookahead <! {`async`} ] Hat `of`
+
+LazyArrowFunction :
+  ArrowFunction
+            """
+
+        def try_it(goals):
+            self.compile_as_js(grammar_source, goals=goals)
+            self.assertParse("? ? ^ =>", goal='Script')
+            self.assertParse("? ? ^ of", goal='Script')
+
+        try_it(['Script', 'LazyArrowFunction'])
+        try_it(['Script'])
 
 
 if __name__ == '__main__':

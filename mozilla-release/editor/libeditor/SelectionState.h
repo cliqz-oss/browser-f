@@ -35,7 +35,7 @@ struct RangeItem final {
   ~RangeItem() = default;
 
  public:
-  void StoreRange(nsRange& aRange);
+  void StoreRange(const nsRange& aRange);
   void StoreRange(const EditorRawDOMPoint& aStartPoint,
                   const EditorRawDOMPoint& aEndPoint) {
     MOZ_ASSERT(aStartPoint.IsSet());
@@ -98,7 +98,7 @@ class SelectionState final {
   bool IsEmpty() const;
 
  private:
-  AutoTArray<RefPtr<RangeItem>, 1> mArray;
+  CopyableAutoTArray<RefPtr<RangeItem>, 1> mArray;
   nsDirection mDirection;
 
   friend class RangeUpdater;
@@ -143,9 +143,11 @@ class MOZ_STACK_CLASS RangeUpdater final {
                            nsINode& aParent, int32_t aOffset,
                            int32_t aOldLeftNodeLength);
   void SelAdjInsertText(const dom::Text& aTextNode, int32_t aOffset,
-                        const nsAString& aString);
-  nsresult SelAdjDeleteText(const dom::Text& aTextNode, int32_t aOffset,
-                            int32_t aLength);
+                        int32_t aInsertedLength);
+  void SelAdjDeleteText(const dom::Text& aTextNode, int32_t aOffset,
+                        int32_t aDeletedLength);
+  void SelAdjReplaceText(const dom::Text& aTextNode, int32_t aOffset,
+                         int32_t aReplacedLength, int32_t aInsertedLength);
   // the following gravity routines need will/did sandwiches, because the other
   // gravity routines will be called inside of these sandwiches, but should be
   // ignored.

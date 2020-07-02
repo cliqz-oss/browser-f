@@ -42,6 +42,45 @@ template <typename T, typename... Args>
 typename detail::UniqueSelector<T>::KnownBound MakeUniqueFallible(
     Args&&... aArgs) = delete;
 
+/**
+ * MakeUniqueForOverwrite and MakeUniqueFallibleForOverwrite are like MakeUnique
+ * and MakeUniqueFallible except they use default-initialization. This is
+ * useful, for example, when you have a POD type array that will be overwritten
+ * directly after construction and so zero-initialization is a waste.
+ */
+template <typename T, typename... Args>
+typename detail::UniqueSelector<T>::SingleObject MakeUniqueForOverwrite() {
+  return UniquePtr<T>(new T);
+}
+
+template <typename T>
+typename detail::UniqueSelector<T>::UnknownBound MakeUniqueForOverwrite(
+    decltype(sizeof(int)) aN) {
+  using ArrayType = std::remove_extent_t<T>;
+  return UniquePtr<T>(new ArrayType[aN]);
+}
+
+template <typename T, typename... Args>
+typename detail::UniqueSelector<T>::KnownBound MakeUniqueForOverwrite(
+    Args&&... aArgs) = delete;
+
+template <typename T, typename... Args>
+typename detail::UniqueSelector<T>::SingleObject
+MakeUniqueForOverwriteFallible() {
+  return UniquePtr<T>(new (fallible) T);
+}
+
+template <typename T>
+typename detail::UniqueSelector<T>::UnknownBound MakeUniqueForOverwriteFallible(
+    decltype(sizeof(int)) aN) {
+  using ArrayType = std::remove_extent_t<T>;
+  return UniquePtr<T>(new (fallible) ArrayType[aN]);
+}
+
+template <typename T, typename... Args>
+typename detail::UniqueSelector<T>::KnownBound MakeUniqueForOverwriteFallible(
+    Args&&... aArgs) = delete;
+
 namespace detail {
 
 template <typename T>
@@ -139,6 +178,7 @@ auto getter_Transfers(UniquePtr<T, D>& up) {
     ~UniquePtrGetterTransfers() { mPtr.reset(mRawPtr); }
 
     operator typename Ptr::ElementType**() { return &mRawPtr; }
+    operator void**() { return reinterpret_cast<void**>(&mRawPtr); }
     typename Ptr::ElementType*& operator*() { return mRawPtr; }
 
    private:

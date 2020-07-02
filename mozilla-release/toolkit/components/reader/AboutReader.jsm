@@ -6,13 +6,13 @@
 
 var EXPORTED_SYMBOLS = ["AboutReader"];
 
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
-);
 const { ReaderMode } = ChromeUtils.import(
   "resource://gre/modules/ReaderMode.jsm"
 );
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { AppConstants } = ChromeUtils.import(
+  "resource://gre/modules/AppConstants.jsm"
+);
 
 ChromeUtils.defineModuleGetter(
   this,
@@ -43,9 +43,7 @@ const zoomOnCtrl =
   Services.prefs.getIntPref("mousewheel.with_control.action", 3) == 3;
 const zoomOnMeta =
   Services.prefs.getIntPref("mousewheel.with_meta.action", 1) == 3;
-
-const gIsFirefoxDesktop =
-  Services.appinfo.ID == "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}";
+const isAppLocaleRTL = Services.locale.isAppLocaleRTL;
 
 var AboutReader = function(mm, win, articlePromise) {
   let url = this._getOriginalUrl(win);
@@ -61,6 +59,10 @@ var AboutReader = function(mm, win, articlePromise) {
   }
 
   let doc = win.document;
+  if (isAppLocaleRTL) {
+    doc.dir = "rtl";
+  }
+  doc.documentElement.setAttribute("platform", AppConstants.platform);
 
   this._mm = mm;
   this._mm.addMessageListener("Reader:CloseDropdown", this);
@@ -102,8 +104,11 @@ var AboutReader = function(mm, win, articlePromise) {
   this._contentElementRef = Cu.getWeakReference(
     doc.querySelector(".moz-reader-content")
   );
+  this._toolbarContainerElementRef = Cu.getWeakReference(
+    doc.querySelector(".toolbar-container")
+  );
   this._toolbarElementRef = Cu.getWeakReference(
-    doc.querySelector(".reader-toolbar")
+    doc.querySelector(".reader-controls")
   );
   this._messageElementRef = Cu.getWeakReference(
     doc.querySelector(".reader-message")
@@ -112,32 +117,31 @@ var AboutReader = function(mm, win, articlePromise) {
     doc.querySelector(".container")
   );
 
-  this._scrollOffset = win.pageYOffset;
-
   doc.addEventListener("mousedown", this);
   doc.addEventListener("click", this);
   doc.addEventListener("touchstart", this);
 
   win.addEventListener("pagehide", this);
-  win.addEventListener("mozvisualscroll", this, { mozSystemGroup: true });
   win.addEventListener("resize", this);
   win.addEventListener("wheel", this, { passive: false });
 
+  this._topScrollChange = this._topScrollChange.bind(this);
+  this._intersectionObs = new win.IntersectionObserver(this._topScrollChange, {
+    root: null,
+    threshold: [0, 1],
+  });
+  this._intersectionObs.observe(doc.querySelector(".top-anchor"));
+
   Services.obs.addObserver(this, "inner-window-destroyed");
 
-  doc.addEventListener("visibilitychange", this);
-
-  this._setupStyleDropdown();
   this._setupButton(
     "close-button",
     this._onReaderClose.bind(this),
     "aboutReader.toolbar.close"
   );
 
-  if (gIsFirefoxDesktop) {
-    // we're ready for any external setup, send a signal for that.
-    this._mm.sendAsyncMessage("Reader:OnSetup");
-  }
+  // we're ready for any external setup, send a signal for that.
+  this._mm.sendAsyncMessage("Reader:OnSetup");
 
   let colorSchemeValues = JSON.parse(
     Services.prefs.getCharPref("reader.color_scheme.values")
@@ -145,6 +149,7 @@ var AboutReader = function(mm, win, articlePromise) {
   let colorSchemeOptions = colorSchemeValues.map(value => {
     return {
       name: gStrings.GetStringFromName("aboutReader.colorScheme." + value),
+      groupName: "color-scheme",
       value,
       itemClass: value + "-button",
     };
@@ -159,19 +164,22 @@ var AboutReader = function(mm, win, articlePromise) {
   );
   this._setColorSchemePref(colorScheme);
 
-  let fontTypeSample = gStrings.GetStringFromName("aboutReader.fontTypeSample");
+  let styleButton = this._doc.querySelector(".style-button");
+  this._setButtonTip(styleButton, "aboutReader.toolbar.typeControls");
+
+  // See bug 1637089.
+  // let fontTypeSample = gStrings.GetStringFromName("aboutReader.fontTypeSample");
+
   let fontTypeOptions = [
     {
-      name: fontTypeSample,
-      description: gStrings.GetStringFromName(
-        "aboutReader.fontType.sans-serif"
-      ),
+      name: gStrings.GetStringFromName("aboutReader.fontType.sans-serif"),
+      groupName: "font-type",
       value: "sans-serif",
       itemClass: "sans-serif-button",
     },
     {
-      name: fontTypeSample,
-      description: gStrings.GetStringFromName("aboutReader.fontType.serif"),
+      name: gStrings.GetStringFromName("aboutReader.fontType.serif"),
+      groupName: "font-type",
       value: "serif",
       itemClass: "serif-button",
     },
@@ -229,8 +237,6 @@ AboutReader.prototype = {
     ".content .wp-caption img, " +
     ".content figure img",
 
-  PLATFORM_HAS_CACHE: AppConstants.platform == "android",
-
   FONT_SIZE_MIN: 1,
 
   FONT_SIZE_LEGACY_MAX: 9,
@@ -273,6 +279,10 @@ AboutReader.prototype = {
 
   get _toolbarElement() {
     return this._toolbarElementRef.get();
+  },
+
+  get _toolbarContainerElement() {
+    return this._toolbarContainerElementRef.get();
   },
 
   get _messageElement() {
@@ -321,13 +331,12 @@ AboutReader.prototype = {
           let btn = this._doc.createElement("button");
           btn.dataset.buttonid = message.data.id;
           btn.className = "button " + message.data.id;
+          let tip = this._doc.createElement("span");
+          tip.className = "hover-label";
+          tip.textContent = message.data.label;
+          btn.append(tip);
+          btn.setAttribute("aria-label", message.data.label);
           btn.style.backgroundImage = "url('" + message.data.image + "')";
-          if (message.data.title) {
-            btn.title = message.data.title;
-          }
-          if (message.data.text) {
-            btn.textContent = message.data.text;
-          }
           if (message.data.width && message.data.height) {
             btn.style.backgroundSize = `${message.data.width}px ${message.data.height}px`;
           }
@@ -391,35 +400,22 @@ AboutReader.prototype = {
           this._toggleDropdownClicked(aEvent);
         }
         break;
-      case "mozvisualscroll":
-        const vv = aEvent.originalTarget; // VisualViewport
-
-        if (gIsFirefoxDesktop) {
+      case "scroll":
+        let lastHeight = this._lastHeight;
+        let { windowUtils } = this._win;
+        this._lastHeight = windowUtils.getBoundsWithoutFlushing(
+          this._doc.body
+        ).height;
+        // Only close dropdowns if the scroll events are not a result of line
+        // height / font-size changes that caused a page height change.
+        if (lastHeight == this._lastHeight) {
           this._closeDropdowns(true);
-        } else if (this._scrollOffset != vv.pageTop) {
-          // hide the system UI and the "reader-toolbar" only if the dropdown is not opened
-          let selector = ".dropdown.open";
-          let openDropdowns = this._doc.querySelectorAll(selector);
-          if (openDropdowns.length) {
-            break;
-          }
-
-          let isScrollingUp = this._scrollOffset > vv.pageTop;
-          this._setSystemUIVisibility(isScrollingUp);
-          this._setToolbarVisibility(isScrollingUp);
         }
 
-        this._scrollOffset = vv.pageTop;
         break;
       case "resize":
         this._updateImageMargins();
-        if (this._isToolbarVertical) {
-          this._win.setTimeout(() => {
-            for (let dropdown of this._doc.querySelectorAll(".dropdown.open")) {
-              this._updatePopupPosition(dropdown);
-            }
-          }, 0);
-        }
+        this._scheduleToolbarOverlapHandler();
         break;
 
       case "wheel":
@@ -452,18 +448,11 @@ AboutReader.prototype = {
         }
         break;
 
-      case "devicelight":
-        this._handleDeviceLight(aEvent.value);
-        break;
-
-      case "visibilitychange":
-        this._handleVisibilityChange();
-        break;
-
       case "pagehide":
-        // Close the Banners Font-dropdown, cleanup Android BackPressListener.
         this._closeDropdowns();
 
+        this._intersectionObs.unobserve(this._doc.querySelector(".top-anchor"));
+        delete this._intersectionObs;
         this._mm.removeMessageListener("Reader:CloseDropdown", this);
         this._mm.removeMessageListener("Reader:AddButton", this);
         this._mm.removeMessageListener("Reader:RemoveButton", this);
@@ -516,17 +505,12 @@ AboutReader.prototype = {
       size = 10 + 2 * this._fontSize;
     }
 
-    this._containerElement.style.setProperty("--font-size", size + "px");
+    let readerBody = this._doc.body;
+    readerBody.style.setProperty("--font-size", size + "px");
     return AsyncPrefs.set("reader.font_size", this._fontSize);
   },
 
   _setupFontSizeButtons() {
-    // Sample text shown in Android UI.
-    let sampleText = this._doc.querySelector(".font-size-sample");
-    sampleText.textContent = gStrings.GetStringFromName(
-      "aboutReader.fontTypeSample"
-    );
-
     let plusButton = this._doc.querySelector(".plus-button");
     let minusButton = this._doc.querySelector(".minus-button");
 
@@ -563,7 +547,9 @@ AboutReader.prototype = {
     let plusButton = this._doc.querySelector(".plus-button");
     let minusButton = this._doc.querySelector(".minus-button");
 
-    let currentSize = Services.prefs.getIntPref("reader.font_size");
+    let currentSize = this._fontSize;
+    let fontValue = this._doc.querySelector(".font-size-value");
+    fontValue.textContent = currentSize;
 
     if (currentSize === this.FONT_SIZE_MIN) {
       minusButton.setAttribute("disabled", true);
@@ -582,18 +568,21 @@ AboutReader.prototype = {
       Services.prefs.getIntPref("reader.font_size") + changeAmount;
     this._setFontSize(currentSize);
     this._updateFontSizeButtonControls();
+    this._scheduleToolbarOverlapHandler();
   },
 
   _setContentWidth(newContentWidth) {
-    let containerClasses = this._containerElement.classList;
-
-    if (this._contentWidth > 0) {
-      containerClasses.remove("content-width" + this._contentWidth);
-    }
-
     this._contentWidth = newContentWidth;
-    containerClasses.add("content-width" + this._contentWidth);
+    this._displayContentWidth(newContentWidth);
+    let width = 20 + 5 * (this._contentWidth - 1) + "em";
+    this._doc.body.style.setProperty("--content-width", width);
+    this._scheduleToolbarOverlapHandler();
     return AsyncPrefs.set("reader.content_width", this._contentWidth);
+  },
+
+  _displayContentWidth(currentContentWidth) {
+    let contentWidthValue = this._doc.querySelector(".content-width-value");
+    contentWidthValue.textContent = currentContentWidth;
   },
 
   _setupContentWidthButtons() {
@@ -605,6 +594,8 @@ AboutReader.prototype = {
       CONTENT_WIDTH_MIN,
       Math.min(CONTENT_WIDTH_MAX, currentContentWidth)
     );
+
+    this._displayContentWidth(currentContentWidth);
 
     let plusButton = this._doc.querySelector(".content-width-plus-button");
     let minusButton = this._doc.querySelector(".content-width-minus-button");
@@ -665,15 +656,15 @@ AboutReader.prototype = {
   },
 
   _setLineHeight(newLineHeight) {
-    let contentClasses = this._contentElement.classList;
+    this._displayLineHeight(newLineHeight);
+    let height = 1 + 0.2 * (newLineHeight - 1) + "em";
+    this._containerElement.style.setProperty("--line-height", height);
+    return AsyncPrefs.set("reader.line_height", newLineHeight);
+  },
 
-    if (this._lineHeight > 0) {
-      contentClasses.remove("line-height" + this._lineHeight);
-    }
-
-    this._lineHeight = newLineHeight;
-    contentClasses.add("line-height" + this._lineHeight);
-    return AsyncPrefs.set("reader.line_height", this._lineHeight);
+  _displayLineHeight(currentLineHeight) {
+    let lineHeightValue = this._doc.querySelector(".line-height-value");
+    lineHeightValue.textContent = currentLineHeight;
   },
 
   _setupLineHeightButtons() {
@@ -685,6 +676,8 @@ AboutReader.prototype = {
       LINE_HEIGHT_MIN,
       Math.min(LINE_HEIGHT_MAX, currentLineHeight)
     );
+
+    this._displayLineHeight(currentLineHeight);
 
     let plusButton = this._doc.querySelector(".line-height-plus-button");
     let minusButton = this._doc.querySelector(".line-height-minus-button");
@@ -744,78 +737,6 @@ AboutReader.prototype = {
     );
   },
 
-  _handleDeviceLight(newLux) {
-    // Desired size of the this._luxValues array.
-    let luxValuesSize = 10;
-    // Add new lux value at the front of the array.
-    this._luxValues.unshift(newLux);
-    // Add new lux value to this._totalLux for averaging later.
-    this._totalLux += newLux;
-
-    // Don't update when length of array is less than luxValuesSize except when it is 1.
-    if (this._luxValues.length < luxValuesSize) {
-      // Use the first lux value to set the color scheme until our array equals luxValuesSize.
-      if (this._luxValues.length == 1) {
-        this._updateColorScheme(newLux);
-      }
-      return;
-    }
-    // Holds the average of the lux values collected in this._luxValues.
-    let averageLuxValue = this._totalLux / luxValuesSize;
-
-    this._updateColorScheme(averageLuxValue);
-    // Pop the oldest value off the array.
-    let oldLux = this._luxValues.pop();
-    // Subtract oldLux since it has been discarded from the array.
-    this._totalLux -= oldLux;
-  },
-
-  _handleVisibilityChange() {
-    let colorScheme = Services.prefs.getCharPref("reader.color_scheme");
-    if (colorScheme != "auto") {
-      return;
-    }
-
-    // Turn off the ambient light sensor if the page is hidden
-    this._enableAmbientLighting(!this._doc.hidden);
-  },
-
-  // Setup or teardown the ambient light tracking system.
-  _enableAmbientLighting(enable) {
-    if (enable) {
-      this._win.addEventListener("devicelight", this);
-      this._luxValues = [];
-      this._totalLux = 0;
-    } else {
-      this._win.removeEventListener("devicelight", this);
-      delete this._luxValues;
-      delete this._totalLux;
-    }
-  },
-
-  _updateColorScheme(luxValue) {
-    // Upper bound value for "dark" color scheme beyond which it changes to "light".
-    let upperBoundDark = 50;
-    // Lower bound value for "light" color scheme beyond which it changes to "dark".
-    let lowerBoundLight = 10;
-    // Threshold for color scheme change.
-    let colorChangeThreshold = 20;
-
-    // Ignore changes that are within a certain threshold of previous lux values.
-    if (
-      (this._colorScheme === "dark" && luxValue < upperBoundDark) ||
-      (this._colorScheme === "light" && luxValue > lowerBoundLight)
-    ) {
-      return;
-    }
-
-    if (luxValue < colorChangeThreshold) {
-      this._setColorScheme("dark");
-    } else {
-      this._setColorScheme("light");
-    }
-  },
-
   _setColorScheme(newColorScheme) {
     // "auto" is not a real color scheme
     if (this._colorScheme === newColorScheme || newColorScheme === "auto") {
@@ -832,10 +753,8 @@ AboutReader.prototype = {
     bodyClasses.add(this._colorScheme);
   },
 
-  // Pref values include "dark", "light", and "auto", which automatically switches
-  // between light and dark color schemes based on the ambient light level.
+  // Pref values include "dark", "light", and "sepia"
   _setColorSchemePref(colorSchemePref) {
-    this._enableAmbientLighting(colorSchemePref === "auto");
     this._setColorScheme(colorSchemePref);
 
     AsyncPrefs.set("reader.color_scheme", colorSchemePref);
@@ -856,32 +775,6 @@ AboutReader.prototype = {
     bodyClasses.add(this._fontType);
 
     AsyncPrefs.set("reader.font_type", this._fontType);
-  },
-
-  _setSystemUIVisibility(visible) {
-    this._mm.sendAsyncMessage("Reader:SystemUIVisibility", { visible });
-  },
-
-  _setToolbarVisibility(visible) {
-    let tb = this._toolbarElement;
-
-    if (visible) {
-      if (tb.style.opacity != "1") {
-        tb.removeAttribute("hidden");
-        tb.style.opacity = "1";
-      }
-    } else if (tb.style.opacity != "0") {
-      tb.addEventListener(
-        "transitionend",
-        evt => {
-          if (tb.style.opacity == "0") {
-            tb.setAttribute("hidden", "");
-          }
-        },
-        { once: true }
-      );
-      tb.style.opacity = "0";
-    }
   },
 
   async _loadArticle() {
@@ -1001,17 +894,17 @@ AboutReader.prototype = {
   },
 
   _maybeSetTextDirection: function Read_maybeSetTextDirection(article) {
-    if (article.dir) {
-      // Set "dir" attribute on content
-      this._contentElement.setAttribute("dir", article.dir);
-      this._headerElement.setAttribute("dir", article.dir);
+    // Set the article's "dir" on the contents.
+    // If no direction is specified, the contents should automatically be LTR
+    // regardless of the UI direction to avoid inheriting the parent's direction
+    // if the UI is RTL.
+    this._containerElement.dir = article.dir || "ltr";
 
-      // The native locale could be set differently than the article's text direction.
-      var localeDirection = Services.locale.isAppLocaleRTL ? "rtl" : "ltr";
-      this._readTimeElement.setAttribute("dir", localeDirection);
-      this._readTimeElement.style.textAlign =
-        article.dir == "rtl" ? "right" : "left";
-    }
+    // The native locale could be set differently than the article's text direction.
+    this._readTimeElement.dir = isAppLocaleRTL ? "rtl" : "ltr";
+
+    // This is used to mirror the line height buttons in the toolbar, when relevant.
+    this._toolbarElement.setAttribute("articledir", article.dir || "ltr");
   },
 
   _formatReadTime(slowEstimate, fastEstimate) {
@@ -1160,69 +1053,56 @@ AboutReader.prototype = {
     let doc = this._doc;
     let segmentedButton = doc.getElementsByClassName(id)[0];
 
-    for (let i = 0; i < options.length; i++) {
-      let option = options[i];
+    for (let option of options) {
+      let radioButton = doc.createElement("input");
+      radioButton.id = "radio-item" + option.itemClass;
+      radioButton.type = "radio";
+      radioButton.classList.add("radio-button");
+      radioButton.name = option.groupName;
+      segmentedButton.appendChild(radioButton);
 
-      let item = doc.createElement("button");
-
-      // Put the name in a div so that Android can hide it.
-      let div = doc.createElement("div");
-      div.textContent = option.name;
-      div.classList.add("name");
-      item.appendChild(div);
-
-      if (option.itemClass !== undefined) {
-        item.classList.add(option.itemClass);
-      }
-
-      if (option.description !== undefined) {
-        let description = doc.createElement("div");
-        description.textContent = option.description;
-        description.classList.add("description");
-        item.appendChild(description);
-      }
+      let item = doc.createElement("label");
+      item.textContent = option.name;
+      item.htmlFor = radioButton.id;
+      item.classList.add(option.itemClass);
 
       segmentedButton.appendChild(item);
 
-      item.addEventListener(
-        "click",
+      radioButton.addEventListener(
+        "input",
         function(aEvent) {
           if (!aEvent.isTrusted) {
             return;
           }
 
-          aEvent.stopPropagation();
-
           // Just pass the ID of the button as an extra and hope the ID doesn't change
           // unless the context changes
           UITelemetry.addEvent("action.1", "button", null, id);
 
-          let items = segmentedButton.children;
-          for (let j = items.length - 1; j >= 0; j--) {
-            items[j].classList.remove("selected");
+          let labels = segmentedButton.children;
+          for (let label of labels) {
+            label.removeAttribute("checked");
           }
 
-          item.classList.add("selected");
+          aEvent.target.nextElementSibling.setAttribute("checked", "true");
           callback(option.value);
         },
         true
       );
 
       if (option.value === initialValue) {
-        item.classList.add("selected");
+        radioButton.checked = true;
+        item.setAttribute("checked", "true");
       }
     }
   },
 
-  _setupButton(id, callback, titleEntity, textEntity) {
+  _setupButton(id, callback, titleEntity) {
+    let button = this._doc.querySelector("." + id);
     if (titleEntity) {
-      this._setButtonTip(id, titleEntity);
+      this._setButtonTip(button, titleEntity);
     }
 
-    let button = this._doc.getElementsByClassName(id)[0];
-    if (textEntity) {
-      button.textContent = gStrings.GetStringFromName(textEntity);
-    }
     button.removeAttribute("hidden");
     button.addEventListener(
       "click",
@@ -1239,34 +1119,16 @@ AboutReader.prototype = {
   },
 
   /**
-   * Sets a toolTip for a button. Performed at initial button setup
-   * and dynamically as button state changes.
+   * Sets a tooltip-style label on a button.
    * @param   Localizable string providing UI element usage tip.
    */
-  _setButtonTip(id, titleEntity) {
-    let button = this._doc.getElementsByClassName(id)[0];
-    button.setAttribute("title", gStrings.GetStringFromName(titleEntity));
-  },
-
-  _setupStyleDropdown() {
-    let dropdownToggle = this._doc.querySelector(
-      ".style-dropdown .dropdown-toggle"
-    );
-    dropdownToggle.setAttribute(
-      "title",
-      gStrings.GetStringFromName("aboutReader.toolbar.typeControls")
-    );
-  },
-
-  _updatePopupPosition(dropdown) {
-    let dropdownToggle = dropdown.querySelector(".dropdown-toggle");
-    let dropdownPopup = dropdown.querySelector(".dropdown-popup");
-
-    let toggleHeight = dropdownToggle.offsetHeight;
-    let toggleTop = dropdownToggle.offsetTop;
-    let popupTop = toggleTop - toggleHeight / 2;
-
-    dropdownPopup.style.top = popupTop + "px";
+  _setButtonTip(button, titleEntity) {
+    let tip = this._doc.createElement("span");
+    let localizedString = gStrings.GetStringFromName(titleEntity);
+    tip.textContent = localizedString;
+    tip.className = "hover-label";
+    button.setAttribute("aria-label", localizedString);
+    button.append(tip);
   },
 
   _toggleDropdownClicked(event) {
@@ -1282,25 +1144,30 @@ AboutReader.prototype = {
       this._closeDropdowns();
     } else {
       this._openDropdown(dropdown);
-      if (this._isToolbarVertical) {
-        this._updatePopupPosition(dropdown);
-      }
     }
   },
 
   /*
    * If the ReaderView banner font-dropdown is closed, open it.
    */
-  _openDropdown(dropdown) {
+  _openDropdown(dropdown, window) {
     if (dropdown.classList.contains("open")) {
       return;
     }
 
     this._closeDropdowns();
 
-    // Trigger BackPressListener initialization in Android.
+    // Get the height of the doc and start handling scrolling:
+    let { windowUtils } = this._win;
+    this._lastHeight = windowUtils.getBoundsWithoutFlushing(
+      this._doc.body
+    ).height;
+    this._doc.addEventListener("scroll", this);
+
     dropdown.classList.add("open");
-    this._mm.sendAsyncMessage("Reader:DropdownOpened", this.viewId);
+
+    this._toolbarContainerElement.classList.add("dropdown-open");
+    this._toggleToolbarFixedPosition(true);
   },
 
   /*
@@ -1315,14 +1182,88 @@ AboutReader.prototype = {
     }
 
     let openDropdowns = this._doc.querySelectorAll(selector);
+    let haveOpenDropdowns = openDropdowns.length;
     for (let dropdown of openDropdowns) {
       dropdown.classList.remove("open");
     }
 
-    // Trigger BackPressListener cleanup in Android.
-    if (openDropdowns.length) {
-      this._mm.sendAsyncMessage("Reader:DropdownClosed", this.viewId);
+    if (haveOpenDropdowns) {
+      this._toolbarContainerElement.classList.remove("dropdown-open");
+      this._toggleToolbarFixedPosition(false);
     }
+
+    // Stop handling scrolling:
+    this._doc.removeEventListener("scroll", this);
+  },
+
+  _toggleToolbarFixedPosition(shouldBeFixed) {
+    let el = this._toolbarContainerElement;
+    let fontSize = this._doc.body.style.getPropertyValue("--font-size");
+    let contentWidth = this._doc.body.style.getPropertyValue("--content-width");
+    if (shouldBeFixed) {
+      el.style.setProperty("--font-size", fontSize);
+      el.style.setProperty("--content-width", contentWidth);
+      el.classList.add("transition-location");
+    } else {
+      let expectTransition =
+        el.style.getPropertyValue("--font-size") != fontSize ||
+        el.style.getPropertyValue("--content-width") != contentWidth;
+      if (expectTransition) {
+        el.addEventListener(
+          "transitionend",
+          () => el.classList.remove("transition-location"),
+          { once: true }
+        );
+      } else {
+        el.classList.remove("transition-location");
+      }
+      el.style.removeProperty("--font-size");
+      el.style.removeProperty("--content-width");
+      el.classList.remove("overlaps");
+    }
+  },
+
+  _scheduleToolbarOverlapHandler() {
+    if (this._enqueuedToolbarOverlapHandler) {
+      return;
+    }
+    this._enqueuedToolbarOverlapHandler = this._win.requestAnimationFrame(
+      () => {
+        this._win.setTimeout(() => this._toolbarOverlapHandler(), 0);
+      }
+    );
+  },
+
+  _toolbarOverlapHandler() {
+    delete this._enqueuedToolbarOverlapHandler;
+    // Ensure the dropdown is still open to avoid racing with that changing.
+    if (this._toolbarContainerElement.classList.contains("dropdown-open")) {
+      let { windowUtils } = this._win;
+      let toolbarBounds = windowUtils.getBoundsWithoutFlushing(
+        this._toolbarElement.parentNode
+      );
+      let textBounds = windowUtils.getBoundsWithoutFlushing(
+        this._containerElement
+      );
+      let overlaps = false;
+      if (isAppLocaleRTL) {
+        overlaps = textBounds.right > toolbarBounds.left;
+      } else {
+        overlaps = textBounds.left < toolbarBounds.right;
+      }
+      this._toolbarContainerElement.classList.toggle("overlaps", overlaps);
+    }
+  },
+
+  _topScrollChange(entries) {
+    if (!entries.length) {
+      return;
+    }
+    // If we don't intersect the item at the top of the document, we're
+    // scrolled down:
+    let scrolled = !entries[entries.length - 1].isIntersecting;
+    let tbc = this._toolbarContainerElement;
+    tbc.classList.toggle("scrolled", scrolled);
   },
 
   /*

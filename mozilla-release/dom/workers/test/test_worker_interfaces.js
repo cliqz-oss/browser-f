@@ -31,7 +31,7 @@ var ecmaGlobals = [
   { name: "AggregateError", insecureContext: true, nightly: true },
   { name: "Array", insecureContext: true },
   { name: "ArrayBuffer", insecureContext: true },
-  { name: "Atomics", insecureContext: true, earlyBetaOrEarlier: true },
+  { name: "Atomics", insecureContext: true },
   { name: "BigInt", insecureContext: true },
   { name: "BigInt64Array", insecureContext: true },
   { name: "BigUint64Array", insecureContext: true },
@@ -70,7 +70,7 @@ var ecmaGlobals = [
   {
     name: "SharedArrayBuffer",
     insecureContext: true,
-    earlyBetaOrEarlier: true,
+    crossOringinIsolated: true,
   },
   { name: "String", insecureContext: true },
   { name: "Symbol", insecureContext: true },
@@ -227,6 +227,12 @@ var interfaceNamesInGlobalScope = [
     insecureContext: true,
   },
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "Report", nightly: true, insecureContext: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "ReportBody", nightly: true, insecureContext: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "ReportingObserver", nightly: true, insecureContext: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "Request", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "Response", insecureContext: true },
@@ -294,6 +300,7 @@ function createInterfaceMap({
   isAndroid,
   isInsecureContext,
   isFennec,
+  isCrossOringinIsolated,
 }) {
   var interfaceMap = {};
 
@@ -318,6 +325,7 @@ function createInterfaceMap({
           // only in secure contexts.
           (isInsecureContext && !entry.insecureContext) ||
           entry.earlyBetaOrEarlier === !isEarlyBetaOrEarlier ||
+          entry.crossOringinIsolated === !isCrossOringinIsolated ||
           entry.disabled
         ) {
           interfaceMap[entry.name] = false;

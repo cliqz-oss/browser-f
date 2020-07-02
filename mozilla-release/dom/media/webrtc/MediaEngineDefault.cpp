@@ -47,14 +47,12 @@ static nsString DefaultVideoName() {
   // InvokeAsync, instead of "soft" block, provided by sync dispatch which
   // allows the waiting thread to spin its event loop. The latter would allow
   // miltiple enumeration requests being processed out-of-order.
-  media::Await(
-      do_AddRef(SystemGroup::EventTargetFor(TaskCategory::Other)),
-      InvokeAsync(
-          SystemGroup::EventTargetFor(TaskCategory::Other), __func__, [&]() {
-            rv = Preferences::GetString("media.getusermedia.fake-camera-name",
-                                        cameraNameFromPref);
-            return GenericPromise::CreateAndResolve(true, __func__);
-          }));
+  media::Await(do_AddRef(GetMainThreadSerialEventTarget()),
+               InvokeAsync(GetMainThreadSerialEventTarget(), __func__, [&]() {
+                 rv = Preferences::GetString(
+                     "media.getusermedia.fake-camera-name", cameraNameFromPref);
+                 return GenericPromise::CreateAndResolve(true, __func__);
+               }));
 
   if (NS_SUCCEEDED(rv)) {
     return std::move(cameraNameFromPref);
@@ -495,7 +493,7 @@ nsresult MediaEngineDefaultAudioSource::Reconfigure(
 void AudioSourcePullListener::NotifyPull(MediaTrackGraph* aGraph,
                                          TrackTime aEndOfAppendedData,
                                          TrackTime aDesiredTime) {
-  TRACE_AUDIO_CALLBACK_COMMENT("SourceMediaTrack %p", mTrack.get());
+  TRACE_COMMENT("SourceMediaTrack %p", mTrack.get());
   AudioSegment segment;
   TrackTicks delta = aDesiredTime - aEndOfAppendedData;
   CheckedInt<size_t> bufferSize(sizeof(int16_t));

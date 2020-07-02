@@ -17,6 +17,7 @@
 #include "mozilla/PresShellInlines.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
+#include "mozilla/dom/GeneratePlaceholderCanvasData.h"
 #include "SVGObserverUtils.h"
 #include "nsPresContext.h"
 
@@ -925,7 +926,7 @@ CanvasRenderingContext2D::ContextState::ContextState(const ContextState& aOther)
       miterLimit(aOther.miterLimit),
       globalAlpha(aOther.globalAlpha),
       shadowBlur(aOther.shadowBlur),
-      dash(aOther.dash),
+      dash(aOther.dash.Clone()),
       dashOffset(aOther.dashOffset),
       op(aOther.op),
       fillRule(aOther.fillRule),
@@ -935,7 +936,7 @@ CanvasRenderingContext2D::ContextState::ContextState(const ContextState& aOther)
       filterChain(aOther.filterChain),
       autoSVGFiltersObserver(aOther.autoSVGFiltersObserver),
       filter(aOther.filter),
-      filterAdditionalImages(aOther.filterAdditionalImages),
+      filterAdditionalImages(aOther.filterAdditionalImages.Clone()),
       filterSourceGraphicTainted(aOther.filterSourceGraphicTainted),
       imageSmoothingEnabled(aOther.imageSmoothingEnabled),
       fontExplicitLanguage(aOther.fontExplicitLanguage) {}
@@ -2916,26 +2917,18 @@ void CanvasRenderingContext2D::DrawFocusIfNeeded(
   }
 }
 
-bool CanvasRenderingContext2D::DrawCustomFocusRing(
-    mozilla::dom::Element& aElement) {
-  EnsureUserSpacePath();
+bool CanvasRenderingContext2D::DrawCustomFocusRing(Element& aElement) {
+  if (!aElement.State().HasState(NS_EVENT_STATE_FOCUSRING)) {
+    return false;
+  }
 
   HTMLCanvasElement* canvas = GetCanvas();
-
   if (!canvas || !aElement.IsInclusiveDescendantOf(canvas)) {
     return false;
   }
 
-  if (nsFocusManager* fm = nsFocusManager::GetFocusManager()) {
-    // check that the element is focused
-    if (&aElement == fm->GetFocusedElement()) {
-      if (nsPIDOMWindowOuter* window = aElement.OwnerDoc()->GetWindow()) {
-        return window->ShouldShowFocusRing();
-      }
-    }
-  }
-
-  return false;
+  EnsureUserSpacePath();
+  return true;
 }
 
 void CanvasRenderingContext2D::Clip(const CanvasWindingRule& aWinding) {
@@ -5095,20 +5088,27 @@ nsresult CanvasRenderingContext2D::GetImageDataArray(
   }
 
   do {
+    uint8_t* randomData;
+    if (usePlaceholder) {
+      // Since we cannot call any GC-able functions (like requesting the RNG
+      // service) after we call JS_GetUint8ClampedArrayData, we will
+      // pre-generate the randomness required for GeneratePlaceholderCanvasData.
+      randomData = TryToGenerateRandomDataForPlaceholderCanvasData();
+    }
+
     JS::AutoCheckCannotGC nogc;
     bool isShared;
     uint8_t* data = JS_GetUint8ClampedArrayData(darray, &isShared, nogc);
     MOZ_ASSERT(!isShared);  // Should not happen, data was created above
 
+    if (usePlaceholder) {
+      FillPlaceholderCanvas(randomData, len.value(), data);
+      break;
+    }
+
     uint32_t srcStride = rawData.mStride;
     uint8_t* src =
         rawData.mData + srcReadRect.y * srcStride + srcReadRect.x * 4;
-
-    // Return all-white, opaque pixel data if no permission.
-    if (usePlaceholder) {
-      memset(data, 0xFF, len.value());
-      break;
-    }
 
     uint8_t* dst = data + dstWriteRect.y * (aWidth * 4) + dstWriteRect.x * 4;
 

@@ -259,7 +259,7 @@ impl<'a> FunctionBuilder<'a> {
         self.handle_ssa_side_effects(side_effects);
     }
 
-    /// Effectively calls seal_block on all blocks in the function.
+    /// Effectively calls seal_block on all unsealed blocks in the function.
     ///
     /// It's more efficient to seal `Block`s as soon as possible, during
     /// translation, but for frontends where this is impractical to do, this
@@ -1224,6 +1224,55 @@ block0:
     v3 = uextend.i32 v1
     call fn0(v0, v3, v2)
     return v0
+}
+"
+        );
+    }
+
+    #[test]
+    fn undef_vector_vars() {
+        let mut sig = Signature::new(CallConv::SystemV);
+        sig.returns.push(AbiParam::new(I8X16));
+        sig.returns.push(AbiParam::new(B8X16));
+        sig.returns.push(AbiParam::new(F32X4));
+
+        let mut fn_ctx = FunctionBuilderContext::new();
+        let mut func = Function::with_name_signature(ExternalName::testcase("sample"), sig);
+        {
+            let mut builder = FunctionBuilder::new(&mut func, &mut fn_ctx);
+
+            let block0 = builder.create_block();
+            let a = Variable::new(0);
+            let b = Variable::new(1);
+            let c = Variable::new(2);
+            builder.declare_var(a, I8X16);
+            builder.declare_var(b, B8X16);
+            builder.declare_var(c, F32X4);
+            builder.switch_to_block(block0);
+
+            let a = builder.use_var(a);
+            let b = builder.use_var(b);
+            let c = builder.use_var(c);
+            builder.ins().return_(&[a, b, c]);
+
+            builder.seal_all_blocks();
+            builder.finalize();
+        }
+
+        assert_eq!(
+            func.display(None).to_string(),
+            "function %sample() -> i8x16, b8x16, f32x4 system_v {
+    const0 = 0x00000000000000000000000000000000
+
+block0:
+    v5 = f32const 0.0
+    v6 = splat.f32x4 v5
+    v2 -> v6
+    v4 = vconst.b8x16 const0
+    v1 -> v4
+    v3 = vconst.i8x16 const0
+    v0 -> v3
+    return v0, v1, v2
 }
 "
         );

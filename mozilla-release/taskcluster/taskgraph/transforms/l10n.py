@@ -10,6 +10,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import copy
 import io
 import json
+import six
 
 from mozbuild.chunkify import chunkify
 from six import text_type
@@ -136,7 +137,7 @@ l10n_description_schema = schema.extend({
     Optional('locales-per-chunk'): _by_platform(int),
 
     # Task deps to chain this task with, added in transforms from primary-dependency
-    # if this is a nightly
+    # if this is a shippable-style build
     Optional('dependencies'): {text_type: text_type},
 
     # Run the task when the listed files change (if present).
@@ -210,7 +211,7 @@ transforms.add_validate(l10n_description_schema)
 
 
 @transforms.add
-def setup_nightly_dependency(config, jobs):
+def setup_shippable_dependency(config, jobs):
     """ Sets up a task dependency to the signing job this relates to """
     for job in jobs:
         job['dependencies'] = {'build': job['dependent-tasks']['build'].label}
@@ -264,13 +265,13 @@ def handle_artifact_prefix(config, jobs):
     """Resolve ``artifact_prefix`` in env vars"""
     for job in jobs:
         artifact_prefix = get_artifact_prefix(job)
-        for k1, v1 in job.get('env', {}).iteritems():
+        for k1, v1 in six.iteritems(job.get('env', {})):
             if isinstance(v1, text_type):
                 job['env'][k1] = v1.format(
                     artifact_prefix=artifact_prefix
                 )
             elif isinstance(v1, dict):
-                for k2, v2 in v1.iteritems():
+                for k2, v2 in six.iteritems(v1):
                     job['env'][k1][k2] = v2.format(
                         artifact_prefix=artifact_prefix
                     )
@@ -281,7 +282,6 @@ def handle_artifact_prefix(config, jobs):
 def all_locales_attribute(config, jobs):
     for job in jobs:
         locales_platform = job['attributes']['build_platform'].replace("-shippable", "")
-        locales_platform = locales_platform.replace("-nightly", "")
         locales_platform = locales_platform.replace("-pgo", "")
         locales_with_changesets = parse_locales_file(job["locales-file"],
                                                      platform=locales_platform)
@@ -367,7 +367,7 @@ def make_job_description(config, jobs):
         job['mozharness'].update({
             'using': 'mozharness',
             'job-script': 'taskcluster/scripts/builder/build-l10n.sh',
-            'secrets': job['secrets'],
+            'secrets': job.get('secrets', False),
         })
         job_description = {
             'name': job['name'],

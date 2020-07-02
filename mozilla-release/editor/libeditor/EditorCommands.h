@@ -6,9 +6,11 @@
 #ifndef mozilla_EditorCommands_h
 #define mozilla_EditorCommands_h
 
+#include "mozilla/EventForwards.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/TypedEnumBits.h"
+#include "nsGkAtoms.h"
 #include "nsIControllerCommand.h"
 #include "nsIPrincipal.h"
 #include "nsISupportsImpl.h"
@@ -20,6 +22,7 @@ class nsCommandParams;
 class nsICommandParams;
 class nsIEditingSession;
 class nsITransferable;
+class nsStaticAtom;
 
 namespace mozilla {
 
@@ -579,10 +582,10 @@ class StateUpdatingCommandBase : public EditorCommand {
 
   // add/remove the style
   MOZ_CAN_RUN_SCRIPT virtual nsresult ToggleState(
-      nsAtom* aTagName, HTMLEditor* aHTMLEditor,
+      nsStaticAtom& aTagName, HTMLEditor& aHTMLEditor,
       nsIPrincipal* aPrincipal) const = 0;
 
-  static nsAtom* GetTagName(Command aCommand) {
+  static nsStaticAtom* GetTagName(Command aCommand) {
     switch (aCommand) {
       case Command::FormatBold:
         return nsGkAtoms::b;
@@ -651,8 +654,8 @@ class StyleUpdatingCommand final : public StateUpdatingCommandBase {
                   nsCommandParams& aParams) const final;
 
   // add/remove the style
-  MOZ_CAN_RUN_SCRIPT nsresult ToggleState(nsAtom* aTagName,
-                                          HTMLEditor* aHTMLEditor,
+  MOZ_CAN_RUN_SCRIPT nsresult ToggleState(nsStaticAtom& aTagName,
+                                          HTMLEditor& aHTMLEditor,
                                           nsIPrincipal* aPrincipal) const final;
 };
 
@@ -697,8 +700,8 @@ class ListCommand final : public StateUpdatingCommandBase {
                   nsCommandParams& aParams) const final;
 
   // add/remove the style
-  MOZ_CAN_RUN_SCRIPT nsresult ToggleState(nsAtom* aTagName,
-                                          HTMLEditor* aHTMLEditor,
+  MOZ_CAN_RUN_SCRIPT nsresult ToggleState(nsStaticAtom& aTagName,
+                                          HTMLEditor& aHTMLEditor,
                                           nsIPrincipal* aPrincipal) const final;
 };
 
@@ -716,8 +719,8 @@ class ListItemCommand final : public StateUpdatingCommandBase {
                   nsCommandParams& aParams) const final;
 
   // add/remove the style
-  MOZ_CAN_RUN_SCRIPT nsresult ToggleState(nsAtom* aTagName,
-                                          HTMLEditor* aHTMLEditor,
+  MOZ_CAN_RUN_SCRIPT nsresult ToggleState(nsStaticAtom& aTagName,
+                                          HTMLEditor& aHTMLEditor,
                                           nsIPrincipal* aPrincipal) const final;
 };
 
@@ -856,8 +859,8 @@ class AbsolutePositioningCommand final : public StateUpdatingCommandBase {
   MOZ_CAN_RUN_SCRIPT nsresult
   GetCurrentState(nsAtom* aTagName, HTMLEditor* aHTMLEditor,
                   nsCommandParams& aParams) const final;
-  MOZ_CAN_RUN_SCRIPT nsresult ToggleState(nsAtom* aTagName,
-                                          HTMLEditor* aHTMLEditor,
+  MOZ_CAN_RUN_SCRIPT nsresult ToggleState(nsStaticAtom& aTagName,
+                                          HTMLEditor& aHTMLEditor,
                                           nsIPrincipal* aPrincipal) const final;
 };
 

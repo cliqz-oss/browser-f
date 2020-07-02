@@ -709,6 +709,9 @@ var DownloadIntegration = {
    *           to launch the file. The relevant properties are: the target
    *           file, the contentType and the custom application chosen
    *           to launch it.
+   * @param options.openWhere     Optional string indicating how to open when handling
+   *                              download by opening the target file URI.
+   *                              One of "window", "tab", "tabshifted"
    *
    * @return {Promise}
    * @resolves When the instruction to launch the file has been
@@ -718,7 +721,7 @@ var DownloadIntegration = {
    * @rejects  JavaScript exception if there was an error trying to launch
    *           the file.
    */
-  async launchDownload(aDownload) {
+  async launchDownload(aDownload, { openWhere }) {
     let file = new FileUtils.File(aDownload.target.path);
 
     // In case of a double extension, like ".tar.gz", we only
@@ -781,14 +784,41 @@ var DownloadIntegration = {
       mimeInfo.preferredAction = Ci.nsIMIMEInfo.useHelperApp;
 
       this.launchFile(file, mimeInfo);
+      // After an attempt has been made to launch the download, clear the
+      // launchWhenSucceeded bit so future attempts to open the download can go
+      // through Firefox when possible.
+      aDownload.launchWhenSucceeded = false;
       return;
     }
+
+    const PDF_CONTENT_TYPE = "application/pdf";
+    if (
+      aDownload.handleInternally ||
+      (mimeInfo &&
+        (mimeInfo.type == PDF_CONTENT_TYPE ||
+          fileExtension?.toLowerCase() == "pdf") &&
+        !mimeInfo.alwaysAskBeforeHandling &&
+        mimeInfo.preferredAction === Ci.nsIHandlerInfo.handleInternally &&
+        !aDownload.launchWhenSucceeded)
+    ) {
+      DownloadUIHelper.loadFileIn(file, {
+        browsingContextId: aDownload.source.browsingContextId,
+        isPrivate: aDownload.source.isPrivate,
+        openWhere,
+        userContextId: aDownload.source.userContextId,
+      });
+      return;
+    }
+
+    // An attempt will now be made to launch the download, clear the
+    // launchWhenSucceeded bit so future attempts to open the download can go
+    // through Firefox when possible.
+    aDownload.launchWhenSucceeded = false;
 
     // No custom application chosen, let's launch the file with the default
     // handler. First, let's try to launch it through the MIME service.
     if (mimeInfo) {
       mimeInfo.preferredAction = Ci.nsIMIMEInfo.useSystemDefault;
-
       try {
         this.launchFile(file, mimeInfo);
         return;

@@ -10,6 +10,7 @@
 #include "nsBaseChannel.h"
 #include "mozilla/ArrayUtils.h"
 #include "nsIProtocolHandler.h"
+#include "nsXULAppAPI.h"
 #include "mozilla/Preferences.h"
 
 #define ABOUT_CONFIG_ENABLED_PREF "general.aboutConfig.enable"
@@ -74,7 +75,12 @@ static const RedirEntry kRedirMap[] = {
     {"crashes", "chrome://global/content/crashes.html", 0},
 #endif
     {"credits", "https://www.mozilla.org/credits/",
-     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT},
+     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::URI_MUST_LOAD_IN_CHILD},
+    {"httpsonlyerror", "chrome://global/content/httpsonlyerror/errorpage.html",
+     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"license", "chrome://global/content/license.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT},
     {"logo", "chrome://branding/content/about.png",
@@ -100,6 +106,8 @@ static const RedirEntry kRedirMap[] = {
      nsIAboutModule::ALLOW_SCRIPT},
     {"plugins", "chrome://global/content/plugins.html",
      nsIAboutModule::URI_MUST_LOAD_IN_CHILD},
+    {"processes", "chrome://global/content/aboutProcesses.html",
+     nsIAboutModule::ALLOW_SCRIPT},
     // about:serviceworkers always wants to load in the parent process because
     // when dom.serviceWorkers.parent_intercept is set to true (the new default)
     // then the only place nsIServiceWorkerManager has any data is in the

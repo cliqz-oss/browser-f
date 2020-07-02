@@ -16,5 +16,7 @@
 <!ENTITY addNewToolbar.label      "Neue Symbolleiste">
 <!ENTITY showTitlebar.label       "Titelleiste">
 <!ENTITY extraDragSpace.label     "Fläche zum Ziehen">
+<!ENTITY showTitlebar2.label      "Titelleiste">
+<!ENTITY extraDragSpace2.label    "Fläche zum Ziehen">
 <!ENTITY saveChanges.label        "Fertig">
 <!ENTITY undoChanges.label        "Änderungen verwerfen">

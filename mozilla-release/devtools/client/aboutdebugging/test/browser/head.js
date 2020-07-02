@@ -232,12 +232,19 @@ function waitForDispatch(store, type) {
  */
 async function selectThisFirefoxPage(doc, store) {
   info("Select This Firefox page");
+
   const onRequestSuccess = waitForRequestsSuccess(store);
   doc.location.hash = "#/runtime/this-firefox";
   info("Wait for requests to be complete");
   await onRequestSuccess;
+
   info("Wait for runtime page to be rendered");
   await waitUntil(() => doc.querySelector(".qa-runtime-page"));
+
+  // Navigating to this-firefox will trigger a title change for the
+  // about:debugging tab. This title change _might_ trigger a tablist update.
+  // If it does, we should make sure to wait for pending tab requests.
+  await waitForRequestsToSettle(store);
 }
 
 /**
@@ -373,4 +380,39 @@ function waitUntilUsbDeviceIsUnplugged(deviceName, aboutDebuggingDocument) {
     );
     return !!sidebarItem.querySelector(".qa-runtime-item-unplugged");
   });
+}
+
+/**
+ * Changing the selected tab in the current browser will trigger a tablist
+ * update.
+ * If the currently selected page is "this-firefox", we should wait for the
+ * the corresponding REQUEST_TABS_SUCCESS that will be triggered by the change.
+ *
+ * @param {Browser} browser
+ *        The browser instance to update.
+ * @param {XULTab} tab
+ *        The tab to select.
+ * @param {Object} store
+ *        The about:debugging redux store.
+ */
+async function updateSelectedTab(browser, tab, store) {
+  info("Update the selected tab");
+
+  const { runtimes, ui } = store.getState();
+  const isOnThisFirefox =
+    runtimes.selectedRuntimeId === "this-firefox" &&
+    ui.selectedPage === "runtime";
+
+  // A tabs request will only be issued if we are on this-firefox.
+  const onTabsSuccess = isOnThisFirefox
+    ? waitForDispatch(store, "REQUEST_TABS_SUCCESS")
+    : null;
+
+  // Update the selected tab.
+  browser.selectedTab = tab;
+
+  if (onTabsSuccess) {
+    info("Wait for the tablist update after updating the selected tab");
+    await onTabsSuccess;
+  }
 }

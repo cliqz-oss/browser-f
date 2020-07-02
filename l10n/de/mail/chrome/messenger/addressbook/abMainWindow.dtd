@@ -18,6 +18,8 @@
 <!ENTITY newListCmd.accesskey                           "V">
 <!ENTITY newAddressBookCmd.label                        "Adressbuch">
 <!ENTITY newAddressBookCmd.accesskey                    "A">
+<!ENTITY newCardDAVBookCmd.label                        "CardDAV-Adressbuch…">
+<!ENTITY newCardDAVBookCmd.accesskey                    "C">
 <!ENTITY newLDAPDirectoryCmd.label                      "LDAP-Verzeichnis…">
 <!ENTITY newLDAPDirectoryCmd.accesskey                  "L">
 <!ENTITY newMessageCmd.label                            "Nachricht">
@@ -164,6 +166,7 @@
 <!ENTITY deleteButton2.accesskey                        "ö">
 
 <!-- Address Book Toolbar Tooltips -->
+<!ENTITY columnChooser.tooltip                          "Anzuzeigende Spalten auswählen">
 <!ENTITY newContactButton.tooltip                       "Neuen Kontakt erstellen">
 <!ENTITY newlistButton.tooltip                          "Neue Verteilerliste erstellen">
 <!ENTITY editPropertiesButton.tooltip                   "Gewählten Eintrag bearbeiten">
@@ -173,9 +176,6 @@
 <!ENTITY newmsgButton.tooltip                           "Neue Nachricht verfassen">
 <!ENTITY newIM.tooltip                                  "Neue Sofortnachricht (instant message) oder neuen Chat verfassen">
 <!ENTITY deleteButton2.tooltip                          "Gewähltes Element löschen">
-
-<!-- Dir Tree header -->
-<!ENTITY dirTreeHeader.label                            "Adressbücher">
 
 <!-- Search Bar -->
 <!ENTITY SearchNameOrEmail.label                        "Name oder E-Mail-Adresse">

@@ -34,6 +34,9 @@ const actionTypes = {
   SORT_BY: "SORT_BY",
   TOGGLE_BLOCKING_ENABLED: "TOGGLE_BLOCKING_ENABLED",
   REMOVE_BLOCKED_URL: "REMOVE_BLOCKED_URL",
+  REMOVE_ALL_BLOCKED_URLS: "REMOVE_ALL_BLOCKED_URLS",
+  ENABLE_ALL_BLOCKED_URLS: "ENABLE_ALL_BLOCKED_URLS",
+  DISABLE_ALL_BLOCKED_URLS: "DISABLE_ALL_BLOCKED_URLS",
   TOGGLE_BLOCKED_URL: "TOGGLE_BLOCKED_URL",
   UPDATE_BLOCKED_URL: "UPDATE_BLOCKED_URL",
   DISABLE_MATCHING_URLS: "DISABLE_MATCHING_URLS",
@@ -215,6 +218,7 @@ const UPDATE_PROPS = [
   "isThirdPartyTrackingResource",
   "referrerPolicy",
   "blockedReason",
+  "blockingExtension",
   "channelId",
 ];
 
@@ -222,7 +226,7 @@ const PANELS = {
   COOKIES: "cookies",
   HEADERS: "headers",
   MESSAGES: "messages",
-  PARAMS: "params",
+  REQUEST: "request",
   RESPONSE: "response",
   CACHE: "cache",
   SECURITY: "security",
@@ -520,6 +524,9 @@ const BLOCKED_REASON_MESSAGES = {
   2004: "Tracking",
   2005: "Blocked",
   2006: "Harmful",
+  2007: "Cryptomining",
+  2008: "Fingerprinting",
+  2009: "Socialtracking",
   3001: "Mixed Block",
   4000: "CSP",
   4001: "CSP No Data Protocol",
@@ -529,6 +536,7 @@ const BLOCKED_REASON_MESSAGES = {
   4005: "CSP Web Browser",
   4006: "CSP Preload",
   5000: "Not same-origin",
+  6000: "Blocked By Extension",
 };
 
 const general = {

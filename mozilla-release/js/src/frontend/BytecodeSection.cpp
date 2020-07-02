@@ -21,27 +21,13 @@ using namespace js;
 using namespace js::frontend;
 
 bool GCThingList::append(FunctionBox* funbox, uint32_t* index) {
-  // Append the function to the vector and return the index in *index. Also add
-  // the FunctionBox to the |lastbox| linked list for finishInnerFunctions
-  // below.
-
-  MOZ_ASSERT(!funbox->emitLink_);
-  funbox->emitLink_ = lastbox;
-  lastbox = funbox;
-
+  // Append the function to the vector and return the index in *index.
   *index = vector.length();
+
   // To avoid circular include issues, funbox can't return a FunctionIndex, so
   // instead it returns a size_t, which we wrap in FunctionIndex here to
   // disambiguate the variant.
   return vector.append(mozilla::AsVariant(FunctionIndex(funbox->index())));
-}
-
-void GCThingList::finishInnerFunctions() {
-  FunctionBox* funbox = lastbox;
-  while (funbox) {
-    funbox->finish();
-    funbox = funbox->emitLink_;
-  }
 }
 
 AbstractScopePtr GCThingList::getScope(size_t index) const {
@@ -64,6 +50,17 @@ bool js::frontend::EmitScriptThingsVector(JSContext* cx,
     CompilationInfo& compilationInfo;
     uint32_t i;
     mozilla::Span<JS::GCCellPtr>& output;
+
+    bool operator()(const ScriptAtom& data) {
+      JSAtom* atom = data;
+      output[i] = JS::GCCellPtr(atom);
+      return true;
+    }
+
+    bool operator()(const NullScriptThing& data) {
+      output[i] = JS::GCCellPtr(nullptr);
+      return true;
+    }
 
     bool operator()(const BigIntIndex& index) {
       BigIntCreationData& data = compilationInfo.bigIntData[index];
@@ -107,13 +104,11 @@ bool js::frontend::EmitScriptThingsVector(JSContext* cx,
     }
 
     bool operator()(const FunctionIndex& index) {
-      MutableHandle<FunctionType> data = compilationInfo.funcData[index];
       // We should have already converted this data to a JSFunction as part
       // of publishDeferredFunctions, which currently happens before BCE begins.
       // Once we can do LazyScriptCreationData::create without referencing the
       // functionbox, then we should be able to do JSFunction allocation here.
-      MOZ_ASSERT(!data.is<FunctionCreationData>());
-      output[i] = JS::GCCellPtr(data.as<JSFunction*>());
+      output[i] = JS::GCCellPtr(compilationInfo.functions[index]);
       return true;
     }
 

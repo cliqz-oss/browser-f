@@ -23,6 +23,7 @@
 #include "nsIAccessibleAnnouncementEvent.h"
 #include "nsAccUtils.h"
 #include "nsTextEquivUtils.h"
+#include "nsWhitespaceTokenizer.h"
 #include "RootAccessible.h"
 
 #include "mozilla/a11y/PDocAccessibleChild.h"
@@ -94,8 +95,9 @@ nsresult AccessibleWrap::HandleAccEvent(AccEvent* aEvent) {
         if (accessible != aEvent->Document() && !aEvent->IsFromUserInput()) {
           AccCaretMoveEvent* caretEvent = downcast_accEvent(aEvent);
           HyperTextAccessible* ht = AsHyperText();
-          if ((State() & states::FOCUSABLE) != 0 ||
-              (ht && ht->SelectionCount())) {
+          // Pivot to the caret's position if it has an expanded selection.
+          // This is used mostly for find in page.
+          if ((ht && ht->SelectionCount())) {
             DOMPoint point =
                 AsHyperText()->OffsetToDOMPoint(caretEvent->GetCaretOffset());
             if (Accessible* newPos =
@@ -541,6 +543,20 @@ void AccessibleWrap::GetRoleDescription(role aRole,
     if (NS_SUCCEEDED(rv) &&
         LocalizeString("headingLevel", aRoleDescription, formatString)) {
       return;
+    }
+  }
+
+  if ((aRole == roles::LANDMARK || aRole == roles::REGION) && aAttributes) {
+    nsAutoString xmlRoles;
+    if (NS_SUCCEEDED(aAttributes->GetStringProperty(
+            NS_LITERAL_CSTRING("xml-roles"), xmlRoles))) {
+      nsWhitespaceTokenizer tokenizer(xmlRoles);
+      while (tokenizer.hasMoreTokens()) {
+        if (LocalizeString(NS_ConvertUTF16toUTF8(tokenizer.nextToken()).get(),
+                           aRoleDescription)) {
+          return;
+        }
+      }
     }
   }
 

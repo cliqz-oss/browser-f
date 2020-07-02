@@ -17,6 +17,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/ipc/ProtocolUtils.h"
+#include "mozilla/mscom/Utils.h"
 #include "mozilla/PaintTracker.h"
 #include "mozilla/UniquePtr.h"
 
@@ -539,10 +540,9 @@ LRESULT CALLBACK CallWindowProcedureHook(int nCode, WPARAM wParam,
     if (!gNeuteredWindows->Contains(hWnd) &&
         !SuppressedNeuteringRegion::IsNeuteringSuppressed() &&
         NeuterWindowProcedure(hWnd)) {
-      if (!gNeuteredWindows->AppendElement(hWnd)) {
-        NS_ERROR("Out of memory!");
-        RestoreWindowProcedure(hWnd);
-      }
+      // XXX(Bug 1631371) Check if this should use a fallible operation as it
+      // pretended earlier.
+      gNeuteredWindows->AppendElement(hWnd);
     }
   }
   return CallNextHookEx(nullptr, nCode, wParam, lParam);
@@ -617,7 +617,7 @@ void InitUIThread() {
   MOZ_ASSERT(gUIThreadId == GetCurrentThreadId(),
              "Called InitUIThread multiple times on different threads!");
 
-  if (!gWinEventHook && XRE_Win32kCallsAllowed()) {
+  if (!gWinEventHook && !mscom::IsCurrentThreadMTA()) {
     gWinEventHook = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_DESTROY,
                                     NULL, &WinEventHook, GetCurrentProcessId(),
                                     gUIThreadId, WINEVENT_OUTOFCONTEXT);

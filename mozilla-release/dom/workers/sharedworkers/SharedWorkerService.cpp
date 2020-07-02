@@ -7,8 +7,10 @@
 #include "SharedWorkerService.h"
 #include "mozilla/dom/RemoteWorkerTypes.h"
 #include "mozilla/ipc/BackgroundParent.h"
+#include "mozilla/ClearOnShutdown.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/StaticMutex.h"
-#include "mozilla/SystemGroup.h"
+#include "nsIPrincipal.h"
 #include "nsProxyRelease.h"
 
 namespace mozilla {
@@ -21,9 +23,7 @@ namespace {
 
 StaticMutex sSharedWorkerMutex;
 
-// Raw pointer because SharedWorkerParent keeps this object alive, indirectly
-// via SharedWorkerManagerHolder.
-CheckedUnsafePtr<SharedWorkerService> sSharedWorkerService;
+StaticRefPtr<SharedWorkerService> sSharedWorkerService;
 
 class GetOrCreateWorkerManagerRunnable final : public Runnable {
  public:
@@ -118,12 +118,21 @@ already_AddRefed<SharedWorkerService> SharedWorkerService::GetOrCreate() {
 
   StaticMutexAutoLock lock(sSharedWorkerMutex);
 
-  if (sSharedWorkerService) {
-    RefPtr<SharedWorkerService> instance = sSharedWorkerService.get();
-    return instance.forget();
+  if (!sSharedWorkerService) {
+    sSharedWorkerService = new SharedWorkerService();
+    // ClearOnShutdown can only be called on main thread
+    nsresult rv = SchedulerGroup::Dispatch(
+        TaskCategory::Other,
+        NS_NewRunnableFunction("RegisterSharedWorkerServiceClearOnShutdown",
+                               []() {
+                                 StaticMutexAutoLock lock(sSharedWorkerMutex);
+                                 MOZ_ASSERT(sSharedWorkerService);
+                                 ClearOnShutdown(&sSharedWorkerService);
+                               }));
+    Unused << NS_WARN_IF(NS_FAILED(rv));
   }
 
-  RefPtr<SharedWorkerService> instance = new SharedWorkerService();
+  RefPtr<SharedWorkerService> instance = sSharedWorkerService;
   return instance.forget();
 }
 
@@ -133,20 +142,6 @@ SharedWorkerService* SharedWorkerService::Get() {
 
   MOZ_ASSERT(sSharedWorkerService);
   return sSharedWorkerService;
-}
-
-SharedWorkerService::SharedWorkerService() {
-  AssertIsOnBackgroundThread();
-
-  MOZ_ASSERT(!sSharedWorkerService);
-  sSharedWorkerService = this;
-}
-
-SharedWorkerService::~SharedWorkerService() {
-  StaticMutexAutoLock lock(sSharedWorkerMutex);
-
-  MOZ_ASSERT(sSharedWorkerService == this);
-  sSharedWorkerService = nullptr;
 }
 
 void SharedWorkerService::GetOrCreateWorkerManager(
@@ -159,9 +154,7 @@ void SharedWorkerService::GetOrCreateWorkerManager(
       new GetOrCreateWorkerManagerRunnable(this, aActor, aData, aWindowID,
                                            aPortIdentifier);
 
-  nsCOMPtr<nsIEventTarget> target =
-      SystemGroup::EventTargetFor(TaskCategory::Other);
-  nsresult rv = target->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
+  nsresult rv = SchedulerGroup::Dispatch(TaskCategory::Other, r.forget());
   Unused << NS_WARN_IF(NS_FAILED(rv));
 }
 
@@ -173,22 +166,26 @@ void SharedWorkerService::GetOrCreateWorkerManagerOnMainThread(
   MOZ_ASSERT(aBackgroundEventTarget);
   MOZ_ASSERT(aActor);
 
-  nsresult rv = NS_OK;
-  nsCOMPtr<nsIPrincipal> storagePrincipal =
-      PrincipalInfoToPrincipal(aData.storagePrincipalInfo(), &rv);
-  if (NS_WARN_IF(!storagePrincipal)) {
-    ErrorPropagationOnMainThread(aBackgroundEventTarget, aActor, rv);
+  auto storagePrincipalOrErr =
+      PrincipalInfoToPrincipal(aData.storagePrincipalInfo());
+  if (NS_WARN_IF(storagePrincipalOrErr.isErr())) {
+    ErrorPropagationOnMainThread(aBackgroundEventTarget, aActor,
+                                 storagePrincipalOrErr.unwrapErr());
     return;
   }
 
-  nsCOMPtr<nsIPrincipal> loadingPrincipal =
-      PrincipalInfoToPrincipal(aData.loadingPrincipalInfo(), &rv);
-  if (NS_WARN_IF(!loadingPrincipal)) {
-    ErrorPropagationOnMainThread(aBackgroundEventTarget, aActor, rv);
+  auto loadingPrincipalOrErr =
+      PrincipalInfoToPrincipal(aData.loadingPrincipalInfo());
+  if (NS_WARN_IF(loadingPrincipalOrErr.isErr())) {
+    ErrorPropagationOnMainThread(aBackgroundEventTarget, aActor,
+                                 loadingPrincipalOrErr.unwrapErr());
     return;
   }
 
   RefPtr<SharedWorkerManagerHolder> managerHolder;
+
+  nsCOMPtr<nsIPrincipal> loadingPrincipal = loadingPrincipalOrErr.unwrap();
+  nsCOMPtr<nsIPrincipal> storagePrincipal = storagePrincipalOrErr.unwrap();
 
   // Let's see if there is already a SharedWorker to share.
   nsCOMPtr<nsIURI> resolvedScriptURL =

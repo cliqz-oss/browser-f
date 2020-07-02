@@ -131,6 +131,7 @@ typedef void* nsNativeWidget;
 // IME context.  Note that the result is only valid in the process.  So,
 // XP code should use nsIWidget::GetNativeIMEContext() instead of using this.
 #define NS_RAW_NATIVE_IME_CONTEXT 14
+#define NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID 15
 #ifdef XP_MACOSX
 #  define NS_NATIVE_PLUGIN_PORT_QD 100
 #  define NS_NATIVE_PLUGIN_PORT_CG 101
@@ -594,19 +595,6 @@ class nsIWidget : public nsISupports {
   mozilla::CSSToLayoutDeviceScale GetDefaultScale();
 
   /**
-   * Return the Gecko override of the system default scale, if any;
-   * returns <= 0.0 if the system scale should be used as-is.
-   * nsIWidget::GetDefaultScale() [above] takes this into account.
-   * It is exposed here so that code that wants to check for a
-   * default-scale override without having a widget on hand can
-   * easily access the same value.
-   * Note that any scale override is a browser-wide value, whereas
-   * the default GetDefaultScale value (when no override is present)
-   * may vary between widgets (or screens).
-   */
-  static double DefaultScaleOverride();
-
-  /**
    * Return the first child of this widget.  Will return null if
    * there are no children.
    */
@@ -645,6 +633,12 @@ class nsIWidget : public nsISupports {
    *
    */
   virtual void Show(bool aState) = 0;
+
+  /**
+   * Whether or not a widget must be recreated after being hidden to show
+   * again properly.
+   */
+  virtual bool NeedsRecreateToReshow() { return false; }
 
   /**
    * Make the window modal.
@@ -824,9 +818,9 @@ class nsIWidget : public nsISupports {
    */
   virtual void SetSizeMode(nsSizeMode aMode) = 0;
 
-  virtual int32_t GetWorkspaceID() = 0;
+  virtual void GetWorkspaceID(nsAString& workspaceID) = 0;
 
-  virtual void MoveToWorkspace(int32_t workspaceID) = 0;
+  virtual void MoveToWorkspace(const nsAString& workspaceID) = 0;
 
   /**
    * Suppress animations that are applied to a window by OS.
@@ -1030,7 +1024,7 @@ class nsIWidget : public nsISupports {
     uintptr_t mWindowID;  // e10s specific, the unique plugin port id
     bool mVisible;        // e10s specific, widget visibility
     LayoutDeviceIntRect mBounds;
-    nsTArray<LayoutDeviceIntRect> mClipRegion;
+    CopyableTArray<LayoutDeviceIntRect> mClipRegion;
   };
 
   /**
@@ -1148,12 +1142,15 @@ class nsIWidget : public nsISupports {
   virtual void SetShowsToolbarButton(bool aShow) = 0;
 
   /*
-   * On Mac OS X Lion, this method shows or hides the full screen button in
-   * the titlebar that handles native full screen mode.
+   * On macOS, this method determines whether we tell cocoa that the window
+   * supports native full screen. If we do so, and another window is in
+   * native full screen, this window will also appear in native full screen.
    *
-   * Ignored on child widgets, non-Mac platforms, & pre-Lion Mac.
+   * We generally only want to do this for primary application windows.
+   *
+   * Ignored on child widgets and on non-Mac platforms.
    */
-  virtual void SetShowsFullScreenButton(bool aShow) = 0;
+  virtual void SetSupportsNativeFullscreen(bool aSupportsNativeFullscreen) = 0;
 
   enum WindowAnimationType {
     eGenericWindowAnimation,
@@ -1716,13 +1713,6 @@ class nsIWidget : public nsISupports {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
-  virtual nsresult SetPrefersReducedMotionOverrideForTest(bool aValue) {
-    return NS_ERROR_NOT_IMPLEMENTED;
-  }
-  virtual nsresult ResetPrefersReducedMotionOverrideForTest() {
-    return NS_ERROR_NOT_IMPLEMENTED;
-  }
-
   // Get rectangle of the screen where the window is placed.
   // It's used to detect popup overflow under Wayland because
   // Screenmanager does not work under it.
@@ -1730,6 +1720,15 @@ class nsIWidget : public nsISupports {
   virtual nsresult GetScreenRect(LayoutDeviceIntRect* aRect) {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
+  virtual nsRect GetPreferredPopupRect() {
+    NS_WARNING("GetPreferredPopupRect implemented only for wayland");
+    return nsRect(0, 0, 0, 0);
+  }
+  virtual void FlushPreferredPopupRect() {
+    NS_WARNING("FlushPreferredPopupRect implemented only for wayland");
+    return;
+  }
+
 #endif
 
   /*
@@ -2030,6 +2029,11 @@ class nsIWidget : public nsISupports {
   virtual CompositorBridgeChild* GetRemoteRenderer() { return nullptr; }
 
   /**
+   * Clear WebRender resources
+   */
+  virtual void ClearCachedWebrenderResources() {}
+
+  /**
    * If this widget has its own vsync source, return it, otherwise return
    * nullptr. An example of such local source would be Wayland frame callbacks.
    */
@@ -2146,13 +2150,13 @@ class nsIWidget : public nsISupports {
 
   static already_AddRefed<nsIBidiKeyboard> CreateBidiKeyboard();
 
- protected:
   /**
    * Like GetDefaultScale, but taking into account only the system settings
    * and ignoring Gecko preferences.
    */
   virtual double GetDefaultScaleInternal() { return 1.0; }
 
+ protected:
   // keep the list of children.  We also keep track of our siblings.
   // The ownership model is as follows: parent holds a strong ref to
   // the first element of the list, and each element holds a strong

@@ -25,15 +25,13 @@
 #include "nsThreadUtils.h"
 #include "mozilla/LinkedList.h"
 
-class nsSHistory;
-class nsDocShell;
 class nsISHEntry;
 class nsISHistory;
-class nsIWebNavigation;
-class nsIGlobalObject;
 
 namespace mozilla {
 namespace dom {
+
+class BrowsingContext;
 
 class ChildSHistory : public nsISupports, public nsWrapperCache {
  public:
@@ -43,7 +41,13 @@ class ChildSHistory : public nsISupports, public nsWrapperCache {
   JSObject* WrapObject(JSContext* cx,
                        JS::Handle<JSObject*> aGivenProto) override;
 
-  explicit ChildSHistory(nsDocShell* aDocShell);
+  explicit ChildSHistory(BrowsingContext* aBrowsingContext);
+
+  // Create or destroy the session history implementation in the child process.
+  // This can be removed once session history is stored exclusively in the
+  // parent process.
+  void SetIsInProcess(bool aIsInProcess);
+  bool IsInProcess() { return !!mHistory; }
 
   int32_t Count();
   int32_t Index();
@@ -71,8 +75,10 @@ class ChildSHistory : public nsISupports, public nsWrapperCache {
 
   nsISHistory* LegacySHistory();
 
+  void SetLength(uint32_t aLength) { mLength = aLength; }
+
  private:
-  virtual ~ChildSHistory();
+  virtual ~ChildSHistory() = default;
 
   class PendingAsyncHistoryNavigation
       : public Runnable,
@@ -96,12 +102,11 @@ class ChildSHistory : public nsISupports, public nsWrapperCache {
     int32_t mOffset;
   };
 
-  RefPtr<nsDocShell> mDocShell;
+  RefPtr<BrowsingContext> mBrowsingContext;
   nsCOMPtr<nsISHistory> mHistory;
   mozilla::LinkedList<PendingAsyncHistoryNavigation> mPendingNavigations;
+  uint32_t mLength = 0;
 };
-
-already_AddRefed<nsISHEntry> CreateSHEntryForDocShell(nsISHistory* aSHistory);
 
 }  // namespace dom
 }  // namespace mozilla

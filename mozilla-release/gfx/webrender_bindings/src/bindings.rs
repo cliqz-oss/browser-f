@@ -34,11 +34,10 @@ use rayon;
 use swgl_bindings::SwCompositor;
 use tracy_rs::register_thread_with_profiler;
 use webrender::{
-    api::units::*, api::*, set_profiler_hooks, ApiRecordingReceiver, AsyncPropertySampler, AsyncScreenshotHandle,
-    BinaryRecorder, Compositor, CompositorCapabilities, CompositorConfig, DebugFlags, Device, FastHashMap,
-    NativeSurfaceId, NativeSurfaceInfo, NativeTileId, PipelineInfo, ProfilerHooks, RecordedFrameHandle, Renderer,
-    RendererOptions, RendererStats, SceneBuilderHooks, ShaderPrecacheFlags, Shaders, ThreadListener, UploadMethod,
-    VertexUsageHint, WrShaders,
+    api::units::*, api::*, set_profiler_hooks, AsyncPropertySampler, AsyncScreenshotHandle, Compositor,
+    CompositorCapabilities, CompositorConfig, DebugFlags, Device, FastHashMap, NativeSurfaceId, NativeSurfaceInfo,
+    NativeTileId, PipelineInfo, ProfilerHooks, RecordedFrameHandle, Renderer, RendererOptions, RendererStats,
+    SceneBuilderHooks, ShaderPrecacheFlags, Shaders, ThreadListener, UploadMethod, VertexUsageHint, WrShaders,
 };
 
 #[cfg(target_os = "macos")]
@@ -270,6 +269,12 @@ impl WrVecU8 {
         w
     }
 
+    fn reserve(&mut self, len: usize) {
+        let mut vec = self.flush_into_vec();
+        vec.reserve(len);
+        *self = Self::from_vec(vec);
+    }
+
     fn push_bytes(&mut self, bytes: &[u8]) {
         let mut vec = self.flush_into_vec();
         vec.extend_from_slice(bytes);
@@ -280,6 +285,11 @@ impl WrVecU8 {
 #[no_mangle]
 pub extern "C" fn wr_vec_u8_push_bytes(v: &mut WrVecU8, bytes: ByteSlice) {
     v.push_bytes(bytes.as_slice());
+}
+
+#[no_mangle]
+pub extern "C" fn wr_vec_u8_reserve(v: &mut WrVecU8, len: usize) {
+    v.reserve(len);
 }
 
 #[no_mangle]
@@ -503,13 +513,8 @@ extern "C" {
     fn is_in_main_thread() -> bool;
     fn is_glcontext_gles(glcontext_ptr: *mut c_void) -> bool;
     fn is_glcontext_angle(glcontext_ptr: *mut c_void) -> bool;
-    // Enables binary recording that can be used with `wrench replay`
-    // Outputs a wr-record-*.bin file for each window that is shown
-    // Note: wrench will panic if external images are used, they can
-    // be disabled in WebRenderBridgeParent::ProcessWebRenderCommands
-    // by commenting out the path that adds an external image ID
-    fn gfx_use_wrench() -> bool;
     fn gfx_wr_resource_path_override() -> *const c_char;
+    fn gfx_wr_use_optimized_shaders() -> bool;
     // TODO: make gfx_critical_error() work.
     // We still have problem to pass the error message from render/render_backend
     // thread to main thread now.
@@ -530,14 +535,9 @@ extern "C" {
     fn wr_notifier_new_frame_ready(window_id: WrWindowId);
     fn wr_notifier_nop_frame_done(window_id: WrWindowId);
     fn wr_notifier_external_event(window_id: WrWindowId, raw_event: usize);
-    fn wr_schedule_render(window_id: WrWindowId, document_id_array: *const WrDocumentId, document_id_count: usize);
+    fn wr_schedule_render(window_id: WrWindowId);
     // NOTE: This moves away from pipeline_info.
-    fn wr_finished_scene_build(
-        window_id: WrWindowId,
-        document_id_array: *const WrDocumentId,
-        document_id_count: usize,
-        pipeline_info: &mut WrPipelineInfo,
-    );
+    fn wr_finished_scene_build(window_id: WrWindowId, pipeline_info: &mut WrPipelineInfo);
 
     fn wr_transaction_notification_notified(handler: usize, when: Checkpoint);
 }
@@ -895,7 +895,6 @@ extern "C" {
     fn apz_sample_transforms(
         window_id: WrWindowId,
         transaction: &mut Transaction,
-        document_id: WrDocumentId,
         epochs_being_rendered: &WrPipelineIdEpochs,
     );
     fn apz_deregister_sampler(window_id: WrWindowId);
@@ -929,7 +928,7 @@ impl SceneBuilderHooks for APZCallbacks {
         }
     }
 
-    fn post_scene_swap(&self, document_ids: &Vec<DocumentId>, info: PipelineInfo, sceneswap_time: u64) {
+    fn post_scene_swap(&self, _document_ids: &Vec<DocumentId>, info: PipelineInfo, sceneswap_time: u64) {
         let mut info = WrPipelineInfo::new(&info);
         unsafe {
             record_telemetry_time(TelemetryProbe::SceneSwapTime, sceneswap_time);
@@ -939,14 +938,14 @@ impl SceneBuilderHooks for APZCallbacks {
         // After a scene swap we should schedule a render for the next vsync,
         // otherwise there's no guarantee that the new scene will get rendered
         // anytime soon
-        unsafe { wr_finished_scene_build(self.window_id, document_ids.as_ptr(), document_ids.len(), &mut info) }
+        unsafe { wr_finished_scene_build(self.window_id, &mut info) }
         unsafe {
             gecko_profiler_end_marker(b"SceneBuilding\0".as_ptr() as *const c_char);
         }
     }
 
-    fn post_resource_update(&self, document_ids: &Vec<DocumentId>) {
-        unsafe { wr_schedule_render(self.window_id, document_ids.as_ptr(), document_ids.len()) }
+    fn post_resource_update(&self, _document_ids: &Vec<DocumentId>) {
+        unsafe { wr_schedule_render(self.window_id) }
         unsafe {
             gecko_profiler_end_marker(b"SceneBuilding\0".as_ptr() as *const c_char);
         }
@@ -982,13 +981,16 @@ impl AsyncPropertySampler for SamplerCallback {
         unsafe { apz_register_sampler(self.window_id) }
     }
 
-    fn sample(&self, document_id: DocumentId, epochs_being_rendered: &FastHashMap<PipelineId, Epoch>) -> Vec<FrameMsg> {
+    fn sample(
+        &self,
+        _document_id: DocumentId,
+        epochs_being_rendered: &FastHashMap<PipelineId, Epoch>,
+    ) -> Vec<FrameMsg> {
         let mut transaction = Transaction::new();
         unsafe {
             apz_sample_transforms(
                 self.window_id,
                 &mut transaction,
-                document_id,
                 &epochs_being_rendered.iter().map(WrPipelineIdAndEpoch::from).collect(),
             )
         };
@@ -1142,6 +1144,8 @@ fn wr_device_new(gl_context: *mut c_void, pc: Option<&mut WrProgramCache>) -> De
         }
     };
 
+    let use_optimized_shaders = unsafe { gfx_wr_use_optimized_shaders() };
+
     let cached_programs = match pc {
         Some(cached_programs) => Some(Rc::clone(cached_programs.rc_get())),
         None => None,
@@ -1150,6 +1154,7 @@ fn wr_device_new(gl_context: *mut c_void, pc: Option<&mut WrProgramCache>) -> De
     Device::new(
         gl,
         resource_override_path,
+        use_optimized_shaders,
         upload_method,
         cached_programs,
         false,
@@ -1312,6 +1317,7 @@ pub extern "C" fn wr_window_new(
     compositor: *mut c_void,
     max_update_rects: usize,
     max_partial_present_rects: usize,
+    draw_previous_partial_present_regions: bool,
     out_handle: &mut *mut DocumentHandle,
     out_renderer: &mut *mut Renderer,
     out_max_texture_size: *mut i32,
@@ -1319,13 +1325,6 @@ pub extern "C" fn wr_window_new(
     panic_on_gl_error: bool,
 ) -> bool {
     assert!(unsafe { is_in_render_thread() });
-
-    let recorder: Option<Box<dyn ApiRecordingReceiver>> = if unsafe { gfx_use_wrench() } {
-        let name = format!("wr-record-{}.bin", window_id.0);
-        Some(Box::new(BinaryRecorder::new(&PathBuf::from(name))))
-    } else {
-        None
-    };
 
     let native_gl = if unsafe { is_glcontext_gles(gl_context) } {
         unsafe { gl::GlesFns::load_with(|symbol| get_proc_address(gl_context, symbol)) }
@@ -1397,6 +1396,7 @@ pub extern "C" fn wr_window_new(
     } else {
         CompositorConfig::Draw {
             max_partial_present_rects,
+            draw_previous_partial_present_regions,
         }
     };
 
@@ -1406,7 +1406,6 @@ pub extern "C" fn wr_window_new(
         enable_subpixel_aa: cfg!(not(target_os = "android")),
         support_low_priority_transactions,
         allow_texture_swizzling,
-        recorder: recorder,
         blob_image_handler: Some(Box::new(Moz2dBlobImageHandler::new(
             workers.clone(),
             workers_low_priority.clone(),
@@ -1427,6 +1426,7 @@ pub extern "C" fn wr_window_new(
                 }
             }
         },
+        use_optimized_shaders: unsafe { gfx_wr_use_optimized_shaders() },
         renderer_id: Some(window_id.0),
         upload_method,
         scene_builder_hooks: Some(Box::new(APZCallbacks::new(window_id))),
@@ -1491,7 +1491,7 @@ pub extern "C" fn wr_api_create_document(
     root_dh.ensure_hit_tester();
 
     *out_handle = Box::into_raw(Box::new(DocumentHandle::new(
-        root_dh.api.clone_sender().create_api_by_client(next_namespace_id()),
+        root_dh.api.create_sender().create_api_by_client(next_namespace_id()),
         root_dh.hit_tester.clone(),
         doc_size,
         layer,
@@ -1511,7 +1511,7 @@ pub extern "C" fn wr_api_clone(dh: &mut DocumentHandle, out_handle: &mut *mut Do
     dh.ensure_hit_tester();
 
     let handle = DocumentHandle {
-        api: dh.api.clone_sender().create_api_by_client(next_namespace_id()),
+        api: dh.api.create_sender().create_api_by_client(next_namespace_id()),
         document_id: dh.document_id,
         hit_tester: dh.hit_tester.clone(),
         hit_tester_request: None,
@@ -1776,9 +1776,9 @@ pub extern "C" fn wr_transaction_set_is_transform_async_zooming(
 }
 
 #[no_mangle]
-pub extern "C" fn wr_transaction_set_quality_settings(txn: &mut Transaction, allow_sacrificing_subpixel_aa: bool) {
+pub extern "C" fn wr_transaction_set_quality_settings(txn: &mut Transaction, force_subpixel_aa_where_possible: bool) {
     txn.set_quality_settings(QualitySettings {
-        allow_sacrificing_subpixel_aa,
+        force_subpixel_aa_where_possible,
     });
 }
 
@@ -1946,7 +1946,7 @@ pub extern "C" fn wr_api_send_transaction(dh: &mut DocumentHandle, transaction: 
 
 #[no_mangle]
 pub unsafe extern "C" fn wr_api_send_transactions(
-    document_handles: *const *const DocumentHandle,
+    document_handles: *const *mut DocumentHandle,
     transactions: *const *mut Transaction,
     transaction_count: usize,
     is_async: bool,
@@ -2003,31 +2003,24 @@ pub extern "C" fn wr_resource_updates_add_raw_font(
     txn.add_raw_font(key, bytes.flush_into_vec(), index);
 }
 
-#[no_mangle]
-pub extern "C" fn wr_api_capture(dh: &mut DocumentHandle, path: *const c_char, bits_raw: u32) {
+fn generate_capture_path(path: *const c_char) -> Option<PathBuf> {
     use std::fs::{create_dir_all, File};
     use std::io::Write;
 
     let cstr = unsafe { CStr::from_ptr(path) };
-    let mut path = PathBuf::from(&*cstr.to_string_lossy());
+    let local_dir = PathBuf::from(&*cstr.to_string_lossy());
 
-    #[cfg(target_os = "android")]
-    {
-        // On Android we need to write into a particular folder on external
-        // storage so that (a) it can be written without requiring permissions
-        // and (b) it can be pulled off via `adb pull`. This env var is set
-        // in GeckoLoader.java.
-        if let Ok(storage_path) = env::var("PUBLIC_STORAGE") {
-            path = PathBuf::from(storage_path).join(path);
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(storage_path) = dirs::data_local_dir() {
-            path = PathBuf::from(storage_path).join(path);
-        }
-    }
+    // On Android we need to write into a particular folder on external
+    // storage so that (a) it can be written without requiring permissions
+    // and (b) it can be pulled off via `adb pull`. This env var is set
+    // in GeckoLoader.java.
+    let mut path = if let Ok(storage_path) = env::var("PUBLIC_STORAGE") {
+        PathBuf::from(storage_path).join(local_dir)
+    } else if let Some(storage_path) = dirs::home_dir() {
+        PathBuf::from(storage_path).join(local_dir)
+    } else {
+        local_dir
+    };
 
     // Increment the extension until we find a fresh path
     while path.is_dir() {
@@ -2050,20 +2043,36 @@ pub extern "C" fn wr_api_capture(dh: &mut DocumentHandle, path: *const c_char, b
             if let Some(moz_revision) = option_env!("GECKO_HEAD_REV") {
                 writeln!(file, "mozilla-central {}", moz_revision).unwrap();
             }
+            Some(path)
         }
         Err(e) => {
             warn!("Unable to create path '{:?}' for capture: {:?}", path, e);
-            return;
+            None
         }
     }
-
-    let bits = CaptureBits::from_bits(bits_raw as _).unwrap();
-    dh.api.save_capture(path, bits);
 }
 
 #[no_mangle]
-pub extern "C" fn wr_api_set_transaction_logging(dh: &mut DocumentHandle, aValue: bool) {
-    dh.api.send_debug_cmd(DebugCommand::SetTransactionLogging(aValue));
+pub extern "C" fn wr_api_capture(dh: &mut DocumentHandle, path: *const c_char, bits_raw: u32) {
+    if let Some(path) = generate_capture_path(path) {
+        let bits = CaptureBits::from_bits(bits_raw as _).unwrap();
+        dh.api.save_capture(path, bits);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn wr_api_start_capture_sequence(dh: &mut DocumentHandle, path: *const c_char, bits_raw: u32) {
+    if let Some(path) = generate_capture_path(path) {
+        let bits = CaptureBits::from_bits(bits_raw as _).unwrap();
+        dh.api.start_capture_sequence(path, bits);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn wr_api_stop_capture_sequence(dh: &mut DocumentHandle) {
+    let border = "--------------------------\n";
+    warn!("{} Stop capturing WR state\n{}", &border, &border);
+    dh.api.stop_capture_sequence();
 }
 
 #[cfg(target_os = "windows")]
@@ -2121,7 +2130,7 @@ pub extern "C" fn wr_resource_updates_add_font_instance(
     txn.add_font_instance(
         key,
         font_key,
-        Au::from_f32_px(glyph_size),
+        glyph_size,
         unsafe { options.as_ref().cloned() },
         unsafe { platform_options.as_ref().cloned() },
         variations.convert_into_vec::<FontVariation>(),
@@ -2236,6 +2245,7 @@ pub extern "C" fn wr_dp_clear_save(state: &mut WrState) {
 pub enum WrReferenceFrameKind {
     Transform,
     Perspective,
+    Zoom,
 }
 
 /// IMPORTANT: If you add fields to this struct, you need to also add initializers
@@ -2249,12 +2259,8 @@ pub struct WrStackingContextParams {
     pub reference_frame_kind: WrReferenceFrameKind,
     pub scrolling_relative_to: *const u64,
     pub prim_flags: PrimitiveFlags,
-    /// True if picture caching should be enabled for this stacking context.
-    pub cache_tiles: bool,
     pub mix_blend_mode: MixBlendMode,
-    /// True if this stacking context is a backdrop root.
-    /// https://drafts.fxtf.org/filter-effects-2/#BackdropRoot
-    pub is_backdrop_root: bool,
+    pub flags: StackingContextFlags,
 }
 
 #[no_mangle]
@@ -2353,6 +2359,7 @@ pub extern "C" fn wr_dp_push_stacking_context(
         let reference_frame_kind = match params.reference_frame_kind {
             WrReferenceFrameKind::Transform => ReferenceFrameKind::Transform,
             WrReferenceFrameKind::Perspective => ReferenceFrameKind::Perspective { scrolling_relative_to },
+            WrReferenceFrameKind::Zoom => ReferenceFrameKind::Zoom,
         };
         wr_spatial_id = state.frame_builder.dl_builder.push_reference_frame(
             bounds.origin,
@@ -2378,8 +2385,7 @@ pub extern "C" fn wr_dp_push_stacking_context(
         &r_filter_datas,
         &[],
         glyph_raster_space,
-        params.cache_tiles,
-        params.is_backdrop_root,
+        params.flags,
     );
 
     result
@@ -2421,14 +2427,12 @@ pub extern "C" fn wr_dp_define_clip_with_parent_clip(
     clip_rect: LayoutRect,
     complex: *const ComplexClipRegion,
     complex_count: usize,
-    mask: *const ImageMask,
 ) -> WrClipId {
     wr_dp_define_clip_impl(
         &mut state.frame_builder,
         parent.to_webrender(state.pipeline_id),
         clip_rect,
         unsafe { make_slice(complex, complex_count) },
-        unsafe { mask.as_ref() }.map(|m| *m),
     )
 }
 
@@ -2439,14 +2443,12 @@ pub extern "C" fn wr_dp_define_clip_with_parent_clip_chain(
     clip_rect: LayoutRect,
     complex: *const ComplexClipRegion,
     complex_count: usize,
-    mask: *const ImageMask,
 ) -> WrClipId {
     wr_dp_define_clip_impl(
         &mut state.frame_builder,
         parent.to_webrender(state.pipeline_id),
         clip_rect,
         unsafe { make_slice(complex, complex_count) },
-        unsafe { mask.as_ref() }.map(|m| *m),
     )
 }
 
@@ -2455,12 +2457,56 @@ fn wr_dp_define_clip_impl(
     parent: SpaceAndClipInfo,
     clip_rect: LayoutRect,
     complex_regions: &[ComplexClipRegion],
-    mask: Option<ImageMask>,
 ) -> WrClipId {
     debug_assert!(unsafe { is_in_main_thread() });
     let clip_id = frame_builder
         .dl_builder
-        .define_clip(&parent, clip_rect, complex_regions.iter().cloned(), mask);
+        .define_clip(&parent, clip_rect, complex_regions.iter().cloned());
+    WrClipId::from_webrender(clip_id)
+}
+
+#[no_mangle]
+pub extern "C" fn wr_dp_define_image_mask_clip_with_parent_clip_chain(
+    state: &mut WrState,
+    parent: &WrSpaceAndClipChain,
+    mask: ImageMask,
+) -> WrClipId {
+    debug_assert!(unsafe { is_in_main_thread() });
+
+    let clip_id = state
+        .frame_builder
+        .dl_builder
+        .define_clip_image_mask(&parent.to_webrender(state.pipeline_id), mask);
+    WrClipId::from_webrender(clip_id)
+}
+
+#[no_mangle]
+pub extern "C" fn wr_dp_define_rounded_rect_clip_with_parent_clip_chain(
+    state: &mut WrState,
+    parent: &WrSpaceAndClipChain,
+    complex: ComplexClipRegion,
+) -> WrClipId {
+    debug_assert!(unsafe { is_in_main_thread() });
+
+    let clip_id = state
+        .frame_builder
+        .dl_builder
+        .define_clip_rounded_rect(&parent.to_webrender(state.pipeline_id), complex);
+    WrClipId::from_webrender(clip_id)
+}
+
+#[no_mangle]
+pub extern "C" fn wr_dp_define_rect_clip_with_parent_clip_chain(
+    state: &mut WrState,
+    parent: &WrSpaceAndClipChain,
+    clip_rect: LayoutRect,
+) -> WrClipId {
+    debug_assert!(unsafe { is_in_main_thread() });
+
+    let clip_id = state
+        .frame_builder
+        .dl_builder
+        .define_clip_rect(&parent.to_webrender(state.pipeline_id), clip_rect);
     WrClipId::from_webrender(clip_id)
 }
 
@@ -2511,8 +2557,6 @@ pub extern "C" fn wr_dp_define_scroll_layer(
         Some(ExternalScrollId(external_scroll_id, state.pipeline_id)),
         content_rect,
         clip_rect,
-        vec![],
-        None,
         ScrollSensitivity::Script,
         // TODO(gw): We should also update the Gecko-side APIs to provide
         //           this as a vector rather than a point.
@@ -3504,8 +3548,8 @@ pub extern "C" fn wr_dp_start_item_group(state: &mut WrState) {
 }
 
 #[no_mangle]
-pub extern "C" fn wr_dp_cancel_item_group(state: &mut WrState) {
-    state.frame_builder.dl_builder.cancel_item_group();
+pub extern "C" fn wr_dp_cancel_item_group(state: &mut WrState, discard: bool) {
+    state.frame_builder.dl_builder.cancel_item_group(discard);
 }
 
 #[no_mangle]
@@ -3590,34 +3634,30 @@ pub extern "C" fn wr_clear_item_tag(state: &mut WrState) {
     state.current_tag = None;
 }
 
+#[repr(C)]
+pub struct HitResult {
+    pipeline_id: WrPipelineId,
+    scroll_id: u64,
+    hit_info: u16,
+}
+
 #[no_mangle]
-pub extern "C" fn wr_api_hit_test(
-    dh: &mut DocumentHandle,
-    point: WorldPoint,
-    out_pipeline_id: &mut WrPipelineId,
-    out_scroll_id: &mut u64,
-    out_hit_info: &mut u16,
-) -> bool {
+pub extern "C" fn wr_api_hit_test(dh: &mut DocumentHandle, point: WorldPoint, out_results: &mut ThinVec<HitResult>) {
     dh.ensure_hit_tester();
 
     let result = dh
         .hit_tester
         .as_ref()
         .unwrap()
-        .hit_test(None, point, HitTestFlags::empty());
+        .hit_test(None, point, HitTestFlags::FIND_ALL);
 
     for item in &result.items {
-        // For now we should never be getting results back for which the tag is
-        // 0 (== CompositorHitTestInvisibleToHit). In the future if we allow this,
-        // we'll want to |continue| on the loop in this scenario.
-        debug_assert!(item.tag.1 != 0);
-        *out_pipeline_id = item.pipeline;
-        *out_scroll_id = item.tag.0;
-        *out_hit_info = item.tag.1;
-        return true;
+        out_results.push(HitResult {
+            pipeline_id: item.pipeline,
+            scroll_id: item.tag.0,
+            hit_info: item.tag.1,
+        });
     }
-
-    false
 }
 
 pub type VecU8 = Vec<u8>;
@@ -3643,8 +3683,8 @@ extern "C" {
         format: ImageFormat,
         render_rect: &LayoutIntRect,
         visible_rect: &DeviceIntRect,
-        tile_size: Option<&u16>,
-        tile_offset: Option<&TileOffset>,
+        tile_size: u16,
+        tile_offset: &TileOffset,
         dirty_rect: Option<&LayoutIntRect>,
         output: MutByteSlice,
     ) -> bool;

@@ -862,6 +862,7 @@ impl TextureCache {
     /// Called at the beginning of each frame.
     pub fn begin_frame(&mut self, stamp: FrameStamp) {
         debug_assert!(!self.now.is_valid());
+        profile_scope!("begin_frame");
         self.now = stamp;
         self.set_doc_data();
         self.maybe_do_periodic_gc();
@@ -1754,7 +1755,7 @@ impl TextureArray {
     }
 
     fn clear(&mut self, updates: &mut TextureUpdateList) {
-        for unit in self.units.drain() {
+        for unit in self.units.drain(..) {
             updates.push_free(unit.texture_id);
         }
     }

@@ -4,7 +4,7 @@
 
 "use strict";
 
-const { Cc, Ci, Cu, Cr } = require("chrome");
+const { Cc, Ci, Cu, Cr, components: Components } = require("chrome");
 const ChromeUtils = require("ChromeUtils");
 const Services = require("Services");
 
@@ -84,13 +84,6 @@ BrowserElementWebNavigation.prototype = {
     });
   },
 
-  setOriginAttributesBeforeLoading(originAttributes) {
-    // No equivalent in the current BrowserElement API
-    this._sendMessage("WebNavigation:SetOriginAttributes", {
-      originAttributes,
-    });
-  },
-
   reload(flags) {
     let hardReload = false;
     if (
@@ -127,10 +120,10 @@ BrowserElementWebNavigation.prototype = {
   // Bug 1233803 - accessing the sessionHistory of remote browsers should be
   // done in content scripts.
   get sessionHistory() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
   set sessionHistory(value) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
   _sendMessage(message, data) {
@@ -149,7 +142,7 @@ BrowserElementWebNavigation.prototype = {
   },
 
   swapBrowser(browser) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
   copyStateFrom(otherWebNavigation) {

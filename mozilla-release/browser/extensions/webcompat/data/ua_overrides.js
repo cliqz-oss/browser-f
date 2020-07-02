@@ -36,30 +36,6 @@ const AVAILABLE_UA_OVERRIDES = [
   },
   {
     /*
-     * Bug 1563839 - rolb.santanderbank.com - Build UA override
-     * WebCompat issue #33462 - https://webcompat.com/issues/33462
-     *
-     * santanderbank expects UA to have 'like Gecko', otherwise it runs
-     * xmlDoc.onload whose support has been dropped. It results in missing labels in forms
-     * and some other issues.  Adding 'like Gecko' fixes those issues.
-     */
-    id: "bug1563839",
-    platform: "all",
-    domain: "rolb.santanderbank.com",
-    bug: "1563839",
-    config: {
-      matches: [
-        "*://*.santander.co.uk/*",
-        "*://bob.santanderbank.com/*",
-        "*://rolb.santanderbank.com/*",
-      ],
-      uaTransformer: originalUA => {
-        return originalUA.replace("Gecko", "like Gecko");
-      },
-    },
-  },
-  {
-    /*
      * Bug 1577519 - att.tv - Create a UA override for att.tv for playback on desktop
      * WebCompat issue #3846 - https://webcompat.com/issues/3846
      *
@@ -614,6 +590,26 @@ const AVAILABLE_UA_OVERRIDES = [
     bug: "1628455",
     config: {
       matches: ["https://*.autotrader.ca/*"],
+      uaTransformer: () => {
+        return UAHelpers.getDeviceAppropriateChromeUA();
+      },
+    },
+  },
+  {
+    /*
+     * Bug 1630280 - UA override for dominos.ch
+     * Webcompat issue #48273 - https://webcompat.com/issues/48273
+     *
+     * dominos.ch is suggesting downloading their native app and showing
+     * an overlay that can't be removed in Firefox for Android. Spoofing
+     * as Chrome allows to continue to the site
+     */
+    id: "bug1630280",
+    platform: "android",
+    domain: "dominos.ch",
+    bug: "1630280",
+    config: {
+      matches: ["https://*.dominos.ch/*"],
       uaTransformer: () => {
         return UAHelpers.getDeviceAppropriateChromeUA();
       },

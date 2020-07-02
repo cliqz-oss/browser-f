@@ -9,8 +9,8 @@
 #include "mozilla/Assertions.h"  // MOZ_ASSERT
 
 #include "builtin/ModuleObject.h"          // ModuleObject
-#include "frontend/BCEScriptStencil.h"     // BCEScriptStencil
 #include "frontend/BytecodeEmitter.h"      // BytecodeEmitter
+#include "frontend/FunctionSyntaxKind.h"   // FunctionSyntaxKind
 #include "frontend/ModuleSharedContext.h"  // ModuleSharedContext
 #include "frontend/NameAnalysisTypes.h"    // NameLocation
 #include "frontend/NameOpEmitter.h"        // NameOpEmitter
@@ -34,19 +34,9 @@ FunctionEmitter::FunctionEmitter(BytecodeEmitter* bce, FunctionBox* funbox,
                                  IsHoisted isHoisted)
     : bce_(bce),
       funbox_(funbox),
-      fun_(bce_->cx, funbox_->function()),
       name_(bce_->cx, funbox_->explicitName()),
       syntaxKind_(syntaxKind),
       isHoisted_(isHoisted) {}
-
-bool FunctionEmitter::interpretedCommon() {
-  // Mark as singletons any function which will only be executed once, or
-  // which is inner to a lambda we only expect to run once. In the latter
-  // case, if the lambda runs multiple times then CloneFunctionObject will
-  // make a deep clone of its contents.
-  bool singleton = bce_->checkRunOnceContext();
-  return funbox_->setTypeForScriptedFunction(bce_->cx, singleton);
-}
 
 bool FunctionEmitter::prepareForNonLazy() {
   MOZ_ASSERT(state_ == State::Start);
@@ -58,12 +48,6 @@ bool FunctionEmitter::prepareForNonLazy() {
   //                [stack]
 
   funbox_->wasEmitted = true;
-
-  if (!interpretedCommon()) {
-    return false;
-  }
-
-  MOZ_ASSERT_IF(bce_->sc->strict(), funbox_->strictScript);
 
 #ifdef DEBUG
   state_ = State::NonLazy;
@@ -98,16 +82,9 @@ bool FunctionEmitter::emitLazy() {
 
   funbox_->wasEmitted = true;
 
-  if (!interpretedCommon()) {
-    return false;
-  }
-
+  // Prepare to update the inner lazy script now that it's parent is fully
+  // compiled. These updates will be applied in FunctionBox::finish().
   funbox_->setEnclosingScopeForInnerLazyFunction(bce_->innermostScope());
-  if (bce_->emittingRunOnceLambda) {
-    // NOTE: The 'funbox' is only partially initialized so we defer checking
-    // the shouldSuppressRunOnce condition until delazification.
-    funbox_->setTreatAsRunOnce();
-  }
 
   if (!emitFunction()) {
     //              [stack] FUN?
@@ -146,7 +123,7 @@ bool FunctionEmitter::emitAgain() {
   // If there are parameter expressions, the var name could be a
   // parameter.
   if (!lhsLoc && bce_->sc->isFunctionBox() &&
-      bce_->sc->asFunctionBox()->hasExtraBodyVarScope()) {
+      bce_->sc->asFunctionBox()->functionHasExtraBodyVarScope()) {
     lhsLoc = bce_->locationOfNameBoundInScope(
         name_, bce_->varEmitterScope->enclosingInFrame());
   }
@@ -192,7 +169,7 @@ bool FunctionEmitter::emitAsmJSModule() {
   MOZ_ASSERT(state_ == State::Start);
 
   MOZ_ASSERT(!funbox_->wasEmitted);
-  MOZ_ASSERT(IsAsmJSModule(fun_));
+  MOZ_ASSERT(funbox_->isAsmJSModule());
 
   //                [stack]
 
@@ -384,15 +361,6 @@ bool FunctionScriptEmitter::prepareForParameters() {
     }
   }
 
-  /*
-   * Mark the script so that initializers created within it may be given more
-   * precise types.
-   */
-  if (bce_->isRunOnceLambda()) {
-    bce_->script->setTreatAsRunOnce();
-    MOZ_ASSERT(!bce_->script->hasRunOnce());
-  }
-
   if (bodyEnd_) {
     bce_->setFunctionBodyEndPos(*bodyEnd_);
   }
@@ -532,7 +500,7 @@ bool FunctionScriptEmitter::emitAsyncFunctionRejectEpilogue() {
 bool FunctionScriptEmitter::emitExtraBodyVarScope() {
   //                [stack]
 
-  if (!funbox_->hasExtraBodyVarScope()) {
+  if (!funbox_->functionHasExtraBodyVarScope()) {
     return true;
   }
 
@@ -731,27 +699,23 @@ bool FunctionScriptEmitter::emitEndBody() {
   return true;
 }
 
-bool FunctionScriptEmitter::initScript(
-    const FieldInitializers& fieldInitializers) {
+bool FunctionScriptEmitter::intoStencil(TopLevelFunction isTopLevel) {
   MOZ_ASSERT(state_ == State::EndBody);
 
-  js::UniquePtr<ImmutableScriptData> immutableScriptData =
-      bce_->createImmutableScriptData(bce_->cx);
-  if (!immutableScriptData) {
+  // If this function is the top-level of the compile, store directly into the
+  // CompilationInfo like all other top-level scripts.
+  ScriptStencil* stencilPtr = isTopLevel == TopLevelFunction::Yes
+                                  ? bce_->compilationInfo.topLevel.address()
+                                  : funbox_->functionStencil().address();
+
+  if (!bce_->intoScriptStencil(stencilPtr)) {
     return false;
   }
-
-  BCEScriptStencil stencil(*bce_, std::move(immutableScriptData));
-  if (!JSScript::fullyInitFromStencil(bce_->cx, bce_->compilationInfo,
-                                      bce_->script, stencil)) {
-    return false;
-  }
-
-  bce_->script->setFieldInitializers(fieldInitializers);
 
 #ifdef DEBUG
   state_ = State::End;
 #endif
+
   return true;
 }
 

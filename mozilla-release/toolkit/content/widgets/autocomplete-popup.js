@@ -25,7 +25,7 @@
       this.setAttribute("consumeoutsideclicks", "never");
 
       this.textContent = "";
-      this.appendChild(MozXULElement.parseXULToFragment(this._markup));
+      this.appendChild(this.constructor.fragment);
 
       /**
        * This is the default number of rows that we give the autocomplete
@@ -108,7 +108,7 @@
       return this._richlistbox;
     }
 
-    get _markup() {
+    static get markup() {
       return `
       <richlistbox class="autocomplete-richlistbox" flex="1"/>
     `;
@@ -394,6 +394,7 @@
             "autofill-clear-button",
             "autofill-insecureWarning",
             "generatedPassword",
+            "importableLogins",
             "insecureWarning",
             "loginsFooter",
             "loginWithOrigin",
@@ -423,6 +424,9 @@
               break;
             case "autofill-insecureWarning":
               options = { is: "autocomplete-creditcard-insecure-field" };
+              break;
+            case "importableLogins":
+              options = { is: "autocomplete-importable-logins-richlistitem" };
               break;
             case "generatedPassword":
               options = { is: "autocomplete-generated-password-richlistitem" };

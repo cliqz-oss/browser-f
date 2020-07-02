@@ -103,6 +103,8 @@ options-enable-chrome-tooltip =
 options-enable-remote-label = Externes Debugging aktivieren
 options-enable-remote-tooltip =
     .title = Das Aktivieren dieser Einstellung ermöglicht den Entwicklerwerkzeugen das Debuggen anderer Instanzen wie Firefox OS.
+options-enable-remote-tooltip2 =
+    .title = Das Aktivieren dieser Einstellung ermöglicht das externe Debuggen dieser Browser-Instanz außerhalb des Programms, ggf. auf einem anderen Gerät.
 # The label for checkbox that toggles the service workers testing over HTTP on or off.
 options-enable-service-workers-http-label = Service-Worker über HTTP aktivieren (bei geöffneten Entwicklerwerkzeugen)
 options-enable-service-workers-http-tooltip =
@@ -113,11 +115,6 @@ options-source-maps-tooltip =
     .title = Beim Aktivieren dieser Einstellung beziehen sich Quelltextverweise in den Werkzeugen auf entsprechenden, meist lesbareren Quelltext anstatt den eigentlichen, meist minimierten Quelltext.
 # The message shown for settings that trigger page reload
 options-context-triggers-page-refresh = * Nur für aktuelle Sitzung, lädt Seite neu
-
-##
-
-# The heading for the Debugger section
-options-debugger-label = Debugger
 # The label for the checkbox that toggles the display of the platform data in the
 # Profiler i.e. devtools.profiler.ui.show-platform-data a boolean preference in about:config
 options-show-platform-data-label = Gecko-Plattformdaten anzeigen

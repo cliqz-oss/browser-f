@@ -47,6 +47,14 @@ class WorkerTargetFront extends TargetMixin(
     return this.url.split("/").pop();
   }
 
+  get isDedicatedWorker() {
+    return this.type === Ci.nsIWorkerDebugger.TYPE_DEDICATED;
+  }
+
+  get isSharedWorker() {
+    return this.type === Ci.nsIWorkerDebugger.TYPE_SHARED;
+  }
+
   get isServiceWorker() {
     return this.type === Ci.nsIWorkerDebugger.TYPE_SERVICE;
   }
@@ -91,7 +99,7 @@ class WorkerTargetFront extends TargetMixin(
     try {
       response = await super.detach();
     } catch (e) {
-      console.warn("Error while detaching the worker target front:", e);
+      this.logDetachError(e, "worker");
     }
 
     if (this.registration) {

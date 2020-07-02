@@ -15,7 +15,7 @@ import { createSelector } from "reselect";
 import { features } from "../utils/prefs";
 
 import type { Selector, State } from "./types";
-import type { Thread, ThreadList } from "../types";
+import type { Thread, ThreadList, Worker } from "../types";
 import type { Action } from "../actions/types";
 
 export type ThreadsState = {
@@ -54,7 +54,11 @@ export default function update(
     case "INSERT_THREADS":
       return {
         ...state,
-        threads: [...state.threads, ...action.threads],
+        threads: [
+          ...state.threads,
+          // This excludes the mainThread from being added in the list of threads. This change will also go away in the next set because the main thread will be in this list.
+          ...action.threads.filter(thread => thread.type != "mainThread"),
+        ],
       };
     case "REMOVE_THREADS":
       const { threads } = action;
@@ -87,7 +91,7 @@ export const getThreads = (state: OuterState) => state.threads.threads;
 
 export const getWorkerCount = (state: OuterState) => getThreads(state).length;
 
-export function getWorkerByThread(state: OuterState, thread: string) {
+export function getWorkerByThread(state: OuterState, thread: string): ?Worker {
   return getThreads(state).find(worker => worker.actor == thread);
 }
 
@@ -108,15 +112,14 @@ export const getAllThreads: Selector<Thread[]> = createSelector(
   ]
 );
 
-export function supportsWasm(state: State) {
+export function supportsWasm(state: State): boolean {
   return features.wasm && state.threads.traits.wasmBinarySource;
 }
 
 // checks if a path begins with a thread actor
 // e.g "server1.conn0.child1/workerTarget22/context1/dbg-workers.glitch.me"
-export function startsWithThreadActor(state: State, path: string) {
+export function startsWithThreadActor(state: State, path: string): ?string {
   const threadActors = getAllThreads(state).map(t => t.actor);
-
   const match = path.match(new RegExp(`(${threadActors.join("|")})\/(.*)`));
   return match?.[1];
 }

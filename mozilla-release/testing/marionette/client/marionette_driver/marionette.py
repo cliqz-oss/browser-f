@@ -15,6 +15,7 @@ import traceback
 
 from contextlib import contextmanager
 
+import six
 from six import reraise
 
 from . import errors
@@ -429,6 +430,8 @@ class Marionette(object):
 
         """
         self.host = "127.0.0.1"  # host
+        if int(port) == 0:
+            port = Marionette.check_port_available(port)
         self.port = self.local_port = int(port)
         self.bin = bin
         self.client = None
@@ -519,8 +522,10 @@ class Marionette(object):
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))
+            port = s.getsockname()[1]
         finally:
             s.close()
+            return port
 
     def raise_for_port(self, timeout=None, check_process_status=True):
         """Raise socket.timeout if no connection can be established.
@@ -820,7 +825,7 @@ class Marionette(object):
                                              "on Gecko instances launched by Marionette")
         pref_exists = True
         with self.using_context(self.CONTEXT_CHROME):
-            for pref, value in prefs.iteritems():
+            for pref, value in six.iteritems(prefs):
                 if type(value) is not str:
                     value = json.dumps(value)
                 pref_exists = self.execute_script("""
@@ -1490,7 +1495,7 @@ class Marionette(object):
         elif type(args) == HTMLElement:
             wrapped = {WEB_ELEMENT_KEY: args.id,
                        CHROME_ELEMENT_KEY: args.id}
-        elif (isinstance(args, bool) or isinstance(args, basestring) or
+        elif (isinstance(args, bool) or isinstance(args, six.string_types) or
               isinstance(args, int) or isinstance(args, float) or args is None):
             wrapped = args
         return wrapped

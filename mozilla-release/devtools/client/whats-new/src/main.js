@@ -29,39 +29,34 @@ const aside = {
 };
 
 const release = {
-  title: "What’s New in DevTools (Firefox 76)",
+  title: "What’s New in DevTools (Firefox 78)",
   linkText: "Read more",
-  linkUrl: `https://developer.mozilla.org/docs/Mozilla/Firefox/Releases/76?${utmParams}`,
+  linkUrl: `https://developer.mozilla.org/docs/Mozilla/Firefox/Releases/77?${utmParams}`,
   features: [
     {
-      header: `Ignore entire folders in Debugger`,
-      description: `Filter out the noise of extraneous groups of sources with a new “Blackbox” context menu in Debugger’s sources list. Ignoring can be limited to files inside or outside of the selected folder. Combine with “Set directory root” for a laser-focused debugging experience.`,
-      href: `https://wiki.developer.mozilla.org/en-US/docs/Tools/Debugger/UI_Tour?${utmParams}#Source_list_pane`,
+      header: `Better logs for uncaught promise rejections`,
+      description: `Framework and promise errors are now logged with detailed error stacks, names, and properties, especially improving Angular debugging.`,
+      href: `https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises?${utmParams}#Promise_rejection_events`,
     },
     {
-      header: `Console collapses multi-line code snippets`,
-      description: `Console’s multi-line editor mode just got better to iterate on long snippets with less clutter. Multiple lines are neatly collapsed and can be expanded on demand.`,
-      href: `https://developer.mozilla.org/en-US/docs/Tools/Web_Console/The_command_line_interpreter?${utmParams}#Multi-line_mode`,
+      header: `Faster DOM navigation in Inspector`,
+      description: `Loading and navigating the DOM on sites with many CSS variables is much snappier.`,
+      href: `https://developer.mozilla.org/en-US/docs/Tools/Page_Inspector?${utmParams}`,
     },
     {
-      header: `Formatted Action Cable WebSocket messages`,
-      description: `The JSON embedded in Action Cable messages are now broken out to be more readable, adding to a growing set of supported WebSocket protocol formats.`,
-      href: `https://developer.mozilla.org/en-US/docs/Tools/Network_Monitor/Inspecting_web_sockets?${utmParams}`,
+      header: `Source-mapped variables in Logpoints`,
+      description: `Logpoints can log any variable in original and source-mapped files by automatically finding references to minified names. Make sure to enable the "Map" option in Debugger’s "Scopes" pane.`,
+      href: `https://developer.mozilla.org/en-US/docs/Tools/Debugger/Set_a_logpoint?${utmParams}`,
     },
     {
-      header: `Cleaner WebSocket output`,
-      description: `WebSocket control frames are now hidden by default to let you focus on the content actual send and received messages.`,
-      href: `https://developer.mozilla.org/en-US/docs/Tools/Network_Monitor/Inspecting_web_sockets?${utmParams}`,
-    },
-    {
-      header: `Resize Network table columns to fit to content`,
-      description: `Expanding longer content in the Network panel no longer requires countless dragging and resizing. Like modern data tables, just double-tap the table’s resize handles to fit the column size to its content.`,
+      header: `Better support for blocked network requests`,
+      description: `Network requests blocked by Enhanced Tracking Protection, add-ons, and CORS are now captured in the Network panel and include detailed blocking reasons.`,
       href: `https://developer.mozilla.org/en-US/docs/Tools/Network_Monitor/request_list?${utmParams}`,
     },
     {
-      header: `Improve Network response details`,
-      description: `Response data is now much easier to navigate and copy out of the Network details. More work is coming in this area to make various kinds of Network analysis easier.`,
-      href: `https://developer.mozilla.org/en-US/docs/Tools/Network_Monitor/request_details?${utmParams}`,
+      header: `URL bar & reload in Remote Debugging`,
+      description: `Navigate your mobile Firefox browser from the remote debugging UI, avoiding fiddling on tiny device screens.`,
+      href: `https://developer.mozilla.org/en-US/docs/Tools/Network_Monitor/request_list?${utmParams}`,
     },
   ],
 };
@@ -72,9 +67,19 @@ const dev = {
   linkText: "Get DevEdition",
   features: [
     {
-      header: `Full Asynchronous Stacks in Debugger`,
-      description: `Step through event, timeout and promise-based function calls over time with the full-featured async stacks in Debugger.`,
-      href: `https://developer.mozilla.org/en-US/docs/Tools/Debugger/UI_Tour?${utmParams}`,
+      header: `Async stacks in Console & Debugger`,
+      description: `Step through event, timeout, and promise-based function calls over time with the full-featured async stacks in Debugger.`,
+      href: `https://developer.mozilla.org/en-US/docs/Tools/Debugger/UI_Tour?${utmParams}#Call_stack`,
+    },
+    {
+      header: `Correct references to source-mapped JS/CSS`,
+      description: `Source-mapped file references in the Inspector and Console now link more reliably to the right file.`,
+      href: `https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Use_a_source_map?${utmParams}`,
+    },
+    {
+      header: `Console shows failed requests`,
+      description: `Network requests with 4xx/5xx status codes now log as errors in the Console and can be inspected using the embedded network details.`,
+      href: `https://developer.mozilla.org/en-US/docs/Tools/Web_Console?${utmParams}`,
     },
   ],
 };

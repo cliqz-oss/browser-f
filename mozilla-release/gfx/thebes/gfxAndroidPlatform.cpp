@@ -29,7 +29,7 @@
 #include FT_FREETYPE_H
 #include FT_MODULE_H
 
-#include "GeneratedJNINatives.h"
+#include "mozilla/java/VsyncSourceNatives.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -348,8 +348,8 @@ class AndroidVsyncSource final : public VsyncSource {
   virtual ~AndroidVsyncSource() = default;
 
   static Display& GetDisplayInstance() {
-    static Display globalDisplay;
-    return globalDisplay;
+    static RefPtr<Display> globalDisplay = new Display();
+    return *globalDisplay;
   }
 };
 

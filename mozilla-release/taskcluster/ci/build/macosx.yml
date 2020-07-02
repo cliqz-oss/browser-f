@@ -73,7 +73,7 @@ macosx64/opt:
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: internal
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -133,8 +133,7 @@ macosx64-asan-fuzzing/opt:
             - linux64-lucetc
             - wasi-sysroot
     optimization:
-        fuzzing-builds:
-            - macosx
+        build-fuzzing: null
 
 macosx64-fuzzing/debug:
     description: "MacOS X x64 Cross-compile Fuzzing Debug"
@@ -180,24 +179,23 @@ macosx64-fuzzing/debug:
             - linux64-lucetc
             - wasi-sysroot
     optimization:
-        fuzzing-builds:
-            - macosx
+        build-fuzzing: null
 
 macosx64-devedition/opt:
     description: "MacOS X Dev Edition x64 (shippable)"
     use-pgo: macosx64-shippable/opt
     attributes:
-        nightly: true
+        shippable: true
         enable-full-crashsymbols: true
     shipping-phase: build
     shipping-product: devedition
     index:
         product: devedition
         job-name: macosx64-opt
-        type: nightly
+        type: shippable
     treeherder:
         platform: osx-cross-devedition/opt
-        symbol: N
+        symbol: B
         tier: 1
     worker-type: b-linux
     worker:
@@ -261,7 +259,7 @@ macosx64-noopt/debug:
         mozconfig-variant: cross-noopt-debug
         tooltool-downloads: internal
         keep-artifacts: false
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -397,7 +395,7 @@ macosx64-ccov/opt:
         custom-build-variant-cfg: code-coverage-opt
         mozconfig-variant: code-coverage
         tooltool-downloads: internal
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -459,6 +457,9 @@ macosx64-gcp/debug:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+    optimization:
+        push-interval-25:
+            - macosx
 
 macosx64-gcp/opt:
     description: "MacOS X x64 Cross-compile - built on GCP"
@@ -486,7 +487,7 @@ macosx64-gcp/opt:
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: internal
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils

@@ -23,9 +23,11 @@
 #include "js/CharacterEncoding.h"
 #include "js/StableStringChars.h"
 #include "vm/BigIntType.h"
+#include "vm/FunctionFlags.h"  // js::FunctionFlags
 #include "vm/JSAtom.h"
 #include "vm/JSObject.h"
 #include "vm/ModuleBuilder.h"  // js::ModuleBuilder
+#include "vm/PlainObject.h"    // js::PlainObject
 #include "vm/RegExpObject.h"
 
 #include "vm/JSObject-inl.h"
@@ -34,8 +36,8 @@ using namespace js;
 using namespace js::frontend;
 
 using JS::AutoStableStringChars;
-using JS::AutoValueArray;
 using JS::CompileOptions;
+using JS::RootedValueArray;
 using mozilla::DebugOnly;
 
 enum ASTType {
@@ -66,6 +68,10 @@ enum AssignmentOperator {
   AOP_BITOR,
   AOP_BITXOR,
   AOP_BITAND,
+  /* short-circuit */
+  AOP_COALESCE,
+  AOP_OR,
+  AOP_AND,
 
   AOP_LIMIT
 };
@@ -140,19 +146,22 @@ enum PropKind {
 };
 
 static const char* const aopNames[] = {
-    "=",    /* AOP_ASSIGN */
-    "+=",   /* AOP_PLUS */
-    "-=",   /* AOP_MINUS */
-    "*=",   /* AOP_STAR */
-    "/=",   /* AOP_DIV */
-    "%=",   /* AOP_MOD */
-    "**=",  /* AOP_POW */
-    "<<=",  /* AOP_LSH */
-    ">>=",  /* AOP_RSH */
-    ">>>=", /* AOP_URSH */
-    "|=",   /* AOP_BITOR */
-    "^=",   /* AOP_BITXOR */
-    "&="    /* AOP_BITAND */
+    "=",     /* AOP_ASSIGN */
+    "+=",    /* AOP_PLUS */
+    "-=",    /* AOP_MINUS */
+    "*=",    /* AOP_STAR */
+    "/=",    /* AOP_DIV */
+    "%=",    /* AOP_MOD */
+    "**=",   /* AOP_POW */
+    "<<=",   /* AOP_LSH */
+    ">>=",   /* AOP_RSH */
+    ">>>=",  /* AOP_URSH */
+    "|=",    /* AOP_BITOR */
+    "^=",    /* AOP_BITXOR */
+    "&=",    /* AOP_BITAND */
+    "\?\?=", /* AOP_COALESCE */
+    "||=",   /* AOP_OR */
+    "&&=",   /* AOP_AND */
 };
 
 static const char* const binopNames[] = {
@@ -260,7 +269,7 @@ enum class GeneratorStyle { None, ES6 };
  * Bug 569487: generalize builder interface
  */
 class NodeBuilder {
-  using CallbackArray = AutoValueArray<AST_LIMIT>;
+  using CallbackArray = RootedValueArray<AST_LIMIT>;
 
   JSContext* cx;
   frontend::Parser<frontend::FullParseHandler, char16_t>* parser;
@@ -1779,6 +1788,12 @@ AssignmentOperator ASTSerializer::aop(ParseNodeKind kind) {
       return AOP_BITXOR;
     case ParseNodeKind::BitAndAssignExpr:
       return AOP_BITAND;
+    case ParseNodeKind::CoalesceAssignExpr:
+      return AOP_COALESCE;
+    case ParseNodeKind::OrAssignExpr:
+      return AOP_OR;
+    case ParseNodeKind::AndAssignExpr:
+      return AOP_AND;
     default:
       return AOP_ERR;
   }
@@ -2744,6 +2759,9 @@ bool ASTSerializer::expression(ParseNode* pn, MutableHandleValue dst) {
     case ParseNodeKind::AssignExpr:
     case ParseNodeKind::AddAssignExpr:
     case ParseNodeKind::SubAssignExpr:
+    case ParseNodeKind::CoalesceAssignExpr:
+    case ParseNodeKind::OrAssignExpr:
+    case ParseNodeKind::AndAssignExpr:
     case ParseNodeKind::BitOrAssignExpr:
     case ParseNodeKind::BitXorAssignExpr:
     case ParseNodeKind::BitAndAssignExpr:
@@ -3703,8 +3721,7 @@ static bool reflect_parse(JSContext* cx, uint32_t argc, Value* vp) {
 
   Parser<FullParseHandler, char16_t> parser(
       cx, options, chars.begin().get(), chars.length(),
-      /* foldConstants = */ false, compilationInfo, nullptr, nullptr,
-      compilationInfo.sourceObject);
+      /* foldConstants = */ false, compilationInfo, nullptr, nullptr);
   if (!parser.checkOptions()) {
     return false;
   }
@@ -3729,18 +3746,17 @@ static bool reflect_parse(JSContext* cx, uint32_t argc, Value* vp) {
 
     ModuleBuilder builder(cx, &parser);
 
+    uint32_t len = chars.length();
+    SourceExtent extent = SourceExtent::makeGlobalExtent(len, options);
     ModuleSharedContext modulesc(cx, module, compilationInfo,
-                                 &cx->global()->emptyGlobalScope(), builder);
+                                 &cx->global()->emptyGlobalScope(), builder,
+                                 extent);
     pn = parser.moduleBody(&modulesc);
     if (!pn) {
       return false;
     }
 
     pn = pn->as<ModuleNode>().body();
-  }
-
-  if (!parser.publishDeferredFunctions()) {
-    return false;
   }
 
   RootedValue val(cx);

@@ -12,6 +12,7 @@
  * See devtools/docs/backend/actor-hierarchy.md for more details.
  */
 
+const Services = require("Services");
 const {
   connectToFrame,
 } = require("devtools/server/connectors/frame-connector");
@@ -23,6 +24,13 @@ loader.lazyImporter(
 const { ActorClassWithSpec, Actor } = require("devtools/shared/protocol");
 const { tabDescriptorSpec } = require("devtools/shared/specs/descriptors/tab");
 const { AppConstants } = require("resource://gre/modules/AppConstants.jsm");
+
+loader.lazyRequireGetter(
+  this,
+  "WatcherActor",
+  "devtools/server/actors/descriptors/watcher/watcher",
+  true
+);
 
 /**
  * Creates a target actor proxy for handling requests to a single browser frame.
@@ -38,24 +46,68 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     Actor.prototype.initialize.call(this, connection);
     this._conn = connection;
     this._browser = browser;
-    this._form = null;
-    this.exited = false;
-
-    // The update request could timeout if the descriptor is destroyed while an
-    // update is pending. This property will hold a reject callback that can be
-    // used to reject the current update promise and avoid blocking the client.
-    this._formUpdateReject = null;
   },
 
   form() {
-    return {
+    const form = {
       actor: this.actorID,
+      browsingContextID:
+        this._browser && this._browser.browsingContext
+          ? this._browser.browsingContext.id
+          : null,
+      outerWindowID: this._getOuterWindowId(),
+      selected: this.selected,
+      title: this._getZombieTabTitle(),
       traits: {
         // Backward compatibility for FF75 or older.
         // Remove when FF76 is on the release channel.
         getFavicon: true,
+        // Backward compatibility for FF76 or older.
+        // Remove when FF77 is on the release channel.
+        // This trait indicates that meta data such as title, url and
+        // outerWindowID are directly available on the TabDescriptor.
+        hasTabInfo: true,
+        // FF77+ supports the Watcher actor
+        watcher: true,
       },
+      url: this._getUrl(),
     };
+
+    return form;
+  },
+
+  _getUrl() {
+    if (!this._browser || !this._browser.browsingContext) {
+      return "";
+    }
+
+    const { browsingContext } = this._browser;
+    return browsingContext.currentWindowGlobal.documentURI.spec;
+  },
+
+  _getOuterWindowId() {
+    if (!this._browser || !this._browser.browsingContext) {
+      return "";
+    }
+
+    const { browsingContext } = this._browser;
+    return browsingContext.currentWindowGlobal.outerWindowId;
+  },
+
+  get selected() {
+    // getMostRecentBrowserWindow will find the appropriate window on Firefox
+    // Desktop and on GeckoView.
+    const topAppWindow = Services.wm.getMostRecentBrowserWindow();
+
+    const selectedBrowser = topAppWindow?.gBrowser?.selectedBrowser;
+    if (!selectedBrowser) {
+      // Note: gBrowser is not available on GeckoView.
+      // We should find another way to know if this browser is the selected
+      // browser. See Bug 1631020.
+      return false;
+    }
+
+    return this._browser === selectedBrowser;
   },
 
   async getTarget() {
@@ -65,9 +117,7 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
         message: "Tab destroyed while performing a TabDescriptorActor update",
       };
     }
-    if (this._form) {
-      return this._form;
-    }
+
     /* eslint-disable-next-line no-async-promise-executor */
     return new Promise(async (resolve, reject) => {
       const onDestroy = () => {
@@ -79,8 +129,6 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
       };
 
       try {
-        await this._unzombifyIfNeeded();
-
         // Check if the browser is still connected before calling connectToFrame
         if (!this._browser.isConnected) {
           onDestroy();
@@ -94,7 +142,6 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
         );
 
         const form = this._createTargetForm(connectForm);
-        this._form = form;
         resolve(form);
       } catch (e) {
         reject({
@@ -105,19 +152,24 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     });
   },
 
+  /**
+   * Return a Watcher actor, allowing to keep track of targets which
+   * already exists or will be created. It also helps knowing when they
+   * are destroyed.
+   */
+  getWatcher() {
+    if (!this.watcher) {
+      this.watcher = new WatcherActor(this.conn, { browser: this._browser });
+      this.manage(this.watcher);
+    }
+    return this.watcher;
+  },
+
   get _tabbrowser() {
     if (this._browser && typeof this._browser.getTabBrowser == "function") {
       return this._browser.getTabBrowser();
     }
     return null;
-  },
-
-  get _mm() {
-    // Get messageManager from XUL browser (which might be a specialized tunnel for RDM)
-    // or else fallback to asking the frameLoader itself.
-    return (
-      this._browser.messageManager || this._browser.frameLoader.messageManager
-    );
   },
 
   async getFavicon() {
@@ -127,7 +179,7 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     }
 
     try {
-      const { data } = await PlacesUtils.promiseFaviconData(this._form.url);
+      const { data } = await PlacesUtils.promiseFaviconData(this._getUrl());
       return data;
     } catch (e) {
       // Favicon unavailable for this url.
@@ -135,41 +187,8 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     }
   },
 
-  async update() {
-    // If the child happens to be crashed/close/detach, it won't have _form set,
-    // so only request form update if some code is still listening on the other
-    // side.
-    if (!this._form) {
-      return;
-    }
-
-    const form = await new Promise((resolve, reject) => {
-      this._formUpdateReject = reject;
-      const onFormUpdate = msg => {
-        // There may be more than one FrameTargetActor up and running
-        if (this._form.actor != msg.json.actor) {
-          return;
-        }
-        this._mm.removeMessageListener("debug:form", onFormUpdate);
-
-        this._formUpdateReject = null;
-        resolve(msg.json);
-      };
-
-      this._mm.addMessageListener("debug:form", onFormUpdate);
-      this._mm.sendAsyncMessage("debug:form");
-    });
-
-    this._form = form;
-  },
-
   _isZombieTab() {
-    // Check for Firefox on Android.
-    if (this._browser.hasAttribute("pending")) {
-      return true;
-    }
-
-    // Check for other.
+    // Note: GeckoView doesn't support zombie tabs
     const tabbrowser = this._tabbrowser;
     const tab = tabbrowser ? tabbrowser.getTabForBrowser(this._browser) : null;
     return tab?.hasAttribute && tab.hasAttribute("pending");
@@ -180,15 +199,8 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
    * it on the chrome side.
    */
   _getZombieTabTitle() {
-    // On Fennec, we can check the session store data for zombie tabs
-    if (this._browser && this._browser.__SS_restore) {
-      const sessionStore = this._browser.__SS_data;
-      // Get the last selected entry
-      const entry = sessionStore.entries[sessionStore.index - 1];
-      return entry.title;
-    }
     // If contentTitle is empty (e.g. on a not-yet-restored tab), but there is a
-    // tabbrowser (i.e. desktop Firefox, but not Fennec), we can use the label
+    // tabbrowser (i.e. desktop Firefox, but not GeckoView), we can use the label
     // as the title.
     if (this._tabbrowser) {
       const tab = this._tabbrowser.getTabForBrowser(this._browser);
@@ -200,71 +212,18 @@ const TabDescriptorActor = ActorClassWithSpec(tabDescriptorSpec, {
     return null;
   },
 
-  /**
-   * If we don't have a url from the content side because it's a zombie tab, try to find
-   * it on the chrome side.
-   */
-  _getZombieTabUrl() {
-    // On Fennec, we can check the session store data for zombie tabs
-    if (this._browser && this._browser.__SS_restore) {
-      const sessionStore = this._browser.__SS_data;
-      // Get the last selected entry
-      const entry = sessionStore.entries[sessionStore.index - 1];
-      return entry.url;
-    }
-
-    return null;
-  },
-
-  async _unzombifyIfNeeded() {
-    if (!this._isZombieTab()) {
-      return;
-    }
-
-    // Unzombify if the browser is a zombie tab on Android.
-    const browserApp = this._browser
-      ? this._browser.ownerGlobal.BrowserApp
-      : null;
-    if (browserApp) {
-      // Wait until the content is loaded so as to ensure that the inspector actor refers
-      // to same document.
-      const waitForUnzombify = new Promise(resolve => {
-        this._browser.addEventListener("DOMContentLoaded", resolve, {
-          capture: true,
-          once: true,
-        });
-      });
-
-      const tab = browserApp.getTabForBrowser(this._browser);
-      tab.unzombify();
-
-      await waitForUnzombify;
-    }
-  },
-
   _createTargetForm(connectedForm) {
     const form = Object.assign({}, connectedForm);
-    // In case of Zombie tabs (not yet restored), look up title and url from other.
+    // In case of Zombie tabs (not yet restored), look up title from other.
     if (this._isZombieTab()) {
       form.title = this._getZombieTabTitle() || form.title;
-      form.url = this._getZombieTabUrl() || form.url;
     }
 
     return form;
   },
 
   destroy() {
-    if (this._formUpdateReject) {
-      this._formUpdateReject({
-        error: "tabDestroyed",
-        message: "Tab destroyed while performing a TabDescriptorActor update",
-      });
-      this._formUpdateReject = null;
-    }
     this._browser = null;
-    this._form = null;
-    this.exited = true;
-    this.emit("exited");
 
     Actor.prototype.destroy.call(this);
   },

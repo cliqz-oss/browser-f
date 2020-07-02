@@ -337,6 +337,10 @@ static void StatsCellCallback(JSRuntime* rt, void* data, JS::GCCellPtr cellptr,
       JS::ClassInfo info;  // This zeroes all the sizes.
       info.objectsGCHeap += thingSize;
 
+      if (!obj->isTenured()) {
+        info.objectsGCHeap += Nursery::nurseryCellHeaderSize();
+      }
+
       obj->addSizeOfExcludingThis(rtStats->mallocSizeOf_, &info);
 
       // These classes require special handling due to shared resources which
@@ -400,7 +404,7 @@ static void StatsCellCallback(JSRuntime* rt, void* data, JS::GCCellPtr cellptr,
       JSString* str = &cellptr.as<JSString>();
       size_t size = thingSize;
       if (!str->isTenured()) {
-        size += Nursery::stringHeaderSize();
+        size += Nursery::nurseryCellHeaderSize();
       }
 
       JS::StringInfo info;
@@ -442,7 +446,7 @@ static void StatsCellCallback(JSRuntime* rt, void* data, JS::GCCellPtr cellptr,
       JS::BigInt* bi = &cellptr.as<BigInt>();
       size_t size = thingSize;
       if (!bi->isTenured()) {
-        size += Nursery::bigIntHeaderSize();
+        size += Nursery::nurseryCellHeaderSize();
       }
       zStats->bigIntsGCHeap += size;
       zStats->bigIntsMallocHeap +=

@@ -24,12 +24,13 @@
 #include "nsIContent.h"
 #include "nsIControllers.h"
 #include "nsIController.h"
+#include "nsQueryObject.h"
 #include "xpcpublic.h"
 #include "nsCycleCollectionParticipant.h"
 #include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/HTMLTextAreaElement.h"
 #include "mozilla/dom/HTMLInputElement.h"
-#include "mozilla/dom/JSWindowActorService.h"
+#include "mozilla/dom/JSActorService.h"
 
 #ifdef MOZ_XUL
 #  include "nsXULElement.h"
@@ -49,12 +50,30 @@ nsWindowRoot::~nsWindowRoot() {
   }
 
   if (XRE_IsContentProcess()) {
-    JSWindowActorService::UnregisterChromeEventTarget(this);
+    JSActorService::UnregisterChromeEventTarget(this);
   }
 }
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(nsWindowRoot, mWindow, mListenerManager,
-                                      mParent)
+NS_IMPL_CYCLE_COLLECTION_CLASS(nsWindowRoot)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsWindowRoot)
+  if (XRE_IsContentProcess()) {
+    JSActorService::UnregisterChromeEventTarget(tmp);
+  }
+
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindow)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mListenerManager)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mParent)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsWindowRoot)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mListenerManager)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mParent)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_WRAPPERCACHE(nsWindowRoot)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsWindowRoot)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
@@ -205,7 +224,7 @@ nsresult nsWindowRoot::GetControllerForCommand(const char* aCommand,
           // At this point, it is known that a child process is focused, so ask
           // its Controllers actor if the command is supported.
           nsCOMPtr<nsIController> controller =
-              do_QueryActor(u"Controllers", canonicalFocusedBC);
+              do_QueryActor("Controllers", canonicalFocusedBC);
           if (controller) {
             bool supported;
             controller->SupportsCommand(aCommand, &supported);
@@ -378,7 +397,7 @@ already_AddRefed<EventTarget> NS_NewWindowRoot(nsPIDOMWindowOuter* aWindow) {
   nsCOMPtr<EventTarget> result = new nsWindowRoot(aWindow);
 
   if (XRE_IsContentProcess()) {
-    RefPtr<JSWindowActorService> wasvc = JSWindowActorService::GetSingleton();
+    RefPtr<JSActorService> wasvc = JSActorService::GetSingleton();
     wasvc->RegisterChromeEventTarget(result);
   }
 

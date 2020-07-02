@@ -610,6 +610,9 @@ struct ParamTraits<nsTArray<E>> {
 };
 
 template <typename E>
+struct ParamTraits<CopyableTArray<E>> : ParamTraits<nsTArray<E>> {};
+
+template <typename E>
 struct ParamTraits<FallibleTArray<E>> {
   typedef FallibleTArray<E> paramType;
 
@@ -636,6 +639,9 @@ template <typename E, size_t N>
 struct ParamTraits<AutoTArray<E, N>> : ParamTraits<nsTArray<E>> {
   typedef AutoTArray<E, N> paramType;
 };
+
+template <typename E, size_t N>
+struct ParamTraits<CopyableAutoTArray<E, N>> : ParamTraits<AutoTArray<E, N>> {};
 
 template <typename E, size_t N, typename AP>
 struct ParamTraits<mozilla::Vector<E, N, AP>> {
@@ -1263,24 +1269,15 @@ struct BitfieldHelper {
 // WriteParams(aMsg, aParam.foo, aParam.bar, aParam.baz)
 // ReadParams(aMsg, aIter, aParam.foo, aParam.bar, aParam.baz)
 
-// Base case
-void WriteParams(Message* aMsg);
-
-template <typename T0, typename... Tn>
-static void WriteParams(Message* aMsg, const T0& aArg,
-                        const Tn&... aRemainingArgs) {
-  WriteParam(aMsg, aArg);                // Write first arg
-  WriteParams(aMsg, aRemainingArgs...);  // Recurse for the rest
+template <typename... Ts>
+static void WriteParams(Message* aMsg, const Ts&... aArgs) {
+  (WriteParam(aMsg, aArgs), ...);
 }
 
-// Base case
-bool ReadParams(const Message* aMsg, PickleIterator* aIter);
-
-template <typename T0, typename... Tn>
-static bool ReadParams(const Message* aMsg, PickleIterator* aIter, T0& aArg,
-                       Tn&... aRemainingArgs) {
-  return ReadParam(aMsg, aIter, &aArg) &&             // Read first arg
-         ReadParams(aMsg, aIter, aRemainingArgs...);  // Recurse for the rest
+template <typename... Ts>
+static bool ReadParams(const Message* aMsg, PickleIterator* aIter,
+                       Ts&... aArgs) {
+  return (ReadParam(aMsg, aIter, &aArgs) && ...);
 }
 
 // Macros that allow syntax like:

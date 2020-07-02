@@ -35,9 +35,13 @@ EXTENSION_FILES = \
 SOURCE_FILES = $(EXTENSION_FILES) \
 jsparagus/gen.py \
 jsparagus/grammar.py \
+jsparagus/rewrites.py \
+jsparagus/lr0.py \
+jsparagus/parse_table.py \
 jsparagus/extension.py \
 jsparagus/utils.py \
 jsparagus/actions.py \
+jsparagus/aps.py \
 jsparagus/types.py \
 js_parser/esgrammar.pgen \
 js_parser/generate_js_parser_tables.py \
@@ -73,20 +77,26 @@ $(STANDARD_ES_GRAMMAR_OUT): $(ECMA262_SPEC_HTML)
 	$(PYTHON) -m js_parser.extract_es_grammar $(ECMA262_SPEC_HTML) > $@ || rm $@
 
 rust: $(RS_AST_OUT) $(RS_TABLES_OUT)
-	cargo build --features full
+	cargo build --all
 
 jsparagus/parse_pgen_generated.py:
 	$(PYTHON) -m jsparagus.parse_pgen --regenerate > $@
 
-check: all
+check: all static-check dyn-check
+
+dyn-check:
 	./test.sh
-	cargo fmt && cargo test
+	cargo fmt
+	cargo test --all
+
+static-check:
+	$(VENV_BIN_DIR)/mypy -p jsparagus -p tests -p js_parser
 
 jsdemo: $(PY_OUT)
 	$(PYTHON) -m js_parser.try_it
 
-update-opcodes-m-u:
-	$(PYTHON) crates/emitter/scripts/update_opcodes.py \
+update-stencil:
+	$(PYTHON) update_stencil.py \
 		../mozilla-unified ./
 
-.PHONY: all check jsdemo rust update-opcodes-m-u
+.PHONY: all check static-check dyn-check jsdemo rust update-opcodes-m-u

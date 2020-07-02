@@ -35,6 +35,7 @@ app-basics-title = Application Basics
 app-basics-name = Name
 app-basics-version = Version
 app-basics-build-id = Build ID
+app-basics-distribution-id = Distribution ID
 app-basics-update-channel = Update Channel
 # This message refers to the folder used to store updates on the device,
 # as in "Folder for updates". "Update" is a noun, not a verb.
@@ -98,8 +99,6 @@ graphics-desktop-environment = Desktop Environment
 place-database-title = Places Database
 place-database-integrity = Integrity
 place-database-verify-integrity = Verify Integrity
-js-title = JavaScript
-js-incremental-gc = Incremental GC
 a11y-title = Accessibility
 a11y-activated = Activated
 a11y-force-disabled = Prevent Accessibility
@@ -125,6 +124,7 @@ restart-in-safe-mode-label = Restart with Add-ons Disabled…
 audio-backend = Audio Backend
 max-audio-channels = Max Channels
 sample-rate = Preferred Sample Rate
+roundtrip-latency = Roundtrip latency (standard deviation)
 media-title = Media
 media-output-devices-title = Output Devices
 media-input-devices-title = Input Devices
@@ -331,6 +331,7 @@ touch-enabled = touch input enabled
 drag-enabled = scrollbar drag enabled
 keyboard-enabled = keyboard enabled
 autoscroll-enabled = autoscroll enabled
+zooming-enabled = smooth pinch-zoom enabled
 
 ## Variables
 ## $preferenceKey (string) - String ID of preference

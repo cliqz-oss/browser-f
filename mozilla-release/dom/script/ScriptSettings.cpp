@@ -9,6 +9,7 @@
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/ThreadLocal.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/dom/WorkerPrivate.h"
 
@@ -303,6 +304,7 @@ void AutoJSAPI::InitInternal(nsIGlobalObject* aGlobalObject, JSObject* aGlobal,
   mOldWarningReporter.emplace(JS::GetWarningReporter(aCx));
 
   JS::SetWarningReporter(aCx, WarningOnlyErrorReporter);
+  JS::SetGetElementCallback(aCx, &GetElementCallback);
 
 #ifdef DEBUG
   if (haveException) {
@@ -499,11 +501,10 @@ void AutoJSAPI::ReportException() {
   }
   MOZ_ASSERT(JS_IsGlobalObject(errorGlobal));
   JSAutoRealm ar(cx(), errorGlobal);
-  JS::Rooted<JS::Value> exn(cx());
-  JS::Rooted<JSObject*> exnStack(cx());
-  js::ErrorReport jsReport(cx());
-  if (StealExceptionAndStack(&exn, &exnStack) &&
-      jsReport.init(cx(), exn, js::ErrorReport::WithSideEffects, exnStack)) {
+  JS::ExceptionStack exnStack(cx());
+  JS::ErrorReportBuilder jsReport(cx());
+  if (StealExceptionAndStack(&exnStack) &&
+      jsReport.init(cx(), exnStack, JS::ErrorReportBuilder::WithSideEffects)) {
     if (mIsMainThread) {
       RefPtr<xpc::ErrorReport> xpcReport = new xpc::ErrorReport();
 
@@ -514,13 +515,18 @@ void AutoJSAPI::ReportException() {
                       isChrome, inner ? inner->WindowID() : 0);
       if (inner && jsReport.report()->errorNumber != JSMSG_OUT_OF_MEMORY) {
         JS::RootingContext* rcx = JS::RootingContext::get(cx());
-        DispatchScriptErrorEvent(inner, rcx, xpcReport, exn, exnStack);
+        DispatchScriptErrorEvent(inner, rcx, xpcReport, exnStack.exception(),
+                                 exnStack.stack());
       } else {
         JS::Rooted<JSObject*> stack(cx());
         JS::Rooted<JSObject*> stackGlobal(cx());
-        xpc::FindExceptionStackForConsoleReport(inner, exn, exnStack, &stack,
+        xpc::FindExceptionStackForConsoleReport(inner, exnStack.exception(),
+                                                exnStack.stack(), &stack,
                                                 &stackGlobal);
-        xpcReport->LogToConsoleWithStack(stack, stackGlobal);
+        // This error is not associated with a specific window,
+        // so omit the exception value to mitigate potential leaks.
+        xpcReport->LogToConsoleWithStack(inner, JS::NothingHandleValue, stack,
+                                         stackGlobal);
       }
     } else {
       // On a worker or worklet, we just use the error reporting mechanism and
@@ -533,7 +539,7 @@ void AutoJSAPI::ReportException() {
       // because it may want to put it in its error events and has no other way
       // to get hold of it.  After we invoke ReportError, clear the exception on
       // cx(), just in case ReportError didn't.
-      JS::SetPendingExceptionAndStack(cx(), exn, exnStack);
+      JS::SetPendingExceptionStack(cx(), exnStack);
       ccjscx->ReportError(jsReport.report(), jsReport.toStringResult());
       ClearException();
     }
@@ -547,25 +553,24 @@ bool AutoJSAPI::PeekException(JS::MutableHandle<JS::Value> aVal) {
   MOZ_ASSERT_IF(mIsMainThread, IsStackTop());
   MOZ_ASSERT(HasException());
   MOZ_ASSERT(js::GetContextRealm(cx()));
-  if (!JS_GetPendingException(cx(), aVal)) {
-    return false;
-  }
-  return true;
+  return JS_GetPendingException(cx(), aVal);
 }
 
 bool AutoJSAPI::StealException(JS::MutableHandle<JS::Value> aVal) {
-  JS::Rooted<JSObject*> stack(cx());
-  return StealExceptionAndStack(aVal, &stack);
-}
-
-bool AutoJSAPI::StealExceptionAndStack(JS::MutableHandle<JS::Value> aVal,
-                                       JS::MutableHandle<JSObject*> aStack) {
-  if (!PeekException(aVal)) {
+  JS::ExceptionStack exnStack(cx());
+  if (!StealExceptionAndStack(&exnStack)) {
     return false;
   }
-  aStack.set(JS::GetPendingExceptionStack(cx()));
-  JS_ClearPendingException(cx());
+  aVal.set(exnStack.exception());
   return true;
+}
+
+bool AutoJSAPI::StealExceptionAndStack(JS::ExceptionStack* aExnStack) {
+  MOZ_ASSERT_IF(mIsMainThread, IsStackTop());
+  MOZ_ASSERT(HasException());
+  MOZ_ASSERT(js::GetContextRealm(cx()));
+
+  return JS::StealPendingExceptionStack(cx(), aExnStack);
 }
 
 #ifdef DEBUG

@@ -119,6 +119,10 @@ const SNAPSHOT_SCHEMA = {
           required: true,
           type: "string",
         },
+        distributionID: {
+          required: true,
+          type: "string",
+        },
         userAgent: {
           required: true,
           type: "string",
@@ -638,15 +642,6 @@ const SNAPSHOT_SCHEMA = {
               },
             },
           },
-        },
-      },
-    },
-    javaScript: {
-      required: true,
-      type: "object",
-      properties: {
-        incrementalGCEnabled: {
-          type: "boolean",
         },
       },
     },

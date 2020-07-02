@@ -12,7 +12,6 @@
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/SystemGroup.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/IDBFactoryBinding.h"
 #include "mozilla/dom/quota/QuotaManager.h"
@@ -596,10 +595,11 @@ RefPtr<IDBOpenDBRequest> IDBFactory::OpenInternal(
   if (NS_IsMainThread()) {
     // aPrincipal is passed inconsistently, so even when we are already on
     // the main thread, we may have been passed a null aPrincipal.
-    nsCOMPtr<nsIPrincipal> principal = PrincipalInfoToPrincipal(principalInfo);
-    if (principal) {
+    auto principalOrErr = PrincipalInfoToPrincipal(principalInfo);
+    if (principalOrErr.isOk()) {
       nsAutoString addonId;
-      Unused << NS_WARN_IF(NS_FAILED(principal->GetAddonId(addonId)));
+      Unused << NS_WARN_IF(
+          NS_FAILED(principalOrErr.unwrap()->GetAddonId(addonId)));
       isAddon = !addonId.IsEmpty();
     }
   }

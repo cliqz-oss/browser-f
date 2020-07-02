@@ -37,7 +37,9 @@ using namespace mozilla;
 nsIconChannel::nsIconChannel() {}
 
 nsIconChannel::~nsIconChannel() {
-  NS_ReleaseOnMainThreadSystemGroup("nsIconChannel::mLoadInfo", mLoadInfo.forget());
+  if (mLoadInfo) {
+    NS_ReleaseOnMainThread("nsIconChannel::mLoadInfo", mLoadInfo.forget());
+  }
 }
 
 NS_IMPL_ISUPPORTS(nsIconChannel, nsIChannel, nsIRequest, nsIRequestObserver, nsIStreamListener)
@@ -191,7 +193,8 @@ nsIconChannel::AsyncOpen(nsIStreamListener* aListener) {
   MOZ_ASSERT(
       mLoadInfo->GetSecurityMode() == 0 || mLoadInfo->GetInitialSecurityCheckDone() ||
           (mLoadInfo->GetSecurityMode() == nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL &&
-           mLoadInfo->LoadingPrincipal() && mLoadInfo->LoadingPrincipal()->IsSystemPrincipal()),
+           mLoadInfo->GetLoadingPrincipal() &&
+           mLoadInfo->GetLoadingPrincipal()->IsSystemPrincipal()),
       "security flags in loadInfo but doContentSecurityCheck() not called");
 
   nsCOMPtr<nsIInputStream> inStream;
@@ -238,8 +241,6 @@ nsresult nsIconChannel::MakeInputStream(nsIInputStream** _retval, bool aNonBlock
 
   bool fileExists = false;
   if (fileloc) {
-    // ensure that we DO NOT resolve aliases, very important for file views
-    fileloc->SetFollowLinks(false);
     fileloc->Exists(&fileExists);
   }
 
@@ -298,7 +299,11 @@ nsresult nsIconChannel::MakeInputStream(nsIInputStream** _retval, bool aNonBlock
   fileBuf[0] = uint8_t(width);
   fileBuf[1] = uint8_t(height);
   fileBuf[2] = uint8_t(mozilla::gfx::SurfaceFormat::B8G8R8A8);
+
+  // Clear all bits to ensure in nsIconDecoder we assume we are already color
+  // managed and premultiplied.
   fileBuf[3] = 0;
+
   uint8_t* imageBuf = &fileBuf[4];
 
   // Create a CGBitmapContext around imageBuf and draw iconImage to it.

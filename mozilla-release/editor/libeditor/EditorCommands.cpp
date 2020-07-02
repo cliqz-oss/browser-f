@@ -8,6 +8,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/FlushType.h"
+#include "mozilla/HTMLEditor.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"  // for mozilla::detail::Any
 #include "mozilla/TextEditor.h"
@@ -364,7 +365,7 @@ nsresult CutOrDeleteCommand::DoCommand(Command aCommand,
     nsresult rv = aTextEditor.DeleteSelectionAsAction(
         nsIEditor::eNext, nsIEditor::eStrip, aPrincipal);
     NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                         "TextEditor::DeleteSelectionsAsAction() failed");
+                         "EditorBase::DeleteSelectionAsAction() failed");
     return rv;
   }
   nsresult rv = aTextEditor.CutAsAction(aPrincipal);
@@ -429,7 +430,7 @@ nsresult CopyOrDeleteCommand::DoCommand(Command aCommand,
     nsresult rv = aTextEditor.DeleteSelectionAsAction(
         nsIEditor::eNextWord, nsIEditor::eStrip, aPrincipal);
     NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                         "TextEditor::DeleteSelectionAsAction() failed");
+                         "EditorBase::DeleteSelectionAsAction() failed");
     return rv;
   }
   // Shouldn't cause "beforeinput" event so that we don't need to specify
@@ -618,7 +619,7 @@ nsresult DeleteCommand::DoCommand(Command aCommand, TextEditor& aTextEditor,
   nsresult rv = aTextEditor.DeleteSelectionAsAction(
       deleteDir, nsIEditor::eStrip, aPrincipal);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "TextEditor::DeleteSelectionAsAction() failed");
+                       "EditorBase::DeleteSelectionAsAction() failed");
   return rv;
 }
 
@@ -732,7 +733,7 @@ static const struct PhysicalCommand {
 nsresult SelectionMoveCommands::DoCommand(Command aCommand,
                                           TextEditor& aTextEditor,
                                           nsIPrincipal* aPrincipal) const {
-  RefPtr<Document> document = aTextEditor.GetDocument();
+  RefPtr<dom::Document> document = aTextEditor.GetDocument();
   if (document) {
     // Most of the commands below (possibly all of them) need layout to
     // be up to date.

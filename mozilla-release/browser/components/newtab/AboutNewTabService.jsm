@@ -6,7 +6,10 @@
 
 "use strict";
 
-const EXPORTED_SYMBOLS = ["AboutNewTabStubService"];
+const EXPORTED_SYMBOLS = [
+  "AboutNewTabStubService",
+  "AboutHomeStartupCacheChild",
+];
 
 /**
  * The nsIAboutNewTabService is accessed by the AboutRedirector anytime
@@ -47,15 +50,19 @@ const { E10SUtils } = ChromeUtils.import(
  * Constants are fine in the global scope.
  */
 
+const PREF_ABOUT_HOME_CACHE_ENABLED =
+  "browser.startup.homepage.abouthome_cache.enabled";
 const PREF_SEPARATE_ABOUT_WELCOME = "browser.aboutwelcome.enabled";
 const SEPARATE_ABOUT_WELCOME_URL =
   "resource://activity-stream/aboutwelcome/aboutwelcome.html";
 
-const TOPIC_APP_QUIT = "quit-application-granted";
-const TOPIC_CONTENT_DOCUMENT_INTERACTIVE = "content-document-interactive";
+ChromeUtils.defineModuleGetter(
+  this,
+  "BasePromiseWorker",
+  "resource://gre/modules/PromiseWorker.jsm"
+);
 
-const BASE_URL = "resource://activity-stream/";
-const ACTIVITY_STREAM_PAGES = new Set(["home", "newtab", "welcome"]);
+const CACHE_WORKER_URL = "resource://activity-stream/lib/cache-worker.js";
 
 const IS_PRIVILEGED_PROCESS =
   Services.appinfo.remoteType === E10SUtils.PRIVILEGEDABOUT_REMOTE_TYPE;
@@ -63,6 +70,176 @@ const IS_PRIVILEGED_PROCESS =
 const PREF_SEPARATE_PRIVILEGEDABOUT_CONTENT_PROCESS =
   "browser.tabs.remote.separatePrivilegedContentProcess";
 const PREF_ACTIVITY_STREAM_DEBUG = "browser.newtabpage.activity-stream.debug";
+
+/**
+ * The AboutHomeStartupCacheChild is responsible for connecting the
+ * nsIAboutNewTabService with a cached document and script for about:home
+ * if one happens to exist. The AboutHomeStartupCacheChild is only ever
+ * handed the streams for those caches when the "privileged about content
+ * process" first launches, so subsequent loads of about:home do not read
+ * from this cache.
+ *
+ * See https://firefox-source-docs.mozilla.org/browser/components/newtab/docs/v2-system-addon/about_home_startup_cache.html
+ * for further details.
+ */
+const AboutHomeStartupCacheChild = {
+  _initted: false,
+  CACHE_REQUEST_MESSAGE: "AboutHomeStartupCache:CacheRequest",
+  CACHE_RESPONSE_MESSAGE: "AboutHomeStartupCache:CacheResponse",
+
+  /**
+   * Called via a process script very early on in the process lifetime. This
+   * prepares the AboutHomeStartupCacheChild to pass an nsIChannel back to
+   * the nsIAboutNewTabService when the initial about:home document is
+   * eventually requested.
+   *
+   * @param pageInputStream (nsIInputStream)
+   *   The stream for the cached page markup.
+   * @param scriptInputStream (nsIInputStream)
+   *   The stream for the cached script to run on the page.
+   */
+  init(pageInputStream, scriptInputStream) {
+    if (!IS_PRIVILEGED_PROCESS) {
+      throw new Error(
+        "Can only instantiate in the privileged about content processes."
+      );
+    }
+
+    if (!Services.prefs.getBoolPref(PREF_ABOUT_HOME_CACHE_ENABLED, false)) {
+      return;
+    }
+
+    if (this._initted) {
+      throw new Error("AboutHomeStartupCacheChild already initted.");
+    }
+
+    Services.cpmm.addMessageListener(this.CACHE_REQUEST_MESSAGE, this);
+
+    this._pageInputStream = pageInputStream;
+    this._scriptInputStream = scriptInputStream;
+    this._initted = true;
+  },
+
+  /**
+   * A public method called from nsIAboutNewTabService that attempts
+   * return an nsIChannel for a cached about:home document that we
+   * were initialized with. If we failed to be initted with the
+   * cache, or the input streams that we were sent have no data
+   * yet available, this function returns null. The caller should =
+   * fall back to generating the page dynamically.
+   *
+   * This function will be called when loading about:home, or
+   * about:home?jscache - the latter returns the cached script.
+   *
+   * @param uri (nsIURI)
+   *   The URI for the requested page, as passed by nsIAboutNewTabService.
+   * @param loadInfo (nsILoadInfo)
+   *   The nsILoadInfo for the requested load, as passed by
+   *   nsIAboutNewWTabService.
+   * @return nsIChannel or null.
+   */
+  maybeGetCachedPageChannel(uri, loadInfo) {
+    if (!this._initted) {
+      return null;
+    }
+
+    let isScriptRequest = uri.query === "jscache";
+
+    // If by this point, we don't have anything in the streams,
+    // then either the cache was too slow to give us data, or the cache
+    // doesn't exist. The caller should fall back to generating the
+    // page dynamically.
+    //
+    // We only do this on the page request, because by the time
+    // we get to the script request, we should have already drained
+    // the page input stream.
+    if (!isScriptRequest) {
+      try {
+        if (
+          !this._scriptInputStream.available() ||
+          !this._pageInputStream.available()
+        ) {
+          return null;
+        }
+      } catch (e) {
+        if (e.result === Cr.NS_BASE_STREAM_CLOSED) {
+          return null;
+        }
+        throw e;
+      }
+    }
+
+    let channel = Cc[
+      "@mozilla.org/network/input-stream-channel;1"
+    ].createInstance(Ci.nsIInputStreamChannel);
+    channel.QueryInterface(Ci.nsIChannel);
+    channel.setURI(uri);
+    channel.loadInfo = loadInfo;
+    channel.contentStream = isScriptRequest
+      ? this._scriptInputStream
+      : this._pageInputStream;
+
+    return channel;
+  },
+
+  /**
+   * This function takes the state information required to generate
+   * the about:home cache markup and script, and then generates that
+   * markup in script asynchronously. Once that's done, a message
+   * is sent to the parent process with the nsIInputStream's for the
+   * markup and script contents.
+   *
+   * @param state (Object)
+   *   The Redux state of the about:home document to render.
+   * @return Promise
+   * @resolves undefined
+   *   After the message with the nsIInputStream's have been sent to
+   *   the parent.
+   */
+  async constructAndSendCache(state) {
+    if (!IS_PRIVILEGED_PROCESS) {
+      throw new Error("Wrong process type.");
+    }
+
+    let worker = this.getOrCreateWorker();
+
+    let { page, script } = await worker.post("construct", [state]);
+
+    let pageInputStream = Cc[
+      "@mozilla.org/io/string-input-stream;1"
+    ].createInstance(Ci.nsIStringInputStream);
+
+    pageInputStream.setUTF8Data(page);
+
+    let scriptInputStream = Cc[
+      "@mozilla.org/io/string-input-stream;1"
+    ].createInstance(Ci.nsIStringInputStream);
+
+    scriptInputStream.setUTF8Data(script);
+
+    Services.cpmm.sendAsyncMessage(this.CACHE_RESPONSE_MESSAGE, {
+      pageInputStream,
+      scriptInputStream,
+    });
+  },
+
+  _cacheWorker: null,
+  getOrCreateWorker() {
+    if (this._cacheWorker) {
+      return this._cacheWorker;
+    }
+
+    this._cacheWorker = new BasePromiseWorker(CACHE_WORKER_URL);
+    return this._cacheWorker;
+  },
+
+  receiveMessage(message) {
+    if (message.name === this.CACHE_REQUEST_MESSAGE) {
+      let { state } = message.data;
+      this.constructAndSendCache(state);
+    }
+  },
+};
 
 /**
  * This is an abstract base class for the nsIAboutNewTabService
@@ -136,88 +313,39 @@ class BaseAboutNewTabService {
     }
     return this.defaultURL;
   }
+
+  aboutHomeChannel(uri, loadInfo) {
+    throw Components.Exception(
+      "AboutHomeChannel not implemented for this process.",
+      Cr.NS_ERROR_NOT_IMPLEMENTED
+    );
+  }
 }
 
 /**
  * The child-process implementation of nsIAboutNewTabService,
- * which also does the work of loading scripts from the ScriptPreloader
- * cache when using the privileged about content process.
+ * which also does the work of redirecting about:home loads to
+ * the about:home startup cache if its available.
  */
 class AboutNewTabChildService extends BaseAboutNewTabService {
-  constructor() {
-    super();
-    if (this.privilegedAboutProcessEnabled) {
-      Services.obs.addObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
-      Services.obs.addObserver(this, TOPIC_APP_QUIT);
-    }
-  }
-
-  observe(subject, topic, data) {
-    switch (topic) {
-      case TOPIC_APP_QUIT: {
-        Services.obs.removeObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
-        Services.obs.removeObserver(this, TOPIC_APP_QUIT);
-        break;
-      }
-      case TOPIC_CONTENT_DOCUMENT_INTERACTIVE: {
-        if (!this.privilegedAboutProcessEnabled || !IS_PRIVILEGED_PROCESS) {
-          return;
-        }
-
-        const win = subject.defaultView;
-
-        // It seems like "content-document-interactive" is triggered multiple
-        // times for a single window. The first event always seems to be an
-        // HTMLDocument object that contains a non-null window reference
-        // whereas the remaining ones seem to be proxied objects.
-        // https://searchfox.org/mozilla-central/rev/d2966246905102b36ef5221b0e3cbccf7ea15a86/devtools/server/actors/object.js#100-102
-        if (win === null) {
-          return;
-        }
-
-        // We use win.location.pathname instead of win.location.toString()
-        // because we want to account for URLs that contain the location hash
-        // property or query strings (e.g. about:newtab#foo, about:home?bar).
-        // Asserting here would be ideal, but this code path is also taken
-        // by the view-source:// scheme, so we should probably just bail out
-        // and do nothing.
-        if (!ACTIVITY_STREAM_PAGES.has(win.location.pathname)) {
-          return;
-        }
-
-        // Bail out early for separate about:welcome URL
-        if (
-          this.isSeparateAboutWelcome &&
-          win.location.pathname.includes("welcome")
-        ) {
-          return;
-        }
-
-        const onLoaded = () => {
-          const debugString = this.activityStreamDebug ? "-dev" : "";
-
-          // This list must match any similar ones in render-activity-stream-html.js.
-          const scripts = [
-            "chrome://browser/content/contentSearchUI.js",
-            "chrome://browser/content/contentSearchHandoffUI.js",
-            "chrome://browser/content/contentTheme.js",
-            `${BASE_URL}vendor/react${debugString}.js`,
-            `${BASE_URL}vendor/react-dom${debugString}.js`,
-            `${BASE_URL}vendor/prop-types.js`,
-            `${BASE_URL}vendor/react-transition-group.js`,
-            `${BASE_URL}vendor/redux.js`,
-            `${BASE_URL}vendor/react-redux.js`,
-            `${BASE_URL}data/content/activity-stream.bundle.js`,
-          ];
-
-          for (let script of scripts) {
-            Services.scriptloader.loadSubScript(script, win); // Synchronous call
-          }
-        };
-        win.addEventListener("DOMContentLoaded", onLoaded, { once: true });
-        break;
+  aboutHomeChannel(uri, loadInfo) {
+    if (IS_PRIVILEGED_PROCESS) {
+      let cacheChannel = AboutHomeStartupCacheChild.maybeGetCachedPageChannel(
+        uri,
+        loadInfo
+      );
+      if (cacheChannel) {
+        return cacheChannel;
       }
     }
+
+    let pageURI = Services.io.newURI(this.defaultURL);
+    let fileChannel = Services.io.newChannelFromURIWithLoadInfo(
+      pageURI,
+      loadInfo
+    );
+    fileChannel.originalURI = uri;
+    return fileChannel;
   }
 }
 

@@ -8,6 +8,7 @@
 
 #include "mozilla/net/PSocketProcessChild.h"
 #include "mozilla/ipc/InputStreamUtils.h"
+#include "mozilla/Mutex.h"
 #include "nsRefPtrHashtable.h"
 
 namespace mozilla {
@@ -18,6 +19,7 @@ namespace mozilla {
 namespace net {
 
 class SocketProcessBridgeParent;
+class BackgroundDataBridgeParent;
 
 // The IPC actor implements PSocketProcessChild in child process.
 // This is allocated and kept alive by SocketProcessImpl.
@@ -86,6 +88,32 @@ class SocketProcessChild final
 
   bool IsShuttingDown() { return mShuttingDown; }
 
+  already_AddRefed<PDNSRequestChild> AllocPDNSRequestChild(
+      const nsCString& aHost, const nsCString& aTrrServer,
+      const uint16_t& aType, const OriginAttributes& aOriginAttributes,
+      const uint32_t& aFlags);
+  mozilla::ipc::IPCResult RecvPDNSRequestConstructor(
+      PDNSRequestChild* aActor, const nsCString& aHost,
+      const nsCString& aTrrServer, const uint16_t& aType,
+      const OriginAttributes& aOriginAttributes,
+      const uint32_t& aFlags) override;
+
+  void AddDataBridgeToMap(uint64_t aChannelId,
+                          BackgroundDataBridgeParent* aActor);
+  void RemoveDataBridgeFromMap(uint64_t aChannelId);
+  Maybe<RefPtr<BackgroundDataBridgeParent>> GetAndRemoveDataBridge(
+      uint64_t aChannelId);
+
+  mozilla::ipc::IPCResult RecvClearSessionCache();
+
+  already_AddRefed<PTRRServiceChild> AllocPTRRServiceChild(
+      const bool& aCaptiveIsPassed, const bool& aParentalControlEnabled,
+      const nsTArray<nsCString>& aDNSSuffixList);
+  mozilla::ipc::IPCResult RecvPTRRServiceConstructor(
+      PTRRServiceChild* aActor, const bool& aCaptiveIsPassed,
+      const bool& aParentalControlEnabled,
+      nsTArray<nsCString>&& aDNSSuffixList) override;
+
  protected:
   friend class SocketProcessImpl;
   ~SocketProcessChild();
@@ -101,6 +129,10 @@ class SocketProcessChild final
 #endif
 
   bool mShuttingDown;
+  // Protect the table below.
+  Mutex mMutex;
+  nsDataHashtable<nsUint64HashKey, RefPtr<BackgroundDataBridgeParent>>
+      mBackgroundDataBridgeMap;
 };
 
 }  // namespace net
