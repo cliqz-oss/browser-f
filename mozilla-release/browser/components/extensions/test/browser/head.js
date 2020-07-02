@@ -70,10 +70,14 @@ function loadTestSubscript(filePath) {
   Services.scriptloader.loadSubScript(new URL(filePath, gTestPath).href, this);
 }
 
-// Don't try to create screenshots of sites we load during tests.
+// Leaving Top Sites enabled during these tests would create site screenshots
+// and update pinned Top Sites unnecessarily.
 Services.prefs
   .getDefaultBranch("browser.newtabpage.activity-stream.")
   .setBoolPref("feeds.topsites", false);
+Services.prefs
+  .getDefaultBranch("browser.newtabpage.activity-stream.")
+  .setBoolPref("feeds.system.topsites", false);
 
 {
   // Touch the recipeParentPromise lazy getter so we don't get
@@ -488,6 +492,9 @@ async function openContextMenuInSidebar(selector = "body") {
   return contentAreaContextMenu;
 }
 
+// `selector` should refer to the content in the frame. If invalid the test can
+// fail intermittently because the click could inadvertently be registered on
+// the upper-left corner of the frame (instead of inside the frame).
 async function openContextMenuInFrame(selector = "body", frameIndex = 0) {
   let contentAreaContextMenu = document.getElementById(
     "contentAreaContextMenu"
@@ -666,14 +673,15 @@ function closeActionContextMenu(itemToSelect, kind, win = window) {
   return closeChromeContextMenu(menuID, itemToSelect, win);
 }
 
-function openTabContextMenu(win = window) {
+function openTabContextMenu(tab = gBrowser.selectedTab) {
   // The TabContextMenu initializes its strings only on a focus or mouseover event.
   // Calls focus event on the TabContextMenu before opening.
-  gBrowser.selectedTab.focus();
+  tab.focus();
+  let indexOfTab = Array.prototype.indexOf.call(tab.parentNode.children, tab);
   return openChromeContextMenu(
     "tabContextMenu",
-    ".tabbrowser-tab[selected]",
-    win
+    `.tabbrowser-tab:nth-child(${indexOfTab + 1})`,
+    tab.ownerGlobal
   );
 }
 

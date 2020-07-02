@@ -28,7 +28,7 @@ repackage_signing_description_schema = schema.extend({
 })
 
 SIGNING_FORMATS = {
-    "target.installer.exe": ["autograph_authenticode"],
+    "target.installer.exe": ["autograph_authenticode_stub"],
     "target.stub-installer.exe": ["autograph_authenticode_stub"],
     "target.installer.msi": ["autograph_authenticode"],
 }
@@ -46,10 +46,7 @@ def make_repackage_signing_description(config, jobs):
         attributes['repackage_type'] = 'repackage-signing'
 
         treeherder = job.get('treeherder', {})
-        if attributes.get('nightly'):
-            treeherder.setdefault('symbol', 'rs(N)')
-        else:
-            treeherder.setdefault('symbol', 'rs(B)')
+        treeherder.setdefault('symbol', 'rs(B)')
         dep_th_platform = dep_job.task.get('extra', {}).get('treeherder-platform')
         treeherder.setdefault('platform', dep_th_platform)
         treeherder.setdefault(
@@ -88,9 +85,9 @@ def make_repackage_signing_description(config, jobs):
         )
 
         build_platform = dep_job.attributes.get('build_platform')
-        is_nightly = dep_job.attributes.get('nightly', dep_job.attributes.get('shippable'))
+        is_shippable = dep_job.attributes.get('shippable')
         signing_cert_scope = get_signing_cert_scope_per_platform(
-            build_platform, is_nightly, config
+            build_platform, is_shippable, config
         )
         scopes = [signing_cert_scope]
 
@@ -116,6 +113,7 @@ def make_repackage_signing_description(config, jobs):
             'dependencies': dependencies,
             'attributes': attributes,
             'run-on-projects': dep_job.attributes.get('run_on_projects'),
+            'optimization': dep_job.optimization,
             'treeherder': treeherder,
         }
 

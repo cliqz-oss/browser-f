@@ -1,20 +1,19 @@
-Contributing to Firefox
-=======================
+Working on Firefox
+==================
 
-This is the preferred location for all Firefox development process and
-source code documentation.
+Welcome to the Firefox codebase. This is the home of the Firefox
+development process and source code documentation.
 
 .. toctree::
+   :caption: Making Changes To Firefox
    :maxdepth: 1
-   :glob:
 
-   how_to_contribute_firefox
+   contribution_quickref
+   editor
    reviews
-   directory_structure
-
 
 .. toctree::
-   :caption: Version control system
+   :caption: The Mercurial Version Control System
    :maxdepth: 1
    :glob:
 
@@ -22,9 +21,10 @@ source code documentation.
 
 
 .. toctree::
-   :caption: How to build Firefox
+   :caption: Additional Information
    :maxdepth: 1
-   :glob:
-
-   build/*
-
+   
+   directory_structure
+   build/artifact_builds
+   build/building_mobile_firefox
+   build/supported_configurations

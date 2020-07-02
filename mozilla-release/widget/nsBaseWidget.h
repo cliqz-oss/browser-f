@@ -167,8 +167,8 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
 
   virtual void SetSizeMode(nsSizeMode aMode) override;
   virtual nsSizeMode SizeMode() override { return mSizeMode; }
-  virtual int32_t GetWorkspaceID() override;
-  virtual void MoveToWorkspace(int32_t workspaceID) override;
+  virtual void GetWorkspaceID(nsAString& workspaceID) override;
+  virtual void MoveToWorkspace(const nsAString& workspaceID) override;
   virtual bool IsTiled() const override { return mIsTiled; }
 
   virtual bool IsFullyOccluded() const override { return mIsFullyOccluded; }
@@ -183,7 +183,8 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   virtual void SetWindowShadowStyle(
       mozilla::StyleWindowShadow aStyle) override {}
   virtual void SetShowsToolbarButton(bool aShow) override {}
-  virtual void SetShowsFullScreenButton(bool aShow) override {}
+  virtual void SetSupportsNativeFullscreen(
+      bool aSupportsNativeFullscreen) override {}
   virtual void SetWindowAnimationType(WindowAnimationType aType) override {}
   virtual void HideWindowChrome(bool aShouldHide) override {}
   virtual bool PrepareForFullscreenTransition(nsISupports** aData) override {
@@ -577,6 +578,8 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   }
 
   virtual CompositorBridgeChild* GetRemoteRenderer() override;
+
+  virtual void ClearCachedWebrenderResources() override;
 
   /**
    * Notify the widget that this window is being used with OMTC.

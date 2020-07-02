@@ -246,6 +246,10 @@ translate-attribution = Übersetzung mittels <img data-l10n-name="logo"/>
 translate-exceptions =
     .label = Ausnahmen…
     .accesskey = u
+# Variables:
+#    $localeName (string) - Localized name of the locale to be used.
+use-system-locale =
+    .label = Einstellungen des Betriebssystems für "{ $localeName }" verwenden, um Datum, Uhrzeit, Zahlen und Maßeinheiten zu formatieren.
 check-user-spelling =
     .label = Rechtschreibung während der Eingabe überprüfen
     .accesskey = R
@@ -294,6 +298,13 @@ applications-use-app =
 #   $app-name (String) - Name of an application (e.g Adobe Acrobat)
 applications-use-app-default =
     .label = Mit { $app-name } öffnen (Standard)
+applications-use-os-default =
+    .label =
+        { PLATFORM() ->
+            [macos] macOS-Standardanwendung verwenden
+            [windows] Windows-Standardanwendung verwenden
+           *[other] System-Standardanwendung verwenden
+        }
 applications-use-other =
     .label = Andere Anwendung…
 applications-select-helper = Hilfsanwendung wählen
@@ -317,8 +328,8 @@ applications-file-ending-with-type = { applications-file-ending } ({ $type })
 #   $plugin-name (String) - Name of a plugin (e.g Adobe Flash)
 applications-use-plugin-in =
     .label = { $plugin-name } (in { -brand-short-name }) verwenden
-applications-preview-inapp =
-    .label = Vorschau in { -brand-short-name }
+applications-open-inapp =
+    .label = In { -brand-short-name } öffnen
 
 ## The strings in this group are used to populate
 ## selected label element based on the string from
@@ -330,14 +341,16 @@ applications-action-save-label =
     .value = { applications-action-save.label }
 applications-use-app-label =
     .value = { applications-use-app.label }
-applications-preview-inapp-label =
-    .value = { applications-preview-inapp.label }
+applications-open-inapp-label =
+    .value = { applications-open-inapp.label }
 applications-always-ask-label =
     .value = { applications-always-ask.label }
 applications-use-app-default-label =
     .value = { applications-use-app-default.label }
 applications-use-other-label =
     .value = { applications-use-other.label }
+applications-use-os-default-label =
+    .value = { applications-use-os-default.label }
 
 ##
 
@@ -493,12 +506,34 @@ home-prefs-search-header =
     .label = Internetsuche
 home-prefs-topsites-header =
     .label = Wichtige Seiten
+<<<<<<< HEAD
 home-prefs-topsites-description = Die von deinen am meisten besuchten Websites
 # Variables:
 #  $provider (String): Name of the corresponding content provider, e.g "Pocket".
+||||||| merged common ancestors
+home-prefs-topsites-description = Die von Ihnen am meisten besuchten Websites
+# Variables:
+#  $provider (String): Name of the corresponding content provider, e.g "Pocket".
+=======
+home-prefs-topsites-description = Die von Ihnen am meisten besuchten Websites
+
+## Variables:
+##  $provider (String): Name of the corresponding content provider, e.g "Pocket".
+
+>>>>>>> origin/upstream-releases
 home-prefs-recommended-by-header =
     .label = Empfohlen von { $provider }
+<<<<<<< HEAD
 home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für dich personalisiert
+||||||| merged common ancestors
+home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für Sie personalisiert
+=======
+home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für Sie personalisiert
+home-prefs-recommended-by-description-update = Besondere Inhalte aus dem ganzen Internet, ausgewählt von { $provider }
+
+##
+
+>>>>>>> origin/upstream-releases
 home-prefs-recommended-by-learn-more = Wie es funktioniert
 home-prefs-recommended-by-option-sponsored-stories =
     .label = Gesponserte Inhalte
@@ -559,6 +594,7 @@ search-show-suggestions-above-history-option =
 search-show-suggestions-private-windows =
     .label = Suchvorschläge in Vergessen Fenstern anzeigen
 suggestions-addressbar-settings = Einstellungen für Chronik, Lesezeichen und vorgeschlagene offene Tabs ändern
+suggestions-addressbar-settings-generic = Einstellungen für andere Vorschläge in der Adressleiste ändern
 search-suggestions-cant-show = Suchvorschläge werden nicht in der Adressleiste angezeigt, weil { -brand-short-name } angewiesen wurde, keine Chronik zu speichern.
 search-one-click-header = Direkt suchen
 search-one-click-desc = Wähle eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem du den Suchbegriff eingegeben hast.
@@ -764,10 +800,13 @@ privacy-header = Browser-Datenschutz
 
 ## Privacy Section - Forms
 
+logins-header = Zugangsdaten und Passwörter
 
 ## Privacy Section - Logins and Passwords
 
-logins-header = Zugangsdaten & Passwörter
+# The search keyword isn't shown to users but is used to find relevant settings in about:preferences.
+pane-privacy-logins-and-passwords-header = Zugangsdaten und Passwörter
+    .searchkeywords = { -lockwise-brand-short-name }
 # Checkbox to control whether UI is shown to users to save or fill logins/passwords.
 forms-ask-to-save-logins =
     .label = Fragen, ob Zugangsdaten und Passwörter für Websites gespeichert werden sollen
@@ -801,7 +840,7 @@ forms-master-pw-fips-desc = Ändern des Passworts fehlgeschlagen
 ## OS Authentication dialog
 
 # This message can be seen by trying to add a Master Password.
-master-password-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um ein Master-Passwort zu erstellen.
+master-password-os-auth-dialog-message-win = Um ein Master-Passwort zu erstellen, müssen die Anmeldedaten des Windows-Benutzerkontos eingegeben werden. Dies dient dem Schutz Ihrer Zugangsdaten.
 # This message can be seen by trying to add a Master Password.
 # The macOS strings are preceded by the operating system with "Firefox is trying to "
 # and includes subtitle of "Enter password for the user "xxx" to allow this." These
@@ -884,6 +923,8 @@ sitedata-option-block-cross-site-trackers =
     .label = Zur seitenübergreifenden Aktivitätenverfolgung
 sitedata-option-block-cross-site-and-social-media-trackers =
     .label = Zur seitenübergreifenden Aktivitätenverfolgung und von sozialen Netzwerken
+sitedata-option-block-cross-site-and-social-media-trackers-plus-isolate =
+    .label = Zur seitenübergreifenden Aktivitätenverfolgung und von sozialen Netzwerken, dabei verbleibende Cookies isolieren
 sitedata-option-block-unvisited =
     .label = Cookies von nicht besuchten Websites
 sitedata-option-block-all-third-party =
@@ -899,6 +940,9 @@ sitedata-settings =
 sitedata-cookies-permissions =
     .label = Berechtigungen verwalten…
     .accesskey = B
+sitedata-cookies-exceptions =
+    .label = Ausnahmen verwalten…
+    .accesskey = u
 
 ## Privacy Section - Address Bar
 
@@ -913,6 +957,9 @@ addressbar-locbar-bookmarks-option =
 addressbar-locbar-openpage-option =
     .label = Offene Tabs
     .accesskey = O
+addressbar-locbar-topsites-option =
+    .label = Wichtige Seiten
+    .accesskey = W
 addressbar-suggestions-settings = Einstellungen für Suchvorschläge ändern
 
 ## Privacy Section - Content Blocking
@@ -964,6 +1011,7 @@ content-blocking-etp-strict-desc = Stärkerer Schutz, einige Websites oder manch
 content-blocking-etp-custom-desc = Wähle, welche Art von Skripten zur Aktivitätenverfolgung und sonstige Inhalte blockiert werden.
 content-blocking-private-windows = Inhalte zur Aktivitätenverfolgung in Vergessen Fenstern
 content-blocking-cross-site-tracking-cookies = Cookies zur seitenübergreifenden Aktivitätenverfolgung
+content-blocking-cross-site-tracking-cookies-plus-isolate = Cookies zur seitenübergreifenden Aktivitätenverfolgung, dabei verbleibende Cookies isolieren
 content-blocking-social-media-trackers = Skripte zur Aktivitätenverfolgung durch soziale Netzwerke
 content-blocking-all-cookies = Alle Cookies
 content-blocking-unvisited-cookies = Cookies von nicht besuchten Websites
@@ -973,9 +1021,19 @@ content-blocking-all-third-party-cookies = Alle Cookies von Drittanbietern
 content-blocking-cryptominers = Heimliche Digitalwährungsberechner (Krypto-Miner)
 content-blocking-fingerprinters = Identifizierer (Fingerprinter)
 content-blocking-warning-title = Achtung!
+<<<<<<< HEAD
 content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von deinen vertraute Seiten ist ganz einfach.
 content-blocking-learn-how = Erfahre mehr
 content-blocking-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung kann Auswirkungen auf das Funktionieren einiger Websites haben. Lade eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
+||||||| merged common ancestors
+content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
+content-blocking-learn-how = Erfahren Sie mehr
+content-blocking-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung kann Auswirkungen auf das Funktionieren einiger Websites haben. Laden Sie eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
+=======
+content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
+content-blocking-learn-how = Erfahren Sie mehr
+content-blocking-and-isolating-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung und das Isolieren von Cookies kann Auswirkungen auf das Funktionieren einiger Websites haben. Laden Sie eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
+>>>>>>> origin/upstream-releases
 content-blocking-warning-learn-how = Weitere Informationen
 content-blocking-reload-description = Um die Änderungen anzuwenden, müssen alle Tabs neu geladen werden.
 content-blocking-reload-tabs-button =

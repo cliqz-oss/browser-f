@@ -406,9 +406,24 @@ class MOZ_MUST_USE_TYPE Result final {
     return mImpl.inspectErr();
   }
 
+  /** Propagate the error value from this Result, which must be an error result.
+   *
+   * This can be used to propagate an error from a function call to the caller
+   * with a different value type, but the same error type:
+   *
+   *    Result<T1, E> Func1() {
+   *       Result<T2, E> res = Func2();
+   *       if (res.isErr()) { return res.propagateErr(); }
+   *    }
+   */
+  GenericErrorResult<E> propagateErr() {
+    MOZ_ASSERT(isErr());
+    return GenericErrorResult<E>{mImpl.unwrapErr()};
+  }
+
   /**
    * Map a function V -> W over this result's success variant. If this result is
-   * an error, do not invoke the function and return a copy of the error.
+   * an error, do not invoke the function and propagate the error.
    *
    * Mapping over success values invokes the function to produce a new success
    * value:
@@ -423,7 +438,8 @@ class MOZ_MUST_USE_TYPE Result final {
    *     Result<size_t, E> res2 = res.map(strlen);
    *     MOZ_ASSERT(res2.unwrap() == 11);
    *
-   * Mapping over an error does not invoke the function and copies the error:
+   * Mapping over an error does not invoke the function and propagates the
+   * error:
    *
    *     Result<V, int> res(5);
    *     MOZ_ASSERT(res.isErr());
@@ -470,8 +486,7 @@ class MOZ_MUST_USE_TYPE Result final {
 
   /**
    * Given a function V -> Result<W, E>, apply it to this result's success value
-   * and return its result. If this result is an error value, then return a
-   * copy.
+   * and return its result. If this result is an error value, it is propagated.
    *
    * This is sometimes called "flatMap" or ">>=" in other contexts.
    *
@@ -489,7 +504,7 @@ class MOZ_MUST_USE_TYPE Result final {
    *     MOZ_ASSERT(res2.unwrap() == HtmlFreeString("hello, andThen!");
    *
    * `andThen`ing over error results does not invoke the function, and just
-   * produces a new copy of the error result:
+   * propagates the error result:
    *
    *     Result<int, const char*> res("some error");
    *     auto res2 = res.andThen([](int x) { ... });
@@ -499,8 +514,7 @@ class MOZ_MUST_USE_TYPE Result final {
   template <typename F, typename = std::enable_if_t<detail::IsResult<
                             decltype((*((F*)nullptr))(*((V*)nullptr)))>::value>>
   auto andThen(F f) -> decltype(f(*((V*)nullptr))) {
-    return MOZ_LIKELY(isOk()) ? f(unwrap())
-                              : GenericErrorResult<E>(unwrapErr());
+    return MOZ_LIKELY(isOk()) ? f(unwrap()) : propagateErr();
   }
 };
 
@@ -535,12 +549,12 @@ inline GenericErrorResult<E> Err(E&& aErrorValue) {
  * discards the result altogether. On error, it immediately returns an error
  * Result from the enclosing function.
  */
-#define MOZ_TRY(expr)                                       \
-  do {                                                      \
-    auto mozTryTempResult_ = ::mozilla::ToResult(expr);     \
-    if (MOZ_UNLIKELY(mozTryTempResult_.isErr())) {          \
-      return ::mozilla::Err(mozTryTempResult_.unwrapErr()); \
-    }                                                       \
+#define MOZ_TRY(expr)                                   \
+  do {                                                  \
+    auto mozTryTempResult_ = ::mozilla::ToResult(expr); \
+    if (MOZ_UNLIKELY(mozTryTempResult_.isErr())) {      \
+      return mozTryTempResult_.propagateErr();          \
+    }                                                   \
   } while (0)
 
 /**
@@ -550,13 +564,13 @@ inline GenericErrorResult<E> Err(E&& aErrorValue) {
  * immediately returns the error result. |target| must evaluate to a reference
  * without any side effects.
  */
-#define MOZ_TRY_VAR(target, expr)                              \
-  do {                                                         \
-    auto mozTryVarTempResult_ = (expr);                        \
-    if (MOZ_UNLIKELY(mozTryVarTempResult_.isErr())) {          \
-      return ::mozilla::Err(mozTryVarTempResult_.unwrapErr()); \
-    }                                                          \
-    (target) = mozTryVarTempResult_.unwrap();                  \
+#define MOZ_TRY_VAR(target, expr)                     \
+  do {                                                \
+    auto mozTryVarTempResult_ = (expr);               \
+    if (MOZ_UNLIKELY(mozTryVarTempResult_.isErr())) { \
+      return mozTryVarTempResult_.propagateErr();     \
+    }                                                 \
+    (target) = mozTryVarTempResult_.unwrap();         \
   } while (0)
 
 #endif  // mozilla_Result_h

@@ -803,11 +803,24 @@ int32_t nsNativeThemeWin::StandardGetState(nsIFrame* aFrame,
                                            StyleAppearance aAppearance,
                                            bool wantFocused) {
   EventStates eventState = GetContentState(aFrame, aAppearance);
-  if (eventState.HasAllStates(NS_EVENT_STATE_HOVER | NS_EVENT_STATE_ACTIVE))
+  if (eventState.HasAllStates(NS_EVENT_STATE_HOVER | NS_EVENT_STATE_ACTIVE)) {
     return TS_ACTIVE;
-  if (eventState.HasState(NS_EVENT_STATE_HOVER)) return TS_HOVER;
-  if (wantFocused && eventState.HasState(NS_EVENT_STATE_FOCUS))
-    return TS_FOCUSED;
+  }
+  if (eventState.HasState(NS_EVENT_STATE_HOVER)) {
+    return TS_HOVER;
+  }
+  if (wantFocused) {
+    if (eventState.HasState(NS_EVENT_STATE_FOCUSRING)) {
+      return TS_FOCUSED;
+    }
+    // On Windows, focused buttons are always drawn as such by the native
+    // theme, that's why we check NS_EVENT_STATE_FOCUS instead of
+    // NS_EVENT_STATE_FOCUSRING.
+    if (aAppearance == StyleAppearance::Button &&
+        eventState.HasState(NS_EVENT_STATE_FOCUS)) {
+      return TS_FOCUSED;
+    }
+  }
 
   return TS_NORMAL;
 }
@@ -924,7 +937,7 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
         if (content && content->IsXULElement() && IsFocused(aFrame))
           aState = TFS_EDITBORDER_FOCUSED;
         else if (eventState.HasAtLeastOneOfStates(NS_EVENT_STATE_ACTIVE |
-                                                  NS_EVENT_STATE_FOCUS))
+                                                  NS_EVENT_STATE_FOCUSRING))
           aState = TFS_EDITBORDER_FOCUSED;
         else if (eventState.HasState(NS_EVENT_STATE_HOVER))
           aState = TFS_EDITBORDER_HOVER;
@@ -1106,7 +1119,7 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
                                          // canceled when you move outside the
                                          // thumb.
           aState = TS_ACTIVE;
-        else if (eventState.HasState(NS_EVENT_STATE_FOCUS))
+        else if (eventState.HasState(NS_EVENT_STATE_FOCUSRING))
           aState = TKP_FOCUSED;
         else if (eventState.HasState(NS_EVENT_STATE_HOVER))
           aState = TS_HOVER;
@@ -1252,8 +1265,8 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
       } else if (IsOpenButton(aFrame)) {
         aState = TS_ACTIVE;
       } else {
-        if (useDropBorder &&
-            (eventState.HasState(NS_EVENT_STATE_FOCUS) || IsFocused(aFrame)))
+        if (useDropBorder && (eventState.HasState(NS_EVENT_STATE_FOCUSRING) ||
+                              IsFocused(aFrame)))
           aState = TS_ACTIVE;
         else if (eventState.HasAllStates(NS_EVENT_STATE_HOVER |
                                          NS_EVENT_STATE_ACTIVE))
@@ -1546,7 +1559,7 @@ nsNativeThemeWin::DrawWidgetBackground(gfxContext* aContext, nsIFrame* aFrame,
                                        aDirtyRect);
 
   // ^^ without the right sdk, assume xp theming and fall through.
-  if (nsUXThemeData::CheckForCompositor()) {
+  if (gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
     switch (aAppearance) {
       case StyleAppearance::MozWindowTitlebar:
       case StyleAppearance::MozWindowTitlebarMaximized:
@@ -1882,7 +1895,7 @@ RENDER_AGAIN:
       aAppearance == StyleAppearance::ScaleVertical) {
     EventStates contentState = GetContentState(aFrame, aAppearance);
 
-    if (contentState.HasState(NS_EVENT_STATE_FOCUS)) {
+    if (contentState.HasState(NS_EVENT_STATE_FOCUSRING)) {
       POINT vpOrg;
       HPEN hPen = nullptr;
 
@@ -2061,7 +2074,7 @@ bool nsNativeThemeWin::GetWidgetPadding(nsDeviceContext* aContext,
     aResult->SizeTo(0, 0, 0, 0);
 
     // aero glass doesn't display custom buttons
-    if (nsUXThemeData::CheckForCompositor()) return true;
+    if (gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) return true;
 
     // button padding for standard windows
     if (aAppearance == StyleAppearance::MozWindowButtonBox) {
@@ -2447,7 +2460,7 @@ nsNativeThemeWin::GetMinimumWidgetSize(nsPresContext* aPresContext,
 
     case StyleAppearance::MozWindowButtonBox:
     case StyleAppearance::MozWindowButtonBoxMaximized:
-      if (nsUXThemeData::CheckForCompositor()) {
+      if (gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
         aResult->width = nsUXThemeData::GetCommandButtonBoxMetrics().cx;
         aResult->height = nsUXThemeData::GetCommandButtonBoxMetrics().cy -
                           GetSystemMetrics(SM_CYFRAME) -
@@ -2601,7 +2614,17 @@ bool nsNativeThemeWin::WidgetIsContainer(StyleAppearance aAppearance) {
 }
 
 bool nsNativeThemeWin::ThemeDrawsFocusForWidget(StyleAppearance aAppearance) {
-  return false;
+  switch (aAppearance) {
+    case StyleAppearance::Menulist:
+    case StyleAppearance::MenulistButton:
+    case StyleAppearance::MenulistTextfield:
+    case StyleAppearance::Textarea:
+    case StyleAppearance::Textfield:
+    case StyleAppearance::NumberInput:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool nsNativeThemeWin::ThemeNeedsComboboxDropmarker() { return true; }
@@ -3109,6 +3132,9 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
             aFocused = true;
           }
         }
+        // On Windows, focused buttons are always drawn as such by the native
+        // theme, that's why we check NS_EVENT_STATE_FOCUS instead of
+        // NS_EVENT_STATE_FOCUSRING.
         if (contentState.HasState(NS_EVENT_STATE_FOCUS) ||
             (aState == DFCS_BUTTONPUSH && IsDefaultButton(aFrame))) {
           aFocused = true;
@@ -3145,7 +3171,7 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
 
       contentState = GetContentState(aFrame, aAppearance);
       if (!content->IsXULElement() &&
-          contentState.HasState(NS_EVENT_STATE_FOCUS)) {
+          contentState.HasState(NS_EVENT_STATE_FOCUSRING)) {
         aFocused = true;
       }
 

@@ -568,6 +568,7 @@ function htmlView(type) {
     },
   };
 }
+<<<<<<< HEAD
 
 function ItemHandler(addon) {
   this._addon = addon;
@@ -632,3 +633,18 @@ ItemHandler.prototype = {
   // CLIQZ-TODO: if we need to something extra on install/download failure
   onFaliure: function(failedItem, reloadTimeout) {console.log('failed', failedItem)}
 }
+||||||| merged common ancestors
+=======
+
+// Helper method exported into the about:addons global, used to open the
+// abuse report panel from outside of the about:addons page
+// (e.g. triggered from the browserAction context menu).
+window.openAbuseReport = ({ addonId, reportEntryPoint }) => {
+  promiseHtmlBrowserLoaded().then(browser => {
+    browser.contentWindow.openAbuseReport({
+      addonId,
+      reportEntryPoint,
+    });
+  });
+};
+>>>>>>> origin/upstream-releases

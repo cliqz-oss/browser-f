@@ -49,6 +49,7 @@
 <!-- Advanced -->
 <!ENTITY reading.caption                  "Lesen">
 <!ENTITY display.caption                  "Ansicht">
+<!ENTITY displayName.label                "Anzeigename:">
 <!ENTITY showCondensedAddresses.label     "Bei bekannten Kontakten nur den Anzeigenamen zeigen">
 <!ENTITY showCondensedAddresses.accesskey "B">
 

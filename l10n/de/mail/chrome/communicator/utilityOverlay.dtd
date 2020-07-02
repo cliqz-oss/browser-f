@@ -36,6 +36,9 @@
 <!ENTITY preferencesCmdUnix.label       "Einstellungen">
 <!ENTITY preferencesCmdUnix.accesskey     "E">
 
+<!ENTITY customizeCmd.label "Anpassen">
+<!ENTITY customizeCmd.accesskey "A">
+
 <!ENTITY viewMenu.label					"Ansicht">
 <!ENTITY viewMenu.accesskey				"A">
 <!ENTITY viewToolbarsMenu.label				"Symbolleisten">

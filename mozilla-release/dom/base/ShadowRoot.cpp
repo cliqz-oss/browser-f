@@ -10,7 +10,6 @@
 #include "mozilla/dom/DocumentFragment.h"
 #include "ChildIterator.h"
 #include "nsContentUtils.h"
-#include "nsIStyleSheetLinkingElement.h"
 #include "nsWindowSizes.h"
 #include "mozilla/dom/DirectionalityUtils.h"
 #include "mozilla/dom/Element.h"
@@ -477,14 +476,6 @@ void ShadowRoot::RemoveSheetFromStyles(StyleSheet& aSheet) {
   ApplicableRulesChanged();
 }
 
-void ShadowRoot::RemoveSheet(StyleSheet& aSheet) {
-  RefPtr<StyleSheet> sheet = DocumentOrShadowRoot::RemoveSheet(aSheet);
-  MOZ_ASSERT(sheet);
-  if (sheet->IsApplicable()) {
-    RemoveSheetFromStyles(*sheet);
-  }
-}
-
 void ShadowRoot::AddToIdTable(Element* aElement, nsAtom* aId) {
   IdentifierMapEntry* entry = mIdentifierMap.PutEntry(aId);
   if (entry) {
@@ -672,7 +663,7 @@ void ShadowRoot::MaybeUnslotHostChild(nsIContent& aChild) {
     return;
   }
 
-  MOZ_DIAGNOSTIC_ASSERT(!aChild.IsRootOfAnonymousSubtree(),
+  MOZ_DIAGNOSTIC_ASSERT(!aChild.IsRootOfNativeAnonymousSubtree(),
                         "How did aChild end up assigned to a slot?");
   // If the slot is going to start showing fallback content, we need to tell
   // layout about it.
@@ -688,7 +679,7 @@ void ShadowRoot::MaybeSlotHostChild(nsIContent& aChild) {
   MOZ_ASSERT(aChild.GetParent() == GetHost());
   // Check to ensure that the child not an anonymous subtree root because even
   // though its parent could be the host it may not be in the host's child list.
-  if (aChild.IsRootOfAnonymousSubtree()) {
+  if (aChild.IsRootOfNativeAnonymousSubtree()) {
     return;
   }
 

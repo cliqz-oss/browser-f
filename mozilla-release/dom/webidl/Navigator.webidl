@@ -83,7 +83,7 @@ interface mixin NavigatorContentUtils {
   // content handler registration
   [Throws, ChromeOnly]
   void checkProtocolHandlerAllowed(DOMString scheme, URI handlerURI, URI documentURI);
-  [Throws, Func="nsGlobalWindowInner::RegisterProtocolHandlerAllowedForContext"]
+  [Throws, SecureContext]
   void registerProtocolHandler(DOMString scheme, DOMString url, DOMString title);
   // NOT IMPLEMENTED
   //void unregisterProtocolHandler(DOMString scheme, DOMString url);
@@ -225,6 +225,12 @@ partial interface Navigator {
 partial interface Navigator {
   [Pref="dom.vr.puppet.enabled"]
   VRServiceTest requestVRServiceTest();
+};
+
+// https://immersive-web.github.io/webxr/#dom-navigator-xr
+partial interface Navigator {
+  [SecureContext, SameObject, Throws, Pref="dom.vr.webxr.enabled"]
+  readonly attribute XRSystem xr;
 };
 
 // http://webaudio.github.io/web-midi-api/#requestmidiaccess

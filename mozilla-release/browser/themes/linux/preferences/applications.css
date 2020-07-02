@@ -27,6 +27,11 @@
   min-height: 25px;
 }
 
+richlistitem[appHandlerIcon="handleInternally"],
+menuitem[appHandlerIcon="handleInternally"] {
+  list-style-image: url("chrome://branding/content/icon32.png");
+}
+
 richlistitem[appHandlerIcon="ask"],
 menuitem[appHandlerIcon="ask"] {
   list-style-image: url("chrome://browser/skin/preferences/alwaysAsk.png");
@@ -42,7 +47,7 @@ menuitem[appHandlerIcon="plugin"] {
   list-style-image: url("chrome://global/skin/plugins/pluginGeneric.svg");
 }
 
-.actionsMenu .menulist-icon {
+.actionsMenu::part(icon) {
   margin-inline: 1px 8px;
   height: 16px;
   width: 16px;

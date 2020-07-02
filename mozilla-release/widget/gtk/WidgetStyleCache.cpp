@@ -8,6 +8,11 @@
 #include <gtk/gtk.h>
 #include "WidgetStyleCache.h"
 #include "gtkdrawing.h"
+#include "mozilla/Assertions.h"
+#include "mozilla/PodOperations.h"
+#include "nsDebug.h"
+#include "nsPrintfCString.h"
+#include "nsString.h"
 
 #define STATE_FLAG_DIR_LTR (1U << 7)
 #define STATE_FLAG_DIR_RTL (1U << 8)
@@ -602,11 +607,11 @@ static void CreateHeaderBarButton(GtkWidget* aParentWidget,
   LoadWidgetIconPixbuf(image);
 }
 
-static bool IsToolbarButtonEnabled(WidgetNodeType* aButtonLayout,
-                                   int aButtonNums,
+static bool IsToolbarButtonEnabled(ButtonLayout* aButtonLayout,
+                                   size_t aButtonNums,
                                    WidgetNodeType aAppearance) {
-  for (int i = 0; i < aButtonNums; i++) {
-    if (aButtonLayout[i] == aAppearance) {
+  for (size_t i = 0; i < aButtonNums; i++) {
+    if (aButtonLayout[i].mType == aAppearance) {
       return true;
     }
   }
@@ -629,10 +634,10 @@ static void CreateHeaderBarButtons() {
   gtk_style_context_add_class(gtk_widget_get_style_context(buttonBox),
                               GTK_STYLE_CLASS_LEFT);
 
-  WidgetNodeType buttonLayout[TOOLBAR_BUTTONS];
+  ButtonLayout buttonLayout[TOOLBAR_BUTTONS];
 
-  int activeButtons =
-      GetGtkHeaderBarButtonLayout(buttonLayout, TOOLBAR_BUTTONS, nullptr);
+  size_t activeButtons =
+      GetGtkHeaderBarButtonLayout(mozilla::MakeSpan(buttonLayout), nullptr);
 
   if (IsToolbarButtonEnabled(buttonLayout, activeButtons,
                              MOZ_GTK_HEADER_BAR_BUTTON_MINIMIZE)) {

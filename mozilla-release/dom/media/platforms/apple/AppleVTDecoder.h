@@ -67,6 +67,7 @@ class AppleVTDecoder : public MediaDataDecoder,
   // Access from the taskqueue and the decoder's thread.
   // OutputFrame is thread-safe.
   void OutputFrame(CVPixelBufferRef aImage, AppleFrameRef aFrameRef);
+  void OnDecodeError(OSStatus aError);
 
  private:
   virtual ~AppleVTDecoder();
@@ -74,6 +75,7 @@ class AppleVTDecoder : public MediaDataDecoder,
   RefPtr<DecodePromise> ProcessDrain();
   void ProcessShutdown();
   void ProcessDecode(MediaRawData* aSample);
+  void MaybeResolveBufferedFrames();
 
   void AssertOnTaskQueueThread() {
     MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());

@@ -20,6 +20,7 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_svg.h"
+#include "mozilla/StaticPresData.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/BinarySearch.h"
@@ -4875,45 +4876,16 @@ void nsTextFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   aLists.Content()->AppendNewToTop<nsDisplayText>(aBuilder, this, isSelected);
 }
 
-static nsIFrame* GetGeneratedContentOwner(nsIFrame* aFrame, bool* aIsBefore) {
-  *aIsBefore = false;
-  while (aFrame && (aFrame->GetStateBits() & NS_FRAME_GENERATED_CONTENT)) {
-    if (aFrame->Style()->GetPseudoType() == PseudoStyleType::before) {
-      *aIsBefore = true;
-    }
-    aFrame = aFrame->GetParent();
-  }
-  return aFrame;
-}
-
 UniquePtr<SelectionDetails> nsTextFrame::GetSelectionDetails() {
   const nsFrameSelection* frameSelection = GetConstFrameSelection();
-  if (frameSelection->GetTableCellSelection()) {
+  if (frameSelection->IsInTableSelectionMode()) {
     return nullptr;
   }
-  if (!(GetStateBits() & NS_FRAME_GENERATED_CONTENT)) {
-    UniquePtr<SelectionDetails> details = frameSelection->LookUpSelection(
-        mContent, GetContentOffset(), GetContentLength(), false);
-    for (SelectionDetails* sd = details.get(); sd; sd = sd->mNext.get()) {
-      sd->mStart += mContentOffset;
-      sd->mEnd += mContentOffset;
-    }
-    return details;
-  }
-
-  // Check if the beginning or end of the element is selected, depending on
-  // whether we're :before content or :after content.
-  bool isBefore;
-  nsIFrame* owner = GetGeneratedContentOwner(this, &isBefore);
-  if (!owner || !owner->GetContent()) return nullptr;
-
   UniquePtr<SelectionDetails> details = frameSelection->LookUpSelection(
-      owner->GetContent(), isBefore ? 0 : owner->GetContent()->GetChildCount(),
-      0, false);
+      mContent, GetContentOffset(), GetContentLength(), false);
   for (SelectionDetails* sd = details.get(); sd; sd = sd->mNext.get()) {
-    // The entire text is selected!
-    sd->mStart = GetContentOffset();
-    sd->mEnd = GetContentEnd();
+    sd->mStart += mContentOffset;
+    sd->mEnd += mContentOffset;
   }
   return details;
 }
@@ -4941,13 +4913,11 @@ static nscoord LazyGetLineBaselineOffset(nsIFrame* aChildFrame,
       aChildFrame->GetProperty(nsIFrame::LineBaselineOffset(), &offsetFound);
 
   if (!offsetFound) {
-    for (nsBlockFrame::LineIterator line = aBlockFrame->LinesBegin(),
-                                    line_end = aBlockFrame->LinesEnd();
-         line != line_end; line++) {
-      if (line->IsInline()) {
-        int32_t n = line->GetChildCount();
-        nscoord lineBaseline = line->BStart() + line->GetLogicalAscent();
-        for (nsIFrame* lineFrame = line->mFirstChild; n > 0;
+    for (const auto& line : aBlockFrame->Lines()) {
+      if (line.IsInline()) {
+        int32_t n = line.GetChildCount();
+        nscoord lineBaseline = line.BStart() + line.GetLogicalAscent();
+        for (auto* lineFrame = line.mFirstChild; n > 0;
              lineFrame = lineFrame->GetNextSibling(), --n) {
           offset = lineBaseline - lineFrame->GetNormalPosition().y;
           lineFrame->SetProperty(nsIFrame::LineBaselineOffset(), offset);
@@ -8000,10 +7970,9 @@ ClusterIterator::ClusterIterator(nsTextFrame* aTextFrame, int32_t aPosition,
 
   int32_t textOffset = aTextFrame->GetContentOffset();
   int32_t textLen = aTextFrame->GetContentLength();
-  if (!mWordBreaks.AppendElements(textLen + 1)) {
-    mDirection = 0;  // signal failure
-    return;
-  }
+  // XXX(Bug 1631371) Check if this should use a fallible operation as it
+  // pretended earlier.
+  mWordBreaks.AppendElements(textLen + 1);
   memset(mWordBreaks.Elements(), false, (textLen + 1) * sizeof(bool));
   int32_t textStart;
   if (aDirection > 0) {
@@ -8024,11 +7993,15 @@ ClusterIterator::ClusterIterator(nsTextFrame* aTextFrame, int32_t aPosition,
     aContext.Insert(str, 0);
   }
   mozilla::intl::WordBreaker* wordBreaker = nsContentUtils::WordBreaker();
-  for (int32_t i = 0; i <= textLen; ++i) {
-    int32_t indexInText = i + textStart;
-    mWordBreaks[i] |= wordBreaker->BreakInBetween(
-        aContext.get(), indexInText, aContext.get() + indexInText,
-        aContext.Length() - indexInText);
+  int32_t nextWord = textStart > 0 ? textStart - 1 : textStart;
+  while (true) {
+    nextWord =
+        wordBreaker->NextWord(aContext.get(), aContext.Length(), nextWord);
+    if (NS_WORDBREAKER_NEED_MORE_TEXT == nextWord ||
+        nextWord > textStart + textLen) {
+      break;
+    }
+    mWordBreaks[nextWord - textStart] = true;
   }
 }
 
@@ -10026,7 +9999,7 @@ nsresult nsTextFrame::GetFrameName(nsAString& aResult) const {
   return NS_OK;
 }
 
-void nsTextFrame::List(FILE* out, const char* aPrefix, uint32_t aFlags) const {
+void nsTextFrame::List(FILE* out, const char* aPrefix, ListFlags aFlags) const {
   nsCString str;
   ListGeneric(str, aPrefix, aFlags);
 
@@ -10172,7 +10145,7 @@ uint32_t nsTextFrame::CountGraphemeClusters() const {
   return unicode::CountGraphemeClusters(content.Data(), content.Length());
 }
 
-bool nsTextFrame::HasNonSuppressedText() {
+bool nsTextFrame::HasNonSuppressedText() const {
   if (HasAnyStateBits(TEXT_ISNOT_ONLY_WHITESPACE |
                       // If we haven't reflowed yet, or are currently doing so,
                       // just return true because we can't be sure.

@@ -8,6 +8,21 @@ var EXPORTED_SYMBOLS = ["AutoCompleteParent"];
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+
+XPCOMUtils.defineLazyModuleGetters(this, {
+  GeckoViewAutocomplete: "resource://gre/modules/GeckoViewAutocomplete.jsm",
+});
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "DELEGATE_AUTOCOMPLETE",
+  "toolkit.autocomplete.delegate",
+  false
+);
+
 // Stores the browser and actor that has the active popup, used by formfill
 let currentBrowserWeakRef = null;
 let currentActor = null;
@@ -173,11 +188,16 @@ class AutoCompleteParent extends JSWindowActorParent {
 
       case "popuphidden": {
         let selectedIndex = this.openedPopup.selectedIndex;
+        let selectedRowComment =
+          selectedIndex != -1
+            ? AutoCompleteResultView.getCommentAt(selectedIndex)
+            : "";
         let selectedRowStyle =
           selectedIndex != -1
             ? AutoCompleteResultView.getStyleAt(selectedIndex)
             : "";
         this.sendAsyncMessage("FormAutoComplete:PopupClosed", {
+          selectedRowComment,
           selectedRowStyle,
         });
         AutoCompleteResultView.clearResults();
@@ -240,7 +260,7 @@ class AutoCompleteParent extends JSWindowActorParent {
       (resultStyles.has("autofill-profile") || resultStyles.has("loginsFooter"))
     ) {
       this.openedPopup._normalMaxRows = this.openedPopup.maxRows;
-      this.openedPopup.mInput.maxRows = 100;
+      this.openedPopup.mInput.maxRows = 10;
     }
     this.openedPopup.addEventListener("popuphidden", this);
     this.openedPopup.addEventListener("popupshowing", this);
@@ -295,7 +315,12 @@ class AutoCompleteParent extends JSWindowActorParent {
     // Add counts by result style to rawExtraData.
     results.reduce((accumulated, r) => {
       // Keys can be a maximum of 15 characters and values must be strings.
-      let truncatedStyle = r.style.substring(0, 15);
+      // Also treat both "loginWithOrigin" and "login" as "login" as extra_keys
+      // is limited to 10.
+      let truncatedStyle = r.style.substring(
+        0,
+        r.style === "loginWithOrigin" ? 5 : 15
+      );
       accumulated[truncatedStyle] = (accumulated[truncatedStyle] || 0) + 1;
       return accumulated;
     }, rawExtraData);
@@ -348,7 +373,8 @@ class AutoCompleteParent extends JSWindowActorParent {
 
   receiveMessage(message) {
     let browser = this.browsingContext.top.embedderElement;
-    if (!browser || !browser.autoCompletePopup) {
+
+    if (!browser || (!DELEGATE_AUTOCOMPLETE && !browser.autoCompletePopup)) {
       // If there is no browser or popup, just make sure that the popup has been closed.
       if (this.openedPopup) {
         this.openedPopup.closePopup();
@@ -369,14 +395,24 @@ class AutoCompleteParent extends JSWindowActorParent {
       }
 
       case "FormAutoComplete:MaybeOpenPopup": {
-        let { results, rect, dir } = message.data;
-        this.showPopupWithResults({
+        let {
+          results,
           rect,
           dir,
-          results,
-        });
-
-        this.notifyListeners();
+          inputElementIdentifier,
+          formOrigin,
+        } = message.data;
+        if (DELEGATE_AUTOCOMPLETE) {
+          GeckoViewAutocomplete.delegateSelection({
+            browsingContext: this.browsingContext,
+            options: results,
+            inputElementIdentifier,
+            formOrigin,
+          });
+        } else {
+          this.showPopupWithResults({ results, rect, dir });
+          this.notifyListeners();
+        }
         break;
       }
 

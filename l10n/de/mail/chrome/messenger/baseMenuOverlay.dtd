@@ -38,20 +38,3 @@
 <!ENTITY helpDonationsPage.label "Finanziell unterstützen">
 <!ENTITY helpDonationsPage.accesskey "u">
 
-<!ENTITY releaseCmd2.label "Versionshinweise">
-<!ENTITY releaseCmd2.accesskey "V">
-<!ENTITY whatsNewCmd.label     "Neuigkeiten">
-<!ENTITY whatsNewCmd.accesskey "N">
-<!ENTITY openHelp.label        "Hilfethemen">
-<!ENTITY openHelp.accesskey    "H">
-<!ENTITY openHelp.commandkey   "VK_F1">
-<!ENTITY openHelpMac.label     "&brandShortName;-Hilfe">
-<!ENTITY openHelpMac2.label "&brandFullName;-Hilfe">
-<!ENTITY openHelpMac2.commandkey   "?">
-<!ENTITY openHelpMac2.modifiers    "accel">
-
-<!ENTITY aboutMenuCmd.label      "Über &brandShortName;">
-<!ENTITY aboutMenuCmd.accesskey  "Ü">
-
-<!ENTITY aboutMenuCmd2.label "Über &brandFullName;">
-<!ENTITY aboutMenuCmd2.accesskey "Ü">

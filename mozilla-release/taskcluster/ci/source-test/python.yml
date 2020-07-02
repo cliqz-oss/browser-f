@@ -7,9 +7,9 @@ job-defaults:
     always-target: true
     worker-type:
         by-platform:
-            linux1804-64.*: t-linux-xlarge
+            linux1804-64.*: t-linux-xlarge-source
             macosx1014-64.*: t-osx-1014
-            windows10-64.*: t-win10-64
+            windows10-64.*: t-win10-64-source
     worker:
         by-platform:
             linux1804-64.*:
@@ -19,6 +19,7 @@ job-defaults:
                     RUSTFMT: /build/rust/bin/rustfmt
                     RUSTUP_HOME: /build/rust
                     CARGO_HOME: /build/rust
+                    CLANG_FORMAT: /builds/worker/fetches/clang-tidy/bin/clang-format
             default:
                 max-run-time: 3600
     treeherder:
@@ -33,7 +34,7 @@ job-defaults:
 
 taskgraph-tests:
     description: taskcluster/taskgraph unit tests
-    python-version: [2]
+    python-version: [2, 3]
     treeherder:
         symbol: tg
     run:
@@ -84,8 +85,11 @@ mochitest-harness:
         - linux1804-64/opt
         - linux1804-64/debug
         - linux1804-64-asan/opt
-    require-build: true
     always-target: false
+    require-build:
+        linux1804-64-asan/opt: build-linux64-asan/opt
+        linux1804-64/debug: build-linux64/debug
+        linux1804-64/opt: build-linux64-shippable/opt
     treeherder:
         symbol: py2(mch)
     worker:
@@ -120,6 +124,7 @@ mochitest-harness:
             - 'testing/mozharness/mozharness/mozilla/structuredlog.py'
             - 'testing/mozharness/mozharness/mozilla/testing/errors.py'
             - 'testing/profiles/**'
+
 
 mozbase:
     description: testing/mozbase unit tests
@@ -177,6 +182,9 @@ mozlint:
     run:
         using: python-test
         subsuite: mozlint
+    fetches:
+        toolchain:
+            - linux64-clang-tidy
     when:
         files-changed:
             - 'python/mozlint/**'
@@ -243,7 +251,10 @@ reftest-harness:
         - linux1804-64/opt
         - linux1804-64/debug
         - linux1804-64-asan/opt
-    require-build: true
+    require-build:
+        linux1804-64-asan/opt: build-linux64-asan/opt
+        linux1804-64/debug: build-linux64/debug
+        linux1804-64/opt: build-linux64-shippable/opt
     always-target: false
     treeherder:
         symbol: py2(ref)
@@ -284,7 +295,7 @@ tryselect:
     platform:
         - linux1804-64/opt
         - windows10-64/opt
-    python-version: [2]
+    python-version: [3]
     treeherder:
         symbol: try
     run:
@@ -325,11 +336,34 @@ mozbuild:
             - 'python/mach/**'
             - 'python/mozboot/**'
             - 'python/mozbuild/**'
-            - 'python/mozperftest/**'
             - 'python/mozterm/**'
             - 'python/mozversioncontrol/**'
             - 'testing/mozbase/**'
             - 'testing/xpcshell/xpcshellcommandline.py'
+
+mozperftest:
+    description: mozperftest unit tests
+    platform:
+        - linux1804-64/opt
+        - macosx1014-64/opt
+        - windows10-64/opt
+    treeherder:
+        symbol: mpu
+    run:
+        mach: perftest-test
+    fetches:
+        toolchain:
+            by-platform:
+                linux1804-64/opt:
+                    - linux64-node-10
+                macosx1014-64/opt:
+                    - macosx64-node-10
+                windows10-64/opt:
+                    - win64-node-10
+    when:
+        files-changed:
+            - 'testing/performance/**'
+            - 'python/mozperftest/**'
 
 condprof:
     description: testing/condprofile unit tests
@@ -371,7 +405,8 @@ telemetry-integration-tests:
             linux1804-64.*:
                 docker-image: {in-tree: "ubuntu1804-test"}
                 max-run-time: 3600
-    require-build: true
+    require-build:
+        linux1804-64/opt: build-linux64-shippable/opt
     treeherder:
         symbol: tt(i)
         tier: 3

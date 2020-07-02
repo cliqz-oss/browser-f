@@ -784,7 +784,7 @@ void nsTextBoxFrame::UpdateAccessTitle() {
   if (!menuAccessKey || mAccessKey.IsEmpty()) return;
 
   if (!AlwaysAppendAccessKey() &&
-      FindInReadable(mAccessKey, mTitle, nsCaseInsensitiveStringComparator()))
+      FindInReadable(mAccessKey, mTitle, nsCaseInsensitiveStringComparator))
     return;
 
   nsAutoString accessKeyLabel;
@@ -858,11 +858,11 @@ void nsTextBoxFrame::UpdateAccessIndex() {
           // didn't find it - perform a case-insensitive search
           start = originalStart;
           found = FindInReadable(mAccessKey, start, end,
-                                 nsCaseInsensitiveStringComparator());
+                                 nsCaseInsensitiveStringComparator);
         }
       } else {
         found = RFindInReadable(mAccessKey, start, end,
-                                nsCaseInsensitiveStringComparator());
+                                nsCaseInsensitiveStringComparator);
       }
 
       if (found)
@@ -965,7 +965,7 @@ nsRect nsTextBoxFrame::GetComponentAlphaBounds() const {
   return mTextDrawRect;
 }
 
-bool nsTextBoxFrame::ComputesOwnOverflowArea() { return true; }
+bool nsTextBoxFrame::XULComputesOwnOverflowArea() { return true; }
 
 /* virtual */
 void nsTextBoxFrame::MarkIntrinsicISizesDirty() {
@@ -1054,7 +1054,7 @@ nsSize nsTextBoxFrame::GetXULPrefSize(nsBoxLayoutState& aBoxLayoutState) {
   nsSize size = mTextSize;
   DISPLAY_PREF_SIZE(this, size);
 
-  AddBorderAndPadding(size);
+  AddXULBorderAndPadding(size);
   bool widthSet, heightSet;
   nsIFrame::AddXULPrefSize(this, size, widthSet, heightSet);
 
@@ -1079,7 +1079,7 @@ nsSize nsTextBoxFrame::GetXULMinSize(nsBoxLayoutState& aBoxLayoutState) {
     }
   }
 
-  AddBorderAndPadding(size);
+  AddXULBorderAndPadding(size);
   bool widthSet, heightSet;
   nsIFrame::AddXULMinSize(this, size, widthSet, heightSet);
 

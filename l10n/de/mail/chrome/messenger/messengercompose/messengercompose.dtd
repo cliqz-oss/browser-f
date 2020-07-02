@@ -100,8 +100,8 @@
      for the bucket view state machinery to work. -->
 <!ENTITY toggleAttachmentPaneCmd.key "g">
 <!ENTITY selectAllCmd.label "Alles auswählen">
-<!ENTITY selectAllCmd.key "A">
 <!ENTITY selectAllCmd.accesskey "u">
+<!ENTITY selectAllCmd.key "A">
 <!ENTITY findBarCmd.label "Suchen…">
 <!ENTITY findBarCmd.accesskey "S">
 <!ENTITY findBarCmd.key "F">
@@ -120,26 +120,10 @@
 <!-- Reorder Attachment Panel -->
 <!ENTITY reorderAttachmentsPanel.label "Anhänge neu ordnen">
 <!ENTITY moveAttachmentTopPanelBtn.label "An Anfang">
-<!ENTITY moveAttachmentTopPanelBtn.accesskey "A">
 <!ENTITY moveAttachmentUpPanelBtn.label "Nach oben">
-<!ENTITY moveAttachmentUpPanelBtn.accesskey "o">
 <!ENTITY moveAttachmentBundleUpPanelBtn.label "Zusammen anordnen">
-<!ENTITY moveAttachmentBundleUpPanelBtn.accesskey "Z">
 <!ENTITY moveAttachmentDownPanelBtn.label "Nach unten">
-<!ENTITY moveAttachmentDownPanelBtn.accesskey "u">
 <!ENTITY moveAttachmentBottomPanelBtn.label "Ans Ende">
-<!ENTITY moveAttachmentBottomPanelBtn.accesskey "E">
-<!-- LOCALIZATION NOTE (sortAttachmentsTogglePanelBtn.AZ.label):
-     Please ensure that this translation matches
-     sortAttachmentsTogglePanelBtn.ZA.label, except for the sort direction. -->
-<!ENTITY sortAttachmentsTogglePanelBtn.AZ.label "Auswahl sortieren: A - Z">
-<!-- LOCALIZATION NOTE (sortAttachmentsTogglePanelBtn.AZ.accesskey):
-     This accesskey should be the same like
-     sortAttachmentsTogglePanelBtn.ZA.accesskey, and it should be taken from
-     the "Sort Selection:" part of the label, not from the sort direction part. -->
-<!ENTITY sortAttachmentsTogglePanelBtn.AZ.accesskey "s">
-<!ENTITY sortAttachmentsTogglePanelBtn.ZA.label "Auswahl sortieren: Z - A">
-<!ENTITY sortAttachmentsTogglePanelBtn.ZA.accesskey "s">
 
 <!-- LOCALIZATION NOTE (sortAttachmentsPanelBtn.Sort.AZ.label):
      Please ensure that this translation matches
@@ -263,10 +247,8 @@
 <!ENTITY sendlaterButton.tooltip "Die Nachricht wird in den Postausgang gelegt">
 <!ENTITY quoteButton.tooltip "Die ursprüngliche Nachricht zitieren">
 <!ENTITY addressButton.tooltip "Kontakte-Sidebar ein-/ausblenden">
-<!ENTITY attachButton.tooltip "Datei-Anhang zu dieser Nachricht anfügen">
 <!ENTITY attachButton.tooltip2 "Anhang hinzufügen">
 <!ENTITY spellingButton.tooltip "Rechtschreibung der Auswahl oder der gesamten Nachricht prüfen">
-<!ENTITY statusLanguageText.tooltip "Sprache für Rechtschreibprüfung">
 <!ENTITY saveButton.tooltip "Diese Nachricht speichern">
 <!ENTITY cutButton.tooltip              "Ausschneiden">
 <!ENTITY copyButton.tooltip             "Kopieren">
@@ -278,6 +260,11 @@
     Subject: rows. It should be larger than the largest Header label  -->
 <!ENTITY headersSpace.style "width: 11em;">
 <!ENTITY fromAddr.label "Von:">
+<!--LOCALIZATION NOTE headersSpaces.style is for aligning  the From:, To: and
+    Subject: rows. It should be larger than the largest Header label  -->
+<!ENTITY headersSpace2.style "width: 9em;">
+<!ENTITY extraRecipients.tooltip "Andere Arten von Adressfeldern">
+<!ENTITY fromAddr2.label "Von">
 <!ENTITY fromAddr.accesskey "V">
 <!ENTITY toAddr.label "An:">
 <!ENTITY ccAddr.label "Kopie (CC):">
@@ -286,6 +273,13 @@
 <!ENTITY newsgroupsAddr.label "Newsgruppe:">
 <!ENTITY followupAddr.label "Followup an:">
 <!ENTITY subject.label "Betreff:">
+<!ENTITY toAddr2.label "An">
+<!ENTITY ccAddr2.label "Kopie (CC)">
+<!ENTITY bccAddr2.label "Blindkopie (BCC)">
+<!ENTITY replyAddr2.label "Antwort-An">
+<!ENTITY newsgroupsAddr2.label "Newsgruppe">
+<!ENTITY followupAddr2.label "Followup an">
+<!ENTITY subject2.label "Betreff">
 <!ENTITY subject.accesskey "r">
 <!-- LOCALIZATION NOTE (attachments.accesskey) This access key character should
      be taken from the strings in attachmentCount in composeMsgs.properties,

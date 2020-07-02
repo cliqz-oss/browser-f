@@ -62,9 +62,6 @@ with Files("*Telemetry.jsm"):
 with Files("ContentCrashHandlers.jsm"):
     BUG_COMPONENT = ("Toolkit", "Crash Reporting")
 
-with Files("ContentSearch.jsm"):
-    BUG_COMPONENT = ("Firefox", "Search")
-
 with Files("EveryWindow.jsm"):
     BUG_COMPONENT = ("Firefox", "General")
 
@@ -138,7 +135,6 @@ EXTRA_JS_MODULES += [
     'BrowserWindowTracker.jsm',
     'ContentCrashHandlers.jsm',
     'ContentObservers.js',
-    'ContentSearch.jsm',
     'Discovery.jsm',
     'EveryWindow.jsm',
     'ExtensionsUI.jsm',
@@ -159,6 +155,7 @@ EXTRA_JS_MODULES += [
     'TabsList.jsm',
     'TabUnloader.jsm',
     'ThemeVariableMap.jsm',
+    'TopSiteAttribution.jsm',
     'TransientPrefs.jsm',
     'webrtcUI.jsm',
     'ZoomUI.jsm',

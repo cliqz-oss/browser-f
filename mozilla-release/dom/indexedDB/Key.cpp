@@ -177,17 +177,16 @@ IDBResult<void, IDBSpecialValue::Invalid> Key::ToLocaleAwareKey(
     return Ok();
   }
 
-  aTarget.mBuffer.SetCapacity(mBuffer.Length());
+  if (!aTarget.mBuffer.SetCapacity(mBuffer.Length(), fallible)) {
+    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+    return Exception;
+  }
 
   // A string was found, so we need to copy the data we've read so far
   auto* const start = BufferStart();
   if (it > start) {
     char* buffer;
-    if (!aTarget.mBuffer.GetMutableData(&buffer, it - start)) {
-      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return Exception;
-    }
-
+    MOZ_ALWAYS_TRUE(aTarget.mBuffer.GetMutableData(&buffer, it - start));
     std::copy(start, it, buffer);
   }
 
@@ -590,7 +589,10 @@ IDBResult<void, IDBSpecialValue::Invalid> Key::EncodeLocaleString(
   int32_t sortKeyLength = ucol_getSortKey(
       collator, ustr, length, keyBuffer.Elements(), keyBuffer.Length());
   if (sortKeyLength > (int32_t)keyBuffer.Length()) {
-    keyBuffer.SetLength(sortKeyLength);
+    if (!keyBuffer.SetLength(sortKeyLength, fallible)) {
+      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+      return Exception;
+    }
     sortKeyLength = ucol_getSortKey(collator, ustr, length,
                                     keyBuffer.Elements(), sortKeyLength);
   }
@@ -757,18 +759,15 @@ IDBResult<void, IDBSpecialValue::Invalid> Key::EncodeBinary(JSObject* aObject,
                                                             ErrorResult& aRv) {
   uint8_t* bufferData;
   uint32_t bufferLength;
-  bool unused;
 
+  // We must use JS::GetObjectAsArrayBuffer()/JS_GetObjectAsArrayBufferView()
+  // instead of js::GetArrayBufferLengthAndData(). The object might be wrapped,
+  // the former will handle the wrapped case, the later won't.
   if (aIsViewObject) {
-    // We must use JS_GetObjectAsArrayBufferView() instead of
-    // js::GetArrayBufferLengthAndData(). Because we check ArrayBufferView
-    // via JS_IsArrayBufferViewObject(), the object might be wrapped,
-    // the former will handle the wrapped case, the later won't.
+    bool unused;
     JS_GetObjectAsArrayBufferView(aObject, &bufferLength, &unused, &bufferData);
-
   } else {
-    JS::GetArrayBufferLengthAndData(aObject, &bufferLength, &unused,
-                                    &bufferData);
+    JS::GetObjectAsArrayBuffer(aObject, &bufferLength, &bufferData);
   }
 
   return EncodeAsString(bufferData, bufferData + bufferLength,

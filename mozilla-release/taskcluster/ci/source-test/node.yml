@@ -9,11 +9,12 @@ newtab-unit-tests:
         symbol: node(newtab)
         kind: test
         tier: 1
-    worker-type: t-linux-xlarge
+    worker-type: t-linux-xlarge-source
     worker:
         docker-image: {in-tree: "ubuntu1804-test"}
         max-run-time: 1800
-    require-build: true
+    require-build:
+        linux1804-64/opt: build-linux64-shippable/opt
     run:
         using: run-task
         cache-dotcache: true
@@ -35,7 +36,7 @@ debugger-tests:
         symbol: node(debugger)
         kind: test
         tier: 1
-    worker-type: t-linux-xlarge
+    worker-type: t-linux-xlarge-source
     worker:
         docker-image: {in-tree: "lint"}
         max-run-time: 1800
@@ -55,11 +56,13 @@ debugger-tests:
 devtools-tests:
     description: devtools node-based tests (for instance jest)
     platform: linux1804-64/opt
+    attributes:
+        code-review: true
     treeherder:
         symbol: node(devtools)
         kind: test
         tier: 1
-    worker-type: t-linux-xlarge
+    worker-type: t-linux-xlarge-source
     worker:
         docker-image: {in-tree: "lint"}
         max-run-time: 1800
@@ -89,7 +92,7 @@ eslint-plugin-mozilla:
         symbol: node(epm)
         kind: test
         tier: 1
-    worker-type: t-linux-xlarge
+    worker-type: t-linux-xlarge-source
     worker:
         docker-image: {in-tree: "lint"}
         max-run-time: 1800

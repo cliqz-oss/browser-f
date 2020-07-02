@@ -10,6 +10,7 @@ import platform
 import re
 import shutil
 import signal
+import six
 import subprocess
 import sys
 import telnetlib
@@ -17,7 +18,6 @@ import time
 from distutils.spawn import find_executable
 from enum import Enum
 
-import psutil
 from mozdevice import ADBHost, ADBDevice
 from six.moves import input, urllib
 
@@ -30,6 +30,8 @@ TOOLTOOL_PATH = 'testing/mozharness/external_tools/tooltool.py'
 TRY_URL = 'https://hg.mozilla.org/try/raw-file/default'
 
 MANIFEST_PATH = 'testing/config/tooltool-manifests'
+
+SHORT_TIMEOUT = 10
 
 verbose_logging = False
 devices = {}
@@ -190,8 +192,8 @@ def verify_android_device(build_obj, install=InstallIntent.NO, xre=False, debugg
     adb_path = _find_sdk_exe(build_obj.substs, 'adb', False)
     if not adb_path:
         adb_path = 'adb'
-    adbhost = ADBHost(adb=adb_path, verbose=verbose, timeout=10)
-    devices = adbhost.devices(timeout=10)
+    adbhost = ADBHost(adb=adb_path, verbose=verbose, timeout=SHORT_TIMEOUT)
+    devices = adbhost.devices(timeout=SHORT_TIMEOUT)
     if 'device' in [d['state'] for d in devices]:
         device_verified = True
     elif emulator.is_available():
@@ -208,7 +210,7 @@ def verify_android_device(build_obj, install=InstallIntent.NO, xre=False, debugg
             device_verified = True
 
     if device_verified and "DEVICE_SERIAL" not in os.environ:
-        devices = adbhost.devices(timeout=10)
+        devices = adbhost.devices(timeout=SHORT_TIMEOUT)
         for d in devices:
             if d['state'] == 'device':
                 os.environ["DEVICE_SERIAL"] = d['device_serial']
@@ -369,15 +371,15 @@ class AndroidEmulator(object):
         """
            Returns True if the Android emulator is running.
         """
-        for proc in psutil.process_iter():
-            try:
-                name = proc.name()
-                # On some platforms, "emulator" may start an emulator with
-                # process name "emulator64-arm" or similar.
-                if name and name.startswith('emulator'):
-                    return True
-            except Exception as e:
-                _log_debug("failed to get process name: %s" % str(e))
+        adb_path = _find_sdk_exe(self.substs, 'adb', False)
+        if not adb_path:
+            adb_path = 'adb'
+        adbhost = ADBHost(adb=adb_path, verbose=verbose_logging, timeout=SHORT_TIMEOUT)
+        devs = adbhost.devices(timeout=SHORT_TIMEOUT)
+        devs = [(d['device_serial'], d['state']) for d in devs]
+        _log_debug(devs)
+        if ('emulator-5554', 'device') in devs:
+            return True
         return False
 
     def is_available(self):
@@ -435,7 +437,7 @@ class AndroidEmulator(object):
             _tooltool_fetch(self.substs)
             self._update_avd_paths()
 
-    def start(self):
+    def start(self, gpu_arg=None):
         """
            Launch the emulator.
         """
@@ -451,14 +453,24 @@ class AndroidEmulator(object):
         env = os.environ
         env['ANDROID_AVD_HOME'] = os.path.join(EMULATOR_HOME_DIR, "avd")
         command = [self.emulator_path, "-avd", self.avd_info.name]
-        if self.gpu:
-            command += ['-gpu', 'on']
-        if self.avd_info.extra_args:
-            # -enable-kvm option is not valid on OSX and Windows
-            if _get_host_platform() in ('macosx64', 'win32') and \
-               '-enable-kvm' in self.avd_info.extra_args:
-                self.avd_info.extra_args.remove('-enable-kvm')
-            command += self.avd_info.extra_args
+        override = os.environ.get('MOZ_EMULATOR_COMMAND_ARGS')
+        if override:
+            command += override.split()
+            _log_debug("Found MOZ_EMULATOR_COMMAND_ARGS in env: %s" % override)
+        else:
+            if gpu_arg:
+                command += ['-gpu', gpu_arg]
+                # Clear self.gpu to avoid our restart-without-gpu feature: if a specific
+                # gpu setting is requested, try to use that, and nothing else.
+                self.gpu = False
+            elif self.gpu:
+                command += ['-gpu', 'on']
+            if self.avd_info.extra_args:
+                # -enable-kvm option is not valid on OSX and Windows
+                if _get_host_platform() in ('macosx64', 'win32') and \
+                   '-enable-kvm' in self.avd_info.extra_args:
+                    self.avd_info.extra_args.remove('-enable-kvm')
+                command += self.avd_info.extra_args
         log_path = os.path.join(EMULATOR_HOME_DIR, 'emulator.log')
         self.emulator_log = open(log_path, 'w+')
         _log_debug("Starting the emulator with this command: %s" %
@@ -483,14 +495,14 @@ class AndroidEmulator(object):
         adb_path = _find_sdk_exe(self.substs, 'adb', False)
         if not adb_path:
             adb_path = 'adb'
-        adbhost = ADBHost(adb=adb_path, verbose=verbose_logging, timeout=10)
-        devs = adbhost.devices(timeout=10)
+        adbhost = ADBHost(adb=adb_path, verbose=verbose_logging, timeout=SHORT_TIMEOUT)
+        devs = adbhost.devices(timeout=SHORT_TIMEOUT)
         devs = [(d['device_serial'], d['state']) for d in devs]
         while ('emulator-5554', 'device') not in devs:
             time.sleep(10)
             if self.check_completed():
                 return False
-            devs = adbhost.devices(timeout=10)
+            devs = adbhost.devices(timeout=SHORT_TIMEOUT)
             devs = [(d['device_serial'], d['state']) for d in devs]
         _log_debug("Device status verified.")
 
@@ -590,11 +602,21 @@ class AndroidEmulator(object):
                 else:
                     f.write(line)
 
+    def _telnet_read_until(self, telnet, expected, timeout):
+        if six.PY3 and isinstance(expected, six.text_type):
+            expected = expected.encode('ascii')
+        return telnet.read_until(expected, timeout)
+
+    def _telnet_write(self, telnet, command):
+        if six.PY3 and isinstance(command, six.text_type):
+            command = command.encode('ascii')
+        telnet.write(command)
+
     def _telnet_cmd(self, telnet, command):
-        _log_debug(">>> " + command)
-        telnet.write('%s\n' % command)
-        result = telnet.read_until('OK', 10)
-        _log_debug("<<< " + result)
+        _log_debug(">>> %s" % command)
+        self._telnet_write(telnet, '%s\n' % command)
+        result = self._telnet_read_until(telnet, 'OK', 10)
+        _log_debug("<<< %s" % result)
         return result
 
     def _verify_emulator(self):
@@ -604,11 +626,11 @@ class AndroidEmulator(object):
             try:
                 tn = telnetlib.Telnet('localhost', 5554, 10)
                 if tn is not None:
-                    tn.read_until('OK', 10)
+                    self._telnet_read_until(tn, 'OK', 10)
                     self._telnet_cmd(tn, 'avd status')
                     self._telnet_cmd(tn, 'redir list')
                     self._telnet_cmd(tn, 'network status')
-                    tn.write('quit\n')
+                    self._telnet_write(tn, 'quit\n')
                     tn.read_all()
                     telnet_ok = True
                 else:
@@ -805,6 +827,8 @@ def _verify_kvm(substs):
     command = [emulator_path, '-accel-check']
     try:
         out = subprocess.check_output(command)
+        if six.PY3 and not isinstance(out, six.text_type):
+            out = out.decode('utf-8')
         if 'is installed and usable' in ''.join(out):
             return
     except Exception as e:

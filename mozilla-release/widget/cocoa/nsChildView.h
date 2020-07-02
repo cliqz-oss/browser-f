@@ -154,10 +154,6 @@ class WidgetRenderingContext;
   // beginGestureWithEvent and endGestureWithEvent sequence. We
   // discard the spurious gesture event so as not to confuse Gecko.
   //
-  // mCumulativeMagnification keeps track of the total amount of
-  // magnification peformed during a magnify gesture so that we can
-  // send that value with the final MozMagnifyGesture event.
-  //
   // mCumulativeRotation keeps track of the total amount of rotation
   // performed during a rotate gesture so we can send that value with
   // the final MozRotateGesture event.
@@ -167,7 +163,6 @@ class WidgetRenderingContext;
     eGestureState_MagnifyGesture,
     eGestureState_RotateGesture
   } mGestureState;
-  float mCumulativeMagnification;
   float mCumulativeRotation;
 
 #ifdef __LP64__
@@ -288,9 +283,9 @@ class nsChildView final : public nsBaseWidget {
   nsChildView();
 
   // nsIWidget interface
-  virtual MOZ_MUST_USE nsresult Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
-                                       const LayoutDeviceIntRect& aRect,
-                                       nsWidgetInitData* aInitData = nullptr) override;
+  [[nodiscard]] virtual nsresult Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
+                                        const LayoutDeviceIntRect& aRect,
+                                        nsWidgetInitData* aInitData = nullptr) override;
 
   virtual void Destroy() override;
 
@@ -360,7 +355,7 @@ class nsChildView final : public nsBaseWidget {
 
   virtual nsresult SetTitle(const nsAString& title) override;
 
-  virtual MOZ_MUST_USE nsresult GetAttention(int32_t aCycleCount) override;
+  [[nodiscard]] virtual nsresult GetAttention(int32_t aCycleCount) override;
 
   virtual bool HasPendingInputEvent() override;
 
@@ -368,13 +363,14 @@ class nsChildView final : public nsBaseWidget {
   virtual void PostHandleKeyEvent(mozilla::WidgetKeyboardEvent* aEvent) override;
   virtual nsresult ActivateNativeMenuItemAt(const nsAString& indexString) override;
   virtual nsresult ForceUpdateNativeMenuAt(const nsAString& indexString) override;
-  virtual MOZ_MUST_USE nsresult GetSelectionAsPlaintext(nsAString& aResult) override;
+  [[nodiscard]] virtual nsresult GetSelectionAsPlaintext(nsAString& aResult) override;
 
   virtual void SetInputContext(const InputContext& aContext,
                                const InputContextAction& aAction) override;
   virtual InputContext GetInputContext() override;
   virtual TextEventDispatcherListener* GetNativeTextEventDispatcherListener() override;
-  virtual MOZ_MUST_USE nsresult AttachNativeKeyEvent(mozilla::WidgetKeyboardEvent& aEvent) override;
+  [[nodiscard]] virtual nsresult AttachNativeKeyEvent(
+      mozilla::WidgetKeyboardEvent& aEvent) override;
   virtual bool GetEditCommands(NativeKeyBindingsType aType,
                                const mozilla::WidgetKeyboardEvent& aEvent,
                                nsTArray<mozilla::CommandInt>& aCommands) override;
@@ -479,9 +475,9 @@ class nsChildView final : public nsBaseWidget {
     return nsCocoaUtils::DevPixelsToCocoaPoints(aRect, BackingScaleFactor());
   }
 
-  virtual MOZ_MUST_USE nsresult StartPluginIME(const mozilla::WidgetKeyboardEvent& aKeyboardEvent,
-                                               int32_t aPanelX, int32_t aPanelY,
-                                               nsString& aCommitted) override;
+  [[nodiscard]] virtual nsresult StartPluginIME(const mozilla::WidgetKeyboardEvent& aKeyboardEvent,
+                                                int32_t aPanelX, int32_t aPanelY,
+                                                nsString& aCommitted) override;
 
   virtual void SetPluginFocused(bool& aFocused) override;
 
@@ -495,9 +491,6 @@ class nsChildView final : public nsBaseWidget {
   nsEventStatus DispatchAPZInputEvent(mozilla::InputData& aEvent);
 
   void SwipeFinished();
-
-  nsresult SetPrefersReducedMotionOverrideForTest(bool aValue) override;
-  nsresult ResetPrefersReducedMotionOverrideForTest() override;
 
   // Called when the main thread enters a phase during which visual changes
   // are imminent and any layer updates on the compositor thread would interfere

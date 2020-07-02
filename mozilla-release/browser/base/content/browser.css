@@ -277,6 +277,7 @@ toolbar[customizing] > .overflow-button {
   display: none;
 }
 
+toolbar[customizing] #pioneer-button,
 toolbar[customizing] #whats-new-menu-button {
   display: none;
 }
@@ -324,6 +325,11 @@ toolbar[customizing] #whats-new-menu-button {
   }
 }
 %endif
+
+:root:not([sizemode=maximized]) .titlebar-restore,
+:root[sizemode=maximized] .titlebar-max {
+  display: none;
+}
 
 %ifdef MENUBAR_CAN_AUTOHIDE
 #toolbar-menubar[autohide=true]:not([inactive]) + #TabsToolbar > .titlebar-buttonbox-container {
@@ -529,14 +535,6 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   -moz-box-flex: 1;
 }
 
-#appMenu_historyMenu > .bookmark-item,
-#appMenu-library-recentlyClosedTabs > .panel-subview-body > .bookmark-item,
-#appMenu-library-recentlyClosedWindows > .panel-subview-body > .bookmark-item,
-#appMenu-library-recentHighlights > .bookmark-item,
-#panelMenu_bookmarksMenu > .bookmark-item {
-  max-width: none;
-}
-
 %ifdef XP_MACOSX
 :root[inFullscreen="true"] {
   padding-top: 0; /* override drawintitlebar="true" */
@@ -581,8 +579,7 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
  *
  * Attribute is controlled by browser.js:/gRemoteControl.
  */
-:root[remotecontrol] #urlbar:not(.megabar),
-:root[remotecontrol] #urlbar.megabar > #urlbar-background {
+:root[remotecontrol] #urlbar-background {
   background: repeating-linear-gradient(
     -45deg,
     transparent,
@@ -598,6 +595,7 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   position: relative;
   direction: ltr;
 }
+
 #urlbar-scheme {
   position: absolute;
   height: 100%;
@@ -606,31 +604,38 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   pointer-events: none;
 }
 
-/* Visible if the urlbar is not focused and it overflows at the start.
-   Uses the required-valid trick to check if it contains a value */
-#urlbar[textoverflow="left"][hasrtldomain]:not([focused]) > #urlbar-input-container > .urlbar-input-box > #urlbar-scheme:valid {
-  visibility: visible;
-}
-
-/* Fade out URL on overflow
-   This mask may be overriden when a Contextual Feature Recommendation is shown,
-   see browser/themes/shared/urlbar-searchbar.inc.css for details */
-#urlbar[textoverflow="right"]:not([focused]) > #urlbar-input-container > .urlbar-input-box > #urlbar-input {
-  mask-image: linear-gradient(to left, transparent, black 3ch);
-}
-
-#urlbar[textoverflow="left"][rtltext]:not([focused]) > #urlbar-input-container > .urlbar-input-box > #urlbar-input {
-  mask-image: linear-gradient(to right, transparent, black 3ch);
-}
-
-#urlbar[textoverflow="left"][hasrtldomain]:not([focused]) > #urlbar-input-container > .urlbar-input-box > #urlbar-input {
-  mask-image: linear-gradient(to right, transparent var(--urlbar-scheme-size), black calc(var(--urlbar-scheme-size) + 3ch));
-}
-
 #urlbar-input {
   mask-repeat: no-repeat;
   unicode-bidi: plaintext;
   text-align: match-parent;
+}
+
+#urlbar:not([focused])[domaindir="ltr"]> #urlbar-input-container > .urlbar-input-box > #urlbar-input {
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
+/* The following rules apply overflow masks to the unfocused urlbar
+   This mask may be overriden when a Contextual Feature Recommendation is shown,
+   see browser/themes/shared/urlbar-searchbar.inc.css for details */
+
+#urlbar:not([focused])[textoverflow="both"] > #urlbar-input-container > .urlbar-input-box > #urlbar-input {
+  mask-image: linear-gradient(to right, transparent, black 3ch, black calc(100% - 3ch), transparent);
+}
+#urlbar:not([focused])[textoverflow="right"] > #urlbar-input-container > .urlbar-input-box > #urlbar-input {
+  mask-image: linear-gradient(to left, transparent, black 3ch);
+}
+#urlbar:not([focused])[textoverflow="left"] > #urlbar-input-container > .urlbar-input-box > #urlbar-input {
+  mask-image: linear-gradient(to right, transparent, black 3ch);
+}
+
+/* The protocol is visible if there is an RTL domain and we overflow to the left.
+   Uses the required-valid trick to check if it contains a value */
+#urlbar:not([focused])[textoverflow="left"][domaindir="rtl"] > #urlbar-input-container > .urlbar-input-box > #urlbar-scheme:valid {
+  visibility: visible;
+}
+#urlbar:not([focused])[textoverflow="left"][domaindir="rtl"] > #urlbar-input-container > .urlbar-input-box > #urlbar-input {
+  mask-image: linear-gradient(to right, transparent var(--urlbar-scheme-size), black calc(var(--urlbar-scheme-size) + 3ch));
 }
 
 /* Apply crisp rendering for favicons at exactly 2dppx resolution */
@@ -671,6 +676,10 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   min-width: 22em;
 }
 
+#PopupAutoComplete[resultstyles~="importableLogins"] {
+  min-width: 24em;
+}
+
 #PopupAutoComplete > richlistbox > richlistitem[originaltype="insecureWarning"] {
   height: auto;
 }
@@ -693,7 +702,6 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
 #urlbar-input-container[pageproxystate=invalid] > #page-action-buttons > .urlbar-page-action,
 #identity-box.chromeUI ~ #page-action-buttons > .urlbar-page-action:not(#star-button-box),
 #urlbar[usertyping] > #urlbar-input-container > #page-action-buttons > #urlbar-zoom-button,
-#urlbar[usertyping] > #urlbar-input-container > .urlbar-history-dropmarker,
 #urlbar:not([usertyping]) > #urlbar-input-container > #urlbar-go-button,
 #urlbar:not([focused]) > #urlbar-input-container > #urlbar-go-button {
   display: none;
@@ -724,8 +732,8 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   min-width: 280px;
 }
 
-#identity-icon-labels {
-  max-width: 10em;
+#identity-box {
+  max-width: calc(30px + 10em);
 }
 
 @media (max-width: 770px) {
@@ -738,8 +746,8 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   :root[customizing] #urlbar-container {
     min-width: 245px;
   }
-  #identity-icon-labels {
-    max-width: 50px;
+  #identity-box {
+    max-width: 80px;
   }
   /* Contenxtual identity labels are user-customizable and can be very long,
      so we only show the colored icon when the window gets small. */
@@ -765,20 +773,12 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   #nav-bar[downloadsbuttonshown] #urlbar-container {
     min-width: 225px;
   }
-  #identity-icon-labels {
-    max-width: 40px;
+  #identity-box {
+    max-width: 70px;
   }
   #urlbar-zoom-button {
     display: none;
   }
-}
-
-#identity-icon-country-label {
-  direction: ltr;
-}
-
-#identity-box.verifiedIdentity > #identity-icon-labels > #identity-icon-label {
-  margin-inline-end: 0.25em !important;
 }
 
 /* Flexible spacer sizing (gets overridden in the navbar) */
@@ -1037,6 +1037,7 @@ toolbarpaletteitem[place="palette"] > #downloads-button[indicator] > .toolbarbut
 }
 
 @supports -moz-bool-pref("xul.panel-animations.enabled") {
+@media (prefers-reduced-motion: no-preference) {
 %ifdef MOZ_WIDGET_COCOA
   /* On Mac, use the properties "-moz-window-transform" and "-moz-window-opacity"
      instead of "transform" and "opacity" for these animations.
@@ -1100,6 +1101,7 @@ toolbarpaletteitem[place="palette"] > #downloads-button[indicator] > .toolbarbut
     transform: none;
   }
 %endif
+}
 }
 
 /* Apply crisp rendering for favicons at exactly 2dppx resolution */
@@ -1169,8 +1171,7 @@ toolbarpaletteitem[place="palette"] > #downloads-button[indicator] > .toolbarbut
 }
 
 toolbarpaletteitem[dragover] {
-  border-left-color: transparent;
-  border-right-color: transparent;
+  border-inline-color: transparent;
 }
 
 #customization-palette-container {

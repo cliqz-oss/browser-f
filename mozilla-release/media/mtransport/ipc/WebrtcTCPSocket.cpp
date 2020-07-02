@@ -29,7 +29,7 @@ namespace net {
 
 class WebrtcTCPData {
  public:
-  explicit WebrtcTCPData(nsTArray<uint8_t>&& aData) : mData(aData) {
+  explicit WebrtcTCPData(nsTArray<uint8_t>&& aData) : mData(std::move(aData)) {
     MOZ_COUNT_CTOR(WebrtcTCPData);
   }
 
@@ -106,9 +106,17 @@ void WebrtcTCPSocket::CloseWithReason(nsresult aReason) {
     // Let's pretend we got an open even if we didn't to prevent an Open later.
     mOpened = true;
 
-    MOZ_ALWAYS_SUCCEEDS(mSocketThread->Dispatch(NewRunnableMethod<nsresult>(
-        "WebrtcTCPSocket::CloseWithReason", this,
-        &WebrtcTCPSocket::CloseWithReason, aReason)));
+    DebugOnly<nsresult> rv =
+        mSocketThread->Dispatch(NewRunnableMethod<nsresult>(
+            "WebrtcTCPSocket::CloseWithReason", this,
+            &WebrtcTCPSocket::CloseWithReason, aReason));
+
+    // This was MOZ_ALWAYS_SUCCEEDS, but that now uses MOZ_DIAGNOSTIC_ASSERT.
+    // In order to convert this back to MOZ_ALWAYS_SUCCEEDS we would need
+    // OnSocketThread to return true if we're shutting down and doing the
+    // "running all of STS's queued events on main" thing.
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+
     return;
   }
 
@@ -378,7 +386,7 @@ nsresult WebrtcTCPSocket::OpenWithHttpProxy() {
   rv = ioService->NewChannelFromURIWithProxyFlags(
       mURI, nullptr,
       // Proxy flags are overridden by SetConnectOnly()
-      0, loadInfo->LoadingNode(), loadInfo->LoadingPrincipal(),
+      0, loadInfo->LoadingNode(), loadInfo->GetLoadingPrincipal(),
       loadInfo->TriggeringPrincipal(),
       nsILoadInfo::SEC_DONT_FOLLOW_REDIRECTS | nsILoadInfo::SEC_COOKIES_OMIT |
           // We need this flag to allow loads from any origin since this channel

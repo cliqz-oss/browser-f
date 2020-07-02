@@ -215,13 +215,20 @@ nsLayoutDebuggingTools::DumpContent() {
   return NS_OK;
 }
 
-static void DumpFramesRecur(nsIDocShell* aDocShell, FILE* out) {
-#ifdef DEBUG_FRAME_DUMP
-  fprintf(out, "webshell=%p \n", static_cast<void*>(aDocShell));
+static void DumpFramesRecur(
+    nsIDocShell* aDocShell, FILE* out,
+    nsIFrame::ListFlags aFlags = nsIFrame::ListFlags()) {
+  if (aFlags.contains(nsIFrame::ListFlag::DisplayInCSSPixels)) {
+    fprintf(out, "Frame tree in CSS pixels:\n");
+  } else {
+    fprintf(out, "Frame tree in app units:\n");
+  }
+
+  fprintf(out, "docshell=%p \n", aDocShell);
   if (PresShell* presShell = GetPresShell(aDocShell)) {
     nsIFrame* root = presShell->GetRootFrame();
     if (root) {
-      root->List(out);
+      root->List(out, "", aFlags);
     }
   } else {
     fputs("null pres shell\n", out);
@@ -235,16 +242,22 @@ static void DumpFramesRecur(nsIDocShell* aDocShell, FILE* out) {
     aDocShell->GetInProcessChildAt(i, getter_AddRefs(child));
     nsCOMPtr<nsIDocShell> childAsShell(do_QueryInterface(child));
     if (childAsShell) {
-      DumpFramesRecur(childAsShell, out);
+      DumpFramesRecur(childAsShell, out, aFlags);
     }
   }
-#endif
 }
 
 NS_IMETHODIMP
 nsLayoutDebuggingTools::DumpFrames() {
   NS_ENSURE_TRUE(mDocShell, NS_ERROR_NOT_INITIALIZED);
   DumpFramesRecur(mDocShell, stdout);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsLayoutDebuggingTools::DumpFramesInCSSPixels() {
+  NS_ENSURE_TRUE(mDocShell, NS_ERROR_NOT_INITIALIZED);
+  DumpFramesRecur(mDocShell, stdout, nsIFrame::ListFlag::DisplayInCSSPixels);
   return NS_OK;
 }
 
@@ -285,7 +298,7 @@ nsLayoutDebuggingTools::DumpViews() {
 NS_IMETHODIMP
 nsLayoutDebuggingTools::DumpStyleSheets() {
   NS_ENSURE_TRUE(mDocShell, NS_ERROR_NOT_INITIALIZED);
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MOZ_LAYOUT_DEBUGGER)
   FILE* out = stdout;
   if (PresShell* presShell = GetPresShell(mDocShell)) {
     presShell->ListStyleSheets(out);
@@ -298,7 +311,6 @@ nsLayoutDebuggingTools::DumpStyleSheets() {
 
 NS_IMETHODIMP nsLayoutDebuggingTools::DumpMatchedRules() {
   NS_ENSURE_TRUE(mDocShell, NS_ERROR_NOT_INITIALIZED);
-#ifdef DEBUG_FRAME_DUMP
   FILE* out = stdout;
   if (PresShell* presShell = GetPresShell(mDocShell)) {
     nsIFrame* root = presShell->GetRootFrame();
@@ -308,7 +320,6 @@ NS_IMETHODIMP nsLayoutDebuggingTools::DumpMatchedRules() {
   } else {
     fputs("null pres shell\n", out);
   }
-#endif
   return NS_OK;
 }
 

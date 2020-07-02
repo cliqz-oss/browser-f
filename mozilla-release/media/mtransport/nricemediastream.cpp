@@ -212,14 +212,19 @@ nsresult NrIceMediaStream::ConnectToPeer(
   MOZ_ASSERT(stream_);
 
   if (Matches(old_stream_, ufrag, pwd)) {
-    // Roll back to old stream, since we apparently aren't using the new one
     // (We swap before we close so we never have stream_ == nullptr)
+    MOZ_MTLOG(ML_DEBUG,
+              "Rolling back to old stream ufrag=" << ufrag << " " << name_);
     std::swap(stream_, old_stream_);
     CloseStream(&old_stream_);
   } else if (old_stream_) {
     // Right now we wait for ICE to complete before closing the old stream.
     // It might be worth it to close it sooner, but we don't want to close it
     // right away.
+    MOZ_MTLOG(ML_DEBUG,
+              "ICE restart committed, marking old stream as obsolete, "
+              "beginning switchover to ufrag="
+                  << ufrag << " " << name_);
     nr_ice_media_stream_set_obsolete(old_stream_);
   }
 
@@ -250,6 +255,10 @@ nsresult NrIceMediaStream::ConnectToPeer(
 nsresult NrIceMediaStream::SetIceCredentials(const std::string& ufrag,
                                              const std::string& pwd) {
   if (Matches(stream_, ufrag, pwd)) {
+    return NS_OK;
+  }
+
+  if (Matches(old_stream_, ufrag, pwd)) {
     return NS_OK;
   }
 

@@ -604,12 +604,12 @@ DevTools.prototype = {
     this.emit("toolbox-created", toolbox);
 
     toolbox.once("destroy", () => {
-      this.emit("toolbox-destroy", target);
+      this.emit("toolbox-destroy", toolbox);
     });
 
     toolbox.once("destroyed", () => {
       this._toolboxes.delete(target);
-      this.emit("toolbox-destroyed", target);
+      this.emit("toolbox-destroyed", toolbox);
     });
     // If the document navigates to another process, the current target will be
     // destroyed in favor of a new one. So acknowledge this swap here.
@@ -727,14 +727,16 @@ DevTools.prototype = {
     );
     const inspector = toolbox.getCurrentPanel();
 
-    // new-node-front tells us when the node has been selected, whether the
-    // browser is remote or not.
-    const onNewNode = inspector.selection.once("new-node-front");
-
-    const nodeFront = await inspector.walker.getNodeActorFromContentDomReference(
+    const nodeFront = await inspector.inspectorFront.getNodeActorFromContentDomReference(
       domReference
     );
+    if (!nodeFront) {
+      return;
+    }
 
+    // "new-node-front" tells us when the node has been selected, whether the
+    // browser is remote or not.
+    const onNewNode = inspector.selection.once("new-node-front");
     // Select the final node
     inspector.selection.setNodeFront(nodeFront, {
       reason: "browser-context-menu",
@@ -771,9 +773,13 @@ DevTools.prototype = {
       startTime
     );
     const inspectorFront = await toolbox.target.getFront("inspector");
-    const nodeFront = await inspectorFront.walker.getNodeActorFromContentDomReference(
+    const nodeFront = await inspectorFront.getNodeActorFromContentDomReference(
       domReference
     );
+    if (!nodeFront) {
+      return;
+    }
+
     // Select the accessible object in the panel and wait for the event that
     // tells us it has been done.
     const a11yPanel = toolbox.getCurrentPanel();

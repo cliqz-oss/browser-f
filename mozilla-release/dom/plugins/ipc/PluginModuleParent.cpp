@@ -527,20 +527,15 @@ void PluginModuleChromeParent::OnProcessLaunched(const bool aSucceeded) {
 }
 
 bool PluginModuleChromeParent::InitCrashReporter() {
-  ipc::Shmem shmem;
-  if (!ipc::CrashReporterClient::AllocShmem(this, &shmem)) {
-    return false;
-  }
-
   NativeThreadId threadId;
-  if (!CallInitCrashReporter(std::move(shmem), &threadId)) {
+  if (!CallInitCrashReporter(&threadId)) {
     return false;
   }
 
   {
     mozilla::MutexAutoLock lock(mCrashReporterMutex);
-    mCrashReporter = MakeUnique<ipc::CrashReporterHost>(GeckoProcessType_Plugin,
-                                                        shmem, threadId);
+    mCrashReporter =
+        MakeUnique<ipc::CrashReporterHost>(GeckoProcessType_Plugin, threadId);
   }
 
   return true;
@@ -2040,7 +2035,7 @@ class nsCaseInsensitiveUTF8StringArrayComparator {
  public:
   template <class A, class B>
   bool Equals(const A& a, const B& b) const {
-    return a.Equals(b.get(), nsCaseInsensitiveUTF8StringComparator());
+    return a.Equals(b.get(), nsCaseInsensitiveUTF8StringComparator);
   }
 };
 

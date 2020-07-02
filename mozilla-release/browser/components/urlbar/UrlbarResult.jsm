@@ -128,9 +128,12 @@ class UrlbarResult {
           case UrlbarUtils.KEYWORD_OFFER.HIDE:
             return ["", []];
         }
-        return this.payload.suggestion
-          ? [this.payload.suggestion, this.payloadHighlights.suggestion]
-          : [this.payload.query, this.payloadHighlights.query];
+        if (this.payload.tail && this.payload.tailOffsetIndex >= 0) {
+          return [this.payload.tail, this.payloadHighlights.tail];
+        } else if (this.payload.suggestion) {
+          return [this.payload.suggestion, this.payloadHighlights.suggestion];
+        }
+        return [this.payload.query, this.payloadHighlights.query];
       default:
         return ["", []];
     }
@@ -225,16 +228,12 @@ class UrlbarResult {
       payloadInfo.displayUrl = [...payloadInfo.url];
       let url = payloadInfo.displayUrl[0];
       if (url && UrlbarPrefs.get("trimURLs")) {
-        if (UrlbarPrefs.get("update1.view.stripHttps")) {
-          url = BrowserUtils.removeSingleTrailingSlashFromURL(url);
-          if (url.startsWith("https://")) {
-            url = url.substring(8);
-            if (url.startsWith("www.")) {
-              url = url.substring(4);
-            }
+        url = BrowserUtils.removeSingleTrailingSlashFromURL(url);
+        if (url.startsWith("https://")) {
+          url = url.substring(8);
+          if (url.startsWith("www.")) {
+            url = url.substring(4);
           }
-        } else {
-          url = BrowserUtils.trimURL(url);
         }
       }
       payloadInfo.displayUrl[0] = Services.textToSubURI.unEscapeURIForUI(url);

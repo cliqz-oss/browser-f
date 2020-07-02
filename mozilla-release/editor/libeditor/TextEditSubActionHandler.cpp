@@ -9,8 +9,10 @@
 #include "mozilla/EditAction.h"
 #include "mozilla/EditorDOMPoint.h"
 #include "mozilla/EditorUtils.h"
+#include "mozilla/HTMLEditor.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs_editor.h"
 #include "mozilla/TextComposition.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLBRElement.h"
@@ -27,14 +29,14 @@
 #include "nsError.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
-#include "nsNameSpaceManager.h"
+#include "nsIHTMLCollection.h"
 #include "nsINode.h"
 #include "nsISupportsBase.h"
 #include "nsLiteralString.h"
+#include "nsNameSpaceManager.h"
+#include "nsPrintfCString.h"
 #include "nsTextNode.h"
 #include "nsUnicharUtils.h"
-#include "nsIHTMLCollection.h"
-#include "nsPrintfCString.h"
 
 namespace mozilla {
 
@@ -184,7 +186,7 @@ nsresult TextEditor::OnEndHandlingTopLevelEditSubAction() {
 
 EditActionResult TextEditor::InsertLineFeedCharacterAtSelection() {
   MOZ_ASSERT(IsEditActionDataAvailable());
-  MOZ_ASSERT(!AsHTMLEditor());
+  MOZ_ASSERT(IsTextEditor());
   MOZ_ASSERT(!IsSingleLineEditor());
 
   UndefineCaretBidiLevel();
@@ -194,9 +196,10 @@ EditActionResult TextEditor::InsertLineFeedCharacterAtSelection() {
   if (mMaxTextLength >= 0) {
     nsAutoString insertionString(NS_LITERAL_STRING("\n"));
     EditActionResult result =
-        TruncateInsertionStringForMaxLength(insertionString);
+        MaybeTruncateInsertionStringForMaxLength(insertionString);
     if (result.Failed()) {
-      NS_WARNING("TextEditor::TruncateInsertionStringForMaxLength() failed");
+      NS_WARNING(
+          "TextEditor::MaybeTruncateInsertionStringForMaxLength() failed");
       return result;
     }
     if (result.Handled()) {
@@ -208,10 +211,10 @@ EditActionResult TextEditor::InsertLineFeedCharacterAtSelection() {
   // if the selection isn't collapsed, delete it.
   if (!SelectionRefPtr()->IsCollapsed()) {
     nsresult rv =
-        DeleteSelectionAsSubAction(nsIEditor::eNone, nsIEditor::eStrip);
+        DeleteSelectionAsSubAction(nsIEditor::eNone, nsIEditor::eNoStrip);
     if (NS_FAILED(rv)) {
       NS_WARNING(
-          "TextEditor::DeleteSelectionAsSubAction(eNone, eStrip) failed");
+          "EditorBase::DeleteSelectionAsSubAction(eNone, eNoStrip) failed");
       return EditActionIgnored(rv);
     }
   }
@@ -223,7 +226,7 @@ EditActionResult TextEditor::InsertLineFeedCharacterAtSelection() {
   }
 
   // get the (collapsed) selection location
-  nsRange* firstRange = SelectionRefPtr()->GetRangeAt(0);
+  const nsRange* firstRange = SelectionRefPtr()->GetRangeAt(0);
   if (NS_WARN_IF(!firstRange)) {
     return EditActionIgnored(NS_ERROR_FAILURE);
   }
@@ -233,13 +236,7 @@ EditActionResult TextEditor::InsertLineFeedCharacterAtSelection() {
     return EditActionIgnored(NS_ERROR_FAILURE);
   }
   MOZ_ASSERT(pointToInsert.IsSetAndValid());
-
-  // Don't put text in places that can't have it.
-  if (!pointToInsert.IsInTextNode() &&
-      !CanContainTag(*pointToInsert.GetContainer(), *nsGkAtoms::textTagName)) {
-    NS_WARNING("Insertion point couldn't have text nodes");
-    return EditActionIgnored(NS_ERROR_FAILURE);
-  }
+  MOZ_ASSERT(!pointToInsert.IsContainerHTMLElement(nsGkAtoms::br));
 
   RefPtr<Document> document = GetDocument();
   if (NS_WARN_IF(!document)) {
@@ -336,8 +333,10 @@ nsresult TextEditor::EnsureCaretNotAtEndOfTextNode() {
     return NS_OK;
   }
 
-  nsINode* nextNode = selectionStartPoint.GetContainer()->GetNextSibling();
-  if (!nextNode || !EditorBase::IsPaddingBRElementForEmptyLastLine(*nextNode)) {
+  nsIContent* nextContent =
+      selectionStartPoint.GetContainer()->GetNextSibling();
+  if (!nextContent ||
+      !EditorUtils::IsPaddingBRElementForEmptyLastLine(*nextContent)) {
     return NS_OK;
   }
 
@@ -433,6 +432,7 @@ void TextEditor::HandleNewLinesInStringForSingleLineEditor(
 EditActionResult TextEditor::HandleInsertText(
     EditSubAction aEditSubAction, const nsAString& aInsertionString) {
   MOZ_ASSERT(IsEditActionDataAvailable());
+  MOZ_ASSERT(IsTextEditor());
   MOZ_ASSERT(aEditSubAction == EditSubAction::eInsertText ||
              aEditSubAction == EditSubAction::eInsertTextComingFromIME);
 
@@ -451,9 +451,10 @@ EditActionResult TextEditor::HandleInsertText(
   nsAutoString insertionString(aInsertionString);
   if (mMaxTextLength >= 0) {
     EditActionResult result =
-        TruncateInsertionStringForMaxLength(insertionString);
+        MaybeTruncateInsertionStringForMaxLength(insertionString);
     if (result.Failed()) {
-      NS_WARNING("TextEditor::TruncateInsertionStringForMaxLength() failed");
+      NS_WARNING(
+          "TextEditor::MaybeTruncateInsertionStringForMaxLength() failed");
       return result.MarkAsHandled();
     }
     // If we're exceeding the maxlength when composing IME, we need to clean up
@@ -478,10 +479,10 @@ EditActionResult TextEditor::HandleInsertText(
   // if the selection isn't collapsed, delete it.
   if (!SelectionRefPtr()->IsCollapsed()) {
     nsresult rv =
-        DeleteSelectionAsSubAction(nsIEditor::eNone, nsIEditor::eStrip);
+        DeleteSelectionAsSubAction(nsIEditor::eNone, nsIEditor::eNoStrip);
     if (NS_FAILED(rv)) {
       NS_WARNING(
-          "TextEditor::DeleteSelectionAsSubAction(eNone, eStrip) failed");
+          "EditorBase::DeleteSelectionAsSubAction(eNone, eNoStrip) failed");
       return EditActionHandled(rv);
     }
   }
@@ -522,7 +523,7 @@ EditActionResult TextEditor::HandleInsertText(
   }
 
   // get the (collapsed) selection location
-  nsRange* firstRange = SelectionRefPtr()->GetRangeAt(0);
+  const nsRange* firstRange = SelectionRefPtr()->GetRangeAt(0);
   if (NS_WARN_IF(!firstRange)) {
     return EditActionHandled(NS_ERROR_FAILURE);
   }
@@ -530,14 +531,7 @@ EditActionResult TextEditor::HandleInsertText(
   if (NS_WARN_IF(!atStartOfSelection.IsSetAndValid())) {
     return EditActionHandled(NS_ERROR_FAILURE);
   }
-
-  // don't put text in places that can't have it
-  if (!atStartOfSelection.IsInTextNode() &&
-      !CanContainTag(*atStartOfSelection.GetContainer(),
-                     *nsGkAtoms::textTagName)) {
-    NS_WARNING("Selection start container couldn't have text nodes");
-    return EditActionHandled(NS_ERROR_FAILURE);
-  }
+  MOZ_ASSERT(!atStartOfSelection.IsContainerHTMLElement(nsGkAtoms::br));
 
   RefPtr<Document> document = GetDocument();
   if (NS_WARN_IF(!document)) {
@@ -666,11 +660,11 @@ EditActionResult TextEditor::SetTextWithoutTransaction(
     }
     if (firstChild->IsText()) {
       if (!firstChild->GetNextSibling() ||
-          !EditorBase::IsPaddingBRElementForEmptyLastLine(
+          !EditorUtils::IsPaddingBRElementForEmptyLastLine(
               *firstChild->GetNextSibling())) {
         return EditActionIgnored();
       }
-    } else if (!EditorBase::IsPaddingBRElementForEmptyLastLine(*firstChild)) {
+    } else if (!EditorUtils::IsPaddingBRElementForEmptyLastLine(*firstChild)) {
       return EditActionIgnored();
     }
   }
@@ -745,6 +739,8 @@ EditActionResult TextEditor::HandleDeleteSelection(
     nsIEditor::EDirection aDirectionAndAmount,
     nsIEditor::EStripWrappers aStripWrappers) {
   MOZ_ASSERT(IsEditActionDataAvailable());
+  MOZ_ASSERT(IsTextEditor());
+  MOZ_ASSERT(aStripWrappers == nsIEditor::eNoStrip);
 
   UndefineCaretBidiLevel();
 
@@ -756,14 +752,15 @@ EditActionResult TextEditor::HandleDeleteSelection(
     return EditActionCanceled();
   }
   EditActionResult result =
-      HandleDeleteSelectionInternal(aDirectionAndAmount, aStripWrappers);
+      HandleDeleteSelectionInternal(aDirectionAndAmount, nsIEditor::eNoStrip);
   // HandleDeleteSelectionInternal() creates SelectionBatcher.  Therefore,
   // quitting from it might cause having destroyed the editor.
   if (NS_WARN_IF(Destroyed())) {
     return result.SetResult(NS_ERROR_EDITOR_DESTROYED);
   }
-  NS_WARNING_ASSERTION(result.Succeeded(),
-                       "TextEditor::HandleDeleteSelectionInternal() failed");
+  NS_WARNING_ASSERTION(
+      result.Succeeded(),
+      "TextEditor::HandleDeleteSelectionInternal(eNoStrip) failed");
   return result;
 }
 
@@ -771,7 +768,8 @@ EditActionResult TextEditor::HandleDeleteSelectionInternal(
     nsIEditor::EDirection aDirectionAndAmount,
     nsIEditor::EStripWrappers aStripWrappers) {
   MOZ_ASSERT(IsEditActionDataAvailable());
-  MOZ_ASSERT(!AsHTMLEditor());
+  MOZ_ASSERT(IsTextEditor());
+  MOZ_ASSERT(aStripWrappers == nsIEditor::eNoStrip);
 
   // If the current selection is empty (e.g the user presses backspace with
   // a collapsed selection), then we want to avoid sending the selectstart
@@ -793,11 +791,11 @@ EditActionResult TextEditor::HandleDeleteSelectionInternal(
     }
 
     if (!SelectionRefPtr()->IsCollapsed()) {
-      nsresult rv =
-          DeleteSelectionWithTransaction(aDirectionAndAmount, aStripWrappers);
+      nsresult rv = DeleteSelectionWithTransaction(aDirectionAndAmount,
+                                                   nsIEditor::eNoStrip);
       NS_WARNING_ASSERTION(
           NS_SUCCEEDED(rv),
-          "TextEditor::DeleteSelectionWithTransaction() failed");
+          "EditorBase::DeleteSelectionWithTransaction(eNoStrip) failed");
       return EditActionHandled(rv);
     }
 
@@ -817,12 +815,10 @@ EditActionResult TextEditor::HandleDeleteSelectionInternal(
     return EditActionResult(rv);
   }
 
-  rv = DeleteSelectionWithTransaction(aDirectionAndAmount, aStripWrappers);
-  if (NS_WARN_IF(Destroyed())) {
-    return EditActionResult(NS_ERROR_EDITOR_DESTROYED);
-  }
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "TextEditor::DeleteSelectionWithTransaction() failed");
+  rv = DeleteSelectionWithTransaction(aDirectionAndAmount, nsIEditor::eNoStrip);
+  NS_WARNING_ASSERTION(
+      NS_SUCCEEDED(rv),
+      "EditorBase::DeleteSelectionWithTransaction(eNoStrip) failed");
   return EditActionHandled(rv);
 }
 
@@ -887,7 +883,7 @@ EditActionResult TextEditor::ComputeValueFromTextNodeAndPaddingBRElement(
   if (NS_WARN_IF(isInput && firstChildExceptText) ||
       NS_WARN_IF(isTextarea && !firstChildExceptText) ||
       NS_WARN_IF(isTextarea &&
-                 !EditorBase::IsPaddingBRElementForEmptyLastLine(
+                 !EditorUtils::IsPaddingBRElementForEmptyLastLine(
                      *firstChildExceptText) &&
                  !firstChildExceptText->IsXULElement(nsGkAtoms::scrollbar))) {
     return EditActionIgnored();
@@ -947,13 +943,33 @@ nsresult TextEditor::EnsurePaddingBRElementInMultilineEditor() {
   return NS_OK;
 }
 
-EditActionResult TextEditor::TruncateInsertionStringForMaxLength(
+EditActionResult TextEditor::MaybeTruncateInsertionStringForMaxLength(
     nsAString& aInsertionString) {
   MOZ_ASSERT(IsEditActionDataAvailable());
   MOZ_ASSERT(mMaxTextLength >= 0);
 
   if (!IsPlaintextEditor() || IsIMEComposing()) {
     return EditActionIgnored();
+  }
+
+  // Ignore user pastes
+  switch (GetEditAction()) {
+    case EditAction::ePaste:
+    case EditAction::ePasteAsQuotation:
+    case EditAction::eDrop:
+    case EditAction::eReplaceText:
+      // EditActionPrinciple() is non-null iff the edit was requested by
+      // javascript.
+      if (!GetEditActionPrincipal()) {
+        // By now we are certain that this is a user paste, before we ignore it,
+        // lets check if the user explictly enabled truncating user pastes.
+        if (!StaticPrefs::editor_truncate_user_pastes()) {
+          return EditActionIgnored();
+        }
+      }
+      [[fallthrough]];
+    default:
+      break;
   }
 
   int32_t currentLength = INT32_MAX;

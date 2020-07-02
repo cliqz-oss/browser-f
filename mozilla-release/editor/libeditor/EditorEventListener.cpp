@@ -12,6 +12,7 @@
 #include "mozilla/EditorBase.h"            // for EditorBase, etc.
 #include "mozilla/EventListenerManager.h"  // for EventListenerManager
 #include "mozilla/EventStateManager.h"     // for EventStateManager
+#include "mozilla/HTMLEditor.h"            // for HTMLEditor
 #include "mozilla/IMEStateManager.h"       // for IMEStateManager
 #include "mozilla/Preferences.h"           // for Preferences
 #include "mozilla/PresShell.h"             // for PresShell
@@ -1030,7 +1031,7 @@ bool EditorEventListener::CanInsertAtDropPosition(DragEvent* aDragEvent) {
   uint32_t rangeCount = selection->RangeCount();
   IgnoredErrorResult ignoredError;
   for (uint32_t i = 0; i < rangeCount; i++) {
-    RefPtr<nsRange> range = selection->GetRangeAt(i);
+    RefPtr<const nsRange> range = selection->GetRangeAt(i);
     if (!range) {
       // Don't bail yet, iterate through them all
       continue;

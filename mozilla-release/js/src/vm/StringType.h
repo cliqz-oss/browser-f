@@ -162,14 +162,15 @@ static const size_t UINT32_CHAR_BUFFER_LENGTH = sizeof("4294967295") - 1;
  */
 // clang-format on
 
-class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
-  using Base = js::gc::CellWithLengthAndFlags<js::gc::Cell>;
-
+class JSString : public js::gc::Cell {
  protected:
   static const size_t NUM_INLINE_CHARS_LATIN1 =
       2 * sizeof(void*) / sizeof(JS::Latin1Char);
   static const size_t NUM_INLINE_CHARS_TWO_BYTE =
       2 * sizeof(void*) / sizeof(char16_t);
+
+  using Header = js::gc::CellHeaderWithLengthAndFlags;
+  Header header_;
 
   /* Fields only apply to string types commented on the right. */
   struct Data {
@@ -228,68 +229,62 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
    * the predicate used to query whether a JSString instance is subtype
    * (reflexively) of that type.
    *
-   *   String        Instance     Subtype
-   *   type          encoding     predicate
-   *   ------------------------------------
-   *   Rope          000001       xxxx0x
-   *   Linear        -            xxxx1x
-   *   Dependent     000111       xxx1xx
-   *   External      100011       100011
-   *   Extensible    010011       010011
-   *   Inline        001011       xx1xxx
-   *   FatInline     011011       x11xxx
-   *   NormalAtom    000010       xxxxx0
-   *   PermanentAtom 100010       1xxxx0
-   *   InlineAtom    -            xx1xx0
-   *   FatInlineAtom -            x11xx0
+   *   String        Instance         Subtype
+   *   type          encoding         predicate
+   *   -----------------------------------------
+   *   Rope          000000 000       xxxx0x xxx
+   *   Linear        -                xxxx1x xxx
+   *   Dependent     000110 000       xxx1xx xxx
+   *   External      100010 000       100010 xxx
+   *   Extensible    010010 000       010010 xxx
+   *   Inline        001010 000       xx1xxx xxx
+   *   FatInline     011010 000       x11xxx xxx
+   *   NormalAtom    000011 000       xxxxx1 xxx
+   *   PermanentAtom 100011 000       1xxxx1 xxx
+   *   InlineAtom    -                xx1xx1 xxx
+   *   FatInlineAtom -                x11xx1 xxx
    *
-   * Note that the first 4 flag bits (from right to left in the previous table)
-   * have the following meaning and can be used for some hot queries:
+   * Bits 0..2 are reserved for use by the GC (see
+   * gc::CellFlagBitsReservedForGC). In particular, bit 0 is currently used for
+   * FORWARD_BIT for forwarded nursery cells. The other 2 bits are currently
+   * unused.
    *
-   *   Bit 0: !IsAtom (Atom, PermanentAtom)
-   *   Bit 1: IsLinear
-   *   Bit 2: IsDependent
-   *   Bit 3: IsInline (Inline, FatInline)
+   * Note that the first 4 flag bits 3..6 (from right to left in the previous
+   * table) have the following meaning and can be used for some hot queries:
    *
-   * The atom bit (NON_ATOM_BIT) is inverted and stored in a Cell
-   * ReservedBit. Atoms are never stored in nursery, so the nursery can use
-   * this bit to distinguish between JSString (1) and JSObject (0).
+   *   Bit 3: IsAtom (Atom, PermanentAtom)
+   *   Bit 4: IsLinear
+   *   Bit 5: IsDependent
+   *   Bit 6: IsInline (Inline, FatInline)
    *
-   * If the INDEX_VALUE_BIT is set, flags will also hold an integer index.
+   * If INDEX_VALUE_BIT is set, bits 16 and up will also hold an integer index.
    */
 
   // The low bits of flag word are reserved by GC.
   static_assert(js::gc::CellFlagBitsReservedForGC <= 3,
                 "JSString::flags must reserve enough bits for Cell");
 
-  static const uint32_t NON_ATOM_BIT = js::gc::Cell::JSSTRING_BIT;
+  static const uint32_t ATOM_BIT = js::Bit(3);
   static const uint32_t LINEAR_BIT = js::Bit(4);
   static const uint32_t DEPENDENT_BIT = js::Bit(5);
   static const uint32_t INLINE_CHARS_BIT = js::Bit(6);
 
-  static const uint32_t EXTENSIBLE_FLAGS =
-      NON_ATOM_BIT | LINEAR_BIT | js::Bit(7);
-  static const uint32_t EXTERNAL_FLAGS = NON_ATOM_BIT | LINEAR_BIT | js::Bit(8);
+  static const uint32_t EXTENSIBLE_FLAGS = LINEAR_BIT | js::Bit(7);
+  static const uint32_t EXTERNAL_FLAGS = LINEAR_BIT | js::Bit(8);
 
   static const uint32_t FAT_INLINE_MASK = INLINE_CHARS_BIT | js::Bit(7);
-  static const uint32_t PERMANENT_ATOM_MASK = NON_ATOM_BIT | js::Bit(8);
-  static const uint32_t PERMANENT_ATOM_FLAGS = js::Bit(8);
+  static const uint32_t PERMANENT_ATOM_MASK = ATOM_BIT | js::Bit(8);
 
-  /* Initial flags for thin inline and fat inline strings. */
-  static const uint32_t INIT_THIN_INLINE_FLAGS =
-      NON_ATOM_BIT | LINEAR_BIT | INLINE_CHARS_BIT;
-  static const uint32_t INIT_FAT_INLINE_FLAGS =
-      NON_ATOM_BIT | LINEAR_BIT | FAT_INLINE_MASK;
-  static const uint32_t INIT_ROPE_FLAGS = NON_ATOM_BIT;
-  static const uint32_t INIT_LINEAR_FLAGS = NON_ATOM_BIT | LINEAR_BIT;
-  static const uint32_t INIT_DEPENDENT_FLAGS =
-      NON_ATOM_BIT | LINEAR_BIT | DEPENDENT_BIT;
+  /* Initial flags for various types of strings. */
+  static const uint32_t INIT_THIN_INLINE_FLAGS = LINEAR_BIT | INLINE_CHARS_BIT;
+  static const uint32_t INIT_FAT_INLINE_FLAGS = LINEAR_BIT | FAT_INLINE_MASK;
+  static const uint32_t INIT_ROPE_FLAGS = 0;
+  static const uint32_t INIT_LINEAR_FLAGS = LINEAR_BIT;
+  static const uint32_t INIT_DEPENDENT_FLAGS = LINEAR_BIT | DEPENDENT_BIT;
 
-  static const uint32_t TYPE_FLAGS_MASK =
-      js::BitMask(9) - js::BitMask(3) + js::gc::Cell::JSSTRING_BIT;
-
-  static_assert((TYPE_FLAGS_MASK & js::gc::Cell::BIGINT_BIT) == 0,
-                "BigInt bit must not be used for Strings");
+  static const uint32_t TYPE_FLAGS_MASK = js::BitMask(9) - js::BitMask(3);
+  static_assert((TYPE_FLAGS_MASK & js::gc::CellHeader::RESERVED_MASK) == 0,
+                "GC reserved bits must not be used for Strings");
 
   static const uint32_t LATIN1_CHARS_BIT = js::Bit(9);
 
@@ -308,6 +303,17 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
    * is returned.
    */
   static inline bool validateLength(JSContext* maybecx, size_t length);
+
+  static constexpr size_t offsetOfRawFlagsField() {
+    return offsetof(JSString, header_) + Header::offsetOfRawFlagsField();
+  }
+
+  static constexpr size_t offsetOfFlags() {
+    return offsetof(JSString, header_) + Header::offsetOfFlags();
+  }
+  static constexpr size_t offsetOfLength() {
+    return offsetof(JSString, header_) + Header::offsetOfLength();
+  }
 
   static void staticAsserts() {
     static_assert(JSString::MAX_LENGTH < UINT32_MAX,
@@ -345,9 +351,8 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
     static_assert(offsetof(JSString, d.inlineStorageTwoByte) ==
                       offsetof(String, inlineStorageTwoByte),
                   "shadow::String inlineStorage offset must match JSString");
-    static_assert(
-        NON_ATOM_BIT == String::NON_ATOM_BIT,
-        "shadow::String::NON_ATOM_BIT must match JSString::NON_ATOM_BIT");
+    static_assert(ATOM_BIT == String::ATOM_BIT,
+                  "shadow::String::ATOM_BIT must match JSString::ATOM_BIT");
     static_assert(LINEAR_BIT == String::LINEAR_BIT,
                   "shadow::String::LINEAR_BIT must match JSString::LINEAR_BIT");
     static_assert(INLINE_CHARS_BIT == String::INLINE_CHARS_BIT,
@@ -374,7 +379,7 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
   MOZ_ALWAYS_INLINE void setNonInlineChars(const CharT* chars);
 
   MOZ_ALWAYS_INLINE
-  uint32_t flags() const { return flagsField(); }
+  uint32_t flags() const { return header_.flagsField(); }
 
   template <typename CharT>
   static MOZ_ALWAYS_INLINE void checkStringCharsArena(const CharT* chars) {
@@ -385,13 +390,15 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
 
  public:
   MOZ_ALWAYS_INLINE
-  size_t length() const { return lengthField(); }
+  size_t length() const { return header_.lengthField(); }
 
  protected:
-  void setFlattenData(uintptr_t data) { setTemporaryGCUnsafeData(data); }
+  void setFlattenData(uintptr_t data) {
+    header_.setTemporaryGCUnsafeData(data);
+  }
 
   uintptr_t unsetFlattenData(uint32_t len, uint32_t flags) {
-    return unsetTemporaryGCUnsafeData(len, flags);
+    return header_.unsetTemporaryGCUnsafeData(len, flags);
   }
 
   // Get correct non-inline chars enum arm for given type
@@ -490,11 +497,11 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
   }
 
   MOZ_ALWAYS_INLINE
-  bool isAtom() const { return !(flags() & NON_ATOM_BIT); }
+  bool isAtom() const { return flags() & ATOM_BIT; }
 
   MOZ_ALWAYS_INLINE
   bool isPermanentAtom() const {
-    return (flags() & PERMANENT_ATOM_MASK) == PERMANENT_ATOM_FLAGS;
+    return (flags() & PERMANENT_ATOM_MASK) == PERMANENT_ATOM_MASK;
   }
 
   MOZ_ALWAYS_INLINE
@@ -545,12 +552,8 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
    *
    * Returns mozilla::Nothing on OOM.
    */
-  mozilla::Maybe<mozilla::Tuple<size_t, size_t> > encodeUTF8Partial(
+  mozilla::Maybe<mozilla::Tuple<size_t, size_t>> encodeUTF8Partial(
       const JS::AutoRequireNoGC& nogc, mozilla::Span<char> buffer) const;
-
-  // Make offset accessors public.
-  using Base::offsetOfFlags;
-  using Base::offsetOfLength;
 
  private:
   // To help avoid writing Spectre-unsafe code, we only allow MacroAssembler
@@ -566,6 +569,7 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
 
  public:
   static const JS::TraceKind TraceKind = JS::TraceKind::String;
+  const js::gc::CellHeader& cellHeader() const { return header_.cellHeader(); }
 
   JS::Zone* zone() const {
     if (isTenured()) {
@@ -575,17 +579,14 @@ class JSString : public js::gc::CellWithLengthAndFlags<js::gc::Cell> {
       }
       return asTenured().zone();
     }
-    return js::Nursery::getStringZone(this);
+    return nurseryZone();
   }
 
-  // Implement TenuredZone members needed for template instantiations.
-
-  JS::Zone* zoneFromAnyThread() const {
-    if (isTenured()) {
-      return asTenured().zoneFromAnyThread();
-    }
-    return js::Nursery::getStringZone(this);
+  void setLengthAndFlags(uint32_t len, uint32_t flags) {
+    header_.setLengthAndFlags(len, flags);
   }
+  void setFlagBit(uint32_t flag) { header_.setFlagBit(flag); }
+  void clearFlagBit(uint32_t flag) { header_.clearFlagBit(flag); }
 
   void fixupAfterMovingGC() {}
 
@@ -1132,7 +1133,7 @@ class JSAtom : public JSLinearString {
   // initialization of the runtime. Permanent atoms are always pinned.
   MOZ_ALWAYS_INLINE void morphIntoPermanentAtom() {
     MOZ_ASSERT(static_cast<JSString*>(this)->isAtom());
-    setFlagBit(PERMANENT_ATOM_FLAGS | PINNED_ATOM_BIT);
+    setFlagBit(PERMANENT_ATOM_MASK | PINNED_ATOM_BIT);
   }
 
   MOZ_ALWAYS_INLINE
@@ -1208,7 +1209,7 @@ inline void JSAtom::initHash(js::HashNumber hash) {
 MOZ_ALWAYS_INLINE JSAtom* JSLinearString::morphAtomizedStringIntoAtom(
     js::HashNumber hash) {
   MOZ_ASSERT(!isAtom());
-  clearFlagBit(NON_ATOM_BIT);
+  setFlagBit(ATOM_BIT);
   JSAtom* atom = &asAtom();
   atom->initHash(hash);
   return atom;
@@ -1217,8 +1218,8 @@ MOZ_ALWAYS_INLINE JSAtom* JSLinearString::morphAtomizedStringIntoAtom(
 MOZ_ALWAYS_INLINE JSAtom* JSLinearString::morphAtomizedStringIntoPermanentAtom(
     js::HashNumber hash) {
   MOZ_ASSERT(!isAtom());
-  setFlagBit(PERMANENT_ATOM_FLAGS | PINNED_ATOM_BIT);
-  clearFlagBit(NON_ATOM_BIT);
+  setFlagBit(PERMANENT_ATOM_MASK | PINNED_ATOM_BIT);
+  setFlagBit(ATOM_BIT);
   JSAtom* atom = &asAtom();
   atom->initHash(hash);
   return atom;
@@ -1298,9 +1299,9 @@ class StaticStrings {
   /* Return null if no static atom exists for the given (chars, length). */
   template <typename Chars>
   MOZ_ALWAYS_INLINE JSAtom* lookup(Chars chars, size_t length) {
-    static_assert(std::is_same<Chars, const Latin1Char*>::value ||
-                      std::is_same<Chars, const char16_t*>::value ||
-                      std::is_same<Chars, LittleEndianChars>::value,
+    static_assert(std::is_same_v<Chars, const Latin1Char*> ||
+                      std::is_same_v<Chars, const char16_t*> ||
+                      std::is_same_v<Chars, LittleEndianChars>,
                   "for understandability, |chars| must be one of a few "
                   "identified types");
 
@@ -1349,8 +1350,8 @@ class StaticStrings {
     return lookup(reinterpret_cast<const Latin1Char*>(chars), length);
   }
 
-  template <typename CharT, typename = typename std::enable_if<
-                                !std::is_const<CharT>::value>::type>
+  template <typename CharT,
+            typename = std::enable_if_t<!std::is_const_v<CharT>>>
   MOZ_ALWAYS_INLINE JSAtom* lookup(CharT* chars, size_t length) {
     // Collapse the remaining |CharT*| to |const CharT*| to avoid excess
     // instantiations.
@@ -1416,7 +1417,7 @@ static_assert(sizeof(PropertyName) == sizeof(JSString),
               "string subclasses must be binary-compatible with JSString");
 
 static MOZ_ALWAYS_INLINE jsid NameToId(PropertyName* name) {
-  return NON_INTEGER_ATOM_TO_JSID(name);
+  return JS::PropertyKey::fromNonIntAtom(name);
 }
 
 using PropertyNameVector = JS::GCVector<PropertyName*>;

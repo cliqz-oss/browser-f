@@ -16,6 +16,26 @@ registerCleanupFunction(() => {
  */
 const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
 
+{
+  const {
+    getEnvironmentVariable,
+  } = require("devtools/client/performance-new/browser");
+
+  if (getEnvironmentVariable("MOZ_PROFILER_SHUTDOWN")) {
+    throw new Error(
+      "These tests cannot be run with shutdown profiling as they rely on manipulating " +
+        "the state of the profiler."
+    );
+  }
+
+  if (getEnvironmentVariable("MOZ_PROFILER_STARTUP")) {
+    throw new Error(
+      "These tests cannot be run with startup profiling as they rely on manipulating " +
+        "the state of the profiler."
+    );
+  }
+}
+
 /**
  * Wait for a single requestAnimationFrame tick.
  */
@@ -136,20 +156,6 @@ function maybeGetElementFromDocumentByText(document, text) {
   info(`Immediately trying to find the element with the text "${text}".`);
   const xpath = `//*[contains(text(), '${text}')]`;
   return getElementByXPath(document, xpath);
-}
-
-/**
- * Returns the popup's document.
- * @returns {Document}
- */
-function getIframeDocument() {
-  const iframe = document.getElementById("PanelUI-profilerIframe");
-  if (!iframe) {
-    throw new Error(
-      "This function assumes the profiler iframe is already present."
-    );
-  }
-  return iframe.contentDocument;
 }
 
 /**
@@ -295,39 +301,6 @@ async function waitForTabTitle(title) {
     logPeriodically(`> Waiting for the tab title to change.`);
     return false;
   });
-}
-
-/**
- * Close the popup, and wait for it to be destroyed.
- */
-async function closePopup() {
-  const iframe = document.querySelector("#PanelUI-profilerIframe");
-
-  if (!iframe) {
-    throw new Error(
-      "Could not find the profiler iframe when attempting to close the popup. Was it " +
-        "already closed?"
-    );
-  }
-
-  const panel = iframe.closest("panel");
-  if (!panel) {
-    throw new Error(
-      "Could not find the closest panel to the profiler's iframe."
-    );
-  }
-
-  info("Hide the profiler popup.");
-  panel.hidePopup();
-
-  info("Wait for the profiler popup to be completely hidden.");
-  while (true) {
-    if (!iframe.ownerDocument.contains(iframe)) {
-      info("The iframe was removed.");
-      return;
-    }
-    await tick();
-  }
 }
 
 /**

@@ -32,6 +32,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/StaticPrefs_browser.h"
+#include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/TextEvents.h"
 #include <algorithm>
 
@@ -45,13 +46,6 @@ const int32_t kNothingSelected = -1;
 // Static members
 nsListControlFrame* nsListControlFrame::mFocused = nullptr;
 nsString* nsListControlFrame::sIncrementalString = nullptr;
-
-// Using for incremental typing navigation
-#define INCREMENTAL_SEARCH_KEYPRESS_TIME 1000
-// XXX, kyle.yuan@sun.com, there are 4 definitions for the same purpose:
-//  nsMenuPopupFrame.h, nsListControlFrame.cpp, listbox.xml, tree.xml
-//  need to find a good place to put them together.
-//  if someone changes one, please also change the other.
 
 DOMTimeStamp nsListControlFrame::gLastKeyTime = 0;
 
@@ -1031,7 +1025,7 @@ void nsListControlFrame::SetComboboxFrame(nsIFrame* aComboboxFrame) {
 void nsListControlFrame::GetOptionText(uint32_t aIndex, nsAString& aStr) {
   aStr.Truncate();
   if (dom::HTMLOptionElement* optionElement = GetOption(aIndex)) {
-    optionElement->GetText(aStr);
+    optionElement->GetRenderedLabel(aStr);
   }
 }
 
@@ -1820,15 +1814,13 @@ void nsListControlFrame::ScrollToIndex(int32_t aIndex) {
 
 void nsListControlFrame::ScrollToFrame(dom::HTMLOptionElement& aOptElement) {
   // otherwise we find the content's frame and scroll to it
-  nsIFrame* childFrame = aOptElement.GetPrimaryFrame();
-  if (childFrame) {
+  if (nsIFrame* childFrame = aOptElement.GetPrimaryFrame()) {
     RefPtr<mozilla::PresShell> presShell = PresShell();
     presShell->ScrollFrameRectIntoView(
         childFrame, nsRect(nsPoint(0, 0), childFrame->GetSize()), ScrollAxis(),
         ScrollAxis(),
         ScrollFlags::ScrollOverflowHidden |
-            ScrollFlags::ScrollFirstAncestorOnly |
-            ScrollFlags::IgnoreMarginAndPadding);
+            ScrollFlags::ScrollFirstAncestorOnly);
   }
 }
 
@@ -1987,7 +1979,8 @@ nsresult nsListControlFrame::KeyDown(dom::Event* aKeyEvent) {
   dropDownMenuOnSpace = IsInDropDownMode() && !mComboboxFrame->IsDroppedDown();
 #endif
   bool withinIncrementalSearchTime =
-      keyEvent->mTime - gLastKeyTime <= INCREMENTAL_SEARCH_KEYPRESS_TIME;
+      keyEvent->mTime - gLastKeyTime <=
+      StaticPrefs::ui_menu_incremental_search_timeout();
   if ((dropDownMenuOnUpDown &&
        (keyEvent->mKeyCode == NS_VK_UP || keyEvent->mKeyCode == NS_VK_DOWN)) ||
       (dropDownMenuOnSpace && keyEvent->mKeyCode == NS_VK_SPACE &&
@@ -2206,11 +2199,12 @@ nsresult nsListControlFrame::KeyPress(dom::Event* aKeyEvent) {
   // XXX Why don't we check/modify timestamp first?
 
   // Incremental Search: if time elapsed is below
-  // INCREMENTAL_SEARCH_KEYPRESS_TIME, append this keystroke to the search
+  // ui.menu.incremental_search.timeout, append this keystroke to the search
   // string we will use to find options and start searching at the current
   // keystroke.  Otherwise, Truncate the string if it's been a long time
   // since our last keypress.
-  if (keyEvent->mTime - gLastKeyTime > INCREMENTAL_SEARCH_KEYPRESS_TIME) {
+  if (keyEvent->mTime - gLastKeyTime >
+      StaticPrefs::ui_menu_incremental_search_timeout()) {
     // If this is ' ' and we are at the beginning of the string, treat it as
     // "select this option" (bug 191543)
     if (keyEvent->mCharCode == ' ') {
@@ -2272,11 +2266,11 @@ nsresult nsListControlFrame::KeyPress(dom::Event* aKeyEvent) {
     }
 
     nsAutoString text;
-    optionElement->GetText(text);
+    optionElement->GetRenderedLabel(text);
     if (!StringBeginsWith(
             nsContentUtils::TrimWhitespace<
                 nsContentUtils::IsHTMLWhitespaceOrNBSP>(text, false),
-            incrementalString, nsCaseInsensitiveStringComparator())) {
+            incrementalString, nsCaseInsensitiveStringComparator)) {
       continue;
     }
 

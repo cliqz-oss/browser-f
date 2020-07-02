@@ -6,6 +6,10 @@
 
 SPHINX_TREES['/toolkit/components/glean'] = 'docs'
 
+TEST_DIRS += [
+    'gtest',
+]
+
 with Files('docs/**'):
     SCHEDULES.exclusive = ['docs']
 

@@ -9,6 +9,7 @@
 #include <knownfolders.h>
 #include <winioctl.h>
 
+#include "GeckoProfiler.h"
 #include "gfxPlatform.h"
 #include "gfxUtils.h"
 #include "nsWindow.h"
@@ -23,6 +24,7 @@
 #include "mozilla/gfx/DataSurfaceHelpers.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/WindowsVersion.h"
 #include "mozilla/Unused.h"
 #include "nsIContentPolicy.h"
@@ -735,8 +737,12 @@ void WinUtils::WaitForMessage(DWORD aTimeoutMs) {
     if (elapsed >= aTimeoutMs) {
       break;
     }
-    DWORD result = ::MsgWaitForMultipleObjectsEx(0, NULL, aTimeoutMs - elapsed,
-                                                 MOZ_QS_ALLEVENT, waitFlags);
+    DWORD result;
+    {
+      AUTO_PROFILER_THREAD_SLEEP;
+      result = ::MsgWaitForMultipleObjectsEx(0, NULL, aTimeoutMs - elapsed,
+                                             MOZ_QS_ALLEVENT, waitFlags);
+    }
     NS_WARNING_ASSERTION(result != WAIT_FAILED, "Wait failed");
     if (result == WAIT_TIMEOUT) {
       break;
@@ -2105,7 +2111,7 @@ const WinUtils::WhitelistVec& WinUtils::GetWhitelistedPaths() {
     if (NS_IsMainThread()) {
       setClearFn();
     } else {
-      SystemGroup::Dispatch(
+      SchedulerGroup::Dispatch(
           TaskCategory::Other,
           NS_NewRunnableFunction("WinUtils::GetWhitelistedPaths",
                                  std::move(setClearFn)));
@@ -2206,8 +2212,7 @@ bool WinUtils::PreparePathForTelemetry(nsAString& aPath,
   for (uint32_t i = 0; i < whitelistedPaths.length(); ++i) {
     const nsString& testPath = whitelistedPaths[i].first;
     const nsDependentString& substitution = whitelistedPaths[i].second;
-    if (StringBeginsWith(aPath, testPath,
-                         nsCaseInsensitiveStringComparator())) {
+    if (StringBeginsWith(aPath, testPath, nsCaseInsensitiveStringComparator)) {
       if (!substitution.IsVoid()) {
         aPath.Replace(0, testPath.Length(), substitution);
       }

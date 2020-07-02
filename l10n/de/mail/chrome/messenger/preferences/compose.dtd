@@ -22,8 +22,6 @@
 <!ENTITY fontSize.accesskey                   "G">
 <!ENTITY useReaderDefaults.label              "Standardfarben des Programms verwenden">
 <!ENTITY useReaderDefaults.accesskey          "P">
-<!ENTITY size.label                           "Größe:">
-<!ENTITY size.accesskey                       "G">
 <!ENTITY fontColor.label                      "Text:">
 <!ENTITY fontColor.accesskey                  "T">
 <!ENTITY bgColor.label                        "Hintergrund:">

@@ -36,6 +36,7 @@
 #include "vm/JSObject.h"
 #include "vm/JSScript.h"
 #include "vm/Opcodes.h"
+#include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/Printer.h"
 #include "vm/Shape.h"
 #include "vm/Time.h"
@@ -45,6 +46,7 @@
 #include "vm/JSAtom-inl.h"
 #include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
+#include "vm/ObjectGroup-inl.h"  // JSObject::setSingleton
 
 using namespace js;
 
@@ -359,38 +361,57 @@ TemporaryTypeSet::TemporaryTypeSet(LifoAlloc* alloc, Type type) {
   }
 }
 
+static TypeFlags MIRTypeToTypeFlags(jit::MIRType type) {
+  switch (type) {
+    case jit::MIRType::Undefined:
+      return TYPE_FLAG_UNDEFINED;
+    case jit::MIRType::Null:
+      return TYPE_FLAG_NULL;
+    case jit::MIRType::Boolean:
+      return TYPE_FLAG_BOOLEAN;
+    case jit::MIRType::Int32:
+      return TYPE_FLAG_INT32;
+    case jit::MIRType::Float32:  // Fall through, there's no JSVAL for Float32.
+    case jit::MIRType::Double:
+      return TYPE_FLAG_DOUBLE;
+    case jit::MIRType::String:
+      return TYPE_FLAG_STRING;
+    case jit::MIRType::Symbol:
+      return TYPE_FLAG_SYMBOL;
+    case jit::MIRType::BigInt:
+      return TYPE_FLAG_BIGINT;
+    case jit::MIRType::Object:
+      return TYPE_FLAG_ANYOBJECT;
+    case jit::MIRType::MagicOptimizedArguments:
+      return TYPE_FLAG_LAZYARGS;
+    default:
+      MOZ_CRASH("Bad MIR type");
+  }
+}
+
 bool TypeSet::mightBeMIRType(jit::MIRType type) const {
   if (unknown()) {
     return true;
   }
 
-  if (type == jit::MIRType::Object) {
-    return unknownObject() || baseObjectCount() != 0;
+  TypeFlags baseFlags = this->baseFlags();
+  if (baseObjectCount() != 0) {
+    baseFlags |= TYPE_FLAG_ANYOBJECT;
+  }
+  return baseFlags & MIRTypeToTypeFlags(type);
+}
+
+bool TypeSet::isSubset(std::initializer_list<jit::MIRType> types) const {
+  TypeFlags flags = 0;
+  for (auto type : types) {
+    flags |= MIRTypeToTypeFlags(type);
   }
 
-  switch (type) {
-    case jit::MIRType::Undefined:
-      return baseFlags() & TYPE_FLAG_UNDEFINED;
-    case jit::MIRType::Null:
-      return baseFlags() & TYPE_FLAG_NULL;
-    case jit::MIRType::Boolean:
-      return baseFlags() & TYPE_FLAG_BOOLEAN;
-    case jit::MIRType::Int32:
-      return baseFlags() & TYPE_FLAG_INT32;
-    case jit::MIRType::Float32:  // Fall through, there's no JSVAL for Float32.
-    case jit::MIRType::Double:
-      return baseFlags() & TYPE_FLAG_DOUBLE;
-    case jit::MIRType::String:
-      return baseFlags() & TYPE_FLAG_STRING;
-    case jit::MIRType::Symbol:
-      return baseFlags() & TYPE_FLAG_SYMBOL;
-    case jit::MIRType::BigInt:
-      return baseFlags() & TYPE_FLAG_BIGINT;
-    case jit::MIRType::MagicOptimizedArguments:
-      return baseFlags() & TYPE_FLAG_LAZYARGS;
-    default:
-      MOZ_CRASH("Bad MIR type");
+  TypeFlags baseFlags = this->baseFlags();
+  if (baseObjectCount() != 0) {
+    baseFlags |= TYPE_FLAG_ANYOBJECT;
   }
+  return (baseFlags & flags) == baseFlags;
 }
 
 bool TypeSet::objectsAreSubset(TypeSet* other) {
@@ -3500,6 +3521,14 @@ bool JSFunction::setTypeForScriptedFunction(JSContext* cx, HandleFunction fun,
   if (!IsTypeInferenceEnabled()) {
     return true;
   }
+
+  // Note: Delazifying our parent may fail with a recoverable OOM. This can
+  //       result in the current function being initialized twice. Check if
+  //       group was already initialized.
+  if (fun->isSingleton() || fun->group()->maybeInterpretedFunction()) {
+    return true;
+  }
+
   if (singleton) {
     if (!setSingleton(cx, fun)) {
       return false;
@@ -3700,7 +3729,7 @@ bool TypeNewScript::make(JSContext* cx, ObjectGroup* group, JSFunction* fun) {
 
   group->setNewScript(newScript.release());
 
-  gc::gcTracer.traceTypeNewScript(group);
+  gc::gcprobes::TypeNewScript(group);
   return true;
 }
 

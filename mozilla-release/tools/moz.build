@@ -58,9 +58,6 @@ with Files("vcs/**"):
 
 SPHINX_TREES['moztreedocs'] = 'moztreedocs/docs'
 
-with Files('lint/docs/**'):
-    SCHEDULES.exclusive = ['docs']
-
 SPHINX_TREES['try'] = 'tryselect/docs'
 
 SPHINX_TREES['fuzzing'] = 'fuzzing/docs'
@@ -78,6 +75,5 @@ CRAMTEST_MANIFESTS += [
 
 PYTHON_UNITTEST_MANIFESTS += [
     'lint/test/python.ini',
-    'rb/python.ini',
     'tryselect/test/python.ini',
 ]

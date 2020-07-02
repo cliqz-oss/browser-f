@@ -11,6 +11,7 @@
 #include "ServiceWorker.h"
 #include "ServiceWorkerManager.h"
 #include "js/Conversions.h"
+#include "js/Exception.h"  // JS::ExceptionStack, JS::StealPendingExceptionStack
 #include "js/TypeDecls.h"
 #include "mozilla/Encoding.h"
 #include "mozilla/ErrorResult.h"
@@ -500,16 +501,14 @@ class MOZ_STACK_CLASS AutoCancel {
     MOZ_ASSERT(!aRv.Failed());
 
     // Let's take the pending exception.
-    JS::Rooted<JS::Value> exn(aCx);
-    if (!JS_GetPendingException(aCx, &exn)) {
+    JS::ExceptionStack exnStack(aCx);
+    if (!JS::StealPendingExceptionStack(aCx, &exnStack)) {
       return;
     }
 
-    JS_ClearPendingException(aCx);
-
-    // Converting the exception in a js::ErrorReport.
-    js::ErrorReport report(aCx);
-    if (!report.init(aCx, exn, js::ErrorReport::WithSideEffects)) {
+    // Converting the exception in a JS::ErrorReportBuilder.
+    JS::ErrorReportBuilder report(aCx);
+    if (!report.init(aCx, exnStack, JS::ErrorReportBuilder::WithSideEffects)) {
       JS_ClearPendingException(aCx);
       return;
     }
@@ -788,7 +787,7 @@ void FetchEvent::RespondWith(JSContext* aCx, Promise& aArg, ErrorResult& aRv) {
   uint32_t column = 0;
   nsJSUtils::GetCallingLocation(aCx, spec, &line, &column);
 
-  RefPtr<InternalRequest> ir = mRequest->GetInternalRequest();
+  SafeRefPtr<InternalRequest> ir = mRequest->GetInternalRequest();
 
   nsAutoCString requestURL;
   ir->GetURL(requestURL);
@@ -838,7 +837,7 @@ void FetchEvent::PreventDefault(JSContext* aCx, CallerType aCallerType) {
 void FetchEvent::ReportCanceled() {
   MOZ_ASSERT(!mPreventDefaultScriptSpec.IsEmpty());
 
-  RefPtr<InternalRequest> ir = mRequest->GetInternalRequest();
+  SafeRefPtr<InternalRequest> ir = mRequest->GetInternalRequest();
   nsAutoCString url;
   ir->GetURL(url);
 
@@ -1249,7 +1248,7 @@ already_AddRefed<ExtendableMessageEvent> ExtendableMessageEvent::Constructor(
 }
 
 void ExtendableMessageEvent::GetPorts(nsTArray<RefPtr<MessagePort>>& aPorts) {
-  aPorts = mPorts;
+  aPorts = mPorts.Clone();
 }
 
 NS_IMPL_CYCLE_COLLECTION_MULTI_ZONE_JSHOLDER_CLASS(ExtendableMessageEvent)

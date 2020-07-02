@@ -5,10 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsThreadUtils.h"
+
+#include "LeakRefPtr.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Likely.h"
 #include "mozilla/TimeStamp.h"
-#include "LeakRefPtr.h"
 #include "nsComponentManagerUtils.h"
 #include "nsExceptionHandler.h"
 #include "nsITimer.h"
@@ -17,9 +18,9 @@
 #ifdef MOZILLA_INTERNAL_API
 #  include "nsThreadManager.h"
 #else
-#  include "nsXPCOMCIDInternal.h"
 #  include "nsIThreadManager.h"
 #  include "nsServiceManagerUtils.h"
+#  include "nsXPCOMCIDInternal.h"
 #endif
 
 #ifdef XP_WIN
@@ -32,7 +33,16 @@
 #  include <sys/prctl.h>
 #endif
 
+static LazyLogModule sEventDispatchAndRunLog("events");
+#ifdef LOG1
+#  undef LOG1
+#endif
+#define LOG1(args) \
+  MOZ_LOG(sEventDispatchAndRunLog, mozilla::LogLevel::Error, args)
+
 using namespace mozilla;
+
+NS_IMPL_ISUPPORTS(TailDispatchingTarget, nsIEventTarget, nsISerialEventTarget)
 
 #ifndef XPCOM_GLUE_AVOID_NSPR
 
@@ -133,7 +143,15 @@ already_AddRefed<nsIRunnable> mozilla::CreateMediumHighRunnable(
 //-----------------------------------------------------------------------------
 
 nsresult NS_NewNamedThread(const nsACString& aName, nsIThread** aResult,
-                           nsIRunnable* aEvent, uint32_t aStackSize) {
+                           nsIRunnable* aInitialEvent, uint32_t aStackSize) {
+  nsCOMPtr<nsIRunnable> event = aInitialEvent;
+  return NS_NewNamedThread(aName, aResult, event.forget(), aStackSize);
+}
+
+nsresult NS_NewNamedThread(const nsACString& aName, nsIThread** aResult,
+                           already_AddRefed<nsIRunnable> aInitialEvent,
+                           uint32_t aStackSize) {
+  nsCOMPtr<nsIRunnable> event = std::move(aInitialEvent);
   nsCOMPtr<nsIThread> thread;
 #ifdef MOZILLA_INTERNAL_API
   nsresult rv = nsThreadManager::get().nsThreadManager::NewNamedThread(
@@ -152,8 +170,8 @@ nsresult NS_NewNamedThread(const nsACString& aName, nsIThread** aResult,
     return rv;
   }
 
-  if (aEvent) {
-    rv = thread->Dispatch(aEvent, NS_DISPATCH_NORMAL);
+  if (event) {
+    rv = thread->Dispatch(event.forget(), NS_DISPATCH_NORMAL);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -329,7 +347,9 @@ class IdleRunnableWrapper final : public IdleRunnable {
   static void TimedOut(nsITimer* aTimer, void* aClosure) {
     RefPtr<IdleRunnableWrapper> runnable =
         static_cast<IdleRunnableWrapper*>(aClosure);
+    LogRunnable::Run log(runnable);
     runnable->Run();
+    runnable = nullptr;
   }
 
   void SetTimer(uint32_t aDelay, nsIEventTarget* aTarget) override {
@@ -520,12 +540,6 @@ nsresult NS_DispatchBackgroundTask(already_AddRefed<nsIRunnable> aEvent,
                                                            aDispatchFlags);
 }
 
-nsresult NS_DispatchBackgroundTask(nsIRunnable* aEvent,
-                                   uint32_t aDispatchFlags) {
-  return nsThreadManager::get().DispatchToBackgroundThread(aEvent,
-                                                           aDispatchFlags);
-}
-
 // nsAutoLowPriorityIO
 nsAutoLowPriorityIO::nsAutoLowPriorityIO() {
 #if defined(XP_WIN)
@@ -567,13 +581,7 @@ nsIEventTarget* GetCurrentThreadEventTarget() {
 }
 
 nsIEventTarget* GetMainThreadEventTarget() {
-  nsCOMPtr<nsIThread> thread;
-  nsresult rv = NS_GetMainThread(getter_AddRefs(thread));
-  if (NS_FAILED(rv)) {
-    return nullptr;
-  }
-
-  return thread->EventTarget();
+  return GetMainThreadSerialEventTarget();
 }
 
 nsISerialEventTarget* GetCurrentThreadSerialEventTarget() {
@@ -587,13 +595,7 @@ nsISerialEventTarget* GetCurrentThreadSerialEventTarget() {
 }
 
 nsISerialEventTarget* GetMainThreadSerialEventTarget() {
-  nsCOMPtr<nsIThread> thread;
-  nsresult rv = NS_GetMainThread(getter_AddRefs(thread));
-  if (NS_FAILED(rv)) {
-    return nullptr;
-  }
-
-  return thread->SerialEventTarget();
+  return static_cast<nsThread*>(nsThreadManager::get().GetMainThreadWeak());
 }
 
 size_t GetNumberOfProcessors() {
@@ -605,6 +607,24 @@ size_t GetNumberOfProcessors() {
   MOZ_ASSERT(procs > 0);
   return static_cast<size_t>(procs);
 }
+
+template <typename T>
+void LogTaskBase<T>::LogDispatch(T* aEvent) {
+  LOG1(("DISP %p", aEvent));
+}
+
+template <typename T>
+LogTaskBase<T>::Run::Run(T* aEvent, bool aWillRunAgain)
+    : mEvent(aEvent), mWillRunAgain(aWillRunAgain) {
+  LOG1(("EXEC %p", mEvent));
+}
+
+template <typename T>
+LogTaskBase<T>::Run::~Run() {
+  LOG1((mWillRunAgain ? "INTERRUPTED %p" : "DONE %p", mEvent));
+}
+
+template class LogTaskBase<nsIRunnable>;
 
 }  // namespace mozilla
 
@@ -652,6 +672,12 @@ nsresult NS_NewNamedThreadWithDefaultStackSize(const nsACString& aName,
 
 bool NS_IsCurrentThread(nsIEventTarget* aThread) {
   return aThread->IsOnCurrentThread();
+}
+
+nsresult NS_DispatchBackgroundTask(nsIRunnable* aEvent,
+                                   uint32_t aDispatchFlags) {
+  return nsThreadManager::get().DispatchToBackgroundThread(aEvent,
+                                                           aDispatchFlags);
 }
 
 nsresult NS_CreateBackgroundTaskQueue(const char* aName,

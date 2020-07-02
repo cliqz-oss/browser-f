@@ -82,7 +82,7 @@ function observeChannels(onChannel) {
   // We use a dummy proxy filter to catch all channels, even those that do not
   // generate an "http-on-modify-request" notification, such as link preconnects.
   let proxyFilter = {
-    applyFilter(aProxyService, aChannel, aProxy, aCallback) {
+    applyFilter(aChannel, aProxy, aCallback) {
       // We have the channel; provide it to the callback.
       onChannel(aChannel);
       // Pass on aProxy unmodified.
@@ -151,6 +151,7 @@ async function doInit(aMode) {
     set: [
       ["network.predictor.enabled", false],
       ["network.predictor.enable-prefetch", false],
+      ["privacy.partition.network_state", false],
     ],
   });
   clearAllImageCaches();

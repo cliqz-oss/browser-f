@@ -240,14 +240,6 @@ ParseContext::ParseContext(JSContext* cx, ParseContext*& parent,
       scriptId_(compilationInfo.usedNames.nextScriptId()),
       superScopeNeedsHomeObject_(false) {
   if (isFunctionBox()) {
-    // We exclude ASM bodies because they are always eager, and the
-    // FunctionBoxes that get added to the tree in an AsmJS compilation
-    // don't have a long enough lifespan, as AsmJS marks the lifo allocator
-    // inside the ModuleValidator, and frees it again when that dies.
-    if (!this->functionBox()->useAsmOrInsideUseAsm()) {
-      tree.emplace(compilationInfo.treeHolder);
-    }
-
     if (functionBox()->isNamedLambda()) {
       namedLambdaScope_.emplace(cx, parent, compilationInfo.usedNames);
     }
@@ -264,11 +256,6 @@ bool ParseContext::init() {
   JSContext* cx = sc()->cx_;
 
   if (isFunctionBox()) {
-    if (tree) {
-      if (!tree->init(cx, this->functionBox())) {
-        return false;
-      }
-    }
     // Named lambdas always need a binding for their own name. If this
     // binding is closed over when we finish parsing the function in
     // finishFunctionScopes, the function box needs to be marked as
@@ -510,7 +497,7 @@ bool ParseContext::declareFunctionThis(const UsedNameTracker& usedNames,
 
   bool declareThis;
   if (canSkipLazyClosedOverBindings) {
-    declareThis = funbox->function()->baseScript()->functionHasThisBinding();
+    declareThis = funbox->functionHasThisBinding();
   } else {
     declareThis = hasUsedFunctionSpecialName(usedNames, dotThis) ||
                   funbox->isClassConstructor();
@@ -524,7 +511,7 @@ bool ParseContext::declareFunctionThis(const UsedNameTracker& usedNames,
                                   DeclaredNameInfo::npos)) {
       return false;
     }
-    funbox->setHasThisBinding();
+    funbox->setFunctionHasThisBinding();
   }
 
   return true;
@@ -536,6 +523,7 @@ bool ParseContext::declareFunctionArgumentsObject(
   ParseContext::Scope& funScope = functionScope();
   ParseContext::Scope& _varScope = varScope();
 
+  bool usesArguments = false;
   bool hasExtraBodyVarScope = &funScope != &_varScope;
 
   // Time to implement the odd semantics of 'arguments'.
@@ -543,8 +531,7 @@ bool ParseContext::declareFunctionArgumentsObject(
 
   bool tryDeclareArguments;
   if (canSkipLazyClosedOverBindings) {
-    tryDeclareArguments =
-        funbox->function()->baseScript()->shouldDeclareArguments();
+    tryDeclareArguments = funbox->shouldDeclareArguments();
   } else {
     tryDeclareArguments = hasUsedFunctionSpecialName(usedNames, argumentsName);
   }
@@ -564,7 +551,7 @@ bool ParseContext::declareFunctionArgumentsObject(
     if (hasExtraBodyVarScope) {
       tryDeclareArguments = true;
     } else {
-      funbox->usesArguments = true;
+      usesArguments = true;
     }
   }
 
@@ -576,16 +563,15 @@ bool ParseContext::declareFunctionArgumentsObject(
                                     DeclaredNameInfo::npos)) {
         return false;
       }
-      funbox->setDeclaredArguments();
-      funbox->usesArguments = true;
+      funbox->setShouldDeclareArguments();
+      usesArguments = true;
     } else if (hasExtraBodyVarScope) {
       // Formal parameters shadow the arguments object.
       return true;
     }
   }
 
-  // Compute if we need an arguments object.
-  if (funbox->usesArguments) {
+  if (usesArguments) {
     // There is an 'arguments' binding. Is the arguments object definitely
     // needed?
     //

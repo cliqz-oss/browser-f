@@ -267,13 +267,6 @@ LookupHelper::OnLookupComplete(nsICancelable* aRequest, nsIDNSRecord* aRecord,
   return NS_OK;
 }
 
-NS_IMETHODIMP
-LookupHelper::OnLookupByTypeComplete(nsICancelable* aRequest,
-                                     nsIDNSByTypeRecord* aRes,
-                                     nsresult aStatus) {
-  return NS_OK;
-}
-
 nsresult LookupHelper::ConstructAnswer(LookupArgument* aArgument) {
   nsIDNSRecord* aRecord = aArgument->mRecord;
   AutoSafeJSContext cx;
@@ -500,9 +493,9 @@ Dashboard::AddHost(const nsACString& aHost, uint32_t aSerial, bool aEncrypted) {
     if (mWs.data.Contains(mData)) {
       return NS_OK;
     }
-    if (!mWs.data.AppendElement(mData)) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
+    // XXX(Bug 1631371) Check if this should use a fallible operation as it
+    // pretended earlier.
+    mWs.data.AppendElement(mData);
     return NS_OK;
   }
   return NS_ERROR_FAILURE;
@@ -677,6 +670,9 @@ nsresult Dashboard::GetDNSCacheEntries(DnsData* dnsData) {
     } else {
       entry.mFamily.AssignLiteral(u"ipv4");
     }
+
+    entry.mOriginAttributesSuffix =
+        NS_ConvertUTF8toUTF16(dnsData->mData[i].originAttributesSuffix);
   }
 
   JS::RootedValue val(cx);

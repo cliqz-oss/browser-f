@@ -235,6 +235,11 @@ static int nr_ice_component_initialize_udp(struct nr_ice_ctx_ *ctx,nr_ice_compon
       if(r=nr_ice_socket_create(ctx,component,sock,NR_ICE_SOCKET_TYPE_DGRAM,&isock))
         ABORT(r);
 
+      /* Make sure we don't leak this. Failures might result in it being
+       * unused, but we hand off references to this in enough places below
+       * that unwinding it all becomes impractical. */
+      STAILQ_INSERT_TAIL(&component->sockets,isock,entry);
+
       if (!(ctx->flags & NR_ICE_CTX_FLAGS_RELAY_ONLY)) {
         /* Create one host candidate */
         if(r=nr_ice_candidate_create(ctx,component,isock,sock,HOST,0,0,
@@ -338,8 +343,6 @@ static int nr_ice_component_initialize_udp(struct nr_ice_ctx_ *ctx,nr_ice_compon
       /* Create a STUN server context for this socket */
       if ((r=nr_ice_component_create_stun_server_ctx(component,isock,sock,&addrs[i].addr,lufrag,pwd)))
         ABORT(r);
-
-      STAILQ_INSERT_TAIL(&component->sockets,isock,entry);
     }
 
     _status = 0;
@@ -600,6 +603,11 @@ static int nr_ice_component_initialize_tcp(struct nr_ice_ctx_ *ctx,nr_ice_compon
         if((r=nr_ice_socket_create(ctx, component, buffered_sock, NR_ICE_SOCKET_TYPE_STREAM_TURN, &turn_isock)))
           ABORT(r);
 
+      /* Make sure we don't leak this. Failures might result in it being
+       * unused, but we hand off references to this in enough places below
+       * that unwinding it all becomes impractical. */
+        STAILQ_INSERT_TAIL(&component->sockets,turn_isock,entry);
+
         /* Attach ourselves to it */
         if(r=nr_ice_candidate_create(ctx,component,
           turn_isock,turn_sock,RELAYED,TCP_TYPE_NONE,
@@ -615,7 +623,6 @@ static int nr_ice_component_initialize_tcp(struct nr_ice_ctx_ *ctx,nr_ice_compon
         if ((r=nr_ice_component_create_stun_server_ctx(component,turn_isock,local_sock,&addr,lufrag,pwd)))
           ABORT(r);
 
-        STAILQ_INSERT_TAIL(&component->sockets,turn_isock,entry);
       }
 #endif /* USE_TURN */
     }
@@ -1677,8 +1684,7 @@ int nr_ice_component_finalize(nr_ice_component *lcomp, nr_ice_component *rcomp)
 
 int nr_ice_component_insert_pair(nr_ice_component *pcomp, nr_ice_cand_pair *pair)
   {
-    int r,_status;
-    int pair_inserted=0;
+    int _status;
 
     /* Pairs for peer reflexive are marked SUCCEEDED immediately */
     if (pair->state != NR_ICE_PAIR_STATE_FROZEN &&
@@ -1687,10 +1693,8 @@ int nr_ice_component_insert_pair(nr_ice_component *pcomp, nr_ice_cand_pair *pair
       ABORT(R_BAD_ARGS);
     }
 
-    if(r=nr_ice_candidate_pair_insert(&pair->remote->stream->check_list,pair))
-      ABORT(r);
-
-    pair_inserted=1;
+    /* We do not throw an error after this, because we've inserted the pair. */
+    nr_ice_candidate_pair_insert(&pair->remote->stream->check_list,pair);
 
     /* Make sure the check timer is running, if the stream was previously
      * started. We will not start streams just because a pair was created,
@@ -1702,13 +1706,12 @@ int nr_ice_component_insert_pair(nr_ice_component *pcomp, nr_ice_cand_pair *pair
         !pair->remote->stream->pctx->checks_started)){
       if(nr_ice_media_stream_start_checks(pair->remote->stream->pctx, pair->remote->stream)) {
         r_log(LOG_ICE,LOG_WARNING,"ICE-PEER(%s)/CAND-PAIR(%s): Could not restart checks for new pair %s.",pair->remote->stream->pctx->label, pair->codeword, pair->as_string);
-        ABORT(R_INTERNAL);
       }
     }
 
     _status=0;
   abort:
-    if (_status && !pair_inserted) {
+    if (_status) {
       nr_ice_candidate_pair_destroy(&pair);
     }
     return(_status);

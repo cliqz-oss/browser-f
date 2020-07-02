@@ -19,6 +19,10 @@ const { TestUtils } = ChromeUtils.import(
   "resource://testing-common/TestUtils.jsm"
 );
 
+// Debug builds will be treated as "official" builds for the purposes of the automated testing for behavior of OSKeyStore.ensureLoggedIn
+// We want to ensure that we catch test failures that would only otherwise show up in official builds
+const isCanaryBuildForOSKeyStore = AppConstants.DEBUG;
+
 var OSKeyStoreTestUtils = {
   TEST_ONLY_REAUTH: "toolkit.osKeyStore.unofficialBuildOnlyLogin",
 
@@ -40,13 +44,12 @@ var OSKeyStoreTestUtils = {
    * Checks whether or not the test can be run by bypassing
    * the OS login dialog. We do not want the user to be able to
    * do so with in official builds.
-   * @returns {boolean} True if the test can be preformed.
+   * @returns {boolean} True if the test can be performed.
    */
   canTestOSKeyStoreLogin() {
-    // Skip on Linux due to bug 1527745.
     return (
       UpdateUtils.getUpdateChannel(false) == "default" &&
-      AppConstants.platform != "linux"
+      !isCanaryBuildForOSKeyStore
     );
   },
 

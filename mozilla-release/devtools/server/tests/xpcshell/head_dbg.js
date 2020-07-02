@@ -88,7 +88,8 @@ async function createTargetForFakeTab(title) {
   const client = await startTestDevToolsServer(title);
 
   const tabs = await listTabs(client);
-  return findTab(tabs, title);
+  const tabDescriptor = findTab(tabs, title);
+  return tabDescriptor.getTarget();
 }
 
 async function createTargetForMainProcess() {
@@ -376,7 +377,8 @@ async function getTestTab(client, title) {
 // Attach to |client|'s tab whose title is |title|; and return the targetFront instance
 // referring to that tab.
 async function attachTestTab(client, title) {
-  const targetFront = await getTestTab(client, title);
+  const descriptorFront = await getTestTab(client, title);
+  const targetFront = await descriptorFront.getTarget();
   await targetFront.attach();
   return targetFront;
 }
@@ -636,9 +638,10 @@ function stepIn(threadFront) {
  * @param ThreadFront threadFront
  * @returns Promise
  */
-function stepOver(threadFront) {
+async function stepOver(threadFront, frameActor) {
   dumpn("Stepping over.");
-  return threadFront.stepOver().then(() => waitForPause(threadFront));
+  await threadFront.stepOver(frameActor);
+  return waitForPause(threadFront);
 }
 
 /**
@@ -649,9 +652,10 @@ function stepOver(threadFront) {
  * @param ThreadFront threadFront
  * @returns Promise
  */
-function stepOut(threadFront) {
+async function stepOut(threadFront, frameActor) {
   dumpn("Stepping out.");
-  return threadFront.stepOut().then(() => waitForPause(threadFront));
+  await threadFront.stepOut(frameActor);
+  return waitForPause(threadFront);
 }
 
 /**
@@ -791,7 +795,8 @@ async function setupTestFromUrl(url) {
   await connect(devToolsClient);
 
   const tabs = await listTabs(devToolsClient);
-  const targetFront = findTab(tabs, "test");
+  const descriptorFront = findTab(tabs, "test");
+  const targetFront = await descriptorFront.getTarget();
   await targetFront.attach();
 
   const threadFront = await attachThread(targetFront);

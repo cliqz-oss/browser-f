@@ -164,25 +164,33 @@ nsresult MediaEngineWebRTCMicrophoneSource::Reconfigure(
 }
 
 void MediaEngineWebRTCMicrophoneSource::UpdateAECSettings(
-    bool aEnable, bool aUseAecMobile,
-    EchoCancellation::SuppressionLevel aLevel) {
+    bool aEnable, bool aUseAecMobile, EchoCancellation::SuppressionLevel aLevel,
+    EchoControlMobile::RoutingMode aRoutingMode,
+    bool aExperimentalInputProcessing) {
   AssertIsOnOwningThread();
 
   RefPtr<MediaEngineWebRTCMicrophoneSource> that = this;
   NS_DispatchToMainThread(NS_NewRunnableFunction(
-      __func__, [that, track = mTrack, aEnable, aUseAecMobile, aLevel] {
+      __func__, [that, track = mTrack, aEnable, aUseAecMobile, aLevel,
+                 aRoutingMode, aExperimentalInputProcessing] {
         class Message : public ControlMessage {
          public:
           Message(AudioInputProcessing* aInputProcessing, bool aEnable,
-                  bool aUseAecMobile, EchoCancellation::SuppressionLevel aLevel)
+                  bool aUseAecMobile, EchoCancellation::SuppressionLevel aLevel,
+                  EchoControlMobile::RoutingMode aRoutingMode,
+                  bool aExperimentalInputProcessing)
               : ControlMessage(nullptr),
                 mInputProcessing(aInputProcessing),
                 mEnable(aEnable),
                 mUseAecMobile(aUseAecMobile),
-                mLevel(aLevel) {}
+                mLevel(aLevel),
+                mRoutingMode(aRoutingMode),
+                mExperimentalInputProcessing(aExperimentalInputProcessing) {}
 
           void Run() override {
-            mInputProcessing->UpdateAECSettings(mEnable, mUseAecMobile, mLevel);
+            mInputProcessing->UpdateAECSettings(mEnable, mUseAecMobile, mLevel,
+                                                mRoutingMode,
+                                                mExperimentalInputProcessing);
           }
 
          protected:
@@ -190,6 +198,8 @@ void MediaEngineWebRTCMicrophoneSource::UpdateAECSettings(
           bool mEnable;
           bool mUseAecMobile;
           EchoCancellation::SuppressionLevel mLevel;
+          EchoControlMobile::RoutingMode mRoutingMode;
+          bool mExperimentalInputProcessing;
         };
 
         if (track->IsDestroyed()) {
@@ -197,7 +207,8 @@ void MediaEngineWebRTCMicrophoneSource::UpdateAECSettings(
         }
 
         track->GraphImpl()->AppendMessage(MakeUnique<Message>(
-            that->mInputProcessing, aEnable, aUseAecMobile, aLevel));
+            that->mInputProcessing, aEnable, aUseAecMobile, aLevel,
+            aRoutingMode, aExperimentalInputProcessing));
       }));
 }
 
@@ -352,10 +363,17 @@ void MediaEngineWebRTCMicrophoneSource::ApplySettings(
         static_cast<webrtc::NoiseSuppression::Level>(aPrefs.mNoise));
     UpdateAECSettings(
         aPrefs.mAecOn, aPrefs.mUseAecMobile,
-        static_cast<webrtc::EchoCancellation::SuppressionLevel>(aPrefs.mAec));
+        static_cast<webrtc::EchoCancellation::SuppressionLevel>(aPrefs.mAec),
+        static_cast<webrtc::EchoControlMobile::RoutingMode>(
+            aPrefs.mRoutingMode),
+        aPrefs.mExperimentalInputProcessing);
     UpdateHPFSettings(aPrefs.mHPFOn);
 
-    UpdateAPMExtraOptions(mExtendedFilter, mDelayAgnostic);
+    if (!aPrefs.mExperimentalInputProcessing) {
+      UpdateAPMExtraOptions(mExtendedFilter, mDelayAgnostic);
+    } else {
+      LOG("Using experimental input processing");
+    }
   }
 
   RefPtr<MediaEngineWebRTCMicrophoneSource> that = this;
@@ -624,7 +642,8 @@ AudioInputProcessing::AudioInputProcessing(
       mLiveSilenceAppended(false),
       mPrincipal(aPrincipalHandle),
       mEnabled(false),
-      mEnded(false) {
+      mEnded(false),
+      mExperimentalInputProcessing(false) {
 }
 
 void AudioInputProcessing::Disconnect(MediaTrackGraphImpl* aGraph) {
@@ -677,10 +696,13 @@ void AudioInputProcessing::SetRequestedInputChannelCount(
   } while (0);
 
 void AudioInputProcessing::UpdateAECSettings(
-    bool aEnable, bool aUseAecMobile,
-    EchoCancellation::SuppressionLevel aLevel) {
+    bool aEnable, bool aUseAecMobile, EchoCancellation::SuppressionLevel aLevel,
+    EchoControlMobile::RoutingMode aRoutingMode,
+    bool aExperimentalInputProcessing) {
   if (aUseAecMobile) {
     HANDLE_APM_ERROR(mAudioProcessing->echo_control_mobile()->Enable(aEnable));
+    HANDLE_APM_ERROR(mAudioProcessing->echo_control_mobile()->set_routing_mode(
+        aRoutingMode));
     HANDLE_APM_ERROR(mAudioProcessing->echo_cancellation()->Enable(false));
   } else {
     if (aLevel != EchoCancellation::SuppressionLevel::kLowSuppression &&
@@ -697,6 +719,8 @@ void AudioInputProcessing::UpdateAECSettings(
     HANDLE_APM_ERROR(
         mAudioProcessing->echo_cancellation()->set_suppression_level(aLevel));
   }
+
+  mExperimentalInputProcessing = aExperimentalInputProcessing;
 }
 
 void AudioInputProcessing::UpdateAGCSettings(bool aEnable,
@@ -767,7 +791,7 @@ void AudioInputProcessing::Stop() { mEnabled = false; }
 
 void AudioInputProcessing::Pull(TrackTime aEndOfAppendedData,
                                 TrackTime aDesiredTime) {
-  TRACE_AUDIO_CALLBACK_COMMENT("SourceMediaTrack %p", mTrack.get());
+  TRACE_COMMENT("SourceMediaTrack %p", mTrack.get());
 
   if (mEnded) {
     return;
@@ -964,8 +988,17 @@ void AudioInputProcessing::PacketizeAndProcess(MediaTrackGraphImpl* aGraph,
                              false /* we don't use typing detection*/);
     StreamConfig outputConfig = inputConfig;
 
-    // Bug 1404965: Get the right delay here, it saves some work down the line.
-    mAudioProcessing->set_stream_delay_ms(0);
+    if (mExperimentalInputProcessing) {
+      MediaTrackGraphImpl* graphImpl = mTrack->GraphImpl();
+      double roundtripLatencyMS = (graphImpl->AudioInputLatencyGraphThread() +
+                                   graphImpl->AudioOutputLatencyGraphThread()) *
+                                  1000;
+      LOG_FRAME("Audio roundtrip latency %lfms", roundtripLatencyMS);
+      mAudioProcessing->set_stream_delay_ms(
+          static_cast<uint32_t>(roundtripLatencyMS));
+    } else {
+      mAudioProcessing->set_stream_delay_ms(0);
+    }
 
     // Bug 1414837: find a way to not allocate here.
     CheckedInt<size_t> bufferSize(sizeof(float));
@@ -1087,7 +1120,7 @@ void AudioInputProcessing::NotifyInputData(MediaTrackGraphImpl* aGraph,
                                            size_t aFrames, TrackRate aRate,
                                            uint32_t aChannels) {
   MOZ_ASSERT(aGraph->OnGraphThread());
-  TRACE_AUDIO_CALLBACK();
+  TRACE();
 
   MOZ_ASSERT(mEnabled);
 
@@ -1136,7 +1169,7 @@ nsString MediaEngineWebRTCAudioCaptureSource::GetName() const {
 }
 
 nsCString MediaEngineWebRTCAudioCaptureSource::GetUUID() const {
-  nsID uuid;
+  nsID uuid = nsID();
   char uuidBuffer[NSID_LENGTH];
   nsCString asciiString;
   ErrorResult rv;

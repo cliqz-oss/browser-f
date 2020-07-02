@@ -104,8 +104,12 @@ struct VectorType {
     };
   };
 
-  VectorType() = default;
-  constexpr VectorType(T n) : data{n, n, n, n} {}
+  VectorType() : data{0} { }
+
+  constexpr VectorType(const VectorType& rhs) : data(rhs.data) {}
+  // GCC vector extensions only support broadcasting scalars on arithmetic ops,
+  // but not on initializers, hence the following...
+  constexpr VectorType(T n) : data((data_type){0} + n) {}
   constexpr VectorType(T a, T b, T c, T d) : data{a, b, c, d} {}
   constexpr VectorType(T a, T b, T c, T d, T e, T f, T g, T h)
       : data{a, b, c, d, e, f, g, h} {}
@@ -113,7 +117,7 @@ struct VectorType {
                        T l, T m, T n, T o, T p)
       : data{a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p} {}
 
-  SI VectorType wrap(data_type data) {
+  SI VectorType wrap(const data_type& data) {
     VectorType v;
     v.data = data;
     return v;
@@ -304,6 +308,7 @@ struct VectorType {
 #  define xyxy swizzle(0, 1, 0, 1)
 #  define zwzw swizzle(2, 3, 2, 3)
 #  define zyxw swizzle(2, 1, 0, 3)
+#  define xyzz swizzle(0, 1, 2, 2)
 #  define xxxxyyyy XXXXYYYY()
   VectorType<T, 8> XXXXYYYY() const {
     return swizzle(0, 0, 0, 0).combine(swizzle(1, 1, 1, 1));

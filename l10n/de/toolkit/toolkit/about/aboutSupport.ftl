@@ -34,6 +34,7 @@ app-basics-title = Allgemeine Informationen
 app-basics-name = Name
 app-basics-version = Version
 app-basics-build-id = Build-ID
+app-basics-distribution-id = Distributions-ID
 app-basics-update-channel = Update-Kanal
 # This message refers to the folder used to store updates on the device,
 # as in "Folder for updates". "Update" is a noun, not a verb.
@@ -118,6 +119,11 @@ sandbox-sys-call-number = Systemaufruf
 sandbox-sys-call-args = Parameter
 safe-mode-title = Abgesicherten Modus probieren
 restart-in-safe-mode-label = Mit deaktivierten Add-ons neu starten…
+clear-startup-cache-title = Versuchen Sie, den Startcache zu löschen
+clear-startup-cache-label = Startcache löschen…
+startup-cache-dialog-title = Startcache löschen
+startup-cache-dialog-body = Starten Sie { -brand-short-name } neu, um den Startcache zu löschen. Dadurch werden Ihre Einstellungen nicht geändert oder Erweiterungen entfernt, die Sie zu { -brand-short-name } hinzugefügt haben.
+restart-button-label = Neu starten
 
 ## Media titles
 
@@ -125,6 +131,7 @@ audio-backend = Audio-Backend
 max-audio-channels = Max. Kanäle
 channel-layout = Bevorzugtes Kanallayout
 sample-rate = Bevorzugte Sample-Rate
+roundtrip-latency = Roundtrip-Latenz (Standardabweichung)
 media-title = Medien
 media-output-devices-title = Ausgabegeräte
 media-input-devices-title = Eingabegeräte
@@ -318,6 +325,7 @@ touch-enabled = Berührungs-Eingabe aktiviert
 drag-enabled = Ziehen der Bildlaufleiste aktiviert
 keyboard-enabled = Tastatur aktiviert
 autoscroll-enabled = automatischer Bildlauf aktiviert
+zooming-enabled = sanftes Zoomen durch Antippen aktiviert
 
 ## Variables
 ## $preferenceKey (string) - String ID of preference

@@ -13,6 +13,7 @@ enable-common-message = Die Entwicklerwerkzeuge von Firefox sind standardmäßig
 enable-learn-more-link = Weitere Informationen zu den Entwicklerwerkzeugen
 enable-enable-button = Entwicklerwerkzeuge aktivieren
 enable-close-button = Tab schließen
+
 welcome-title = Willkommen zu den Entwicklerwerkzeugen von Firefox!
 newsletter-title = Entwickler-Newsletter von Mozilla
 newsletter-message = Erhalten Sie Neuigkeiten, Tricks, Dokumentationen und Werkzeuge für Entwickler auf Englisch direkt in Ihren Posteingang.
@@ -22,9 +23,11 @@ newsletter-privacy-label = Ich bin einverstanden mit dem Umgang Mozillas mit mei
 newsletter-subscribe-button = Abonnieren
 newsletter-thanks-title = Danke
 newsletter-thanks-message = Falls Sie bislang kein Abonnement eines Mozilla-Newsletters bestätigen mussten, so ist das eventuell jetzt notwendig. Bitte prüfen Sie den Posteingang und den Spamordner auf eine E-Mail von uns.
+
 footer-title = Firefox Developer Edition
 footer-message = Wollen Sie mehr als die Entwicklerwerkzeuge? Dann werfen Sie einen Blick auf den speziell für Entwickler entworfenen Firefox-Browser mit modernen Entwicklerabläufen.
 footer-learn-more-link = Weitere Informationen
+
 features-learn-more = Weitere Informationen
 features-inspector-title = Inspektor
 features-inspector-desc = Code untersuchen und anpassen, um pixelgenaue Darstellungen zu erreichen <a data-l10n-name="learn-more">{ features-learn-more }</a>

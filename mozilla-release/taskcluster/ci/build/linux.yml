@@ -28,7 +28,7 @@ linux64/opt:
         secrets: true
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -68,7 +68,7 @@ linux64-plain/opt:
         extra-config:
             disable_package_metrics: true
         mozconfig-variant: plain-opt
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -79,6 +79,9 @@ linux64-plain/opt:
             - linux64-cbindgen
             - linux64-lucetc
             - wasi-sysroot
+    optimization:
+        push-interval-10:
+            - linux
 
 linux64-fuzzing/debug:
     description: "Linux64 Fuzzing Debug"
@@ -96,7 +99,6 @@ linux64-fuzzing/debug:
         env:
             MOZ_LOW_PARALLELISM_BUILD: '1'
             PERFHERDER_EXTRA_OPTIONS: fuzzing
-            FORCE_GCC: '1'
     run:
         using: mozharness
         actions: [get-secrets, build]
@@ -111,8 +113,8 @@ linux64-fuzzing/debug:
         need-xvfb: true
     fetches:
         toolchain:
+            - linux64-binutils
             - linux64-clang
-            - linux64-gcc-8
             - linux64-cbindgen
             - linux64-sccache
             - linux64-rust
@@ -126,8 +128,7 @@ linux64-fuzzing/debug:
             # this dependency can be removed.
             - linux64-fix-stacks
     optimization:
-        fuzzing-builds:
-            - linux
+        build-fuzzing: null
 
 linux64/debug:
     description: "Linux64 Debug"
@@ -173,6 +174,56 @@ linux64/debug:
             # this dependency can be removed.
             - linux64-fix-stacks
 
+linux64/codeql-cpp:
+    description: Builds a C++ codeql database
+    treeherder:
+        platform: codeql/all
+        symbol: linux64-cpp
+        tier: 2
+        kind: other
+    worker-type: b-linux-xlarge
+    expires-after: 4 days
+    worker:
+        env:
+            PERFHERDER_EXTRA_OPTIONS: cpp
+        max-run-time: 86400
+        artifacts:
+            - type: file
+              name: public/codeql/codeql-db-cpp.tar.xz
+              path: /builds/worker/codeql-db-cpp.tar.xz
+    run:
+        using: mozharness
+        actions: [build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        job-script: taskcluster/scripts/misc/generate-codeql-db-cpp.sh
+        secrets: false
+        custom-build-variant-cfg: debug
+        mozconfig-variant: debug
+        tooltool-downloads: public
+        need-xvfb: true
+    run-on-projects: []
+    fetches:
+        fetch:
+            - codeql-2.0.3
+        toolchain:
+            - linux64-binutils
+            - linux64-clang
+            - linux64-cbindgen
+            - linux64-rust
+            - linux64-rust-size
+            - linux64-nasm
+            - linux64-node
+            - linux64-lucetc
+            - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
+
+
 linux64-plain/debug:
     description: "Linux64 Debug Plain"
     index:
@@ -210,22 +261,25 @@ linux64-plain/debug:
             - linux64-cbindgen
             - linux64-lucetc
             - wasi-sysroot
+    optimization:
+        push-interval-10:
+            - linux
 
 linux64-devedition/opt:
     description: "Linux64 devedition (shippable)"
     use-pgo: linux64-shippable/opt
     attributes:
-        nightly: true
+        shippable: true
         enable-full-crashsymbols: true
     shipping-phase: build
     shipping-product: devedition
     index:
         product: devedition
         job-name: linux64-opt
-        type: nightly
+        type: shippable
     treeherder:
         platform: linux64-devedition/opt
-        symbol: N
+        symbol: B
     worker-type: b-linux
     worker:
         max-run-time: 7200
@@ -266,9 +320,10 @@ linux64-base-toolchains/opt:
     treeherder:
         platform: linux64/opt
         symbol: Bb
+    run-on-projects: ['mozilla-central']
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-amd64-build-base}
+        docker-image: {in-tree: debian8-amd64-build-base}
         max-run-time: 7200
         env:
             MOZ_LOW_PARALLELISM_BUILD: '1'
@@ -304,9 +359,12 @@ linux64-base-toolchains/debug:
     treeherder:
         platform: linux64/debug
         symbol: Bb
+    optimization:
+        push-interval-10:
+            - linux
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-amd64-build-base}
+        docker-image: {in-tree: debian8-amd64-build-base}
         max-run-time: 7200
         env:
             MOZ_LOW_PARALLELISM_BUILD: '1'
@@ -348,9 +406,10 @@ linux64-base-toolchains-clang/opt:
     treeherder:
         platform: linux64/opt
         symbol: Bbc
+    run-on-projects: ['mozilla-central']
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-amd64-build-base}
+        docker-image: {in-tree: debian8-amd64-build-base}
         max-run-time: 7200
         env:
             PERFHERDER_EXTRA_OPTIONS: base-toolchains-clang
@@ -384,9 +443,12 @@ linux64-base-toolchains-clang/debug:
     treeherder:
         platform: linux64/debug
         symbol: Bbc
+    optimization:
+        push-interval-10:
+            - linux
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-amd64-build-base}
+        docker-image: {in-tree: debian8-amd64-build-base}
         max-run-time: 5400
         env:
             PERFHERDER_EXTRA_OPTIONS: base-toolchains-clang
@@ -431,7 +493,7 @@ linux/opt:
         symbol: B
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 7200
     run:
         using: mozharness
@@ -443,7 +505,7 @@ linux/opt:
         secrets: true
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: ['try', 'release']
+    run-on-projects: ['release']
     fetches:
         toolchain:
             - linux64-binutils
@@ -469,7 +531,7 @@ linux/debug:
         symbol: B
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 5400
     run:
         using: mozharness
@@ -483,7 +545,7 @@ linux/debug:
         mozconfig-variant: debug
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: ['try', 'release']
+    run-on-projects: ['release']
     fetches:
         toolchain:
             - linux64-binutils
@@ -512,7 +574,7 @@ linux-rusttests/opt:
         tier: 1
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 2700
         env:
             PERFHERDER_EXTRA_OPTIONS: rusttests
@@ -528,7 +590,7 @@ linux-rusttests/opt:
         mozconfig-variant: rusttests
         tooltool-downloads: public
         keep-artifacts: false
-    run-on-projects: ['try', 'mozilla-central']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -552,7 +614,7 @@ linux-rusttests/debug:
         tier: 1
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 2700
         env:
             PERFHERDER_EXTRA_OPTIONS: rusttests
@@ -568,7 +630,7 @@ linux-rusttests/debug:
         mozconfig-variant: rusttests-debug
         tooltool-downloads: public
         keep-artifacts: false
-    run-on-projects: ['try', 'mozilla-central']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -585,20 +647,20 @@ linux-devedition/opt:
     description: "Linux32 devedition (shippable)"
     use-pgo: linux-shippable/opt
     attributes:
-        nightly: true
+        shippable: true
         enable-full-crashsymbols: true
     shipping-phase: build
     shipping-product: devedition
     index:
         product: devedition
         job-name: linux-opt
-        type: nightly
+        type: shippable
     treeherder:
         platform: linux32-devedition/opt
-        symbol: N
+        symbol: B
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 7200
         env:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
@@ -646,7 +708,7 @@ linux-shippable/opt:
         symbol: Bpgo(B)
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 9000
         env:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
@@ -661,7 +723,7 @@ linux-shippable/opt:
         secrets: true
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: ['try', 'release']
+    run-on-projects: ['release']
     fetches:
         toolchain:
             - linux64-binutils
@@ -687,7 +749,7 @@ linux-reproduced/opt:
         symbol: Bpgo(repr)
     worker-type: b-linux
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 9000
         env:
             PERFHERDER_EXTRA_OPTIONS: repr
@@ -704,7 +766,7 @@ linux-reproduced/opt:
         need-xvfb: true
     # Original comment: Limited to trunk until bug 1596350 is fixed.
     # Addendum: Do not run on autoland, Bug 1599197
-    run-on-projects: ['try', 'mozilla-central', 'comm-central']
+    run-on-projects: ['mozilla-central', 'comm-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -838,8 +900,7 @@ linux64-tsan-fuzzing/opt:
             - linux64-lucetc
             - wasi-sysroot
     optimization:
-        fuzzing-builds:
-            - linux
+        build-fuzzing: null
 
 linux64-asan-fuzzing/opt:
     description: "Linux64 Fuzzing Opt ASAN"
@@ -884,8 +945,7 @@ linux64-asan-fuzzing/opt:
             - linux64-lucetc
             - wasi-sysroot
     optimization:
-        fuzzing-builds:
-            - linux
+        build-fuzzing: null
 
 linux64-asan-fuzzing-ccov/opt:
     description: "Linux64 Fuzzing Opt ASAN w/ Coverage"
@@ -898,7 +958,7 @@ linux64-asan-fuzzing-ccov/opt:
     treeherder:
         platform: linux64/asan
         symbol: Bocf
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     worker-type: b-linux
     worker:
         env:
@@ -938,7 +998,7 @@ linux64-fuzzing-ccov/opt:
     treeherder:
         platform: linux64/opt
         symbol: Bocf
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     worker-type: b-linux
     worker:
         max-run-time: 5400
@@ -972,13 +1032,12 @@ linux64-fuzzing-ccov/opt:
             - linux64-lucetc
             - wasi-sysroot
     optimization:
-        fuzzing-builds:
-            - linux
+        build-fuzzing: null
 
-linux64-asan-reporter-nightly/opt:
-    description: "Linux64 Opt ASAN Reporter Nightly"
+linux64-asan-reporter-shippable/opt:
+    description: "Linux64 Opt ASAN Reporter (Shippable)"
     attributes:
-        nightly: true
+        shippable: true
     shipping-product:
         by-release-type:
             nightly: firefox
@@ -986,7 +1045,7 @@ linux64-asan-reporter-nightly/opt:
     index:
         product: firefox
         job-name: linux64-asan-reporter-opt
-        type: nightly
+        type: shippable
     treeherder:
         platform: linux64-asan-reporter/opt
         symbol: BoR
@@ -1069,6 +1128,9 @@ linux64-asan/debug:
             # the build step. Once bug 1614626 moves them to the xpcshell task,
             # this dependency can be removed.
             - linux64-fix-stacks
+    optimization:
+        push-interval-10:
+            - linux
 
 linux64-shippable/opt:
     description: "Linux64 Shippable"
@@ -1140,7 +1202,7 @@ linux64-noopt/debug:
         tooltool-downloads: public
         keep-artifacts: false
         need-xvfb: true
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -1184,7 +1246,7 @@ linux64-rusttests/opt:
         mozconfig-variant: rusttests
         tooltool-downloads: public
         keep-artifacts: false
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -1223,7 +1285,7 @@ linux64-rusttests/debug:
         mozconfig-variant: rusttests-debug
         tooltool-downloads: public
         keep-artifacts: false
-    run-on-projects: ['trunk', 'try']
+    run-on-projects: ['trunk']
     fetches:
         toolchain:
             - linux64-binutils
@@ -1231,47 +1293,6 @@ linux64-rusttests/debug:
             - linux64-rust
             - linux64-cbindgen
             - linux64-sccache
-            - linux64-nasm
-            - linux64-node
-            - linux64-lucetc
-            - wasi-sysroot
-
-linux64-tup/opt:
-    description: "Linux64 Tup"
-    index:
-        product: firefox
-        job-name: linux64-tup-opt
-    treeherder:
-        platform: linux64/opt
-        symbol: Btup
-        tier: 3
-    worker-type: b-linux
-    worker:
-        max-run-time: 3600
-        env:
-            PERFHERDER_EXTRA_OPTIONS: tup
-            RUSTC_BOOTSTRAP: '1'
-    run:
-        using: mozharness
-        actions: [get-secrets, build]
-        config:
-            - builds/releng_base_firefox.py
-            - builds/releng_base_linux_64_builds.py
-        script: "mozharness/scripts/fx_desktop_build.py"
-        secrets: true
-        custom-build-variant-cfg: tup
-        mozconfig-variant: tup
-        tooltool-downloads: public
-        need-xvfb: true
-    run-on-projects: []
-    fetches:
-        toolchain:
-            - linux64-binutils
-            - linux64-clang
-            - linux64-rust
-            - linux64-cbindgen
-            - linux64-sccache
-            - linux64-tup
             - linux64-nasm
             - linux64-node
             - linux64-lucetc
@@ -1286,7 +1307,7 @@ linux64-ccov/opt:
         platform: linux64-ccov/opt
         symbol: B
         tier: 2
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     worker-type: b-linux
     worker:
         artifacts:
@@ -1401,6 +1422,9 @@ linux64-aarch64/opt:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+    optimization:
+        push-interval-10:
+            - linux
 
 linux-gcp/debug:
     description: "Linux32 Debug - built on GCP"
@@ -1415,7 +1439,7 @@ linux-gcp/debug:
         tier: 3
     worker-type: b-linux-gcp
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 5400
         env:
             PERFHERDER_EXTRA_OPTIONS: gcp
@@ -1431,7 +1455,7 @@ linux-gcp/debug:
         mozconfig-variant: debug
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: ['try', 'release']
+    run-on-projects: ['release']
     fetches:
         toolchain:
             - linux64-binutils
@@ -1444,6 +1468,13 @@ linux-gcp/debug:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
+    optimization:
+        push-interval-25:
+            - linux
 
 linux-gcp/opt:
     description: "Linux32 Opt - built on GCP"
@@ -1458,7 +1489,7 @@ linux-gcp/opt:
         tier: 3
     worker-type: b-linux-gcp
     worker:
-        docker-image: {in-tree: debian7-i386-build}
+        docker-image: {in-tree: debian8-i386-build}
         max-run-time: 7200
         env:
             PERFHERDER_EXTRA_OPTIONS: gcp
@@ -1472,7 +1503,7 @@ linux-gcp/opt:
         secrets: true
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: ['try', 'release']
+    run-on-projects: ['release']
     fetches:
         toolchain:
             - linux64-binutils
@@ -1526,6 +1557,13 @@ linux64-gcp/debug:
             - linux64-node
             - linux64-lucetc
             - wasi-sysroot
+            # `fix-stacks` is needed because xpcshell self tests run as part of
+            # the build step. Once bug 1614626 moves them to the xpcshell task,
+            # this dependency can be removed.
+            - linux64-fix-stacks
+    optimization:
+        push-interval-25:
+            - linux
 
 linux64-gcp/opt:
     description: "Linux64 Opt - built on GCP"
@@ -1553,7 +1591,7 @@ linux64-gcp/opt:
         secrets: true
         tooltool-downloads: public
         need-xvfb: true
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils

@@ -80,9 +80,6 @@ pref("image.cache.size", 1048576); // bytes
 pref("browser.offline-apps.notify", true);
 pref("browser.cache.offline.capacity", 5120); // kilobytes
 
-// Automatically shrink-to-fit image documents.
-pref("browser.enable_automatic_image_resizing", true);
-
 /* disable some protocol warnings */
 pref("network.protocol-handler.warn-external.tel", false);
 pref("network.protocol-handler.warn-external.sms", false);
@@ -99,7 +96,7 @@ pref("network.http.spdy.push-allowance", 32768);
 pref("network.http.spdy.default-hpack-buffer", 4096); // 4k
 
 // http3
-pref("network.http.http3.default-qpack-table-size", 4096); // 4k
+pref("network.http.http3.default-qpack-table-size", 0);
 
 // See bug 545869 for details on why these are set the way they are
 pref("network.buffer.cache.count", 24);
@@ -294,9 +291,6 @@ pref("gfx.displayport.strategy_pb.threshold", -1); // velocity threshold in inch
 // don't allow JS to move and resize existing windows
 pref("dom.disable_window_move_resize", true);
 
-// prevent click image resizing for nsImageDocument
-pref("browser.enable_click_image_resizing", false);
-
 // open in tab preferences
 // 0=default window, 1=current window/tab, 2=new window, 3=new tab in most window
 pref("browser.link.open_external", 3);
@@ -398,36 +392,6 @@ pref("security.cert_pinning.enforcement_level", 1);
 // Only fetch OCSP for EV certificates
 pref("security.OCSP.enabled", 2);
 
-// Override some named colors to avoid inverse OS themes
-pref("ui.-moz-dialog", "#efebe7");
-pref("ui.-moz-dialogtext", "#101010");
-pref("ui.-moz-field", "#fff");
-pref("ui.-moz-fieldtext", "#1a1a1a");
-pref("ui.-moz-buttonhoverface", "#f3f0ed");
-pref("ui.-moz-buttonhovertext", "#101010");
-pref("ui.-moz-combobox", "#fff");
-pref("ui.-moz-comboboxtext", "#101010");
-pref("ui.buttonface", "#ece7e2");
-pref("ui.buttonhighlight", "#fff");
-pref("ui.buttonshadow", "#aea194");
-pref("ui.buttontext", "#101010");
-pref("ui.captiontext", "#101010");
-pref("ui.graytext", "#b1a598");
-pref("ui.highlight", "#fad184");
-pref("ui.highlighttext", "#1a1a1a");
-pref("ui.infobackground", "#f5f5b5");
-pref("ui.infotext", "#000");
-pref("ui.menu", "#f7f5f3");
-pref("ui.menutext", "#101010");
-pref("ui.threeddarkshadow", "#000");
-pref("ui.threedface", "#ece7e2");
-pref("ui.threedhighlight", "#fff");
-pref("ui.threedlightshadow", "#ece7e2");
-pref("ui.threedshadow", "#aea194");
-pref("ui.window", "#efebe7");
-pref("ui.windowtext", "#101010");
-pref("ui.windowframe", "#efebe7");
-
 /* prefs used by the update timer system (including blocklist pings) */
 pref("app.update.timerFirstInterval", 30000); // milliseconds
 pref("app.update.timerMinimumDelay", 30); // seconds
@@ -441,9 +405,6 @@ pref("app.update.url.android", "https://aus5.mozilla.org/update/4/%PRODUCT%/%VER
   /* prefs used specifically for updating the app */
   pref("app.update.channel", "@MOZ_UPDATE_CHANNEL@");
 #endif
-
-// replace newlines with spaces on paste into single-line text boxes
-pref("editor.singleLine.pasteNewlines", 2);
 
 // threshold where a tap becomes a drag, in 1/240" reference pixels
 // The names of the preferences are to be in sync with EventStateManager.cpp
@@ -512,8 +473,6 @@ pref("media.video-queue.send-to-compositor-size", 1);
 
 pref("media.mediadrm-widevinecdm.visible", true);
 
-// Switch block autoplay logic to v2.
-pref("media.autoplay.enabled.user-gestures-needed", true);
 // Set Fennec to block autoplay by default.
 pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
 
@@ -619,12 +578,6 @@ pref("media.plugins.enabled", true);
 // 16 = Force hardware decoding
 pref("media.stagefright.omxcodec.flags", 0);
 
-// Coalesce touch events to prevent them from flooding the event queue
-pref("dom.event.touch.coalescing.enabled", false);
-
-pref("layout.framevisibility.numscrollportwidths", 1);
-pref("layout.framevisibility.numscrollportheights", 1);
-
 pref("layers.enable-tiles", true);
 
 // Enable the dynamic toolbar
@@ -721,8 +674,6 @@ pref("layout.accessiblecaret.hapticfeedback", true);
 // a smarter phone-number selection for direct-dial ActionBar action.
 pref("layout.accessiblecaret.extend_selection_for_phone_number", true);
 
-pref("browser.tabs.showAudioPlayingIcon", true);
-
 pref("dom.serviceWorkers.enabled", true);
 
 // Allow service workers to open windows for a longer period after a notification
@@ -745,7 +696,6 @@ pref("extensions.systemAddon.update.enabled", true);
 
 // E10s stuff. We don't support 'file' or 'priveleged' process types.
 pref("browser.tabs.remote.separateFileUriProcess", false);
-pref("browser.tabs.remote.allowLinkedWebInFileUriProcess", true);
 pref("browser.tabs.remote.separatePrivilegedContentProcess", false);
 pref("browser.tabs.remote.enforceRemoteTypeRestrictions", false);
 

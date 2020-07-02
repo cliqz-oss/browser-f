@@ -33,8 +33,7 @@ class NeckoParent : public PNeckoParent {
   NeckoParent();
   virtual ~NeckoParent() = default;
 
-  MOZ_MUST_USE
-  static const char* GetValidatedOriginAttributes(
+  [[nodiscard]] static const char* GetValidatedOriginAttributes(
       const SerializedLoadContext& aSerialized, PContentParent* aBrowser,
       nsIPrincipal* aRequestingPrincipal, mozilla::OriginAttributes& aAttrs);
 
@@ -45,9 +44,8 @@ class NeckoParent : public PNeckoParent {
    *
    * Returns null if successful, or an error string if failed.
    */
-  MOZ_MUST_USE
-  static const char* CreateChannelLoadContext(
-      const PBrowserOrId& aBrowser, PContentParent* aContent,
+  [[nodiscard]] static const char* CreateChannelLoadContext(
+      PBrowserParent* aBrowser, PContentParent* aContent,
       const SerializedLoadContext& aSerialized,
       nsIPrincipal* aRequestingPrincipal, nsCOMPtr<nsILoadContext>& aResult);
 
@@ -92,10 +90,10 @@ class NeckoParent : public PNeckoParent {
   bool mSocketProcessBridgeInited;
 
   already_AddRefed<PHttpChannelParent> AllocPHttpChannelParent(
-      const PBrowserOrId&, const SerializedLoadContext&,
+      PBrowserParent*, const SerializedLoadContext&,
       const HttpChannelCreationArgs& aOpenArgs);
   virtual mozilla::ipc::IPCResult RecvPHttpChannelConstructor(
-      PHttpChannelParent* aActor, const PBrowserOrId& aBrowser,
+      PHttpChannelParent* aActor, PBrowserParent* aBrowser,
       const SerializedLoadContext& aSerialized,
       const HttpChannelCreationArgs& aOpenArgs) override;
 
@@ -113,29 +111,26 @@ class NeckoParent : public PNeckoParent {
 
   bool DeallocPCookieServiceParent(PCookieServiceParent*);
   PFTPChannelParent* AllocPFTPChannelParent(
-      const PBrowserOrId& aBrowser, const SerializedLoadContext& aSerialized,
+      PBrowserParent* aBrowser, const SerializedLoadContext& aSerialized,
       const FTPChannelCreationArgs& aOpenArgs);
   virtual mozilla::ipc::IPCResult RecvPFTPChannelConstructor(
-      PFTPChannelParent* aActor, const PBrowserOrId& aBrowser,
+      PFTPChannelParent* aActor, PBrowserParent* aBrowser,
       const SerializedLoadContext& aSerialized,
       const FTPChannelCreationArgs& aOpenArgs) override;
   bool DeallocPFTPChannelParent(PFTPChannelParent*);
   PWebSocketParent* AllocPWebSocketParent(
-      const PBrowserOrId& browser, const SerializedLoadContext& aSerialized,
+      PBrowserParent* browser, const SerializedLoadContext& aSerialized,
       const uint32_t& aSerial);
   bool DeallocPWebSocketParent(PWebSocketParent*);
   PTCPSocketParent* AllocPTCPSocketParent(const nsString& host,
                                           const uint16_t& port);
 
   already_AddRefed<PDocumentChannelParent> AllocPDocumentChannelParent(
-      PBrowserParent* aBrowser,
       const dom::MaybeDiscarded<dom::BrowsingContext>& aContext,
-      const SerializedLoadContext& aSerialized,
       const DocumentChannelCreationArgs& args);
   virtual mozilla::ipc::IPCResult RecvPDocumentChannelConstructor(
-      PDocumentChannelParent* aActor, PBrowserParent* aBrowser,
+      PDocumentChannelParent* aActor,
       const dom::MaybeDiscarded<dom::BrowsingContext>& aContext,
-      const SerializedLoadContext& aSerialized,
       const DocumentChannelCreationArgs& aArgs) override;
   bool DeallocPDocumentChannelParent(PDocumentChannelParent* channel);
 
@@ -233,6 +228,10 @@ class NeckoParent : public PNeckoParent {
 
   mozilla::ipc::IPCResult RecvGetExtensionFD(nsIURI* aURI,
                                              GetExtensionFDResolver&& aResolve);
+
+  /* Page thumbnails remote resource loading */
+  mozilla::ipc::IPCResult RecvGetPageThumbStream(
+      nsIURI* aURI, GetPageThumbStreamResolver&& aResolve);
 
   PClassifierDummyChannelParent* AllocPClassifierDummyChannelParent(
       nsIURI* aURI, nsIURI* aTopWindowURI, const nsresult& aTopWindowURIResult,

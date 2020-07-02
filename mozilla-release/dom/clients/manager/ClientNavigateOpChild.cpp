@@ -247,17 +247,18 @@ RefPtr<ClientOpPromise> ClientNavigateOpChild::DoNavigate(
   }
 
   RefPtr<nsDocShellLoadState> loadState = new nsDocShellLoadState(url);
-  nsCOMPtr<nsIReferrerInfo> referrerInfo = new ReferrerInfo();
-  referrerInfo->InitWithDocument(doc);
   loadState->SetTriggeringPrincipal(principal);
 
   loadState->SetCsp(doc->GetCsp());
 
+  auto referrerInfo = MakeRefPtr<ReferrerInfo>(*doc);
   loadState->SetReferrerInfo(referrerInfo);
   loadState->SetLoadType(LOAD_STOP_CONTENT);
-  loadState->SetSourceDocShell(docShell);
+  loadState->SetSourceBrowsingContext(docShell->GetBrowsingContext());
   loadState->SetLoadFlags(nsIWebNavigation::LOAD_FLAGS_NONE);
   loadState->SetFirstParty(true);
+  loadState->SetHasValidUserGestureActivation(
+      doc->HasValidTransientUserGestureActivation());
   rv = docShell->LoadURI(loadState, false);
   if (NS_FAILED(rv)) {
     /// There are tests that try sending file:/// and mixed-content URLs

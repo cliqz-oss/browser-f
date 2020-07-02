@@ -25,17 +25,11 @@ UNSUPPORTED_FEATURES = set([
     "class-static-fields-private",
     "class-methods-private",
     "class-static-methods-private",
-    "regexp-dotall",
-    "regexp-lookbehind",
     "regexp-match-indices",
-    "regexp-named-groups",
-    "regexp-unicode-property-escapes",
     "export-star-as-namespace-from-module",
     "Intl.DateTimeFormat-quarter",
     "Intl.DateTimeFormat-datetimestyle",
-    "Intl.DateTimeFormat-dayPeriod",
     "Intl.DateTimeFormat-formatRange",
-    "Intl.DisplayNames",
     "Intl.Segmenter",
     "top-level-await",
 ])
@@ -46,11 +40,11 @@ FEATURE_CHECK_NEEDED = {
     "WeakRef": "!this.hasOwnProperty('WeakRef')",
 }
 RELEASE_OR_BETA = set([
-    "Intl.NumberFormat-unified",
     "Intl.DateTimeFormat-fractionalSecondDigits",
+    "Intl.DateTimeFormat-dayPeriod",
     "Promise.any",
     "AggregateError",
-    "String.prototype.replaceAll",
+    "logical-assignment-operators",
 ])
 
 
@@ -428,8 +422,8 @@ def process_test262(test262Dir, test262OutDir, strictTests, externManifests):
                                                                  "detachArrayBuffer.js", "nans.js"]
     explicitIncludes[os.path.join("built-ins", "TypedArrays")] = ["detachArrayBuffer.js"]
 
-    # Intl.ListFormat isn't yet enabled by default.
-    localIncludesMap[os.path.join("intl402")] = ["test262-intl-locale.js"]
+    # Intl.DisplayNames isn't yet enabled by default.
+    localIncludesMap[os.path.join("intl402")] = ["test262-intl-displaynames.js"]
 
     # Process all test directories recursively.
     for (dirPath, dirNames, fileNames) in os.walk(testDir):

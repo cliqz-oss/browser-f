@@ -8,7 +8,9 @@
 #include <algorithm>
 
 #include "EditAggregateTransaction.h"
+#include "HTMLEditUtils.h"
 #include "InternetCiter.h"
+#include "PlaceholderTransaction.h"
 #include "gfxFontUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/ContentIterator.h"
@@ -41,7 +43,6 @@
 #include "nsDependentSubstring.h"
 #include "nsError.h"
 #include "nsGkAtoms.h"
-#include "nsIAbsorbingTransaction.h"
 #include "nsIClipboard.h"
 #include "nsIContent.h"
 #include "nsIDocumentEncoder.h"
@@ -69,13 +70,10 @@ namespace mozilla {
 
 using namespace dom;
 
+using ChildBlockBoundary = HTMLEditUtils::ChildBlockBoundary;
+
 TextEditor::TextEditor()
     : mMaxTextLength(-1),
-#ifdef XP_WIN
-      mCaretStyle(1),
-#else
-      mCaretStyle(0),
-#endif
       mUnmaskedStart(UINT32_MAX),
       mUnmaskedLength(0),
       mIsMaskingPassword(true) {
@@ -83,10 +81,6 @@ TextEditor::TextEditor()
   static_assert(
       sizeof(TextEditor) <= 512,
       "TextEditor instance should be allocatable in the quantum class bins");
-
-  // check the "single line editor newline handling"
-  // and "caret behaviour in selection" prefs
-  GetDefaultEditorPrefs(mNewlineHandling, mCaretStyle);
 }
 
 TextEditor::~TextEditor() {
@@ -139,11 +133,18 @@ nsresult TextEditor::Init(Document& aDoc, Element* aRoot,
     return NS_ERROR_FAILURE;
   }
 
+  // We set mInitSucceeded here rather than at the end of the function,
+  // since InitEditorContentAndSelection() can perform some transactions
+  // and can warn if mInitSucceeded is still false.
+  MOZ_ASSERT(!mInitSucceeded, "TextEditor::Init() shouldn't be nested");
+  mInitSucceeded = true;
+
   rv = InitEditorContentAndSelection();
   if (NS_FAILED(rv)) {
     NS_WARNING("TextEditor::InitEditorContentAndSelection() failed");
     // XXX Sholdn't we expose `NS_ERROR_EDITOR_DESTROYED` even though this
     //     is a public method?
+    mInitSucceeded = false;
     return EditorBase::ToGenericNSResult(rv);
   }
 
@@ -151,47 +152,7 @@ nsresult TextEditor::Init(Document& aDoc, Element* aRoot,
   // we're initializing the editor.
   ClearUndoRedo();
   EnableUndoRedo();
-  MOZ_ASSERT(!mInitSucceeded, "TextEditor::Init() shouldn't be nested");
-  mInitSucceeded = true;
   return NS_OK;
-}
-
-static int32_t sNewlineHandlingPref = -1, sCaretStylePref = -1;
-
-static void EditorPrefsChangedCallback(const char* aPrefName, void*) {
-  if (!nsCRT::strcmp(aPrefName, "editor.singleLine.pasteNewlines")) {
-    sNewlineHandlingPref = Preferences::GetInt(
-        "editor.singleLine.pasteNewlines", nsIEditor::eNewlinesPasteToFirst);
-    if (NS_WARN_IF(sNewlineHandlingPref < nsIEditor::eNewlinesPasteIntact ||
-                   sNewlineHandlingPref >
-                       nsIEditor::eNewlinesStripSurroundingWhitespace)) {
-      sNewlineHandlingPref = nsIEditor::eNewlinesPasteToFirst;
-    }
-  } else if (!nsCRT::strcmp(aPrefName, "layout.selection.caret_style")) {
-    sCaretStylePref = Preferences::GetInt("layout.selection.caret_style",
-#ifdef XP_WIN
-                                          1);
-    if (!sCaretStylePref) {
-      sCaretStylePref = 1;
-    }
-#else
-                                          0);
-#endif
-  }
-}
-
-// static
-void TextEditor::GetDefaultEditorPrefs(int32_t& aNewlineHandling,
-                                       int32_t& aCaretStyle) {
-  if (sNewlineHandlingPref == -1) {
-    Preferences::RegisterCallbackAndCall(EditorPrefsChangedCallback,
-                                         "editor.singleLine.pasteNewlines");
-    Preferences::RegisterCallbackAndCall(EditorPrefsChangedCallback,
-                                         "layout.selection.caret_style");
-  }
-
-  aNewlineHandling = sNewlineHandlingPref;
-  aCaretStyle = sCaretStylePref;
 }
 
 NS_IMETHODIMP TextEditor::SetDocumentCharacterSet(
@@ -280,7 +241,7 @@ bool TextEditor::UpdateMetaCharset(Document& aDocument,
     metaElement->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, currentValue);
 
     if (!FindInReadable(NS_LITERAL_STRING("content-type"), currentValue,
-                        nsCaseInsensitiveStringComparator())) {
+                        nsCaseInsensitiveStringComparator)) {
       continue;
     }
 
@@ -291,7 +252,7 @@ bool TextEditor::UpdateMetaCharset(Document& aDocument,
     originalStart = currentValue.BeginReading(start);
     currentValue.EndReading(end);
     if (!FindInReadable(charsetEquals, start, end,
-                        nsCaseInsensitiveStringComparator())) {
+                        nsCaseInsensitiveStringComparator)) {
       continue;
     }
 
@@ -340,8 +301,12 @@ nsresult TextEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
           aKeyboardEvent->IsMeta() || aKeyboardEvent->IsOS()) {
         return NS_OK;
       }
-      DeleteSelectionAsAction(nsIEditor::ePrevious, nsIEditor::eStrip);
-      aKeyboardEvent->PreventDefault();  // consumed
+      DebugOnly<nsresult> rvIgnored =
+          DeleteSelectionAsAction(nsIEditor::ePrevious, nsIEditor::eStrip);
+      aKeyboardEvent->PreventDefault();
+      NS_WARNING_ASSERTION(
+          NS_SUCCEEDED(rvIgnored),
+          "EditorBase::DeleteSelectionAsAction() failed, but ignored");
       return NS_OK;
     }
     case NS_VK_DELETE: {
@@ -355,10 +320,10 @@ nsresult TextEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
       }
       DebugOnly<nsresult> rvIgnored =
           DeleteSelectionAsAction(nsIEditor::eNext, nsIEditor::eStrip);
+      aKeyboardEvent->PreventDefault();
       NS_WARNING_ASSERTION(
           NS_SUCCEEDED(rvIgnored),
-          "TextEditor::DeleteSelectionAsAction() failed, but ignored");
-      aKeyboardEvent->PreventDefault();  // consumed
+          "EditorBase::DeleteSelectionAsAction() failed, but ignored");
       return NS_OK;
     }
     case NS_VK_TAB: {
@@ -461,537 +426,6 @@ nsresult TextEditor::InsertLineBreakAsAction(nsIPrincipal* aPrincipal) {
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
                        "EditorBase::InsertLineBreakAsSubAction() failed");
   return EditorBase::ToGenericNSResult(rv);
-}
-
-static bool UseFrameSelectionToExtendSelection(nsIEditor::EDirection aAction,
-                                               const Selection& aSelection) {
-  bool bCollapsed = aSelection.IsCollapsed();
-  return (aAction == nsIEditor::eNextWord ||
-          aAction == nsIEditor::ePreviousWord ||
-          (aAction == nsIEditor::eNext && bCollapsed) ||
-          (aAction == nsIEditor::ePrevious && bCollapsed) ||
-          aAction == nsIEditor::eToBeginningOfLine ||
-          aAction == nsIEditor::eToEndOfLine);
-}
-
-nsresult TextEditor::ExtendSelectionForDelete(nsIEditor::EDirection* aAction) {
-  MOZ_ASSERT(IsEditActionDataAvailable());
-
-  if (!UseFrameSelectionToExtendSelection(*aAction, *SelectionRefPtr())) {
-    return NS_OK;
-  }
-
-  nsCOMPtr<nsISelectionController> selectionController =
-      GetSelectionController();
-  if (NS_WARN_IF(!selectionController)) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-
-  switch (*aAction) {
-    case eNextWord: {
-      nsresult rv = selectionController->WordExtendForDelete(true);
-      NS_WARNING_ASSERTION(
-          NS_SUCCEEDED(rv),
-          "nsISelectionController::WordExtendForDelete(true) failed");
-      // DeleteSelectionWithTransaction() doesn't handle these actions
-      // because it's inside batching, so don't confuse it:
-      *aAction = eNone;
-      return rv;
-    }
-    case ePreviousWord: {
-      nsresult rv = selectionController->WordExtendForDelete(false);
-      NS_WARNING_ASSERTION(
-          NS_SUCCEEDED(rv),
-          "nsISelectionController::WordExtendForDelete(false) failed");
-      *aAction = eNone;
-      return rv;
-    }
-    case eNext: {
-      nsresult rv = selectionController->CharacterExtendForDelete();
-      NS_WARNING_ASSERTION(
-          NS_SUCCEEDED(rv),
-          "nsISelectionController::CharacterExtendForDelete() failed");
-      // Don't set aAction to eNone (see Bug 502259)
-      return rv;
-    }
-    case ePrevious: {
-      // Only extend the selection where the selection is after a UTF-16
-      // surrogate pair or a variation selector.
-      // For other cases we don't want to do that, in order
-      // to make sure that pressing backspace will only delete the last
-      // typed character.
-      EditorRawDOMPoint atStartOfSelection =
-          EditorBase::GetStartPoint(*SelectionRefPtr());
-      if (NS_WARN_IF(!atStartOfSelection.IsSet())) {
-        return NS_ERROR_FAILURE;
-      }
-
-      // node might be anonymous DIV, so we find better text node
-      EditorRawDOMPoint insertionPoint =
-          FindBetterInsertionPoint(atStartOfSelection);
-      if (!insertionPoint.IsSet()) {
-        NS_WARNING(
-            "EditorBase::FindBetterInsertionPoint() failed, but ignored");
-        return NS_OK;
-      }
-
-      if (insertionPoint.IsInTextNode()) {
-        const nsTextFragment* data =
-            &insertionPoint.GetContainerAsText()->TextFragment();
-        uint32_t offset = insertionPoint.Offset();
-        if ((offset > 1 &&
-             data->IsLowSurrogateFollowingHighSurrogateAt(offset - 1)) ||
-            (offset > 0 &&
-             gfxFontUtils::IsVarSelector(data->CharAt(offset - 1)))) {
-          nsresult rv = selectionController->CharacterExtendForBackspace();
-          NS_WARNING_ASSERTION(
-              NS_SUCCEEDED(rv),
-              "nsISelectionController::CharacterExtendForBackspace() failed");
-          return rv;
-        }
-      }
-      return NS_OK;
-    }
-    case eToBeginningOfLine: {
-      // Select to beginning
-      nsresult rv = selectionController->IntraLineMove(false, true);
-      NS_WARNING_ASSERTION(
-          NS_SUCCEEDED(rv),
-          "nsISelectionController::IntraLineMove(false, true) failed");
-      *aAction = eNone;
-      return rv;
-    }
-    case eToEndOfLine: {
-      nsresult rv = selectionController->IntraLineMove(true, true);
-      NS_WARNING_ASSERTION(
-          NS_SUCCEEDED(rv),
-          "nsISelectionController::IntraLineMove(true, true) failed");
-      *aAction = eNext;
-      return rv;
-    }
-    // For avoiding several compiler warnings
-    default:
-      return NS_OK;
-  }
-}
-
-NS_IMETHODIMP TextEditor::DeleteSelection(EDirection aAction,
-                                          EStripWrappers aStripWrappers) {
-  nsresult rv = DeleteSelectionAsAction(aAction, aStripWrappers);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "TextEditor::DeleteSelectionAsAction() failed");
-  return rv;
-}
-
-nsresult TextEditor::DeleteSelectionAsAction(EDirection aDirection,
-                                             EStripWrappers aStripWrappers,
-                                             nsIPrincipal* aPrincipal) {
-  MOZ_ASSERT(aStripWrappers == eStrip || aStripWrappers == eNoStrip);
-  // Showing this assertion is fine if this method is called by outside via
-  // mutation event listener or something.  Otherwise, this is called by
-  // wrong method.
-  NS_ASSERTION(!mPlaceholderBatch,
-               "Should be called only when this is the only edit action of the "
-               "operation "
-               "unless mutation event listener nests some operations");
-
-  EditAction editAction = EditAction::eDeleteSelection;
-  switch (aDirection) {
-    case nsIEditor::ePrevious:
-      editAction = EditAction::eDeleteBackward;
-      break;
-    case nsIEditor::eNext:
-      editAction = EditAction::eDeleteForward;
-      break;
-    case nsIEditor::ePreviousWord:
-      editAction = EditAction::eDeleteWordBackward;
-      break;
-    case nsIEditor::eNextWord:
-      editAction = EditAction::eDeleteWordForward;
-      break;
-    case nsIEditor::eToBeginningOfLine:
-      editAction = EditAction::eDeleteToBeginningOfSoftLine;
-      break;
-    case nsIEditor::eToEndOfLine:
-      editAction = EditAction::eDeleteToEndOfSoftLine;
-      break;
-  }
-
-  AutoEditActionDataSetter editActionData(*this, editAction, aPrincipal);
-  if (NS_WARN_IF(!editActionData.CanHandle())) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-
-  // If there is an existing selection when an extended delete is requested,
-  // platforms that use "caret-style" caret positioning collapse the
-  // selection to the  start and then create a new selection.
-  // Platforms that use "selection-style" caret positioning just delete the
-  // existing selection without extending it.
-  if (!SelectionRefPtr()->IsCollapsed()) {
-    switch (aDirection) {
-      case eNextWord:
-      case ePreviousWord:
-      case eToBeginningOfLine:
-      case eToEndOfLine: {
-        if (mCaretStyle != 1) {
-          aDirection = eNone;
-          break;
-        }
-        ErrorResult error;
-        SelectionRefPtr()->CollapseToStart(error);
-        if (error.Failed()) {
-          NS_WARNING("Selection::CollapseToStart() failed");
-          return EditorBase::ToGenericNSResult(error.StealNSResult());
-        }
-        break;
-      }
-      default:
-        break;
-    }
-  }
-
-  // If Selection is still NOT collapsed, it does not important removing
-  // range of the operation since we'll remove the selected content.  However,
-  // information of direction (backward or forward) may be important for
-  // web apps.  E.g., web apps may want to mark selected range as "deleted"
-  // and move caret before or after the range.  Therefore, we should forget
-  // only the range information but keep range information.  See discussion
-  // of the spec issue for the detail:
-  // https://github.com/w3c/input-events/issues/82
-  if (!SelectionRefPtr()->IsCollapsed()) {
-    switch (editAction) {
-      case EditAction::eDeleteWordBackward:
-      case EditAction::eDeleteToBeginningOfSoftLine:
-        editActionData.UpdateEditAction(EditAction::eDeleteBackward);
-        break;
-      case EditAction::eDeleteWordForward:
-      case EditAction::eDeleteToEndOfSoftLine:
-        editActionData.UpdateEditAction(EditAction::eDeleteForward);
-        break;
-      default:
-        break;
-    }
-  }
-
-  if (UseFrameSelectionToExtendSelection(aDirection, *SelectionRefPtr())) {
-    // Although ExtendSelectionForDelete will use nsFrameSelection, if it
-    // still has dirty frame, nsFrameSelection doesn't extend selection
-    // since we block script.
-    if (RefPtr<PresShell> presShell = GetPresShell()) {
-      presShell->FlushPendingNotifications(FlushType::Layout);
-      if (NS_WARN_IF(Destroyed())) {
-        return NS_ERROR_EDITOR_DESTROYED;
-      }
-    }
-  }
-
-  // TODO: If we're an HTMLEditor instance, we need to compute delete ranges
-  //       here.  However, it means that we need to pick computation codes
-  //       which are in `HandleDeleteSelection()`, its helper methods and
-  //       `WSRunObject` so that we need to redesign `HandleDeleteSelection()`
-  //       in bug 1618457.
-
-  nsresult rv = editActionData.MaybeDispatchBeforeInputEvent();
-  if (NS_FAILED(rv)) {
-    NS_WARNING_ASSERTION(rv == NS_ERROR_EDITOR_ACTION_CANCELED,
-                         "MaybeDispatchBeforeInputEvent() failed");
-    return EditorBase::ToGenericNSResult(rv);
-  }
-
-  // delete placeholder txns merge.
-  AutoPlaceholderBatch treatAsOneTransaction(*this, *nsGkAtoms::DeleteTxnName);
-  rv = DeleteSelectionAsSubAction(aDirection, aStripWrappers);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "TextEditor::DeleteSelectionAsSubAction() failed");
-  return EditorBase::ToGenericNSResult(rv);
-}
-
-nsresult TextEditor::DeleteSelectionAsSubAction(EDirection aDirectionAndAmount,
-                                                EStripWrappers aStripWrappers) {
-  MOZ_ASSERT(IsEditActionDataAvailable());
-  MOZ_ASSERT(mPlaceholderBatch);
-
-  MOZ_ASSERT(aStripWrappers == eStrip || aStripWrappers == eNoStrip);
-
-  if (NS_WARN_IF(!mInitSucceeded)) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-
-  IgnoredErrorResult ignoredError;
-  AutoEditSubActionNotifier startToHandleEditSubAction(
-      *this, EditSubAction::eDeleteSelectedContent, aDirectionAndAmount,
-      ignoredError);
-  if (NS_WARN_IF(ignoredError.ErrorCodeIs(NS_ERROR_EDITOR_DESTROYED))) {
-    return ignoredError.StealNSResult();
-  }
-  NS_WARNING_ASSERTION(
-      !ignoredError.Failed(),
-      "TextEditor::OnStartToHandleTopLevelEditSubAction() failed, but ignored");
-
-  EditActionResult result =
-      HandleDeleteSelection(aDirectionAndAmount, aStripWrappers);
-  if (result.Failed() || result.Canceled()) {
-    NS_WARNING_ASSERTION(result.Succeeded(),
-                         "TextEditor::HandleDeleteSelection() failed");
-    return result.Rv();
-  }
-
-  // XXX This is odd.  We just tries to remove empty text node here but we
-  //     refer `Selection`.  It may be modified by mutation event listeners
-  //     so that we should remove the empty text node when we make it empty.
-  EditorDOMPoint atNewStartOfSelection(
-      EditorBase::GetStartPoint(*SelectionRefPtr()));
-  if (NS_WARN_IF(!atNewStartOfSelection.IsSet())) {
-    // XXX And also it seems that we don't need to return error here.
-    //     Why don't we just ignore?  `Selection::RemoveAllRanges()` may
-    //     have been called by mutation event listeners.
-    return NS_ERROR_FAILURE;
-  }
-  if (atNewStartOfSelection.IsInTextNode() &&
-      !atNewStartOfSelection.GetContainer()->Length()) {
-    nsresult rv = DeleteNodeWithTransaction(
-        MOZ_KnownLive(*atNewStartOfSelection.GetContainer()));
-    if (NS_FAILED(rv)) {
-      NS_WARNING("EditorBase::DeleteNodeWithTransaction() failed");
-      return rv;
-    }
-  }
-
-  // XXX I don't think that this is necessary in anonymous `<div>` element of
-  //     TextEditor since there should be at most one text node and at most
-  //     one padding `<br>` element so that `<br>` element won't be before
-  //     caret.
-  if (!TopLevelEditSubActionDataRef().mDidExplicitlySetInterLine) {
-    // We prevent the caret from sticking on the left of previous `<br>`
-    // element (i.e. the end of previous line) after this deletion. Bug 92124.
-    ErrorResult error;
-    SelectionRefPtr()->SetInterlinePosition(true, error);
-    if (error.Failed()) {
-      NS_WARNING("Selection::SetInterlinePosition(true) failed");
-      return error.StealNSResult();
-    }
-  }
-
-  return NS_OK;
-}
-
-nsresult TextEditor::DeleteSelectionWithTransaction(
-    EDirection aDirection, EStripWrappers aStripWrappers) {
-  MOZ_ASSERT(IsEditActionDataAvailable());
-
-  MOZ_ASSERT(aStripWrappers == eStrip || aStripWrappers == eNoStrip);
-
-  RefPtr<EditAggregateTransaction> deleteSelectionTransaction;
-  nsCOMPtr<nsINode> deleteNode;
-  int32_t deleteCharOffset = 0, deleteCharLength = 0;
-  if (!SelectionRefPtr()->IsCollapsed() || aDirection != eNone) {
-    deleteSelectionTransaction =
-        CreateTxnForDeleteSelection(aDirection, getter_AddRefs(deleteNode),
-                                    &deleteCharOffset, &deleteCharLength);
-    if (!deleteSelectionTransaction) {
-      NS_WARNING("EditorBase::CreateTxnForDeleteSelection() failed");
-      return NS_ERROR_FAILURE;
-    }
-  }
-
-  RefPtr<CharacterData> deleteCharData =
-      CharacterData::FromNodeOrNull(deleteNode);
-  IgnoredErrorResult ignoredError;
-  AutoEditSubActionNotifier startToHandleEditSubAction(
-      *this, EditSubAction::eDeleteSelectedContent, aDirection, ignoredError);
-  if (NS_WARN_IF(ignoredError.ErrorCodeIs(NS_ERROR_EDITOR_DESTROYED))) {
-    return ignoredError.StealNSResult();
-  }
-  NS_WARNING_ASSERTION(
-      !ignoredError.Failed(),
-      "TextEditor::OnStartToHandleTopLevelEditSubAction() failed, but ignored");
-
-  if (AsHTMLEditor()) {
-    if (!deleteNode) {
-      // XXX We may remove multiple ranges in the following.  Therefore,
-      //     this must have a bug since we only add the first range into
-      //     the changed range.
-      TopLevelEditSubActionDataRef().WillDeleteRange(
-          *this, EditorBase::GetStartPoint(*SelectionRefPtr()),
-          EditorBase::GetEndPoint(*SelectionRefPtr()));
-    } else if (!deleteCharData) {
-      MOZ_ASSERT(deleteNode->IsContent());
-      TopLevelEditSubActionDataRef().WillDeleteContent(
-          *this, *deleteNode->AsContent());
-    }
-  }
-
-  // Notify nsIEditActionListener::WillDelete[Selection|Text]
-  if (!mActionListeners.IsEmpty()) {
-    if (!deleteNode) {
-      AutoActionListenerArray listeners(mActionListeners);
-      for (auto& listener : listeners) {
-        DebugOnly<nsresult> rvIgnored =
-            listener->WillDeleteSelection(SelectionRefPtr());
-        NS_WARNING_ASSERTION(
-            NS_SUCCEEDED(rvIgnored),
-            "nsIEditActionListener::WillDeleteSelection() failed, but ignored");
-      }
-    } else if (deleteCharData) {
-      AutoActionListenerArray listeners(mActionListeners);
-      for (auto& listener : listeners) {
-        DebugOnly<nsresult> rvIgnored =
-            listener->WillDeleteText(deleteCharData, deleteCharOffset, 1);
-        NS_WARNING_ASSERTION(
-            NS_SUCCEEDED(rvIgnored),
-            "nsIEditActionListener::WillDeleteText() failed, but ignored");
-      }
-    }
-  }
-
-  // Delete the specified amount
-  nsresult rv = DoTransactionInternal(deleteSelectionTransaction);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "EditorBase::DoTransactionInternal() failed");
-
-  if (AsHTMLEditor() && deleteCharData) {
-    MOZ_ASSERT(deleteNode);
-    TopLevelEditSubActionDataRef().DidDeleteText(*this,
-                                                 EditorRawDOMPoint(deleteNode));
-  }
-
-  if (mTextServicesDocument && NS_SUCCEEDED(rv) && deleteNode &&
-      !deleteCharData) {
-    RefPtr<TextServicesDocument> textServicesDocument = mTextServicesDocument;
-    textServicesDocument->DidDeleteNode(deleteNode);
-  }
-
-  // Notify nsIEditActionListener::DidDelete[Selection|Text|Node]
-  AutoActionListenerArray listeners(mActionListeners);
-  if (!deleteNode) {
-    for (auto& listener : mActionListeners) {
-      DebugOnly<nsresult> rvIgnored =
-          listener->DidDeleteSelection(SelectionRefPtr());
-      NS_WARNING_ASSERTION(
-          NS_SUCCEEDED(rvIgnored),
-          "nsIEditActionListener::DidDeleteSelection() failed, but ignored");
-    }
-  } else if (deleteCharData) {
-    for (auto& listener : mActionListeners) {
-      DebugOnly<nsresult> rvIgnored =
-          listener->DidDeleteText(deleteCharData, deleteCharOffset, 1, rv);
-      NS_WARNING_ASSERTION(
-          NS_SUCCEEDED(rvIgnored),
-          "nsIEditActionListener::DidDeleteText() failed, but ignored");
-    }
-  } else {
-    for (auto& listener : mActionListeners) {
-      DebugOnly<nsresult> rvIgnored = listener->DidDeleteNode(deleteNode, rv);
-      NS_WARNING_ASSERTION(
-          NS_SUCCEEDED(rvIgnored),
-          "nsIEditActionListener::DidDeleteNode() failed, but ignored");
-    }
-  }
-
-  return rv;
-}
-
-already_AddRefed<Element> TextEditor::DeleteSelectionAndCreateElement(
-    nsAtom& aTag) {
-  MOZ_ASSERT(IsEditActionDataAvailable());
-
-  nsresult rv = DeleteSelectionAndPrepareToCreateNode();
-  if (NS_FAILED(rv)) {
-    NS_WARNING("TextEditor::DeleteSelectionAndPrepareToCreateNode() failed");
-    return nullptr;
-  }
-
-  EditorDOMPoint pointToInsert(SelectionRefPtr()->AnchorRef());
-  if (!pointToInsert.IsSet()) {
-    return nullptr;
-  }
-  RefPtr<Element> newElement = CreateNodeWithTransaction(aTag, pointToInsert);
-  if (!newElement) {
-    NS_WARNING("EditorBase::CreateNodeWithTransaction() failed");
-    return nullptr;
-  }
-
-  // We want the selection to be just after the new node
-  EditorRawDOMPoint afterNewElement(EditorRawDOMPoint::After(newElement));
-  MOZ_ASSERT(afterNewElement.IsSetAndValid());
-  IgnoredErrorResult ignoredError;
-  SelectionRefPtr()->Collapse(afterNewElement, ignoredError);
-  if (ignoredError.Failed()) {
-    NS_WARNING("Selection::Collapse() failed");
-    // XXX Even if it succeeded to create new element, this returns error
-    //     when Selection.Collapse() fails something.  This could occur with
-    //     mutation observer or mutation event listener.
-    return nullptr;
-  }
-  return newElement.forget();
-}
-
-nsresult TextEditor::DeleteSelectionAndPrepareToCreateNode() {
-  MOZ_ASSERT(IsEditActionDataAvailable());
-
-  if (NS_WARN_IF(!SelectionRefPtr()->GetAnchorFocusRange())) {
-    return NS_OK;
-  }
-
-  if (!SelectionRefPtr()->GetAnchorFocusRange()->Collapsed()) {
-    nsresult rv = DeleteSelectionAsSubAction(eNone, eStrip);
-    if (NS_FAILED(rv)) {
-      NS_WARNING("TextEditor::DeleteSelectionAsSubAction() failed");
-      return rv;
-    }
-    MOZ_ASSERT(SelectionRefPtr()->GetAnchorFocusRange() &&
-                   SelectionRefPtr()->GetAnchorFocusRange()->Collapsed(),
-               "Selection not collapsed after delete");
-  }
-
-  // If the selection is a chardata node, split it if necessary and compute
-  // where to put the new node
-  EditorDOMPoint atAnchor(SelectionRefPtr()->AnchorRef());
-  if (NS_WARN_IF(!atAnchor.IsSet()) || !atAnchor.IsInDataNode()) {
-    return NS_OK;
-  }
-
-  if (NS_WARN_IF(!atAnchor.GetContainerParent())) {
-    return NS_ERROR_FAILURE;
-  }
-
-  if (atAnchor.IsStartOfContainer()) {
-    EditorRawDOMPoint atAnchorContainer(atAnchor.GetContainer());
-    if (NS_WARN_IF(!atAnchorContainer.IsSetAndValid())) {
-      return NS_ERROR_FAILURE;
-    }
-    ErrorResult error;
-    SelectionRefPtr()->Collapse(atAnchorContainer, error);
-    NS_WARNING_ASSERTION(!error.Failed(), "Selection::Collapse() failed");
-    return error.StealNSResult();
-  }
-
-  if (atAnchor.IsEndOfContainer()) {
-    EditorRawDOMPoint afterAnchorContainer(atAnchor.GetContainer());
-    if (NS_WARN_IF(!afterAnchorContainer.AdvanceOffset())) {
-      return NS_ERROR_FAILURE;
-    }
-    ErrorResult error;
-    SelectionRefPtr()->Collapse(afterAnchorContainer, error);
-    NS_WARNING_ASSERTION(!error.Failed(), "Selection::Collapse() failed");
-    return error.StealNSResult();
-  }
-
-  ErrorResult error;
-  nsCOMPtr<nsIContent> newLeftNode = SplitNodeWithTransaction(atAnchor, error);
-  if (error.Failed()) {
-    NS_WARNING("EditorBase::SplitNodeWithTransaction() failed");
-    return error.StealNSResult();
-  }
-
-  EditorRawDOMPoint atRightNode(atAnchor.GetContainer());
-  if (NS_WARN_IF(!atRightNode.IsSet())) {
-    return NS_ERROR_FAILURE;
-  }
-  MOZ_ASSERT(atRightNode.IsSetAndValid());
-  SelectionRefPtr()->Collapse(atRightNode, error);
-  NS_WARNING_ASSERTION(!error.Failed(), "Selection::Collapse() failed");
-  return error.StealNSResult();
 }
 
 nsresult TextEditor::SetTextAsAction(const nsAString& aString,
@@ -1188,11 +622,14 @@ nsresult TextEditor::SetTextAsSubAction(const nsAString& aString) {
 }
 
 nsresult TextEditor::ReplaceSelectionAsSubAction(const nsAString& aString) {
+  // TODO: Move this method to `EditorBase`.
   if (aString.IsEmpty()) {
-    nsresult rv = DeleteSelectionAsSubAction(eNone, eStrip);
+    nsresult rv = DeleteSelectionAsSubAction(
+        nsIEditor::eNone,
+        IsTextEditor() ? nsIEditor::eNoStrip : nsIEditor::eStrip);
     NS_WARNING_ASSERTION(
         NS_SUCCEEDED(rv),
-        "TextEditor::DeleteSelectionAsSubAction(eNone, eStrip) failed");
+        "EditorBase::DeleteSelectionAsSubAction(eNone) failed");
     return rv;
   }
 
@@ -1390,10 +827,15 @@ void TextEditor::OnCompositionEnd(
   // commit the IME transaction..we can get at it via the transaction mgr.
   // Note that this means IME won't work without an undo stack!
   if (mTransactionManager) {
-    nsCOMPtr<nsITransaction> txn = mTransactionManager->PeekUndoStack();
-    nsCOMPtr<nsIAbsorbingTransaction> plcTxn = do_QueryInterface(txn);
-    if (plcTxn) {
-      plcTxn->Commit();
+    if (nsCOMPtr<nsITransaction> transaction =
+            mTransactionManager->PeekUndoStack()) {
+      if (RefPtr<EditTransactionBase> transactionBase =
+              transaction->GetAsEditTransactionBase()) {
+        if (PlaceholderTransaction* placeholderTransaction =
+                transactionBase->GetAsPlaceholderTransaction()) {
+          placeholderTransaction->Commit();
+        }
+      }
     }
   }
 
@@ -1427,7 +869,7 @@ void TextEditor::OnCompositionEnd(
   NotifyEditorObservers(eNotifyEditorObserversOfEnd);
 }
 
-already_AddRefed<Element> TextEditor::GetInputEventTargetElement() {
+already_AddRefed<Element> TextEditor::GetInputEventTargetElement() const {
   nsCOMPtr<Element> target = do_QueryInterface(mEventTarget);
   return target.forget();
 }
@@ -1482,9 +924,11 @@ NS_IMETHODIMP TextEditor::GetTextLength(int32_t* aCount) {
   DebugOnly<nsresult> rvIgnored = postOrderIter.Init(rootElement);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                        "PostContentIterator::Init() failed, but ignored");
+  EditorType editorType = GetEditorType();
   for (; !postOrderIter.IsDone(); postOrderIter.Next()) {
     nsINode* currentNode = postOrderIter.GetCurrentNode();
-    if (IsTextNode(currentNode) && IsEditable(currentNode)) {
+    if (currentNode && currentNode->IsText() &&
+        EditorUtils::IsEditableContent(*currentNode->AsText(), editorType)) {
       totalLength += currentNode->Length();
     }
   }
@@ -1559,11 +1003,12 @@ nsresult TextEditor::UndoAsAction(uint32_t aCount, nsIPrincipal* aPrincipal) {
       // at redo, or doing it everywhere else that might care.  Since undo
       // and redo are relatively rare, it makes sense to take the (small)
       // performance hit here.
-      nsIContent* leftMostChild = GetLeftmostChild(mRootElement);
-      if (leftMostChild &&
-          EditorBase::IsPaddingBRElementForEmptyEditor(*leftMostChild)) {
+      nsIContent* firstLeafChild = HTMLEditUtils::GetFirstLeafChild(
+          *mRootElement, ChildBlockBoundary::Ignore);
+      if (firstLeafChild &&
+          EditorUtils::IsPaddingBRElementForEmptyEditor(*firstLeafChild)) {
         mPaddingBRElementForEmptyEditor =
-            static_cast<HTMLBRElement*>(leftMostChild);
+            static_cast<HTMLBRElement*>(firstLeafChild);
       } else {
         mPaddingBRElementForEmptyEditor = nullptr;
       }
@@ -1644,7 +1089,7 @@ nsresult TextEditor::RedoAsAction(uint32_t aCount, nsIPrincipal* aPrincipal) {
       Element* brElement =
           nodeList->Length() == 1 ? nodeList->Item(0) : nullptr;
       if (brElement &&
-          EditorBase::IsPaddingBRElementForEmptyEditor(*brElement)) {
+          EditorUtils::IsPaddingBRElementForEmptyEditor(*brElement)) {
         mPaddingBRElementForEmptyEditor =
             static_cast<HTMLBRElement*>(brElement);
       } else {
@@ -1712,6 +1157,7 @@ bool TextEditor::FireClipboardEvent(EventMessage aEventMessage,
 }
 
 nsresult TextEditor::CutAsAction(nsIPrincipal* aPrincipal) {
+  // TODO: Move this method to `EditorBase`.
   AutoEditActionDataSetter editActionData(*this, EditAction::eCut, aPrincipal);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
     return NS_ERROR_NOT_INITIALIZED;
@@ -1733,10 +1179,11 @@ nsresult TextEditor::CutAsAction(nsIPrincipal* aPrincipal) {
   // XXX This transaction name is referred by PlaceholderTransaction::Merge()
   //     so that we need to keep using it here.
   AutoPlaceholderBatch treatAsOneTransaction(*this, *nsGkAtoms::DeleteTxnName);
-  rv = DeleteSelectionAsSubAction(eNone, eStrip);
+  rv = DeleteSelectionAsSubAction(
+      eNone, IsTextEditor() ? nsIEditor::eNoStrip : nsIEditor::eStrip);
   NS_WARNING_ASSERTION(
       NS_SUCCEEDED(rv),
-      "TextEditor::DeleteSelectionAsSubAction() failed, but ignored");
+      "EditorBase::DeleteSelectionAsSubAction(eNone) failed, but ignored");
   return EditorBase::ToGenericNSResult(rv);
 }
 
@@ -2113,7 +1560,8 @@ nsresult TextEditor::SelectEntireDocument() {
     childNode = childNode->GetPreviousSibling();
   }
 
-  if (childNode && EditorBase::IsPaddingBRElementForEmptyLastLine(*childNode)) {
+  if (childNode &&
+      EditorUtils::IsPaddingBRElementForEmptyLastLine(*childNode)) {
     ErrorResult error;
     MOZ_KnownLive(SelectionRefPtr())
         ->SetStartAndEndInLimiter(RawRangeBoundary(anonymousDivElement, 0u),
@@ -2130,7 +1578,7 @@ nsresult TextEditor::SelectEntireDocument() {
   return error.StealNSResult();
 }
 
-EventTarget* TextEditor::GetDOMEventTarget() { return mEventTarget; }
+EventTarget* TextEditor::GetDOMEventTarget() const { return mEventTarget; }
 
 nsresult TextEditor::SetAttributeOrEquivalent(Element* aElement,
                                               nsAtom* aAttribute,
@@ -2215,7 +1663,7 @@ nsresult TextEditor::EnsurePaddingBRElementForEmptyEditor() {
   RefPtr<HTMLBRElement> brElement =
       HTMLBRElement::FromNodeOrNull(mRootElement->GetFirstChild());
   if (!brElement ||
-      !EditorBase::IsPaddingBRElementForEmptyLastLine(*brElement)) {
+      !EditorUtils::IsPaddingBRElementForEmptyLastLine(*brElement)) {
     return NS_OK;
   }
 

@@ -42,6 +42,7 @@
 #include "pk11pub.h"
 #include "prerror.h"
 #include "secerr.h"
+#include "secder.h"
 
 #include "TrustOverrideUtils.h"
 #include "TrustOverride-AppleGoogleDigiCertData.inc"
@@ -232,10 +233,10 @@ Result NSSCertDBTrustDomain::FindIssuer(Input encodedIssuerName,
     return Result::FATAL_ERROR_LIBRARY_FAILURE;
   }
   nsTArray<uint8_t> subject;
-  if (!subject.AppendElements(encodedIssuerName.UnsafeGetData(),
-                              encodedIssuerName.GetLength())) {
-    return Result::FATAL_ERROR_NO_MEMORY;
-  }
+  // XXX(Bug 1631371) Check if this should use a fallible operation as it
+  // pretended earlier.
+  subject.AppendElements(encodedIssuerName.UnsafeGetData(),
+                         encodedIssuerName.GetLength());
   nsTArray<nsTArray<uint8_t>> certs;
   nsresult rv = mCertStorage->FindCertsBySubject(subject, certs);
   if (NS_FAILED(rv)) {
@@ -715,6 +716,29 @@ Result NSSCertDBTrustDomain::CheckRevocation(
             CRLiteLookupResult::CertificateValid;
       }
     }
+
+    // Also check stashed CRLite revocations. This information is
+    // deterministic and has already been validated by our infrastructure (it
+    // comes from signed CRLs), so if the stash says a certificate is revoked,
+    // it is.
+    bool isRevokedByStash = false;
+    rv = mCertStorage->IsCertRevokedByStash(
+        issuerSubjectPublicKeyInfoBytes, serialNumberBytes, &isRevokedByStash);
+    if (NS_FAILED(rv)) {
+      MOZ_LOG(gCertVerifierLog, LogLevel::Debug,
+              ("NSSCertDBTrustDomain::CheckRevocation: IsCertRevokedByStash "
+               "failed"));
+      if (mCRLiteMode == CRLiteMode::Enforce) {
+        return Result::FATAL_ERROR_LIBRARY_FAILURE;
+      }
+    } else if (isRevokedByStash) {
+      MOZ_LOG(gCertVerifierLog, LogLevel::Debug,
+              ("NSSCertDBTrustDomain::CheckRevocation: IsCertRevokedByStash "
+               "returned true"));
+      if (mCRLiteMode == CRLiteMode::Enforce) {
+        return Result::ERROR_REVOKED_CERTIFICATE;
+      }
+    }
   }
 #else
   // "use" these fields to stop the compiler from complaining when
@@ -1132,6 +1156,43 @@ static Result CheckForStartComOrWoSign(const UniqueCERTCertList& certChain) {
   return Success;
 }
 
+nsresult isDistrustedCertificateChain(const UniqueCERTCertList& certList,
+                                      bool& isDistrusted) {
+  // Set the default result to be distrusted.
+  isDistrusted = true;
+
+  // Allocate objects and retreive the root and end-entity certificates.
+  const CERTCertificate* certRoot = CERT_LIST_TAIL(certList)->cert;
+  const CERTCertificate* certLeaf = CERT_LIST_HEAD(certList)->cert;
+
+  // Check if the distrust field of the root is filled.
+  if (!certRoot->distrust) {
+    isDistrusted = false;
+    return NS_OK;
+  }
+
+  // Get validity for the current end-entity certificate
+  // and get the distrust field for the root certificate.
+  PRTime certRootDistrustAfter;
+  PRTime certLeafNotBefore;
+
+  SECStatus rv1 = DER_DecodeTimeChoice(
+      &certRootDistrustAfter, &certRoot->distrust->serverDistrustAfter);
+  SECStatus rv2 =
+      DER_DecodeTimeChoice(&certLeafNotBefore, &certLeaf->validity.notBefore);
+
+  if ((rv1 != SECSuccess) || (rv2 != SECSuccess)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // Compare the validity of the end-entity certificate with
+  // the distrust value of the root.
+  if (certLeafNotBefore <= certRootDistrustAfter) {
+    isDistrusted = false;
+  }
+  return NS_OK;
+}
+
 Result NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
                                           const CertPolicyId& requiredPolicy) {
   MOZ_LOG(gCertVerifierLog, LogLevel::Debug,
@@ -1192,6 +1253,19 @@ Result NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
     }
     if (!chainHasValidPins) {
       return Result::ERROR_KEY_PINNING_FAILURE;
+    }
+  }
+
+  // Check that the childs' certificate NotBefore date is anterior to
+  // the NotAfter value of the parent when the root is a builtin.
+  if (isBuiltInRoot) {
+    bool isDistrusted;
+    nsrv = isDistrustedCertificateChain(certList, isDistrusted);
+    if (NS_FAILED(nsrv)) {
+      return Result::FATAL_ERROR_LIBRARY_FAILURE;
+    }
+    if (isDistrusted) {
+      return Result::ERROR_UNTRUSTED_ISSUER;
     }
   }
 

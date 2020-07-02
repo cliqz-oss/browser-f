@@ -7,10 +7,6 @@
 dictionary RemotenessOptions {
   required DOMString? remoteType;
 
-  // Used to indicate that there is an error condition that needs to
-  // be handled.
-  unsigned long error;
-
   // Used to resume a given channel load within the target process. If present,
   // it will be used rather than the `src` & `srcdoc` attributes on the
   // frameloader to control the load behaviour.
@@ -38,9 +34,6 @@ interface mixin MozFrameLoaderOwner {
 
   [ChromeOnly]
   readonly attribute BrowsingContext? browsingContext;
-
-  [ChromeOnly, Throws]
-  void presetOpenerWindow(WindowProxy? window);
 
   [ChromeOnly, Throws]
   void swapFrameLoaders(XULFrameElement aOtherLoaderOwner);

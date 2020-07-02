@@ -11,7 +11,7 @@
 
 #include "ds/IdValuePair.h"
 #include "gc/Barrier.h"
-#include "gc/GCTrace.h"
+#include "gc/GCProbes.h"
 #include "js/CharacterEncoding.h"
 #include "js/GCHashTable.h"
 #include "js/TypeDecls.h"
@@ -28,6 +28,7 @@ class AutoClearTypeInferenceStateOnOOM;
 class AutoSweepObjectGroup;
 class CompilerConstraintList;
 class ObjectGroupRealm;
+class PlainObject;
 
 namespace gc {
 void MergeRealms(JS::Realm* source, JS::Realm* target);
@@ -47,12 +48,6 @@ enum NewObjectKind {
    * singleton and is allocated in the tenured heap.
    */
   SingletonObject,
-
-  /*
-   * CrossCompartmentWrappers use the common Proxy class, but are allowed
-   * to have nursery lifetime.
-   */
-  NurseryAllocatedProxy,
 
   /*
    * Objects which will not benefit from being allocated in the nursery
@@ -89,8 +84,9 @@ class ObjectGroup : public gc::TenuredCell {
   class Property;
 
  private:
-  /* Class shared by objects in this group. */
-  const JSClass* const clasp_;  // set by constructor
+  /* Class shared by objects in this group stored in header. */
+  using HeaderWithJSClass = gc::CellHeaderWithNonGCPointer<const JSClass>;
+  HeaderWithJSClass headerAndClasp_;
 
   /* Prototype shared by objects in this group. */
   GCPtr<TaggedProto> proto_;  // set by constructor
@@ -152,7 +148,8 @@ class ObjectGroup : public gc::TenuredCell {
 
  private:
   static inline uint32_t offsetOfClasp() {
-    return offsetof(ObjectGroup, clasp_);
+    return offsetof(ObjectGroup, headerAndClasp_) +
+           HeaderWithJSClass::offsetOfPtr();
   }
 
   static inline uint32_t offsetOfProto() {
@@ -172,13 +169,12 @@ class ObjectGroup : public gc::TenuredCell {
   }
 
   friend class gc::GCRuntime;
-  friend class gc::GCTrace;
 
   // See JSObject::offsetOfGroup() comment.
   friend class js::jit::MacroAssembler;
 
  public:
-  const JSClass* clasp() const { return clasp_; }
+  const JSClass* clasp() const { return headerAndClasp_.ptr(); }
 
   bool hasDynamicPrototype() const { return proto_.isDynamic(); }
 
@@ -435,6 +431,7 @@ class ObjectGroup : public gc::TenuredCell {
   void finalize(JSFreeOp* fop);
 
   static const JS::TraceKind TraceKind = JS::TraceKind::ObjectGroup;
+  const gc::CellHeader& cellHeader() const { return headerAndClasp_; }
 
  public:
   const ObjectGroupFlags* addressOfFlags() const { return &flags_; }
@@ -463,14 +460,25 @@ class ObjectGroup : public gc::TenuredCell {
   static bool useSingletonForAllocationSite(JSScript* script, jsbytecode* pc,
                                             JSProtoKey key);
 
+ public:
   // Static accessors for ObjectGroupRealm NewTable.
 
   static ObjectGroup* defaultNewGroup(JSContext* cx, const JSClass* clasp,
                                       TaggedProto proto,
                                       JSObject* associated = nullptr);
-  static ObjectGroup* lazySingletonGroup(JSContext* cx, ObjectGroup* oldGroup,
+
+  // For use in creating a singleton group without needing to replace an
+  // existing group.
+  static ObjectGroup* lazySingletonGroup(JSContext* cx, ObjectGroupRealm& realm,
+                                         JS::Realm* objectRealm,
                                          const JSClass* clasp,
                                          TaggedProto proto);
+
+  // For use in replacing an already-existing group with a singleton group.
+  static inline ObjectGroup* lazySingletonGroup(JSContext* cx,
+                                                ObjectGroup* oldGroup,
+                                                const JSClass* clasp,
+                                                TaggedProto proto);
 
   static void setDefaultNewGroupUnknown(JSContext* cx, ObjectGroupRealm& realm,
                                         const JSClass* clasp,

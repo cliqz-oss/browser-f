@@ -91,7 +91,7 @@ ifdef FUZZING_INTERFACES
   JSSHELL_BINS += fuzz-tests$(BIN_SUFFIX)
 endif
 
-MAKE_JSSHELL  = $(call py3_action,zip,-C $(DIST)/bin --strip $(abspath $(PKG_JSSHELL)) $(JSSHELL_BINS))
+MAKE_JSSHELL  = $(call py_action,zip,-C $(DIST)/bin --strip $(abspath $(PKG_JSSHELL)) $(JSSHELL_BINS))
 
 ifneq (,$(PGO_JARLOG_PATH))
   # The backslash subst is to work around an issue with our version of mozmake,
@@ -134,17 +134,18 @@ endif
 
 ifeq ($(MOZ_PKG_FORMAT),ZIP)
   PKG_SUFFIX	= .zip
-  INNER_MAKE_PACKAGE = $(call py3_action,make_zip,'$(MOZ_PKG_DIR)' '$(PACKAGE)')
-  INNER_UNMAKE_PACKAGE = $(call py3_action,make_unzip,$(UNPACKAGE))
+  INNER_MAKE_PACKAGE = $(call py_action,make_zip,'$(MOZ_PKG_DIR)' '$(PACKAGE)')
+  INNER_UNMAKE_PACKAGE = $(call py_action,make_unzip,$(UNPACKAGE))
 endif
 
 ifeq ($(MOZ_PKG_FORMAT),SFX7Z)
   PKG_SUFFIX	= .exe
-  INNER_MAKE_PACKAGE = $(call py3_action,exe_7z_archive,'$(MOZ_PKG_DIR)' '$(MOZ_INSTALLER_PATH)/app.tag' '$(MOZ_SFX_PACKAGE)' '$(PACKAGE)')
-  INNER_UNMAKE_PACKAGE = $(call py3_action,exe_7z_extract,$(UNPACKAGE) $(MOZ_PKG_DIR))
+  INNER_MAKE_PACKAGE = $(call py_action,exe_7z_archive,'$(MOZ_PKG_DIR)' '$(MOZ_INSTALLER_PATH)/app.tag' '$(MOZ_SFX_PACKAGE)' '$(PACKAGE)')
+  INNER_UNMAKE_PACKAGE = $(call py_action,exe_7z_extract,$(UNPACKAGE) $(MOZ_PKG_DIR))
 endif
 
 #Create an RPM file
+<<<<<<< HEAD
 ifeq ($(OS_ARCH), Linux)
 	RPM_PKG_SUFFIX  = .rpm
 	MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
@@ -226,6 +227,151 @@ endif
 	#Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
 	INNER_UNMAKE_PACKAGE += \
 		&& $(error Try using rpm2cpio and cpio)
+||||||| merged common ancestors
+ifeq ($(MOZ_PKG_FORMAT),RPM)
+  PKG_SUFFIX  = .rpm
+  MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
+  MOZ_RPM_RELEASE = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[0-9.]*//' )
+
+  RPMBUILD_TOPDIR=$(ABS_DIST)/rpmbuild
+  RPMBUILD_RPMDIR=$(ABS_DIST)
+  RPMBUILD_SRPMDIR=$(ABS_DIST)
+  RPMBUILD_SOURCEDIR=$(RPMBUILD_TOPDIR)/SOURCES
+  RPMBUILD_SPECDIR=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
+  RPMBUILD_BUILDDIR=$(ABS_DIST)/..
+
+  SPEC_FILE = $(RPMBUILD_SPECDIR)/mozilla.spec
+  RPM_INCIDENTALS=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
+
+  RPM_CMD = \
+    echo Creating RPM && \
+    $(PYTHON) -m mozbuild.action.preprocessor \
+      -DMOZ_APP_NAME=$(MOZ_APP_NAME) \
+      -DMOZ_APP_DISPLAYNAME='$(MOZ_APP_DISPLAYNAME)' \
+      -DMOZ_APP_REMOTINGNAME='$(MOZ_APP_REMOTINGNAME)' \
+      $(RPM_INCIDENTALS)/mozilla.desktop \
+      -o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
+    rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
+    $(RPMBUILD) -bb \
+    $(SPEC_FILE) \
+    --target $(TARGET_CPU) \
+    --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
+    --define 'moz_app_name $(MOZ_APP_NAME)' \
+    --define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
+    --define 'moz_app_version $(MOZ_APP_VERSION)' \
+    --define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
+    --define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
+    --define 'buildid $(BUILDID)' \
+    --define 'moz_source_repo $(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)' \
+    --define 'moz_source_stamp $(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h)' \
+    --define 'moz_branding_directory $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)' \
+    --define '_topdir $(RPMBUILD_TOPDIR)' \
+    --define '_rpmdir $(RPMBUILD_RPMDIR)' \
+    --define '_sourcedir $(RPMBUILD_SOURCEDIR)' \
+    --define '_specdir $(RPMBUILD_SPECDIR)' \
+    --define '_srcrpmdir $(RPMBUILD_SRPMDIR)' \
+    --define '_builddir $(RPMBUILD_BUILDDIR)' \
+    --define '_prefix $(prefix)' \
+    --define '_libdir $(libdir)' \
+    --define '_bindir $(bindir)' \
+    --define '_datadir $(datadir)' \
+    --define '_installdir $(installdir)'
+
+  ifdef ENABLE_TESTS
+    RPM_CMD += \
+      --define 'createtests yes' \
+      --define '_testsinstalldir $(shell basename $(installdir))'
+  endif
+
+  #For each of the main/tests rpms we want to make sure that
+  #if they exist that they are in objdir/dist/ and that they get
+  #uploaded and that they are beside the other build artifacts
+  MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+  UPLOAD_EXTRA_FILES += $(MAIN_RPM)
+  RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
+
+  ifdef ENABLE_TESTS
+    TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+    UPLOAD_EXTRA_FILES += $(TESTS_RPM)
+    RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
+  endif
+
+  INNER_MAKE_PACKAGE = $(RPM_CMD)
+  #Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
+  INNER_UNMAKE_PACKAGE = $(error Try using rpm2cpio and cpio)
+=======
+ifeq ($(MOZ_PKG_FORMAT),RPM)
+  PKG_SUFFIX  = .rpm
+  MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
+  MOZ_RPM_RELEASE = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[0-9.]*//' )
+
+  RPMBUILD_TOPDIR=$(ABS_DIST)/rpmbuild
+  RPMBUILD_RPMDIR=$(ABS_DIST)
+  RPMBUILD_SRPMDIR=$(ABS_DIST)
+  RPMBUILD_SOURCEDIR=$(RPMBUILD_TOPDIR)/SOURCES
+  RPMBUILD_SPECDIR=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
+  RPMBUILD_BUILDDIR=$(ABS_DIST)/..
+
+  SPEC_FILE = $(RPMBUILD_SPECDIR)/mozilla.spec
+  RPM_INCIDENTALS=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
+
+  RPM_CMD = \
+    echo Creating RPM && \
+    $(PYTHON3) -m mozbuild.action.preprocessor \
+      -DMOZ_APP_NAME=$(MOZ_APP_NAME) \
+      -DMOZ_APP_DISPLAYNAME='$(MOZ_APP_DISPLAYNAME)' \
+      -DMOZ_APP_REMOTINGNAME='$(MOZ_APP_REMOTINGNAME)' \
+      $(RPM_INCIDENTALS)/mozilla.desktop \
+      -o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
+    rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
+    $(RPMBUILD) -bb \
+    $(SPEC_FILE) \
+    --target $(TARGET_CPU) \
+    --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
+    --define 'moz_app_name $(MOZ_APP_NAME)' \
+    --define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
+    --define 'moz_app_version $(MOZ_APP_VERSION)' \
+    --define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
+    --define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
+    --define 'buildid $(BUILDID)' \
+    --define 'moz_source_repo $(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)' \
+    --define 'moz_source_stamp $(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h)' \
+    --define 'moz_branding_directory $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)' \
+    --define '_topdir $(RPMBUILD_TOPDIR)' \
+    --define '_rpmdir $(RPMBUILD_RPMDIR)' \
+    --define '_sourcedir $(RPMBUILD_SOURCEDIR)' \
+    --define '_specdir $(RPMBUILD_SPECDIR)' \
+    --define '_srcrpmdir $(RPMBUILD_SRPMDIR)' \
+    --define '_builddir $(RPMBUILD_BUILDDIR)' \
+    --define '_prefix $(prefix)' \
+    --define '_libdir $(libdir)' \
+    --define '_bindir $(bindir)' \
+    --define '_datadir $(datadir)' \
+    --define '_installdir $(installdir)'
+
+  ifdef ENABLE_TESTS
+    RPM_CMD += \
+      --define 'createtests yes' \
+      --define '_testsinstalldir $(shell basename $(installdir))'
+  endif
+
+  #For each of the main/tests rpms we want to make sure that
+  #if they exist that they are in objdir/dist/ and that they get
+  #uploaded and that they are beside the other build artifacts
+  MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+  UPLOAD_EXTRA_FILES += $(MAIN_RPM)
+  RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
+
+  ifdef ENABLE_TESTS
+    TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+    UPLOAD_EXTRA_FILES += $(TESTS_RPM)
+    RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
+  endif
+
+  INNER_MAKE_PACKAGE = $(RPM_CMD)
+  #Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
+  INNER_UNMAKE_PACKAGE = $(error Try using rpm2cpio and cpio)
+>>>>>>> origin/upstream-releases
 
 endif #Create an RPM file
 
@@ -241,7 +387,7 @@ ifeq ($(MOZ_PKG_FORMAT),DMG)
   _ABS_MOZSRCDIR = $(shell cd $(MOZILLA_DIR) && pwd)
   PKG_DMG_SOURCE = $(MOZ_PKG_DIR)
   INNER_MAKE_PACKAGE = \
-    $(call py3_action,make_dmg, \
+    $(call py_action,make_dmg, \
         $(if $(MOZ_PKG_MAC_DSSTORE),--dsstore '$(MOZ_PKG_MAC_DSSTORE)') \
         $(if $(MOZ_PKG_MAC_BACKGROUND),--background '$(MOZ_PKG_MAC_BACKGROUND)') \
         $(if $(MOZ_PKG_MAC_ICON),--icon '$(MOZ_PKG_MAC_ICON)') \
@@ -249,7 +395,7 @@ ifeq ($(MOZ_PKG_FORMAT),DMG)
         '$(PKG_DMG_SOURCE)' '$(PACKAGE)' \
         )
   INNER_UNMAKE_PACKAGE = \
-    $(call py3_action,unpack_dmg, \
+    $(call py_action,unpack_dmg, \
         $(if $(MOZ_PKG_MAC_DSSTORE),--dsstore '$(MOZ_PKG_MAC_DSSTORE)') \
         $(if $(MOZ_PKG_MAC_BACKGROUND),--background '$(MOZ_PKG_MAC_BACKGROUND)') \
         $(if $(MOZ_PKG_MAC_ICON),--icon '$(MOZ_PKG_MAC_ICON)') \

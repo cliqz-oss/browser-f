@@ -48,6 +48,24 @@ void DrawEventRecorderPrivate::StoreSourceSurfaceRecording(
       dataSurf->GetFormat()));
 }
 
+void DrawEventRecorderPrivate::RecordSourceSurfaceDestruction(void* aSurface) {
+  RemoveSourceSurface(static_cast<SourceSurface*>(aSurface));
+  RemoveStoredObject(aSurface);
+  RecordEvent(RecordedSourceSurfaceDestruction(ReferencePtr(aSurface)));
+}
+
+void DrawEventRecorderPrivate::DecrementUnscaledFontRefCount(
+    const ReferencePtr aUnscaledFont) {
+  auto element = mUnscaledFontRefs.find(aUnscaledFont);
+  MOZ_DIAGNOSTIC_ASSERT(element != mUnscaledFontRefs.end(),
+                        "DecrementUnscaledFontRefCount calls should balance "
+                        "with IncrementUnscaledFontRefCount calls");
+  if (--(element->second) <= 0) {
+    RecordEvent(RecordedUnscaledFontDestruction(aUnscaledFont));
+    mUnscaledFontRefs.erase(aUnscaledFont);
+  }
+}
+
 void DrawEventRecorderFile::RecordEvent(const RecordedEvent& aEvent) {
   aEvent.RecordToStream(mOutputStream);
 

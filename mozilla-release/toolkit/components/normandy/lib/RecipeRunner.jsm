@@ -30,7 +30,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   Uptake: "resource://normandy/lib/Uptake.jsm",
   ActionsManager: "resource://normandy/lib/ActionsManager.jsm",
   BaseAction: "resource://normandy/actions/BaseAction.jsm",
-  Kinto: "resource://services-common/kinto-offline-client.js",
+  RemoteSettingsClient: "resource://services-settings/RemoteSettingsClient.jsm",
   clearTimeout: "resource://gre/modules/Timer.jsm",
   setTimeout: "resource://gre/modules/Timer.jsm",
 });
@@ -48,7 +48,6 @@ const SHIELD_ENABLED_PREF = "app.normandy.enabled";
 const DEV_MODE_PREF = "app.normandy.dev_mode";
 const API_URL_PREF = "app.normandy.api_url";
 const LAZY_CLASSIFY_PREF = "app.normandy.experiments.lazy_classify";
-const LAST_BUILDID_PREF = "app.normandy.last_seen_buildid";
 const ONSYNC_SKEW_SEC_PREF = "app.normandy.onsync_skew_sec";
 
 // Timer last update preference.
@@ -102,16 +101,9 @@ var RecipeRunner = {
     // If we've seen a build ID from a previous run that doesn't match the
     // current build ID, run immediately. This is probably an upgrade or
     // downgrade, which may cause recipe eligibility to change.
-    let lastSeenBuildID = Services.prefs.getCharPref(LAST_BUILDID_PREF, "");
     let hasNewBuildID =
-      lastSeenBuildID && Services.appinfo.appBuildID != lastSeenBuildID;
-
-    if (hasNewBuildID || !lastSeenBuildID) {
-      Services.prefs.setCharPref(
-        LAST_BUILDID_PREF,
-        Services.appinfo.appBuildID
-      );
-    }
+      Services.appinfo.lastAppBuildID != null &&
+      Services.appinfo.lastAppBuildID != Services.appinfo.appBuildID;
 
     // Dev mode is a mode used for development and QA that bypasses the normal
     // timer function of Normandy, to make testing more convenient.
@@ -609,12 +601,17 @@ var RecipeRunner = {
      * "normandy-recipes-capabilities" collection now.
      */
     async migration01RemoveOldRecipesCollection() {
-      const kintoCollection = new Kinto({
-        bucket: "main",
-        adapter: Kinto.adapters.IDB,
-        adapterOptions: { dbName: "remote-settings" },
-      }).collection("normandy-recipes");
-      await kintoCollection.clear();
+      // Don't bother to open IDB and clear on clean profiles.
+      const lastCheckPref =
+        "services.settings.main.normandy-recipes.last_check";
+      if (Services.prefs.prefHasUserValue(lastCheckPref)) {
+        // We instantiate a client, but it won't take part of sync.
+        const client = new RemoteSettingsClient("normandy-recipes", {
+          bucketNamePref: "services.settings.default_bucket",
+        });
+        await client.db.clear();
+        Services.prefs.clearUserPref(lastCheckPref);
+      }
     },
   },
 };

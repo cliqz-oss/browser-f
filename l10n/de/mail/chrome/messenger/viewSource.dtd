@@ -4,6 +4,8 @@
 
 <!-- extracted from content/viewSource.xul -->
 
+<!-- extracted from content/viewSource.xhtml -->
+
 <!-- LOCALIZATION NOTE (mainWindow.title) : DONT_TRANSLATE --> 
 <!ENTITY mainWindow.title "&brandFullName;">
 <!-- LOCALIZATION NOTE (mainWindow.titlemodifier) : DONT_TRANSLATE --> 
@@ -12,6 +14,8 @@
 <!ENTITY mainWindow.titlemodifierseparator " - ">
 <!ENTITY mainWindow.preface "Quelltext von: ">
 
+<!ENTITY editMenu.label "Bearbeiten">
+<!ENTITY editMenu.accesskey "B">
 <!ENTITY fileMenu.label "Datei">
 <!ENTITY fileMenu.accesskey "D">
 <!ENTITY savePageCmd.label "Speichern unter…">

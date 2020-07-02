@@ -16,8 +16,8 @@
 #include "js/JSON.h"
 #include "js/Value.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/Services.h"
-#include "mozilla/SystemGroup.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/TypedArray.h"
 #include "nsIFileStreams.h"
@@ -59,6 +59,7 @@ nsProfiler::~nsProfiler() {
   if (mSymbolTableThread) {
     mSymbolTableThread->Shutdown();
   }
+  ResetGathering();
 }
 
 nsresult nsProfiler::Init() {
@@ -143,10 +144,6 @@ nsProfiler::StartProfiler(uint32_t aEntries, double aInterval,
 
 NS_IMETHODIMP
 nsProfiler::StopProfiler() {
-  // If we have a Promise in flight, we should reject it.
-  if (mPromiseHolder.isSome()) {
-    mPromiseHolder->RejectIfExists(NS_ERROR_DOM_ABORT_ERR, __func__);
-  }
   ResetGathering();
 
   profiler_stop();
@@ -216,7 +213,7 @@ nsProfiler::WaitOnePeriodicSampling(JSContext* aCx, Promise** aPromise) {
                new nsMainThreadPtrHolder<Promise>(
                    "WaitOnePeriodicSampling promise for Sampler", promise))](
               SamplingState aSamplingState) mutable {
-            SystemGroup::Dispatch(
+            SchedulerGroup::Dispatch(
                 TaskCategory::Other,
                 NS_NewRunnableFunction(
                     "nsProfiler::WaitOnePeriodicSampling result on main thread",
@@ -275,6 +272,10 @@ struct StringWriteFunc : public JSONWriteFunc {
 
   void Write(const char* aStr) override {
     mBuffer.Append(NS_ConvertUTF8toUTF16(aStr));
+  }
+
+  void Write(const char* aStr, size_t aLen) override {
+    mBuffer.Append(NS_ConvertUTF8toUTF16(aStr, aLen));
   }
 };
 }  // namespace
@@ -873,7 +874,7 @@ RefPtr<nsProfiler::SymbolTablePromise> nsProfiler::GetSymbolTableMozPromise(
     }
   }
 
-  mSymbolTableThread->Dispatch(NS_NewRunnableFunction(
+  nsresult rv = mSymbolTableThread->Dispatch(NS_NewRunnableFunction(
       "nsProfiler::GetSymbolTableMozPromise runnable on ProfSymbolTable thread",
       [promiseHolder = std::move(promiseHolder),
        debugPath = nsCString(aDebugPath),
@@ -883,19 +884,18 @@ RefPtr<nsProfiler::SymbolTablePromise> nsProfiler::GetSymbolTableMozPromise(
         SymbolTable symbolTable;
         bool succeeded = profiler_get_symbol_table(
             debugPath.get(), breakpadID.get(), &symbolTable);
-        SystemGroup::Dispatch(
-            TaskCategory::Other,
-            NS_NewRunnableFunction(
-                "nsProfiler::GetSymbolTableMozPromise result on main thread",
-                [promiseHolder = std::move(promiseHolder),
-                 symbolTable = std::move(symbolTable), succeeded]() mutable {
-                  if (succeeded) {
-                    promiseHolder.Resolve(std::move(symbolTable), __func__);
-                  } else {
-                    promiseHolder.Reject(NS_ERROR_FAILURE, __func__);
-                  }
-                }));
+        if (succeeded) {
+          promiseHolder.Resolve(std::move(symbolTable), __func__);
+        } else {
+          promiseHolder.Reject(NS_ERROR_FAILURE, __func__);
+        }
       }));
+
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    // Get-symbol task was not dispatched and therefore won't fulfill the
+    // promise, we must reject the promise now.
+    promiseHolder.Reject(NS_ERROR_FAILURE, __func__);
+  }
 
   return promise;
 }
@@ -921,7 +921,12 @@ void nsProfiler::FinishGathering() {
 }
 
 void nsProfiler::ResetGathering() {
-  mPromiseHolder.reset();
+  // If we have an unfulfilled Promise in flight, we should reject it before
+  // destroying the promise holder.
+  if (mPromiseHolder.isSome()) {
+    mPromiseHolder->RejectIfExists(NS_ERROR_DOM_ABORT_ERR, __func__);
+    mPromiseHolder.reset();
+  }
   mPendingProfiles = 0;
   mGathering = false;
   mWriter.reset();

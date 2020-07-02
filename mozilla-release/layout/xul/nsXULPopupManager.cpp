@@ -616,7 +616,7 @@ void nsXULPopupManager::InitTriggerEvent(Event* aEvent, nsIContent* aPopup,
                 thisDocToRootDocOffset.y);
           } else if (rootDocumentRootFrame) {
             nsPoint pnt = nsLayoutUtils::GetEventCoordinatesRelativeTo(
-                event, rootDocumentRootFrame);
+                event, RelativeTo{rootDocumentRootFrame});
             mCachedMousePoint = LayoutDeviceIntPoint(
                 rootDocPresContext->AppUnitsToDevPixels(pnt.x),
                 rootDocPresContext->AppUnitsToDevPixels(pnt.y));
@@ -1355,6 +1355,8 @@ void nsXULPopupManager::FirePopupShowingEvent(nsIContent* aPopup,
   mRangeParentContent = nullptr;
   mRangeOffset = 0;
 
+  aPopup->OwnerDoc()->FlushPendingNotifications(FlushType::Frames);
+
   // get the frame again in case it went away
   popupFrame = do_QueryFrame(aPopup->GetPrimaryFrame());
   if (popupFrame) {
@@ -1384,6 +1386,7 @@ void nsXULPopupManager::FirePopupHidingEvent(
     nsIContent* aPopup, nsIContent* aNextPopup, nsIContent* aLastPopup,
     nsPresContext* aPresContext, nsPopupType aPopupType, bool aDeselectMenu,
     bool aIsCancel) {
+  nsCOMPtr<nsIContent> popup = aPopup;
   RefPtr<PresShell> presShell = aPresContext->PresShell();
   mozilla::Unused << presShell;  // This presShell may be keeping things alive
                                  // on non GTK platforms
@@ -1410,6 +1413,8 @@ void nsXULPopupManager::FirePopupHidingEvent(
       }
     }
   }
+
+  aPopup->OwnerDoc()->FlushPendingNotifications(FlushType::Frames);
 
   // get frame again in case it went away
   nsMenuPopupFrame* popupFrame = do_QueryFrame(aPopup->GetPrimaryFrame());
@@ -1979,11 +1984,15 @@ bool nsXULPopupManager::HandleShortcutNavigation(KeyboardEvent* aKeyEvent,
 }
 
 bool nsXULPopupManager::HandleKeyboardNavigation(uint32_t aKeyCode) {
+  if (nsMenuChainItem* nextitem = GetTopVisibleMenu()) {
+    nextitem->Content()->OwnerDoc()->FlushPendingNotifications(
+        FlushType::Frames);
+  }
+
   // navigate up through the open menus, looking for the topmost one
   // in the same hierarchy
   nsMenuChainItem* item = nullptr;
   nsMenuChainItem* nextitem = GetTopVisibleMenu();
-
   while (nextitem) {
     item = nextitem;
     nextitem = item->GetParent();

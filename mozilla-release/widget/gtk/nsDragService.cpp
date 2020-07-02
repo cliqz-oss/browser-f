@@ -727,7 +727,7 @@ nsDragService::GetData(nsITransferable* aTransferable, uint32_t aItemIndex) {
           const char* castedText = reinterpret_cast<char*>(mTargetDragData);
           char16_t* convertedText = nullptr;
           NS_ConvertUTF8toUTF16 ucs2string(castedText, mTargetDragDataLen);
-          convertedText = ToNewUnicode(ucs2string);
+          convertedText = ToNewUnicode(ucs2string, mozilla::fallible);
           if (convertedText) {
             MOZ_LOG(sDragLm, LogLevel::Debug,
                     ("successfully converted plain text \
@@ -1332,12 +1332,14 @@ void nsDragService::SourceEndDragSession(GdkDragContext* aContext,
         gchar* name = gdk_atom_name(atom);
         if (name && (strcmp(name, gTabDropType) == 0)) {
           isWaylandTabDrop = true;
+          MOZ_LOG(sDragLm, LogLevel::Debug, ("is wayland tab drop\n"));
           break;
         }
       }
     }
 #endif
     if (aResult != MOZ_GTK_DRAG_RESULT_NO_TARGET && !isWaylandTabDrop) {
+      MOZ_LOG(sDragLm, LogLevel::Debug, ("drop is user chancelled\n"));
       mUserCancelled = true;
     }
   }

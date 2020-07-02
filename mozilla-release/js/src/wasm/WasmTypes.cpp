@@ -79,6 +79,9 @@ Val::Val(const LitVal& val) {
     case ValType::F64:
       u.f64_ = val.f64();
       return;
+    case ValType::V128:
+      u.v128_ = val.v128();
+      return;
     case ValType::Ref:
       u.ref_ = val.ref();
       return;
@@ -106,8 +109,7 @@ const JSClass WasmValueBox::class_ = {
     "WasmValueBox", JSCLASS_HAS_RESERVED_SLOTS(RESERVED_SLOTS)};
 
 WasmValueBox* WasmValueBox::create(JSContext* cx, HandleValue val) {
-  WasmValueBox* obj = (WasmValueBox*)NewObjectWithGivenProto(
-      cx, &WasmValueBox::class_, nullptr);
+  WasmValueBox* obj = NewObjectWithGivenProto<WasmValueBox>(cx, nullptr);
   if (!obj) {
     return nullptr;
   }
@@ -255,12 +257,12 @@ static bool IsImmediateType(ValType vt) {
     case ValType::I64:
     case ValType::F32:
     case ValType::F64:
+    case ValType::V128:
       return true;
     case ValType::Ref:
       switch (vt.refTypeKind()) {
         case RefType::Func:
         case RefType::Any:
-        case RefType::Null:
           return true;
         case RefType::TypeIndex:
           return false;
@@ -281,13 +283,13 @@ static unsigned EncodeImmediateType(ValType vt) {
       return 2;
     case ValType::F64:
       return 3;
+    case ValType::V128:
+      return 4;
     case ValType::Ref:
       switch (vt.refTypeKind()) {
         case RefType::Func:
-          return 4;
-        case RefType::Any:
           return 5;
-        case RefType::Null:
+        case RefType::Any:
           return 6;
         case RefType::TypeIndex:
           break;
@@ -709,81 +711,58 @@ bool DebugFrame::getLocal(uint32_t localIndex, MutableHandleValue vp) {
     case jit::MIRType::RefOrNull:
       vp.set(ObjectOrNullValue(*(JSObject**)dataPtr));
       break;
+#ifdef ENABLE_WASM_SIMD
+    case jit::MIRType::Simd128:
+      vp.set(NumberValue(0));
+      break;
+#endif
     default:
       MOZ_CRASH("local type");
   }
   return true;
 }
 
-bool DebugFrame::updateReturnJSValue() {
-  hasCachedReturnJSValue_ = true;
-  ValTypeVector results;
-  if (!instance()->debug().debugGetResultTypes(funcIndex(), &results)) {
-    return false;
+bool DebugFrame::updateReturnJSValue(JSContext* cx) {
+  MutableHandleValue rval =
+      MutableHandleValue::fromMarkedLocation(&cachedReturnJSValue_);
+  rval.setUndefined();
+  flags_.hasCachedReturnJSValue = true;
+  ResultType resultType = instance()->debug().debugGetResultType(funcIndex());
+  Maybe<char*> stackResultsLoc;
+  if (ABIResultIter::HasStackResults(resultType)) {
+    stackResultsLoc = Some(static_cast<char*>(stackResultsPointer_));
   }
-  if (results.length() == 0) {
-    cachedReturnJSValue_.setUndefined();
-    return true;
-  }
-  MOZ_ASSERT(results.length() == 1, "multi-value return unimplemented");
-  switch (results[0].kind()) {
-    case ValType::I32:
-      cachedReturnJSValue_.setInt32(resultI32_);
-      break;
-    case ValType::I64:
-      // Just display as a Number; it's ok if we lose some precision
-      cachedReturnJSValue_.setDouble((double)resultI64_);
-      break;
-    case ValType::F32:
-      cachedReturnJSValue_.setDouble(JS::CanonicalizeNaN(resultF32_));
-      break;
-    case ValType::F64:
-      cachedReturnJSValue_.setDouble(JS::CanonicalizeNaN(resultF64_));
-      break;
-    case ValType::Ref:
-      switch (results[0].refTypeKind()) {
-        case RefType::TypeIndex:
-          cachedReturnJSValue_ = ObjectOrNullValue((JSObject*)resultRef_);
-          break;
-        case RefType::Func:
-          cachedReturnJSValue_ =
-              UnboxFuncRef(FuncRef::fromAnyRefUnchecked(resultAnyRef_));
-          break;
-        case RefType::Any:
-        case RefType::Null:
-          cachedReturnJSValue_ = UnboxAnyRef(resultAnyRef_);
-          break;
-      }
-      break;
-    default:
-      MOZ_CRASH("result type");
-  }
-  return true;
+  DebugCodegen(DebugChannel::Function,
+               "wasm-function[%d] updateReturnJSValue [", funcIndex());
+  bool ok =
+      ResultsToJSValue(cx, resultType, registerResults_, stackResultsLoc, rval);
+  DebugCodegen(DebugChannel::Function, "]\n");
+  return ok;
 }
 
 HandleValue DebugFrame::returnValue() const {
-  MOZ_ASSERT(hasCachedReturnJSValue_);
+  MOZ_ASSERT(flags_.hasCachedReturnJSValue);
   return HandleValue::fromMarkedLocation(&cachedReturnJSValue_);
 }
 
 void DebugFrame::clearReturnJSValue() {
-  hasCachedReturnJSValue_ = true;
+  flags_.hasCachedReturnJSValue = true;
   cachedReturnJSValue_.setUndefined();
 }
 
 void DebugFrame::observe(JSContext* cx) {
-  if (!observing_) {
+  if (!flags_.observing) {
     instance()->debug().adjustEnterAndLeaveFrameTrapsState(
         cx, /* enabled = */ true);
-    observing_ = true;
+    flags_.observing = true;
   }
 }
 
 void DebugFrame::leave(JSContext* cx) {
-  if (observing_) {
+  if (flags_.observing) {
     instance()->debug().adjustEnterAndLeaveFrameTrapsState(
         cx, /* enabled = */ false);
-    observing_ = false;
+    flags_.observing = false;
   }
 }
 
@@ -1016,4 +995,38 @@ void wasm::DebugCodegen(DebugChannel channel, const char* fmt, ...) {
   vfprintf(stderr, fmt, ap);
   va_end(ap);
 #endif
+}
+
+UniqueChars wasm::ToString(ValType type) {
+  const char* literal = nullptr;
+  switch (type.kind()) {
+    case ValType::I32:
+      literal = "i32";
+      break;
+    case ValType::I64:
+      literal = "i64";
+      break;
+    case ValType::V128:
+      literal = "v128";
+      break;
+    case ValType::F32:
+      literal = "f32";
+      break;
+    case ValType::F64:
+      literal = "f64";
+      break;
+    case ValType::Ref:
+      switch (type.refTypeKind()) {
+        case RefType::Any:
+          literal = "externref";
+          break;
+        case RefType::Func:
+          literal = "funcref";
+          break;
+        case RefType::TypeIndex:
+          return JS_smprintf("optref %d", type.refType().typeIndex());
+      }
+      break;
+  }
+  return JS_smprintf("%s", literal);
 }

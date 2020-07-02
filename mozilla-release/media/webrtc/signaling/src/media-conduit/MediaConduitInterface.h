@@ -44,6 +44,7 @@ enum class MediaSessionConduitLocalDirection : int { kSend, kRecv };
 
 class VideoSessionConduit;
 class AudioSessionConduit;
+class RtpRtcpConfig;
 
 using RtpExtList = std::vector<webrtc::RtpExtension>;
 
@@ -148,8 +149,8 @@ class MediaSessionConduit {
    * Obtained packets are passed to the Media-Engine for further
    * processing , say, decoding
    */
-  virtual MediaConduitErrorCode ReceivedRTPPacket(const void* data, int len,
-                                                  uint32_t ssrc) = 0;
+  virtual MediaConduitErrorCode ReceivedRTPPacket(
+      const void* data, int len, webrtc::RTPHeader& header) = 0;
 
   /**
    * Function triggered on Incoming RTCP packet from the remote
@@ -199,8 +200,9 @@ class MediaSessionConduit {
    * @return true iff the local ssrcs == aSSRCs upon return
    * Note: this is an ordered list and {a,b,c} != {b,a,c}
    */
-  virtual bool SetLocalSSRCs(const std::vector<unsigned int>& aSSRCs) = 0;
-  virtual std::vector<unsigned int> GetLocalSSRCs() = 0;
+  virtual bool SetLocalSSRCs(const std::vector<uint32_t>& aSSRCs,
+                             const std::vector<uint32_t>& aRtxSSRCs) = 0;
+  virtual std::vector<uint32_t> GetLocalSSRCs() = 0;
 
   /**
    * Adds negotiated RTP header extensions to the the conduit. Unknown
@@ -216,8 +218,8 @@ class MediaSessionConduit {
       MediaSessionConduitLocalDirection aDirection,
       const RtpExtList& aExtensions) = 0;
 
-  virtual bool GetRemoteSSRC(unsigned int* ssrc) = 0;
-  virtual bool SetRemoteSSRC(unsigned int ssrc) = 0;
+  virtual bool GetRemoteSSRC(uint32_t* ssrc) = 0;
+  virtual bool SetRemoteSSRC(uint32_t ssrc, uint32_t rtxSsrc) = 0;
   virtual bool UnsetRemoteSSRC(uint32_t ssrc) = 0;
   virtual bool SetLocalCNAME(const char* cname) = 0;
 
@@ -244,6 +246,8 @@ class MediaSessionConduit {
                                      Maybe<double>* aOutRttMs) = 0;
   virtual bool GetRTCPSenderReport(unsigned int* packetsSent,
                                    uint64_t* bytesSent) = 0;
+
+  virtual void GetRtpSources(nsTArray<dom::RTCRtpSourceEntry>& outSources) = 0;
 
   virtual uint64_t CodecPluginID() = 0;
 
@@ -420,7 +424,7 @@ class VideoSessionConduit : public MediaSessionConduit {
 
   virtual void DisableSsrcChanges() = 0;
 
-  bool SetRemoteSSRC(unsigned int ssrc) override = 0;
+  bool SetRemoteSSRC(uint32_t ssrc, uint32_t rtxSsrc) override = 0;
   bool UnsetRemoteSSRC(uint32_t ssrc) override = 0;
 
   /**
@@ -447,7 +451,8 @@ class VideoSessionConduit : public MediaSessionConduit {
    *
    */
   virtual MediaConduitErrorCode ConfigureSendMediaCodec(
-      const VideoCodecConfig* sendSessionConfig) = 0;
+      const VideoCodecConfig* sendSessionConfig,
+      const RtpRtcpConfig& aRtpRtcpConfig) = 0;
 
   /**
    * Function to configurelist of receive codecs for the video session
@@ -457,7 +462,8 @@ class VideoSessionConduit : public MediaSessionConduit {
    *
    */
   virtual MediaConduitErrorCode ConfigureRecvMediaCodecs(
-      const std::vector<UniquePtr<VideoCodecConfig>>& recvCodecConfigList) = 0;
+      const std::vector<UniquePtr<VideoCodecConfig>>& recvCodecConfigList,
+      const RtpRtcpConfig& aRtpRtcpConfig) = 0;
 
   /**
    * These methods allow unit tests to double-check that the
@@ -600,8 +606,6 @@ class AudioSessionConduit : public MediaSessionConduit {
 
   virtual bool InsertDTMFTone(int channel, int eventCode, bool outOfBand,
                               int lengthMs, int attenuationDb) = 0;
-
-  virtual void GetRtpSources(nsTArray<dom::RTCRtpSourceEntry>& outSources) = 0;
 };
 }  // namespace mozilla
 #endif

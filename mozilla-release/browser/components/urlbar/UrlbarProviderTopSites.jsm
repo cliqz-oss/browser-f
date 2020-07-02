@@ -70,20 +70,7 @@ class ProviderTopSites extends UrlbarProvider {
    * @returns {boolean} Whether this provider should be invoked for the search.
    */
   isActive(queryContext) {
-    // If top sites on new tab are disabled, the pref below will be false, and
-    // activity stream's top sites will be unavailable (an empty array), so we
-    // make this provider inactive.  For empty search strings, we instead show
-    // the most frecent URLs in the user's history from the UnifiedComplete
-    // provider.
-    return (
-      UrlbarPrefs.get("update1") &&
-      UrlbarPrefs.get("openViewOnFocus") &&
-      !queryContext.searchString &&
-      Services.prefs.getBoolPref(
-        "browser.newtabpage.activity-stream.feeds.topsites",
-        false
-      )
-    );
+    return !queryContext.searchString;
   }
 
   /**
@@ -104,6 +91,24 @@ class ProviderTopSites extends UrlbarProvider {
    *       is done searching AND returning results.
    */
   async startQuery(queryContext, addCallback) {
+    // If system.topsites is disabled, we would get stale or empty Top Sites
+    // data. We check this condition here instead of in isActive because we
+    // still want this provider to be restricting even if this is not true. If
+    // it wasn't restricting, we would show the results from UnifiedComplete's
+    // empty search behaviour. We aren't interested in those since they are very
+    // similar to Top Sites and thus might be confusing, especially since users
+    // can configure Top Sites but cannot configure the default empty search
+    // results. See bug 1623666.
+    if (
+      !UrlbarPrefs.get("suggest.topsites") ||
+      !Services.prefs.getBoolPref(
+        "browser.newtabpage.activity-stream.feeds.system.topsites",
+        false
+      )
+    ) {
+      return;
+    }
+
     let sites = AboutNewTab.getTopSites();
 
     let instance = {};
@@ -118,11 +123,13 @@ class ProviderTopSites extends UrlbarProvider {
     sites = sites.map(link => ({
       type: link.searchTopSite ? "search" : "url",
       url: link.url,
+      isPinned: link.isPinned,
       // The newtab page allows the user to set custom site titles, which
       // are stored in `label`, so prefer it.  Search top sites currently
       // don't have titles but `hostname` instead.
       title: link.label || link.title || link.hostname || "",
       favicon: link.smallFavicon || link.favicon || null,
+      overriddenSearchTopSite: link.overriddenSearchTopSite,
     }));
 
     for (let site of sites) {
@@ -135,17 +142,22 @@ class ProviderTopSites extends UrlbarProvider {
               title: site.title,
               url: site.url,
               icon: site.favicon,
+              isPinned: site.isPinned,
+              overriddenSearchTopSite: site.overriddenSearchTopSite,
             })
           );
 
-          let tabs = UrlbarProviderOpenTabs.openTabs.get(
-            queryContext.userContextId || 0
-          );
+          let tabs;
+          if (UrlbarPrefs.get("suggest.openpage")) {
+            tabs = UrlbarProviderOpenTabs.openTabs.get(
+              queryContext.userContextId || 0
+            );
+          }
 
           if (tabs && tabs.includes(site.url.replace(/#.*$/, ""))) {
             result.type = UrlbarUtils.RESULT_TYPE.TAB_SWITCH;
             result.source = UrlbarUtils.RESULT_SOURCE.TABS;
-          } else {
+          } else if (UrlbarPrefs.get("suggest.bookmark")) {
             let bookmark = await PlacesUtils.bookmarks.fetch({
               url: new URL(result.payload.url),
             });
@@ -199,6 +211,7 @@ class ProviderTopSites extends UrlbarProvider {
               engine: engine.name,
               query: "",
               icon: site.favicon,
+              isPinned: site.isPinned,
             })
           );
           addCallback(this, result);

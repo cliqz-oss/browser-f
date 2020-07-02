@@ -13,6 +13,10 @@
 #include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor, etc
 #include "SharedSurface.h"
 
+#if defined(MOZ_WIDGET_ANDROID)
+#  include "mozilla/java/SurfaceAllocatorWrappers.h"
+#endif  // defined(MOZ_WIDGET_ANDROID)
+
 namespace mozilla {
 namespace gl {
 
@@ -200,6 +204,12 @@ SharedSurface_SurfaceTexture::SharedSurface_SurfaceTexture(
       mEglSurface(eglSurface) {}
 
 SharedSurface_SurfaceTexture::~SharedSurface_SurfaceTexture() {
+  if (mOrigEglSurface) {
+    // We are about to destroy mEglSurface.
+    // Make sure gl->SetEGLSurfaceOverride() doesn't keep a reference
+    // to the surface.
+    UnlockProd();
+  }
   GLContextProviderEGL::DestroyEGLSurface(mEglSurface);
   java::SurfaceAllocator::DisposeSurface(mSurface);
 }

@@ -1,5 +1,13 @@
 <!-- extracted from MsgSynchronize.xul and msgSelectOffline.xul-->
 
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- extracted from MsgSynchronize.xul and msgSelectOfflineFolders.xul-->
+
+<!-- extracted from MsgSynchronize.xhtml and msgSelectOfflineFolders.xhtml-->
+
 <!ENTITY MsgSynchronize.label "Nachrichten herunterladen und sychronisieren">
 <!ENTITY MsgSelect.label "Einträge zum Offline-Lesen">
 <!ENTITY MsgSyncDesc.label "Wenn Sie bereits Nachrichten-Ordner oder Newsgruppen zum Offline-Lesen ausgewählt haben, können Sie diese jetzt herunterladen und/oder sychronisieren. Ansonsten, verwenden Sie die Schaltfläche &quot;Wählen…&quot;, um Nachrichten-Ordner und Newsgruppen zum Offline-Lesen auszuwählen.">

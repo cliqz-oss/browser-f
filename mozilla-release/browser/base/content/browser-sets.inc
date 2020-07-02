@@ -54,7 +54,7 @@
     <command id="Browser:AddBookmarkAs"
              oncommand="PlacesCommandHook.bookmarkPage();"/>
     <command id="Browser:BookmarkAllTabs"
-             oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueCurrentPages);"/>
+             oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueCurrentPages);"/>
     <command id="Browser:Back"    oncommand="BrowserBack();" disabled="true"/>
     <command id="Browser:BackOrBackDuplicate" oncommand="BrowserBack(event);" disabled="true">
       <observes element="Browser:Back" attribute="disabled"/>
@@ -99,13 +99,13 @@
       oncommand="OpenBrowserWindow({fission: false});"
       hidden="true"/>
 #endif
-    <command id="History:UndoCloseTab" oncommand="undoCloseTab();"/>
+    <command id="History:UndoCloseTab" oncommand="undoCloseTab();" data-l10n-args='{"tabCount": 1}'/>
     <command id="History:UndoCloseWindow" oncommand="undoCloseWindow();"/>
 
     <command id="wrCaptureCmd" oncommand="gGfxUtils.webrenderCapture();" disabled="true"/>
+    <command id="wrToggleCaptureSequenceCmd" oncommand="gGfxUtils.toggleWebrenderCaptureSequence();" disabled="true"/>
 #ifdef NIGHTLY_BUILD
     <command id="windowRecordingCmd" oncommand="gGfxUtils.toggleWindowRecording();"/>
-    <command id="wrTransactionLoggingCmd" oncommand="gGfxUtils.toggleTransactionLogging();"/>
 #endif
 #ifdef XP_MACOSX
     <command id="minimizeWindow"
@@ -255,7 +255,10 @@
     <key data-l10n-id="search-find-again-shortcut-alt" command="cmd_findPrevious" modifiers="shift"/>
 
     <key id="addBookmarkAsKb" data-l10n-id="bookmark-this-page-shortcut" command="Browser:AddBookmarkAs" modifiers="accel"/>
-    <key id="bookmarkAllTabsKb" data-l10n-id="bookmark-this-page-shortcut" oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueCurrentPages);" modifiers="accel,shift"/>
+    <key id="bookmarkAllTabsKb"
+         data-l10n-id="bookmark-this-page-shortcut"
+         oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueCurrentPages);"
+         modifiers="accel,shift"/>
     <key id="manBookmarkKb" data-l10n-id="bookmark-show-all-shortcut" command="Browser:ShowAllBookmarks" modifiers="accel,shift"/>
     <key id="viewBookmarksSidebarKb"
          data-l10n-id="bookmark-show-sidebar-shortcut"
@@ -335,6 +338,13 @@
     key="#" modifiers="control"
 #endif
     command="wrCaptureCmd"/>
+    <key id="key_wrToggleCaptureSequenceCmd"
+#ifdef XP_MACOSX
+    key="6" modifiers="control,shift"
+#else
+    key="^" modifiers="control"
+#endif
+    command="wrToggleCaptureSequenceCmd"/>
 #ifdef NIGHTLY_BUILD
     <key id="key_windowRecordingCmd"
 #ifdef XP_MACOSX
@@ -343,13 +353,6 @@
     key="$" modifiers="control"
 #endif
     command="windowRecordingCmd"/>
-    <key id="key_transactionLoggingCmd"
-#ifdef XP_MACOSX
-    key="5" modifiers="control,shift"
-#else
-    key="%" modifiers="control"
-#endif
-    command="wrTransactionLoggingCmd"/>
 #endif
 #ifdef XP_MACOSX
     <key id="key_minimizeWindow"

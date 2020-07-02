@@ -23,7 +23,7 @@ const ActionSchemas = {
     $schema: "http://json-schema.org/draft-04/schema#",
     title: "Messaging Experiment",
     type: "object",
-    required: ["slug", "branches"],
+    required: ["slug", "branches", "isEnrollmentPaused"],
     properties: {
       slug: {
         description: "Unique identifier for this experiment",
@@ -33,7 +33,7 @@ const ActionSchemas = {
       isEnrollmentPaused: {
         description: "If true, new users will not be enrolled in the study.",
         type: "boolean",
-        default: false,
+        default: true,
       },
       branches: {
         description: "List of experimental branches",
@@ -41,28 +41,28 @@ const ActionSchemas = {
         minItems: 1,
         items: {
           type: "object",
-          required: ["slug", "value", "ratio"],
+          required: ["slug", "value", "ratio", "groups"],
           properties: {
             slug: {
               description:
-                "Unique identifier for this branch of the experiment",
+                "Unique identifier for this branch of the experiment.",
               type: "string",
               pattern: "^[A-Za-z0-9\\-_]+$",
             },
             value: {
-              description: "Message content",
+              description: "Message content.",
               type: "object",
               properties: {},
             },
             ratio: {
               description:
-                "Ratio of users who should be grouped into this branch",
+                "Ratio of users who should be grouped into this branch.",
               type: "integer",
               minimum: 1,
             },
             groups: {
               description:
-                "A list of experiment groups that can be used to exclude or select related experiments",
+                "A list of experiment groups that can be used to exclude or select related experiments. May be empty.",
               type: "array",
               items: {
                 type: "string",
@@ -127,7 +127,13 @@ const ActionSchemas = {
     $schema: "http://json-schema.org/draft-04/schema#",
     title: "Enroll a user in an opt-out SHIELD study",
     type: "object",
-    required: ["name", "description", "addonUrl", "extensionApiId"],
+    required: [
+      "name",
+      "description",
+      "addonUrl",
+      "extensionApiId",
+      "isEnrollmentPaused",
+    ],
     properties: {
       name: {
         description: "User-facing name of the study",
@@ -153,7 +159,7 @@ const ActionSchemas = {
       isEnrollmentPaused: {
         description: "If true, new users will not be enrolled in the study.",
         type: "boolean",
-        default: false,
+        default: true,
       },
     },
   },
@@ -196,7 +202,13 @@ const ActionSchemas = {
     $schema: "http://json-schema.org/draft-04/schema#",
     title: "Enroll a user in an add-on experiment, with managed branches",
     type: "object",
-    required: ["slug", "userFacingName", "userFacingDescription", "branches"],
+    required: [
+      "slug",
+      "userFacingName",
+      "userFacingDescription",
+      "branches",
+      "isEnrollmentPaused",
+    ],
     properties: {
       slug: {
         description: "Machine-readable identifier",
@@ -216,7 +228,7 @@ const ActionSchemas = {
       isEnrollmentPaused: {
         description: "If true, new users will not be enrolled in the study.",
         type: "boolean",
-        default: false,
+        default: true,
       },
       branches: {
         description: "List of experimental branches",
@@ -324,7 +336,13 @@ const ActionSchemas = {
     $schema: "http://json-schema.org/draft-04/schema#",
     title: "Run a feature experiment activated by a set of preferences.",
     type: "object",
-    required: ["slug", "userFacingName", "userFacingDescription", "branches"],
+    required: [
+      "slug",
+      "userFacingName",
+      "userFacingDescription",
+      "branches",
+      "isEnrollmentPaused",
+    ],
     properties: {
       slug: {
         description: "Unique identifier for this experiment",
@@ -356,7 +374,7 @@ const ActionSchemas = {
       isEnrollmentPaused: {
         description: "If true, new users will not be enrolled in the study.",
         type: "boolean",
-        default: false,
+        default: true,
       },
       branches: {
         description: "List of experimental branches",
@@ -423,7 +441,13 @@ const ActionSchemas = {
     $schema: "http://json-schema.org/draft-04/schema#",
     title: "Run a feature experiment activated by a preference.",
     type: "object",
-    required: ["slug", "preferenceName", "preferenceType", "branches"],
+    required: [
+      "slug",
+      "preferenceName",
+      "preferenceType",
+      "branches",
+      "isEnrollmentPaused",
+    ],
     properties: {
       slug: {
         description: "Unique identifier for this experiment",
@@ -463,7 +487,7 @@ const ActionSchemas = {
       isEnrollmentPaused: {
         description: "If true, new users will not be enrolled in the study.",
         type: "boolean",
-        default: false,
+        default: true,
       },
       branches: {
         description: "List of experimental branches",

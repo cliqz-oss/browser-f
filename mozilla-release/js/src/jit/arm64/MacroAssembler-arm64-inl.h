@@ -206,6 +206,27 @@ void MacroAssembler::xorPtr(Imm32 imm, Register dest) {
 }
 
 // ===============================================================
+// Swap instructions
+
+void MacroAssembler::byteSwap16SignExtend(Register reg) {
+  rev16(ARMRegister(reg, 32), ARMRegister(reg, 32));
+  sxth(ARMRegister(reg, 32), ARMRegister(reg, 32));
+}
+
+void MacroAssembler::byteSwap16ZeroExtend(Register reg) {
+  rev16(ARMRegister(reg, 32), ARMRegister(reg, 32));
+  uxth(ARMRegister(reg, 32), ARMRegister(reg, 32));
+}
+
+void MacroAssembler::byteSwap32(Register reg) {
+  rev(ARMRegister(reg, 32), ARMRegister(reg, 32));
+}
+
+void MacroAssembler::byteSwap64(Register64 reg) {
+  rev(ARMRegister(reg.reg, 64), ARMRegister(reg.reg, 64));
+}
+
+// ===============================================================
 // Arithmetic functions
 
 void MacroAssembler::add32(Register src, Register dest) {
@@ -1132,6 +1153,20 @@ void MacroAssembler::branchMul32(Condition cond, T src, Register dest,
   mul32(src, dest, dest, label);
 }
 
+template <typename T>
+void MacroAssembler::branchRshift32(Condition cond, T src, Register dest,
+                                    Label* label) {
+  MOZ_ASSERT(cond == Zero || cond == NonZero);
+  rshift32(src, dest);
+  branch32(cond == Zero ? Equal : NotEqual, dest, Imm32(0), label);
+}
+
+void MacroAssembler::branchNeg32(Condition cond, Register reg, Label* label) {
+  MOZ_ASSERT(cond == Overflow);
+  neg32(reg);
+  B(label, cond);
+}
+
 void MacroAssembler::decBranchPtr(Condition cond, Register lhs, Imm32 rhs,
                                   Label* label) {
   Subs(ARMRegister(lhs, 64), ARMRegister(lhs, 64), Operand(rhs.value));
@@ -1406,6 +1441,11 @@ void MacroAssembler::branchTestSymbol(Condition cond, Register tag,
   branchTestSymbolImpl(cond, tag, label);
 }
 
+void MacroAssembler::branchTestSymbol(Condition cond, const Address& address,
+                                      Label* label) {
+  branchTestSymbolImpl(cond, address, label);
+}
+
 void MacroAssembler::branchTestSymbol(Condition cond, const BaseIndex& address,
                                       Label* label) {
   branchTestSymbolImpl(cond, address, label);
@@ -1519,6 +1559,12 @@ void MacroAssembler::branchTestGCThing(Condition cond, const Address& address,
 void MacroAssembler::branchTestGCThing(Condition cond, const BaseIndex& address,
                                        Label* label) {
   branchTestGCThingImpl(cond, address, label);
+}
+
+void MacroAssembler::branchTestGCThing(Condition cond,
+                                       const ValueOperand& value,
+                                       Label* label) {
+  branchTestGCThingImpl(cond, value, label);
 }
 
 template <typename T>
@@ -1748,6 +1794,31 @@ void MacroAssembler::clampIntToUint8(Register reg) {
   Csel(reg32, reg32, vixl::wzr, Assembler::GreaterThanOrEqual);
   Mov(scratch32, Operand(0xff));
   Csel(reg32, reg32, scratch32, Assembler::LessThanOrEqual);
+}
+
+void MacroAssembler::fallibleUnboxPtr(const ValueOperand& src, Register dest,
+                                      JSValueType type, Label* fail) {
+  MOZ_ASSERT(type == JSVAL_TYPE_OBJECT || type == JSVAL_TYPE_STRING ||
+             type == JSVAL_TYPE_SYMBOL || type == JSVAL_TYPE_BIGINT);
+  // dest := src XOR mask
+  // fail if dest >> JSVAL_TAG_SHIFT != 0
+  const ARMRegister src64(src.valueReg(), 64);
+  const ARMRegister dest64(dest, 64);
+  Eor(dest64, src64, Operand(JSVAL_TYPE_TO_SHIFTED_TAG(type)));
+  Cmp(vixl::xzr, Operand(dest64, vixl::LSR, JSVAL_TAG_SHIFT));
+  j(Assembler::NotEqual, fail);
+}
+
+void MacroAssembler::fallibleUnboxPtr(const Address& src, Register dest,
+                                      JSValueType type, Label* fail) {
+  loadValue(src, ValueOperand(dest));
+  fallibleUnboxPtr(ValueOperand(dest), dest, type, fail);
+}
+
+void MacroAssembler::fallibleUnboxPtr(const BaseIndex& src, Register dest,
+                                      JSValueType type, Label* fail) {
+  loadValue(src, ValueOperand(dest));
+  fallibleUnboxPtr(ValueOperand(dest), dest, type, fail);
 }
 
 //}}} check_macroassembler_style

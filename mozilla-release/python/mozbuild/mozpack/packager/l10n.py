@@ -107,7 +107,7 @@ class L10NRepackFormatterMixin(object):
                 root, ext = mozpath.splitext(mozpath.basename(path))
                 self._dictionaries[root] = path
         elif path.endswith('/built_in_addons.json'):
-            data = json.load(file.open())
+            data = json.loads(six.ensure_text(file.open().read()))
             self._dictionaries['en-US'] = 'dictionaries/en-US.dic'
             data['dictionaries'] = self._dictionaries
             # The GeneratedFile content is only really generated after

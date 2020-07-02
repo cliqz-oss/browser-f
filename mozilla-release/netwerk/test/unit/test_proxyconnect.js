@@ -21,6 +21,8 @@
 // 3. done
 
 // -1 then initialized with an actual port from the serversocket
+"use strict";
+
 var socketserver_port = -1;
 
 const CC = Components.Constructor;
@@ -126,7 +128,7 @@ var connectHandler = {
   onOutputStreamReady: output => {
     writeData(output);
   },
-  QueryInterface: () => {
+  QueryInterface: iid => {
     if (
       iid.equals(Ci.nsISupports) ||
       iid.equals(Ci.nsIInputStreamCallback) ||
@@ -134,7 +136,7 @@ var connectHandler = {
     ) {
       return this;
     }
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 };
 
@@ -263,7 +265,7 @@ function socketAccepted(socket, transport) {
 }
 
 function stopListening(socket, status) {
-  if (do_throw) {
+  if (tests && tests.length !== 0 && do_throw) {
     do_throw("should never stop");
   }
 }

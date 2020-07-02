@@ -43,10 +43,10 @@ const VISIBILITY_TOGGLE_MAX_PW_AGE_MS = 2 * 60 * 1000; // 2 minutes
  * Constants for password prompt telemetry.
  */
 const PROMPT_DISPLAYED = 0;
-
 const PROMPT_ADD_OR_UPDATE = 1;
-const PROMPT_NOTNOW = 2;
+const PROMPT_NOTNOW_OR_DONTUPDATE = 2;
 const PROMPT_NEVER = 3;
+const PROMPT_DELETE = 3;
 
 /**
  * The minimum age of a doorhanger in ms before it will get removed after a locationchange
@@ -356,7 +356,12 @@ class LoginManagerPrompter {
       ) {
         // We only want to touch the login's use count and last used time.
         log.debug("persistData: Touch matched login", loginToUpdate.guid);
-        Services.logins.recordPasswordUse(loginToUpdate);
+        Services.logins.recordPasswordUse(
+          loginToUpdate,
+          PrivateBrowsingUtils.isBrowserPrivate(browser),
+          loginToUpdate.username ? "form_password" : "form_login",
+          !!autoFilledLoginGuid
+        );
       } else {
         log.debug("persistData: Update matched login", loginToUpdate.guid);
         this._updateLogin(loginToUpdate, login);
@@ -406,7 +411,7 @@ class LoginManagerPrompter {
           initialMsgNames.secondaryButtonAccessKey
         ),
         callback: () => {
-          histogram.add(PROMPT_NOTNOW);
+          histogram.add(PROMPT_NOTNOW_OR_DONTUPDATE);
           Services.obs.notifyObservers(
             null,
             "weave:telemetry:histogram",
@@ -430,6 +435,38 @@ class LoginManagerPrompter {
           );
           Services.logins.setLoginSavingEnabled(login.origin, false);
           browser.focus();
+        },
+      });
+    }
+
+    // Include a "Delete this login" button when updating an existing password
+    if (type == "password-change") {
+      secondaryActions.push({
+        label: this._getLocalizedString("updateLoginButtonDelete.label"),
+        accessKey: this._getLocalizedString(
+          "updateLoginButtonDelete.accesskey"
+        ),
+        callback: async () => {
+          histogram.add(PROMPT_DELETE);
+          Services.obs.notifyObservers(
+            null,
+            "weave:telemetry:histogram",
+            histogramName
+          );
+          const matchingLogins = await Services.logins.searchLoginsAsync({
+            guid: login.guid,
+            origin: login.origin,
+          });
+          Services.logins.removeLogin(matchingLogins[0]);
+          browser.focus();
+          // The "password-notification-icon" and "notification-icon-box" are hidden
+          // at this point, so approximate the location with the next closest,
+          // visible icon as the anchor.
+          const anchor = browser.ownerDocument.getElementById("identity-icon");
+          log.debug("Showing the ConfirmationHint");
+          anchor.ownerGlobal.ConfirmationHint.show(anchor, "loginRemoved", {
+            hideArrow: true,
+          });
         },
       });
     }
@@ -465,6 +502,7 @@ class LoginManagerPrompter {
           eventCallback(topic) {
             switch (topic) {
               case "showing":
+                log.debug("showing");
                 currentNotification = this;
 
                 // Record the first time this instance of the doorhanger is shown.
@@ -525,6 +563,7 @@ class LoginManagerPrompter {
                 }
                 break;
               case "shown": {
+                log.debug("shown");
                 writeDataToUI();
                 let anchorIcon = this.anchorElement;
                 if (anchorIcon && this.options.extraAttr == "attention") {
@@ -534,27 +573,31 @@ class LoginManagerPrompter {
                 break;
               }
               case "dismissed":
+                // Note that this can run after `showing` but before `shown` upon tab switch.
                 this.wasDismissed = true;
-                readDataFromUI();
               // Fall through.
-              case "removed":
+              case "removed": {
+                // Note that this can run after `showing` and `shown` for the
+                // notification it's replacing.
+                log.debug(topic);
                 currentNotification = null;
-                chromeDoc
-                  .getElementById("password-notification-username")
-                  .removeEventListener("input", onInput);
-                chromeDoc
-                  .getElementById("password-notification-username")
-                  .removeEventListener("keyup", onKeyUp);
-                chromeDoc
-                  .getElementById("password-notification-password")
-                  .removeEventListener("input", onInput);
-                chromeDoc
-                  .getElementById("password-notification-password")
-                  .removeEventListener("keyup", onKeyUp);
-                chromeDoc
-                  .getElementById("password-notification-visibilityToggle")
-                  .removeEventListener("command", onVisibilityToggle);
+
+                let usernameField = chromeDoc.getElementById(
+                  "password-notification-username"
+                );
+                usernameField.removeEventListener("input", onInput);
+                usernameField.removeEventListener("keyup", onKeyUp);
+                let passwordField = chromeDoc.getElementById(
+                  "password-notification-password"
+                );
+                passwordField.removeEventListener("input", onInput);
+                passwordField.removeEventListener("keyup", onKeyUp);
+                passwordField.removeEventListener(
+                  "command",
+                  onVisibilityToggle
+                );
                 break;
+              }
             }
             return false;
           },
@@ -709,6 +752,10 @@ class LoginManagerPrompter {
     propBag.setProperty("timePasswordChanged", now);
     propBag.setProperty("timeLastUsed", now);
     propBag.setProperty("timesUsedIncrement", 1);
+    // Note that we don't call `recordPasswordUse` so telemetry won't record a
+    // use in this case though that is normally correct since we would instead
+    // record the save/update in a separate probe and recording it in both would
+    // be wrong.
     Services.logins.modifyLogin(login, propBag);
   }
 

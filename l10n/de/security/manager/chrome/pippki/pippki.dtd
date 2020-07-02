@@ -20,8 +20,15 @@
 <!ENTITY downloadCert.message1 "Sie wurden gebeten, einer neuen Zertifizierungsstelle (CA) zu vertrauen.">
 <!ENTITY downloadCert.trustSSL "Dieser CA vertrauen, um Websites zu identifizieren.">
 <!ENTITY downloadCert.trustEmail "Dieser CA vertrauen, um E-Mail-Nutzer zu identifizieren.">
+<<<<<<< HEAD
 <!ENTITY downloadCert.trustObjSign "Dieser CA vertrauen, um Software-Entwickler zu identifizieren.">
 <!ENTITY downloadCert.message3 "Bevor du dieser CA für jeglichen Zweck vertraust, solltest du das Zertifikat sowie seine Richtlinien und Prozeduren (wenn vorhanden) überprüfen.">
+||||||| merged common ancestors
+<!ENTITY downloadCert.trustObjSign "Dieser CA vertrauen, um Software-Entwickler zu identifizieren.">
+<!ENTITY downloadCert.message3 "Bevor Sie dieser CA für jeglichen Zweck vertrauen, sollten Sie das Zertifikat sowie seine Richtlinien und Prozeduren (wenn vorhanden) überprüfen.">
+=======
+<!ENTITY downloadCert.message3 "Bevor Sie dieser CA für jeglichen Zweck vertrauen, sollten Sie das Zertifikat sowie seine Richtlinien und Prozeduren (wenn vorhanden) überprüfen.">
+>>>>>>> origin/upstream-releases
 <!ENTITY downloadCert.viewCert.label "Ansicht">
 <!ENTITY downloadCert.viewCert.text "CA-Zertifikat überprüfen">
 

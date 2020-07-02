@@ -263,7 +263,9 @@ function normalizeFilter(filter) {
   return {
     urls: filter.urls || null,
     types: filter.types || null,
-    incognito: filter.incognito !== undefined ? filter.incognito : null,
+    tabId: filter.tabId ?? null,
+    windowId: filter.windowId ?? null,
+    incognito: filter.incognito ?? null,
   };
 }
 
@@ -285,15 +287,14 @@ class ProxyChannelFilter {
   // in sync with WebRequest.jsm as well as parent/ext-webRequest.js when
   // apropiate.
   getRequestData(channel, extraData) {
-    let originAttributes =
-      channel.loadInfo && channel.loadInfo.originAttributes;
+    let originAttributes = channel.loadInfo?.originAttributes;
     let data = {
       requestId: String(channel.id),
       url: channel.finalURL,
       method: channel.method,
       type: channel.type,
       fromCache: !!channel.fromCache,
-      incognito: originAttributes && originAttributes.privateBrowsingId > 0,
+      incognito: originAttributes?.privateBrowsingId > 0,
       thirdParty: channel.thirdParty,
 
       originUrl: channel.originURL || undefined,
@@ -334,13 +335,12 @@ class ProxyChannelFilter {
    * is called to apply proxy filter rules for the given URI and proxy object
    * (or list of proxy objects).
    *
-   * @param {nsIProtocolProxyService} service A reference to the Protocol Proxy Service.
    * @param {nsIChannel} channel The channel for which these proxy settings apply.
    * @param {nsIProxyInfo} defaultProxyInfo The proxy (or list of proxies) that
    *     would be used by default for the given URI. This may be null.
    * @param {nsIProxyProtocolFilterResult} proxyFilter
    */
-  async applyFilter(service, channel, defaultProxyInfo, proxyFilter) {
+  async applyFilter(channel, defaultProxyInfo, proxyFilter) {
     let proxyInfo;
     try {
       let wrapper = ChannelWrapper.get(channel);

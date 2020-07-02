@@ -11,10 +11,10 @@
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/CompilationInfo.h"
 #include "frontend/ErrorReporter.h"
-#include "frontend/FunctionTree.h"
 #include "frontend/NameCollections.h"
 #include "frontend/SharedContext.h"
 #include "frontend/UsedNameTracker.h"
+#include "vm/GeneratorAndAsyncKind.h"  // js::GeneratorKind, js::FunctionAsyncKind
 
 namespace js {
 
@@ -28,9 +28,6 @@ const char* DeclarationKindString(DeclarationKind kind);
 bool DeclarationKindIsVar(DeclarationKind kind);
 
 bool DeclarationKindIsParameter(DeclarationKind kind);
-
-class FunctionTree;
-class FunctionTreeHolder;
 
 /*
  * The struct ParseContext stores information about the current parsing context,
@@ -258,9 +255,6 @@ class ParseContext : public Nestable<ParseContext> {
   };
 
  private:
-  // Not all contexts are Function contexts, hence the maybe
-  mozilla::Maybe<AutoPushTree> tree;
-
   // Trace logging of parsing time.
   AutoFrontendTraceLog traceLog_;
 

@@ -9,10 +9,10 @@
 
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/PermissionManager.h"
 #include "mozilla/ScopeExit.h"
 #include "nsContentUtils.h"
 #include "nsIHttpChannelInternal.h"
-#include "nsPermissionManager.h"
 
 using namespace mozilla;
 
@@ -43,28 +43,6 @@ using namespace mozilla;
   }
 
   return aCookieJarSettings->GetIsOnContentBlockingAllowList();
-}
-
-// TODO: We'll update the implementation here to use CookiejarSetting in
-//       WindowContext (See 1612378).
-/* static */ nsresult ContentBlockingAllowList::Check(
-    BrowsingContext* aParentContext, bool& aIsAllowListed) {
-  MOZ_ASSERT(aParentContext);
-
-  nsCOMPtr<nsPIDOMWindowOuter> outer = aParentContext->GetDOMWindow();
-  if (!outer) {
-    LOG(("No outer window found for our parent window context"));
-    return NS_ERROR_FAILURE;
-  }
-
-  nsCOMPtr<nsPIDOMWindowInner> inner = outer->GetCurrentInnerWindow();
-  if (!inner) {
-    LOG(("No inner window found for our parent outer window"));
-    return NS_ERROR_FAILURE;
-  }
-
-  aIsAllowListed = ContentBlockingAllowList::Check(inner);
-  return NS_OK;
 }
 
 /* static */ bool ContentBlockingAllowList::Check(nsPIDOMWindowInner* aWindow) {
@@ -119,7 +97,7 @@ nsresult ContentBlockingAllowList::Check(
             _spec),
            aContentBlockingAllowListPrincipal);
 
-  nsPermissionManager* permManager = nsPermissionManager::GetInstance();
+  PermissionManager* permManager = PermissionManager::GetInstance();
   NS_ENSURE_TRUE(permManager, NS_ERROR_FAILURE);
 
   // Check both the normal mode and private browsing mode user override
@@ -164,6 +142,13 @@ nsresult ContentBlockingAllowList::Check(
   if (!bp || !bp->IsContentPrincipal()) {
     // If we have something other than a content principal, just return what we
     // have.  This includes the case where we were passed a nullptr.
+    return;
+  }
+
+  if (aDocumentPrincipal->SchemeIs("chrome") ||
+      aDocumentPrincipal->SchemeIs("about")) {
+    returnInputArgument.release();
+    *aPrincipal = nullptr;
     return;
   }
 

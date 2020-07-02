@@ -272,8 +272,11 @@ function addRDMTask(rdmURL, rdmTask, options) {
   addRDMTaskWithPreAndPost(rdmURL, undefined, rdmTask, undefined, options);
 }
 
-function spawnViewportTask(ui, args, task) {
-  return ContentTask.spawn(ui.getViewportBrowser(), args, task);
+async function spawnViewportTask(ui, args, task) {
+  // Await a reflow after the task.
+  const result = await ContentTask.spawn(ui.getViewportBrowser(), args, task);
+  await promiseContentReflow(ui);
+  return result;
 }
 
 function waitForFrameLoad(ui, targetURL) {
@@ -351,16 +354,7 @@ var setViewportSize = async function(ui, manager, width, height) {
 // ensures that reflow of the viewport has completed.
 var setViewportSizeAndAwaitReflow = async function(ui, manager, width, height) {
   await setViewportSize(ui, manager, width, height);
-  const reflowed = SpecialPowers.spawn(
-    ui.getViewportBrowser(),
-    [],
-    async function() {
-      return new Promise(resolve => {
-        content.requestAnimationFrame(resolve);
-      });
-    }
-  );
-  await reflowed;
+  await promiseContentReflow(ui);
 };
 
 function getViewportDevicePixelRatio(ui) {
@@ -504,25 +498,6 @@ async function selectMenuItem({ toolWindow }, selector, value) {
  *         as an argument.
  */
 async function testMenuItems(toolWindow, button, testFn) {
-  if (button.id === "device-selector") {
-    // device-selector uses a DevTools MenuButton instead of a XUL menu
-    button.click();
-    // Wait for appearance the menu items..
-    await waitUntil(() =>
-      toolWindow.document.querySelector("#device-selector-menu .menuitem")
-    );
-    const tooltip = toolWindow.document.querySelector("#device-selector-menu");
-    const items = tooltip.querySelectorAll(".menuitem > .command");
-    testFn([...items]);
-
-    if (tooltip.classList.contains("tooltip-visible")) {
-      // Close the tooltip explicitly.
-      button.click();
-      await waitUntil(() => !tooltip.classList.contains("tooltip-visible"));
-    }
-    return;
-  }
-
   // The context menu appears only in the top level window, which is different from
   // the inner toolWindow.
   const win = getTopLevelWindow(toolWindow);
@@ -530,13 +505,31 @@ async function testMenuItems(toolWindow, button, testFn) {
   await new Promise(resolve => {
     win.document.addEventListener(
       "popupshown",
-      () => {
-        const popup = win.document.querySelector('menupopup[menu-api="true"]');
-        const menuItems = [...popup.children];
+      async () => {
+        if (button.id === "device-selector") {
+          const popup = toolWindow.document.querySelector(
+            "#device-selector-menu"
+          );
+          const menuItems = [...popup.querySelectorAll(".menuitem > .command")];
 
-        testFn(menuItems);
+          testFn(menuItems);
 
-        popup.hidePopup();
+          if (popup.classList.contains("tooltip-visible")) {
+            // Close the tooltip explicitly.
+            button.click();
+            await waitUntil(() => !popup.classList.contains("tooltip-visible"));
+          }
+        } else {
+          const popup = win.document.querySelector(
+            'menupopup[menu-api="true"]'
+          );
+          const menuItems = [...popup.children];
+
+          testFn(menuItems);
+
+          popup.hidePopup();
+        }
+
         resolve();
       },
       { once: true }
@@ -617,10 +610,10 @@ function waitForViewportScroll(ui) {
   );
 }
 
-function load(browser, url) {
-  const loaded = BrowserTestUtils.browserLoaded(browser, false, url);
-  BrowserTestUtils.loadURI(browser, url);
-  return loaded;
+async function load(browser, url) {
+  const loaded = BrowserTestUtils.browserLoaded(browser, false, null, false);
+  await BrowserTestUtils.loadURI(browser, url);
+  await loaded;
 }
 
 function back(browser) {
@@ -881,6 +874,7 @@ async function setTouchAndMetaViewportSupport(ui, value) {
     const browser = ui.getViewportBrowser();
     browser.reload();
     await reload;
+    await promiseContentReflow(ui);
   }
   return reloadNeeded;
 }
@@ -914,7 +908,9 @@ async function testViewportZoomWidthAndHeight(msg, ui, zoom, width, height) {
 function promiseContentReflow(ui) {
   return SpecialPowers.spawn(ui.getViewportBrowser(), [], async function() {
     return new Promise(resolve => {
-      content.window.requestAnimationFrame(resolve);
+      content.window.requestAnimationFrame(() => {
+        content.window.requestAnimationFrame(resolve);
+      });
     });
   });
 }
@@ -922,22 +918,22 @@ function promiseContentReflow(ui) {
 // This function returns a promise that will be resolved when the
 // RDM zoom has been set and the content has finished rescaling
 // to the new size.
-function promiseRDMZoom(ui, browser, zoom) {
-  return new Promise(resolve => {
-    const currentZoom = ZoomManager.getZoomForBrowser(browser);
-    if (currentZoom == zoom) {
-      resolve();
-      return;
-    }
+async function promiseRDMZoom(ui, browser, zoom) {
+  const currentZoom = ZoomManager.getZoomForBrowser(browser);
+  if (currentZoom.toFixed(2) == zoom.toFixed(2)) {
+    return;
+  }
 
-    const zoomComplete = BrowserTestUtils.waitForEvent(
-      browser,
-      "FullZoomResolutionStable"
-    );
-    ZoomManager.setZoomForBrowser(browser, zoom);
+  const width = browser.getBoundingClientRect().width;
 
-    // Await the zoom complete event, then reflow.
-    zoomComplete.then(promiseContentReflow(ui)).then(resolve);
+  ZoomManager.setZoomForBrowser(browser, zoom);
+
+  // RDM resizes the browser as a result of a zoom change, so we wait for that.
+  //
+  // This also has the side effect of updating layout which ensures that any
+  // remote frame dimension update message gets there in time.
+  await BrowserTestUtils.waitForCondition(function() {
+    return browser.getBoundingClientRect().width != width;
   });
 }
 
@@ -951,4 +947,22 @@ async function waitForDeviceAndViewportState(ui) {
       state.viewports.length == 1 &&
       state.devices.listState == localTypes.loadableState.LOADED
   );
+}
+
+/**
+ * Navigate the selected tab to a new URL and wait for the RDM UI to switch to a new
+ * target. Until Bug 1627847 is fixed, this helper should only be called when we are
+ * guaranteed the navigation will trigger a process change with or without fission.
+ *
+ * @param  {String} uri
+ *         The URL to navigate to.
+ * @param  {ResponsiveUI} ui
+ *         The selected tab's ResponsiveUI.
+ */
+async function navigateToNewDomain(uri, ui) {
+  // Store the current target tab before navigating.
+  const target = ui.currentTarget;
+
+  await load(ui.getViewportBrowser(), uri);
+  await waitUntil(() => ui.currentTarget !== target);
 }

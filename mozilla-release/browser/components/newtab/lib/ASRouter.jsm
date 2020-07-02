@@ -9,9 +9,6 @@ const { XPCOMUtils } = ChromeUtils.import(
 );
 XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 XPCOMUtils.defineLazyModuleGetters(this, {
-  AddonManager: "resource://gre/modules/AddonManager.jsm",
-  UITour: "resource:///modules/UITour.jsm",
-  FxAccounts: "resource://gre/modules/FxAccounts.jsm",
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   OS: "resource://gre/modules/osfile.jsm",
   BookmarkPanelHub: "resource://activity-stream/lib/BookmarkPanelHub.jsm",
@@ -34,16 +31,22 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   KintoHttpClient: "resource://services-common/kinto-http-client.js",
   Downloader: "resource://services-settings/Attachments.jsm",
   RemoteL10n: "resource://activity-stream/lib/RemoteL10n.jsm",
-  MigrationUtils: "resource:///modules/MigrationUtils.jsm",
+  ExperimentAPI: "resource://messaging-system/experiments/ExperimentAPI.jsm",
+  SpecialMessageActions:
+    "resource://messaging-system/lib/SpecialMessageActions.jsm",
 });
 XPCOMUtils.defineLazyServiceGetters(this, {
   BrowserHandler: ["@mozilla.org/browser/clh;1", "nsIBrowserHandler"],
 });
-const {
-  ASRouterActions: ra,
-  actionTypes: at,
-  actionCreators: ac,
-} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm");
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "multiStageAboutWelcome",
+  "browser.aboutwelcome.overrideContent",
+  ""
+);
+const { actionTypes: at, actionCreators: ac } = ChromeUtils.import(
+  "resource://activity-stream/common/Actions.jsm"
+);
 
 const { CFRMessageProvider } = ChromeUtils.import(
   "resource://activity-stream/lib/CFRMessageProvider.jsm"
@@ -104,6 +107,13 @@ const TOPIC_INTL_LOCALE_CHANGED = "intl:app-locales-changed";
 // To observe the pref that controls if ASRouter should use the remote Fluent files for l10n.
 const USE_REMOTE_L10N_PREF =
   "browser.newtabpage.activity-stream.asrouter.useRemoteL10n";
+
+// Experiment groups that need to report the reach event in Messaging-Experiments.
+// If you're adding new groups to it, make sure they're also added in the
+// `messaging_experiments.reach.objects` defined in "toolkit/components/telemetry/Events.yaml"
+const REACH_EVENT_GROUPS = ["cfr"];
+const REACH_EVENT_CATEGORY = "messaging_experiments";
+const REACH_EVENT_METHOD = "reach";
 
 const MessageLoaderUtils = {
   STARTPAGE_VERSION,
@@ -336,6 +346,56 @@ const MessageLoaderUtils = {
     return RemoteSettings(bucket).get();
   },
 
+  async _experimentsAPILoader(provider, options) {
+    try {
+      await ExperimentAPI.ready();
+    } catch (e) {
+      MessageLoaderUtils.reportError(e);
+      return [];
+    }
+
+    let experiments = [];
+    for (const group of provider.messageGroups) {
+      let experimentData;
+      try {
+        experimentData = ExperimentAPI.getExperiment({ group });
+      } catch (e) {
+        MessageLoaderUtils.reportError(e);
+        continue;
+      }
+
+      if (experimentData && experimentData.branch) {
+        experiments.push(experimentData.branch.value);
+
+        if (!REACH_EVENT_GROUPS.includes(group)) {
+          continue;
+        }
+        // Check other sibling branches for triggers, add them to the return
+        // array if found any. The `forReachEvent` label is used to identify
+        // those branches so that they would only used to record the Reach
+        // event.
+        const branches =
+          (await ExperimentAPI.getAllBranches(experimentData.slug)) || [];
+        for (const branch of branches) {
+          if (
+            branch.slug !== experimentData.branch.slug &&
+            branch.value.trigger
+          ) {
+            experiments.push({
+              group,
+              forReachEvent: true,
+              experimentSlug: experimentData.slug,
+              branchSlug: branch.slug,
+              ...branch.value,
+            });
+          }
+        }
+      }
+    }
+
+    return experiments;
+  },
+
   _handleRemoteSettingsUndesiredEvent(event, providerId, dispatchToAS) {
     if (dispatchToAS) {
       dispatchToAS(
@@ -363,6 +423,8 @@ const MessageLoaderUtils = {
         return this._remoteSettingsLoader;
       case "json":
         return this._localJsonLoader;
+      case "remote-experiments":
+        return this._experimentsAPILoader;
       case "local":
       default:
         return this._localLoader;
@@ -448,54 +510,6 @@ const MessageLoaderUtils = {
   },
 
   /**
-   * _loadAddonIconInURLBar - load addons-notification icon by displaying
-   * box containing addons icon in urlbar. See Bug 1513882
-   *
-   * @param  {XULElement} Target browser element for showing addons icon
-   */
-  _loadAddonIconInURLBar(browser) {
-    if (!browser) {
-      return;
-    }
-    const chromeDoc = browser.ownerDocument;
-    let notificationPopupBox = chromeDoc.getElementById(
-      "notification-popup-box"
-    );
-    if (!notificationPopupBox) {
-      return;
-    }
-    if (
-      notificationPopupBox.style.display === "none" ||
-      notificationPopupBox.style.display === ""
-    ) {
-      notificationPopupBox.style.display = "block";
-    }
-  },
-
-  async installAddonFromURL(browser, url, telemetrySource = "amo") {
-    try {
-      MessageLoaderUtils._loadAddonIconInURLBar(browser);
-      const aUri = Services.io.newURI(url);
-      const systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-
-      // AddonManager installation source associated to the addons installed from activitystream's CFR
-      // and RTAMO (source is going to be "amo" if not configured explicitly in the message provider).
-      const telemetryInfo = { source: telemetrySource };
-      const install = await AddonManager.getInstallForURL(aUri.spec, {
-        telemetryInfo,
-      });
-      await AddonManager.installAddonFromWebpage(
-        "application/x-xpinstall",
-        browser,
-        systemPrincipal,
-        install
-      );
-    } catch (e) {
-      Cu.reportError(e);
-    }
-  },
-
-  /**
    * cleanupCache - Removes cached data of removed providers.
    *
    * @param {Array} providers A list of activer AS Router providers
@@ -559,6 +573,7 @@ class _ASRouter {
     this.isUnblockedMessage = this.isUnblockedMessage.bind(this);
     this.renderWNMessages = this.renderWNMessages.bind(this);
     this.forceWNPanel = this.forceWNPanel.bind(this);
+    Services.telemetry.setEventRecordingEnabled(REACH_EVENT_CATEGORY, true);
   }
 
   async onPrefChange(prefName) {
@@ -742,13 +757,19 @@ class _ASRouter {
       p =>
         p.id === "message-groups" && MessageLoaderUtils.shouldProviderUpdate(p)
     );
-    if (!provider) {
-      return;
+    let remoteMessages = [];
+    if (provider) {
+      const { messages } = await MessageLoaderUtils._loadDataForProvider(
+        provider,
+        {
+          storage: this._storage,
+          dispatchToAS: this.dispatchToAS,
+        }
+      );
+      if (messages && messages.length) {
+        remoteMessages = messages;
+      }
     }
-    let { messages } = await MessageLoaderUtils._loadDataForProvider(provider, {
-      storage: this._storage,
-      dispatchToAS: this.dispatchToAS,
-    });
     const providerGroups = this.state.providers.map(
       ({ id, frequency = null, enabled }) => {
         const defaultGroup = { id, enabled, type: "default" };
@@ -757,11 +778,11 @@ class _ASRouter {
         }
         const localGroup =
           LOCAL_GROUP_CONFIGURATIONS.find(g => g.id === id) || {};
-        const remoteGroup = messages.find(g => g.id === id) || {};
+        const remoteGroup = remoteMessages.find(g => g.id === id) || {};
         return { ...defaultGroup, ...localGroup, ...remoteGroup };
       }
     );
-    const messageGroups = messages
+    const messageGroups = remoteMessages
       .filter(m => !providerGroups.find(g => g.id === m.id))
       .map(remoteGroup => {
         const localGroup =
@@ -928,7 +949,6 @@ class _ASRouter {
     ToolbarPanelHub.init(this.waitForInitialized, {
       getMessages: this.handleMessageRequest,
       dispatch: this.dispatch,
-      handleUserAction: this.handleUserAction,
     });
     MomentsPageHub.init(this.waitForInitialized, {
       handleMessageRequest: this.handleMessageRequest,
@@ -985,6 +1005,7 @@ class _ASRouter {
       })
     );
 
+    SpecialMessageActions.blockMessageById = this.blockMessageById;
     Services.obs.addObserver(this._onLocaleChanged, TOPIC_INTL_LOCALE_CHANGED);
     Services.prefs.addObserver(USE_REMOTE_L10N_PREF, this);
     // sets .initialized to true and resolves .waitForInitialized promise
@@ -1618,6 +1639,10 @@ class _ASRouter {
     });
   }
 
+  async modifyMessageJson(content, target, force = true, action = {}) {
+    await this._sendMessageToTarget(content, target, action.data, force);
+  }
+
   async setMessageById(id, target, force = true, action = {}) {
     const newMessage = this.getMessageById(id);
 
@@ -1819,6 +1844,7 @@ class _ASRouter {
       providers.push({
         id: "preview",
         type: "remote",
+        enabled: true,
         url,
         updateCycleInMs: 0,
       });
@@ -1886,106 +1912,6 @@ class _ASRouter {
     await this.loadMessagesFromAllProviders();
   }
 
-  async handleUserAction({ data: action, target }) {
-    switch (action.type) {
-      case ra.SHOW_MIGRATION_WIZARD:
-        MigrationUtils.showMigrationWizard(target.browser.ownerGlobal, [
-          MigrationUtils.MIGRATION_ENTRYPOINT_NEWTAB,
-        ]);
-        break;
-      case ra.OPEN_PRIVATE_BROWSER_WINDOW:
-        // Forcefully open about:privatebrowsing
-        target.browser.ownerGlobal.OpenBrowserWindow({ private: true });
-        break;
-      case ra.OPEN_URL:
-        target.browser.ownerGlobal.openLinkIn(
-          Services.urlFormatter.formatURL(action.data.args),
-          action.data.where || "current",
-          {
-            private: false,
-            triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal(
-              {}
-            ),
-            csp: null,
-          }
-        );
-        break;
-      case ra.OPEN_ABOUT_PAGE:
-        target.browser.ownerGlobal.openTrustedLinkIn(
-          `about:${action.data.args}`,
-          "tab"
-        );
-        break;
-      case ra.OPEN_PREFERENCES_PAGE:
-        target.browser.ownerGlobal.openPreferences(
-          action.data.category,
-          action.data.entrypoint && {
-            urlParams: { entrypoint: action.data.entrypoint },
-          }
-        );
-        break;
-      case ra.OPEN_APPLICATIONS_MENU:
-        UITour.showMenu(target.browser.ownerGlobal, action.data.args);
-        break;
-      case ra.HIGHLIGHT_FEATURE:
-        const highlight = await UITour.getTarget(
-          target.browser.ownerGlobal,
-          action.data.args
-        );
-        if (highlight) {
-          await UITour.showHighlight(
-            target.browser.ownerGlobal,
-            highlight,
-            "none",
-            { autohide: true }
-          );
-        }
-        break;
-      case ra.INSTALL_ADDON_FROM_URL:
-        this._updateOnboardingState();
-        await MessageLoaderUtils.installAddonFromURL(
-          target.browser,
-          action.data.url,
-          action.data.telemetrySource
-        );
-        break;
-      case ra.PIN_CURRENT_TAB:
-        let tab = target.browser.ownerGlobal.gBrowser.selectedTab;
-        target.browser.ownerGlobal.gBrowser.pinTab(tab);
-        target.browser.ownerGlobal.ConfirmationHint.show(tab, "pinTab", {
-          showDescription: true,
-        });
-        break;
-      case ra.SHOW_FIREFOX_ACCOUNTS:
-        const url = await FxAccounts.config.promiseConnectAccountURI(
-          "snippets"
-        );
-        // We want to replace the current tab.
-        target.browser.ownerGlobal.openLinkIn(url, "current", {
-          private: false,
-          triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal(
-            {}
-          ),
-          csp: null,
-        });
-        break;
-      case ra.OPEN_PROTECTION_PANEL:
-        let { gProtectionsHandler } = target.browser.ownerGlobal;
-        gProtectionsHandler.showProtectionsPopup({});
-        break;
-      case ra.OPEN_PROTECTION_REPORT:
-        target.browser.ownerGlobal.gProtectionsHandler.openProtections();
-        break;
-      case ra.DISABLE_STP_DOORHANGERS:
-        await this.blockMessageById([
-          "SOCIAL_TRACKING_PROTECTION",
-          "FINGERPRINTERS_PROTECTION",
-          "CRYPTOMINERS_PROTECTION",
-        ]);
-        break;
-    }
-  }
-
   /**
    * sendAsyncMessageToPreloaded - Sends an action to each preloaded browser, if any
    *
@@ -2036,6 +1962,28 @@ class _ASRouter {
     this.onMessage({ data: action, target });
   }
 
+  hasMultiStageAboutWelcome() {
+    // Verify if user has onboarded using multistage about:welcome by
+    // checking overridecontent pref has content or aboutwelcome group experiment value
+    // has template as multistage
+    let experimentData;
+    try {
+      experimentData = ExperimentAPI.getExperiment({
+        group: "aboutwelcome",
+      });
+    } catch (e) {
+      Cu.reportError(e);
+    }
+
+    return !!(
+      multiStageAboutWelcome ||
+      (experimentData &&
+        experimentData.branch &&
+        experimentData.branch.value &&
+        experimentData.branch.value.template === "multistage")
+    );
+  }
+
   async sendNewTabMessage(target, options = {}) {
     const { endpoint } = options;
     let message;
@@ -2060,11 +2008,13 @@ class _ASRouter {
     } else {
       const telemetryObject = { port: target.portID };
       TelemetryStopwatch.start("MS_MESSAGE_REQUEST_TIME_MS", telemetryObject);
-      // On new tab, send cards if they match; othwerise send a snippet
-      message = await this.handleMessageRequest({
-        template: "extended_triplets",
-      });
-
+      // On new tab, send cards if they match and not part of multistage onboarding experiment;
+      // othwerise send a snippet
+      if (!this.hasMultiStageAboutWelcome()) {
+        message = await this.handleMessageRequest({
+          template: "extended_triplets",
+        });
+      }
       // If no extended triplets message was returned, show snippets instead
       if (!message) {
         message = await this.handleMessageRequest({ provider: "snippets" });
@@ -2073,6 +2023,19 @@ class _ASRouter {
     }
 
     await this._sendMessageToTarget(message, target);
+  }
+
+  _recordReachEvent(message) {
+    // Events telemetry only accepts understores for the event `object`
+    const underscored = message.group.split("-").join("_");
+    const extra = { branches: message.branchSlug };
+    Services.telemetry.recordEvent(
+      REACH_EVENT_CATEGORY,
+      REACH_EVENT_METHOD,
+      underscored,
+      message.experimentSlug,
+      extra
+    );
   }
 
   async sendTriggerMessage(target, trigger) {
@@ -2085,14 +2048,32 @@ class _ASRouter {
 
     const telemetryObject = { port: target.portID };
     TelemetryStopwatch.start("MS_MESSAGE_REQUEST_TIME_MS", telemetryObject);
-    const message = await this.handleMessageRequest({
-      triggerId: trigger.id,
-      triggerParam: trigger.param,
-      triggerContext: trigger.context,
-    });
+    // Return all the messages so that it can record the Reach event
+    const messages =
+      (await this.handleMessageRequest({
+        triggerId: trigger.id,
+        triggerParam: trigger.param,
+        triggerContext: trigger.context,
+        returnAll: true,
+      })) || [];
     TelemetryStopwatch.finish("MS_MESSAGE_REQUEST_TIME_MS", telemetryObject);
 
-    await this._sendMessageToTarget(message, target, trigger);
+    // Record the Reach event for all the messages with `forReachEvent`,
+    // only send the first message without forReachEvent to the target
+    const nonReachMessages = [];
+    for (const message of messages) {
+      if (message.forReachEvent) {
+        this._recordReachEvent(message);
+      } else {
+        nonReachMessages.push(message);
+      }
+    }
+
+    await this._sendMessageToTarget(
+      nonReachMessages[0] || null,
+      target,
+      trigger
+    );
   }
 
   renderWNMessages(browserWindow, messageIds) {
@@ -2114,9 +2095,11 @@ class _ASRouter {
   async onMessage({ data: action, target }) {
     switch (action.type) {
       case "USER_ACTION":
-        if (action.data.type in ra) {
-          await this.handleUserAction({ data: action.data, target });
+        // This is to support ReturnToAMO
+        if (action.data.type === "INSTALL_ADDON_FROM_URL") {
+          this._updateOnboardingState();
         }
+        await SpecialMessageActions.handleAction(action.data, target.browser);
         break;
       case "NEWTAB_MESSAGE_REQUEST":
         await this.waitForInitialized;
@@ -2149,6 +2132,9 @@ class _ASRouter {
             outgoingMessage
           );
         }
+        break;
+      case "MODIFY_MESSAGE_JSON":
+        await this.modifyMessageJson(action.data.content, target, true, action);
         break;
       case "DISMISS_MESSAGE_BY_ID":
         this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {

@@ -10,14 +10,16 @@ job-defaults:
         by-test-name:
             raptor-tp6m-.*-cold:
                 by-test-platform:
-                    android-hw-.*/opt: []
+                    android-hw-.*(?<!-shippable)/opt: []
                     android-hw-p2-.*api-16/pgo: []
+                    android-hw-p2-.*api-16-shippable/opt: []
                     default: ['trunk', 'mozilla-beta']
             default:
                 by-test-platform:
                     android-hw-p2-.*-api-16/(?!opt).*: []
-                    android-hw-p2-.*(?!-api-16)/opt.*: []
-                    android-hw(?!-p2).*(?!-api-16)/opt.*: []
+                    android-hw-p2-.*-api-16-shippable/opt: []
+                    android-hw-p2-.*?(?<!-aarch64-shippable)/opt.*: []
+                    android-hw(?!-p2).*(?<!-api-16-shippable)/opt.*: []
                     default: ['mozilla-central']
     target: geckoview_example.apk
     tier: 1
@@ -26,6 +28,9 @@ job-defaults:
         script: raptor_script.py
         config:
             - raptor/android_hw_config.py
+    optimization:
+        push-interval-25:
+            - android
 
 raptor-tp6m-1-geckoview:
     description: "Raptor tp6m-1 on GeckoView"
@@ -128,10 +133,12 @@ raptor-speedometer-geckoview:
     treeherder-symbol: Rap(sp)
     run-on-projects:
         by-test-platform:
-            android-hw-.*/opt: []
+            android-hw-.*(?<!-shippable)/opt: []
             android-hw-p2-.*api-16/pgo: []
             android-hw-p2-.*aarch64.*/pgo: ['trunk', 'mozilla-beta']
+            android-hw-p2-.*aarch64-shippable/opt: ['trunk', 'mozilla-beta']
             android-hw-g5.*/pgo: ['trunk', 'mozilla-beta']
+            android-hw-g5.*-shippable/opt: ['trunk', 'mozilla-beta']
             default: ['mozilla-central', 'mozilla-beta']
     max-run-time: 900
     mozharness:
@@ -282,9 +289,11 @@ raptor-unity-webgl-geckoview:
     treeherder-symbol: Rap(ugl)
     run-on-projects:
         by-test-platform:
-            android-hw-.*/opt: []
+            android-hw-.*(?<!-shippable)/opt: []
             android-hw-p2-.*api-16/pgo: []
+            android-hw-p2-.*api-16-shippable/opt: []
             android-hw-(?!p2-.*api-16)/pgo: ['trunk', 'mozilla-beta']
+            android-hw-(?!p2-.*api-16)-shippable/opt: ['trunk', 'mozilla-beta']
             default: ['mozilla-central', 'mozilla-beta']
     max-run-time: 900
     mozharness:
@@ -304,9 +313,11 @@ raptor-youtube-playback-geckoview:
     run-on-projects:
         by-test-platform:
             android-hw-p2.*aarch64.*/pgo: ['mozilla-central']
+            android-hw-p2.*aarch64-shippable/opt: ['mozilla-central']
             android-hw-g5.*/pgo: ['mozilla-central']
+            android-hw-g5.*-shippable/opt: ['mozilla-central']
             default: []
-    max-run-time: 3600
+    max-run-time: 3000
     mozharness:
         extra-options:
             - --test=raptor-youtube-playback
@@ -316,6 +327,97 @@ raptor-youtube-playback-geckoview:
             # Bug 1558456 - Stop tracking youtube-playback-test on motoG5 for >1080p cases
             # - --test-url-params is dynamically added from setup_raptor transform depending
             # on platform and project
+
+raptor-youtube-playback-av1-sfr-geckoview:
+    description: "Raptor YouTube Playback AV1 SFR on GeckoView"
+    try-name: raptor-youtube-playback-av1-sfr-geckoview
+    treeherder-symbol: Rap(ytp-av1-sfr)
+    run-on-projects:
+        by-test-platform:
+            android-hw-p2.*aarch64.*/pgo: ['mozilla-central']
+            android-hw-p2.*aarch64-shippable/opt: ['mozilla-central']
+            android-hw-g5.*/pgo: ['mozilla-central']
+            android-hw-g5.*-shippable/opt: ['mozilla-central']
+            default: []
+    mozharness:
+        extra-options:
+            - --test=raptor-youtube-playback-av1-sfr
+            - --app=geckoview
+            - --binary=org.mozilla.geckoview_example
+            - --activity=org.mozilla.geckoview_example.GeckoViewActivity
+
+raptor-youtube-playback-h264-sfr-geckoview:
+    description: "Raptor YouTube Playback H264 SFR on GeckoView"
+    try-name: raptor-youtube-playback-h264-sfr-geckoview
+    treeherder-symbol: Rap(ytp-h264-sfr)
+    run-on-projects:
+        by-test-platform:
+            android-hw-p2.*aarch64.*/pgo: ['mozilla-central']
+            android-hw-p2.*aarch64-shippable/opt: ['mozilla-central']
+            android-hw-g5.*/pgo: ['mozilla-central']
+            android-hw-g5.*-shippable/opt: ['mozilla-central']
+            default: []
+    mozharness:
+        extra-options:
+            - --test=raptor-youtube-playback-h264-sfr
+            - --app=geckoview
+            - --binary=org.mozilla.geckoview_example
+            - --activity=org.mozilla.geckoview_example.GeckoViewActivity
+
+raptor-youtube-playback-vp9-sfr-geckoview:
+    description: "Raptor YouTube Playback VP9 SFR on GeckoView"
+    try-name: raptor-youtube-playback-vp9-sfr-geckoview
+    treeherder-symbol: Rap(ytp-vp9-sfr)
+    run-on-projects:
+        by-test-platform:
+            android-hw-p2.*aarch64.*/pgo: ['mozilla-central']
+            android-hw-p2.*aarch64-shippable/opt: ['mozilla-central']
+            default: []
+    mozharness:
+        extra-options:
+            - --test=raptor-youtube-playback-vp9-sfr
+            - --app=geckoview
+            - --binary=org.mozilla.geckoview_example
+            - --activity=org.mozilla.geckoview_example.GeckoViewActivity
+
+raptor-youtube-playback-widevine-hfr-geckoview:
+    description: "Raptor YouTube Playback Widevine HFR on GeckoView"
+    try-name: raptor-youtube-playback-widevine-hfr-geckoview
+    treeherder-symbol: Rap(ytp-widevine-hfr)
+    run-on-projects: []
+    max-run-time: 3000
+    mozharness:
+        extra-options:
+            - --test=raptor-youtube-playback-widevine-hfr
+            - --app=geckoview
+            - --binary=org.mozilla.geckoview_example
+            - --activity=org.mozilla.geckoview_example.GeckoViewActivity
+
+raptor-youtube-playback-widevine-h264-sfr-geckoview:
+    description: "Raptor YouTube Playback Widevine H264 SFR on GeckoView"
+    try-name: raptor-youtube-playback-widevine-h264-sfr-geckoview
+    treeherder-symbol: Rap(ytp-widevine-h264-sfr)
+    run-on-projects: []
+    max-run-time: 3000
+    mozharness:
+        extra-options:
+            - --test=raptor-youtube-playback-widevine-h264-sfr
+            - --app=geckoview
+            - --binary=org.mozilla.geckoview_example
+            - --activity=org.mozilla.geckoview_example.GeckoViewActivity
+
+raptor-youtube-playback-widevine-vp9-sfr-geckoview:
+    description: "Raptor YouTube Playback Widevine VP9 SFR on GeckoView"
+    try-name: raptor-youtube-playback-widevine-vp9-sfr-geckoview
+    treeherder-symbol: Rap(ytp-widevine-vp9-sfr)
+    run-on-projects: []
+    max-run-time: 3000
+    mozharness:
+        extra-options:
+            - --test=raptor-youtube-playback-widevine-vp9-sfr
+            - --app=geckoview
+            - --binary=org.mozilla.geckoview_example
+            - --activity=org.mozilla.geckoview_example.GeckoViewActivity
 
 raptor-tp6m-1-geckoview-cold:
     description: "Raptor tp6m-1 cold page-load on GeckoView Example"

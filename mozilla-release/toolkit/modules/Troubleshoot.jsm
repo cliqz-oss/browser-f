@@ -46,6 +46,7 @@ const PREFS_WHITELIST = [
   "browser.search.log",
   "browser.search.openintab",
   "browser.search.param",
+  "browser.search.region",
   "browser.search.searchEnginesURL",
   "browser.search.suggest.enabled",
   "browser.search.update",
@@ -198,6 +199,9 @@ var dataProviders = {
         Services.sysinfo.getProperty("version"),
       version: AppConstants.MOZ_APP_VERSION_DISPLAY,
       buildID: Services.appinfo.appBuildID,
+      distributionID: Services.prefs
+        .getDefaultBranch("")
+        .getCharPref("distribution.id", ""),
       userAgent: Cc["@mozilla.org/network/protocol;1?name=http"].getService(
         Ci.nsIHttpProtocolHandler
       ).userAgent,
@@ -387,6 +391,10 @@ var dataProviders = {
         remoteTypes.gpu = 1;
       }
     } catch (e) {}
+
+    if (Services.io.socketProcessLaunched) {
+      remoteTypes.socket = 1;
+    }
 
     let data = {
       remoteTypes,
@@ -686,17 +694,6 @@ var dataProviders = {
         .audioDevices(Ci.nsIDOMWindowUtils.AUDIO_INPUT)
         .QueryInterface(Ci.nsIArray)
     );
-    done(data);
-  },
-
-  javaScript: function javaScript(done) {
-    let data = {};
-    let winEnumer = Services.ww.getWindowEnumerator();
-    if (winEnumer.hasMoreElements()) {
-      data.incrementalGCEnabled = winEnumer
-        .getNext()
-        .windowUtils.isIncrementalGCEnabled();
-    }
     done(data);
   },
 

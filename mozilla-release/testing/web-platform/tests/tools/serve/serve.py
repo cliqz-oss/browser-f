@@ -34,7 +34,7 @@ from mod_pywebsocket import standalone as pywebsocket
 
 
 EDIT_HOSTS_HELP = ("Please ensure all the necessary WPT subdomains "
-                   "are mapped to a loopback device in /etc/hosts. "
+                   "are mapped to a loopback device in /etc/hosts.\n"
                    "See https://web-platform-tests.org/running-tests/from-local-system.html#system-setup "
                    "for instructions.")
 
@@ -178,9 +178,9 @@ class HtmlWrapperHandler(WrapperHandler):
 
     def check_exposure(self, request):
         if self.global_type:
-            globals = b""
+            globals = u""
             for (key, value) in self._get_metadata(request):
-                if key == b"global":
+                if key == "global":
                     globals = value
                     break
 
@@ -189,23 +189,23 @@ class HtmlWrapperHandler(WrapperHandler):
                                     self.global_type)
 
     def _meta_replacement(self, key, value):
-        if key == b"timeout":
-            if value == b"long":
+        if key == "timeout":
+            if value == "long":
                 return '<meta name="timeout" content="long">'
-        if key == b"title":
-            value = value.decode('utf-8').replace("&", "&amp;").replace("<", "&lt;")
+        if key == "title":
+            value = value.replace("&", "&amp;").replace("<", "&lt;")
             return '<title>%s</title>' % value
         return None
 
     def _script_replacement(self, key, value):
-        if key == b"script":
-            attribute = value.decode('utf-8').replace("&", "&amp;").replace('"', "&quot;")
+        if key == "script":
+            attribute = value.replace("&", "&amp;").replace('"', "&quot;")
             return '<script src="%s"></script>' % attribute
         return None
 
 
 class WorkersHandler(HtmlWrapperHandler):
-    global_type = b"dedicatedworker"
+    global_type = "dedicatedworker"
     path_replace = [(".any.worker.html", ".any.js", ".any.worker.js"),
                     (".worker.html", ".worker.js")]
     wrapper = """<!doctype html>
@@ -234,7 +234,7 @@ class WindowHandler(HtmlWrapperHandler):
 
 
 class AnyHtmlHandler(HtmlWrapperHandler):
-    global_type = b"window"
+    global_type = "window"
     path_replace = [(".any.html", ".any.js")]
     wrapper = """<!doctype html>
 <meta charset=utf-8>
@@ -254,7 +254,7 @@ self.GLOBAL = {
 
 
 class SharedWorkersHandler(HtmlWrapperHandler):
-    global_type = b"sharedworker"
+    global_type = "sharedworker"
     path_replace = [(".any.sharedworker.html", ".any.js", ".any.worker.js")]
     wrapper = """<!doctype html>
 <meta charset=utf-8>
@@ -269,7 +269,7 @@ fetch_tests_from_worker(new SharedWorker("%(path)s%(query)s"));
 
 
 class ServiceWorkersHandler(HtmlWrapperHandler):
-    global_type = b"serviceworker"
+    global_type = "serviceworker"
     path_replace = [(".any.serviceworker.html", ".any.js", ".any.worker.js")]
     wrapper = """<!doctype html>
 <meta charset=utf-8>
@@ -307,11 +307,11 @@ done();
         return None
 
     def _script_replacement(self, key, value):
-        if key == b"script":
-            attribute = value.decode('utf-8').replace("\\", "\\\\").replace('"', '\\"')
+        if key == "script":
+            attribute = value.replace("\\", "\\\\").replace('"', '\\"')
             return 'importScripts("%s")' % attribute
-        if key == b"title":
-            value = value.decode('utf-8').replace("\\", "\\\\").replace('"', '\\"')
+        if key == "title":
+            value = value.replace("\\", "\\\\").replace('"', '\\"')
             return 'self.META_TITLE = "%s";' % value
         return None
 
@@ -419,10 +419,10 @@ class ServerProc(object):
         try:
             self.daemon = init_func(host, port, paths, routes, bind_address, config, **kwargs)
         except socket.error:
-            print("Socket error on port %s" % port, file=sys.stderr)
+            logger.critical("Socket error on port %s" % port, file=sys.stderr)
             raise
         except Exception:
-            print(traceback.format_exc(), file=sys.stderr)
+            logger.critical(traceback.format_exc())
             raise
 
         if self.daemon:
@@ -538,50 +538,68 @@ def start_servers(host, ports, paths, routes, bind_address, config, **kwargs):
     return servers
 
 
+def startup_failed(log=True):
+    # Log=False is a workaround for https://github.com/web-platform-tests/wpt/issues/22719
+    if log:
+        logger.critical(EDIT_HOSTS_HELP)
+    else:
+        print("CRITICAL %s" % EDIT_HOSTS_HELP, file=sys.stderr)
+    sys.exit(1)
+
+
 def start_http_server(host, port, paths, routes, bind_address, config, **kwargs):
-    return wptserve.WebTestHttpd(host=host,
-                                 port=port,
-                                 doc_root=paths["doc_root"],
-                                 routes=routes,
-                                 rewrites=rewrites,
-                                 bind_address=bind_address,
-                                 config=config,
-                                 use_ssl=False,
-                                 key_file=None,
-                                 certificate=None,
-                                 latency=kwargs.get("latency"))
+    try:
+        return wptserve.WebTestHttpd(host=host,
+                                     port=port,
+                                     doc_root=paths["doc_root"],
+                                     routes=routes,
+                                     rewrites=rewrites,
+                                     bind_address=bind_address,
+                                     config=config,
+                                     use_ssl=False,
+                                     key_file=None,
+                                     certificate=None,
+                                     latency=kwargs.get("latency"))
+    except Exception:
+        startup_failed()
 
 
 def start_https_server(host, port, paths, routes, bind_address, config, **kwargs):
-    return wptserve.WebTestHttpd(host=host,
-                                 port=port,
-                                 doc_root=paths["doc_root"],
-                                 routes=routes,
-                                 rewrites=rewrites,
-                                 bind_address=bind_address,
-                                 config=config,
-                                 use_ssl=True,
-                                 key_file=config.ssl_config["key_path"],
-                                 certificate=config.ssl_config["cert_path"],
-                                 encrypt_after_connect=config.ssl_config["encrypt_after_connect"],
-                                 latency=kwargs.get("latency"))
+    try:
+        return wptserve.WebTestHttpd(host=host,
+                                     port=port,
+                                     doc_root=paths["doc_root"],
+                                     routes=routes,
+                                     rewrites=rewrites,
+                                     bind_address=bind_address,
+                                     config=config,
+                                     use_ssl=True,
+                                     key_file=config.ssl_config["key_path"],
+                                     certificate=config.ssl_config["cert_path"],
+                                     encrypt_after_connect=config.ssl_config["encrypt_after_connect"],
+                                     latency=kwargs.get("latency"))
+    except Exception:
+        startup_failed()
 
 
 def start_http2_server(host, port, paths, routes, bind_address, config, **kwargs):
-    return wptserve.WebTestHttpd(host=host,
-                                 port=port,
-                                 handler_cls=wptserve.Http2WebTestRequestHandler,
-                                 doc_root=paths["doc_root"],
-                                 routes=routes,
-                                 rewrites=rewrites,
-                                 bind_address=bind_address,
-                                 config=config,
-                                 use_ssl=True,
-                                 key_file=config.ssl_config["key_path"],
-                                 certificate=config.ssl_config["cert_path"],
-                                 encrypt_after_connect=config.ssl_config["encrypt_after_connect"],
-                                 latency=kwargs.get("latency"),
-                                 http2=True)
+    try:
+        return wptserve.WebTestHttpd(host=host,
+                                     port=port,
+                                     handler_cls=wptserve.Http2WebTestRequestHandler,
+                                     doc_root=paths["doc_root"],
+                                     routes=routes,
+                                     rewrites=rewrites,
+                                     bind_address=bind_address,
+                                     config=config,
+                                     use_ssl=True,
+                                     key_file=config.ssl_config["key_path"],
+                                     certificate=config.ssl_config["cert_path"],
+                                     encrypt_after_connect=config.ssl_config["encrypt_after_connect"],
+                                     latency=kwargs.get("latency"),
+                                     http2=True)
+    except Exception:
+        startup_failed()
 
 
 class WebSocketDaemon(object):
@@ -604,6 +622,12 @@ class WebSocketDaemon(object):
 
         self.server = pywebsocket.WebSocketServer(opts)
         ports = [item[0].getsockname()[1] for item in self.server._sockets]
+        if not ports:
+            # TODO: Fix the logging configuration in WebSockets processes
+            # see https://github.com/web-platform-tests/wpt/issues/22719
+            print("Failed to start websocket server on port %s, "
+                  "is something already using that port?" % port, file=sys.stderr)
+            raise OSError()
         assert all(item == ports[0] for item in ports)
         self.port = ports[0]
         self.started = False
@@ -652,12 +676,15 @@ def start_ws_server(host, port, paths, routes, bind_address, config, **kwargs):
     # in the logging module unlocked
     reload_module(logging)
     release_mozlog_lock()
-    return WebSocketDaemon(host,
-                           str(port),
-                           repo_root,
-                           config.paths["ws_doc_root"],
-                           bind_address,
-                           ssl_config=None)
+    try:
+        return WebSocketDaemon(host,
+                               str(port),
+                               repo_root,
+                               config.paths["ws_doc_root"],
+                               bind_address,
+                               ssl_config=None)
+    except Exception:
+        startup_failed(log=False)
 
 
 def start_wss_server(host, port, paths, routes, bind_address, config, **kwargs):
@@ -665,12 +692,15 @@ def start_wss_server(host, port, paths, routes, bind_address, config, **kwargs):
     # in the logging module unlocked
     reload_module(logging)
     release_mozlog_lock()
-    return WebSocketDaemon(host,
-                           str(port),
-                           repo_root,
-                           config.paths["ws_doc_root"],
-                           bind_address,
-                           config.ssl_config)
+    try:
+        return WebSocketDaemon(host,
+                               str(port),
+                               repo_root,
+                               config.paths["ws_doc_root"],
+                               bind_address,
+                               config.ssl_config)
+    except Exception:
+        startup_failed(log=False)
 
 
 def start(config, routes, **kwargs):
@@ -893,16 +923,22 @@ def run(**kwargs):
             signal.signal(signal.SIGTERM, handle_signal)
             signal.signal(signal.SIGINT, handle_signal)
 
-            while all(item.is_alive() for item in iter_procs(servers)) and not received_signal.is_set():
-                for item in iter_procs(servers):
-                    item.join(1)
-            exited = [item for item in iter_procs(servers) if not item.is_alive()]
-            subject = "subprocess" if len(exited) == 1 else "subprocesses"
+            while (all(subproc.is_alive() for subproc in iter_procs(servers)) and
+                   not received_signal.is_set()):
+                for subproc in iter_procs(servers):
+                    subproc.join(1)
 
-            logger.info("%s %s exited:" % (len(exited), subject))
-
-            for item in iter_procs(servers):
-                logger.info("Status of %s:\t%s" % (item.name, "running" if item.is_alive() else "not running"))
+            failed_subproc = 0
+            for subproc in iter_procs(servers):
+                if subproc.is_alive():
+                    logger.info('Status of subprocess "%s": running' % subproc.name)
+                else:
+                    if subproc.exitcode == 0:
+                        logger.info('Status of subprocess "%s": exited correctly' % subproc.name)
+                    else:
+                        logger.warning('Status of subprocess "%s": failed. Exit with non-zero status: %d' % (subproc.name, subproc.exitcode))
+                        failed_subproc += 1
+            return failed_subproc
 
 
 def main():

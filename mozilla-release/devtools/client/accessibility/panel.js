@@ -96,6 +96,16 @@ AccessibilityPanel.prototype = {
       this.onTargetAvailable
     );
 
+    // Bug 1602075: if auto init feature is enabled, enable accessibility
+    // service if necessary.
+    if (
+      this.accessibilityProxy.supports.autoInit &&
+      this.accessibilityProxy.canBeEnabled &&
+      !this.accessibilityProxy.enabled
+    ) {
+      await this.accessibilityProxy.enableAccessibility();
+    }
+
     this.picker = new Picker(this);
     this.fluentBundles = await this.createFluentBundles();
 
@@ -152,8 +162,8 @@ AccessibilityPanel.prototype = {
     this._opening.then(() => this.refresh());
   },
 
-  async onTargetAvailable({ targetFront, isTopLevel, isTargetSwitching }) {
-    if (isTopLevel) {
+  async onTargetAvailable({ targetFront, isTargetSwitching }) {
+    if (targetFront.isTopLevel) {
       await this.accessibilityProxy.initializeProxyForPanel(targetFront);
       this.accessibilityProxy.currentTarget.on("navigate", this.onTabNavigated);
     }
@@ -184,25 +194,41 @@ AccessibilityPanel.prototype = {
     }
     // Alright reset the flag we are about to refresh the panel.
     this.shouldRefresh = false;
+    const {
+      supports,
+      getAccessibilityTreeRoot,
+      startListeningForAccessibilityEvents,
+      stopListeningForAccessibilityEvents,
+      audit,
+      simulate,
+      enableAccessibility,
+      disableAccessibility,
+      resetAccessiblity,
+      startListeningForLifecycleEvents,
+      stopListeningForLifecycleEvents,
+      startListeningForParentLifecycleEvents,
+      stopListeningForParentLifecycleEvents,
+      highlightAccessible,
+      unhighlightAccessible,
+    } = this.accessibilityProxy;
     this.postContentMessage("initialize", {
-      supports: this.supports,
       fluentBundles: this.fluentBundles,
       toolbox: this._toolbox,
-      getAccessibilityTreeRoot: this.accessibilityProxy
-        .getAccessibilityTreeRoot,
-      startListeningForAccessibilityEvents: this.accessibilityProxy
-        .startListeningForAccessibilityEvents,
-      stopListeningForAccessibilityEvents: this.accessibilityProxy
-        .stopListeningForAccessibilityEvents,
-      audit: this.accessibilityProxy.audit,
-      simulate: this.accessibilityProxy.simulate,
-      enableAccessibility: this.accessibilityProxy.enableAccessibility,
-      disableAccessibility: this.accessibilityProxy.disableAccessibility,
-      resetAccessiblity: this.accessibilityProxy.resetAccessiblity,
-      startListeningForLifecycleEvents: this.accessibilityProxy
-        .startListeningForLifecycleEvents,
-      stopListeningForLifecycleEvents: this.accessibilityProxy
-        .stopListeningForLifecycleEvents,
+      supports,
+      getAccessibilityTreeRoot,
+      startListeningForAccessibilityEvents,
+      stopListeningForAccessibilityEvents,
+      audit,
+      simulate,
+      enableAccessibility,
+      disableAccessibility,
+      resetAccessiblity,
+      startListeningForLifecycleEvents,
+      stopListeningForLifecycleEvents,
+      startListeningForParentLifecycleEvents,
+      stopListeningForParentLifecycleEvents,
+      highlightAccessible,
+      unhighlightAccessible,
     });
   },
 

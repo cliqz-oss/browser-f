@@ -642,6 +642,13 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
     Action ComputeActionFor(const WidgetWheelEvent* aEvent);
 
     /**
+     * Same as ComputeActionFor, but also records telemetry probes about the
+     * event. This is a member of WheelPrefs mostly to avoid exposing private
+     * members.
+     */
+    Action RecordTelemetryAndComputeActionFor(const WidgetWheelEvent* aEvent);
+
+    /**
      * NeedToComputeLineOrPageDelta() returns if the aEvent needs to be
      * computed the lineOrPageDelta values.
      */
@@ -925,7 +932,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
 
   void DoScrollHistory(int32_t direction);
   void DoScrollZoom(nsIFrame* aTargetFrame, int32_t adjustment);
-  nsresult ChangeZoom(int32_t change);
+  void ChangeZoom(bool aIncrease);
 
   /**
    * DeltaAccumulator class manages delta values for dispatching DOMMouseScroll
@@ -1104,7 +1111,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    * If you need to check if the event is posted to a remote process, you
    * can use aEvent->HasBeenPostedToRemoteProcess().
    */
-  void DispatchCrossProcessEvent(WidgetEvent* aEvent, nsFrameLoader* aRemote,
+  void DispatchCrossProcessEvent(WidgetEvent* aEvent,
+                                 dom::BrowserParent* aRemoteTarget,
                                  nsEventStatus* aStatus);
   /**
    * HandleCrossProcessEvent() may post aEvent to target remote processes.

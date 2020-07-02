@@ -26,6 +26,13 @@ const BinaryInputStream = Components.Constructor(
   "setInputStream"
 );
 
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gModernConfig",
+  SearchUtils.BROWSER_SEARCH_PREF + "modernConfig",
+  false
+);
+
 const SEARCH_BUNDLE = "chrome://global/locale/search/search.properties";
 const BRAND_BUNDLE = "chrome://branding/locale/brand.properties";
 
@@ -511,7 +518,6 @@ const ENGINE_ALIASES = new Map([
   ["google", ["@google"]],
   ["amazondotcom", ["@amazon"]],
   ["amazon", ["@amazon"]],
-  ["twitter", ["@twitter"]],
   ["wikipedia", ["@wikipedia"]],
   ["ebay", ["@ebay"]],
   ["bing", ["@bing"]],
@@ -778,6 +784,10 @@ function SearchEngine(options = {}) {
     throw new Error("isBuiltin missing from options.");
   }
   this._isBuiltin = options.isBuiltin;
+  // The alias coming from the engine definition (via webextension
+  // keyword field for example) may be overridden in the metaData
+  // with a user defined alias.
+  this._definedAlias = null;
   this._urls = [];
   this._metaData = {};
 
@@ -906,6 +916,10 @@ SearchEngine.prototype = {
   _orderHint: null,
   // The telemetry id from the configuration (if any).
   _telemetryId: null,
+  // Set to true once the engine has been added to the store, and the initial
+  // notification sent. This allows to skip sending notifications during
+  // initialization.
+  _engineAddedToStore: false,
 
   /**
    * Retrieves the data from the engine's file asynchronously.
@@ -1302,7 +1316,9 @@ SearchEngine.prototype = {
       case "data":
         if (!this._hasPreferredIcon || isPreferred) {
           this._iconURI = uri;
-          SearchUtils.notifyAction(this, SearchUtils.MODIFIED_TYPE.CHANGED);
+          if (this._engineAddedToStore) {
+            SearchUtils.notifyAction(this, SearchUtils.MODIFIED_TYPE.CHANGED);
+          }
           this._hasPreferredIcon = isPreferred;
         }
 
@@ -1363,7 +1379,9 @@ SearchEngine.prototype = {
             engine._addIconToMap(width, height, dataURL);
           }
 
-          SearchUtils.notifyAction(engine, SearchUtils.MODIFIED_TYPE.CHANGED);
+          if (engine._engineAddedToStore) {
+            SearchUtils.notifyAction(engine, SearchUtils.MODIFIED_TYPE.CHANGED);
+          }
           engine._hasPreferredIcon = isPreferred;
         };
 
@@ -1484,7 +1502,33 @@ SearchEngine.prototype = {
     this._locale = params.locale;
     this._orderHint = params.orderHint;
     this._telemetryId = params.telemetryId;
+    this._name = engineName;
+    if (params.shortName) {
+      this._shortName = params.shortName;
+    }
+    this._definedAlias = params.alias?.trim() || null;
+    this._description = params.description;
+    if (params.iconURL) {
+      this._setIcon(params.iconURL, true);
+    }
+    // Other sizes
+    if (params.icons) {
+      for (let icon of params.icons) {
+        this._addIconToMap(icon.size, icon.size, icon.url);
+      }
+    }
+    this._setUrls(params);
+  },
 
+  /**
+   * This sets the urls for the search engine based on the supplied parameters.
+   * If you add anything here, please consider if it needs to be handled in the
+   * overrideWithExtension / removeExtensionOverride functions as well.
+   *
+   * @param {object} params
+   *   The parameters to set.
+   */
+  _setUrls(params) {
     this._initEngineURLFromMetaData(SearchUtils.URL_TYPE.SEARCH, {
       method: (params.searchPostParams && "POST") || params.method || "GET",
       template: params.template,
@@ -1502,9 +1546,7 @@ SearchEngine.prototype = {
       });
     }
 
-    if (params.queryCharset) {
-      this._queryCharset = params.queryCharset;
-    }
+    this._queryCharset = params.queryCharset || null;
     if (params.postData) {
       let queries = new URLSearchParams(params.postData);
       for (let [name, value] of queries) {
@@ -1512,21 +1554,56 @@ SearchEngine.prototype = {
       }
     }
 
-    this._name = engineName;
-    if (params.shortName) {
-      this._shortName = params.shortName;
-    }
-    this.alias = params.alias;
-    this._description = params.description;
     this.__searchForm = params.searchForm;
-    if (params.iconURL) {
-      this._setIcon(params.iconURL, true);
-    }
-    // Other sizes
-    if (params.icons) {
-      for (let icon of params.icons) {
-        this._addIconToMap(icon.size, icon.size, icon.url);
-      }
+  },
+
+  /**
+   * Update this engine based on new metadata, used during
+   * webextension upgrades.
+   *
+   * @param {object} params
+   *   The URL parameters.
+   */
+  _updateFromMetadata(params) {
+    this._urls = [];
+    this._iconMapObj = null;
+    this._initFromMetadata(params.name, params);
+    SearchUtils.notifyAction(this, SearchUtils.MODIFIED_TYPE.CHANGED);
+  },
+
+  /**
+   * Overrides the urls/parameters with those of the provided extension.
+   * The parameters are not saved to the search cache - the code handling
+   * the extension should set these on every restart, this avoids potential
+   * third party modifications and means that we can verify the WebExtension is
+   * still in the allow list.
+   *
+   * @param {object} params
+   *   The extension parameters.
+   */
+  overrideWithExtension(params) {
+    this._overriddenData = {
+      urls: this._urls,
+      queryCharset: this._queryCharset,
+      searchForm: this.__searchForm,
+    };
+    this._urls = [];
+    this.setAttr("overriddenBy", params.extensionID);
+    this._setUrls(params);
+    SearchUtils.notifyAction(this, SearchUtils.MODIFIED_TYPE.CHANGED);
+  },
+
+  /**
+   * Resets the overrides for the engine if it has been overridden.
+   */
+  removeExtensionOverride() {
+    if (this.getAttr("overriddenBy")) {
+      this._urls = this._overriddenData.urls;
+      this._queryCharset = this._overriddenData.queryCharset;
+      this.__searchForm = this._overriddenData.searchForm;
+      delete this._overriddenData;
+      this.clearAttr("overriddenBy");
+      SearchUtils.notifyAction(this, SearchUtils.MODIFIED_TYPE.CHANGED);
     }
   },
 
@@ -1836,9 +1913,13 @@ SearchEngine.prototype = {
     return this._metaData[name] || undefined;
   },
 
+  clearAttr(name) {
+    delete this._metaData[name];
+  },
+
   // nsISearchEngine
   get alias() {
-    return this.getAttr("alias");
+    return this.getAttr("alias") || this._definedAlias;
   },
   set alias(val) {
     var value = val ? val.trim() : null;
@@ -1858,7 +1939,12 @@ SearchEngine.prototype = {
    * @returns {string}
    */
   get telemetryId() {
-    return this._telemetryId || this.identifier || `other-${this.name}`;
+    let telemetryId =
+      this._telemetryId || this.identifier || `other-${this.name}`;
+    if (this.getAttr("overriddenBy")) {
+      return telemetryId + "-addon";
+    }
+    return telemetryId;
   },
 
   /**
@@ -2030,6 +2116,12 @@ SearchEngine.prototype = {
   },
 
   get isAppProvided() {
+    // For the modern configuration, distribution engines are app-provided as
+    // well and we don't have xml files as app-provided engines.
+    if (gModernConfig) {
+      return !!(this._extensionID && this._isBuiltin);
+    }
+
     if (this._extensionID) {
       return this._isBuiltin || this._isDistribution;
     }
@@ -2333,7 +2425,7 @@ SearchEngine.prototype = {
       Cu.reportError(
         "invalid options arg passed to nsISearchEngine.speculativeConnect"
       );
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
     }
     let connector = Services.io.QueryInterface(Ci.nsISpeculativeConnect);
 

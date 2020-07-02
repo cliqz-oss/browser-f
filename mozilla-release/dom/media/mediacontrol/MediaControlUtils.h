@@ -19,6 +19,8 @@ namespace dom {
 
 inline const char* ToMediaControlKeysEventStr(MediaControlKeysEvent aKeyEvent) {
   switch (aKeyEvent) {
+    case MediaControlKeysEvent::eFocus:
+      return "Focus";
     case MediaControlKeysEvent::ePause:
       return "Pause";
     case MediaControlKeysEvent::ePlay:
@@ -59,9 +61,31 @@ ConvertMediaControlKeysTestEventToMediaControlKeysEvent(
       return MediaControlKeysEvent::eSeekBackward;
     case MediaControlKeysTestEvent::Seekforward:
       return MediaControlKeysEvent::eSeekForward;
+    case MediaControlKeysTestEvent::Focus:
+      return MediaControlKeysEvent::eFocus;
     default:
       MOZ_ASSERT(aEvent == MediaControlKeysTestEvent::Stop);
       return MediaControlKeysEvent::eStop;
+  }
+}
+
+inline const char* ToMediaSessionActionStr(MediaSessionAction aAction) {
+  switch (aAction) {
+    case MediaSessionAction::Play:
+      return "play";
+    case MediaSessionAction::Pause:
+      return "pause";
+    case MediaSessionAction::Seekbackward:
+      return "seek backward";
+    case MediaSessionAction::Seekforward:
+      return "seek forward";
+    case MediaSessionAction::Previoustrack:
+      return "previous track";
+    case MediaSessionAction::Nexttrack:
+      return "next track";
+    default:
+      MOZ_ASSERT(aAction == MediaSessionAction::Stop);
+      return "stop";
   }
 }
 
@@ -78,18 +102,30 @@ inline MediaSessionPlaybackTestState ConvertToMediaSessionPlaybackTestState(
   }
 }
 
-inline const char* ToControlledMediaStateStr(ControlledMediaState aState) {
+inline const char* ToMediaPlaybackStateStr(MediaPlaybackState aState) {
   switch (aState) {
-    case ControlledMediaState::eStarted:
+    case MediaPlaybackState::eStarted:
       return "started";
-    case ControlledMediaState::ePlayed:
+    case MediaPlaybackState::ePlayed:
       return "played";
-    case ControlledMediaState::ePaused:
+    case MediaPlaybackState::ePaused:
       return "paused";
-    case ControlledMediaState::eStopped:
+    case MediaPlaybackState::eStopped:
       return "stopped";
     default:
       MOZ_ASSERT_UNREACHABLE("Invalid media state.");
+      return "Unknown";
+  }
+}
+
+inline const char* ToMediaAudibleStateStr(MediaAudibleState aState) {
+  switch (aState) {
+    case MediaAudibleState::eInaudible:
+      return "inaudible";
+    case MediaAudibleState::eAudible:
+      return "audible";
+    default:
+      MOZ_ASSERT_UNREACHABLE("Invalid audible state.");
       return "Unknown";
   }
 }

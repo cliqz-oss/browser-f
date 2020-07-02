@@ -66,7 +66,8 @@ namespace mozilla {
 
 namespace dom {
 class PerformanceStorage;
-}
+class ContentParent;
+}  // namespace dom
 
 class LogCollector;
 
@@ -124,11 +125,11 @@ class HttpBaseChannel : public nsHashPropertyBag,
 
   HttpBaseChannel();
 
-  virtual MOZ_MUST_USE nsresult Init(nsIURI* aURI, uint32_t aCaps,
-                                     nsProxyInfo* aProxyInfo,
-                                     uint32_t aProxyResolveFlags,
-                                     nsIURI* aProxyURI, uint64_t aChannelId,
-                                     nsContentPolicyType aContentPolicyType);
+  [[nodiscard]] virtual nsresult Init(nsIURI* aURI, uint32_t aCaps,
+                                      nsProxyInfo* aProxyInfo,
+                                      uint32_t aProxyResolveFlags,
+                                      nsIURI* aProxyURI, uint64_t aChannelId,
+                                      nsContentPolicyType aContentPolicyType);
 
   // nsIRequest
   NS_IMETHOD GetName(nsACString& aName) override;
@@ -276,7 +277,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD GetTlsFlags(uint32_t* aTlsFlags) override;
   NS_IMETHOD SetTlsFlags(uint32_t aTlsFlags) override;
   NS_IMETHOD GetApiRedirectToURI(nsIURI** aApiRedirectToURI) override;
-  virtual MOZ_MUST_USE nsresult AddSecurityMessage(
+  [[nodiscard]] virtual nsresult AddSecurityMessage(
       const nsAString& aMessageTag, const nsAString& aMessageCategory);
   NS_IMETHOD TakeAllSecurityMessages(
       nsCOMArray<nsISecurityConsoleMessage>& aMessages) override;
@@ -300,6 +301,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   virtual void SetCorsPreflightParameters(
       const nsTArray<nsCString>& unsafeHeaders) override;
   virtual void SetAltDataForChild(bool aIsForChild) override;
+  virtual void DisableAltDataCache() override { mDisableAltDataCache = true; };
+
   NS_IMETHOD GetConnectionInfoHashKey(
       nsACString& aConnectionInfoHashKey) override;
   NS_IMETHOD GetIntegrityMetadata(nsAString& aIntegrityMetadata) override;
@@ -316,6 +319,9 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD ComputeCrossOriginOpenerPolicy(
       nsILoadInfo::CrossOriginOpenerPolicy aInitiatorPolicy,
       nsILoadInfo::CrossOriginOpenerPolicy* aOutPolicy) override;
+  NS_IMETHOD HasCrossOriginOpenerPolicyMismatch(bool* aIsMismatch) override;
+  NS_IMETHOD GetResponseEmbedderPolicy(
+      nsILoadInfo::CrossOriginEmbedderPolicy* aOutPolicy) override;
   virtual bool GetHasNonEmptySandboxingFlag() override {
     return mHasNonEmptySandboxingFlag;
   }
@@ -329,6 +335,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   }
   NS_IMETHOD HTTPUpgrade(const nsACString& aProtocolName,
                          nsIHttpUpgradeListener* aListener) override;
+  void DoDiagnosticAssertWhenOnStopNotCalledOnDestroy() override;
 
   // nsISupportsPriority
   NS_IMETHOD GetPriority(int32_t* value) override;
@@ -385,7 +392,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
    private:
     virtual ~nsContentEncodings() = default;
 
-    MOZ_MUST_USE nsresult PrepareForNext(void);
+    [[nodiscard]] nsresult PrepareForNext(void);
 
     // We do not own the buffer.  The channel owns it.
     const char* mEncodingHeader;
@@ -408,7 +415,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   const NetAddr& GetSelfAddr() { return mSelfAddr; }
   const NetAddr& GetPeerAddr() { return mPeerAddr; }
 
-  MOZ_MUST_USE nsresult OverrideSecurityInfo(nsISupports* aSecurityInfo);
+  [[nodiscard]] nsresult OverrideSecurityInfo(nsISupports* aSecurityInfo);
 
  public: /* Necko internal use only... */
   int64_t GetAltDataLength() { return mAltDataLength; }
@@ -426,7 +433,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
 
   // Like nsIEncodedChannel::DoApplyConversions except context is set to
   // mListenerContext.
-  MOZ_MUST_USE nsresult DoApplyContentConversions(
+  [[nodiscard]] nsresult DoApplyContentConversions(
       nsIStreamListener* aNextListener, nsIStreamListener** aNewNextListener);
 
   // Callback on STS thread called by CopyComplete when NS_AsyncCopy()
@@ -486,11 +493,12 @@ class HttpBaseChannel : public nsHashPropertyBag,
     nsCOMPtr<nsIReferrerInfo> referrerInfo;
     Maybe<dom::TimedChannelInfo> timedChannel;
     nsCOMPtr<nsIInputStream> uploadStream;
+    uint64_t uploadStreamLength;
     bool uploadStreamHasHeaders;
     Maybe<nsCString> contentType;
     Maybe<nsCString> contentLength;
 
-    dom::ReplacementChannelConfigInit Serialize();
+    dom::ReplacementChannelConfigInit Serialize(dom::ContentParent* aParent);
   };
 
   enum class ReplacementReason {
@@ -541,9 +549,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   nsPIDOMWindowInner* GetInnerDOMWindow();
 
   void AddCookiesToRequest();
-  virtual MOZ_MUST_USE nsresult SetupReplacementChannel(nsIURI*, nsIChannel*,
-                                                        bool preserveMethod,
-                                                        uint32_t redirectFlags);
+  [[nodiscard]] virtual nsresult SetupReplacementChannel(
+      nsIURI*, nsIChannel*, bool preserveMethod, uint32_t redirectFlags);
 
   // bundle calling OMR observers and marking flag into one function
   inline void CallOnModifyRequestObservers() {
@@ -562,12 +569,12 @@ class HttpBaseChannel : public nsHashPropertyBag,
 
   // Redirect tracking
   // Checks whether or not aURI and mOriginalURI share the same domain.
-  bool SameOriginWithOriginalUri(nsIURI* aURI);
+  virtual bool SameOriginWithOriginalUri(nsIURI* aURI);
 
   // GetPrincipal Returns the channel's URI principal.
   nsIPrincipal* GetURIPrincipal();
 
-  MOZ_MUST_USE bool BypassServiceWorker() const;
+  [[nodiscard]] bool BypassServiceWorker() const;
 
   // Returns true if this channel should intercept the network request and
   // prepare for a possible synthesized response instead.
@@ -590,12 +597,15 @@ class HttpBaseChannel : public nsHashPropertyBag,
   bool MaybeWaitForUploadStreamLength(nsIStreamListener* aListener,
                                       nsISupports* aContext);
 
-  nsresult GetResponseEmbedderPolicy(
-      nsILoadInfo::CrossOriginEmbedderPolicy* aResponseEmbedderPolicy);
-
   void MaybeFlushConsoleReports();
 
   bool IsBrowsingContextDiscarded() const;
+
+  nsresult ProcessCrossOriginEmbedderPolicyHeader();
+
+  nsresult ProcessCrossOriginResourcePolicyHeader();
+
+  nsresult ComputeCrossOriginOpenerPolicyMismatch();
 
   friend class PrivateBrowsingChannel<HttpBaseChannel>;
   friend class InterceptFailedOnStop;
@@ -863,6 +873,11 @@ class HttpBaseChannel : public nsHashPropertyBag,
   // consumer is in the child process.
   bool mAltDataForChild;
 
+  // This flag will be true if the consumer cannot process alt-data.  This
+  // is used in the webextension StreamFilter handler.  If true, we bypass
+  // using alt-data for the request.
+  bool mDisableAltDataCache;
+
   bool mForceMainDocumentChannel;
   // This is set true if the channel is waiting for the
   // InputStreamLengthHelper::GetAsyncLength callback.
@@ -878,6 +893,10 @@ class HttpBaseChannel : public nsHashPropertyBag,
   void RemoveAsNonTailRequest();
 
   void EnsureTopLevelOuterContentWindowId();
+
+  // True if this is a navigation to a page with a different cross origin
+  // opener policy ( see ComputeCrossOriginOpenerPolicyMismatch )
+  uint32_t mHasCrossOriginOpenerPolicyMismatch : 1;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(HttpBaseChannel, HTTP_BASE_CHANNEL_IID)
@@ -897,7 +916,7 @@ class HttpAsyncAborter {
 
   // Aborts channel: calls OnStart/Stop with provided status, removes channel
   // from loadGroup.
-  MOZ_MUST_USE nsresult AsyncAbort(nsresult status);
+  [[nodiscard]] nsresult AsyncAbort(nsresult status);
 
   // Does most the actual work.
   void HandleAsyncAbort();
@@ -905,7 +924,7 @@ class HttpAsyncAborter {
   // AsyncCall calls a member function asynchronously (via an event).
   // retval isn't refcounted and is set only when event was successfully
   // posted, the event is returned for the purpose of cancelling when needed
-  MOZ_MUST_USE virtual nsresult AsyncCall(
+  [[nodiscard]] virtual nsresult AsyncCall(
       void (T::*funcPtr)(), nsRunnableMethod<T>** retval = nullptr);
 
  private:
@@ -917,7 +936,7 @@ class HttpAsyncAborter {
 };
 
 template <class T>
-MOZ_MUST_USE nsresult HttpAsyncAborter<T>::AsyncAbort(nsresult status) {
+[[nodiscard]] nsresult HttpAsyncAborter<T>::AsyncAbort(nsresult status) {
   MOZ_LOG(gHttpLog, LogLevel::Debug,
           ("HttpAsyncAborter::AsyncAbort [this=%p status=%" PRIx32 "]\n", mThis,
            static_cast<uint32_t>(status)));

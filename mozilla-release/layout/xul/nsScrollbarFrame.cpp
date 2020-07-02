@@ -190,10 +190,10 @@ nsresult nsScrollbarFrame::GetXULMargin(nsMargin& aMargin) {
   }
 
   if (!didSetMargin) {
-    DebugOnly<nsresult> rv = nsBox::GetXULMargin(aMargin);
+    DebugOnly<nsresult> rv = nsIFrame::GetXULMargin(aMargin);
     // TODO(emilio): Should probably not be fallible, it's not like anybody
     // cares about the return value anyway.
-    MOZ_ASSERT(NS_SUCCEEDED(rv), "nsBox::GetXULMargin can't really fail");
+    MOZ_ASSERT(NS_SUCCEEDED(rv), "nsIFrame::GetXULMargin can't really fail");
   }
 
   if (!horizontal) {
@@ -272,11 +272,8 @@ int32_t nsScrollbarFrame::MoveToNewPosition() {
     return curpos;
   }
   // notify all nsSliderFrames of the change
-  nsIFrame::ChildListIterator childLists(this);
-  for (; !childLists.IsDone(); childLists.Next()) {
-    nsFrameList::Enumerator childFrames(childLists.CurrentList());
-    for (; !childFrames.AtEnd(); childFrames.Next()) {
-      nsIFrame* f = childFrames.get();
+  for (const auto& childList : ChildLists()) {
+    for (nsIFrame* f : childList.mList) {
       nsSliderFrame* sliderFrame = do_QueryFrame(f);
       if (sliderFrame) {
         sliderFrame->AttributeChanged(kNameSpaceID_None, nsGkAtoms::curpos,

@@ -1220,13 +1220,30 @@ void nsNativeThemeCocoa::DrawMenuSeparator(CGContextRef cgContext, const CGRect&
   HIThemeDrawMenuSeparator(&inBoxRect, &inBoxRect, &midi, cgContext, HITHEME_ORIENTATION);
 }
 
+static bool ShouldUnconditionallyDrawFocusRingIfFocused(nsIFrame* aFrame) {
+  // Mac always draws focus rings for textboxes and lists.
+  switch (aFrame->StyleDisplay()->mAppearance) {
+    case StyleAppearance::MenulistTextfield:
+    case StyleAppearance::NumberInput:
+    case StyleAppearance::Textfield:
+    case StyleAppearance::Textarea:
+    case StyleAppearance::Searchfield:
+    case StyleAppearance::Listbox:
+      return true;
+    default:
+      return false;
+  }
+}
+
 nsNativeThemeCocoa::ControlParams nsNativeThemeCocoa::ComputeControlParams(
     nsIFrame* aFrame, EventStates aEventState) {
   ControlParams params;
   params.disabled = IsDisabled(aFrame, aEventState);
   params.insideActiveWindow = FrameIsInActiveWindow(aFrame);
   params.pressed = aEventState.HasAllStates(NS_EVENT_STATE_ACTIVE | NS_EVENT_STATE_HOVER);
-  params.focused = aEventState.HasState(NS_EVENT_STATE_FOCUS);
+  params.focused = aEventState.HasState(NS_EVENT_STATE_FOCUS) &&
+                   (aEventState.HasState(NS_EVENT_STATE_FOCUSRING) ||
+                    ShouldUnconditionallyDrawFocusRingIfFocused(aFrame));
   params.rtl = IsFrameRTL(aFrame);
   return params;
 }
@@ -1314,19 +1331,14 @@ void nsNativeThemeCocoa::DrawDisclosureButton(CGContextRef cgContext, const HIRe
 
 void nsNativeThemeCocoa::DrawFocusOutline(CGContextRef cgContext, const HIRect& inBoxRect) {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  HIThemeFrameDrawInfo fdi;
-  fdi.version = 0;
-  fdi.kind = kHIThemeFrameTextFieldSquare;
-  fdi.state = kThemeStateActive;
-  fdi.isFocused = TRUE;
-
-#if DRAW_IN_FRAME_DEBUG
-  CGContextSetRGBFillColor(cgContext, 0.0, 0.0, 0.5, 0.25);
-  CGContextFillRect(cgContext, inBoxRect);
-#endif
-
-  HIThemeDrawFrame(&inBoxRect, &fdi, cgContext, HITHEME_ORIENTATION);
+  NSGraphicsContext* savedContext = [NSGraphicsContext currentContext];
+  [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:cgContext
+                                                                                  flipped:YES]];
+  CGContextSaveGState(cgContext);
+  NSSetFocusRingStyle(NSFocusRingOnly);
+  NSRectFill(NSRectFromCGRect(inBoxRect));
+  CGContextRestoreGState(cgContext);
+  [NSGraphicsContext setCurrentContext:savedContext];
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
@@ -2035,7 +2047,7 @@ nsNativeThemeCocoa::ScaleParams nsNativeThemeCocoa::ComputeXULScaleParams(nsIFra
       aFrame->GetContent()->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::dir,
                                                      NS_LITERAL_STRING("reverse"), eCaseMatters);
   params.insideActiveWindow = FrameIsInActiveWindow(aFrame);
-  params.focused = aEventState.HasState(NS_EVENT_STATE_FOCUS);
+  params.focused = aEventState.HasState(NS_EVENT_STATE_FOCUSRING);
   params.disabled = IsDisabled(aFrame, aEventState);
   params.horizontal = aIsHorizontal;
   return params;
@@ -2058,7 +2070,7 @@ Maybe<nsNativeThemeCocoa::ScaleParams> nsNativeThemeCocoa::ComputeHTMLScaleParam
   params.max = 1000;
   params.reverse = !isHorizontal || rangeFrame->IsRightToLeft();
   params.insideActiveWindow = FrameIsInActiveWindow(aFrame);
-  params.focused = aEventState.HasState(NS_EVENT_STATE_FOCUS);
+  params.focused = aEventState.HasState(NS_EVENT_STATE_FOCUSRING);
   params.disabled = IsDisabled(aFrame, aEventState);
   params.horizontal = isHorizontal;
   return Some(params);
@@ -2157,7 +2169,7 @@ nsNativeThemeCocoa::SegmentParams nsNativeThemeCocoa::ComputeSegmentParams(
   params.insideActiveWindow = FrameIsInActiveWindow(aFrame);
   params.pressed = IsPressedButton(aFrame);
   params.selected = IsSelectedButton(aFrame);
-  params.focused = aEventState.HasState(NS_EVENT_STATE_FOCUS);
+  params.focused = aEventState.HasState(NS_EVENT_STATE_FOCUSRING);
   bool isRTL = IsFrameRTL(aFrame);
   nsIFrame* left = GetAdjacentSiblingFrameWithSameAppearance(aFrame, isRTL);
   nsIFrame* right = GetAdjacentSiblingFrameWithSameAppearance(aFrame, !isRTL);
@@ -2920,6 +2932,7 @@ Maybe<nsNativeThemeCocoa::WidgetInfo> nsNativeThemeCocoa::ComputeWidgetInfo(
     case StyleAppearance::MenulistTextfield:
     case StyleAppearance::Textfield:
     case StyleAppearance::NumberInput: {
+      // See ShouldUnconditionallyDrawFocusRingIfFocused.
       bool isFocused = eventState.HasState(NS_EVENT_STATE_FOCUS);
       // XUL textboxes set the native appearance on the containing box, while
       // concrete focus is set on the html:input element within it. We can
@@ -3939,17 +3952,6 @@ nsNativeThemeCocoa::GetMinimumWidgetSize(nsPresContext* aPresContext, nsIFrame* 
 
     case StyleAppearance::ScrollbarNonDisappearing: {
       int32_t themeMetric = kThemeMetricScrollBarWidth;
-
-      if (aFrame) {
-        if (IsSmallScrollbar(aFrame)) {
-          // XXX We're interested in the width of non-disappearing scrollbars
-          // to leave enough space for a dropmarker in non-native styled
-          // comboboxes (bug 869314). It isn't clear to me if comboboxes can
-          // ever have small scrollbars.
-          themeMetric = kThemeMetricSmallScrollBarWidth;
-        }
-      }
-
       SInt32 scrollbarWidth = 0;
       ::GetThemeMetric(themeMetric, &scrollbarWidth);
       aResult->SizeTo(scrollbarWidth, scrollbarWidth);
@@ -4215,15 +4217,24 @@ bool nsNativeThemeCocoa::WidgetIsContainer(StyleAppearance aAppearance) {
 }
 
 bool nsNativeThemeCocoa::ThemeDrawsFocusForWidget(StyleAppearance aAppearance) {
-  if (aAppearance == StyleAppearance::MenulistButton || aAppearance == StyleAppearance::Button ||
-      aAppearance == StyleAppearance::MozMacHelpButton ||
-      aAppearance == StyleAppearance::MozMacDisclosureButtonOpen ||
-      aAppearance == StyleAppearance::MozMacDisclosureButtonClosed ||
-      aAppearance == StyleAppearance::Radio || aAppearance == StyleAppearance::Range ||
-      aAppearance == StyleAppearance::Checkbox)
-    return true;
-
-  return false;
+  switch (aAppearance) {
+    case StyleAppearance::Textarea:
+    case StyleAppearance::Textfield:
+    case StyleAppearance::Searchfield:
+    case StyleAppearance::NumberInput:
+    case StyleAppearance::Menulist:
+    case StyleAppearance::MenulistButton:
+    case StyleAppearance::Button:
+    case StyleAppearance::MozMacHelpButton:
+    case StyleAppearance::MozMacDisclosureButtonOpen:
+    case StyleAppearance::MozMacDisclosureButtonClosed:
+    case StyleAppearance::Radio:
+    case StyleAppearance::Range:
+    case StyleAppearance::Checkbox:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool nsNativeThemeCocoa::ThemeNeedsComboboxDropmarker() { return false; }

@@ -35,7 +35,6 @@ function NarrateControls(mm, win, languagePromise) {
   win.document.head.appendChild(style);
 
   let elemL10nMap = {
-    ".narrate-toggle": "narrate",
     ".narrate-skip-previous": "back",
     ".narrate-start-stop": "start",
     ".narrate-skip-next": "forward",
@@ -48,6 +47,12 @@ function NarrateControls(mm, win, languagePromise) {
   let toggle = win.document.createElement("li");
   let toggleButton = win.document.createElement("button");
   toggleButton.className = "dropdown-toggle button narrate-toggle";
+  let tip = win.document.createElement("span");
+  let labelText = gStrings.GetStringFromName("listen");
+  tip.textContent = labelText;
+  tip.className = "hover-label";
+  toggleButton.append(tip);
+  toggleButton.setAttribute("aria-label", labelText);
   toggleButton.hidden = true;
   dropdown.appendChild(toggle);
   toggle.appendChild(toggleButton);
@@ -123,7 +128,7 @@ function NarrateControls(mm, win, languagePromise) {
 
   this._setupVoices();
 
-  let tb = win.document.querySelector(".reader-toolbar");
+  let tb = win.document.querySelector(".reader-controls");
   tb.appendChild(dropdown);
 }
 

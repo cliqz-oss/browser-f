@@ -24,13 +24,13 @@
 #include "mozilla/StaticMutex.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/ipc/CrashReporterClient.h"
 
 #include "nsThreadUtils.h"
 #include "nsThread.h"
 #include "jsfriendapi.h"
 #include "ThreadAnnotation.h"
 #include "private/pprio.h"
+#include "common/basictypes.h"
 
 #if defined(XP_WIN)
 #  ifdef WIN32_LEAN_AND_MEAN
@@ -114,6 +114,8 @@ using google_breakpad::ClientInfo;
 using google_breakpad::CrashGenerationServer;
 #ifdef XP_LINUX
 using google_breakpad::MinidumpDescriptor;
+#elif defined(XP_WIN)
+using google_breakpad::ExceptionHandler;
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
 using google_breakpad::auto_wasteful_vector;
@@ -122,7 +124,6 @@ using google_breakpad::kDefaultBuildIdSize;
 using google_breakpad::PageAllocator;
 #endif
 using namespace mozilla;
-using mozilla::ipc::CrashReporterClient;
 
 namespace CrashReporter {
 
@@ -190,6 +191,7 @@ static xpstring* defaultMemoryReportPath = nullptr;
 static const char kCrashMainID[] = "crash.main.3\n";
 
 static google_breakpad::ExceptionHandler* gExceptionHandler = nullptr;
+static mozilla::Atomic<bool> gEncounteredChildException(false);
 
 static XP_CHAR* pendingDirectory;
 static XP_CHAR* crashReporterPath;
@@ -274,7 +276,8 @@ struct ChildProcessData : public nsUint32HashKey {
   explicit ChildProcessData(KeyTypePointer aKey)
       : nsUint32HashKey(aKey),
         sequence(0),
-        annotations(nullptr)
+        annotations(nullptr),
+        minidumpOnly(false)
 #ifdef MOZ_CRASHREPORTER_INJECTOR
         ,
         callback(nullptr)
@@ -287,6 +290,7 @@ struct ChildProcessData : public nsUint32HashKey {
   // indicate which process crashed first.
   uint32_t sequence;
   UniquePtr<AnnotationTable> annotations;
+  bool minidumpOnly;  // If true then no annotations are present
 #ifdef MOZ_CRASHREPORTER_INJECTOR
   InjectorCrashCallback* callback;
 #endif
@@ -311,11 +315,6 @@ class ReportInjectedCrash : public Runnable {
   uint32_t mPID;
 };
 #endif  // MOZ_CRASHREPORTER_INJECTOR
-
-// If annotations are attempted before the crash reporter is enabled,
-// they queue up here.
-class DelayedNote;
-nsTArray<UniquePtr<DelayedNote> >* gDelayedAnnotations;
 
 #if defined(XP_WIN)
 // the following are used to prevent other DLLs reverting the last chance
@@ -612,9 +611,13 @@ class PlatformWriter {
   void Flush() {
     if (mPos > 0) {
 #ifdef XP_WIN
-      DWORD nBytes = 0;
-      while (nBytes < mPos) {
-        WriteFile(mFD, mBuffer, mPos, &nBytes, nullptr);
+      char* buffer = mBuffer;
+      size_t length = mPos;
+      while (length > 0) {
+        DWORD nBytes = 0;
+        Unused << WriteFile(mFD, buffer, length, &nBytes, nullptr);
+        buffer += nBytes;
+        length -= nBytes;
       }
 #elif defined(XP_UNIX)
       mozilla::Unused << sys_write(mFD, mBuffer, mPos);
@@ -1330,16 +1333,21 @@ static void WriteMozCrashReason(AnnotationWriter& aWriter) {
   }
 }
 
-static void WriteAnnotationsForMainProcessCrash(PlatformWriter& pw,
-                                                const phc::AddrInfo* addrInfo,
-                                                time_t crashTime) {
-  JSONAnnotationWriter writer(pw);
+static void WriteAnnotations(AnnotationWriter& writer,
+                             const AnnotationTable& aAnnotations) {
   for (auto key : MakeEnumeratedRange(Annotation::Count)) {
-    const nsCString& value = crashReporterAPIData_Table[key];
+    const nsCString& value = aAnnotations[key];
     if (!value.IsEmpty()) {
       writer.Write(key, value.get(), value.Length());
     }
   }
+}
+
+static void WriteAnnotationsForMainProcessCrash(PlatformWriter& pw,
+                                                const phc::AddrInfo* addrInfo,
+                                                time_t crashTime) {
+  JSONAnnotationWriter writer(pw);
+  WriteAnnotations(writer, crashReporterAPIData_Table);
 
   char crashTimeString[32];
   XP_TTOA(crashTime, crashTimeString);
@@ -1706,6 +1714,8 @@ static void PrepareChildExceptionTimeAnnotations(
     }
   };
   GetFlatThreadAnnotation(getThreadAnnotationCB, true);
+
+  WriteAnnotations(writer, crashReporterAPIData_Table);
 }
 
 #ifdef XP_WIN
@@ -1722,21 +1732,8 @@ static void FreeBreakpadVM() {
   }
 }
 
-/**
- * Filters out floating point exceptions which are handled by nsSigHandlers.cpp
- * and should not be handled as crashes.
- *
- * Also calls FreeBreakpadVM if appropriate.
- */
-static bool FPEFilter(void* context, EXCEPTION_POINTERS* exinfo,
-                      const phc::AddrInfo* addrInfo,
-                      MDRawAssertionInfo* assertion) {
+static bool IsCrashingException(EXCEPTION_POINTERS* exinfo) {
   if (!exinfo) {
-    mozilla::IOInterposer::Disable();
-#  if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
-    DllBlocklist_Shutdown();
-#  endif
-    FreeBreakpadVM();
     return true;
   }
 
@@ -1752,23 +1749,63 @@ static bool FPEFilter(void* context, EXCEPTION_POINTERS* exinfo,
     case STATUS_FLOAT_MULTIPLE_FAULTS:
     case STATUS_FLOAT_MULTIPLE_TRAPS:
       return false;  // Don't write minidump, continue exception search
+    default:
+      return true;
   }
+}
+
+// Do various actions to prepare the child process for minidump generation.
+// This includes disabling the I/O interposer and DLL blocklist which both
+// would get in the way. We also free the address space we had reserved in
+// 32-bit builds to free room for the minidump generation to do its work.
+static void PrepareForMinidump() {
   mozilla::IOInterposer::Disable();
 #  if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
   DllBlocklist_Shutdown();
 #  endif
   FreeBreakpadVM();
-  return true;
 }
 
-static bool ChildFPEFilter(void* context, EXCEPTION_POINTERS* exinfo,
-                           const phc::AddrInfo* addrInfo,
-                           MDRawAssertionInfo* assertion) {
-  bool result = FPEFilter(context, exinfo, addrInfo, assertion);
-  if (result) {
-    PrepareChildExceptionTimeAnnotations(context, addrInfo);
+/**
+ * Filters out floating point exceptions which are handled by nsSigHandlers.cpp
+ * and should not be handled as crashes.
+ */
+static ExceptionHandler::FilterResult FPEFilter(void* context,
+                                                EXCEPTION_POINTERS* exinfo,
+                                                MDRawAssertionInfo* assertion) {
+  if (!IsCrashingException(exinfo)) {
+    return ExceptionHandler::FilterResult::ContinueSearch;
   }
-  return result;
+
+  PrepareForMinidump();
+  return ExceptionHandler::FilterResult::HandleException;
+}
+
+static ExceptionHandler::FilterResult ChildFPEFilter(
+    void* context, EXCEPTION_POINTERS* exinfo, MDRawAssertionInfo* assertion) {
+  if (!IsCrashingException(exinfo)) {
+    return ExceptionHandler::FilterResult::ContinueSearch;
+  }
+
+  if (gEncounteredChildException.exchange(true)) {
+    return ExceptionHandler::FilterResult::AbortWithoutMinidump;
+  }
+
+  PrepareForMinidump();
+  return ExceptionHandler::FilterResult::HandleException;
+}
+
+static bool ChildMinidumpCallback(const wchar_t* dump_path,
+                                  const wchar_t* minidump_id, void* context,
+                                  EXCEPTION_POINTERS* exinfo,
+                                  MDRawAssertionInfo* assertion,
+                                  const mozilla::phc::AddrInfo* addr_info,
+                                  bool succeeded) {
+  if (succeeded) {
+    PrepareChildExceptionTimeAnnotations(context, addr_info);
+  }
+
+  return true;
 }
 
 static MINIDUMP_TYPE GetMinidumpType() {
@@ -1826,6 +1863,10 @@ static bool Filter(void* context, const phc::AddrInfo* addrInfo) {
 }
 
 static bool ChildFilter(void* context, const phc::AddrInfo* addrInfo) {
+  if (gEncounteredChildException.exchange(true)) {
+    return false;
+  }
+
   mozilla::IOInterposer::Disable();
   PrepareChildExceptionTimeAnnotations(context, addrInfo);
   return true;
@@ -1859,6 +1900,29 @@ static nsresult LocateExecutable(nsIFile* aXREDirectory,
 
 #endif  // !defined(MOZ_WIDGET_ANDROID)
 
+static void InitializeAnnotationFacilities() {
+  crashReporterAPILock = new Mutex("crashReporterAPILock");
+  notesFieldLock = new Mutex("notesFieldLock");
+  notesField = new nsCString();
+  InitThreadAnnotation();
+}
+
+static void TeardownAnnotationFacilities() {
+  std::fill(crashReporterAPIData_Table.begin(),
+            crashReporterAPIData_Table.end(), EmptyCString());
+
+  delete crashReporterAPILock;
+  crashReporterAPILock = nullptr;
+
+  delete notesFieldLock;
+  notesFieldLock = nullptr;
+
+  delete notesField;
+  notesField = nullptr;
+
+  ShutdownThreadAnnotation();
+}
+
 nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
   if (gExceptionHandler) return NS_ERROR_ALREADY_INITIALIZED;
 
@@ -1878,13 +1942,7 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
   // the crash reporter client
   doReport = ShouldReport();
 
-  NS_ASSERTION(!crashReporterAPILock, "Shouldn't have a lock yet");
-  crashReporterAPILock = new Mutex("crashReporterAPILock");
-  NS_ASSERTION(!notesFieldLock, "Shouldn't have a lock yet");
-  notesFieldLock = new Mutex("notesFieldLock");
-
-  notesField = new nsCString();
-  NS_ENSURE_TRUE(notesField, NS_ERROR_OUT_OF_MEMORY);
+  InitializeAnnotationFacilities();
 
 #if !defined(MOZ_WIDGET_ANDROID)
   // Locate the crash reporter executable
@@ -2063,8 +2121,6 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
   mozalloc_set_oom_abort_handler(AnnotateOOMAllocationSize);
 
   oldTerminateHandler = std::set_terminate(&TerminateHandler);
-
-  InitThreadAnnotation();
 
   return NS_OK;
 }
@@ -2311,19 +2367,7 @@ nsresult UnsetExceptionHandler() {
 
   delete gExceptionHandler;
 
-  // do this here in the unlikely case that we succeeded in allocating
-  // our strings but failed to allocate gExceptionHandler.
-  std::fill(crashReporterAPIData_Table.begin(),
-            crashReporterAPIData_Table.end(), EmptyCString());
-
-  delete crashReporterAPILock;
-  crashReporterAPILock = nullptr;
-
-  delete notesFieldLock;
-  notesFieldLock = nullptr;
-
-  delete notesField;
-  notesField = nullptr;
+  TeardownAnnotationFacilities();
 
   if (pendingDirectory) {
     free(pendingDirectory);
@@ -2352,8 +2396,6 @@ nsresult UnsetExceptionHandler() {
     memoryReportPath = nullptr;
   }
 
-  ShutdownThreadAnnotation();
-
   if (!gExceptionHandler) return NS_ERROR_NOT_INITIALIZED;
 
   gExceptionHandler = nullptr;
@@ -2366,45 +2408,6 @@ nsresult UnsetExceptionHandler() {
   std::set_terminate(oldTerminateHandler);
 
   return NS_OK;
-}
-
-class DelayedNote {
- public:
-  DelayedNote(Annotation aKey, const nsACString& aData)
-      : mKey(aKey), mData(aData), mType(CrashAnnotation) {}
-
-  explicit DelayedNote(const nsACString& aData)
-      : mData(aData), mType(AppNote) {}
-
-  void Run() {
-    if (mType == CrashAnnotation) {
-      AnnotateCrashReport(mKey, mData);
-    } else {
-      AppendAppNotesToCrashReport(mData);
-    }
-  }
-
- private:
-  Annotation mKey;
-  nsCString mData;
-  enum AnnotationType { CrashAnnotation, AppNote } mType;
-};
-
-static void EnqueueDelayedNote(DelayedNote* aNote) {
-  if (!gDelayedAnnotations) {
-    gDelayedAnnotations = new nsTArray<UniquePtr<DelayedNote> >();
-  }
-  gDelayedAnnotations->AppendElement(WrapUnique(aNote));
-}
-
-void NotifyCrashReporterClientCreated() {
-  if (gDelayedAnnotations) {
-    for (const auto& note : *gDelayedAnnotations) {
-      note->Run();
-    }
-    delete gDelayedAnnotations;
-    gDelayedAnnotations = nullptr;
-  }
 }
 
 nsresult AnnotateCrashReport(Annotation key, bool data) {
@@ -2429,21 +2432,6 @@ nsresult AnnotateCrashReport(Annotation key, unsigned int data) {
 nsresult AnnotateCrashReport(Annotation key, const nsACString& data) {
   if (!GetEnabled()) return NS_ERROR_NOT_INITIALIZED;
 
-  if (!XRE_IsParentProcess()) {
-    // The newer CrashReporterClient can be used from any thread.
-    if (RefPtr<CrashReporterClient> client =
-            CrashReporterClient::GetSingleton()) {
-      client->AnnotateCrashReport(key, data);
-      return NS_OK;
-    }
-
-    // EnqueueDelayedNote() can only be called on the main thread.
-    MOZ_RELEASE_ASSERT(NS_IsMainThread());
-
-    EnqueueDelayedNote(new DelayedNote(key, data));
-    return NS_OK;
-  }
-
   MutexAutoLock lock(*crashReporterAPILock);
   crashReporterAPIData_Table[key] = data;
 
@@ -2457,24 +2445,15 @@ nsresult RemoveCrashReportAnnotation(Annotation key) {
 void MergeCrashAnnotations(AnnotationTable& aDst, const AnnotationTable& aSrc) {
   for (auto key : MakeEnumeratedRange(Annotation::Count)) {
     const nsCString& value = aSrc[key];
-    if (value.IsEmpty()) {
-      continue;
+    if (!value.IsEmpty()) {
+      aDst[key] = value;
     }
-
-    aDst[key] = value;
   }
 }
 
-static void MergeContentCrashAnnotations(AnnotationTable& aDst,
-                                         const AnnotationTable& aSrc) {
-  for (auto key : MakeEnumeratedRange(Annotation::Count)) {
-    const nsCString& value = aSrc[key];
-    if (value.IsEmpty() || IsAnnotationBlacklistedForContent(key)) {
-      continue;
-    }
-
-    aDst[key] = value;
-  }
+static void MergeContentCrashAnnotations(AnnotationTable& aDst) {
+  MutexAutoLock lock(*crashReporterAPILock);
+  MergeCrashAnnotations(aDst, crashReporterAPIData_Table);
 }
 
 // Adds crash time, uptime and memory report annotations
@@ -2513,20 +2492,6 @@ void SetMinidumpAnalysisAllThreads() {
 
 nsresult AppendAppNotesToCrashReport(const nsACString& data) {
   if (!GetEnabled()) return NS_ERROR_NOT_INITIALIZED;
-
-  if (!XRE_IsParentProcess()) {
-    if (RefPtr<CrashReporterClient> client =
-            CrashReporterClient::GetSingleton()) {
-      client->AppendAppNotes(data);
-      return NS_OK;
-    }
-
-    // EnqueueDelayedNote can only be called on the main thread.
-    MOZ_RELEASE_ASSERT(NS_IsMainThread());
-
-    EnqueueDelayedNote(new DelayedNote(data));
-    return NS_OK;
-  }
 
   MutexAutoLock lock(*notesFieldLock);
 
@@ -2612,7 +2577,7 @@ nsresult SetRestartArgs(int argc, char** argv) {
 
     // PR_SetEnv() wants the string to be available for the lifetime
     // of the app, so dup it here
-    env = ToNewCString(envVar);
+    env = ToNewCString(envVar, mozilla::fallible);
     if (!env) return NS_ERROR_OUT_OF_MEMORY;
 
     PR_SetEnv(env);
@@ -2625,7 +2590,7 @@ nsresult SetRestartArgs(int argc, char** argv) {
 
   // PR_SetEnv() wants the string to be available for the lifetime
   // of the app, so dup it here
-  env = ToNewCString(envVar);
+  env = ToNewCString(envVar, mozilla::fallible);
   if (!env) return NS_ERROR_OUT_OF_MEMORY;
 
   PR_SetEnv(env);
@@ -3185,12 +3150,7 @@ static bool WriteExtraFile(PlatformWriter& pw,
   }
 
   JSONAnnotationWriter writer(pw);
-  for (auto key : MakeEnumeratedRange(Annotation::Count)) {
-    const nsCString& value = aAnnotations[key];
-    if (!value.IsEmpty()) {
-      writer.Write(key, value.get(), value.Length());
-    }
-  }
+  WriteAnnotations(writer, aAnnotations);
 
   return true;
 }
@@ -3221,21 +3181,14 @@ static void ReadExceptionTimeAnnotations(AnnotationTable& aAnnotations,
   if (aPid && processToCrashFd.count(aPid)) {
     PRFileDesc* prFd = processToCrashFd[aPid];
     processToCrashFd.erase(aPid);
-    AnnotationTable exceptionTimeAnnotations;
-    ReadAndValidateExceptionTimeAnnotations(prFd, exceptionTimeAnnotations);
-    MergeCrashAnnotations(aAnnotations, exceptionTimeAnnotations);
+    ReadAndValidateExceptionTimeAnnotations(prFd, aAnnotations);
     PR_Close(prFd);
   }
 }
 
-static void PopulateContentProcessAnnotations(AnnotationTable& aAnnotations,
-                                              uint32_t aPid) {
-  {
-    MutexAutoLock lock(*crashReporterAPILock);
-    MergeContentCrashAnnotations(aAnnotations, crashReporterAPIData_Table);
-  }
+static void PopulateContentProcessAnnotations(AnnotationTable& aAnnotations) {
+  MergeContentCrashAnnotations(aAnnotations);
   AddCommonAnnotations(aAnnotations);
-  ReadExceptionTimeAnnotations(aAnnotations, aPid);
 }
 
 // It really only makes sense to call this function when
@@ -3302,13 +3255,13 @@ static void OnChildProcessDumpRequested(void* aContext,
     bool runCallback;
 #endif
     {
-      MutexAutoLock lock(*dumpMapLock);
+      dumpMapLock->Lock();
       ChildProcessData* pd = pidToMinidump->PutEntry(pid);
       MOZ_ASSERT(!pd->minidump);
       pd->minidump = minidump;
       pd->sequence = ++crashSequence;
       pd->annotations = MakeUnique<AnnotationTable>();
-      PopulateContentProcessAnnotations(*(pd->annotations), pid);
+      PopulateContentProcessAnnotations(*(pd->annotations));
 #ifdef MOZ_CRASHREPORTER_INJECTOR
       runCallback = nullptr != pd->callback;
 #endif
@@ -3317,6 +3270,17 @@ static void OnChildProcessDumpRequested(void* aContext,
     if (runCallback) NS_DispatchToMainThread(new ReportInjectedCrash(pid));
 #endif
   }
+}
+
+static void OnChildProcessDumpWritten(void* aContext,
+                                      const ClientInfo& aClientInfo) {
+  uint32_t pid = aClientInfo.pid();
+  ChildProcessData* pd = pidToMinidump->GetEntry(pid);
+  MOZ_ASSERT(pd);
+  if (!pd->minidumpOnly) {
+    ReadExceptionTimeAnnotations(*(pd->annotations), pid);
+  }
+  dumpMapLock->Unlock();
 }
 
 static bool OOPInitialized() { return pidToMinidump != nullptr; }
@@ -3357,7 +3321,7 @@ void OOPInit() {
       std::wstring(NS_ConvertASCIItoUTF16(childCrashNotifyPipe).get()),
       nullptr,           // default security attributes
       nullptr, nullptr,  // we don't care about process connect here
-      OnChildProcessDumpRequested, nullptr, nullptr,
+      OnChildProcessDumpRequested, nullptr, OnChildProcessDumpWritten, nullptr,
       nullptr,           // we don't care about process exit here
       nullptr, nullptr,  // we don't care about upload request here
       true,              // automatically generate dumps
@@ -3375,9 +3339,8 @@ void OOPInit() {
   const std::string dumpPath =
       gExceptionHandler->minidump_descriptor().directory();
   crashServer = new CrashGenerationServer(
-      serverSocketFd, OnChildProcessDumpRequested, nullptr, nullptr,
-      nullptr,  // we don't care about process exit here
-      true, &dumpPath);
+      serverSocketFd, OnChildProcessDumpRequested, nullptr,
+      OnChildProcessDumpWritten, nullptr, true, &dumpPath);
 
 #elif defined(XP_MACOSX)
   childCrashNotifyPipe = mozilla::Smprintf("gecko-crash-server-pipe.%i",
@@ -3385,11 +3348,11 @@ void OOPInit() {
                              .release();
   const std::string dumpPath = gExceptionHandler->dump_path();
 
-  crashServer = new CrashGenerationServer(childCrashNotifyPipe, nullptr,
-                                          nullptr, OnChildProcessDumpRequested,
-                                          nullptr, nullptr, nullptr,
-                                          true,  // automatically generate dumps
-                                          dumpPath);
+  crashServer = new CrashGenerationServer(
+      childCrashNotifyPipe, nullptr, nullptr, OnChildProcessDumpRequested,
+      nullptr, OnChildProcessDumpWritten, nullptr,
+      true,  // automatically generate dumps
+      dumpPath);
 #endif
 
   if (!crashServer->Start()) MOZ_CRASH("can't start crash reporter server()");
@@ -3458,6 +3421,7 @@ void InjectCrashReporterIntoProcess(DWORD processID,
     ChildProcessData* pd = pidToMinidump->PutEntry(processID);
     MOZ_ASSERT(!pd->minidump && !pd->callback);
     pd->callback = cb;
+    pd->minidumpOnly = true;
   }
 
   nsCOMPtr<nsIRunnable> r = new InjectCrashRunnable(processID);
@@ -3542,10 +3506,11 @@ bool SetRemoteExceptionHandler(const char* aCrashPipe,
                                uintptr_t aCrashTimeAnnotationFile) {
   MOZ_ASSERT(!gExceptionHandler, "crash client already init'd");
 
+  InitializeAnnotationFacilities();
+
 #if defined(XP_WIN)
   gExceptionHandler = new google_breakpad::ExceptionHandler(
-      L"", ChildFPEFilter,
-      nullptr,  // no minidump callback
+      L"", ChildFPEFilter, ChildMinidumpCallback,
       reinterpret_cast<void*>(aCrashTimeAnnotationFile),
       google_breakpad::ExceptionHandler::HANDLER_ALL, GetMinidumpType(),
       NS_ConvertASCIItoUTF16(aCrashPipe).get(), nullptr);
@@ -3576,8 +3541,6 @@ bool SetRemoteExceptionHandler(const char* aCrashPipe,
   mozalloc_set_oom_abort_handler(AnnotateOOMAllocationSize);
 
   oldTerminateHandler = std::set_terminate(&TerminateHandler);
-
-  InitThreadAnnotation();
 
   // we either do remote or nothing, no fallback to regular crash reporting
   return gExceptionHandler->IsOutOfProcess();
@@ -3611,7 +3574,7 @@ bool TakeMinidumpForChild(uint32_t childPid, nsIFile** dump,
   NS_IF_ADDREF(*dump = pd->minidump);
   // Only Flash process minidumps don't have annotations. Once we get rid of
   // the Flash processes this check will become redundant.
-  if (pd->annotations) {
+  if (!pd->minidumpOnly) {
     aAnnotations = *(pd->annotations);
   }
   if (aSequence) {
@@ -3852,12 +3815,7 @@ bool CreateMinidumpsAndPair(ProcessHandle aTargetPid,
   DllBlocklist_Shutdown();
 #endif
 
-  {
-    MutexAutoLock lock(*crashReporterAPILock);
-    MergeContentCrashAnnotations(aTargetAnnotations,
-                                 crashReporterAPIData_Table);
-  }
-
+  MergeContentCrashAnnotations(aTargetAnnotations);
   AddCommonAnnotations(aTargetAnnotations);
 
   targetMinidump.forget(aMainDumpOut);
@@ -3911,7 +3869,8 @@ bool UnsetRemoteExceptionHandler() {
   delete gExceptionHandler;
   gExceptionHandler = nullptr;
 #endif
-  ShutdownThreadAnnotation();
+  TeardownAnnotationFacilities();
+
   return true;
 }
 

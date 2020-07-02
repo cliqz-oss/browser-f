@@ -248,15 +248,29 @@ impl ScaleOffset {
 
     pub fn map_vector<F, T>(&self, vector: &Vector2D<f32, F>) -> Vector2D<f32, T> {
         Vector2D::new(
-            vector.x * self.scale.x + self.offset.x,
-            vector.y * self.scale.y + self.offset.y,
+            vector.x * self.scale.x,
+            vector.y * self.scale.y,
         )
     }
 
     pub fn unmap_vector<F, T>(&self, vector: &Vector2D<f32, F>) -> Vector2D<f32, T> {
         Vector2D::new(
-            (vector.x - self.offset.x) / self.scale.x,
-            (vector.y - self.offset.y) / self.scale.y,
+            vector.x / self.scale.x,
+            vector.y / self.scale.y,
+        )
+    }
+
+    pub fn map_point<F, T>(&self, point: &Point2D<f32, F>) -> Point2D<f32, T> {
+        Point2D::new(
+            point.x * self.scale.x + self.offset.x,
+            point.y * self.scale.y + self.offset.y,
+        )
+    }
+
+    pub fn unmap_point<F, T>(&self, point: &Point2D<f32, F>) -> Point2D<f32, T> {
+        Point2D::new(
+            (point.x - self.offset.x) / self.scale.x,
+            (point.y - self.offset.y) / self.scale.y,
         )
     }
 
@@ -300,6 +314,7 @@ pub trait MatrixHelpers<Src, Dst> {
     fn transform_kind(&self) -> TransformedRectKind;
     fn is_simple_translation(&self) -> bool;
     fn is_simple_2d_translation(&self) -> bool;
+    fn is_2d_scale_translation(&self) -> bool;
     /// Return the determinant of the 2D part of the matrix.
     fn determinant_2d(&self) -> f32;
     /// This function returns a point in the `Src` space that projects into zero XY.
@@ -410,6 +425,21 @@ impl<Src, Dst> MatrixHelpers<Src, Dst> for Transform3D<f32, Src, Dst> {
         }
 
         self.m43.abs() < NEARLY_ZERO
+    }
+
+    /*  is this...
+     *  X  0  0  0
+     *  0  Y  0  0
+     *  0  0  1  0
+     *  a  b  0  1
+     */
+    fn is_2d_scale_translation(&self) -> bool {
+        (self.m33 - 1.0).abs() < NEARLY_ZERO && 
+            (self.m44 - 1.0).abs() < NEARLY_ZERO &&
+            self.m12.abs() < NEARLY_ZERO && self.m13.abs() < NEARLY_ZERO && self.m14.abs() < NEARLY_ZERO &&
+            self.m21.abs() < NEARLY_ZERO && self.m23.abs() < NEARLY_ZERO && self.m24.abs() < NEARLY_ZERO &&
+            self.m31.abs() < NEARLY_ZERO && self.m32.abs() < NEARLY_ZERO && self.m34.abs() < NEARLY_ZERO &&
+            self.m43.abs() < NEARLY_ZERO
     }
 
     fn determinant_2d(&self) -> f32 {

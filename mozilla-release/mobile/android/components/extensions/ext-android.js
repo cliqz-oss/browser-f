@@ -15,7 +15,7 @@ const getSender = (extension, target, sender) => {
   }
 
   if (tabId != null && tabId >= 0) {
-    let tab = extension.tabManager.get(tabId, null);
+    const tab = extension.tabManager.get(tabId, null);
     if (tab) {
       sender.tab = tab.convert();
     }
@@ -28,45 +28,18 @@ global.tabGetSender = getSender;
 /* eslint-disable mozilla/balanced-listeners */
 extensions.on("page-shutdown", (type, context) => {
   if (context.viewType == "tab") {
-    if (context.extension.id !== context.xulBrowser.contentPrincipal.addonId) {
-      // Only close extension tabs.
-      // This check prevents about:addons from closing when it contains a
-      // WebExtension as an embedded inline options page.
-      return;
-    }
     const window = context.xulBrowser.ownerGlobal;
-    let { BrowserApp } = window;
-    if (BrowserApp) {
-      let nativeTab = BrowserApp.getTabForBrowser(context.xulBrowser);
-      if (nativeTab) {
-        GeckoViewTabBridge.closeTab({
-          window,
-          extensionId: context.extension.id,
-        });
-      }
-    }
+    GeckoViewTabBridge.closeTab({
+      window,
+      extensionId: context.extension.id,
+    });
   }
 });
 /* eslint-enable mozilla/balanced-listeners */
 
 global.openOptionsPage = extension => {
-  let window = windowTracker.topWindow;
-  if (!window) {
-    return Promise.reject({ message: "No browser window available" });
-  }
-
-  let { BrowserApp } = window;
-
-  if (extension.manifest.options_ui.open_in_tab) {
-    BrowserApp.selectOrAddTab(extension.manifest.options_ui.page, {
-      selected: true,
-      parentId: BrowserApp.selectedTab.id,
-    });
-  } else {
-    BrowserApp.openAddonManager({ addonId: extension.id });
-  }
-
-  return Promise.resolve();
+  // TODO: Bug 1619766
+  return Promise.reject({ message: "Not implemented yet." });
 };
 
 extensions.registerModules({

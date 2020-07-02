@@ -27,11 +27,11 @@ CHECK_TEST_ERROR_RERUN = $(call check_test_error_internal,'To rerun your failure
 endif
 
 # Usage: |make [EXTRA_TEST_ARGS=...] *test|.
-RUN_REFTEST = rm -f ./$@.log && $(PYTHON) _tests/reftest/runreftest.py \
+RUN_REFTEST = rm -f ./$@.log && $(PYTHON3) _tests/reftest/runreftest.py \
   --extra-profile-file=$(DIST)/plugins \
   $(SYMBOLS_PATH) $(EXTRA_TEST_ARGS) $(1) | tee ./$@.log
 
-REMOTE_REFTEST = rm -f ./$@.log && $(PYTHON) _tests/reftest/remotereftest.py \
+REMOTE_REFTEST = rm -f ./$@.log && $(PYTHON3) _tests/reftest/remotereftest.py \
   --ignore-window-size \
   --app=$(TEST_PACKAGE_NAME) --deviceIP=${TEST_DEVICE} --xre-path=${MOZ_HOST_BIN} \
   --httpd-path=_tests/modules --suite reftest \
@@ -81,7 +81,7 @@ jstestbrowser:
 GARBAGE += $(addsuffix .log,$(MOCHITESTS) reftest crashtest jstestbrowser)
 
 REMOTE_CPPUNITTESTS = \
-	$(PYTHON) -u $(topsrcdir)/testing/remotecppunittests.py \
+	$(PYTHON3) -u $(topsrcdir)/testing/remotecppunittests.py \
 	  --xre-path=$(DEPTH)/dist/bin \
 	  --localLib=$(DEPTH)/dist/fennec \
 	  --deviceIP=${TEST_DEVICE} \
@@ -104,9 +104,6 @@ stage-all: \
   stage-jstests \
   test-packages-manifest \
   $(NULL)
-ifdef MOZ_WEBRTC
-stage-all: stage-steeplechase
-endif
 
 ifdef COMPILE_ENVIRONMENT
 stage-all: stage-cppunittests
@@ -124,6 +121,8 @@ TEST_PKGS_TARGZ := \
   xpcshell \
   web-platform \
   updater-dep \
+  jsreftest \
+  jittest \
   $(NULL)
 
 ifdef LINK_GTEST_DURING_COMPILE
@@ -136,7 +135,7 @@ PKG_ARG = --$(1) '$(PKG_BASENAME).$(1).tests.$(2)'
 test-packages-manifest:
 	@rm -f $(MOZ_TEST_PACKAGES_FILE)
 	$(NSINSTALL) -D $(dir $(MOZ_TEST_PACKAGES_FILE))
-	$(PYTHON) $(topsrcdir)/build/gen_test_packages_manifest.py \
+	$(PYTHON3) $(topsrcdir)/build/gen_test_packages_manifest.py \
       --jsshell $(JSSHELL_NAME) \
       --dest-file '$(MOZ_TEST_PACKAGES_FILE)' \
       $(call PKG_ARG,common,zip) \
@@ -156,7 +155,7 @@ download-wpt-manifest:
 
 define package_archive
 package-tests-$(1): stage-all package-tests-prepare-dest download-wpt-manifest
-	$$(call py3_action,test_archive, \
+	$$(call py_action,test_archive, \
 		$(1) \
 		'$$(abspath $$(test_archive_dir))/$$(PKG_BASENAME).$(1).tests.$(2)')
 package-tests: package-tests-$(1)
@@ -250,12 +249,6 @@ ifdef MOZ_COPY_PDBS
 	cp -RL $(DIST)/bin/jsapi-tests.pdb $(PKG_STAGE)/cppunittest
 endif
 
-stage-steeplechase: make-stage-dir
-	$(NSINSTALL) -D $(PKG_STAGE)/steeplechase/
-	cp -RL $(DEPTH)/_tests/steeplechase $(PKG_STAGE)/steeplechase/tests
-	cp -RL $(DIST)/xpi-stage/specialpowers $(PKG_STAGE)/steeplechase
-	cp -RL $(topsrcdir)/testing/profiles/common/user.js $(PKG_STAGE)/steeplechase/prefs_general.js
-
 TEST_EXTENSIONS := \
     specialpowers@mozilla.org.xpi \
 	$(NULL)
@@ -266,7 +259,7 @@ stage-extensions: make-stage-dir
 
 
 check::
-	$(eval cores=$(shell $(PYTHON) -c 'import multiprocessing; print(multiprocessing.cpu_count())'))
+	$(eval cores=$(shell $(PYTHON3) -c 'import multiprocessing; print(multiprocessing.cpu_count())'))
 	@echo "Starting 'mach python-test' with -j$(cores)"
 	@$(topsrcdir)/mach --log-no-times python-test -j$(cores) --subsuite default
 	@echo "Finished 'mach python-test' successfully"
@@ -290,7 +283,6 @@ check::
   stage-mochitest \
   stage-jstests \
   stage-android \
-  stage-steeplechase \
   test-packages-manifest \
   check \
   $(NULL)

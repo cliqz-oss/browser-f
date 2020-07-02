@@ -270,15 +270,9 @@ Beetmover, takes source specific artifact checksums and pushes it to a location 
 of Taskcluster's task artifacts (archive.mozilla.org as one place) and in the
 process determines the final location and "pretty" names it (version product name)
 
-push-apk
+perftest
 --------
-PushApk publishes Android packages onto Google Play Store. Jobs of this kind take
-all the signed multi-locales (aka "multi") APKs for a given release and upload them
-all at once.
-
-push-apk-checks
----------------
-Runs the checks done in push-apk to ensure APKs are sane before submitting them
+Runs performance tests using mozperftest.
 
 release-balrog-submit-toplevel
 ------------------------------
@@ -360,11 +354,7 @@ Notify when a release has been started.
 
 release-bouncer-sub
 -------------------
-Submits bouncer updates for releases.
-
-release-bouncer-sub-nazgul
---------------------------
-Submits bouncer updates for releases, using new implementation of bouncer-admin (Nazgul).
+Submits bouncer information for releases.
 
 release-mark-as-shipped
 -----------------------
@@ -374,21 +364,13 @@ release-bouncer-aliases
 -----------------------
 Update Bouncer's (download.mozilla.org) "latest" aliases.
 
-release-bouncer-aliases-nazgul
-------------------------------
-Update Bouncer's (download.mozilla.org) "latest" aliases, using the new implementation of bouncer-admin (Nazgul).
-
 cron-bouncer-check
 ------------------
 Checks Bouncer (download.mozilla.org) uptake.
 
 bouncer-locations
 -----------------
-Updates nightly bouncer locations for version bump
-
-bouncer-locations-nazgul
-------------------------
-Updates nightly bouncer locations for version bump, using new implementation of bouncer-admin (Nazgul).
+Updates nightly bouncer locations for version bump.
 
 release-bouncer-check
 ---------------------
@@ -504,10 +486,6 @@ Moves the partner repacks to S3 buckets.
 release-partner-repack-bouncer-sub
 ----------------------------------
 Sets up bouncer products for partners.
-
-release-partner-repack-bouncer-sub-nazgul
------------------------------------------
-Sets up bouncer products for partners, using new implementation of bouncer-admin (Nazgul).
 
 release-early-tagging
 ---------------------
@@ -679,11 +657,6 @@ generate-profile
 Tasks that take a build configured for PGO and run the binary against a sample
 set to generate profile data. This is the 2nd stage of the full 3-step PGO
 process.
-
-geckodriver-repack
-------------------
-Tasks to repackage the geckodriver binary from a build tasks's common
-test archive into it's own archive.
 
 geckodriver-signing
 -------------------

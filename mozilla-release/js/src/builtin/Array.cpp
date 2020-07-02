@@ -36,6 +36,7 @@
 #include "vm/JSContext.h"
 #include "vm/JSFunction.h"
 #include "vm/JSObject.h"
+#include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/SelfHosting.h"
 #include "vm/Shape.h"
 #include "vm/ToSource.h"  // js::ValueToSource
@@ -50,6 +51,7 @@
 #include "vm/IsGivenTypeObject-inl.h"
 #include "vm/JSAtom-inl.h"
 #include "vm/NativeObject-inl.h"
+#include "vm/ObjectGroup-inl.h"  // JSObject::setSingleton
 
 using namespace js;
 
@@ -3647,7 +3649,7 @@ JSObject* js::ArraySliceDense(JSContext* cx, HandleObject obj, int32_t begin,
   }
 
   // Slower path if the JIT wasn't able to allocate an object inline.
-  JS::AutoValueArray<4> argv(cx);
+  JS::RootedValueArray<4> argv(cx);
   argv[0].setUndefined();
   argv[1].setObject(*obj);
   argv[2].setInt32(begin);
@@ -3929,7 +3931,7 @@ static bool array_proto_finish(JSContext* cx, JS::HandleObject ctor,
                                JS::HandleObject proto) {
   // Add Array.prototype[@@unscopables]. ECMA-262 draft (2016 Mar 19) 22.1.3.32.
   RootedObject unscopables(
-      cx, NewObjectWithGivenProto<PlainObject>(cx, nullptr, SingletonObject));
+      cx, NewSingletonObjectWithGivenProto<PlainObject>(cx, nullptr));
   if (!unscopables) {
     return false;
   }
@@ -4005,9 +4007,9 @@ static inline bool EnsureNewArrayElements(JSContext* cx, ArrayObject* obj,
 }
 
 template <uint32_t maxLength>
-static MOZ_ALWAYS_INLINE ArrayObject* NewArray(
-    JSContext* cx, uint32_t length, HandleObject protoArg,
-    NewObjectKind newKind = GenericObject) {
+static MOZ_ALWAYS_INLINE ArrayObject* NewArray(JSContext* cx, uint32_t length,
+                                               HandleObject protoArg,
+                                               NewObjectKind newKind) {
   gc::AllocKind allocKind = GuessArrayGCKind(length);
   MOZ_ASSERT(CanChangeToBackgroundAllocKind(allocKind, &ArrayObject::class_));
   allocKind = ForegroundToBackgroundAllocKind(allocKind);
@@ -4099,22 +4101,19 @@ static MOZ_ALWAYS_INLINE ArrayObject* NewArray(
 }
 
 ArrayObject* JS_FASTCALL
-js::NewDenseEmptyArray(JSContext* cx, HandleObject proto /* = nullptr */,
-                       NewObjectKind newKind /* = GenericObject */) {
-  return NewArray<0>(cx, 0, proto, newKind);
+js::NewDenseEmptyArray(JSContext* cx, HandleObject proto /* = nullptr */) {
+  return NewArray<0>(cx, 0, proto, GenericObject);
+}
+
+ArrayObject* JS_FASTCALL js::NewTenuredDenseEmptyArray(
+    JSContext* cx, HandleObject proto /* = nullptr */) {
+  return NewArray<0>(cx, 0, proto, TenuredObject);
 }
 
 ArrayObject* JS_FASTCALL js::NewDenseFullyAllocatedArray(
     JSContext* cx, uint32_t length, HandleObject proto /* = nullptr */,
     NewObjectKind newKind /* = GenericObject */) {
   return NewArray<UINT32_MAX>(cx, length, proto, newKind);
-}
-
-ArrayObject* JS_FASTCALL js::NewDensePartlyAllocatedArray(
-    JSContext* cx, uint32_t length, HandleObject proto /* = nullptr */,
-    NewObjectKind newKind /* = GenericObject */) {
-  return NewArray<ArrayObject::EagerAllocationMaxLength>(cx, length, proto,
-                                                         newKind);
 }
 
 ArrayObject* JS_FASTCALL js::NewDenseUnallocatedArray(
@@ -4144,14 +4143,14 @@ ArrayObject* js::NewDenseCopiedArray(
 }
 
 ArrayObject* js::NewDenseFullyAllocatedArrayWithTemplate(
-    JSContext* cx, uint32_t length, JSObject* templateObject) {
+    JSContext* cx, uint32_t length, ArrayObject* templateObject) {
   AutoSetNewObjectMetadata metadata(cx);
   gc::AllocKind allocKind = GuessArrayGCKind(length);
   MOZ_ASSERT(CanChangeToBackgroundAllocKind(allocKind, &ArrayObject::class_));
   allocKind = ForegroundToBackgroundAllocKind(allocKind);
 
   RootedObjectGroup group(cx, templateObject->group());
-  RootedShape shape(cx, templateObject->as<ArrayObject>().lastProperty());
+  RootedShape shape(cx, templateObject->lastProperty());
 
   gc::InitialHeap heap = GetInitialHeap(GenericObject, group);
   Rooted<ArrayObject*> arr(

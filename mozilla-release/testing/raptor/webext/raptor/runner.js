@@ -19,8 +19,7 @@ const TEST_BENCHMARK = "benchmark";
 const TEST_PAGE_LOAD = "pageload";
 const TEST_SCENARIO = "scenario";
 
-const GECKOVIEW_BROWSERS = ["fenix", "geckoview", "refbrow"];
-const GECKO_BROWSERS = GECKOVIEW_BROWSERS + ["firefox"];
+const ANDROID_BROWSERS = ["fennec", "fenix", "geckoview", "refbrow"];
 
 // when the browser starts this webext runner will start automatically; we
 // want to give the browser some time (ms) to settle before starting tests
@@ -34,9 +33,8 @@ var newTabPerCycle = false;
 // delay (ms) for foregrounding app
 var foregroundDelay = 5000;
 
-var browserName;
-var isGecko;
-var isGeckoView;
+var isGecko = false;
+var isGeckoAndroid = false;
 var ext;
 var testName = null;
 var settingsURL = null;
@@ -48,6 +46,7 @@ var browserCycle = 0;
 var pageCycles = 0;
 var pageCycle = 0;
 var testURL;
+var testTabId;
 var scenarioTestTime = 60000;
 var getHero = false;
 var getFNBPaint = false;
@@ -200,23 +199,6 @@ async function sleep(delay) {
   return new Promise(resolve => setTimeout(resolve, delay));
 }
 
-async function getBrowserInfo() {
-  if (isGecko) {
-    const info = await ext.runtime.getBrowserInfo();
-    results.browser = `${info.name} ${info.version} ${info.buildID}`;
-  } else {
-    const info = window.navigator.userAgent.split(" ");
-    for (const entry in info) {
-      if (info[entry].indexOf("Chrome") > -1) {
-        results.browser = info[entry];
-        break;
-      }
-    }
-  }
-
-  raptorLog(`testing on ${results.browser}`);
-}
-
 async function startScenarioTimer() {
   setTimeout(function() {
     isScenarioPending = false;
@@ -226,15 +208,13 @@ async function startScenarioTimer() {
   await postToControlServer("status", `started scenario test timer`);
 }
 
-async function closeTab() {
+async function closeTab(tabId) {
   // Don't close the last tab which would close the window or application
   const tabs = await queryForTabs({ currentWindow: true });
   if (tabs.length == 1) {
     await postToControlServer("status", `Not closing last Tab: ${tabs[0].id}`);
     return;
   }
-
-  const tabId = await getCurrentTabId();
 
   await postToControlServer("status", `closing Tab: ${tabId}`);
 
@@ -251,13 +231,16 @@ async function closeTab() {
 
 async function getCurrentTabId() {
   const tabs = await queryForTabs({ currentWindow: true, active: true });
+  if (tabs.length == 0) {
+    throw new Error("No active tab has been found.");
+  }
 
   await postToControlServer("status", "found active tab with id " + tabs[0].id);
   return tabs[0].id;
 }
 
 async function openTab() {
-  await postToControlServer("status", "openinig new tab");
+  await postToControlServer("status", "opening new tab");
 
   let tab;
   if (isGecko) {
@@ -290,9 +273,7 @@ async function queryForTabs(options = {}) {
 /**
  * Update the given tab by navigating to the test URL
  */
-async function updateTab(url) {
-  const tabId = await getCurrentTabId();
-
+async function updateTab(tabId, url) {
   await postToControlServer("status", `update tab ${tabId} for ${url}`);
 
   // "null" = active tab
@@ -493,11 +474,11 @@ async function nextCycle() {
 
     if (newTabPerCycle) {
       // close previous test tab and open a new one
-      await closeTab();
-      await openTab();
+      await closeTab(testTabId);
+      testTabId = await openTab();
     }
 
-    await updateTab(testURL);
+    await updateTab(testTabId, testURL);
 
     if (testType == TEST_SCENARIO) {
       await startScenarioTimer();
@@ -530,7 +511,7 @@ async function timeoutAlarmListener() {
     "load time": isLoadTimePending,
   };
 
-  let msgData = [testName, testURL];
+  let msgData = [testName, testURL, pageCycle];
   if (testType == TEST_PAGE_LOAD) {
     msgData.push(pendingMetrics);
   }
@@ -694,7 +675,7 @@ async function cleanUp() {
   if (debugMode == 1) {
     raptorLog("debug-mode enabled, leaving tab open");
   } else {
-    await closeTab();
+    await closeTab(testTabId);
   }
 
   if (testType == TEST_PAGE_LOAD) {
@@ -724,7 +705,6 @@ async function raptorRunner() {
     );
   }
 
-  await getBrowserInfo();
   await getTestSettings();
 
   raptorLog(`${testType} test start`);
@@ -739,10 +719,11 @@ async function raptorRunner() {
   await postToControlServer("status", text);
   await sleep(postStartupDelay);
 
-  // GeckoView doesn't support tabs
-  if (!isGeckoView) {
+  if (!isGeckoAndroid) {
     await openTab();
   }
+
+  testTabId = await getCurrentTabId();
 
   await nextCycle();
 }
@@ -762,19 +743,34 @@ async function init() {
   testName = config.test_name;
   settingsURL = config.test_settings_url;
   csPort = config.cs_port;
-  browserName = config.browser;
   benchmarkPort = config.benchmark_port;
   postStartupDelay = config.post_startup_delay;
   host = config.host;
   debugMode = config.debug_mode;
   browserCycle = config.browser_cycle;
 
-  isGecko = GECKO_BROWSERS.includes(browserName);
-  isGeckoView = GECKOVIEW_BROWSERS.includes(browserName);
+  try {
+    // Chromium based browsers do not support the "browser" namespace and
+    // raise an exception when accessing it.
+    const info = await browser.runtime.getBrowserInfo();
+    results.browser = `${info.name} ${info.version} ${info.buildID}`;
 
-  ext = isGecko ? browser : chrome;
+    ext = browser;
+    isGecko = true;
+    isGeckoAndroid = ANDROID_BROWSERS.includes(info.name.toLowerCase);
+  } catch (e) {
+    const regex = /(Chrome)\/([\w\.]+)/;
+    const userAgent = window.navigator.userAgent;
+    results.browser = regex
+      .exec(userAgent)
+      .splice(1, 2)
+      .join(" ");
 
-  await postToControlServer("status", "raptor runner.js is loaded!");
+    ext = chrome;
+  }
+
+  await postToControlServer("loaded");
+  await postToControlServer("status", `testing on ${results.browser}`);
   await postToControlServer("status", `test name is: ${testName}`);
   await postToControlServer("status", `test settings url is: ${settingsURL}`);
 

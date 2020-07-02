@@ -4173,7 +4173,7 @@ function createAppInfo(aID, aName, aVersion, aPlatformVersion) {
       if (aOuter == null) {
         return XULAppInfo.QueryInterface(aIID);
       }
-      throw Cr.NS_ERROR_NO_AGGREGATION;
+      throw Components.Exception("", Cr.NS_ERROR_NO_AGGREGATION);
     },
   };
 
@@ -4551,7 +4551,7 @@ IncrementalDownload.prototype = {
   },
 
   get currentSize() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
   get destination() {
@@ -4563,18 +4563,18 @@ IncrementalDownload.prototype = {
   },
 
   get totalSize() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
   /* nsIRequest */
   cancel(aStatus) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
   suspend() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
   isPending() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
   _loadFlags: 0,
   get loadFlags() {

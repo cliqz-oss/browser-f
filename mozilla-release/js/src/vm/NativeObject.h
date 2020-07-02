@@ -206,6 +206,11 @@ class ObjectElements {
 
     // These elements are set to integrity level "frozen". If this flag is
     // set, the SEALED flag must be set as well.
+    //
+    // This flag must only be set if the BaseShape has the FROZEN_ELEMENTS flag.
+    // The BaseShape flag ensures a shape guard can be used to guard against
+    // frozen elements. The ObjectElements flag is convenient for JIT code and
+    // ObjectElements assertions.
     FROZEN = 0x20,
   };
 
@@ -317,6 +322,8 @@ class ObjectElements {
     flags |= FROZEN;
   }
 
+  bool isFrozen() const { return flags & FROZEN; }
+
  public:
   constexpr ObjectElements(uint32_t capacity, uint32_t length)
       : flags(0), initializedLength(0), capacity(capacity), length(length) {}
@@ -369,11 +376,10 @@ class ObjectElements {
   static bool MakeElementsCopyOnWrite(JSContext* cx, NativeObject* obj);
 
   static MOZ_MUST_USE bool PreventExtensions(JSContext* cx, NativeObject* obj);
-  static void FreezeOrSeal(JSContext* cx, NativeObject* obj,
-                           IntegrityLevel level);
+  static MOZ_MUST_USE bool FreezeOrSeal(JSContext* cx, HandleNativeObject obj,
+                                        IntegrityLevel level);
 
   bool isSealed() const { return flags & SEALED; }
-  bool isFrozen() const { return flags & FROZEN; }
 
   uint8_t elementAttributes() const {
     if (isFrozen()) {
@@ -478,9 +484,8 @@ class NativeObject : public JSObject {
     static_assert(sizeof(NativeObject) % sizeof(Value) == 0,
                   "fixed slots after an object must be aligned");
 
-    static_assert(
-        offsetof(NativeObject, group_) == offsetof(shadow::Object, group),
-        "shadow type must match actual type");
+    static_assert(offsetOfGroup() == offsetof(shadow::Object, group),
+                  "shadow type must match actual type");
     static_assert(
         offsetof(NativeObject, slots_) == offsetof(shadow::Object, slots),
         "shadow slots must match actual slots");
@@ -736,7 +741,9 @@ class NativeObject : public JSObject {
     if (inDictionaryMode()) {
       return lastProperty()->base()->slotSpan();
     }
-    return lastProperty()->slotSpan();
+    // Get the class from the object group rather than the base shape to avoid a
+    // race between Shape::ensureOwnBaseShape and background sweeping.
+    return lastProperty()->slotSpan(getClass());
   }
 
   /* Whether a slot is at a fixed offset from this object. */
@@ -1309,7 +1316,7 @@ class NativeObject : public JSObject {
     return getElementsHeader()->isSealed();
   }
   bool denseElementsAreFrozen() const {
-    return getElementsHeader()->isFrozen();
+    return hasAllFlags(js::BaseShape::FROZEN_ELEMENTS);
   }
 
   /* Packed information for this object's elements. */
@@ -1479,20 +1486,18 @@ class NativeObject : public JSObject {
   static constexpr size_t getPrivateDataOffset(size_t nfixed) {
     return getFixedSlotOffset(nfixed);
   }
+  static constexpr size_t getFixedSlotIndexFromOffset(size_t offset) {
+    MOZ_ASSERT(offset >= sizeof(NativeObject));
+    offset -= sizeof(NativeObject);
+    MOZ_ASSERT(offset % sizeof(Value) == 0);
+    MOZ_ASSERT(offset / sizeof(Value) < MAX_FIXED_SLOTS);
+    return offset / sizeof(Value);
+  }
+  static constexpr size_t getDynamicSlotIndexFromOffset(size_t offset) {
+    MOZ_ASSERT(offset % sizeof(Value) == 0);
+    return offset / sizeof(Value);
+  }
   static size_t offsetOfSlots() { return offsetof(NativeObject, slots_); }
-};
-
-// Object class for plain native objects created using '{}' object literals,
-// 'new Object()', 'Object.create', etc.
-class PlainObject : public NativeObject {
- public:
-  static const JSClass class_;
-
-  static inline JS::Result<PlainObject*, JS::OOM&> createWithTemplate(
-      JSContext* cx, Handle<PlainObject*> templateObject);
-
-  /* Return the allocKind we would use if we were to tenure this object. */
-  inline js::gc::AllocKind allocKindForTenure() const;
 };
 
 inline void NativeObject::privateWriteBarrierPre(void** oldval) {
@@ -1641,12 +1646,6 @@ bool IsPackedArray(JSObject* obj);
 
 extern void AddPropertyTypesAfterProtoChange(JSContext* cx, NativeObject* obj,
                                              ObjectGroup* oldGroup);
-
-// Specializations of 7.3.23 CopyDataProperties(...) for NativeObjects.
-extern bool CopyDataPropertiesNative(JSContext* cx, HandlePlainObject target,
-                                     HandleNativeObject from,
-                                     HandlePlainObject excludedItems,
-                                     bool* optimized);
 
 // Initialize an object's reserved slot with a private value pointing to
 // malloc-allocated memory and associate the memory with the object.

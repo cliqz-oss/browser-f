@@ -17,9 +17,9 @@ const { LoginManagerStorage_json } = ChromeUtils.import(
 );
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  GeckoViewLoginStorage: "resource://gre/modules/GeckoViewLoginStorage.jsm",
+  GeckoViewAutocomplete: "resource://gre/modules/GeckoViewAutocomplete.jsm",
   LoginHelper: "resource://gre/modules/LoginHelper.jsm",
-  LoginEntry: "resource://gre/modules/GeckoViewLoginStorage.jsm",
+  LoginEntry: "resource://gre/modules/GeckoViewAutocomplete.jsm",
 });
 
 class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
@@ -37,7 +37,7 @@ class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
   }
 
   get _crypto() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
   initialize() {
@@ -61,23 +61,23 @@ class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
     plaintextUsername = null,
     plaintextPassword = null
   ) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
   removeLogin(login) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
   modifyLogin(oldLogin, newLoginData) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
   recordPasswordUse(login) {
-    GeckoViewLoginStorage.onLoginPasswordUsed(LoginEntry.fromLoginInfo(login));
+    GeckoViewAutocomplete.onLoginPasswordUsed(LoginEntry.fromLoginInfo(login));
   }
 
   getAllLogins() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
   /**
@@ -91,7 +91,7 @@ class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
       return [];
     }
 
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
   async searchLoginsAsync(matchData) {
@@ -117,7 +117,7 @@ class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
     // so that we can handle the logic for scheme upgrades, subdomains, etc.
     // Convert from the new shape to one which supports the legacy getters used
     // by _searchLogins.
-    let candidateLogins = await GeckoViewLoginStorage.fetchLogins(
+    let candidateLogins = await GeckoViewAutocomplete.fetchLogins(
       baseHostname
     ).catch(_ => {
       // No GV delegate is attached.
@@ -187,14 +187,14 @@ class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
    * Use `searchLoginsAsync` instead.
    */
   searchLogins(matchData) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
   /**
    * Removes all logins from storage.
    */
   removeAllLogins() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
   get uiBusy() {

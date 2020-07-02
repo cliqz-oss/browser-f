@@ -392,7 +392,7 @@ nsIContent* nsINode::GetTextEditorRootContent(TextEditor** aTextEditor) {
   if (aTextEditor) {
     *aTextEditor = nullptr;
   }
-  for (auto* element : InclusiveAncestorsOfType<nsGenericHTMLElement>(*this)) {
+  for (auto* element : InclusiveAncestorsOfType<nsGenericHTMLElement>()) {
     RefPtr<TextEditor> textEditor = element->GetTextEditorInternal();
     if (!textEditor) {
       continue;
@@ -774,7 +774,7 @@ nsINode* nsINode::RemoveChild(nsINode& aOldChild, ErrorResult& aError) {
 
   // Check again, we may not be the child's parent anymore.
   // Can be triggered by dom/base/crashtests/293388-1.html
-  if (aOldChild.AsContent()->IsRootOfAnonymousSubtree() ||
+  if (aOldChild.IsRootOfNativeAnonymousSubtree() ||
       aOldChild.GetParentNode() != this) {
     // aOldChild isn't one of our children.
     aError.ThrowNotFoundError(
@@ -908,7 +908,7 @@ void nsINode::LookupPrefix(const nsAString& aNamespaceURI, nsAString& aPrefix) {
     // Trace up the content parent chain looking for the namespace
     // declaration that defines the aNamespaceURI namespace. Once found,
     // return the prefix (i.e. the attribute localName).
-    for (Element* element : InclusiveAncestorsOfType<Element>(*nsElement)) {
+    for (Element* element : nsElement->InclusiveAncestorsOfType<Element>()) {
       uint32_t attrCount = element->GetAttrCount();
 
       for (uint32_t i = 0; i < attrCount; ++i) {
@@ -2025,6 +2025,35 @@ void nsINode::Append(const Sequence<OwningNodeOrString>& aNodes,
   AppendChild(*node, aRv);
 }
 
+// https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
+void nsINode::ReplaceChildren(const Sequence<OwningNodeOrString>& aNodes,
+                              ErrorResult& aRv) {
+  nsCOMPtr<Document> doc = OwnerDoc();
+  nsCOMPtr<nsINode> node = ConvertNodesOrStringsIntoNode(aNodes, doc, aRv);
+  if (aRv.Failed()) {
+    return;
+  }
+
+  EnsurePreInsertionValidity(*node, nullptr, aRv);
+  if (aRv.Failed()) {
+    return;
+  }
+
+  // Needed when used in combination with contenteditable (maybe)
+  mozAutoDocUpdate updateBatch(doc, true);
+
+  nsAutoMutationBatch mb(this, true, false);
+
+  // Replace all with node within this.
+  while (mFirstChild) {
+    RemoveChildNode(mFirstChild, true);
+  }
+  mb.RemovalDone();
+
+  AppendChild(*node, aRv);
+  mb.NodesAdded();
+}
+
 void nsINode::RemoveChildNode(nsIContent* aKid, bool aNotify) {
   // NOTE: This function must not trigger any calls to
   // Document::GetRootElement() calls until *after* it has removed aKid from
@@ -2301,8 +2330,7 @@ void nsINode::EnsurePreInsertionValidity1(ErrorResult& aError) {
 void nsINode::EnsurePreInsertionValidity2(bool aReplace, nsINode& aNewChild,
                                           nsINode* aRefChild,
                                           ErrorResult& aError) {
-  if (aNewChild.IsContent() &&
-      aNewChild.AsContent()->IsRootOfAnonymousSubtree()) {
+  if (aNewChild.IsRootOfNativeAnonymousSubtree()) {
     // This is anonymous content.  Don't allow its insertion
     // anywhere, since it might have UnbindFromTree calls coming
     // its way.
@@ -2748,7 +2776,7 @@ bool nsINode::Contains(const nsINode* aOther) const {
     // document.contains(aOther) returns true if aOther is in the document,
     // but is not in any anonymous subtree.
     // IsInUncomposedDoc() check is done already before this.
-    return !aOther->IsInAnonymousSubtree();
+    return !aOther->IsInNativeAnonymousSubtree();
   }
 
   if (!IsElement() && !IsDocumentFragment()) {
@@ -3273,6 +3301,12 @@ already_AddRefed<nsINode> nsINode::CloneAndAdopt(
   if (aDeep && aNode->IsElement()) {
     if (aClone) {
       if (clone->OwnerDoc()->IsStaticDocument()) {
+        // Clone any animations to the node in the static document, including
+        // the current timing. They will need to be paused later after the new
+        // document's pres shell gets initialized.
+        clone->AsElement()->CloneAnimationsFrom(*aNode->AsElement());
+
+        // Clone the Shadow DOM
         ShadowRoot* originalShadowRoot = aNode->AsElement()->GetShadowRoot();
         if (originalShadowRoot) {
           RefPtr<ShadowRoot> newShadowRoot =

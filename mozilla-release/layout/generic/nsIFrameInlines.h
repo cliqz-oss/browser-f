@@ -37,6 +37,13 @@ bool nsIFrame::IsFlexOrGridItem() const {
          GetParent()->IsFlexOrGridContainer();
 }
 
+bool nsIFrame::IsMasonry(mozilla::LogicalAxis aAxis) const {
+  MOZ_DIAGNOSTIC_ASSERT(IsGridContainerFrame());
+  return HasAnyStateBits(aAxis == mozilla::eLogicalAxisBlock
+                             ? NS_STATE_GRID_IS_ROW_MASONRY
+                             : NS_STATE_GRID_IS_COL_MASONRY);
+}
+
 bool nsIFrame::IsTableCaption() const {
   return StyleDisplay()->mDisplay == mozilla::StyleDisplay::TableCaption &&
          GetParent()->Style()->GetPseudoType() ==
@@ -135,9 +142,11 @@ nscoord nsIFrame::SynthesizeBaselineBOffsetFromBorderBox(
 
 nscoord nsIFrame::SynthesizeBaselineBOffsetFromContentBox(
     mozilla::WritingMode aWM, BaselineSharingGroup aGroup) const {
-  MOZ_ASSERT(!aWM.IsOrthogonalTo(GetWritingMode()));
-  auto bp = GetLogicalUsedBorderAndPadding(aWM);
-  bp.ApplySkipSides(GetLogicalSkipSides());
+  mozilla::WritingMode wm = GetWritingMode();
+  MOZ_ASSERT(!aWM.IsOrthogonalTo(wm));
+  const auto bp = GetLogicalUsedBorderAndPadding(wm)
+                      .ApplySkipSides(GetLogicalSkipSides())
+                      .ConvertTo(aWM, wm);
 
   if (MOZ_UNLIKELY(aWM.IsCentralBaseline())) {
     nscoord contentBoxBSize = BSize(aWM) - bp.BStartEnd(aWM);

@@ -81,6 +81,9 @@ describe("DiscoveryStreamFeed", () => {
           [ENDPOINTS_PREF_NAME]: DUMMY_ENDPOINT,
           "discoverystream.enabled": true,
           "feeds.section.topstories": true,
+          "feeds.system.topstories": true,
+          "discoverystream.spocs.personalized": true,
+          "discoverystream.recs.personalized": true,
         },
       },
     });
@@ -841,6 +844,8 @@ describe("DiscoveryStreamFeed", () => {
           spocs: {
             context: "",
             title: "",
+            sponsor: "",
+            sponsored_by_override: undefined,
             items: [{ id: "data", min_score: 0, score: 1 }],
           },
         },
@@ -887,6 +892,8 @@ describe("DiscoveryStreamFeed", () => {
         placement1: {
           title: "",
           context: "",
+          sponsor: "",
+          sponsored_by_override: undefined,
           items: [{ id: "data", score: 1, min_score: 0 }],
         },
         placement2: {
@@ -902,6 +909,8 @@ describe("DiscoveryStreamFeed", () => {
         placement1: {
           title: "title",
           context: "context",
+          sponsor: "",
+          sponsored_by_override: undefined,
           items: [{ id: "data" }],
         },
       });
@@ -918,6 +927,8 @@ describe("DiscoveryStreamFeed", () => {
         placement1: {
           title: "title",
           context: "context",
+          sponsor: "",
+          sponsored_by_override: undefined,
           items: [{ id: "data", score: 1, min_score: 0 }],
         },
       });
@@ -929,6 +940,8 @@ describe("DiscoveryStreamFeed", () => {
       const spocs = {
         title: "title",
         context: "context",
+        sponsor: "sponsor",
+        sponsored_by_override: "override",
         items: [{ id: "id" }],
       };
       const result = feed.normalizeSpocsItems(spocs);
@@ -942,6 +955,8 @@ describe("DiscoveryStreamFeed", () => {
       assert.deepEqual(result, {
         title: "",
         context: "",
+        sponsor: "",
+        sponsored_by_override: undefined,
         items: [{ id: "id" }],
       });
     });
@@ -951,6 +966,8 @@ describe("DiscoveryStreamFeed", () => {
       assert.deepEqual(result, {
         title: "",
         context: "",
+        sponsor: "",
+        sponsored_by_override: undefined,
         items: [{ id: "id" }],
       });
     });
@@ -1104,14 +1121,15 @@ describe("DiscoveryStreamFeed", () => {
     });
   });
 
-  describe("#transform", () => {
+  describe("#scoreItems", () => {
     it("should return initial data if spocs are empty", async () => {
-      const { data: result } = await feed.transform({ spocs: [] });
+      const { data: result } = await feed.scoreItems([]);
 
-      assert.equal(result.spocs.length, 0);
+      assert.equal(result.length, 0);
     });
+
     it("should sort based on item_score", async () => {
-      const { data: result } = await feed.transform([
+      const { data: result } = await feed.scoreItems([
         { id: 2, flight_id: 2, item_score: 0.8, min_score: 0.1 },
         { id: 3, flight_id: 3, item_score: 0.7, min_score: 0.1 },
         { id: 1, flight_id: 1, item_score: 0.9, min_score: 0.1 },
@@ -1123,8 +1141,9 @@ describe("DiscoveryStreamFeed", () => {
         { id: 3, flight_id: 3, item_score: 0.7, score: 0.7, min_score: 0.1 },
       ]);
     });
+
     it("should remove items with scores lower than min_score", async () => {
-      const { data: result, filtered } = await feed.transform([
+      const { data: result, filtered } = await feed.scoreItems([
         { id: 2, flight_id: 2, item_score: 0.8, min_score: 0.9 },
         { id: 3, flight_id: 3, item_score: 0.7, min_score: 0.7 },
         { id: 1, flight_id: 1, item_score: 0.9, min_score: 0.8 },
@@ -1135,35 +1154,60 @@ describe("DiscoveryStreamFeed", () => {
         { id: 3, flight_id: 3, item_score: 0.7, score: 0.7, min_score: 0.7 },
       ]);
 
-      assert.deepEqual(filtered.below_min_score, [
+      assert.deepEqual(filtered, [
         { id: 2, flight_id: 2, item_score: 0.8, min_score: 0.9, score: 0.8 },
       ]);
     });
+
     it("should add a score prop to spocs", async () => {
-      const { data: result } = await feed.transform([
+      const { data: result } = await feed.scoreItems([
         { flight_id: 1, item_score: 0.9, min_score: 0.1 },
       ]);
 
       assert.equal(result[0].score, 0.9);
     });
-    it("should filter out duplicate flights", async () => {
-      const { data: result, filtered } = await feed.transform([
-        { id: 1, flight_id: 2, item_score: 0.8, min_score: 0.1 },
-        { id: 2, flight_id: 3, item_score: 0.6, min_score: 0.1 },
-        { id: 3, flight_id: 1, item_score: 0.9, min_score: 0.1 },
-        { id: 4, flight_id: 3, item_score: 0.7, min_score: 0.1 },
-        { id: 5, flight_id: 1, item_score: 0.9, min_score: 0.1 },
+    it("should score items using item_score and min_score", async () => {
+      const { data: result, filtered } = await feed.scoreItems([
+        { item_score: 0.8, min_score: 0.1 },
+        { item_score: 0.5, min_score: 0.6 },
+        { item_score: 0.7, min_score: 0.1 },
+        { item_score: 0.9, min_score: 0.1 },
+      ]);
+      assert.deepEqual(result, [
+        { item_score: 0.9, score: 0.9, min_score: 0.1 },
+        { item_score: 0.8, score: 0.8, min_score: 0.1 },
+        { item_score: 0.7, score: 0.7, min_score: 0.1 },
+      ]);
+      assert.deepEqual(filtered, [
+        { item_score: 0.5, min_score: 0.6, score: 0.5 },
+      ]);
+    });
+  });
+  describe("#removeFlightDupes", () => {
+    it("should no op with no params", () => {
+      const { data: result, filtered } = feed.removeFlightDupes([]);
+
+      assert.equal(result.length, 0);
+      assert.equal(filtered.length, 0);
+    });
+    it("should filter out duplicate flights", () => {
+      const { data: result, filtered } = feed.removeFlightDupes([
+        { id: 1, flight_id: 2 },
+        { id: 2, flight_id: 3 },
+        { id: 3, flight_id: 1 },
+        { id: 4, flight_id: 3 },
+        { id: 5, flight_id: 1 },
       ]);
 
       assert.deepEqual(result, [
-        { id: 3, flight_id: 1, item_score: 0.9, score: 0.9, min_score: 0.1 },
-        { id: 1, flight_id: 2, item_score: 0.8, score: 0.8, min_score: 0.1 },
-        { id: 4, flight_id: 3, item_score: 0.7, score: 0.7, min_score: 0.1 },
+        { id: 1, flight_id: 2 },
+        { id: 2, flight_id: 3 },
+        { id: 3, flight_id: 1 },
       ]);
 
-      assert.deepEqual(filtered.flight_duplicate, [
-        { id: 5, flight_id: 1, item_score: 0.9, min_score: 0.1, score: 0.9 },
-        { id: 2, flight_id: 3, item_score: 0.6, min_score: 0.1, score: 0.6 },
+      assert.deepEqual(filtered, [
+        { id: 4, flight_id: 3 },
+        { id: 5, flight_id: 1 },
       ]);
     });
     it("should filter out duplicate flight while using spocs_per_domain", async () => {
@@ -1173,33 +1217,33 @@ describe("DiscoveryStreamFeed", () => {
         },
       });
 
-      const { data: result, filtered } = await feed.transform([
-        { id: 1, flight_id: 2, item_score: 0.8, min_score: 0.1 },
-        { id: 2, flight_id: 3, item_score: 0.6, min_score: 0.1 },
-        { id: 3, flight_id: 1, item_score: 0.6, min_score: 0.1 },
-        { id: 4, flight_id: 3, item_score: 0.7, min_score: 0.1 },
-        { id: 5, flight_id: 1, item_score: 0.9, min_score: 0.1 },
-        { id: 6, flight_id: 2, item_score: 0.6, min_score: 0.1 },
-        { id: 7, flight_id: 3, item_score: 0.7, min_score: 0.1 },
-        { id: 8, flight_id: 1, item_score: 0.8, min_score: 0.1 },
-        { id: 9, flight_id: 3, item_score: 0.7, min_score: 0.1 },
-        { id: 10, flight_id: 1, item_score: 0.8, min_score: 0.1 },
+      const { data: result, filtered } = feed.removeFlightDupes([
+        { id: 1, flight_id: 2 },
+        { id: 2, flight_id: 3 },
+        { id: 3, flight_id: 1 },
+        { id: 4, flight_id: 3 },
+        { id: 5, flight_id: 1 },
+        { id: 6, flight_id: 2 },
+        { id: 7, flight_id: 3 },
+        { id: 8, flight_id: 1 },
+        { id: 9, flight_id: 3 },
+        { id: 10, flight_id: 1 },
       ]);
 
       assert.deepEqual(result, [
-        { id: 5, flight_id: 1, item_score: 0.9, score: 0.9, min_score: 0.1 },
-        { id: 1, flight_id: 2, item_score: 0.8, score: 0.8, min_score: 0.1 },
-        { id: 8, flight_id: 1, item_score: 0.8, score: 0.8, min_score: 0.1 },
-        { id: 4, flight_id: 3, item_score: 0.7, score: 0.7, min_score: 0.1 },
-        { id: 7, flight_id: 3, item_score: 0.7, score: 0.7, min_score: 0.1 },
-        { id: 6, flight_id: 2, item_score: 0.6, score: 0.6, min_score: 0.1 },
+        { id: 1, flight_id: 2 },
+        { id: 2, flight_id: 3 },
+        { id: 3, flight_id: 1 },
+        { id: 4, flight_id: 3 },
+        { id: 5, flight_id: 1 },
+        { id: 6, flight_id: 2 },
       ]);
 
-      assert.deepEqual(filtered.flight_duplicate, [
-        { id: 10, flight_id: 1, item_score: 0.8, min_score: 0.1, score: 0.8 },
-        { id: 9, flight_id: 3, item_score: 0.7, min_score: 0.1, score: 0.7 },
-        { id: 2, flight_id: 3, item_score: 0.6, min_score: 0.1, score: 0.6 },
-        { id: 3, flight_id: 1, item_score: 0.6, min_score: 0.1, score: 0.6 },
+      assert.deepEqual(filtered, [
+        { id: 7, flight_id: 3 },
+        { id: 8, flight_id: 1 },
+        { id: 9, flight_id: 3 },
+        { id: 10, flight_id: 1 },
       ]);
     });
   });
@@ -1520,20 +1564,6 @@ describe("DiscoveryStreamFeed", () => {
       assert.calledWith(feed.writeDataPref, SPOC_IMPRESSION_TRACKING_PREF, {
         "flight-2": [-1],
       });
-    });
-    it("should use old spocs data strucutre", async () => {
-      const fakeSpocs = {
-        spocs: [
-          {
-            flight_id: "flight-2",
-          },
-        ],
-      };
-      sandbox.stub(feed, "cleanUpImpressionPref").returns();
-
-      feed.cleanUpFlightImpressionPref(fakeSpocs);
-
-      assert.calledOnce(feed.cleanUpImpressionPref);
     });
   });
 
@@ -2465,6 +2495,7 @@ describe("DiscoveryStreamFeed", () => {
           Prefs: {
             values: {
               "feeds.section.topstories": true,
+              "feeds.system.topstories": true,
             },
           },
         };
@@ -2630,6 +2661,12 @@ describe("DiscoveryStreamFeed", () => {
       sandbox.spy(feed.store, "dispatch");
       sandbox.stub(feed, "_sendSpocsFill").returns();
       const fakeDiscoveryStream = {
+        Prefs: {
+          values: {
+            "discoverystream.spocs.personalized": true,
+            "discoverystream.recs.personalized": false,
+          },
+        },
         DiscoveryStream: {
           spocs: {
             placements: [
@@ -2734,6 +2771,12 @@ describe("DiscoveryStreamFeed", () => {
   describe("#scoreContent", () => {
     it("should call scoreFeeds and scoreSpocs if loaded", async () => {
       const fakeDiscoveryStream = {
+        Prefs: {
+          values: {
+            "discoverystream.spocs.personalized": true,
+            "discoverystream.recs.personalized": true,
+          },
+        },
         DiscoveryStream: {
           feeds: { loaded: false },
           spocs: { loaded: false },
@@ -2937,7 +2980,7 @@ describe("DiscoveryStreamFeed", () => {
       feed.providerSwitcher.calculateItemRelevanceScore = sandbox
         .stub()
         .returns();
-      await feed.scoreItem(item);
+      await feed.scoreItem(item, true);
       assert.calledOnce(feed.providerSwitcher.calculateItemRelevanceScore);
     });
     it("should use item_score score without affinity provider score", async () => {

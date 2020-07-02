@@ -102,6 +102,7 @@ class HttpChannelChild final : public PHttpChannelChild,
   NS_IMETHOD RedirectTo(nsIURI* newURI) override;
   NS_IMETHOD UpgradeToSecure() override;
   NS_IMETHOD GetProtocolVersion(nsACString& aProtocolVersion) override;
+  void DoDiagnosticAssertWhenOnStopNotCalledOnDestroy() override;
   // nsIHttpChannelInternal
   NS_IMETHOD SetupFallbackChannel(const char* aFallbackKey) override;
   // nsISupportsPriority
@@ -116,7 +117,7 @@ class HttpChannelChild final : public PHttpChannelChild,
   nsresult SetReferrerHeader(const nsACString& aReferrer,
                              bool aRespectBeforeConnect) override;
 
-  MOZ_MUST_USE bool IsSuspended();
+  [[nodiscard]] bool IsSuspended();
 
   void FlushedForDiversion();
 
@@ -131,22 +132,9 @@ class HttpChannelChild final : public PHttpChannelChild,
 
  protected:
   mozilla::ipc::IPCResult RecvOnStartRequest(
-      const nsresult& channelStatus, const nsHttpResponseHead& responseHead,
-      const bool& useResponseHead, const nsHttpHeaderArray& requestHeaders,
-      const ParentLoadInfoForwarderArgs& loadInfoForwarder,
-      const bool& isFromCache, const bool& isRacing,
-      const bool& cacheEntryAvailable, const uint64_t& cacheEntryId,
-      const int32_t& cacheFetchCount, const uint32_t& cacheExpirationTime,
-      const nsCString& cachedCharset,
-      const nsCString& securityInfoSerialization, const NetAddr& selfAddr,
-      const NetAddr& peerAddr, const int16_t& redirectCount,
-      const uint32_t& cacheKey, const nsCString& altDataType,
-      const int64_t& altDataLen, const bool& deliveringAltData,
-      const bool& aApplyConversion, const bool& aIsResolvedByTRR,
-      const ResourceTimingStructArgs& aTiming,
-      const bool& aAllRedirectsSameOrigin, const Maybe<uint32_t>& aMultiPartID,
-      const bool& aIsLastPartOfMultiPart,
-      const nsILoadInfo::CrossOriginOpenerPolicy& aOpenerPolicy) override;
+      const nsHttpResponseHead& aResponseHead, const bool& aUseResponseHead,
+      const nsHttpHeaderArray& aRequestHeaders,
+      const HttpChannelOnStartRequestArgs& aArgs) override;
   mozilla::ipc::IPCResult RecvOnTransportAndData(
       const nsresult& aChannelStatus, const nsresult& aTransportStatus,
       const uint64_t& aOffset, const uint32_t& aCount,
@@ -284,7 +272,7 @@ class HttpChannelChild final : public PHttpChannelChild,
   // Get event target for ODA.
   already_AddRefed<nsIEventTarget> GetODATarget();
 
-  MOZ_MUST_USE nsresult ContinueAsyncOpen();
+  [[nodiscard]] nsresult ContinueAsyncOpen();
 
   // Callbacks while receiving OnTransportAndData/OnStopRequest/OnProgress/
   // OnStatus/FlushedForDiversion/DivertMessages on background IPC channel.
@@ -434,6 +422,13 @@ class HttpChannelChild final : public PHttpChannelChild,
   // True if we need to tell the parent the size of unreported received data
   Atomic<bool, SequentiallyConsistent> mNeedToReportBytesRead;
 
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  bool mDoDiagnosticAssertWhenOnStopNotCalledOnDestroy = false;
+  bool mAsyncOpenSucceeded = false;
+  bool mSuccesfullyRedirected = false;
+  Maybe<ActorDestroyReason> mActorDestroyReason;
+#endif
+
   uint8_t mCacheEntryAvailable : 1;
   uint8_t mAltDataCacheEntryAvailable : 1;
 
@@ -490,22 +485,10 @@ class HttpChannelChild final : public PHttpChannelChild,
 
   void AssociateApplicationCache(const nsCString& groupID,
                                  const nsCString& clientID);
-  void OnStartRequest(
-      const nsresult& channelStatus, const nsHttpResponseHead& responseHead,
-      const bool& useResponseHead, const nsHttpHeaderArray& requestHeaders,
-      const ParentLoadInfoForwarderArgs& loadInfoForwarder,
-      const bool& isFromCache, const bool& isRacing,
-      const bool& cacheEntryAvailable, const uint64_t& cacheEntryId,
-      const int32_t& cacheFetchCount, const uint32_t& cacheExpirationTime,
-      const nsCString& cachedCharset,
-      const nsCString& securityInfoSerialization, const NetAddr& selfAddr,
-      const NetAddr& peerAddr, const uint32_t& cacheKey,
-      const nsCString& altDataType, const int64_t& altDataLen,
-      const bool& deliveringAltData, const bool& aApplyConversion,
-      const bool& aIsResolvedByTRR, const ResourceTimingStructArgs& aTiming,
-      const bool& aAllRedirectsSameOrigin, const Maybe<uint32_t>& aMultiPartID,
-      const bool& aIsLastPartOfMultiPart,
-      const nsILoadInfo::CrossOriginOpenerPolicy& aOpenerPolicy);
+  void OnStartRequest(const nsHttpResponseHead& aResponseHead,
+                      const bool& aUseResponseHead,
+                      const nsHttpHeaderArray& aRequestHeaders,
+                      const HttpChannelOnStartRequestArgs& aArgs);
   void MaybeDivertOnData(const nsCString& data, const uint64_t& offset,
                          const uint32_t& count);
   void OnTransportAndData(const nsresult& channelStatus, const nsresult& status,
@@ -531,13 +514,14 @@ class HttpChannelChild final : public PHttpChannelChild,
   void DoNotifyListener();
   void ContinueDoNotifyListener();
   void OnAfterLastPart(const nsresult& aStatus);
+  void MaybeConnectToSocketProcess();
 
   // Create a a new channel to be used in a redirection, based on the provided
   // response headers.
-  MOZ_MUST_USE nsresult SetupRedirect(nsIURI* uri,
-                                      const nsHttpResponseHead* responseHead,
-                                      const uint32_t& redirectFlags,
-                                      nsIChannel** outChannel);
+  [[nodiscard]] nsresult SetupRedirect(nsIURI* uri,
+                                       const nsHttpResponseHead* responseHead,
+                                       const uint32_t& redirectFlags,
+                                       nsIChannel** outChannel);
 
   // Perform a redirection without communicating with the parent process at all.
   void BeginNonIPCRedirect(nsIURI* responseURI,

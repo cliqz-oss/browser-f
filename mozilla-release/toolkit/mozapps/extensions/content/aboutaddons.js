@@ -353,9 +353,11 @@ function checkForUpdate(addon) {
   return new Promise(resolve => {
     let listener = {
       onUpdateAvailable(addon, install) {
-        attachUpdateHandler(install);
-
         if (AddonManager.shouldAutoUpdate(addon)) {
+          // Make sure that an update handler is attached to all the install
+          // objects when updated xpis are going to be installed automatically.
+          attachUpdateHandler(install);
+
           let failed = () => {
             install.removeListener(updateListener);
             resolve({ installed: false, pending: false, found: true });
@@ -1321,7 +1323,6 @@ class AddonPageHeader extends HTMLElement {
     if (this.childElementCount === 0) {
       this.appendChild(importTemplate("addon-page-header"));
       this.heading = this.querySelector(".header-name");
-      this.searchLabel = this.querySelector(".search-label");
       this.backButton = this.querySelector(".back-button");
       this.pageOptionsMenuButton = this.querySelector(
         '[action="page-options"]'
@@ -1356,20 +1357,12 @@ class AddonPageHeader extends HTMLElement {
     this.heading.hidden = viewType === "detail";
     this.backButton.hidden = viewType !== "detail" && viewType !== "shortcuts";
 
+    let { contentWindow } = getBrowserElement();
+    this.backButton.disabled = !contentWindow.history.state?.previousView;
+
     if (viewType !== "detail") {
       document.l10n.setAttributes(this.heading, `${viewType}-heading`);
     }
-
-    let customSearchLabelTypes = {
-      shortcuts: "extension",
-      extension: "extension",
-      theme: "theme",
-    };
-    let searchLabelType = customSearchLabelTypes[viewType] || "default";
-    document.l10n.setAttributes(
-      this.searchLabel,
-      `${searchLabelType}-heading-search-label`
-    );
   }
 
   handleEvent(e) {
@@ -1385,7 +1378,11 @@ class AddonPageHeader extends HTMLElement {
           }
           break;
       }
-    } else if (e.type == "mousedown" && e.target == pageOptionsMenuButton) {
+    } else if (
+      e.type == "mousedown" &&
+      e.target == pageOptionsMenuButton &&
+      e.button == 0
+    ) {
       this.pageOptionsMenu.toggle(e);
     } else if (
       e.target == pageOptionsMenu.panel &&
@@ -2866,6 +2863,14 @@ class AddonCard extends HTMLElement {
           break;
         }
         case "install-update":
+          // Make sure that an update handler is attached to the install object
+          // before starting the update installation (otherwise the user would
+          // not be prompted for the new permissions requested if necessary),
+          // and also make sure that a prompt handler attached from a closed
+          // about:addons tab is replaced by the one attached by the currently
+          // active about:addons tab.
+          attachUpdateHandler(this.updateInstall);
+
           this.updateInstall.install().then(
             () => {
               // The card will update with the new add-on when it gets
@@ -2907,7 +2912,9 @@ class AddonCard extends HTMLElement {
             let {
               remove,
               report,
-            } = windowRoot.ownerGlobal.promptRemoveExtension(addon);
+            } = windowRoot.ownerGlobal.BrowserAddonUI.promptRemoveExtension(
+              addon
+            );
             let value = remove ? "accepted" : "cancelled";
             this.recordActionEvent("uninstall", value);
             if (remove) {
@@ -2951,6 +2958,7 @@ class AddonCard extends HTMLElement {
             !this.expanded &&
             (e.target === this.addonNameEl || !e.target.closest("a"))
           ) {
+            e.preventDefault();
             loadViewFn(`detail/${this.addon.id}`);
           } else if (
             e.target.localName == "a" &&
@@ -3005,7 +3013,7 @@ class AddonCard extends HTMLElement {
       }
     } else if (e.type == "mousedown") {
       // Open panel on mousedown when the mouse is used.
-      if (action == "more-options") {
+      if (action == "more-options" && e.button == 0) {
         this.panel.toggle(e);
       }
     } else if (e.type === "shown" || e.type === "hidden") {

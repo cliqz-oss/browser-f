@@ -77,7 +77,7 @@ the $PATH environment variable.
 
 We recommend the following tools for installing Python:
 
-    pyenv   -- https://github.com/yyuu/pyenv)
+    pyenv   -- https://github.com/yyuu/pyenv
     pythonz -- https://github.com/saghul/pythonz
     official installers -- http://www.python.org/
 '''
@@ -321,6 +321,12 @@ class BaseBootstrapper(object):
     def ensure_fix_stacks_packages(self, state_dir, checkout_root):
         '''
         Install fix-stacks.
+        '''
+        pass
+
+    def ensure_minidump_stackwalk_packages(self, state_dir, checkout_root):
+        '''
+        Install minidump_stackwalk.
         '''
         pass
 

@@ -25,6 +25,10 @@
 #include "nsDirectoryServiceUtils.h"
 #include "prenv.h"
 
+#ifdef MOZ_NEW_XULSTORE
+#  include "mozilla/XULStore.h"
+#endif
+
 namespace mozilla {
 
 static ShutdownPhase sFastShutdownPhase = ShutdownPhase::NotInShutdown;
@@ -142,6 +146,19 @@ void AppShutdown::Init(AppShutdownMode aMode) {
 }
 
 void AppShutdown::MaybeFastShutdown(ShutdownPhase aPhase) {
+  // For writes which we want to ensure are recorded, we don't want to trip
+  // the late write checking code. Anything that writes to disk and which
+  // we don't want to skip should be listed out explicitly in this section.
+  if (aPhase == sFastShutdownPhase || aPhase == sLateWriteChecksPhase) {
+    if (auto* cache = scache::StartupCache::GetSingletonNoInit()) {
+      cache->EnsureShutdownWriteComplete();
+    }
+
+#ifdef MOZ_NEW_XULSTORE
+    DebugOnly<nsresult> rv = XULStore::Shutdown();
+    NS_ASSERTION(NS_SUCCEEDED(rv), "XULStore::Shutdown() failed.");
+#endif
+  }
   if (aPhase == sFastShutdownPhase) {
     StopLateWriteChecks();
     RecordShutdownEndTimeStamp();

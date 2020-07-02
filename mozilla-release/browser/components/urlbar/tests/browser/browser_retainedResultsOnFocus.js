@@ -3,7 +3,7 @@
 
 "use strict";
 
-// Tests "megabar" redesign approach with retained results.
+// Tests retained results.
 // When there is a pending search (user typed a search string and blurred
 // without picking a result), on focus we should the search results again.
 
@@ -71,10 +71,7 @@ async function checkDoesNotOpenOnFocus(win) {
 
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["browser.urlbar.autoFill", true],
-      ["browser.urlbar.openViewOnFocus", true],
-    ],
+    set: [["browser.urlbar.autoFill", true]],
   });
   // Add some history for the empty panel and autofill.
   await PlacesTestUtils.addVisits([
@@ -132,7 +129,6 @@ async function test_window(win) {
 }
 
 add_task(async function test_normalWindow() {
-  // The megabar works properly in a new window.
   let win = await BrowserTestUtils.openNewBrowserWindow();
   await test_window(win);
   await BrowserTestUtils.closeWindow(win);

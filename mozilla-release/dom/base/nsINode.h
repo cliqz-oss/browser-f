@@ -73,6 +73,8 @@ inline bool IsSpaceCharacter(char aChar) {
          aChar == '\f';
 }
 class AccessibleNode;
+template <typename T>
+class AncestorsOfTypeIterator;
 struct BoxQuadOptions;
 struct ConvertCoordinateOptions;
 class DocGroup;
@@ -84,6 +86,13 @@ class DOMQuad;
 class DOMRectReadOnly;
 class Element;
 class EventHandlerNonNull;
+template <typename T>
+class FlatTreeAncestorsOfTypeIterator;
+template <typename T>
+class InclusiveAncestorsOfTypeIterator;
+template <typename T>
+class InclusiveFlatTreeAncestorsOfTypeIterator;
+class LinkStyle;
 class MutationObservers;
 template <typename T>
 class Optional;
@@ -500,6 +509,13 @@ class nsINode : public mozilla::dom::EventTarget {
   bool IsElement() const { return GetBoolFlag(NodeIsElement); }
 
   virtual bool IsTextControlElement() const { return false; }
+
+  // Returns non-null if this element subclasses `LinkStyle`.
+  virtual const mozilla::dom::LinkStyle* AsLinkStyle() const { return nullptr; }
+  mozilla::dom::LinkStyle* AsLinkStyle() {
+    return const_cast<mozilla::dom::LinkStyle*>(
+        static_cast<const nsINode*>(this)->AsLinkStyle());
+  }
 
   /**
    * Return this node as an Element.  Should only be used for nodes
@@ -1090,6 +1106,28 @@ class nsINode : public mozilla::dom::EventTarget {
     }
   }
 
+  /**
+   * Helper methods to access ancestor node(s) of type T.
+   * The implementations of the methods are in mozilla/dom/AncestorIterator.h.
+   */
+  template <typename T>
+  inline mozilla::dom::AncestorsOfTypeIterator<T> AncestorsOfType() const;
+
+  template <typename T>
+  inline mozilla::dom::InclusiveAncestorsOfTypeIterator<T>
+  InclusiveAncestorsOfType() const;
+
+  template <typename T>
+  inline mozilla::dom::FlatTreeAncestorsOfTypeIterator<T>
+  FlatTreeAncestorsOfType() const;
+
+  template <typename T>
+  inline mozilla::dom::InclusiveFlatTreeAncestorsOfTypeIterator<T>
+  InclusiveFlatTreeAncestorsOfType() const;
+
+  template <typename T>
+  T* FirstAncestorOfType() const;
+
  private:
   /**
    * Walks aNode, its attributes and, if aDeep is true, its descendant nodes.
@@ -1256,16 +1294,6 @@ class nsINode : public mozilla::dom::EventTarget {
   bool IsInNativeAnonymousSubtree() const {
     return HasFlag(NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE);
   }
-
-  /**
-   * Returns true if there is NOT a path through child lists
-   * from the top of this node's parent chain back to this node or
-   * if the node is in native anonymous subtree without a parent.
-   *
-   * TODO(emilio):: Remove this function, and use just
-   * IsInNativeAnonymousSubtree, or something?
-   */
-  bool IsInAnonymousSubtree() const { return IsInNativeAnonymousSubtree(); }
 
   /**
    * If |this| or any ancestor is native anonymous, return the root of the
@@ -2005,6 +2033,8 @@ class nsINode : public mozilla::dom::EventTarget {
                                   ErrorResult& aRv);
   MOZ_CAN_RUN_SCRIPT void Append(const Sequence<OwningNodeOrString>& aNodes,
                                  ErrorResult& aRv);
+  MOZ_CAN_RUN_SCRIPT void ReplaceChildren(
+      const Sequence<OwningNodeOrString>& aNodes, ErrorResult& aRv);
 
   void GetBoxQuads(const BoxQuadOptions& aOptions,
                    nsTArray<RefPtr<DOMQuad>>& aResult, CallerType aCallerType,

@@ -42,3 +42,6 @@
 <!ENTITY addSearchEngine.accesskey        "D">
 <!ENTITY removeSearchEngine.label         "Entfernen">
 <!ENTITY removeSearchEngine.accesskey     "f">
+
+<!ENTITY minimizeToTray.label             "&brandShortName; beim Minimieren in die Infoleiste verschieben">
+<!ENTITY minimizeToTray.accesskey         "M">

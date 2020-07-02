@@ -192,7 +192,7 @@ bool HttpBackgroundChannelParent::OnTransportAndData(
   }
 
   return SendOnTransportAndData(aChannelStatus, aTransportStatus, aOffset,
-                                aCount, aData);
+                                aCount, aData, false);
 }
 
 bool HttpBackgroundChannelParent::OnStopRequest(
@@ -214,7 +214,7 @@ bool HttpBackgroundChannelParent::OnStopRequest(
     nsresult rv = mBackgroundThread->Dispatch(
         NewRunnableMethod<const nsresult, const ResourceTimingStructArgs,
                           const nsHttpHeaderArray,
-                          const nsTArray<ConsoleReportCollected>>(
+                          const CopyableTArray<ConsoleReportCollected>>(
             "net::HttpBackgroundChannelParent::OnStopRequest", this,
             &HttpBackgroundChannelParent::OnStopRequest, aChannelStatus,
             aTiming, aResponseTrailers, aConsoleReports),

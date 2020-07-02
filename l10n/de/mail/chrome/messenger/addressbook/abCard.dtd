@@ -76,14 +76,11 @@
 <!ENTITY HomeWebPage.accesskey          "W">
 <!ENTITY Birthday.label                 "Geburtstag:">
 <!ENTITY Birthday.accesskey             "G">
-<!ENTITY In.label                       "">
 <!ENTITY Month.placeholder              "Monat">
 <!ENTITY Day.placeholder                "Tag">
 <!ENTITY Year.placeholder               "Jahr">
-<!ENTITY Or.value                       "Alter:">
 <!ENTITY Age.label                      "Alter:">
 <!ENTITY Age.placeholder                "Jahre">
-<!ENTITY YearsOld.label                 "Jahre alt">
 
 <!ENTITY Work.tab                       "Dienstlich">
 <!ENTITY Work.accesskey                 "D">
@@ -144,7 +141,6 @@
 
 <!ENTITY Photo.tab                      "Foto">
 <!ENTITY Photo.accesskey                "F">
-<!ENTITY PhotoDesc.label                "Wählen Sie eine der folgenden Optionen:">
 <!ENTITY GenericPhoto.label             "Generisches Foto">
 <!ENTITY GenericPhoto.accesskey         "G">
 <!ENTITY DefaultPhoto.label             "Standard">

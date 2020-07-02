@@ -65,12 +65,8 @@ class nsMixedContentBlocker : public nsIContentPolicy,
    * Remaining parameters are from nsIContentPolicy::ShouldLoad().
    */
   static nsresult ShouldLoad(bool aHadInsecureImageRedirect,
-                             uint32_t aContentType, nsIURI* aContentLocation,
-                             nsIURI* aRequestingLocation,
-                             nsISupports* aRequestingContext,
-                             const nsACString& aMimeGuess,
-                             nsIPrincipal* aRequestPrincipal,
-                             int16_t* aDecision);
+                             nsIURI* aContentLocation, nsILoadInfo* aLoadInfo,
+                             const nsACString& aMimeGuess, int16_t* aDecision);
   static void AccumulateMixedContentHSTS(
       nsIURI* aURI, bool aActive, const OriginAttributes& aOriginAttributes);
 

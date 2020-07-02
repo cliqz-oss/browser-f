@@ -911,7 +911,7 @@ SimpleTest.waitForFocus = function(callback, targetWindow, expectBlankPage) {
         if (loaded && focused && !finished) {
           finished = true;
           if (isChildProcess) {
-            sendAsyncMessage("WaitForFocus:ChildFocused", {}, null);
+            sendAsyncMessage("WaitForFocus:ChildFocused", {});
           } else {
             SimpleTest._pendingWaitForFocusCount--;
             SimpleTest.executeSoon(function() {
@@ -965,7 +965,11 @@ SimpleTest.waitForFocus = function(callback, targetWindow, expectBlankPage) {
       }
 
       /* If this is a child frame, ensure that the frame is focused. */
-      focused = focusedWindow() == childDesiredWindow;
+      if (isChildProcess) {
+        focused = focusedWindow() == childDesiredWindow;
+      } else {
+        focused = SpecialPowers.compare(focusedWindow(), childDesiredWindow);
+      }
       if (!focused) {
         info("must wait for focus");
         childDesiredWindow.addEventListener("focus", focusedOrLoaded, true);
@@ -1006,14 +1010,11 @@ SimpleTest.waitForFocus = function(callback, targetWindow, expectBlankPage) {
   // is whether the property is read-only or not.  The real |Components|
   // property is read-only.
   var c = Object.getOwnPropertyDescriptor(window, "Components");
-  var Cu, Ci;
+  var Ci;
   if (c && c.value && !c.writable) {
-    // eslint-disable-next-line mozilla/use-cc-etc
-    Cu = Components.utils;
     // eslint-disable-next-line mozilla/use-cc-etc
     Ci = Components.interfaces;
   } else {
-    Cu = SpecialPowers.Cu;
     Ci = SpecialPowers.Ci;
   }
 
@@ -1024,13 +1025,6 @@ SimpleTest.waitForFocus = function(callback, targetWindow, expectBlankPage) {
     targetWindow.localName == "browser"
   ) {
     browser = targetWindow;
-  }
-
-  var isWrapper = Cu.isCrossProcessWrapper(targetWindow);
-  if (isWrapper) {
-    throw new Error(
-      "Can't pass CPOW to SimpleTest.focus as the content window."
-    );
   }
 
   if (browser && browser.isRemoteBrowser) {

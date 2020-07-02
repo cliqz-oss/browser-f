@@ -13,17 +13,21 @@
 
 // The following are not lazily loaded as they are needed during initialization.
 
-/** @type {import("resource://gre/modules/Services.jsm")} */
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-/** @type {import("resource://gre/modules/AppConstants.jsm")} */
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+const { createLazyLoaders } = ChromeUtils.import(
+  "resource://devtools/client/performance-new/typescript-lazy-load.jsm.js"
 );
+// For some reason TypeScript was giving me an error when de-structuring AppConstants. I
+// suspect a bug in TypeScript was at play.
+const AppConstants = ChromeUtils.import(
+  "resource://gre/modules/AppConstants.jsm"
+).AppConstants;
 
 /**
  * @typedef {import("../@types/perf").RecordingStateFromPreferences} RecordingStateFromPreferences
  * @typedef {import("../@types/perf").PopupBackgroundFeatures} PopupBackgroundFeatures
  * @typedef {import("../@types/perf").SymbolTableAsTuple} SymbolTableAsTuple
+ * @typedef {import("../@types/perf").Library} Library
  * @typedef {import("../@types/perf").PerformancePref} PerformancePref
  * @typedef {import("../@types/perf").ProfilerWebChannel} ProfilerWebChannel
  * @typedef {import("../@types/perf").MessageFromFrontend} MessageFromFrontend
@@ -48,89 +52,35 @@ const PRESET_PREF = "devtools.performance.recording.preset";
 /** @type {PerformancePref["PopupFeatureFlag"]} */
 const POPUP_FEATURE_FLAG_PREF = "devtools.performance.popup.feature-flag";
 
+// Lazily load the require function, when it's needed.
+ChromeUtils.defineModuleGetter(
+  this,
+  "require",
+  "resource://devtools/shared/Loader.jsm"
+);
+
 // The following utilities are lazily loaded as they are not needed when controlling the
 // global state of the profiler, and only are used during specific funcationality like
 // symbolication or capturing a profile.
-
-/**
- * TS-TODO
- *
- * This function replaces lazyRequireGetter, and TypeScript can understand it. It's
- * currently duplicated until we have consensus that TypeScript is a good idea.
- *
- * @template T
- * @type {(callback: () => T) => () => T}
- */
-function requireLazy(callback) {
-  /** @type {T | undefined} */
-  let cache;
-  return () => {
-    if (cache === undefined) {
-      cache = callback();
-    }
-    return cache;
-  };
-}
-
-const lazyOS = requireLazy(() =>
-  /** @type {import("resource://gre/modules/osfile.jsm")} */
-  (ChromeUtils.import("resource://gre/modules/osfile.jsm"))
-);
-
-const lazyProfilerGetSymbols = requireLazy(() =>
-  /** @type {import("resource://gre/modules/ProfilerGetSymbols.jsm")} */
-  (ChromeUtils.import("resource://gre/modules/ProfilerGetSymbols.jsm"))
-);
-
-const lazyBrowserModule = requireLazy(() => {
-  const { require } = ChromeUtils.import(
-    "resource://devtools/shared/Loader.jsm"
-  );
-  /** @type {import("devtools/client/performance-new/browser")} */
-  const browserModule = require("devtools/client/performance-new/browser");
-  return browserModule;
+const lazy = createLazyLoaders({
+  OS: () => ChromeUtils.import("resource://gre/modules/osfile.jsm"),
+  Utils: () => require("devtools/client/performance-new/utils"),
+  BrowserModule: () => require("devtools/client/performance-new/browser"),
+  RecordingUtils: () =>
+    require("devtools/shared/performance-new/recording-utils"),
+  CustomizableUI: () =>
+    ChromeUtils.import("resource:///modules/CustomizableUI.jsm"),
+  PerfSymbolication: () =>
+    ChromeUtils.import(
+      "resource://devtools/client/performance-new/symbolication.jsm.js"
+    ),
+  PreferenceManagement: () =>
+    require("devtools/client/performance-new/preference-management"),
+  ProfilerMenuButton: () =>
+    ChromeUtils.import(
+      "resource://devtools/client/performance-new/popup/menu-button.jsm.js"
+    ),
 });
-
-const lazyPreferenceManagement = requireLazy(() => {
-  const { require } = ChromeUtils.import(
-    "resource://devtools/shared/Loader.jsm"
-  );
-
-  /** @type {import("devtools/client/performance-new/preference-management")} */
-  const preferenceManagementModule = require("devtools/client/performance-new/preference-management");
-  return preferenceManagementModule;
-});
-
-const lazyRecordingUtils = requireLazy(() => {
-  const { require } = ChromeUtils.import(
-    "resource://devtools/shared/Loader.jsm"
-  );
-
-  /** @type {import("devtools/shared/performance-new/recording-utils")} */
-  const recordingUtils = require("devtools/shared/performance-new/recording-utils");
-  return recordingUtils;
-});
-
-const lazyUtils = requireLazy(() => {
-  const { require } = ChromeUtils.import(
-    "resource://devtools/shared/Loader.jsm"
-  );
-  /** @type {import("devtools/client/performance-new/utils")} */
-  const recordingUtils = require("devtools/client/performance-new/utils");
-  return recordingUtils;
-});
-
-const lazyProfilerMenuButton = requireLazy(() =>
-  /** @type {import("devtools/client/performance-new/popup/menu-button.jsm.js")} */
-  (ChromeUtils.import(
-    "resource://devtools/client/performance-new/popup/menu-button.jsm.js"
-  ))
-);
-
-const lazyCustomizableUI = requireLazy(() =>
-  /** @type {import("resource:///modules/CustomizableUI.jsm")} */
-  (ChromeUtils.import("resource:///modules/CustomizableUI.jsm"))
-);
 
 /** @type {Presets} */
 const presets = {
@@ -138,7 +88,7 @@ const presets = {
     label: "Web Developer",
     description:
       "Recommended preset for most web app debugging, with low overhead.",
-    entries: 10000000,
+    entries: 128 * 1024 * 1024,
     interval: 1,
     features: ["screenshots", "js"],
     threads: ["GeckoMain", "Compositor", "Renderer", "DOM Worker"],
@@ -147,7 +97,7 @@ const presets = {
   "firefox-platform": {
     label: "Firefox Platform",
     description: "Recommended preset for internal Firefox platform debugging.",
-    entries: 10000000,
+    entries: 128 * 1024 * 1024,
     interval: 1,
     features: ["screenshots", "js", "leaf", "stackwalk", "java"],
     threads: ["GeckoMain", "Compositor", "Renderer"],
@@ -156,7 +106,7 @@ const presets = {
   "firefox-front-end": {
     label: "Firefox Front-End",
     description: "Recommended preset for internal Firefox front-end debugging.",
-    entries: 10000000,
+    entries: 128 * 1024 * 1024,
     interval: 1,
     features: ["screenshots", "js", "leaf", "stackwalk", "java"],
     threads: ["GeckoMain", "Compositor", "Renderer", "DOM Worker"],
@@ -165,19 +115,21 @@ const presets = {
   media: {
     label: "Media",
     description: "Recommended preset for diagnosing audio and video problems.",
-    entries: 10000000,
+    entries: 128 * 1024 * 1024,
     interval: 1,
     features: ["js", "leaf", "stackwalk"],
     threads: [
-      "GeckoMain",
-      "Compositor",
-      "Renderer",
-      "RenderBackend",
+      "AsyncCubebTask",
       "AudioIPC",
-      "MediaPDecoder",
-      "MediaTimer",
-      "MediaPlayback",
+      "Compositor",
+      "GeckoMain",
+      "GraphRunner",
       "MediaDecoderStateMachine",
+      "MediaPDecoder",
+      "MediaPlayback",
+      "MediaTimer",
+      "RenderBackend",
+      "Renderer",
     ],
     duration: 0,
   },
@@ -185,27 +137,25 @@ const presets = {
 
 /**
  * This Map caches the symbols from the shared libraries.
- * @type {Map<string, { path: string, debugPath: string }>}
+ * @type {Map<string, Library>}
  */
 const symbolCache = new Map();
 
 /**
+ * @param {PageContext} pageContext
  * @param {string} debugName
  * @param {string} breakpadId
  */
-async function getSymbolsFromThisBrowser(debugName, breakpadId) {
+async function getSymbolsFromThisBrowser(pageContext, debugName, breakpadId) {
   if (symbolCache.size === 0) {
     // Prime the symbols cache.
     for (const lib of Services.profiler.sharedLibraries) {
-      symbolCache.set(`${lib.debugName}/${lib.breakpadId}`, {
-        path: lib.path,
-        debugPath: lib.debugPath,
-      });
+      symbolCache.set(`${lib.debugName}/${lib.breakpadId}`, lib);
     }
   }
 
-  const cachedLibInfo = symbolCache.get(`${debugName}/${breakpadId}`);
-  if (!cachedLibInfo) {
+  const cachedLib = symbolCache.get(`${debugName}/${breakpadId}`);
+  if (!cachedLib) {
     throw new Error(
       `The library ${debugName} ${breakpadId} is not in the ` +
         "Services.profiler.sharedLibraries list, so the local path for it is not known " +
@@ -216,31 +166,28 @@ async function getSymbolsFromThisBrowser(debugName, breakpadId) {
     );
   }
 
-  const { path, debugPath } = cachedLibInfo;
-  const { OS } = lazyOS();
-  if (!OS.Path.split(path).absolute) {
-    throw new Error(
-      "Services.profiler.sharedLibraries did not contain an absolute path for " +
-        `the library ${debugName} ${breakpadId}, so symbols for this library can not ` +
-        "be obtained."
-    );
-  }
-
-  const { ProfilerGetSymbols } = lazyProfilerGetSymbols();
-
-  return ProfilerGetSymbols.getSymbolTable(path, debugPath, breakpadId);
+  const lib = cachedLib;
+  const objdirs = getObjdirPrefValue(pageContext);
+  const { getSymbolTableMultiModal } = lazy.PerfSymbolication();
+  return getSymbolTableMultiModal(lib, objdirs);
 }
 
 /**
  * This function is called directly by devtools/startup/DevToolsStartup.jsm when
  * using the shortcut keys to capture a profile.
- * @type {() => Promise<void>}
+ * @param {PageContext} pageContext
+ * @return {Promise<void>}
  */
-async function captureProfile() {
+async function captureProfile(pageContext) {
   if (!Services.profiler.IsActive()) {
     // The profiler is not active, ignore this shortcut.
     return;
   }
+  if (Services.profiler.IsPaused()) {
+    // The profiler is already paused for capture, ignore this shortcut.
+    return;
+  }
+
   // Pause profiler before we collect the profile, so that we don't capture
   // more samples while the parent process waits for subprocess profiles.
   Services.profiler.PauseSampling();
@@ -254,8 +201,10 @@ async function captureProfile() {
       }
     );
 
-  const receiveProfile = lazyBrowserModule().receiveProfile;
-  receiveProfile(profile, getSymbolsFromThisBrowser);
+  const receiveProfile = lazy.BrowserModule().receiveProfile;
+  receiveProfile(profile, (debugName, breakpadId) => {
+    return getSymbolsFromThisBrowser(pageContext, debugName, breakpadId);
+  });
 
   Services.profiler.StopProfiler();
 }
@@ -266,7 +215,7 @@ async function captureProfile() {
  * @param {PageContext} pageContext
  */
 function startProfiler(pageContext) {
-  const { translatePreferencesToState } = lazyPreferenceManagement();
+  const { translatePreferencesToState } = lazy.PreferenceManagement();
   const {
     entries,
     interval,
@@ -278,7 +227,7 @@ function startProfiler(pageContext) {
   );
 
   // Get the active BrowsingContext ID from browser.
-  const { getActiveBrowsingContextID } = lazyRecordingUtils();
+  const { getActiveBrowsingContextID } = lazy.RecordingUtils();
   const activeBrowsingContextID = getActiveBrowsingContextID();
 
   Services.profiler.StartProfiler(
@@ -307,6 +256,11 @@ function stopProfiler() {
  * @return {void}
  */
 function toggleProfiler(pageContext) {
+  if (Services.profiler.IsPaused()) {
+    // The profiler is currently paused, which means that the user is already
+    // attempting to capture a profile. Ignore this request.
+    return;
+  }
   if (Services.profiler.IsActive()) {
     stopProfiler();
   } else {
@@ -359,10 +313,19 @@ function getPrefPostfix(pageContext) {
     case "aboutprofiling-remote":
       return ".remote";
     default: {
-      const { UnhandledCaseError } = lazyUtils();
+      const { UnhandledCaseError } = lazy.Utils();
       throw new UnhandledCaseError(pageContext, "Page Context");
     }
   }
+}
+
+/**
+ * @param {PageContext} pageContext
+ * @returns {string[]}
+ */
+function getObjdirPrefValue(pageContext) {
+  const postfix = getPrefPostfix(pageContext);
+  return _getArrayOfStringsHostPref(OBJDIRS_PREF + postfix);
 }
 
 /**
@@ -375,7 +338,7 @@ function getRecordingPreferences(pageContext, supportedFeatures) {
 
   // If you add a new preference here, please do not forget to update
   // `revertRecordingPreferences` as well.
-  const objdirs = _getArrayOfStringsHostPref(OBJDIRS_PREF + postfix);
+  const objdirs = getObjdirPrefValue(pageContext);
   const presetName = Services.prefs.getCharPref(PRESET_PREF + postfix);
 
   // First try to get the values from a preset.
@@ -533,7 +496,7 @@ function handleWebChannelMessage(channel, id, message, target) {
     case "STATUS_QUERY": {
       // The content page wants to know if this channel exists. It does, so respond
       // back to the ping.
-      const { ProfilerMenuButton } = lazyProfilerMenuButton();
+      const { ProfilerMenuButton } = lazy.ProfilerMenuButton();
       channel.send(
         {
           type: "STATUS_RESPONSE",
@@ -556,12 +519,12 @@ function handleWebChannelMessage(channel, id, message, target) {
       Services.prefs.setBoolPref(POPUP_FEATURE_FLAG_PREF, true);
 
       // Enable the profiler menu button.
-      const { ProfilerMenuButton } = lazyProfilerMenuButton();
+      const { ProfilerMenuButton } = lazy.ProfilerMenuButton();
       ProfilerMenuButton.addToNavbar(ownerDocument);
 
       // Dispatch the change event manually, so that the shortcuts will also be
       // added.
-      const { CustomizableUI } = lazyCustomizableUI();
+      const { CustomizableUI } = lazy.CustomizableUI();
       CustomizableUI.dispatchToolboxEvent("customizationchange");
 
       // Open the popup with a message.

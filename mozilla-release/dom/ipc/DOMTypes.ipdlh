@@ -11,8 +11,8 @@ include "mozilla/layers/LayersMessageUtils.h";
 
 include IPCBlob;
 include IPCStream;
+include protocol PIPCBlobInputStream;
 include ProtocolTypes;
-include protocol PSHEntry;
 
 using struct mozilla::void_t
   from "ipc/IPCMessageUtils.h";
@@ -28,7 +28,7 @@ using CSSRect from "Units.h";
 using CSSSize from "Units.h";
 using ScreenIntSize from "Units.h";
 using mozilla::LayoutDeviceIntPoint from "Units.h";
-using nsSizeMode from "nsIWidgetListener.h";
+using nsSizeMode from "mozilla/dom/TabMessageUtils.h";
 using ScrollbarPreference from "mozilla/ScrollbarPreferences.h";
 using hal::ScreenOrientation from "mozilla/HalScreenConfiguration.h";
 using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
@@ -40,9 +40,7 @@ using refcounted class nsIInputStream from "mozilla/ipc/IPCStreamUtils.h";
 using refcounted class nsIReferrerInfo from "mozilla/dom/ReferrerInfoUtils.h";
 using refcounted class nsIVariant from "mozilla/dom/PropertyBagUtils.h";
 using class mozilla::TimeStamp from "mozilla/TimeStamp.h";
-using refcounted class nsISHEntry from "nsISHEntry.h";
 using refcounted class mozilla::dom::BrowsingContext from "mozilla/dom/BrowsingContext.h";
-using refcounted class mozilla::dom::CrossProcessSHEntry from "mozilla/dom/MaybeNewPSHEntry.h";
 
 namespace mozilla {
 namespace dom {
@@ -67,6 +65,14 @@ struct ClonedMessageData
   IPCBlob[] blobs;
   IPCStream[] inputStreams;
   MessagePortIdentifier[] identifiers;
+};
+
+struct ErrorMessageData {
+};
+
+union ClonedOrErrorMessageData {
+  ClonedMessageData;
+  ErrorMessageData;
 };
 
 struct RefMessageData {
@@ -222,17 +228,6 @@ struct PerformanceInfo
   CategoryDispatch[] items;
 };
 
-
-struct WindowGlobalInit
-{
-  nsIPrincipal principal;
-  nsIPrincipal contentBlockingAllowListPrincipal;
-  nsIURI documentURI;
-  MaybeDiscardedBrowsingContext browsingContext;
-  uint64_t innerWindowId;
-  uint64_t outerWindowId;
-};
-
 struct DocShellLoadStateInit
 {
   nsIURI URI;
@@ -255,8 +250,10 @@ struct DocShellLoadStateInit
   nsIURI BaseURI;
   uint32_t LoadFlags;
   bool FirstParty;
+  bool HasValidUserGestureActivation;
   nsCString TypeHint;
   nsString FileName;
+  bool IsHttpsOnlyModeUpgradeExempt;
   bool IsFromProcessingFrameAttributes;
   // The Content Security Policy of the load, that is, the CSP of the entity
   // responsible for causing the load to occur. Most likely this is the CSP
@@ -266,6 +263,8 @@ struct DocShellLoadStateInit
   // encounters a server side redirect.
   nsIContentSecurityPolicy Csp;
 
+  MaybeDiscardedBrowsingContext SourceBrowsingContext;
+
   nsCString? OriginalURIString;
   int32_t? CancelContentJSEpoch;
 
@@ -273,15 +272,13 @@ struct DocShellLoadStateInit
   nsIInputStream HeadersStream;
 
   nsString SrcdocData; // useless without sourcedocshell
-  // This might be missing if serialization of session history entries is
-  // not supported. This is the case when 'fission.sessionHistoryInParent'
-  // pref is off.
-  CrossProcessSHEntry SHEntry;
 
   // Fields missing due to lack of need or serialization
   // nsCOMPtr<nsIDocShell> mSourceDocShell;
   // bool mIsSrcDocLoad; // useless without sourcedocshell
   // nsIChannel pendingRedirectedChannel; // sent through other mechanism
+
+  uint32_t LoadIdentifier;
 };
 
 struct TimedChannelInfo
@@ -315,7 +312,7 @@ struct ReplacementChannelConfigInit
   nsCString? method;
   nsIReferrerInfo referrerInfo;
   TimedChannelInfo? timedChannel;
-  nsIInputStream uploadStream;
+  nullable PIPCBlobInputStream uploadStream;
   bool uploadStreamHasHeaders;
   nsCString? contentType;
   nsCString? contentLength;
@@ -356,7 +353,6 @@ struct ParentShowInfo
 {
   nsString name;
   bool fullscreenAllowed;
-  bool isPrivate;
   bool fakeShowInfo;
   bool isTransparent;
   float dpi;
@@ -378,12 +374,6 @@ struct OwnerShowInfo {
   // parent process too instead.
   bool parentWindowIsActive;
   nsSizeMode sizeMode;
-};
-
-struct SwapEntriesDocshellData {
-  CrossProcessSHEntry oldEntry;
-  CrossProcessSHEntry newEntry;
-  MaybeDiscardedBrowsingContext context;
 };
 
 } // namespace dom

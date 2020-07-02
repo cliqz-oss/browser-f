@@ -375,19 +375,24 @@ enum class StyleFlexWrap : uint8_t {
 #define NS_STYLE_ORDER_INITIAL 0
 
 // See nsStyleFont
-#define NS_STYLE_FONT_SIZE_XXSMALL 0
-#define NS_STYLE_FONT_SIZE_XSMALL 1
-#define NS_STYLE_FONT_SIZE_SMALL 2
-#define NS_STYLE_FONT_SIZE_MEDIUM 3
-#define NS_STYLE_FONT_SIZE_LARGE 4
-#define NS_STYLE_FONT_SIZE_XLARGE 5
-#define NS_STYLE_FONT_SIZE_XXLARGE 6
-#define NS_STYLE_FONT_SIZE_XXXLARGE \
-  7  // Only used by <font size="7">. Not specifiable in CSS.
-#define NS_STYLE_FONT_SIZE_LARGER 8
-#define NS_STYLE_FONT_SIZE_SMALLER 9
-#define NS_STYLE_FONT_SIZE_NO_KEYWORD \
-  10  // Used by Servo to track the "no keyword" case
+enum class StyleFontSize : uint8_t {
+  Xxsmall = 0,
+  Xsmall,
+  Small,
+  Medium,
+  Large,
+  Xlarge,
+  Xxlarge,
+  Xxxlarge,
+  Larger,
+  Smaller,
+  NoKeyword  // Used by Servo to track the "no keyword" case
+};
+
+#define NS_STYLE_MASONRY_PLACEMENT_PACK (1 << 0)
+#define NS_STYLE_MASONRY_ORDER_DEFINITE_FIRST (1 << 1)
+#define NS_STYLE_MASONRY_AUTO_FLOW_INITIAL_VALUE \
+  (NS_STYLE_MASONRY_PLACEMENT_PACK | NS_STYLE_MASONRY_ORDER_DEFINITE_FIRST)
 
 // 'subgrid' keyword in grid-template-{columns,rows}
 #define NS_STYLE_GRID_TEMPLATE_SUBGRID 0
@@ -790,25 +795,9 @@ enum class StyleMaskComposite : uint8_t {
   Intersect,
   Exclude
 };
+
 // See nsStyleText::mControlCharacterVisibility
 enum class StyleControlCharacterVisibility : uint8_t { Hidden = 0, Visible };
-
-// counter system
-#define NS_STYLE_COUNTER_SYSTEM_CYCLIC 0
-#define NS_STYLE_COUNTER_SYSTEM_NUMERIC 1
-#define NS_STYLE_COUNTER_SYSTEM_ALPHABETIC 2
-#define NS_STYLE_COUNTER_SYSTEM_SYMBOLIC 3
-#define NS_STYLE_COUNTER_SYSTEM_ADDITIVE 4
-#define NS_STYLE_COUNTER_SYSTEM_FIXED 5
-#define NS_STYLE_COUNTER_SYSTEM_EXTENDS 6
-
-#define NS_STYLE_COUNTER_RANGE_INFINITE 0
-
-#define NS_STYLE_COUNTER_SPEAKAS_BULLETS 0
-#define NS_STYLE_COUNTER_SPEAKAS_NUMBERS 1
-#define NS_STYLE_COUNTER_SPEAKAS_WORDS 2
-#define NS_STYLE_COUNTER_SPEAKAS_SPELL_OUT 3
-#define NS_STYLE_COUNTER_SPEAKAS_OTHER 255  // refer to another style
 
 // scroll-behavior
 enum class StyleScrollBehavior : uint8_t {

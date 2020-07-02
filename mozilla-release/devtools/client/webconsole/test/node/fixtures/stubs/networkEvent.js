@@ -19,8 +19,8 @@ const {
 
 const rawPackets = new Map();
 rawPackets.set(`GET request`, {
-  "_type": "NetworkEvent",
-  "timeStamp": 1572865594542,
+  "type": "networkEvent",
+  "timeStamp": 1572867483805,
   "node": null,
   "actor": "server0.conn0.netEvent4",
   "discardRequestBody": true,
@@ -76,7 +76,7 @@ rawPackets.set(`GET request`, {
 
 rawPackets.set(`GET request update`, {
   "networkInfo": {
-    "_type": "NetworkEvent",
+    "type": "networkEvent",
     "actor": "server0.conn0.netEvent4",
     "request": {
       "url": "http://example.com/inexistent.html",
@@ -101,8 +101,8 @@ rawPackets.set(`GET request update`, {
 });
 
 rawPackets.set(`XHR GET request`, {
-  "_type": "NetworkEvent",
-  "timeStamp": 1572865594909,
+  "type": "networkEvent",
+  "timeStamp": 1572867483805,
   "node": null,
   "actor": "server0.conn0.netEvent20",
   "discardRequestBody": true,
@@ -158,7 +158,7 @@ rawPackets.set(`XHR GET request`, {
 
 rawPackets.set(`XHR GET request update`, {
   "networkInfo": {
-    "_type": "NetworkEvent",
+    "type": "networkEvent",
     "actor": "server0.conn0.netEvent20",
     "request": {
       "url": "http://example.com/inexistent.html",
@@ -183,8 +183,8 @@ rawPackets.set(`XHR GET request update`, {
 });
 
 rawPackets.set(`XHR POST request`, {
-  "_type": "NetworkEvent",
-  "timeStamp": 1572865595007,
+  "type": "networkEvent",
+  "timeStamp": 1572867483805,
   "node": null,
   "actor": "server0.conn0.netEvent36",
   "discardRequestBody": true,
@@ -240,7 +240,7 @@ rawPackets.set(`XHR POST request`, {
 
 rawPackets.set(`XHR POST request update`, {
   "networkInfo": {
-    "_type": "NetworkEvent",
+    "type": "networkEvent",
     "actor": "server0.conn0.netEvent36",
     "request": {
       "url": "http://example.com/inexistent.html",

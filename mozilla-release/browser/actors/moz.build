@@ -7,6 +7,9 @@
 with Files("**"):
     BUG_COMPONENT = ("Firefox", "General")
 
+with Files("ContentSearch*.jsm"):
+    BUG_COMPONENT = ("Firefox", "Search")
+
 with Files("LightweightThemeChild.jsm"):
     BUG_COMPONENT = ("WebExtensions", "Themes")
 
@@ -23,7 +26,18 @@ with Files("WebRTCChild.jsm"):
     BUG_COMPONENT = ("Firefox", "Site Permissions")
 
 FINAL_TARGET_FILES.actors += [
+    'AboutNewInstallChild.jsm',
+    'AboutNewInstallParent.jsm',
+    'AboutNewTabChild.jsm',
+    'AboutPluginsChild.jsm',
+    'AboutPluginsParent.jsm',
+    'AboutPrivateBrowsingChild.jsm',
+    'AboutPrivateBrowsingParent.jsm',
+    'AboutProtectionsChild.jsm',
+    'AboutProtectionsParent.jsm',
     'AboutReaderChild.jsm',
+    'AboutTabCrashedChild.jsm',
+    'AboutTabCrashedParent.jsm',
     'BlockedSiteChild.jsm',
     'BlockedSiteParent.jsm',
     'BrowserTabChild.jsm',
@@ -33,6 +47,7 @@ FINAL_TARGET_FILES.actors += [
     'ContentMetaChild.jsm',
     'ContentMetaParent.jsm',
     'ContentSearchChild.jsm',
+    'ContentSearchParent.jsm',
     'ContextMenuChild.jsm',
     'ContextMenuParent.jsm',
     'DOMFullscreenChild.jsm',

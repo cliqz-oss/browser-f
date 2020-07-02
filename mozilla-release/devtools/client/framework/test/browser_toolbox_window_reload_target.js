@@ -9,6 +9,12 @@
 // It is therefore quite long to run.
 
 requestLongerTimeout(10);
+const { PromiseTestUtils } = ChromeUtils.import(
+  "resource://testing-common/PromiseTestUtils.jsm"
+);
+
+// whitelist a context error because it is harmless. This could likely be removed in the next patch because it is a symptom of events coming from the target-list and debugger targets module...
+PromiseTestUtils.whitelistRejectionsGlobally(/Page has navigated/);
 
 const TEST_URL =
   "data:text/html;charset=utf-8," +
@@ -112,10 +118,11 @@ async function testReload(shortcut, toolbox) {
         for (const { type } of mutations) {
           if (type === "documentUnload") {
             this._isDocumentUnloaded = true;
-          } else if (type === "newRoot") {
-            this._isNewRooted = true;
           }
         }
+      },
+      onNewRootNode() {
+        this._isNewRooted = true;
       },
       isReady() {
         return this._isDocumentUnloaded && this._isNewRooted;
@@ -123,7 +130,9 @@ async function testReload(shortcut, toolbox) {
     };
 
     observer.onMutation = observer.onMutation.bind(observer);
+    observer.onNewRootNode = observer.onNewRootNode.bind(observer);
     walker.on("mutations", observer.onMutation);
+    walker.watchRootNode(observer.onNewRootNode);
 
     // If we have a jsdebugger panel, wait for it to complete its reload
     const jsdebugger = toolbox.getPanel("jsdebugger");
@@ -137,6 +146,7 @@ async function testReload(shortcut, toolbox) {
       // Wait for the documentUnload and newRoot were fired.
       await waitUntil(() => observer.isReady());
       walker.off("mutations", observer.onMutation);
+      walker.unwatchRootNode(observer.onNewRootNode);
       await onReloaded;
       resolve();
     };

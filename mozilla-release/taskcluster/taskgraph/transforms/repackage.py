@@ -205,10 +205,7 @@ def make_job_description(config, jobs):
             attributes['locale'] = locale
 
         treeherder = job.get('treeherder', {})
-        if attributes.get('nightly'):
-            treeherder.setdefault('symbol', 'Nr')
-        else:
-            treeherder.setdefault('symbol', 'Rpk')
+        treeherder.setdefault('symbol', 'Rpk')
         dep_th_platform = dep_job.task.get('extra', {}).get('treeherder-platform')
         treeherder.setdefault('platform', dep_th_platform)
         treeherder.setdefault('tier', 1)
@@ -308,6 +305,7 @@ def make_job_description(config, jobs):
             'dependencies': dependencies,
             'attributes': attributes,
             'run-on-projects': dep_job.attributes.get('run_on_projects'),
+            'optimization': dep_job.optimization,
             'treeherder': treeherder,
             'routes': job.get('routes', []),
             'extra': job.get('extra', {}),

@@ -5,50 +5,66 @@
 permissions-window =
     .title = Ausnahmen
     .style = width: 36em
+
 permissions-close-key =
     .key = w
+
 permissions-address = Adresse der Website:
     .accesskey = d
+
 permissions-block =
     .label = Blockieren
     .accesskey = B
+
 permissions-session =
     .label = Für diese Sitzung erlauben
     .accesskey = F
+
 permissions-allow =
     .label = Erlauben
     .accesskey = E
+
 permissions-site-name =
     .label = Website
+
 permissions-status =
     .label = Status
+
 permissions-remove =
     .label = Website entfernen
     .accesskey = n
+
 permissions-remove-all =
     .label = Alle Websites entfernen
     .accesskey = a
+
 permissions-button-cancel =
     .label = Abbrechen
     .accesskey = r
+
 permissions-button-ok =
     .label = Änderungen speichern
     .accesskey = s
+
 permissions-autoplay-menu = Standard für alle Websites:
+
 permissions-searchbox =
     .placeholder = Website suchen
+
 permissions-capabilities-autoplay-allow =
     .label = Audio und Video erlauben
 permissions-capabilities-autoplay-block =
     .label = Medien mit Audio blockieren
 permissions-capabilities-autoplay-blockall =
     .label = Audio und Video blockieren
+
 permissions-capabilities-allow =
     .label = Erlauben
 permissions-capabilities-block =
     .label = Blockieren
 permissions-capabilities-prompt =
     .label = Immer fragen
+
 permissions-capabilities-listitem-allow =
     .value = Erlauben
 permissions-capabilities-listitem-block =
@@ -67,7 +83,14 @@ permissions-exceptions-tracking-protection-desc = Du hast den Schutz vor Aktivit
 permissions-exceptions-content-blocking-window =
     .title = Ausnahmen - Blockieren von Seitenelementen
     .style = { permissions-window.style }
+<<<<<<< HEAD
 permissions-exceptions-content-blocking-desc = Du hast das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
+||||||| merged common ancestors
+permissions-exceptions-content-blocking-desc = Sie haben das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
+=======
+permissions-exceptions-content-blocking-desc = Sie haben das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
+
+>>>>>>> origin/upstream-releases
 permissions-exceptions-etp-window =
     .title = Ausnahmen - Verbesserter Schutz vor Aktivitätenverfolgung
     .style = { permissions-window.style }

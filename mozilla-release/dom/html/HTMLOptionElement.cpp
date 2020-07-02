@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/HTMLOptionElement.h"
+
+#include "HTMLOptGroupElement.h"
 #include "mozilla/dom/HTMLOptionElementBinding.h"
 #include "mozilla/dom/HTMLSelectElement.h"
 #include "nsGkAtoms.h"
@@ -133,7 +135,9 @@ nsChangeHint HTMLOptionElement::GetAttributeChangeHint(const nsAtom* aAttribute,
   nsChangeHint retval =
       nsGenericHTMLElement::GetAttributeChangeHint(aAttribute, aModType);
 
-  if (aAttribute == nsGkAtoms::label || aAttribute == nsGkAtoms::text) {
+  if (aAttribute == nsGkAtoms::label) {
+    retval |= nsChangeHint_ReconstructFrame;
+  } else if (aAttribute == nsGkAtoms::text) {
     retval |= NS_STYLE_HINT_REFLOW;
   }
   return retval;

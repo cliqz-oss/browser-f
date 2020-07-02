@@ -65,6 +65,7 @@
 #include "mozilla/MiscEvents.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/TouchEvents.h"
+#include "mozilla/TimeStamp.h"
 
 #include "mozilla/ipc/MessageChannel.h"
 #include <algorithm>
@@ -81,6 +82,7 @@
 #include <dbt.h>
 #include <unknwn.h>
 #include <psapi.h>
+#include <rpc.h>
 
 #include "mozilla/Logging.h"
 #include "prtime.h"
@@ -211,6 +213,9 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/plugins/PluginProcessParent.h"
 #include "mozilla/webrender/WebRenderAPI.h"
+#include "mozilla/layers/IAPZCTreeManager.h"
+
+#include "DirectManipulationOwner.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -269,6 +274,7 @@ LONG nsWindow::sLastClickCount = 0L;
 BYTE nsWindow::sLastMouseButton = 0;
 
 bool nsWindow::sHaveInitializedPrefs = false;
+bool nsWindow::sIsRestoringSession = false;
 
 TriStateBool nsWindow::sHasBogusPopupsDropShadowOnMultiMonitor = TRI_UNKNOWN;
 
@@ -591,6 +597,7 @@ nsWindow::nsWindow(bool aIsChildWindow)
   mMouseInDraggableArea = false;
   mDestroyCalled = false;
   mIsEarlyBlankWindow = false;
+  mResizable = false;
   mHasTaskbarIconBeenCreated = false;
   mMouseTransparent = false;
   mPickerDisplayCount = 0;
@@ -711,6 +718,84 @@ static bool ShouldCacheTitleBarInfo(nsWindowType aWindowType,
           !nsUXThemeData::sTitlebarInfoPopulatedAero);
 }
 
+void nsWindow::SendAnAPZEvent(InputData& aEvent) {
+  RefPtr<nsWindow> strongThis(this);
+  if (::IsWindowVisible(mWnd)) {
+    nsIRollupListener* rollupListener = nsBaseWidget::GetActiveRollupListener();
+    if (rollupListener) {
+      nsCOMPtr<nsIWidget> popup = rollupListener->GetRollupWidget();
+      if (popup) {
+        uint32_t popupsToRollup = UINT32_MAX;
+        rollupListener->Rollup(popupsToRollup, true, nullptr, nullptr);
+      }
+    }
+  }
+
+  APZEventResult result;
+  if (mAPZC) {
+    result = mAPZC->InputBridge()->ReceiveInputEvent(aEvent);
+  }
+  if (result.mStatus == nsEventStatus_eConsumeNoDefault) {
+    return;
+  }
+
+  MOZ_ASSERT(aEvent.mInputType == PANGESTURE_INPUT ||
+             aEvent.mInputType == PINCHGESTURE_INPUT);
+
+  if (aEvent.mInputType == PANGESTURE_INPUT) {
+    PanGestureInput& panInput = aEvent.AsPanGestureInput();
+    WidgetWheelEvent event = panInput.ToWidgetWheelEvent(this);
+    ProcessUntransformedAPZEvent(&event, result);
+
+    return;
+  }
+
+  PinchGestureInput& pinchInput = aEvent.AsPinchGestureInput();
+  WidgetWheelEvent event = pinchInput.ToWidgetWheelEvent(this);
+  ProcessUntransformedAPZEvent(&event, result);
+}
+
+void nsWindow::RecreateDirectManipulationIfNeeded() {
+  DestroyDirectManipulation();
+
+  if (mWindowType != eWindowType_toplevel && mWindowType != eWindowType_popup) {
+    return;
+  }
+
+  if (!StaticPrefs::apz_windows_use_direct_manipulation() ||
+      StaticPrefs::apz_windows_force_disable_direct_manipulation()) {
+    return;
+  }
+
+  if (!IsWin10OrLater()) {
+    // Chrome source said the Windows Direct Manipulation implementation had
+    // important bugs until Windows 10 (although IE on Windows 8.1 seems to use
+    // Direct Manipulation).
+    return;
+  }
+
+  mDmOwner = MakeUnique<DirectManipulationOwner>(this);
+
+  LayoutDeviceIntRect bounds(mBounds.X(), mBounds.Y(), mBounds.Width(),
+                             GetHeight(mBounds.Height()));
+  mDmOwner->Init(bounds);
+}
+
+void nsWindow::ResizeDirectManipulationViewport() {
+  if (mDmOwner) {
+    LayoutDeviceIntRect bounds(mBounds.X(), mBounds.Y(), mBounds.Width(),
+                               GetHeight(mBounds.Height()));
+    mDmOwner->ResizeViewport(bounds);
+  }
+}
+
+void nsWindow::DestroyDirectManipulation() {
+  if (mDmOwner) {
+    mDmOwner->Destroy();
+    mDmOwner.reset();
+  }
+}
+
 // Create the proper widget
 nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
                           const LayoutDeviceIntRect& aRect,
@@ -748,6 +833,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   mIsRTL = aInitData->mRTL;
   mOpeningAnimationSuppressed = aInitData->mIsAnimationSuppressed;
   mAlwaysOnTop = aInitData->mAlwaysOnTop;
+  mResizable = aInitData->mResizable;
 
   DWORD style = WindowStyle();
   DWORD extendedStyle = WindowExStyle();
@@ -914,6 +1000,9 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
       ::PostMessage(mWnd, MOZ_WM_STARTA11Y, 0, 0);
     }
   }
+
+  RecreateDirectManipulationIfNeeded();
+
   return NS_OK;
 }
 
@@ -930,6 +1019,8 @@ void nsWindow::Destroy() {
   // During the destruction of all of our children, make sure we don't get
   // deleted.
   nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
+
+  DestroyDirectManipulation();
 
   /**
    * On windows the LayerManagerOGL destructor wants the widget to be around for
@@ -1226,6 +1317,7 @@ void nsWindow::SetParent(nsIWidget* aNewParent) {
   if (mWnd) {
     // If we have no parent, SetParent should return the desktop.
     VERIFY(::SetParent(mWnd, nullptr));
+    RecreateDirectManipulationIfNeeded();
   }
 }
 
@@ -1240,6 +1332,7 @@ void nsWindow::ReparentNativeWidget(nsIWidget* aNewParent) {
   NS_ASSERTION(newParent, "Parent widget has a null native window handle");
   if (newParent && mWnd) {
     ::SetParent(mWnd, newParent);
+    RecreateDirectManipulationIfNeeded();
   }
 }
 
@@ -1461,7 +1554,7 @@ void nsWindow::Show(bool bState) {
     // connected.
     if (HasBogusPopupsDropShadowOnMultiMonitor() &&
         WinUtils::GetMonitorCount() > 1 &&
-        !nsUXThemeData::CheckForCompositor()) {
+        !gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
       if (sDropShadowEnabled) {
         ::SetClassLongA(mWnd, GCL_STYLE, 0);
         sDropShadowEnabled = false;
@@ -1521,17 +1614,21 @@ void nsWindow::Show(bool bState) {
             ::ShowWindow(mWnd, SW_SHOWMINIMIZED);
             break;
           default:
-            if (CanTakeFocus()) {
+            if (CanTakeFocus() && !mAlwaysOnTop) {
               ::ShowWindow(mWnd, SW_SHOWNORMAL);
             } else {
               ::ShowWindow(mWnd, SW_SHOWNOACTIVATE);
-              Unused << GetAttention(2);
+              // Don't flicker the window if we're restoring session
+              if (!sIsRestoringSession) {
+                Unused << GetAttention(2);
+              }
             }
             break;
         }
       } else {
         DWORD flags = SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW;
         if (wasVisible) flags |= SWP_NOZORDER;
+        if (mAlwaysOnTop) flags |= SWP_NOACTIVATE;
 
         if (mWindowType == eWindowType_popup) {
           // ensure popups are the topmost of the TOPMOST
@@ -1703,7 +1800,8 @@ void nsWindow::SetWindowMouseTransparent(bool aIsTransparent) {
 
 void nsWindow::SetSizeConstraints(const SizeConstraints& aConstraints) {
   SizeConstraints c = aConstraints;
-  if (mWindowType != eWindowType_popup) {
+
+  if (mWindowType != eWindowType_popup && mResizable) {
     c.mMinSize.width =
         std::max(int32_t(::GetSystemMetrics(SM_CXMINTRACK)), c.mMinSize.width);
     c.mMinSize.height =
@@ -1817,6 +1915,8 @@ void nsWindow::Move(double aX, double aY) {
     }
 
     SetThemeRegion();
+
+    ResizeDirectManipulationViewport();
   }
   NotifyRollupGeometryChange();
 }
@@ -1863,6 +1963,8 @@ void nsWindow::Resize(double aWidth, double aHeight, bool aRepaint) {
       ChangedDPI();
     }
     SetThemeRegion();
+
+    ResizeDirectManipulationViewport();
   }
 
   if (aRepaint) Invalidate();
@@ -1921,6 +2023,8 @@ void nsWindow::Resize(double aX, double aY, double aWidth, double aHeight,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
     SetThemeRegion();
+
+    ResizeDirectManipulationViewport();
   }
 
   if (aRepaint) Invalidate();
@@ -2073,6 +2177,62 @@ void nsWindow::SetSizeMode(nsSizeMode aMode) {
     // we activate here to ensure that the right child window is focused
     if (mode == SW_MAXIMIZE || mode == SW_SHOW)
       DispatchFocusToTopLevelWindow(true);
+  }
+}
+
+RefPtr<IVirtualDesktopManager> GetVirtualDesktopManager() {
+#ifdef __MINGW32__
+  return nullptr;
+#else
+  if (!IsWin10OrLater()) {
+    return nullptr;
+  }
+
+  RefPtr<IServiceProvider> serviceProvider;
+  HRESULT hr = ::CoCreateInstance(
+      CLSID_ImmersiveShell, NULL, CLSCTX_LOCAL_SERVER,
+      __uuidof(IServiceProvider), getter_AddRefs(serviceProvider));
+  if (FAILED(hr)) {
+    return nullptr;
+  }
+
+  RefPtr<IVirtualDesktopManager> desktopManager;
+  serviceProvider->QueryService(__uuidof(IVirtualDesktopManager),
+                                desktopManager.StartAssignment());
+  return desktopManager;
+#endif
+}
+
+void nsWindow::GetWorkspaceID(nsAString& workspaceID) {
+  RefPtr<IVirtualDesktopManager> desktopManager = GetVirtualDesktopManager();
+  if (!desktopManager) {
+    return;
+  }
+
+  GUID desktop;
+  HRESULT hr = desktopManager->GetWindowDesktopId(mWnd, &desktop);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  RPC_WSTR workspaceIDStr = nullptr;
+  if (UuidToStringW(&desktop, &workspaceIDStr) == RPC_S_OK) {
+    workspaceID.Assign((wchar_t*)workspaceIDStr);
+    RpcStringFreeW(&workspaceIDStr);
+  }
+}
+
+void nsWindow::MoveToWorkspace(const nsAString& workspaceID) {
+  RefPtr<IVirtualDesktopManager> desktopManager = GetVirtualDesktopManager();
+  if (!desktopManager) {
+    return;
+  }
+
+  GUID desktop;
+  const nsString& flat = PromiseFlatString(workspaceID);
+  RPC_WSTR workspaceIDStr = reinterpret_cast<RPC_WSTR>((wchar_t*)flat.get());
+  if (UuidFromStringW(workspaceIDStr, &desktop) == RPC_S_OK) {
+    desktopManager->MoveWindowToDesktop(mWnd, desktop);
   }
 }
 
@@ -2554,7 +2714,7 @@ bool nsWindow::UpdateNonClientMargins(int32_t aSizeMode, bool aReflowWindow) {
       }
     }
   } else {
-    bool glass = nsUXThemeData::CheckForCompositor();
+    bool glass = gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled();
 
     // We're dealing with a "normal" window (not maximized, minimized, or
     // fullscreen), so process `mNonClientMargins` and set `mNonClientOffset`
@@ -2935,7 +3095,8 @@ void nsWindow::SetTransparencyMode(nsTransparencyMode aMode) {
   }
 
   if (nsWindowType::eWindowType_toplevel == window->mWindowType &&
-      mTransparencyMode != aMode && !nsUXThemeData::CheckForCompositor()) {
+      mTransparencyMode != aMode &&
+      !gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
     NS_WARNING("Cannot set transparency mode on top-level windows.");
     return;
   }
@@ -3033,7 +3194,7 @@ void nsWindow::UpdateGlass() {
            margins.cyBottomHeight));
 
   // Extends the window frame behind the client area
-  if (nsUXThemeData::CheckForCompositor()) {
+  if (gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
     DwmExtendFrameIntoClientArea(mWnd, &margins);
     DwmSetWindowAttribute(mWnd, DWMWA_NCRENDERING_POLICY, &policy,
                           sizeof policy);
@@ -3259,7 +3420,7 @@ bool nsWindow::PrepareForFullscreenTransition(nsISupports** aData) {
   // We don't support fullscreen transition when composition is not
   // enabled, which could make the transition broken and annoying.
   // See bug 1184201.
-  if (!nsUXThemeData::CheckForCompositor()) {
+  if (!gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
     return false;
   }
 
@@ -3390,6 +3551,7 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
     case NS_NATIVE_PLUGIN_PORT:
     case NS_NATIVE_WIDGET:
     case NS_NATIVE_WINDOW:
+    case NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID:
       return (void*)mWnd;
     case NS_NATIVE_SHAREABLE_WINDOW:
       return (void*)WinUtils::GetTopLevelHWND(mWnd);
@@ -3444,6 +3606,7 @@ void nsWindow::SetNativeData(uint32_t aDataType, uintptr_t aVal) {
                             ? mWnd
                             : WinUtils::GetTopLevelHWND(mWnd);
       SetChildStyleAndParent(childHwnd, parentHwnd);
+      RecreateDirectManipulationIfNeeded();
       break;
     }
     default:
@@ -3877,7 +4040,8 @@ void nsWindow::UpdateThemeGeometries(
   }
 
   nsIntRegion clearRegion;
-  if (!HasGlass() || !nsUXThemeData::CheckForCompositor()) {
+  if (!HasGlass() ||
+      !gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
     // Make sure and clear old regions we've set previously. Note HasGlass can
     // be false for glass desktops if the window we are rendering to doesn't
     // make use of glass (e.g. fullscreen browsing).
@@ -4953,7 +5117,8 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
 
   // Glass hit testing w/custom transparent margins
   LRESULT dwmHitResult;
-  if (mCustomNonClient && nsUXThemeData::CheckForCompositor() &&
+  if (mCustomNonClient &&
+      gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled() &&
       /* We don't do this for win10 glass with a custom titlebar,
        * in order to avoid the caption buttons breaking. */
       !(IsWin10OrLater() && HasGlass()) &&
@@ -5202,7 +5367,8 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
        * sending the message with an updated title
        */
 
-      if ((mSendingSetText && nsUXThemeData::CheckForCompositor()) ||
+      if ((mSendingSetText &&
+           gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) ||
           !mCustomNonClient || mNonClientMargins.top == -1)
         break;
 
@@ -5248,7 +5414,7 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
       // let the dwm handle nc painting on glass
       // Never allow native painting if we are on fullscreen
       if (mSizeMode != nsSizeMode_Fullscreen &&
-          nsUXThemeData::CheckForCompositor())
+          gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled())
         break;
 
       if (wParam == TRUE) {
@@ -5284,7 +5450,7 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
       if (!mCustomNonClient) break;
 
       // let the dwm handle nc painting on glass
-      if (nsUXThemeData::CheckForCompositor()) break;
+      if (gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) break;
 
       HRGN paintRgn = ExcludeNonClientFromPaintRegion((HRGN)wParam);
       LRESULT res = CallWindowProcW(GetPrevWindowProc(), mWnd, msg,
@@ -5547,6 +5713,17 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
       result = OnPointerEvents(msg, wParam, lParam);
       if (result) {
         DispatchPendingEvents();
+      }
+      break;
+
+    case DM_POINTERHITTEST:
+      if (mDmOwner) {
+        UINT contactId = GET_POINTERID_WPARAM(wParam);
+        POINTER_INPUT_TYPE pointerType;
+        if (mPointerEvents.GetPointerType(contactId, &pointerType) &&
+            pointerType == PT_TOUCHPAD) {
+          mDmOwner->SetContact(contactId);
+        }
       }
       break;
 
@@ -5933,9 +6110,16 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
     } break;
 
     case WM_DWMCOMPOSITIONCHANGED:
-      // First, update the compositor state to latest one. All other methods
-      // should use same state as here for consistency painting.
-      nsUXThemeData::CheckForCompositor(true);
+      // Every window will get this message, but gfxVars only broadcasts
+      // updates when the value actually changes
+      if (XRE_IsParentProcess()) {
+        BOOL dwmEnabled = FALSE;
+        if (FAILED(::DwmIsCompositionEnabled(&dwmEnabled)) || !dwmEnabled) {
+          gfxVars::SetDwmCompositionEnabled(false);
+        } else {
+          gfxVars::SetDwmCompositionEnabled(true);
+        }
+      }
 
       UpdateNonClientMargins();
       BroadcastMsg(mWnd, WM_DWMCOMPOSITIONCHANGED);

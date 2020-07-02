@@ -88,6 +88,11 @@ const Types = (exports.__TypesForTests = [
     front: "devtools/client/fronts/environment",
   },
   {
+    types: ["eventSource"],
+    spec: "devtools/shared/specs/eventsource",
+    front: "devtools/client/fronts/eventsource",
+  },
+  {
     types: ["frame"],
     spec: "devtools/shared/specs/frame",
     front: "devtools/client/fronts/frame",
@@ -286,6 +291,11 @@ const Types = (exports.__TypesForTests = [
     types: ["domwalker"],
     spec: "devtools/shared/specs/walker",
     front: "devtools/client/fronts/walker",
+  },
+  {
+    types: ["watcher"],
+    spec: "devtools/shared/specs/watcher",
+    front: "devtools/client/fronts/watcher",
   },
   {
     types: ["console"],

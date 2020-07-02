@@ -31,7 +31,7 @@ def set_defaults(config, jobs):
         worker = job.setdefault('worker', {})
         worker.setdefault('env', {})
         if worker_os == "linux":
-            worker.setdefault('docker-image', {'in-tree': 'debian7-amd64-build'})
+            worker.setdefault('docker-image', {'in-tree': 'debian8-amd64-build'})
             worker['chain-of-trust'] = True
         elif worker_os == "windows":
             worker['chain-of-trust'] = True
@@ -171,7 +171,6 @@ def use_artifact(config, jobs):
         use_artifact = False
     for job in jobs:
         if (config.kind == 'build' and use_artifact and
-            not job.get('attributes', {}).get('nightly', False) and
             job.get('index', {}).get('job-name') in ARTIFACT_JOBS):
             job['treeherder']['symbol'] += 'a'
             job['worker']['env']['USE_ARTIFACT'] = '1'

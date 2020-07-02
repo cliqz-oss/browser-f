@@ -156,7 +156,7 @@ impl PerCpuModeEncodings {
         self.enc64(inst.bind(I32), template.infer_rex());
 
         // I64 on x86_64: REX.W set; REX.RXB determined at runtime from registers.
-        self.enc64(inst.bind(I64), template.infer_rex().w());
+        self.enc64(inst.bind(I64), template.rex().w());
     }
 
     /// Adds I32/I64 encodings as appropriate for a typed instruction.
@@ -192,7 +192,7 @@ impl PerCpuModeEncodings {
         self.enc64(inst.bind(B32), template.infer_rex());
 
         // B64 on x86_64: REX.W set; REX.RXB determined at runtime from registers.
-        self.enc64(inst.bind(B64), template.infer_rex().w());
+        self.enc64(inst.bind(B64), template.rex().w());
     }
 
     /// Add encodings for `inst.i32` to X86_32.
@@ -313,10 +313,10 @@ impl PerCpuModeEncodings {
     }
 
     /// Add two encodings for `inst`:
-    /// - X86_32, dynamically infer the REX prefix.
+    /// - X86_32, no REX prefix, since this is not valid in 32-bit mode.
     /// - X86_64, dynamically infer the REX prefix.
     fn enc_both_inferred(&mut self, inst: impl Clone + Into<InstSpec>, template: Template) {
-        self.enc32(inst.clone(), template.infer_rex());
+        self.enc32(inst.clone(), template.clone());
         self.enc64(inst, template.infer_rex());
     }
     fn enc_both_inferred_maybe_isap(
@@ -325,7 +325,7 @@ impl PerCpuModeEncodings {
         template: Template,
         isap: Option<SettingPredicateNumber>,
     ) {
-        self.enc32_maybe_isap(inst.clone(), template.infer_rex(), isap);
+        self.enc32_maybe_isap(inst.clone(), template.clone(), isap);
         self.enc64_maybe_isap(inst, template.infer_rex(), isap);
     }
 
@@ -1600,6 +1600,9 @@ fn define_simd(
     let regspill = shared.by_name("regspill");
     let sadd_sat = shared.by_name("sadd_sat");
     let scalar_to_vector = shared.by_name("scalar_to_vector");
+    let sload8x8 = shared.by_name("sload8x8");
+    let sload16x4 = shared.by_name("sload16x4");
+    let sload32x2 = shared.by_name("sload32x2");
     let spill = shared.by_name("spill");
     let sqrt = shared.by_name("sqrt");
     let sshr_imm = shared.by_name("sshr_imm");
@@ -1607,12 +1610,16 @@ fn define_simd(
     let store = shared.by_name("store");
     let store_complex = shared.by_name("store_complex");
     let uadd_sat = shared.by_name("uadd_sat");
+    let uload8x8 = shared.by_name("uload8x8");
+    let uload16x4 = shared.by_name("uload16x4");
+    let uload32x2 = shared.by_name("uload32x2");
     let ushr_imm = shared.by_name("ushr_imm");
     let usub_sat = shared.by_name("usub_sat");
     let vconst = shared.by_name("vconst");
     let x86_insertps = x86.by_name("x86_insertps");
     let x86_movlhps = x86.by_name("x86_movlhps");
     let x86_movsd = x86.by_name("x86_movsd");
+    let x86_packss = x86.by_name("x86_packss");
     let x86_pextr = x86.by_name("x86_pextr");
     let x86_pinsr = x86.by_name("x86_pinsr");
     let x86_pmaxs = x86.by_name("x86_pmaxs");
@@ -1625,6 +1632,8 @@ fn define_simd(
     let x86_psra = x86.by_name("x86_psra");
     let x86_psrl = x86.by_name("x86_psrl");
     let x86_ptest = x86.by_name("x86_ptest");
+    let x86_punpckh = x86.by_name("x86_punpckh");
+    let x86_punpckl = x86.by_name("x86_punpckl");
 
     // Shorthands for recipes.
     let rec_evex_reg_vvvv_rm_128 = r.template("evex_reg_vvvv_rm_128");
@@ -1777,6 +1786,30 @@ fn define_simd(
         }
     }
 
+    // SIMD packing/unpacking
+    for ty in ValueType::all_lane_types().filter(allowed_simd_type) {
+        let (high, low) = match ty.lane_bits() {
+            8 => (&PUNPCKHBW, &PUNPCKLBW),
+            16 => (&PUNPCKHWD, &PUNPCKLWD),
+            32 => (&PUNPCKHDQ, &PUNPCKLDQ),
+            64 => (&PUNPCKHQDQ, &PUNPCKLQDQ),
+            _ => panic!("invalid size for SIMD packing/unpacking"),
+        };
+
+        e.enc_both_inferred(
+            x86_punpckh.bind(vector(ty, sse_vector_size)),
+            rec_fa.opcodes(high),
+        );
+        e.enc_both_inferred(
+            x86_punpckl.bind(vector(ty, sse_vector_size)),
+            rec_fa.opcodes(low),
+        );
+    }
+    for (ty, opcodes) in &[(I16, &PACKSSWB), (I32, &PACKSSDW)] {
+        let x86_packss = x86_packss.bind(vector(*ty, sse_vector_size));
+        e.enc_both_inferred(x86_packss, rec_fa.opcodes(*opcodes));
+    }
+
     // SIMD bitcast all 128-bit vectors to each other (for legalizing splat.x16x8).
     for from_type in ValueType::all_lane_types().filter(allowed_simd_type) {
         for to_type in
@@ -1860,8 +1893,8 @@ fn define_simd(
         // Store
         let bound_store = store.bind(vector(ty, sse_vector_size)).bind(Any);
         e.enc_both_inferred(bound_store.clone(), rec_fst.opcodes(&MOVUPS_STORE));
-        e.enc_both(bound_store.clone(), rec_fstDisp8.opcodes(&MOVUPS_STORE));
-        e.enc_both(bound_store, rec_fstDisp32.opcodes(&MOVUPS_STORE));
+        e.enc_both_inferred(bound_store.clone(), rec_fstDisp8.opcodes(&MOVUPS_STORE));
+        e.enc_both_inferred(bound_store, rec_fstDisp32.opcodes(&MOVUPS_STORE));
 
         // Store complex
         let bound_store_complex = store_complex.bind(vector(ty, sse_vector_size));
@@ -1881,8 +1914,8 @@ fn define_simd(
         // Load
         let bound_load = load.bind(vector(ty, sse_vector_size)).bind(Any);
         e.enc_both_inferred(bound_load.clone(), rec_fld.opcodes(&MOVUPS_LOAD));
-        e.enc_both(bound_load.clone(), rec_fldDisp8.opcodes(&MOVUPS_LOAD));
-        e.enc_both(bound_load, rec_fldDisp32.opcodes(&MOVUPS_LOAD));
+        e.enc_both_inferred(bound_load.clone(), rec_fldDisp8.opcodes(&MOVUPS_LOAD));
+        e.enc_both_inferred(bound_load, rec_fldDisp32.opcodes(&MOVUPS_LOAD));
 
         // Load complex
         let bound_load_complex = load_complex.bind(vector(ty, sse_vector_size));
@@ -1924,6 +1957,24 @@ fn define_simd(
         e.enc_both(bound_copy_to_ssa, rec_furm_reg_to_ssa.opcodes(&MOVAPS_LOAD));
         let bound_copy_nop = copy_nop.bind(vector(ty, sse_vector_size));
         e.enc_32_64_rec(bound_copy_nop, rec_stacknull, 0);
+    }
+
+    // SIMD load extend
+    for (inst, opcodes) in &[
+        (uload8x8, &PMOVZXBW),
+        (uload16x4, &PMOVZXWD),
+        (uload32x2, &PMOVZXDQ),
+        (sload8x8, &PMOVSXBW),
+        (sload16x4, &PMOVSXWD),
+        (sload32x2, &PMOVSXDQ),
+    ] {
+        let isap = Some(use_sse41_simd);
+        for recipe in &[rec_fld, rec_fldDisp8, rec_fldDisp32] {
+            let inst = *inst;
+            let template = recipe.opcodes(*opcodes);
+            e.enc_both_inferred_maybe_isap(inst.clone().bind(I32), template.clone(), isap);
+            e.enc64_maybe_isap(inst.bind(I64), template.infer_rex(), isap);
+        }
     }
 
     // SIMD integer addition
@@ -2155,6 +2206,7 @@ fn define_entity_ref(
     let formats = &shared_defs.formats;
 
     // Shorthands for instructions.
+    let const_addr = shared.by_name("const_addr");
     let func_addr = shared.by_name("func_addr");
     let stack_addr = shared.by_name("stack_addr");
     let symbol_value = shared.by_name("symbol_value");
@@ -2164,6 +2216,7 @@ fn define_entity_ref(
     let rec_allones_fnaddr8 = r.template("allones_fnaddr8");
     let rec_fnaddr4 = r.template("fnaddr4");
     let rec_fnaddr8 = r.template("fnaddr8");
+    let rec_const_addr = r.template("const_addr");
     let rec_got_fnaddr8 = r.template("got_fnaddr8");
     let rec_got_gvaddr8 = r.template("got_gvaddr8");
     let rec_gvaddr4 = r.template("gvaddr4");
@@ -2261,6 +2314,10 @@ fn define_entity_ref(
     // don't get legalized to stack_addr + load/store.
     e.enc32(stack_addr.bind(I32), rec_spaddr4_id.opcodes(&LEA));
     e.enc64(stack_addr.bind(I64), rec_spaddr8_id.opcodes(&LEA).rex().w());
+
+    // Constant addresses (PIC).
+    e.enc64(const_addr.bind(I64), rec_const_addr.opcodes(&LEA).rex().w());
+    e.enc32(const_addr.bind(I32), rec_const_addr.opcodes(&LEA));
 }
 
 /// Control flow opcodes.

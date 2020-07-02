@@ -42,11 +42,19 @@ DIRS += [
     'migration',
     'newtab',
     'originattributes',
+    'pioneer',
     'places',
 #   'pocket',
     'preferences',
     'privatebrowsing',
+<<<<<<< HEAD
 #   'protections',
+||||||| merged common ancestors
+    'protections',
+=======
+    'prompts',
+    'protections',
+>>>>>>> origin/upstream-releases
     'protocolhandler',
     'resistfingerprinting',
     'search',

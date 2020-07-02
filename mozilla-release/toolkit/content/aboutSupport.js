@@ -75,6 +75,7 @@ var snapshotFormatters = {
     }
     $("version-box").textContent = version;
     $("buildid-box").textContent = data.buildID;
+    $("distributionid-box").textContent = data.distributionID;
     if (data.updateChannel) {
       $("updatechannel-box").textContent = data.updateChannel;
     }
@@ -368,7 +369,14 @@ var snapshotFormatters = {
     let apzInfo = [];
     let formatApzInfo = function(info) {
       let out = [];
-      for (let type of ["Wheel", "Touch", "Drag", "Keyboard", "Autoscroll"]) {
+      for (let type of [
+        "Wheel",
+        "Touch",
+        "Drag",
+        "Keyboard",
+        "Autoscroll",
+        "Zooming",
+      ]) {
         let key = "Apz" + type + "Input";
 
         if (!(key in info)) {
@@ -642,7 +650,7 @@ var snapshotFormatters = {
         if (value === undefined || value === "") {
           continue;
         }
-        trs.push(buildRow(key, value));
+        trs.push(buildRow(key, [new Text(value)]));
       }
 
       if (!trs.length) {
@@ -671,25 +679,15 @@ var snapshotFormatters = {
     let featureLog = data.featureLog;
     delete data.featureLog;
 
-    let features = [];
-    for (let feature of featureLog.features) {
-      // Only add interesting decisions - ones that were not automatic based on
-      // all.js/StaticPrefs defaults.
-      if (feature.log.length > 1 || feature.log[0].status != "available") {
-        features.push(feature);
-      }
-    }
-
-    if (features.length) {
-      for (let feature of features) {
+    if (featureLog.features.length) {
+      for (let feature of featureLog.features) {
         let trs = [];
         for (let entry of feature.log) {
-          if (entry.type == "default" && entry.status == "available") {
-            continue;
-          }
-
           let contents;
-          if (entry.message.length && entry.message[0] == "#") {
+          if (!entry.hasOwnProperty("message")) {
+            // This is a default entry.
+            contents = entry.status + " by " + entry.type;
+          } else if (entry.message.length && entry.message[0] == "#") {
             // This is a failure ID. See nsIGfxInfo.idl.
             let m = /#BLOCKLIST_FEATURE_FAILURE_BUG_(\d+)/.exec(entry.message);
             if (m) {
@@ -917,10 +915,39 @@ var snapshotFormatters = {
       }
     }
 
+    function roundtripAudioLatency() {
+      insertBasicInfo("roundtrip-latency", "...");
+      window.windowUtils
+        .defaultDevicesRoundTripLatency()
+        .then(latency => {
+          var latencyString = `${(latency[0] * 1000).toFixed(2)}ms (${(
+            latency[1] * 1000
+          ).toFixed(2)})`;
+          data.defaultDevicesRoundTripLatency = latencyString;
+          document.querySelector(
+            'th[data-l10n-id="roundtrip-latency"]'
+          ).nextSibling.textContent = latencyString;
+        })
+        .catch(e => {});
+    }
+
     // Basic information
     insertBasicInfo("audio-backend", data.currentAudioBackend);
     insertBasicInfo("max-audio-channels", data.currentMaxAudioChannels);
     insertBasicInfo("sample-rate", data.currentPreferredSampleRate);
+
+    if (AppConstants.platform == "macosx") {
+      var micStatus = {};
+      let permission = Cc["@mozilla.org/ospermissionrequest;1"].getService(
+        Ci.nsIOSPermissionRequest
+      );
+      permission.getAudioCapturePermissionState(micStatus);
+      if (micStatus.value == permission.PERMISSION_STATE_AUTHORIZED) {
+        roundtripAudioLatency();
+      }
+    } else {
+      roundtripAudioLatency();
+    }
 
     // Output devices information
     insertDeviceInfo("output", data.audioOutputDevices);
@@ -930,10 +957,6 @@ var snapshotFormatters = {
 
     // Media Capabilitites
     insertEnumerateDatabase();
-  },
-
-  javaScript(data) {
-    $("javascript-incremental-gc").textContent = data.incrementalGCEnabled;
   },
 
   remoteAgent(data) {

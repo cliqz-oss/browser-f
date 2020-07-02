@@ -63,6 +63,16 @@ crashtest:
             android-hw-.*-qr/.*: 2
             default: default
 
+crashtest-qr:
+    description: "Crashtest Webrender run"
+    schedules-component: crashtest
+    treeherder-symbol: R(C)
+    chunks: 1
+    e10s: true
+    run-on-projects: built-projects
+    max-run-time: 1200
+    tier: 2
+
 jsreftest:
     description: "JS Reftest run"
     schedules-component: jsreftest
@@ -92,8 +102,8 @@ jsreftest:
     tier: default
     run-on-projects:
         by-test-platform:
-            android-hw-.*-aarch64/.*: ['try', 'mozilla-central', 'release']
-            android-hw-.*-api-16/.*: ['try', 'mozilla-central', 'release']
+            android-hw-.*-aarch64(?:-shippable)?/.*: ['try', 'mozilla-central', 'release']
+            android-hw-.*-api-16(?:-shippable)?/.*: ['try', 'mozilla-central', 'release']
             default: built-projects
 
 reftest:
@@ -145,6 +155,18 @@ reftest:
         by-test-platform:
             linux1804-64-qr/debug: ['trunk']
             default: []
+
+reftest-qr:
+    description: "Reftest webrender run"
+    treeherder-symbol: R(R)
+    chunks: 2
+    e10s: true
+    run-on-projects: built-projects
+    max-run-time: 2400
+    mozharness:
+        chunked: true
+    tier: 2
+
 
 reftest-gpu:
     description: "Reftest GPU run"

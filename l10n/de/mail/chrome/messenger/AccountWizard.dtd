@@ -41,12 +41,10 @@
 
 <!-- Entities for Server page -->
 
+<!-- Entities for Incoming Server page -->
+
 <!ENTITY incomingTitle.label "Informationen über Posteingangs-Server">
 <!ENTITY incomingServerTypeDesc.label "Wählen Sie den Typ Ihres Posteingangs-Servers.">
-<!-- LOCALIZATION NOTE (newsServerNameDesc.label) : Do not translate "NNTP" or the "&quot;" entities in below line -->
-<!ENTITY newsServerNameDesc.label "Geben Sie den News-Server (NNTP) ein (zum Beispiel &quot;news.example.com&quot;).">
-<!ENTITY newsServerLabel.label "Newsgruppen-Server:">
-<!ENTITY newsServerLabel.accesskey "N">
 <!-- LOCALIZATION NOTE (imapType.label) : Do not translate "IMAP" in below line -->
 <!ENTITY imapType.label "IMAP">
 <!ENTITY imapType.accesskey "I">
@@ -67,6 +65,11 @@
 <!ENTITY incomingUsername.description "Geben Sie den Benutzernamen ein, der Ihnen vom Anbieter des E-Mail-Diensts gegeben wurde (zum Beispiel &quot;hmaier&quot;).">
 <!ENTITY incomingUsername.label "Posteingangs-Server Benutzername:">
 <!ENTITY incomingUsername.accesskey "B">
+
+<!-- LOCALIZATION NOTE (newsServerNameDesc.label) : Do not translate "NNTP" or the "&quot;" entities in below line -->
+<!ENTITY newsServerNameDesc.label "Geben Sie den News-Server (NNTP) ein (zum Beispiel &quot;news.example.com&quot;).">
+<!ENTITY newsServerLabel.label "Newsgruppen-Server:">
+<!ENTITY newsServerLabel.accesskey "N">
 
 <!-- Entities for Outgoing Server page -->
 

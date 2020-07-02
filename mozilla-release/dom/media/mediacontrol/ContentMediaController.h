@@ -26,7 +26,7 @@ class BrowsingContext;
  * state (2) Do not notify same state again (3) `ePaused` can only be used after
  * notifying `ePlayed`.
  */
-enum class ControlledMediaState : uint32_t {
+enum class MediaPlaybackState : uint32_t {
   eStarted,
   ePlayed,
   ePaused,
@@ -34,45 +34,12 @@ enum class ControlledMediaState : uint32_t {
 };
 
 /**
- * ContentMediaAgent is an interface which we use to (1) update controlled media
- * status to the media controller in the chrome process and (2) act an event
- * source to dispatch control key events to its listeners.
- *
- * If the media would like to know the media control key events, then media
- * MUST inherit from MediaControlKeysEventListener, and register themselves to
- * ContentMediaAgent. Whenever media key events occur, ContentMediaAgent would
- * notify all its listeners. In addition, whenever controlled media changes its
- * playback status or audible state, they should update their status update via
- * ContentMediaAgent.
- *
- * Each browsing context tree would only have one ContentMediaAgent that is used
- * to update controlled media status existing in that browsing context tree.
+ * This enum is used to update controlled media audible audible state to the
+ * media controller in the chrome process.
  */
-class ContentMediaAgent : public MediaControlKeysEventSource {
- public:
-  // Return nullptr if the top level browsing context is no longer alive.
-  static ContentMediaAgent* Get(BrowsingContext* aBC);
-
-  // Use this method to update the media playback state of controlled media, and
-  // MUST follow the rule of ControlledMediaState.
-  virtual void NotifyMediaStateChanged(
-      const MediaControlKeysEventListener* aMedia,
-      ControlledMediaState aState) = 0;
-
-  // Use this method to update the audible state of controlled media, and it's
-  // safe to notify same audible state again.
-  virtual void NotifyAudibleStateChanged(
-      const MediaControlKeysEventListener* aMedia, bool aAudible) = 0;
-
-  // Use this method to update the picture in picture mode state of controlled
-  // media, and it's safe to notify same state again.
-  virtual void NotifyPictureInPictureModeChanged(
-      const MediaControlKeysEventListener* aMedia, bool aEnabled) = 0;
-
- private:
-  // We don't need them in our case, so make them private to prevent usage.
-  bool Open() override { return true; }
-  bool IsOpened() const override { return true; }
+enum class MediaAudibleState : bool {
+  eInaudible = false,
+  eAudible = true,
 };
 
 /**
@@ -84,12 +51,70 @@ class ContentMediaAgent : public MediaControlKeysEventSource {
  * that is used to handle media control key events for that browsing context
  * tree.
  */
-class ContentControlKeyEventReceiver : public MediaControlKeysEventListener {
+class ContentControlKeyEventReceiver {
  public:
+  NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
+
   // Return nullptr if the top level browsing context is no longer alive.
   static ContentControlKeyEventReceiver* Get(BrowsingContext* aBC);
 
-  void OnKeyPressed(MediaControlKeysEvent aKeyEvent) override = 0;
+  // Use this method to handle the event from `ContentMediaAgent`.
+  virtual void HandleEvent(MediaControlKeysEvent aKeyEvent) = 0;
+
+  // Use this method to get the browsing context from which the receiver is
+  // created.
+  virtual BrowsingContext* GetBrowsingContext() const { return nullptr; }
+};
+
+/**
+ * ContentMediaAgent is an interface which we use to (1) update controlled media
+ * status to the media controller in the chrome process and (2) act an event
+ * source to dispatch control key events to its listeners.
+ *
+ * If the media would like to know the media control key events, then media
+ * MUST inherit from ContentControlKeyEventReceiver, and register themselves to
+ * ContentMediaAgent. Whenever media key events occur, ContentMediaAgent would
+ * notify all its receivers. In addition, whenever controlled media changes its
+ * playback status or audible state, they should update their status update via
+ * ContentMediaAgent.
+ *
+ * Each browsing context tree would only have one ContentMediaAgent that is used
+ * to update controlled media status existing in that browsing context tree.
+ */
+class ContentMediaAgent {
+ public:
+  NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
+
+  // Return nullptr if the top level browsing context is no longer alive.
+  static ContentMediaAgent* Get(BrowsingContext* aBC);
+
+  // Use this method to update the media playback state of controlled media, and
+  // MUST follow the rule of MediaPlaybackState.
+  virtual void NotifyPlaybackStateChanged(
+      const ContentControlKeyEventReceiver* aMedia,
+      MediaPlaybackState aState) = 0;
+
+  // Use this method to update the audible state of controlled media, and MUST
+  // follow the following rules in which `audible` and `inaudible` should be a
+  // pair. `inaudible` should always be notified after `audible`. When audible
+  // media paused, `inaudible` should be notified
+  // Eg. (O) `audible` -> `inaudible` -> `audible` -> `inaudible`
+  //     (X) `inaudible` -> `audible`    [notify `inaudible` before `audible`]
+  //     (X) `audible` -> `audible`      [notify `audible` twice]
+  //     (X) `audible` -> (media pauses) [forgot to notify `inaudible`]
+  virtual void NotifyAudibleStateChanged(
+      const ContentControlKeyEventReceiver* aMedia,
+      MediaAudibleState aState) = 0;
+
+  // Use this method to update the picture in picture mode state of controlled
+  // media, and it's safe to notify same state again.
+  virtual void NotifyPictureInPictureModeChanged(
+      const ContentControlKeyEventReceiver* aMedia, bool aEnabled) = 0;
+
+  // Use these methods to register/unregister `ContentControlKeyEventReceiver`
+  // in order to listen to media control key events.
+  virtual void AddReceiver(ContentControlKeyEventReceiver* aReceiver) = 0;
+  virtual void RemoveReceiver(ContentControlKeyEventReceiver* aReceiver) = 0;
 };
 
 /**
@@ -116,23 +141,22 @@ class ContentMediaController final : public ContentMediaAgent,
 
   explicit ContentMediaController(uint64_t aId);
   // ContentMediaAgent methods
-  void AddListener(MediaControlKeysEventListener* aListener) override;
-  void RemoveListener(MediaControlKeysEventListener* aListener) override;
-  void NotifyMediaStateChanged(const MediaControlKeysEventListener* aMedia,
-                               ControlledMediaState aState) override;
-  void NotifyAudibleStateChanged(const MediaControlKeysEventListener* aMedia,
-                                 bool aAudible) override;
+  void AddReceiver(ContentControlKeyEventReceiver* aListener) override;
+  void RemoveReceiver(ContentControlKeyEventReceiver* aListener) override;
+  void NotifyPlaybackStateChanged(const ContentControlKeyEventReceiver* aMedia,
+                                  MediaPlaybackState aState) override;
+  void NotifyAudibleStateChanged(const ContentControlKeyEventReceiver* aMedia,
+                                 MediaAudibleState aState) override;
   void NotifyPictureInPictureModeChanged(
-      const MediaControlKeysEventListener* aMedia, bool aEnabled) override;
+      const ContentControlKeyEventReceiver* aMedia, bool aEnabled) override;
 
   // ContentControlKeyEventReceiver method
-  void OnKeyPressed(MediaControlKeysEvent aEvent) override;
+  void HandleEvent(MediaControlKeysEvent aEvent) override;
 
  private:
   ~ContentMediaController() = default;
-  void Close() override;
-  already_AddRefed<BrowsingContext> GetTopLevelBrowsingContext() const;
 
+  nsTArray<RefPtr<ContentControlKeyEventReceiver>> mReceivers;
   uint64_t mTopLevelBrowsingContextId;
 };
 

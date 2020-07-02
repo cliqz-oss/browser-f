@@ -15,11 +15,14 @@ config-about-warning-button =
     .label = Ich bin mir der Gefahren bewusst!
 config-about-warning-checkbox =
     .label = Diese Meldung beim nächsten Mal anzeigen
+
 config-search-prefs =
     .value = Suchen:
     .accesskey = S
+
 config-focus-search =
     .key = r
+
 config-focus-search-2 =
     .key = f
 
@@ -47,45 +50,60 @@ config-copy-pref =
     .key = C
     .label = Kopieren
     .accesskey = K
+
 config-copy-name =
     .label = Namen kopieren
     .accesskey = o
+
 config-copy-value =
     .label = Wert kopieren
     .accesskey = W
+
 config-modify =
     .label = Bearbeiten
     .accesskey = e
+
 config-toggle =
     .label = Umschalten
     .accesskey = U
+
 config-reset =
     .label = Zurücksetzen
     .accesskey = r
+
 config-new =
     .label = Neu
     .accesskey = N
+
 config-string =
     .label = String
     .accesskey = S
+
 config-integer =
     .label = Integer
     .accesskey = I
+
 config-boolean =
     .label = Boolean
     .accesskey = B
+
 config-default = Standard
 config-modified = geändert
 config-locked = gesperrt
+
 config-property-string = string
 config-property-int = integer
 config-property-bool = boolean
+
 config-new-prompt = Geben Sie den Eigenschaftsnamen ein
+
 config-nan-title = Ungültiger Wert
 config-nan-text = Der Text, den Sie eingegeben haben, ist keine Zahl.
+
 # Variables:
 #   $type (String): type of value (boolean, integer or string)
 config-new-title = Neuer { $type }-Wert
+
 # Variables:
 #   $type (String): type of value (boolean, integer or string)
 config-modify-title = Geben Sie einen { $type }-Wert ein

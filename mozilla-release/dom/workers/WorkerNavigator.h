@@ -68,15 +68,12 @@ class WorkerNavigator final : public nsWrapperCache {
   bool TaintEnabled() const { return false; }
 
   void GetLanguage(nsString& aLanguage) const {
-    if (mProperties.mLanguages.Length() >= 1) {
-      aLanguage.Assign(mProperties.mLanguages[0]);
-    } else {
-      aLanguage.Truncate();
-    }
+    MOZ_ASSERT(mProperties.mLanguages.Length() >= 1);
+    aLanguage.Assign(mProperties.mLanguages[0]);
   }
 
   void GetLanguages(nsTArray<nsString>& aLanguages) const {
-    aLanguages = mProperties.mLanguages;
+    aLanguages = mProperties.mLanguages.Clone();
   }
 
   void GetUserAgent(nsString& aUserAgent, CallerType aCallerType,

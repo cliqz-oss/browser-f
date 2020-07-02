@@ -136,6 +136,9 @@ pub enum DisplayItem {
     BackdropFilter(BackdropFilterDisplayItem),
 
     // Clips
+    RectClip(RectClipDisplayItem),
+    RoundedRectClip(RoundedRectClipDisplayItem),
+    ImageMaskClip(ImageMaskClipDisplayItem),
     Clip(ClipDisplayItem),
     ClipChain(ClipChainItem),
 
@@ -184,10 +187,13 @@ pub enum DebugDisplayItem {
     YuvImage(YuvImageDisplayItem),
     BackdropFilter(BackdropFilterDisplayItem),
 
+    ImageMaskClip(ImageMaskClipDisplayItem),
+    RoundedRectClip(RoundedRectClipDisplayItem),
+    RectClip(RectClipDisplayItem),
     Clip(ClipDisplayItem, Vec<ComplexClipRegion>),
     ClipChain(ClipChainItem, Vec<ClipId>),
 
-    ScrollFrame(ScrollFrameDisplayItem, Vec<ComplexClipRegion>),
+    ScrollFrame(ScrollFrameDisplayItem),
     StickyFrame(StickyFrameDisplayItem),
     Iframe(IframeDisplayItem),
     PushReferenceFrame(ReferenceFrameDisplayListItem),
@@ -204,11 +210,31 @@ pub enum DebugDisplayItem {
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, PeekPoke)]
+pub struct ImageMaskClipDisplayItem {
+    pub id: ClipId,
+    pub parent_space_and_clip: SpaceAndClipInfo,
+    pub image_mask: ImageMask,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, PeekPoke)]
+pub struct RectClipDisplayItem {
+    pub id: ClipId,
+    pub parent_space_and_clip: SpaceAndClipInfo,
+    pub clip_rect: LayoutRect,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, PeekPoke)]
+pub struct RoundedRectClipDisplayItem {
+    pub id: ClipId,
+    pub parent_space_and_clip: SpaceAndClipInfo,
+    pub clip: ComplexClipRegion,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, PeekPoke)]
 pub struct ClipDisplayItem {
     pub id: ClipId,
     pub parent_space_and_clip: SpaceAndClipInfo,
     pub clip_rect: LayoutRect,
-    pub image_mask: Option<ImageMask>,
 } // IMPLICIT: complex_clips: Vec<ComplexClipRegion>
 
 /// The minimum and maximum allowable offset for a sticky frame in a single dimension.
@@ -281,7 +307,6 @@ pub struct ScrollFrameDisplayItem {
     pub clip_rect: LayoutRect,
     pub parent_space_and_clip: SpaceAndClipInfo,
     pub external_id: Option<ExternalScrollId>,
-    pub image_mask: Option<ImageMask>,
     pub scroll_sensitivity: ScrollSensitivity,
     /// The amount this scrollframe has already been scrolled by, in the caller.
     /// This means that all the display items that are inside the scrollframe
@@ -686,7 +711,11 @@ pub struct ReferenceFrameDisplayListItem {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize, PeekPoke)]
 pub enum ReferenceFrameKind {
+    /// Zoom reference frames must be a scale + translation only
+    Zoom,
+    /// A normal transform matrix, may contain perspective (the CSS transform property)
     Transform,
+    /// A perspective transform, that optionally scrolls relative to a specific scroll node
     Perspective {
         scrolling_relative_to: Option<ExternalScrollId>,
     }
@@ -716,10 +745,7 @@ pub struct StackingContext {
     pub mix_blend_mode: MixBlendMode,
     pub clip_id: Option<ClipId>,
     pub raster_space: RasterSpace,
-    /// True if picture caching should be used on this stacking context.
-    pub cache_tiles: bool,
-    /// True if this stacking context is a backdrop root.
-    pub is_backdrop_root: bool,
+    pub flags: StackingContextFlags,
 }
 // IMPLICIT: filters: Vec<FilterOp>, filter_datas: Vec<FilterData>, filter_primitives: Vec<FilterPrimitive>
 
@@ -756,6 +782,25 @@ impl RasterSpace {
             RasterSpace::Local(scale) => Some(scale),
             RasterSpace::Screen => None,
         }
+    }
+}
+
+bitflags! {
+    #[repr(C)]
+    #[derive(Deserialize, MallocSizeOf, Serialize, PeekPoke)]
+    pub struct StackingContextFlags: u8 {
+        /// If true, this stacking context represents a backdrop root, per the CSS
+        /// filter-effects specification (see https://drafts.fxtf.org/filter-effects-2/#BackdropRoot).
+        const IS_BACKDROP_ROOT = 1 << 0;
+        /// If true, this stacking context is a blend container than contains
+        /// mix-blend-mode children (and should thus be isolated).
+        const IS_BLEND_CONTAINER = 1 << 1;
+    }
+}
+
+impl Default for StackingContextFlags {
+    fn default() -> Self {
+        StackingContextFlags::empty()
     }
 }
 
@@ -1466,6 +1511,9 @@ impl DisplayItem {
             DisplayItem::BoxShadow(..) => "box_shadow",
             DisplayItem::ClearRectangle(..) => "clear_rectangle",
             DisplayItem::HitTest(..) => "hit_test",
+            DisplayItem::RectClip(..) => "rect_clip",
+            DisplayItem::RoundedRectClip(..) => "rounded_rect_clip",
+            DisplayItem::ImageMaskClip(..) => "image_mask_clip",
             DisplayItem::Clip(..) => "clip",
             DisplayItem::ClipChain(..) => "clip_chain",
             DisplayItem::ConicGradient(..) => "conic_gradient",

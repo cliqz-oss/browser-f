@@ -65,48 +65,6 @@ struct ExternalImageKeyPair {
 /* Generate a brand new window id and return it. */
 WindowId NewWindowId();
 
-MOZ_DEFINE_ENUM_CLASS_WITH_BASE(
-    RenderRoot, uint8_t,
-    (
-        // The default render root - within the parent process, this refers
-        // to everything within the top chrome area (urlbar, tab strip, etc.).
-        // Within the content process, this refers to the content area. Any
-        // system that multiplexes data streams from different processes is
-        // responsible for converting RenderRoot::Default into
-        // whatever value is appropriate
-        Default));
-
-typedef EnumSet<RenderRoot, uint8_t> RenderRootSet;
-
-// For simple iteration of all render roots
-const Array<RenderRoot, kRenderRootCount> kRenderRoots(RenderRoot::Default);
-
-template <typename T>
-class RenderRootArray : public Array<T, kRenderRootCount> {
-  typedef Array<T, kRenderRootCount> Super;
-
- public:
-  RenderRootArray() {
-    if (IsPod<T>::value) {
-      // Ensure primitive types get initialized to 0/false.
-      PodArrayZero(*this);
-    }  // else C++ will default-initialize the array elements for us
-  }
-
-  T& operator[](wr::RenderRoot aIndex) {
-    return (*(Super*)this)[(size_t)aIndex];
-  }
-
-  const T& operator[](wr::RenderRoot aIndex) const {
-    return (*(Super*)this)[(size_t)aIndex];
-  }
-
-  T& operator[](size_t aIndex) = delete;
-  const T& operator[](size_t aIndex) const = delete;
-};
-
-RenderRoot RenderRootFromId(DocumentId id);
-
 inline DebugFlags NewDebugFlags(uint32_t aFlags) { return {aFlags}; }
 
 inline Maybe<wr::ImageFormat> SurfaceFormatToImageFormat(
@@ -694,11 +652,19 @@ struct Vec<uint8_t> final {
     inner.length = 0;
   }
 
+  uint8_t* Data() { return inner.data; }
+
   size_t Length() { return inner.length; }
+
+  size_t Capacity() { return inner.capacity; }
+
+  Range<uint8_t> GetRange() { return Range<uint8_t>(Data(), Length()); }
 
   void PushBytes(Range<uint8_t> aBytes) {
     wr_vec_u8_push_bytes(&inner, RangeToByteSlice(aBytes));
   }
+
+  void Reserve(size_t aLength) { wr_vec_u8_reserve(&inner, aLength); }
 
   ~Vec() {
     if (inner.data) {

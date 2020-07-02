@@ -487,7 +487,7 @@ int CollectPositions(BrowsingContext* aBrowsingContext,
 
   /* Collect data from all child frame */
   // This is not going to work for fission. Bug 1572084 for tracking it.
-  for (auto& child : aBrowsingContext->GetChildren()) {
+  for (auto& child : aBrowsingContext->Children()) {
     aPositionDescendants[currentIdx] +=
         CollectPositions(child, aPositions, aPositionDescendants);
   }
@@ -576,7 +576,7 @@ int CollectInputs(BrowsingContext* aBrowsingContext,
 
   /* Collect data from all child frame */
   // This is not going to work for fission. Bug 1572084 for tracking it.
-  for (auto& child : aBrowsingContext->GetChildren()) {
+  for (auto& child : aBrowsingContext->Children()) {
     aInputs[currentIdx].descendants +=
         CollectInputs(child, aInputs, aIdVals, aXPathVals);
   }
@@ -612,16 +612,23 @@ bool ContentSessionStore::AppendSessionStorageChange(StorageEvent* aEvent) {
     return false;
   }
 
-  nsAutoString origin;
-  aEvent->GetUrl(origin);
-  nsCOMPtr<nsIURI> newUri;
-  nsresult rv =
-      NS_NewURI(getter_AddRefs(newUri), NS_ConvertUTF16toUTF8(origin));
+  RefPtr<Storage> changingStorage = aEvent->GetStorageArea();
+  if (!changingStorage) {
+    return false;
+  }
+
+  nsCOMPtr<nsIPrincipal> storagePrincipal = changingStorage->StoragePrincipal();
+  if (!storagePrincipal) {
+    return false;
+  }
+
+  nsAutoCString origin;
+  nsresult rv = storagePrincipal->GetOrigin(origin);
   if (NS_FAILED(rv)) {
     return false;
   }
 
-  newUri->GetPrePath(*mOrigins.AppendElement());
+  mOrigins.AppendElement(origin);
   aEvent->GetKey(*mKeys.AppendElement());
   aEvent->GetNewValue(*mValues.AppendElement());
   mStorageStatus = STORAGECHANGE;

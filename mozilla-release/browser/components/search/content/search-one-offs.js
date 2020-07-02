@@ -580,10 +580,10 @@ class SearchOneOffs {
     if (tooManyEngines) {
       // Make the top-level menu button.
       let button = document.createXULElement("toolbarbutton");
-      list.appendChild(button);
       button.classList.add("addengine-menu-button", "addengine-item");
       button.setAttribute("badged", "true");
       button.setAttribute("type", "menu");
+      button.setAttribute("wantdropmarker", "true");
       button.setAttribute(
         "label",
         this.bundle.GetStringFromName("cmd_addFoundEngineMenu")
@@ -598,6 +598,7 @@ class SearchOneOffs {
       if (engine.icon) {
         button.setAttribute("image", engine.icon);
       }
+      list.appendChild(button);
 
       // Now make the button's child menupopup.
       list = document.createXULElement("menupopup");
@@ -807,11 +808,11 @@ class SearchOneOffs {
    *        to pass anything for this parameter.  (Pass undefined or null.)
    * @returns {boolean} True if the one-offs handled the key press.
    */
-  handleKeyPress(event, numListItems, allowEmptySelection, textboxUserValue) {
+  handleKeyDown(event, numListItems, allowEmptySelection, textboxUserValue) {
     if (!this.popup && !this._view) {
       return false;
     }
-    let handled = this._handleKeyPress(
+    let handled = this._handleKeyDown(
       event,
       numListItems,
       allowEmptySelection,
@@ -824,7 +825,7 @@ class SearchOneOffs {
     return handled;
   }
 
-  _handleKeyPress(event, numListItems, allowEmptySelection, textboxUserValue) {
+  _handleKeyDown(event, numListItems, allowEmptySelection, textboxUserValue) {
     if (this.compact && this.container.hidden) {
       return false;
     }
@@ -1165,14 +1166,12 @@ class SearchOneOffs {
             "error_duplicate_engine_msg",
             [brandName, target.getAttribute("uri")]
           );
-          Services.prompt.QueryInterface(Ci.nsIPromptFactory);
-          let prompt = Services.prompt.getPrompt(
-            gBrowser.contentWindow,
-            Ci.nsIPrompt
+          Services.prompt.alertBC(
+            gBrowser.selectedBrowser.browsingContext,
+            Ci.nsIPrompt.MODAL_TYPE_CONTENT,
+            title,
+            text
           );
-          prompt.QueryInterface(Ci.nsIWritablePropertyBag2);
-          prompt.setPropertyAsBool("allowTabModal", true);
-          prompt.alert(title, text);
         });
     }
 

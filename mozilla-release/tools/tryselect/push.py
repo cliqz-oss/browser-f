@@ -8,6 +8,7 @@ import json
 import os
 import sys
 
+import six
 from mozboot.util import get_state_dir
 from mozbuild.base import MozbuildObject
 from mozversioncontrol import get_repository_object, MissingVCSExtension
@@ -142,7 +143,7 @@ def push_to_try(method, msg, try_task_config=None,
                 push=True, closed_tree=False, files_to_change=None):
     check_working_directory(push)
 
-    if try_task_config and method not in ('auto', 'empty'):
+    if try_task_config and method not in ('auto', 'empty', 'release'):
         display_push_estimates(try_task_config)
 
     # Format the commit message
@@ -161,8 +162,8 @@ def push_to_try(method, msg, try_task_config=None,
     if files_to_change:
         for path, content in files_to_change.items():
             path = os.path.join(vcs.path, path)
-            with open(path, 'w') as fh:
-                fh.write(content)
+            with open(path, 'wb') as fh:
+                fh.write(six.ensure_binary(content))
             changed_files.append(path)
 
     try:
@@ -175,8 +176,7 @@ def push_to_try(method, msg, try_task_config=None,
                     print(fh.read())
             return
 
-        for path in changed_files:
-            vcs.add_remove_files(path)
+        vcs.add_remove_files(*changed_files)
 
         try:
             vcs.push_to_try(commit_message)

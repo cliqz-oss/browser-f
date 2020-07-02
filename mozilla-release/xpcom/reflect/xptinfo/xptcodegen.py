@@ -354,7 +354,7 @@ def link_to_cpp(interfaces, fd):
             numparams = len(method['params'])
 
             # Check cache for parameters
-            cachekey = json.dumps(method['params'])
+            cachekey = json.dumps(method['params'], sort_keys=True)
             paramidx = param_cache.get(cachekey)
             if paramidx is None:
                 paramidx = param_cache[cachekey] = len(params)
@@ -501,7 +501,7 @@ namespace detail {
 
     # The strings array. We write out individual characters to avoid MSVC restrictions.
     fd.write("const char sStrings[] = {\n")
-    for s, off in strings.iteritems():
+    for s, off in strings.items():
         fd.write("  // %d = %s\n  '%s','\\0',\n" % (off, s, "','".join(s)))
     fd.write("};\n\n")
 

@@ -119,7 +119,7 @@ JS::ubi::Node::Size JS::ubi::Concrete<JSString>::size(
   }
 
   if (IsInsideNursery(&str)) {
-    size += Nursery::stringHeaderSize();
+    size += Nursery::nurseryCellHeaderSize();
   }
 
   size += str.sizeOfExcludingThis(mallocSizeOf);
@@ -356,10 +356,10 @@ void JSString::dumpRepresentationHeader(js::GenericPrinter& out,
   if (flags & LINEAR_BIT) out.put(" LINEAR");
   if (flags & DEPENDENT_BIT) out.put(" DEPENDENT");
   if (flags & INLINE_CHARS_BIT) out.put(" INLINE_CHARS");
-  if (flags & NON_ATOM_BIT)
-    out.put(" NON_ATOM");
+  if (flags & ATOM_BIT)
+    out.put(" ATOM");
   else
-    out.put(" (ATOM)");
+    out.put(" (NON ATOM)");
   if (isPermanentAtom()) out.put(" PERMANENT");
   if (flags & LATIN1_CHARS_BIT) out.put(" LATIN1");
   if (flags & INDEX_VALUE_BIT) out.printf(" INDEX_VALUE(%u)", getIndexValue());
@@ -652,7 +652,8 @@ JSLinearString* JSRope::flattenInternal(JSContext* maybecx) {
       if (!inTenured && left.isTenured()) {
         // tenured leftmost child is giving its chars buffer to the
         // nursery-allocated root node.
-        if (!nursery.registerMallocedBuffer(wholeChars)) {
+        if (!nursery.registerMallocedBuffer(wholeChars,
+                                            wholeCapacity * sizeof(CharT))) {
           if (maybecx) {
             ReportOutOfMemory(maybecx);
           }
@@ -663,7 +664,7 @@ JSLinearString* JSRope::flattenInternal(JSContext* maybecx) {
       } else if (inTenured && !left.isTenured()) {
         // leftmost child is giving its nursery-held chars buffer to a
         // tenured string.
-        nursery.removeMallocedBuffer(wholeChars);
+        nursery.removeMallocedBuffer(wholeChars, wholeCapacity * sizeof(CharT));
       }
 
       /*
@@ -717,7 +718,8 @@ JSLinearString* JSRope::flattenInternal(JSContext* maybecx) {
 
   if (!isTenured()) {
     Nursery& nursery = runtimeFromMainThread()->gc.nursery();
-    if (!nursery.registerMallocedBuffer(wholeChars)) {
+    if (!nursery.registerMallocedBuffer(wholeChars,
+                                        wholeCapacity * sizeof(CharT))) {
       js_free(wholeChars);
       if (maybecx) {
         ReportOutOfMemory(maybecx);

@@ -21,7 +21,6 @@ let newEngine;
 add_task(async function setup() {
   SpecialPowers.pushPrefEnv({
     set: [
-      ["browser.urlbar.oneOffSearches", true],
       // Avoid hitting the network with search suggestions.
       ["browser.urlbar.suggest.searches", false],
       ["browser.tabs.loadInBackground", true],
@@ -39,10 +38,12 @@ add_task(async function setup() {
 
   registerCleanupFunction(async function() {
     await PlacesUtils.history.clear();
+    await UrlbarTestUtils.formHistory.clear();
     await Services.search.setDefault(originalEngine);
   });
 
   await PlacesUtils.history.clear();
+  await UrlbarTestUtils.formHistory.clear();
 
   let visits = [];
   for (let i = 0; i < gMaxResults; i++) {
@@ -94,6 +95,7 @@ async function searchInTab(checkFn) {
     checkFn(testBrowser, newTab);
 
     BrowserTestUtils.removeTab(newTab);
+    await UrlbarTestUtils.formHistory.clear();
   });
 }
 

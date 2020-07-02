@@ -55,9 +55,9 @@ class ProfileBufferEntry {
   // stored in a `ProfileBufferEntry`, as per the list in
   // `FOR_EACH_PROFILE_BUFFER_ENTRY_KIND`.
   //
-  // This byte is also used to identify entries in BlocksRingBuffer blocks, for
-  // both "legacy" entries that do contain a `ProfileBufferEntry`, and for new
-  // types of entries that may carry more data of different types.
+  // This byte is also used to identify entries in ProfileChunkedBuffer blocks,
+  // for both "legacy" entries that do contain a `ProfileBufferEntry`, and for
+  // new types of entries that may carry more data of different types.
   // TODO: Eventually each type of "legacy" entry should be replaced with newer,
   // more efficient kinds of entries (e.g., stack frames could be stored in one
   // bigger entry, instead of multiple `ProfileBufferEntry`s); then we could
@@ -393,23 +393,23 @@ class UniqueStacks {
   explicit UniqueStacks(JITFrameInfo&& aJITFrameInfo);
 
   // Return a StackKey for aFrame as the stack's root frame (no prefix).
-  MOZ_MUST_USE StackKey BeginStack(const FrameKey& aFrame);
+  [[nodiscard]] StackKey BeginStack(const FrameKey& aFrame);
 
   // Return a new StackKey that is obtained by appending aFrame to aStack.
-  MOZ_MUST_USE StackKey AppendFrame(const StackKey& aStack,
-                                    const FrameKey& aFrame);
+  [[nodiscard]] StackKey AppendFrame(const StackKey& aStack,
+                                     const FrameKey& aFrame);
 
   // Look up frame keys for the given JIT address, and ensure that our frame
   // table has entries for the returned frame keys. The JSON for these frames
   // is taken from mJITInfoRanges.
   // aBufferPosition is needed in order to look up the correct JIT frame info
   // object in mJITInfoRanges.
-  MOZ_MUST_USE mozilla::Maybe<mozilla::Vector<UniqueStacks::FrameKey>>
+  [[nodiscard]] mozilla::Maybe<mozilla::Vector<UniqueStacks::FrameKey>>
   LookupFramesForJITAddressFromBufferPos(void* aJITAddress,
                                          uint64_t aBufferPosition);
 
-  MOZ_MUST_USE uint32_t GetOrAddFrameIndex(const FrameKey& aFrame);
-  MOZ_MUST_USE uint32_t GetOrAddStackIndex(const StackKey& aStack);
+  [[nodiscard]] uint32_t GetOrAddFrameIndex(const FrameKey& aFrame);
+  [[nodiscard]] uint32_t GetOrAddStackIndex(const StackKey& aStack);
 
   void SpliceFrameTableElements(SpliceableJSONWriter& aWriter);
   void SpliceStackTableElements(SpliceableJSONWriter& aWriter);

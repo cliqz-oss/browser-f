@@ -64,7 +64,6 @@ struct CloneInfo;
 }  // namespace mozilla
 
 MOZ_DECLARE_RELOCATE_USING_MOVE_CONSTRUCTOR(mozilla::dom::indexedDB::CloneInfo)
-MOZ_DECLARE_NON_COPY_CONSTRUCTIBLE(mozilla::dom::indexedDB::CloneInfo)
 
 namespace mozilla {
 namespace dom {
@@ -75,7 +74,7 @@ class ThreadLocal {
   friend IDBFactory;
 
   LoggingInfo mLoggingInfo;
-  IDBTransaction* mCurrentTransaction;
+  Maybe<IDBTransaction&> mCurrentTransaction;
   nsCString mLoggingIdString;
 
   NS_DECL_OWNINGTHREAD
@@ -124,13 +123,13 @@ class ThreadLocal {
     return mLoggingInfo.nextRequestSerialNumber()++;
   }
 
-  void SetCurrentTransaction(IDBTransaction* aCurrentTransaction) {
+  void SetCurrentTransaction(Maybe<IDBTransaction&> aCurrentTransaction) {
     AssertIsOnOwningThread();
 
     mCurrentTransaction = aCurrentTransaction;
   }
 
-  IDBTransaction* GetCurrentTransaction() const {
+  Maybe<IDBTransaction&> MaybeCurrentTransactionRef() const {
     AssertIsOnOwningThread();
 
     return mCurrentTransaction;
@@ -151,9 +150,9 @@ class BackgroundFactoryChild final : public PBackgroundIDBFactoryChild {
   // reference here?
   IDBFactory* mFactory;
 
-  NS_DECL_OWNINGTHREAD
-
  public:
+  NS_INLINE_DECL_REFCOUNTING(BackgroundFactoryChild, override)
+
   void AssertIsOnOwningThread() const {
     NS_ASSERT_OWNINGTHREAD(BackgroundFactoryChild);
   }
@@ -339,13 +338,7 @@ class BackgroundDatabaseChild final : public PBackgroundIDBDatabaseChild {
   bool DeallocPBackgroundIDBDatabaseRequestChild(
       PBackgroundIDBDatabaseRequestChild* aActor);
 
-  PBackgroundIDBTransactionChild* AllocPBackgroundIDBTransactionChild(
-      const nsTArray<nsString>& aObjectStoreNames, const Mode& aMode);
-
-  bool DeallocPBackgroundIDBTransactionChild(
-      PBackgroundIDBTransactionChild* aActor);
-
-  PBackgroundIDBVersionChangeTransactionChild*
+  already_AddRefed<PBackgroundIDBVersionChangeTransactionChild>
   AllocPBackgroundIDBVersionChangeTransactionChild(uint64_t aCurrentVersion,
                                                    uint64_t aRequestedVersion,
                                                    int64_t aNextObjectStoreId,
@@ -355,9 +348,6 @@ class BackgroundDatabaseChild final : public PBackgroundIDBDatabaseChild {
       PBackgroundIDBVersionChangeTransactionChild* aActor,
       const uint64_t& aCurrentVersion, const uint64_t& aRequestedVersion,
       const int64_t& aNextObjectStoreId, const int64_t& aNextIndexId) override;
-
-  bool DeallocPBackgroundIDBVersionChangeTransactionChild(
-      PBackgroundIDBVersionChangeTransactionChild* aActor);
 
   PBackgroundMutableFileChild* AllocPBackgroundMutableFileChild(
       const nsString& aName, const nsString& aType);
@@ -405,12 +395,12 @@ class BackgroundTransactionBase {
   // mTemporaryStrongTransaction is strong and is only valid until the end of
   // NoteComplete() member function or until the NoteActorDestroyed() member
   // function is called.
-  RefPtr<IDBTransaction> mTemporaryStrongTransaction;
+  SafeRefPtr<IDBTransaction> mTemporaryStrongTransaction;
 
  protected:
   // mTransaction is weak and is valid until the NoteActorDestroyed() member
   // function is called.
-  IDBTransaction* mTransaction;
+  IDBTransaction* mTransaction = nullptr;
 
  public:
 #ifdef DEBUG
@@ -425,10 +415,11 @@ class BackgroundTransactionBase {
   }
 
  protected:
-  BackgroundTransactionBase();
-  explicit BackgroundTransactionBase(IDBTransaction* aTransaction);
+  MOZ_COUNTED_DEFAULT_CTOR(BackgroundTransactionBase);
 
-  virtual ~BackgroundTransactionBase();
+  explicit BackgroundTransactionBase(SafeRefPtr<IDBTransaction> aTransaction);
+
+  MOZ_COUNTED_DTOR_VIRTUAL(BackgroundTransactionBase);
 
   void NoteActorDestroyed();
 
@@ -436,7 +427,7 @@ class BackgroundTransactionBase {
 
  private:
   // Only called by BackgroundVersionChangeTransactionChild.
-  void SetDOMTransaction(IDBTransaction* aTransaction);
+  void SetDOMTransaction(SafeRefPtr<IDBTransaction> aTransaction);
 };
 
 class BackgroundTransactionChild final : public BackgroundTransactionBase,
@@ -445,6 +436,8 @@ class BackgroundTransactionChild final : public BackgroundTransactionBase,
   friend IDBDatabase;
 
  public:
+  NS_INLINE_DECL_REFCOUNTING(BackgroundTransactionChild, override)
+
 #ifdef DEBUG
   void AssertIsOnOwningThread() const override;
 #endif
@@ -455,7 +448,7 @@ class BackgroundTransactionChild final : public BackgroundTransactionBase,
 
  private:
   // Only created by IDBDatabase.
-  explicit BackgroundTransactionChild(IDBTransaction* aTransaction);
+  explicit BackgroundTransactionChild(SafeRefPtr<IDBTransaction> aTransaction);
 
   // Only destroyed by BackgroundDatabaseChild.
   ~BackgroundTransactionChild();
@@ -485,6 +478,8 @@ class BackgroundVersionChangeTransactionChild final
   IDBOpenDBRequest* mOpenDBRequest;
 
  public:
+  NS_INLINE_DECL_REFCOUNTING(BackgroundVersionChangeTransactionChild, override)
+
 #ifdef DEBUG
   void AssertIsOnOwningThread() const override;
 #endif
@@ -502,9 +497,7 @@ class BackgroundVersionChangeTransactionChild final
   ~BackgroundVersionChangeTransactionChild();
 
   // Only called by BackgroundDatabaseChild.
-  void SetDOMTransaction(IDBTransaction* aDOMObject) {
-    BackgroundTransactionBase::SetDOMTransaction(aDOMObject);
-  }
+  using BackgroundTransactionBase::SetDOMTransaction;
 
  public:
   // IPDL methods are only called by IPDL.
@@ -580,7 +573,7 @@ class BackgroundRequestChild final : public BackgroundRequestChildBase,
 
   class PreprocessHelper;
 
-  RefPtr<IDBTransaction> mTransaction;
+  SafeRefPtr<IDBTransaction> mTransaction;
   nsTArray<CloneInfo> mCloneInfos;
   uint32_t mRunningPreprocessHelpers;
   uint32_t mCurrentCloneDataIndex;
@@ -625,6 +618,10 @@ class BackgroundRequestChild final : public BackgroundRequestChildBase,
   nsresult HandlePreprocessInternal(
       const nsTArray<PreprocessInfo>& aPreprocessInfos);
 
+  SafeRefPtr<IDBTransaction> AcquireTransaction() const {
+    return mTransaction.clonePtr();
+  }
+
  public:
   // IPDL methods are only called by IPDL.
   void ActorDestroy(ActorDestroyReason aWhy) override;
@@ -643,8 +640,8 @@ class BackgroundCursorChildBase : public PBackgroundIDBCursorChild {
  private:
   NS_DECL_OWNINGTHREAD
  protected:
-  InitializedOnceNotNull<IDBRequest* const> mRequest;
-  IDBTransaction* mTransaction;
+  InitializedOnce<const NotNull<IDBRequest*>> mRequest;
+  Maybe<IDBTransaction&> mTransaction;
 
   // These are only set while a request is in progress.
   RefPtr<IDBRequest> mStrongRequest;
@@ -688,7 +685,7 @@ class BackgroundCursorChild final : public BackgroundCursorChildBase {
   friend class BackgroundTransactionChild;
   friend class BackgroundVersionChangeTransactionChild;
 
-  InitializedOnceNotNull<SourceType* const> mSource;
+  InitializedOnce<const NotNull<SourceType*>> mSource;
   IDBCursorImpl<CursorType>* mCursor;
 
   std::deque<CursorData<CursorType>> mCachedResponses, mDelayedResponses;
@@ -732,7 +729,7 @@ class BackgroundCursorChild final : public BackgroundCursorChildBase {
                                      const Func& aHandleRecord);
 
   template <typename... Args>
-  MOZ_MUST_USE RefPtr<IDBCursor> HandleIndividualCursorResponse(
+  [[nodiscard]] RefPtr<IDBCursor> HandleIndividualCursorResponse(
       bool aUseAsCurrentResult, Args&&... aArgs);
 
  public:

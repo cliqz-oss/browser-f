@@ -1,10 +1,10 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-from argparse import ArgumentParser, SUPPRESS
+from argparse import ArgumentParser
 import os
 import mozlog
-
+import copy
 
 here = os.path.abspath(os.path.dirname(__file__))
 try:
@@ -15,56 +15,82 @@ except ImportError:
     build_obj = None
     conditions = None
 
-SUPPORTED_APPS = ("generic", "android")
+from mozperftest.system import get_layers as system_layers  # noqa
+from mozperftest.browser import get_layers as browser_layers  # noqa
+from mozperftest.metrics import get_layers as metrics_layers  # noqa
+
+FLAVORS = ["script", "doc"]
 
 
-class GenericGroup:
-    """ Generic options
-    """
+class Options:
 
-    name = "Generic"
+    general_args = {
+        "--flavor": {
+            "choices": FLAVORS,
+            "metavar": "{{{}}}".format(", ".join(FLAVORS)),
+            "default": "script",
+            "help": "Only run tests of this flavor.",
+        },
+        "tests": {
+            "nargs": "*",
+            "metavar": "TEST",
+            "default": [],
+            "help": "Test to run. Can be a single test file or URL or a directory"
+            " of tests (to run recursively). If omitted, the entire suite is run.",
+        },
+        "--output": {
+            "type": str,
+            "default": "artifacts",
+            "help": "Path to where data will be stored, defaults to a top-level "
+            "`artifacts` folder.",
+        },
+        "--hooks": {
+            "type": str,
+            "default": None,
+            "help": "Script containing hooks. Can be a path or a URL.",
+        },
+        "--verbose": {"action": "store_true", "default": False, "help": "Verbose mode"},
+        "--push-to-try": {
+            "action": "store_true",
+            "default": False,
+            "help": "Pushin the test to try",
+        },
+        "--try-platform": {
+            "type": str,
+            "default": "g5",
+            "help": "Platform to use on try",
+            "choices": ["g5", "pixel2", "linux", "mac", "win"],
+        },
+        "--on-try": {
+            "action": "store_true",
+            "default": False,
+            "help": "Running the test on try",
+        },
+    }
 
-    args = [
-        [
-            ["tests"],
-            {
-                "nargs": "*",
-                "metavar": "TEST",
-                "default": [],
-                "help": "Test to run. Can be a single test file or a directory of tests "
-                "(to run recursively). If omitted, the entire suite is run.",
-            },
-        ],
-        [
-            # XXX this should live in mozperftest.metrics
-            ["--perfherder"],
-            {
-                "action": "store_true",
-                "default": False,
-                "help": "Output data in the perfherder format.",
-            },
-        ],
-        [
-            # XXX this should live in mozperftest.metrics
-            ["--output"],
-            {
-                "type": str,
-                "default": "artifacts",
-                "help": "Path to where data will be stored, defaults to a top-level "
-                "`artifacts` folder.",
-            },
-        ],
-        [
-            # XXX this should live in mozperftest.metrics
-            ["--prefix"],
-            {
-                "type": str,
-                "default": "",
-                "help": "Prefix the output files with this string.",
-            },
-        ],
-    ]
-    defaults = {}
+    args = copy.deepcopy(general_args)
+
+
+for layer in system_layers() + browser_layers() + metrics_layers():
+    if layer.activated:
+        # add an option to deactivate it
+        option_name = "--no-%s" % layer.name
+        option_help = "Deactivates the %s layer" % layer.name
+    else:
+        option_name = "--%s" % layer.name
+        option_help = "Activates the %s layer" % layer.name
+
+    Options.args[option_name] = {
+        "action": "store_true",
+        "default": False,
+        "help": option_help,
+    }
+
+    for option, value in layer.arguments.items():
+        option = "--%s-%s" % (layer.name, option.replace("_", "-"))
+        if option in Options.args:
+            raise KeyError("%s option already defined!" % option)
+        Options.args[option] = value
 
 
 class PerftestArgumentParser(ArgumentParser):
@@ -75,7 +101,6 @@ class PerftestArgumentParser(ArgumentParser):
             self, usage=self.__doc__, conflict_handler="resolve", **kwargs
         )
         # XXX see if this list will vary depending on the flavor & app
-        self.groups = [GenericGroup]
         self.oldcwd = os.getcwd()
         self.app = app
         if not self.app and build_obj:
@@ -83,28 +108,9 @@ class PerftestArgumentParser(ArgumentParser):
                 self.app = "android"
         if not self.app:
             self.app = "generic"
+        for name, options in Options.args.items():
+            if "default" in options and isinstance(options["default"], list):
+                options["default"] = []
+            self.add_argument(name, **options)
 
-        if self.app not in SUPPORTED_APPS:
-            self.error(
-                "Unrecognized app '{}'! Must be one of: {}".format(
-                    self.app, ", ".join(SUPPORTED_APPS)
-                )
-            )
-
-        defaults = {}
-        for klass in self.groups:
-            defaults.update(klass.defaults)
-            group = self.add_argument_group(klass.name, klass.__doc__)
-
-            for cli, kwargs in klass.args:
-                if "default" in kwargs and isinstance(kwargs["default"], list):
-                    kwargs["default"] = []
-
-                if "suppress" in kwargs:
-                    if kwargs["suppress"]:
-                        kwargs["help"] = SUPPRESS
-                    del kwargs["suppress"]
-                group.add_argument(*cli, **kwargs)
-
-        self.set_defaults(**defaults)
         mozlog.commandline.add_logging_group(self)

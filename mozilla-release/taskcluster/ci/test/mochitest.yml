@@ -226,7 +226,7 @@ mochitest-plain-gpu:
         mochitest-flavor: plain
         extra-options:
             by-test-platform:
-                android-em.*:
+                android.*:
                     # note that Android runs fewer suites than other platforms
                     - --test-suite=mochitest-plain-gpu
                 default:
@@ -250,7 +250,12 @@ mochitest-chrome-gpu:
     mozharness:
         mochitest-flavor: chrome
         extra-options:
-            - --mochitest-suite=mochitest-chrome-gpu
+            by-test-platform:
+                android.*:
+                    # note that Android runs fewer suites than other platforms
+                    - --test-suite=mochitest-chrome-gpu
+                default:
+                    - --mochitest-suite=mochitest-chrome-gpu
 
 mochitest-media:
     description: "Mochitest media run"
@@ -263,9 +268,10 @@ mochitest-media:
             default: 5400
     run-on-projects:
         by-test-platform:
-            android-hw-.*/opt: ['try']
-            android-hw-.*-api-16/(?:debug|pgo)?: ['try', 'trunk', 'mozilla-beta', 'mozilla-release']
-            windows10-aarch64/.*: ['try', 'mozilla-central', 'mozilla-beta', 'mozilla-release']
+            android-hw-.*(?<!-shippable)/opt: []
+            android-hw-.*-api-16/(?:debug|pgo)?: ['trunk', 'mozilla-beta', 'mozilla-release']
+            android-hw-.*-api-16-shippable/opt: ['trunk', 'mozilla-beta', 'mozilla-release']
+            windows10-aarch64/.*: ['mozilla-central', 'mozilla-beta', 'mozilla-release']
             default: built-projects
     variants:
         by-test-platform:
@@ -312,7 +318,7 @@ mochitest-plain-headless:
     max-run-time: 5400
     allow-software-gl-layers: false
     tier: 2
-    run-on-projects: ['try', 'mozilla-central']
+    run-on-projects: ['mozilla-central']
     mozharness:
         mochitest-flavor: plain
         chunked: true
@@ -433,7 +439,7 @@ mochitest-webgpu:
     virtualization: virtual-with-gpu
     e10s: true
     loopback-video: true
-    run-on-projects: ["trunk", "try"]
+    run-on-projects: ["trunk"]
     tier: default
     max-run-time:
         by-test-platform:
@@ -450,7 +456,10 @@ mochitest-remote:
         name: mochitest-remote
     treeherder-symbol: M(remote)
     loopback-video: true
-    run-on-projects: ["trunk", "try"]
+    run-on-projects:
+        by-test-platform:
+            (linux1804-64|windows7-32|windows10-64)(?:-qr)?/opt: ['mozilla-central']
+            default: ["trunk"]
     fission-run-on-projects: []
     fission-tier: 2
     max-run-time: 5400

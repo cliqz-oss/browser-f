@@ -11,6 +11,7 @@
 #include "nsClassHashtable.h"
 #include "nsComponentManagerUtils.h"
 #include "nsTArray.h"
+#include "nsTStringHasher.h"  // mozilla::DefaultHasher<nsCString>
 #include "nsZipArchive.h"
 #include "nsITimer.h"
 #include "nsIMemoryReporter.h"
@@ -22,6 +23,7 @@
 #include "mozilla/AutoMemMap.h"
 #include "mozilla/Compression.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/Result.h"
 #include "mozilla/UniquePtr.h"
 
@@ -121,19 +123,6 @@ struct StartupCacheEntry {
   };
 };
 
-struct nsCStringHasher {
-  using Key = nsCString;
-  using Lookup = nsCString;
-
-  static HashNumber hash(const Lookup& aLookup) {
-    return HashString(aLookup.get());
-  }
-
-  static bool match(const Key& aKey, const Lookup& aLookup) {
-    return aKey.Equals(aLookup);
-  }
-};
-
 // We don't want to refcount StartupCache, and ObserverService wants to
 // refcount its listeners, so we'll let it refcount this instead.
 class StartupCacheListener final : public nsIObserver {
@@ -167,6 +156,10 @@ class StartupCache : public nsIMemoryReporter {
   // For use during shutdown - this will write the startupcache's data
   // to disk if the timer hasn't already gone off.
   void MaybeInitShutdownWrite();
+
+  // For use during shutdown - ensure we complete the shutdown write
+  // before shutdown, even in the FastShutdown case.
+  void EnsureShutdownWriteComplete();
 
   // Signal that data should not be loaded from the cache file
   static void IgnoreDiskCache();
@@ -208,23 +201,22 @@ class StartupCache : public nsIMemoryReporter {
   // Writes the cache to disk
   Result<Ok, nsresult> WriteToDisk();
 
-  void WaitOnWriteThread();
   void WaitOnPrefetchThread();
   void StartPrefetchMemoryThread();
-  void MaybeSpawnWriteThread();
 
   static nsresult InitSingleton();
   static void WriteTimeout(nsITimer* aTimer, void* aClosure);
-  static void ThreadedWrite(void* aClosure);
+  void MaybeWriteOffMainThread();
   static void ThreadedPrefetch(void* aClosure);
 
-  HashMap<nsCString, StartupCacheEntry, nsCStringHasher> mTable;
+  HashMap<nsCString, StartupCacheEntry> mTable;
   // owns references to the contents of tables which have been invalidated.
   // In theory grows forever if the cache is continually filled and then
   // invalidated, but this should not happen in practice.
   nsTArray<decltype(mTable)> mOldTables;
   nsCOMPtr<nsIFile> mFile;
   loader::AutoMemMap mCacheData;
+  Mutex mTableLock;
 
   nsCOMPtr<nsIObserverService> mObserverService;
   RefPtr<StartupCacheListener> mListener;
@@ -241,7 +233,6 @@ class StartupCache : public nsIMemoryReporter {
   static bool gShutdownInitiated;
   static bool gIgnoreDiskCache;
   static bool gFoundDiskCacheOnInit;
-  PRThread* mWriteThread;
   PRThread* mPrefetchThread;
   UniquePtr<Compression::LZ4FrameDecompressionContext> mDecompressionContext;
 #ifdef DEBUG

@@ -1,29 +1,38 @@
 """Data structure extracted from parsing the EDSL which are added within the
 Rust code."""
 
-import collections
+from __future__ import annotations
+# mypy: disallow-untyped-defs, disallow-incomplete-defs, disallow-untyped-calls
+
+import typing
+import os
+
+from dataclasses import dataclass
 from .utils import keep_until
+from .grammar import Element, Grammar, LenientNt, NtDef, Production
 
-class ImplFor(collections.namedtuple("ImplFor", "param trait for_type")):
-    def __new__(cls, param, trait, for_type):
-        self = super(ImplFor, cls).__new__(cls, param, trait, for_type)
-        return self
 
-    def __eq__(self, other):
-        return isinstance(other, ImplFor) and super(ImplFor, self).__eq__(other)
+@dataclass(frozen=True)
+class ImplFor:
+    __slots__ = ['param', 'trait', 'for_type']
+    param: str
+    trait: str
+    for_type: str
 
-def eq_productions(grammar, prod1, prod2):
+
+def eq_productions(grammar: Grammar, prod1: Production, prod2: Production) -> bool:
     s1 = tuple(e for e in prod1.body if grammar.is_shifted_element(e))
     s2 = tuple(e for e in prod2.body if grammar.is_shifted_element(e))
     return s1 == s2
 
-def merge_productions(grammar, prod1, prod2):
+
+def merge_productions(grammar: Grammar, prod1: Production, prod2: Production) -> Production:
     # Consider all shifted elements as non-moveable elements, and insert other
     # around these.
     assert eq_productions(grammar, prod1, prod2)
     l1 = list(prod1.body)
     l2 = list(prod2.body)
-    body = []
+    body: typing.List[Element] = []
     while l1 != [] and l2 != []:
         front1 = list(keep_until(l1, grammar.is_shifted_element))
         front2 = list(keep_until(l2, grammar.is_shifted_element))
@@ -38,16 +47,19 @@ def merge_productions(grammar, prod1, prod2):
             raise ValueError("We do not know how to sort operations yet.")
     return prod1.copy_with(body=body)
 
-class ExtPatch(collections.namedtuple("ExtPatch", "prod")):
+
+@dataclass(frozen=True)
+class ExtPatch:
     "Patch an existing grammar rule by adding Code"
-    def __new__(cls, prod):
-        self = super(ExtPatch, cls).__new__(cls, prod)
-        return self
 
-    def __eq__(self, other):
-        return isinstance(other, ExtPatch) and super(ExtPatch, self).__eq__(other)
+    prod: typing.Tuple[LenientNt, str, NtDef]
 
-    def apply_patch(self, filename, grammar, nonterminals):
+    def apply_patch(
+            self,
+            filename: os.PathLike,
+            grammar: Grammar,
+            nonterminals: typing.Dict[LenientNt, NtDef]
+    ) -> None:
         # - name: non-terminal.
         # - namespace: ":" for syntactic or "::" for lexical. Always ":" as
         #     defined by rust_nt_def.
@@ -71,25 +83,26 @@ class ExtPatch(collections.namedtuple("ExtPatch", "prod")):
         result = gnt_def.with_rhs_list(new_rhs_list)
         nonterminals[name] = result
 
+
+@dataclass
 class GrammarExtension:
     """A collection of grammar extensions, with added code, added traits for the
     action functions.
 
     """
 
-    def __init__(self, target, grammar, filename):
-        self.target = target
-        self.grammar = grammar
-        self.filename = filename
+    target: None
+    grammar: typing.List[ExtPatch]
+    filename: os.PathLike
 
-    def __repr__(self):
-        return "GrammarExtension({}, {})".format(repr(self.target), repr(self.grammar))
-
-    def apply_patch(self, grammar, nonterminals):
+    def apply_patch(
+            self,
+            grammar: Grammar,
+            nonterminals: typing.Dict[LenientNt, NtDef]
+    ) -> None:
         # A grammar extension is composed of multiple production patches.
         for ext in self.grammar:
             if isinstance(ext, ExtPatch):
                 ext.apply_patch(self.filename, grammar, nonterminals)
             else:
                 raise ValueError("Extension of type {} not yet supported.".format(ext.__class__))
-

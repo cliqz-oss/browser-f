@@ -45,10 +45,6 @@
   MACRO(await, await, "await")                                                 \
   MACRO(bigint64, bigint64, "bigint64")                                        \
   MACRO(biguint64, biguint64, "biguint64")                                     \
-  MACRO(Bool8x16, Bool8x16, "Bool8x16")                                        \
-  MACRO(Bool16x8, Bool16x8, "Bool16x8")                                        \
-  MACRO(Bool32x4, Bool32x4, "Bool32x4")                                        \
-  MACRO(Bool64x2, Bool64x2, "Bool64x2")                                        \
   MACRO(boundWithSpace, boundWithSpace, "bound ")                              \
   MACRO(break, break_, "break")                                                \
   MACRO(breakdown, breakdown, "breakdown")                                     \
@@ -165,9 +161,7 @@
   MACRO(flat, flat, "flat")                                                    \
   MACRO(flatMap, flatMap, "flatMap")                                           \
   MACRO(float32, float32, "float32")                                           \
-  MACRO(Float32x4, Float32x4, "Float32x4")                                     \
   MACRO(float64, float64, "float64")                                           \
-  MACRO(Float64x2, Float64x2, "Float64x2")                                     \
     MACRO(for, for_, "for")                                                    \
   MACRO(forceInterpreter, forceInterpreter, "forceInterpreter")                \
   MACRO(forEach, forEach, "forEach")                                           \
@@ -202,6 +196,7 @@
   MACRO(global, global, "global")                                              \
   MACRO(globalThis, globalThis, "globalThis")                                  \
   MACRO(group, group, "group")                                                 \
+  MACRO(groups, groups, "groups")                                              \
   MACRO(Handle, Handle, "Handle")                                              \
   MACRO(has, has, "has")                                                       \
   MACRO(hasOwn, hasOwn, "hasOwn")                                              \
@@ -224,6 +219,8 @@
   MACRO(InitializeCollator, InitializeCollator, "InitializeCollator")          \
   MACRO(InitializeDateTimeFormat, InitializeDateTimeFormat,                    \
         "InitializeDateTimeFormat")                                            \
+  MACRO(InitializeDisplayNames, InitializeDisplayNames,                        \
+        "InitializeDisplayNames")                                              \
   MACRO(InitializeListFormat, InitializeListFormat, "InitializeListFormat")    \
   MACRO(InitializeLocale, InitializeLocale, "InitializeLocale")                \
   MACRO(InitializeNumberFormat, InitializeNumberFormat,                        \
@@ -238,9 +235,6 @@
   MACRO(int8, int8, "int8")                                                    \
   MACRO(int16, int16, "int16")                                                 \
   MACRO(int32, int32, "int32")                                                 \
-  MACRO(Int8x16, Int8x16, "Int8x16")                                           \
-  MACRO(Int16x8, Int16x8, "Int16x8")                                           \
-  MACRO(Int32x4, Int32x4, "Int32x4")                                           \
   MACRO(integer, integer, "integer")                                           \
   MACRO(interface, interface, "interface")                                     \
   MACRO(InterpretGeneratorResume, InterpretGeneratorResume,                    \
@@ -431,6 +425,7 @@
   MACRO(toISOString, toISOString, "toISOString")                               \
   MACRO(toJSON, toJSON, "toJSON")                                              \
   MACRO(toLocaleString, toLocaleString, "toLocaleString")                      \
+  MACRO(ToNumeric, ToNumeric, "ToNumeric")                                     \
   MACRO(toSource, toSource, "toSource")                                        \
   MACRO(toString, toString, "toString")                                        \
   MACRO(toUTCString, toUTCString, "toUTCString")                               \

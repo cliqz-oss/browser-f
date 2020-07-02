@@ -148,6 +148,7 @@ class WebRTCParent extends JSWindowActorParent {
         break;
       }
       case "webrtc:UpdateIndicators":
+        aMessage.data.documentURI = this.manager.documentURI?.spec;
         if (aMessage.data.windowId) {
           webrtcUI.streamAddedOrRemoved(this.browsingContext, aMessage.data);
         }
@@ -320,7 +321,14 @@ class WebRTCParent extends JSWindowActorParent {
     if (videoDevices.length && sharingScreen) {
       camAllowed = false;
     }
-    if (aRequest.isThirdPartyOrigin && !aRequest.shouldDelegatePermission) {
+    // Don't use persistent permissions from the top-level principal
+    // if we're in a cross-origin iframe and permission delegation is not
+    // allowed, or when we're handling a potentially insecure third party
+    // through a wildcard ("*") allow attribute.
+    if (
+      (aRequest.isThirdPartyOrigin && !aRequest.shouldDelegatePermission) ||
+      aRequest.secondOrigin
+    ) {
       camAllowed = false;
       micAllowed = false;
     }
@@ -441,10 +449,7 @@ function prompt(aActor, aBrowser, aRequest) {
     // If the request comes from a popup, we don't want to show the prompt,
     // but we do want to allow the request if the user previously gave permission.
     if (isPopup) {
-      if (
-        aRequest.secondOrigin ||
-        !aActor.checkRequestAllowed(aRequest, principal, aBrowser)
-      ) {
+      if (!aActor.checkRequestAllowed(aRequest, principal, aBrowser)) {
         aActor.denyRequest(aRequest);
       }
       return;
@@ -476,6 +481,10 @@ function prompt(aActor, aBrowser, aRequest) {
 
   let chromeDoc = aBrowser.ownerDocument;
   let stringBundle = chromeDoc.defaultView.gNavigatorBundle;
+  let localization = new Localization(
+    ["branding/brand.ftl", "browser/browser.ftl"],
+    true
+  );
 
   // Mind the order, because for simplicity we're iterating over the list using
   // "includes()". This allows the rotation of string identifiers. We list the
@@ -525,37 +534,113 @@ function prompt(aActor, aBrowser, aRequest) {
     callback() {},
   };
 
-  let secondaryActions = [
-    {
-      label: stringBundle.getString("getUserMedia.dontAllow.label"),
-      accessKey: stringBundle.getString("getUserMedia.dontAllow.accesskey"),
-      callback(aState) {
-        aActor.denyRequest(aRequest);
-        let scope = SitePermissions.SCOPE_TEMPORARY;
-        if (aState && aState.checkboxChecked) {
-          scope = SitePermissions.SCOPE_PERSISTENT;
-        }
-        if (audioDevices.length) {
+  let notificationSilencingEnabled = Services.prefs.getBoolPref(
+    "privacy.webrtc.allowSilencingNotifications"
+  );
+
+  let secondaryActions = [];
+  if (notificationSilencingEnabled && sharingScreen) {
+    // We want to free up the checkbox at the bottom of the permission
+    // panel for the notification silencing option, so we use a
+    // different configuration for the permissions panel when
+    // notification silencing is enabled.
+
+    // The formatMessagesSync method returns an array of results
+    // for each message that was requested, and for the ones with
+    // attributes, returns an attributes array with objects like:
+    //
+    // { name: "someName", value: "somevalue" }
+    //
+    // For these strings, which use .label and .accesskey attributes,
+    // this convertAttributesToObjects function looks at the attributes
+    // property of each message, and returns back an array of objects,
+    // where each object property is one of the attribute names, and
+    // the property value is the attribute value.
+    //
+    // So, the above example would be converted into:
+    //
+    // { someName: "someValue" }
+    //
+    // which is much easier to access and pass along to other things.
+    let convertAttributesToObjects = messages => {
+      return messages.map(msg => {
+        return msg.attributes.reduce((acc, attribute) => {
+          acc[attribute.name] = attribute.value;
+          return acc;
+        }, {});
+      });
+    };
+
+    let [notNow, never] = convertAttributesToObjects(
+      localization.formatMessagesSync([
+        { id: "popup-screen-sharing-not-now" },
+        { id: "popup-screen-sharing-never" },
+      ])
+    );
+
+    secondaryActions = [
+      {
+        label: notNow.label,
+        accessKey: notNow.accesskey,
+        callback(aState) {
+          aActor.denyRequest(aRequest);
           SitePermissions.setForPrincipal(
             principal,
-            "microphone",
+            "screen",
             SitePermissions.BLOCK,
-            scope,
+            SitePermissions.SCOPE_TEMPORARY,
             notification.browser
           );
-        }
-        if (videoDevices.length) {
-          SitePermissions.setForPrincipal(
-            principal,
-            sharingScreen ? "screen" : "camera",
-            SitePermissions.BLOCK,
-            scope,
-            notification.browser
-          );
-        }
+        },
       },
-    },
-  ];
+      {
+        label: never.label,
+        accessKey: never.accesskey,
+        callback(aState) {
+          aActor.denyRequest(aRequest);
+          SitePermissions.setForPrincipal(
+            principal,
+            "screen",
+            SitePermissions.BLOCK,
+            SitePermissions.SCOPE_PERSISTENT,
+            notification.browser
+          );
+        },
+      },
+    ];
+  } else {
+    secondaryActions = [
+      {
+        label: stringBundle.getString("getUserMedia.dontAllow.label"),
+        accessKey: stringBundle.getString("getUserMedia.dontAllow.accesskey"),
+        callback(aState) {
+          aActor.denyRequest(aRequest);
+          let scope = SitePermissions.SCOPE_TEMPORARY;
+          if (aState && aState.checkboxChecked) {
+            scope = SitePermissions.SCOPE_PERSISTENT;
+          }
+          if (audioDevices.length) {
+            SitePermissions.setForPrincipal(
+              principal,
+              "microphone",
+              SitePermissions.BLOCK,
+              scope,
+              notification.browser
+            );
+          }
+          if (videoDevices.length) {
+            SitePermissions.setForPrincipal(
+              principal,
+              sharingScreen ? "screen" : "camera",
+              SitePermissions.BLOCK,
+              scope,
+              notification.browser
+            );
+          }
+        },
+      },
+    ];
+  }
 
   let productName = gBrandBundle.GetStringFromName("brandShortName");
 
@@ -607,12 +692,7 @@ function prompt(aActor, aBrowser, aRequest) {
       // it is handled synchronously before we add the notification.
       // Handling of ALLOW is delayed until the popupshowing event,
       // to avoid granting permissions automatically to background tabs.
-      // If we have a secondOrigin, it means this request is lacking explicit
-      // trust, and we should always prompt even in with persistent permission.
-      if (
-        !aRequest.secondOrigin &&
-        aActor.checkRequestAllowed(aRequest, principal, aBrowser)
-      ) {
+      if (aActor.checkRequestAllowed(aRequest, principal, aBrowser)) {
         this.remove();
         return true;
       }
@@ -894,7 +974,15 @@ function prompt(aActor, aBrowser, aRequest) {
       }
 
       this.mainAction.callback = async function(aState) {
-        let remember = aState && aState.checkboxChecked;
+        let remember = false;
+        let silenceNotifications = false;
+
+        if (notificationSilencingEnabled && sharingScreen) {
+          silenceNotifications = aState && aState.checkboxChecked;
+        } else {
+          remember = aState && aState.checkboxChecked;
+        }
+
         let allowedDevices = [];
         let perms = Services.perms;
         if (videoDevices.length) {
@@ -1000,6 +1088,7 @@ function prompt(aActor, aBrowser, aRequest) {
           callID: aRequest.callID,
           windowID: aRequest.windowID,
           devices: allowedDevices,
+          suppressNotifications: silenceNotifications,
         });
       };
 
@@ -1045,19 +1134,38 @@ function prompt(aActor, aBrowser, aRequest) {
         "getUserMedia.reasonForNoPermanentAllow.insecure";
     }
 
-    options.checkbox = {
-      label: stringBundle.getString("getUserMedia.remember"),
-      checked: principal.isAddonOrExpandedAddonPrincipal,
-      checkedState: reasonForNoPermanentAllow
-        ? {
-            disableMainAction: true,
-            warningLabel: stringBundle.getFormattedString(
-              reasonForNoPermanentAllow,
-              [productName]
-            ),
-          }
-        : undefined,
-    };
+    if (notificationSilencingEnabled && sharingScreen) {
+      let [
+        silenceNotifications,
+        silenceNotificationsWarning,
+      ] = localization.formatMessagesSync([
+        { id: "popup-silence-notifications-checkbox" },
+        { id: "popup-silence-notifications-checkbox-warning" },
+      ]);
+
+      options.checkbox = {
+        label: silenceNotifications.value,
+        checked: false,
+        checkedState: {
+          disableMainAction: false,
+          warningLabel: silenceNotificationsWarning.value,
+        },
+      };
+    } else {
+      options.checkbox = {
+        label: stringBundle.getString("getUserMedia.remember"),
+        checked: principal.isAddonOrExpandedAddonPrincipal,
+        checkedState: reasonForNoPermanentAllow
+          ? {
+              disableMainAction: true,
+              warningLabel: stringBundle.getFormattedString(
+                reasonForNoPermanentAllow,
+                [productName]
+              ),
+            }
+          : undefined,
+      };
+    }
   }
 
   let iconType = "Devices";

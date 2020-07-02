@@ -1360,6 +1360,11 @@ nsDataObj ::GetFileContentsInternetShortcut(FORMATETC& aFE, STGMEDIUM& aSTG) {
   ::GlobalUnlock(globalMem.get());
 
   if (aFE.tymed & TYMED_ISTREAM) {
+    if (!mIsInOperation) {
+      // The drop target didn't initiate an async operation.
+      // We can't block CMemStream::Read.
+      event = nullptr;
+    }
     RefPtr<IStream> stream =
         new CMemStream(globalMem.disown(), totalLen, event.forget());
     stream.forget(&aSTG.pstm);
@@ -2015,7 +2020,7 @@ nsresult nsDataObj ::BuildPlatformHTML(const char* inOurHTML,
   clipboardString.Append(inHTMLString);
   clipboardString.Append(trailingString);
 
-  *outPlatformHTML = ToNewCString(clipboardString);
+  *outPlatformHTML = ToNewCString(clipboardString, mozilla::fallible);
   if (!*outPlatformHTML) return NS_ERROR_OUT_OF_MEMORY;
 
   return NS_OK;

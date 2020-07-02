@@ -227,9 +227,9 @@ add_task(async function test_filter_queryContext() {
   UrlbarProvidersManager.unregisterProvider({ name: "BadProvider" });
 });
 
-add_task(async function test_nofilter_immediate() {
+add_task(async function test_nofilter_heuristic() {
   // Checks that even if a provider returns a result that should be filtered out
-  // it will still be invoked if it's of type immediate, and only the heuristic
+  // it will still be invoked if it's of type heuristic, and only the heuristic
   // result is returned.
   let matches = [
     new UrlbarResult(
@@ -247,7 +247,7 @@ add_task(async function test_nofilter_immediate() {
   let providerName = registerBasicTestProvider(
     matches,
     undefined,
-    UrlbarUtils.PROVIDER_TYPE.IMMEDIATE
+    UrlbarUtils.PROVIDER_TYPE.HEURISTIC
   );
 
   let context = createContext(undefined, {
@@ -305,7 +305,7 @@ add_task(async function test_nofilter_restrict() {
       return "MyProvider";
     }
     get type() {
-      return UrlbarUtils.PROVIDER_TYPE.IMMEDIATE;
+      return UrlbarUtils.PROVIDER_TYPE.PROFILE;
     }
     isActive(context) {
       Assert.equal(context.sources.length, 1, "Check acceptable sources");

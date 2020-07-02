@@ -11,7 +11,7 @@
  * @property {string[]} threads
  * @property {string} threadsString
  * @property {string[]} objdirs
- * @property {string[] | null} supportedFeatures
+ * @property {string[]} supportedFeatures
  */
 
 /**
@@ -62,7 +62,6 @@ const {
   div,
   label,
   input,
-  span,
   h1,
   h2,
   h3,
@@ -78,6 +77,7 @@ const DirectoryPicker = createFactory(
 );
 const {
   makeExponentialScale,
+  makePowerOf2Scale,
   formatFileSize,
   featureDescriptions,
 } = require("devtools/client/performance-new/utils");
@@ -88,9 +88,8 @@ const {
   openFilePickerForObjdir,
 } = require("devtools/client/performance-new/browser");
 
-// sizeof(double) + sizeof(char)
-// http://searchfox.org/mozilla-central/rev/e8835f52eff29772a57dca7bcc86a9a312a23729/tools/profiler/core/ProfileEntry.h#73
-const PROFILE_ENTRY_SIZE = 9;
+// The Gecko Profiler interprets the "entries" setting as 8 bytes per entry.
+const PROFILE_ENTRY_SIZE = 8;
 
 /**
  * @typedef {{ name: string, id: string, title: string }} ThreadColumn
@@ -193,7 +192,10 @@ class Settings extends PureComponent {
     this._renderThreadsColumns = this._renderThreadsColumns.bind(this);
 
     this._intervalExponentialScale = makeExponentialScale(0.01, 100);
-    this._entriesExponentialScale = makeExponentialScale(100000, 100000000);
+    this._entriesExponentialScale = makePowerOf2Scale(
+      128 * 1024,
+      256 * 1024 * 1024
+    );
   }
 
   /**
@@ -355,87 +357,96 @@ class Settings extends PureComponent {
   }
 
   /**
-   * @param {FeatureDescription} featureDescription
-   * @param {boolean} showUnsupportedFeatures
+   * @param {string} sectionTitle
+   * @param {FeatureDescription[]} features
+   * @param {boolean} isSupported
    */
-  _renderFeatureCheckbox(featureDescription, showUnsupportedFeatures) {
-    const { supportedFeatures } = this.props;
-    const {
-      name,
-      value,
-      title,
-      recommended,
-      disabledReason,
-    } = featureDescription;
-    let isSupported = true;
-    if (supportedFeatures !== null && !supportedFeatures.includes(value)) {
-      isSupported = false;
-    }
-    if (showUnsupportedFeatures === isSupported) {
-      // This method gets called twice, once for supported featured, and once for
-      // unsupported features. Only render the appropriate features for each section.
+  _renderFeatureSection(sectionTitle, features, isSupported) {
+    if (features.length === 0) {
       return null;
     }
-
-    const extraClassName = isSupported
-      ? ""
-      : "perf-settings-checkbox-label-disabled";
-
-    return label(
-      {
-        className: `perf-settings-checkbox-label perf-settings-feature-label ${extraClassName}`,
-        key: value,
-      },
-      div(
-        { className: "perf-settings-checkbox-and-name" },
-        input({
-          className: "perf-settings-checkbox",
-          id: `perf-settings-feature-checkbox-${value}`,
-          type: "checkbox",
-          value,
-          checked: isSupported && this.props.features.includes(value),
-          onChange: this._handleFeaturesCheckboxChange,
-          disabled: !isSupported,
-        }),
-        div({ className: "perf-settings-feature-name" }, name)
-      ),
-      div(
-        { className: "perf-settings-feature-title" },
-        title,
-        !isSupported && disabledReason
-          ? div(
-              { className: "perf-settings-feature-disabled-reason" },
-              disabledReason
+    return div(
+      null,
+      h3(null, sectionTitle),
+      features.map(featureDescription => {
+        const { name, value, title, disabledReason } = featureDescription;
+        const extraClassName = isSupported
+          ? ""
+          : "perf-settings-checkbox-label-disabled";
+        return label(
+          {
+            className: `perf-settings-checkbox-label perf-settings-feature-label ${extraClassName}`,
+            key: value,
+          },
+          div(
+            { className: "perf-settings-checkbox-and-name" },
+            input({
+              className: "perf-settings-checkbox",
+              id: `perf-settings-feature-checkbox-${value}`,
+              type: "checkbox",
+              value,
+              checked: isSupported && this.props.features.includes(value),
+              onChange: this._handleFeaturesCheckboxChange,
+              disabled: !isSupported,
+            }),
+            div(
+              { className: "perf-settings-feature-name" },
+              !isSupported && featureDescription.experimental
+                ? // Note when unsupported features are experimental.
+                  `${name} (Experimental)`
+                : name
             )
-          : null,
-        recommended
-          ? span(
-              { className: "perf-settings-subtext" },
-              " (Recommended on by default.)"
-            )
-          : null
-      )
+          ),
+          div(
+            { className: "perf-settings-feature-title" },
+            title,
+            !isSupported && disabledReason
+              ? div(
+                  { className: "perf-settings-feature-disabled-reason" },
+                  disabledReason
+                )
+              : null
+          )
+        );
+      })
     );
   }
 
   _renderFeatures() {
-    return renderSection(
-      "perf-settings-features-summary",
-      "Features",
+    const { supportedFeatures } = this.props;
+
+    // Divvy up the features into their respective groups.
+    const recommended = [];
+    const supported = [];
+    const unsupported = [];
+    const experimental = [];
+
+    for (const feature of featureDescriptions) {
+      if (supportedFeatures.includes(feature.value)) {
+        if (feature.experimental) {
+          experimental.push(feature);
+        } else if (feature.recommended) {
+          recommended.push(feature);
+        } else {
+          supported.push(feature);
+        }
+      } else {
+        unsupported.push(feature);
+      }
+    }
+
+    return div(
+      { className: "perf-settings-sections" },
       div(
         null,
-        // Render the supported features first.
-        featureDescriptions.map(featureDescription =>
-          this._renderFeatureCheckbox(featureDescription, false)
+        this._renderFeatureSection(
+          "Features (Recommended on by default)",
+          recommended,
+          true
         ),
-        h3(
-          { className: "perf-settings-features-disabled-title" },
-          "The following features are currently unavailable:"
-        ),
-        // Render the unsupported features second.
-        featureDescriptions.map(featureDescription =>
-          this._renderFeatureCheckbox(featureDescription, true)
-        )
+        this._renderFeatureSection("Features", supported, true),
+        this._renderFeatureSection("Experimental", experimental, true),
+        this._renderFeatureSection("Disabled Features", unsupported, false)
       )
     );
   }

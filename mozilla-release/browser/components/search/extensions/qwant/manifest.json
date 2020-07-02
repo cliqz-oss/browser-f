@@ -1,8 +1,15 @@
 {
+<<<<<<< HEAD
   "name": "__MSG_extensionName__",
   "description": "__MSG_extensionDescription__",
+||||||| merged common ancestors
+  "name": "Qwant",
+  "description": "Search Qwant",
+=======
+  "name": "Qwant",
+>>>>>>> origin/upstream-releases
   "manifest_version": 2,
-  "version": "1.0",
+  "version": "1.1",
   "applications": {
     "gecko": {
       "id": "qwant@search.mozilla.org"
@@ -18,11 +25,27 @@
   ],
   "chrome_settings_overrides": {
     "search_provider": {
+<<<<<<< HEAD
       "name": "__MSG_extensionName__",
       "search_url": "__MSG_searchUrl__",
       "search_form": "__MSG_searchForm__",
       "suggest_url": "__MSG_suggestUrl__",
       "suggest_url_get_params": "__MSG_searchUrlGetParams__"
+||||||| merged common ancestors
+      "name": "Qwant",
+      "search_url": "https://www.qwant.com/",
+      "search_form": "https://www.qwant.com/?client=brz-moz&q={searchTerms}",
+      "search_url_get_params": "client=brz-moz&q={searchTerms}",
+      "suggest_url": "https://api.qwant.com/api/suggest/",
+      "suggest_url_get_params": "client=opensearch&q={searchTerms}"
+=======
+      "name": "Qwant",
+      "search_url": "https://www.qwant.com/",
+      "search_url_get_params": "client=brz-moz&q={searchTerms}",
+      "suggest_url": "https://api.qwant.com/api/suggest/",
+      "suggest_url_get_params": "client=opensearch&q={searchTerms}",
+      "search_form": "https://www.qwant.com/"
+>>>>>>> origin/upstream-releases
     }
   }
 }

@@ -7,9 +7,6 @@ const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const { ASRouterActions: ra } = ChromeUtils.import(
-  "resource://activity-stream/common/Actions.jsm"
-);
 
 XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 
@@ -41,7 +38,6 @@ const SUMO_BASE_URL = Services.urlFormatter.formatURLPref(
 );
 const ADDONS_API_URL =
   "https://services.addons.mozilla.org/api/v3/addons/addon";
-const ANIMATIONS_ENABLED_PREF = "toolkit.cosmeticAnimations.enabled";
 
 const DELAY_BEFORE_EXPAND_MS = 1000;
 const CATEGORY_ICONS = {
@@ -479,7 +475,7 @@ class PageAction {
 
     animationContainer.toggleAttribute(
       "animate",
-      Services.prefs.getBoolPref(ANIMATIONS_ENABLED_PREF, true)
+      !this.window.matchMedia("(prefers-reduced-motion: reduce)").matches
     );
     animationContainer.removeAttribute("paused");
 
@@ -875,7 +871,7 @@ class PageAction {
           {
             type: "USER_ACTION",
             data: {
-              type: ra.OPEN_URL,
+              type: "OPEN_URL",
               data: {
                 args: message.content.action.url,
                 where: message.content.action.where,

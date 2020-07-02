@@ -15,6 +15,8 @@
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/Preferences.h"
 #include "nsServiceManagerUtils.h"
+#include "mozilla/dom/ContentChild.h"
+#include "mozilla/dom/ContentParent.h"
 
 namespace mozilla {
 namespace browser {
@@ -101,8 +103,7 @@ static const RedirEntry kRedirMap[] = {
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
-    {"preferences",
-     "chrome://browser/content/preferences/in-content/preferences.xhtml",
+    {"preferences", "chrome://browser/content/preferences/preferences.xhtml",
      nsIAboutModule::ALLOW_SCRIPT},
     {"downloads",
      "chrome://browser/content/downloads/contentAreaDownloadsView.xhtml",
@@ -122,7 +123,13 @@ static const RedirEntry kRedirMap[] = {
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS},
+<<<<<<< HEAD
 */
+||||||| merged common ancestors
+=======
+    {"pioneer", "chrome://browser/content/pioneer.html",
+     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},
+>>>>>>> origin/upstream-releases
 };
 
 static nsAutoCString GetAboutModuleName(nsIURI* aURI) {
@@ -152,6 +159,21 @@ AboutRedirector::NewChannel(nsIURI* aURI, nsILoadInfo* aLoadInfo,
   nsresult rv;
   nsCOMPtr<nsIIOService> ioService = do_GetIOService(&rv);
   NS_ENSURE_SUCCESS(rv, rv);
+
+  // If we're accessing about:home in the "privileged about content
+  // process", then we give the nsIAboutNewTabService the responsibility
+  // to return the nsIChannel, since it might be from the about:home
+  // startup cache.
+  if (XRE_IsContentProcess() && path.EqualsLiteral("home")) {
+    auto& remoteType = dom::ContentChild::GetSingleton()->GetRemoteType();
+    if (remoteType.EqualsLiteral(PRIVILEGEDABOUT_REMOTE_TYPE)) {
+      nsCOMPtr<nsIAboutNewTabService> aboutNewTabService =
+          do_GetService("@mozilla.org/browser/aboutnewtab-service;1", &rv);
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      return aboutNewTabService->AboutHomeChannel(aURI, aLoadInfo, result);
+    }
+  }
 
   for (auto& redir : kRedirMap) {
     if (!strcmp(path.get(), redir.id)) {

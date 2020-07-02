@@ -54,7 +54,6 @@ T MinIgnoreZero(const T& a, const T& b);
 
 class VideoStreamFactory;
 class WebrtcAudioConduit;
-class nsThread;
 
 // Interface of external video encoder for WebRTC.
 class WebrtcVideoEncoder : public VideoEncoder, public webrtc::VideoEncoder {};
@@ -69,6 +68,7 @@ class WebrtcVideoDecoder : public VideoDecoder, public webrtc::VideoDecoder {};
 class WebrtcVideoConduit
     : public VideoSessionConduit,
       public webrtc::RtcpEventObserver,
+      public webrtc::RtpPacketSinkInterface,
       public webrtc::Transport,
       public webrtc::VideoEncoderFactory,
       public rtc::VideoSinkInterface<webrtc::VideoFrame>,
@@ -99,7 +99,7 @@ class WebrtcVideoConduit
    * feed in received RTP Frames to the VideoEngine for decoding
    */
   MediaConduitErrorCode ReceivedRTPPacket(const void* data, int len,
-                                          uint32_t ssrc) override;
+                                          webrtc::RTPHeader& header) override;
 
   /**
    * APIs used by the registered external transport to this Conduit to
@@ -134,7 +134,8 @@ class WebrtcVideoConduit
    * restarting transmission sub-system on the engine.
    */
   MediaConduitErrorCode ConfigureSendMediaCodec(
-      const VideoCodecConfig* codecInfo) override;
+      const VideoCodecConfig* codecInfo,
+      const RtpRtcpConfig& aRtpRtcpConfig) override;
 
   /**
    * Function to configure list of receive codecs for the video session
@@ -147,7 +148,8 @@ class WebrtcVideoConduit
    * restarting transmission sub-system on the engine.
    */
   MediaConduitErrorCode ConfigureRecvMediaCodecs(
-      const std::vector<UniquePtr<VideoCodecConfig>>& codecConfigList) override;
+      const std::vector<UniquePtr<VideoCodecConfig>>& codecConfigList,
+      const RtpRtcpConfig& aRtpRtcpConfig) override;
 
   /**
    * Register Transport for this Conduit. RTP and RTCP frames from the
@@ -244,18 +246,19 @@ class WebrtcVideoConduit
   MediaConduitErrorCode InitMain();
   virtual MediaConduitErrorCode Init();
 
-  std::vector<unsigned int> GetLocalSSRCs() override;
-  bool SetLocalSSRCs(const std::vector<unsigned int>& ssrcs) override;
-  bool GetRemoteSSRC(unsigned int* ssrc) override;
-  bool SetRemoteSSRC(unsigned int ssrc) override;
+  std::vector<uint32_t> GetLocalSSRCs() override;
+  bool SetLocalSSRCs(const std::vector<uint32_t>& ssrcs,
+                     const std::vector<uint32_t>& rtxSsrcs) override;
+  bool GetRemoteSSRC(uint32_t* ssrc) override;
+  bool SetRemoteSSRC(uint32_t ssrc, uint32_t rtxSsrc) override;
   bool UnsetRemoteSSRC(uint32_t ssrc) override;
   bool SetLocalCNAME(const char* cname) override;
   bool SetLocalMID(const std::string& mid) override;
 
   void SetSyncGroup(const std::string& group) override;
 
-  bool GetRemoteSSRCLocked(unsigned int* ssrc);
-  bool SetRemoteSSRCLocked(unsigned int ssrc);
+  bool GetRemoteSSRCLocked(uint32_t* ssrc);
+  bool SetRemoteSSRCLocked(uint32_t ssrc, uint32_t rtxSsrc);
 
   bool GetSendPacketTypeStats(
       webrtc::RtcpPacketTypeCounter* aPacketCounts) override;
@@ -280,12 +283,21 @@ class WebrtcVideoConduit
                              Maybe<double>* aOutRttSec) override;
   bool GetRTCPSenderReport(unsigned int* packetsSent,
                            uint64_t* bytesSent) override;
+
+  void GetRtpSources(nsTArray<dom::RTCRtpSourceEntry>& outSources) override;
+
   uint64_t MozVideoLatencyAvg();
 
   void DisableSsrcChanges() override {
     ASSERT_ON_THREAD(mStsThread);
     mAllowSsrcChange = false;
   }
+
+  /**
+   * Callback from libwebrtc with the parsed packet for synchronization
+   * source tracking. STS thread only.
+   */
+  void OnRtpPacket(const webrtc::RtpPacketReceived& packet) override;
 
   Maybe<RefPtr<VideoSessionConduit>> AsVideoSessionConduit() override {
     return Some(RefPtr<VideoSessionConduit>(this));
@@ -614,7 +626,7 @@ class WebrtcVideoConduit
   // Main thread only.
   webrtc::VideoReceiveStream::Config mRecvStreamConfig;
 
-  // Are SSRC changes without signaling allowed or not
+  // Are SSRC changes without signaling allowed or not.
   // Accessed only on mStsThread.
   bool mAllowSsrcChange = true;
 
@@ -651,6 +663,9 @@ class WebrtcVideoConduit
 
   // Accessed only on main thread.
   mozilla::RtcpEventObserver* mRtcpEventObserver = nullptr;
+
+  // Accessed from main and mStsThread. Uses locks internally.
+  RefPtr<RtpSourceObserver> mRtpSourceObserver;
 };
 }  // namespace mozilla
 

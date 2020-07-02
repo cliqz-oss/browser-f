@@ -5,19 +5,22 @@
 blocklist-window =
     .title = Blockierlisten
     .style = width: 70em
-blocklist-desc = Liste auswählen, welche { -brand-short-name } zum Blockieren von Ihre Internetaktivitäten verfolgenden Web-Elementen verwenden soll
 
 blocklist-description = Liste auswählen, welche { -brand-short-name } zum Blockieren von Ihre Internetaktivitäten verfolgenden Web-Elementen verwenden soll. Die Listen werden von <a data-l10n-name="disconnect-link" title="Disconnect">Disconnect</a> bereitgestellt.
 blocklist-close-key =
     .key = w
+
 blocklist-treehead-list =
     .label = Liste
+
 blocklist-button-cancel =
     .label = Abbrechen
     .accesskey = A
+
 blocklist-button-ok =
     .label = Änderungen speichern
     .accesskey = s
+
 # This template constructs the name of the block list in the block lists dialog.
 # It combines the list name and description.
 # e.g. "Standard (Recommended). This list does a pretty good job."
@@ -26,11 +29,6 @@ blocklist-button-ok =
 #   $listName {string, "Standard (Recommended)."} - List name.
 #   $description {string, "This list does a pretty good job."} - Description of the list.
 blocklist-item-list-template = { $listName } { $description }
-
-blocklist-item-moz-std-name = Disconnect.me Grundlegender Schutz (empfohlen).
-blocklist-item-moz-std-desc = Erlaubt einigen System ("Trackern"), Ihre Aktivitäten zu verfolgen, damit Websites wie erwartet funktionieren.
-blocklist-item-moz-full-name = Disconnect.me Strenger Schutz.
-blocklist-item-moz-full-desc = Blockiert bekannte Systeme zur Aktivitätenverfolgung. Einige Websites funktionieren dadurch eventuell nicht wie erwartet.
 
 blocklist-item-moz-std-listName = Blockierliste Stufe 1 (empfohlen):
 blocklist-item-moz-std-description = Einige Elemente zur Aktivitätenverfolgung werden zugelassen, damit es weniger Probleme mit dem Funktionieren von Websites gibt.

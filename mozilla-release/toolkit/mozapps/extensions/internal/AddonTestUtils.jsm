@@ -580,7 +580,7 @@ var AddonTestUtils = {
           null
         ),
 
-        applyFilter(service, channel, defaultProxyInfo, callback) {
+        applyFilter(channel, defaultProxyInfo, callback) {
           if (hosts.has(channel.URI.host)) {
             callback.onProxyFilterResult(this.proxyInfo);
           } else {
@@ -686,9 +686,6 @@ var AddonTestUtils = {
       version,
       platformVersion,
       crashReporter: true,
-      extraProps: {
-        browserTabsRemoteAutostart: false,
-      },
     });
     this.appInfo = AppInfo.getAppInfo();
   },
@@ -891,6 +888,7 @@ var AddonTestUtils = {
     );
     const blocklistMapping = {
       extensions: bsPass.ExtensionBlocklistRS,
+      extensionsMLBF: bsPass.ExtensionBlocklistMLBF,
       plugins: bsPass.PluginBlocklistRS,
     };
 
@@ -1618,7 +1616,9 @@ var AddonTestUtils = {
     reason = AddonTestUtils.updateReason,
     ...args
   ) {
-    let equal = this.testScope.equal;
+    // Retrieve the test assertion helper from the testScope
+    // (which is `equal` in xpcshell-test and `is` in mochitest)
+    let equal = this.testScope.equal || this.testScope.is;
     return new Promise((resolve, reject) => {
       let result = {};
       addon.findUpdates(

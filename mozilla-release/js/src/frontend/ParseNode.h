@@ -14,6 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "frontend/FunctionSyntaxKind.h"  // FunctionSyntaxKind
 #include "frontend/Stencil.h"
 #include "frontend/Token.h"
 #include "js/RootingAPI.h"
@@ -217,6 +218,9 @@ class FunctionBox;
   F(AssignExpr, AssignmentNode)                                  \
   F(AddAssignExpr, AssignmentNode)                               \
   F(SubAssignExpr, AssignmentNode)                               \
+  F(CoalesceAssignExpr, AssignmentNode)                          \
+  F(OrAssignExpr, AssignmentNode)                                \
+  F(AndAssignExpr, AssignmentNode)                               \
   F(BitOrAssignExpr, AssignmentNode)                             \
   F(BitXorAssignExpr, AssignmentNode)                            \
   F(BitAndAssignExpr, AssignmentNode)                            \
@@ -421,9 +425,10 @@ inline bool IsTypeofKind(ParseNodeKind kind) {
  * AssignExpr (BinaryNode)
  *   left: target of assignment
  *   right: value to assign
- * AddAssignExpr, SubAssignExpr, BitOrAssignExpr, BitXorAssignExpr,
- * BitAndAssignExpr, LshAssignExpr, RshAssignExpr, UrshAssignExpr,
- * MulAssignExpr, DivAssignExpr, ModAssignExpr, PowAssignExpr (AssignmentNode)
+ * AddAssignExpr, SubAssignExpr, CoalesceAssignExpr, OrAssignExpr,
+ * AndAssignExpr, BitOrAssignExpr, BitXorAssignExpr, BitAndAssignExpr,
+ * LshAssignExpr, RshAssignExpr, UrshAssignExpr, MulAssignExpr, DivAssignExpr,
+ * ModAssignExpr, PowAssignExpr (AssignmentNode)
  *   left: target of assignment
  *   right: value to assign
  * ConditionalExpr (ConditionalExpression)
@@ -625,24 +630,6 @@ inline bool IsTypeofKind(ParseNodeKind kind) {
 FOR_EACH_PARSENODE_SUBCLASS(DECLARE_CLASS)
 #undef DECLARE_CLASS
 
-enum class FunctionSyntaxKind : uint8_t {
-  // A non-arrow function expression.
-  Expression,
-
-  // A named function appearing as a Statement.
-  Statement,
-
-  Arrow,
-
-  // Method of a class or object. Field initializers also desugar to methods.
-  Method,
-
-  ClassConstructor,
-  DerivedClassConstructor,
-  Getter,
-  Setter,
-};
-
 enum class AccessorType { None, Getter, Setter };
 
 static inline bool IsConstructorKind(FunctionSyntaxKind kind) {
@@ -652,6 +639,7 @@ static inline bool IsConstructorKind(FunctionSyntaxKind kind) {
 
 static inline bool IsMethodDefinitionKind(FunctionSyntaxKind kind) {
   return IsConstructorKind(kind) || kind == FunctionSyntaxKind::Method ||
+         kind == FunctionSyntaxKind::FieldInitializer ||
          kind == FunctionSyntaxKind::Getter ||
          kind == FunctionSyntaxKind::Setter;
 }

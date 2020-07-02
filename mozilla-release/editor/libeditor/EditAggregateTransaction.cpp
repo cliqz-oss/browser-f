@@ -8,7 +8,6 @@
 #include "nsCOMPtr.h"          // for nsCOMPtr
 #include "nsError.h"           // for NS_OK, etc.
 #include "nsISupportsUtils.h"  // for NS_ADDREF
-#include "nsITransaction.h"    // for nsITransaction
 #include "nsString.h"          // for nsAutoString
 
 namespace mozilla {
@@ -23,8 +22,8 @@ NS_INTERFACE_MAP_END_INHERITING(EditTransactionBase)
 
 NS_IMETHODIMP EditAggregateTransaction::DoTransaction() {
   // FYI: It's legal (but not very useful) to have an empty child list.
-  AutoTArray<OwningNonNull<EditTransactionBase>, 10> children(mChildren);
-  for (OwningNonNull<EditTransactionBase>& childTransaction : children) {
+  for (const OwningNonNull<EditTransactionBase>& childTransaction :
+       CopyableAutoTArray<OwningNonNull<EditTransactionBase>, 10>(mChildren)) {
     nsresult rv = MOZ_KnownLive(childTransaction)->DoTransaction();
     if (NS_FAILED(rv)) {
       NS_WARNING("EditTransactionBase::DoTransaction() failed");
@@ -37,8 +36,9 @@ NS_IMETHODIMP EditAggregateTransaction::DoTransaction() {
 NS_IMETHODIMP EditAggregateTransaction::UndoTransaction() {
   // FYI: It's legal (but not very useful) to have an empty child list.
   // Undo goes through children backwards.
-  AutoTArray<OwningNonNull<EditTransactionBase>, 10> children(mChildren);
-  for (OwningNonNull<EditTransactionBase>& childTransaction :
+  const CopyableAutoTArray<OwningNonNull<EditTransactionBase>, 10> children(
+      mChildren);
+  for (const OwningNonNull<EditTransactionBase>& childTransaction :
        Reversed(children)) {
     nsresult rv = MOZ_KnownLive(childTransaction)->UndoTransaction();
     if (NS_FAILED(rv)) {
@@ -51,8 +51,9 @@ NS_IMETHODIMP EditAggregateTransaction::UndoTransaction() {
 
 NS_IMETHODIMP EditAggregateTransaction::RedoTransaction() {
   // It's legal (but not very useful) to have an empty child list.
-  AutoTArray<OwningNonNull<EditTransactionBase>, 10> children(mChildren);
-  for (OwningNonNull<EditTransactionBase>& childTransaction : children) {
+  const CopyableAutoTArray<OwningNonNull<EditTransactionBase>, 10> children(
+      mChildren);
+  for (const OwningNonNull<EditTransactionBase>& childTransaction : children) {
     nsresult rv = MOZ_KnownLive(childTransaction)->RedoTransaction();
     if (NS_FAILED(rv)) {
       NS_WARNING("EditTransactionBase::RedoTransaction() failed");
@@ -62,7 +63,7 @@ NS_IMETHODIMP EditAggregateTransaction::RedoTransaction() {
   return NS_OK;
 }
 
-NS_IMETHODIMP EditAggregateTransaction::Merge(nsITransaction* aTransaction,
+NS_IMETHODIMP EditAggregateTransaction::Merge(nsITransaction* aOtherTransaction,
                                               bool* aDidMerge) {
   if (aDidMerge) {
     *aDidMerge = false;
@@ -72,7 +73,7 @@ NS_IMETHODIMP EditAggregateTransaction::Merge(nsITransaction* aTransaction,
   }
   // FIXME: Is this really intended not to loop?  It looks like the code
   // that used to be here sort of intended to loop, but didn't.
-  return mChildren[0]->Merge(aTransaction, aDidMerge);
+  return mChildren[0]->Merge(aOtherTransaction, aDidMerge);
 }
 
 NS_IMETHODIMP EditAggregateTransaction::AppendChild(

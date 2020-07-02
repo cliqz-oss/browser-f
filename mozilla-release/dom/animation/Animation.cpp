@@ -83,6 +83,37 @@ class MOZ_RAII AutoMutationBatchForAnimation {
 //
 // ---------------------------------------------------------------------------
 
+/* static */
+already_AddRefed<Animation> Animation::ClonePausedAnimation(
+    nsIGlobalObject* aGlobal, const Animation& aOther, AnimationEffect& aEffect,
+    AnimationTimeline& aTimeline) {
+  RefPtr<Animation> animation = new Animation(aGlobal);
+  // Setup the timing.
+  animation->mTimeline = &aTimeline;
+  const Nullable<TimeDuration> timelineTime =
+      aTimeline.GetCurrentTimeAsDuration();
+  MOZ_ASSERT(!timelineTime.IsNull(), "Timeline not yet set");
+
+  const Nullable<TimeDuration> currentTime = aOther.GetCurrentTimeAsDuration();
+  animation->mHoldTime = currentTime;
+  if (!currentTime.IsNull()) {
+    animation->mPreviousCurrentTime = timelineTime;
+  }
+
+  animation->mPlaybackRate = aOther.mPlaybackRate;
+
+  // Setup the effect's link to this.
+  animation->mEffect = &aEffect;
+  animation->mEffect->SetAnimation(animation);
+
+  // We expect our relevance to be the same as the orginal.
+  animation->mIsRelevant = aOther.mIsRelevant;
+
+  animation->PostUpdate();
+  animation->mTimeline->NotifyAnimationUpdated(*animation);
+  return animation.forget();
+}
+
 NonOwningAnimationTarget Animation::GetTargetForAnimation() const {
   AnimationEffect* effect = GetEffect();
   NonOwningAnimationTarget target;
@@ -676,10 +707,13 @@ void Animation::CommitStyles(ErrorResult& aRv) {
         "Target is not capable of having a style attribute");
   }
 
+  // Hold onto a strong reference to the doc in case the flush destroys it.
+  RefPtr<Document> doc = target.mElement->GetComposedDoc();
+
   // Flush frames before checking if the target element is rendered since the
   // result could depend on pending style changes, and IsRendered() looks at the
   // primary frame.
-  if (Document* doc = target.mElement->GetComposedDoc()) {
+  if (doc) {
     doc->FlushPendingNotifications(FlushType::Frames);
   }
   if (!target.mElement->IsRendered()) {

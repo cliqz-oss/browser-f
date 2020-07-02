@@ -310,6 +310,7 @@ var StarUI = {
   _createPanelIfNeeded() {
     // Lazy load the editBookmarkPanel the first time we need to display it.
     if (!this._element("editBookmarkPanel")) {
+      MozXULElement.insertFTLIfNeeded("browser/editBookmarkOverlay.ftl");
       let template = this._element("editBookmarkPanelTemplate");
       let clone = template.content.cloneNode(true);
       template.replaceWith(clone);
@@ -589,27 +590,6 @@ var PlacesCommandHook = {
    */
   get uniqueSelectedPages() {
     return this.getUniquePages(gBrowser.selectedTabs);
-  },
-
-  /**
-   * Adds a folder with bookmarks to URIList given in param.
-   */
-  bookmarkPages(URIList) {
-    if (!URIList.length) {
-      return;
-    }
-
-    let bookmarkDialogInfo = { action: "add" };
-    if (URIList.length > 1) {
-      bookmarkDialogInfo.type = "folder";
-      bookmarkDialogInfo.URIList = URIList;
-    } else {
-      bookmarkDialogInfo.type = "bookmark";
-      bookmarkDialogInfo.title = URIList[0].title;
-      bookmarkDialogInfo.uri = URIList[0].uri;
-    }
-
-    PlacesUIUtils.showBookmarkDialog(bookmarkDialogInfo, window);
   },
 
   /**
@@ -1257,15 +1237,6 @@ var LibraryUI = {
    * @returns true if the animation could be triggered, false otherwise.
    */
   triggerLibraryAnimation(animation) {
-    if (!this.hasOwnProperty("COSMETIC_ANIMATIONS_ENABLED")) {
-      XPCOMUtils.defineLazyPreferenceGetter(
-        this,
-        "COSMETIC_ANIMATIONS_ENABLED",
-        "toolkit.cosmeticAnimations.enabled",
-        true
-      );
-    }
-
     let libraryButton = document.getElementById("library-button");
     if (
       !libraryButton ||
@@ -1273,7 +1244,7 @@ var LibraryUI = {
       libraryButton.getAttribute("overflowedItem") == "true" ||
       !libraryButton.closest("#nav-bar") ||
       !window.toolbar.visible ||
-      !this.COSMETIC_ANIMATIONS_ENABLED
+      gReduceMotion
     ) {
       return false;
     }
@@ -1469,10 +1440,15 @@ var BookmarkingUI = {
     );
   },
 
-  toggleBookmarksToolbar() {
+  toggleBookmarksToolbar(reason) {
     CustomizableUI.setToolbarVisibility(
       "PersonalToolbar",
       document.getElementById("PersonalToolbar").collapsed
+    );
+    BrowserUsageTelemetry.recordToolbarVisibility(
+      "PersonalToolbar",
+      document.getElementById("PersonalToolbar").collapsed,
+      reason
     );
   },
 
@@ -1578,11 +1554,7 @@ var BookmarkingUI = {
   init() {
     CustomizableUI.addListener(this);
 
-    if (Services.prefs.getBoolPref("toolkit.cosmeticAnimations.enabled")) {
-      let starButtonBox = document.getElementById("star-button-box");
-      starButtonBox.setAttribute("animationsenabled", "true");
-      this.star.addEventListener("mouseover", this, { once: true });
-    }
+    this.star.addEventListener("mouseover", this, { once: true });
   },
 
   _hasBookmarksObserver: false,
@@ -1975,9 +1947,19 @@ var BookmarkingUI = {
       }
 
       CustomizableUI.addWidgetToArea(this.BOOKMARK_BUTTON_ID, area, pos);
+      BrowserUsageTelemetry.recordWidgetChange(
+        this.BOOKMARK_BUTTON_ID,
+        area,
+        "bookmark-tools"
+      );
     } else {
       // Move it back to the palette.
       CustomizableUI.removeWidgetFromArea(this.BOOKMARK_BUTTON_ID);
+      BrowserUsageTelemetry.recordWidgetChange(
+        this.BOOKMARK_BUTTON_ID,
+        null,
+        "bookmark-tools"
+      );
     }
     triggerNode.setAttribute("checked", !placement);
     updateToggleControlLabel(triggerNode);

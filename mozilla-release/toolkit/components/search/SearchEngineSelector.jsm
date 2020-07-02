@@ -13,16 +13,18 @@ const { XPCOMUtils } = ChromeUtils.import(
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   RemoteSettings: "resource://services-settings/remote-settings.js",
-  RemoteSettingsClient: "resource://services-settings/RemoteSettingsClient.jsm",
   SearchUtils: "resource://gre/modules/SearchUtils.jsm",
   Services: "resource://gre/modules/Services.jsm",
 });
 
 const USER_LOCALE = "$USER_LOCALE";
 
-function log(str) {
-  SearchUtils.log("SearchEngineSelector " + str + "\n");
-}
+XPCOMUtils.defineLazyGetter(this, "logConsole", () => {
+  return console.createInstance({
+    prefix: "SearchEngineSelector",
+    maxLogLevel: SearchUtils.loggingEnabled ? "Debug" : "Warn",
+  });
+});
 
 function getAppInfo(key) {
   let value = null;
@@ -129,21 +131,22 @@ class SearchEngineSelector {
    */
   async _getConfiguration(firstTime = true) {
     let result = [];
+    let failed = false;
     try {
       result = await this._remoteConfig.get();
     } catch (ex) {
-      if (
-        ex instanceof RemoteSettingsClient.InvalidSignatureError &&
-        firstTime
-      ) {
-        // The local database is invalid, try and reset it.
-        await this._remoteConfig.db.clear();
-        // Now call this again.
-        return this._getConfiguration(false);
-      }
-      // Don't throw an error just log it, just continue with no data, and hopefully
-      // a sync will fix things later on.
-      Cu.reportError(ex);
+      logConsole.error(ex);
+      failed = true;
+    }
+    if (!result.length) {
+      logConsole.error("Received empty search configuration!");
+      failed = true;
+    }
+    // If we failed, or the result is empty, try loading from the local dump.
+    if (firstTime && failed) {
+      await this._remoteConfig.db.clear();
+      // Now call this again.
+      return this._getConfiguration(false);
     }
     return result;
   }
@@ -154,7 +157,7 @@ class SearchEngineSelector {
    */
   _onConfigurationUpdated({ data: { current } }) {
     this._configuration = current;
-
+    logConsole.debug("Search configuration updated remotely");
     if (this._changeListener) {
       this._changeListener();
     }
@@ -174,11 +177,14 @@ class SearchEngineSelector {
     if (!this._configuration) {
       await this.getEngineConfiguration();
     }
-    let cohort = Services.prefs.getCharPref("browser.search.cohort", null);
+    let experiment = Services.prefs.getCharPref(
+      "browser.search.experiment",
+      null
+    );
     let name = getAppInfo("name");
     let version = getAppInfo("version");
-    log(
-      `fetchEngineConfiguration ${region}:${locale}:${channel}:${distroID}:${cohort}:${name}:${version}`
+    logConsole.debug(
+      `fetchEngineConfiguration ${locale}:${region}:${channel}:${distroID}:${experiment}:${name}:${version}`
     );
     let engines = [];
     const lcLocale = locale.toLowerCase();
@@ -186,15 +192,22 @@ class SearchEngineSelector {
     for (let config of this._configuration) {
       const appliesTo = config.appliesTo || [];
       const applies = appliesTo.filter(section => {
-        if ("cohort" in section && cohort != section.cohort) {
+        if ("experiment" in section && experiment != section.experiment) {
           return false;
         }
+        const distroExcluded =
+          (distroID &&
+            sectionIncludes(section, "excludedDistributions", distroID)) ||
+          isDistroExcluded(section, "distributions", distroID);
+
+        if (distroID && !distroExcluded && section.override) {
+          return true;
+        }
+
         if (
           sectionExcludes(section, "channel", channel) ||
           sectionExcludes(section, "name", name) ||
-          (distroID &&
-            sectionIncludes(section, "excludedDistributions", distroID)) ||
-          isDistroExcluded(section, "distributions", distroID) ||
+          distroExcluded ||
           belowMinVersion(section, version) ||
           aboveMaxVersion(section, version)
         ) {
@@ -211,9 +224,13 @@ class SearchEngineSelector {
 
       let baseConfig = this._copyObject({}, config);
 
+      // Don't include any engines if every section is an override
+      // entry, these are only supposed to override otherwise
+      // included engine configurations.
+      let allOverrides = applies.every(e => "override" in e && e.override);
       // Loop through all the appliedTo sections that apply to
-      // this configuration
-      if (applies.length) {
+      // this configuration.
+      if (applies.length && !allOverrides) {
         for (let section of applies) {
           this._copyObject(baseConfig, section);
         }
@@ -238,8 +255,6 @@ class SearchEngineSelector {
         }
       }
     }
-
-    engines = this._filterEngines(engines);
 
     let defaultEngine;
     let privateEngine;
@@ -286,7 +301,7 @@ class SearchEngineSelector {
     }
 
     if (SearchUtils.loggingEnabled) {
-      log(
+      logConsole.debug(
         "fetchEngineConfiguration: " +
           result.engines.map(e => e.webExtension.id)
       );
@@ -321,35 +336,6 @@ class SearchEngineSelector {
       return Number.MAX_SAFE_INTEGER - 1;
     }
     return obj.orderHint || 0;
-  }
-
-  /**
-   * Filter any search engines that are preffed to be ignored,
-   * the pref is only allowed in partner distributions.
-   * @param {Array} engines - The list of engines to be filtered.
-   * @returns {Array} - The engine list with filtered removed.
-   */
-  _filterEngines(engines) {
-    let branch = Services.prefs.getDefaultBranch(
-      SearchUtils.BROWSER_SEARCH_PREF
-    );
-    if (
-      SearchUtils.isPartnerBuild() &&
-      branch.getPrefType("ignoredJAREngines") == branch.PREF_STRING
-    ) {
-      let ignoredJAREngines = branch
-        .getCharPref("ignoredJAREngines")
-        .split(",");
-      let filteredEngines = engines.filter(engine => {
-        let name = engine.webExtension.id.split("@")[0];
-        return !ignoredJAREngines.includes(name);
-      });
-      // Don't allow all engines to be hidden
-      if (filteredEngines.length) {
-        engines = filteredEngines;
-      }
-    }
-    return engines;
   }
 
   /**

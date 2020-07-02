@@ -53,6 +53,7 @@ Var FinishPhaseStart
 Var FinishPhaseEnd
 Var InstallResult
 Var LaunchedNewApp
+Var PostSigningData
 
 ; By defining NO_STARTMENU_DIR an installer that doesn't provide an option for
 ; an application's Start Menu PROGRAMS directory and doesn't define the
@@ -99,6 +100,7 @@ VIAddVersionKey "OriginalFilename" "setup.exe"
 !insertmacro CheckForFilesInUse
 !insertmacro CleanUpdateDirectories
 !insertmacro CopyFilesFromDir
+!insertmacro CopyPostSigningData
 !insertmacro CreateRegKey
 !insertmacro GetFirstInstallPath
 !insertmacro GetLongPath
@@ -715,6 +717,7 @@ Section "-Application" APP_IDX
   ${EndIf}
 !endif
 
+<<<<<<< HEAD
 ;!ifdef MOZ_DEFAULT_BROWSER_AGENT
 ;  ${If} $RegisterDefaultAgent != "0"
 ;    Exec '"$INSTDIR\default-browser-agent.exe" register-task $AppUserModelID'
@@ -728,6 +731,50 @@ Section "-Application" APP_IDX
 ;  WriteRegDWORD HKCU "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
 ;                     "DidRegisterDefaultBrowserAgent" $RegisterDefaultAgent
 ;!endif
+||||||| merged common ancestors
+!ifdef MOZ_DEFAULT_BROWSER_AGENT
+  ${If} $RegisterDefaultAgent != "0"
+    Exec '"$INSTDIR\default-browser-agent.exe" register-task $AppUserModelID'
+    ${If} $RegisterDefaultAgent == ""
+      ; If the variable was unset, force it to a good value.
+      StrCpy $RegisterDefaultAgent 1
+    ${EndIf}
+  ${EndIf}
+  ; Remember whether we were told to skip registering the agent, so that updates
+  ; won't try to create a registration when they don't find an existing one.
+  WriteRegDWORD HKCU "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
+                     "DidRegisterDefaultBrowserAgent" $RegisterDefaultAgent
+!endif
+=======
+!ifdef MOZ_DEFAULT_BROWSER_AGENT
+  ${If} $RegisterDefaultAgent != "0"
+    ExecWait '"$INSTDIR\default-browser-agent.exe" register-task $AppUserModelID' $0
+
+    ${If} $0 == 0x80070534 ; HRESULT_FROM_WIN32(ERROR_NONE_MAPPED)
+      ; The agent sometimes returns this error from trying to register the task
+      ; when we're running out of the MSI. The error is cryptic, but I believe
+      ; the cause is the fact that the MSI service runs us as SYSTEM, so
+      ; proxying the invocation through the shell gets the task registered as
+      ; the interactive user, which is what we want.
+      ; We use ExecInExplorer only as a fallback instead of always, because it
+      ; doesn't work in all environments; see bug 1602726.
+      ExecInExplorer::Exec "$INSTDIR\default-browser-agent.exe" \
+                           /cmdargs "register-task $AppUserModelID"
+      ; We don't need Exec's return value, but don't leave it on the stack.
+      Pop $0
+    ${EndIf}
+
+    ${If} $RegisterDefaultAgent == ""
+      ; If the variable was unset, force it to a good value.
+      StrCpy $RegisterDefaultAgent 1
+    ${EndIf}
+  ${EndIf}
+  ; Remember whether we were told to skip registering the agent, so that updates
+  ; won't try to create a registration when they don't find an existing one.
+  WriteRegDWORD HKCU "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
+                     "DidRegisterDefaultBrowserAgent" $RegisterDefaultAgent
+!endif
+>>>>>>> origin/upstream-releases
 SectionEnd
 
 ; Cleanup operations to perform at the end of the installation.
@@ -735,6 +782,23 @@ Section "-InstallEndCleanup"
   SetDetailsPrint both
   DetailPrint "$(STATUS_CLEANUP)"
   SetDetailsPrint none
+
+  ; Maybe copy the post-signing data?
+  StrCpy $PostSigningData ""
+  ${GetParameters} $0
+  ClearErrors
+  ; We don't get post-signing data from the MSI.
+  ${GetOptions} $0 "/LaunchedFromMSI" $1
+  ${If} ${Errors}
+    ; The stub will handle copying the data if it ran us.
+    ClearErrors
+    ${GetOptions} $0 "/LaunchedFromStub" $1
+    ${If} ${Errors}
+      ; We're being run standalone, copy the data.
+      ${CopyPostSigningData}
+      Pop $PostSigningData
+    ${EndIf}
+  ${EndIf}
 
   ${Unless} ${Silent}
     ClearErrors
@@ -1159,6 +1223,16 @@ Function SendPing
     ${EndIf}
     ${GetSecondsElapsed} $FinishPhaseStart $FinishPhaseEnd $1
     nsJSON::Set /tree ping "Data" "finish_time" /value "$1"
+  ${EndIf}
+
+  ; $PostSigningData should only be empty if we didn't try to copy the
+  ; postSigningData file at all. If we did try and the file was missing
+  ; or empty, this will be "0", and for consistency with the stub we will
+  ; still submit it.
+  ${If} $PostSigningData != ""
+    nsJSON::Quote /always $PostSigningData
+    Pop $0
+    nsJSON::Set /tree ping "Data" "attribution" /value $0
   ${EndIf}
 
   nsJSON::Set /tree ping "Data" "new_launched" /value "$LaunchedNewApp"

@@ -256,7 +256,7 @@ var BootstrapMonitor = {
     let { id } = params;
 
     info(
-      `Bootstrap method ${method} for ${params.id} version ${params.version}`
+      `Bootstrap method ${method} ${reason} for ${params.id} version ${params.version}`
     );
 
     if (method !== "install") {
@@ -345,6 +345,7 @@ var BootstrapMonitor = {
     if (version !== undefined) {
       equal(started.params.version, version, "Expected version number");
     }
+    return started;
   },
 
   checkNotStarted(id) {
@@ -1312,7 +1313,7 @@ async function setInitialState(addon, initialState) {
   }
 }
 
-async function installBuiltinExtension(extensionData) {
+async function setupBuiltinExtension(extensionData) {
   let xpi = await AddonTestUtils.createTempWebExtensionFile(extensionData);
 
   // The built-in location requires a resource: URL that maps to a
@@ -1323,10 +1324,16 @@ async function installBuiltinExtension(extensionData) {
     .getProtocolHandler("resource")
     .QueryInterface(Ci.nsIResProtocolHandler);
   resProto.setSubstitution("ext-test", base);
+}
+
+async function installBuiltinExtension(extensionData, waitForStartup = true) {
+  await setupBuiltinExtension(extensionData);
 
   let id = extensionData.manifest.applications.gecko.id;
   let wrapper = ExtensionTestUtils.expectExtension(id);
   await AddonManager.installBuiltinAddon("resource://ext-test/");
-  await wrapper.awaitStartup();
+  if (waitForStartup) {
+    await wrapper.awaitStartup();
+  }
   return wrapper;
 }

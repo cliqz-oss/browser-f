@@ -73,7 +73,7 @@ registerCleanupFunction(async function() {
  *        The type of toolbox host to be used.
  * @return Promise
  *         Resolves when the tab has been added, loaded and the toolbox has been opened.
- *         Resolves to the toolbox.
+ *         Resolves to the hud.
  */
 async function openNewTabAndConsole(url, clearJstermHistory = true, hostId) {
   const toolbox = await openNewTabAndToolbox(url, "webconsole", hostId);
@@ -85,6 +85,42 @@ async function openNewTabAndConsole(url, clearJstermHistory = true, hostId) {
   }
 
   return hud;
+}
+
+/**
+ * Add a new tab with iframes, open the toolbox in it, and select the webconsole.
+ *
+ * @param string url
+ *        The URL for the tab to be opened.
+ * @param Arra<string> iframes
+ *        An array of URLs that will be added to the top document.
+ * @return Promise
+ *         Resolves when the tab has been added, loaded, iframes loaded, and the toolbox
+ *         has been opened. Resolves to the hud.
+ */
+async function openNewTabWithIframesAndConsole(tabUrl, iframes) {
+  // We need to add the tab and the iframes before opening the console in case we want
+  // to handle remote frames (we don't support creating frames target when the toolbox
+  // is already open).
+  await addTab(tabUrl);
+  await ContentTask.spawn(gBrowser.selectedBrowser, iframes, async function(
+    urls
+  ) {
+    const iframesLoadPromises = urls.map((url, i) => {
+      const iframe = content.document.createElement("iframe");
+      iframe.classList.add(`iframe-${i + 1}`);
+      const onLoadIframe = new Promise(resolve => {
+        iframe.addEventListener("load", resolve, { once: true });
+      });
+      content.document.body.append(iframe);
+      iframe.src = url;
+      return onLoadIframe;
+    });
+
+    await Promise.all(iframesLoadPromises);
+  });
+
+  return openConsole();
 }
 
 /**
@@ -622,11 +658,19 @@ async function setInputValueForAutocompletion(
   setInputValue(hud, "");
   await Promise.all(initialPromises);
 
+  // Wait for next tick. Tooltip tests sometimes fail to successively hide and
+  // show tooltips on Win32 debug.
+  await waitForTick();
+
   jsterm.focus();
 
   const updated = jsterm.once("autocomplete-updated");
   EventUtils.sendString(value, hud.iframeWindow);
   await updated;
+
+  // Wait for next tick. Tooltip tests sometimes fail to successively hide and
+  // show tooltips on Win32 debug.
+  await waitForTick();
 
   if (caretPosition < 0) {
     caretPosition = value.length + caretPosition;
@@ -709,6 +753,7 @@ function checkInputValueAndCursorPosition(
 
   const inputValue = expectedStringWithCursor.replace("|", "");
   const { jsterm } = hud;
+
   is(getInputValue(hud), inputValue, "console input has expected value");
   const lines = expectedStringWithCursor.split("\n");
   const lineWithCursor = lines.findIndex(line => line.includes("|"));
@@ -1576,15 +1621,32 @@ function checkConsoleOutputForWarningGroup(hud, expectedMessages) {
  *        line numbers of the frames expected in the stack
  */
 async function checkMessageStack(hud, text, expectedFrameLines) {
-  const msgNode = await waitFor(() => findMessage(hud, text));
+  info(`Checking message stack for "${text}"`);
+  const msgNode = await waitFor(
+    () => findMessage(hud, text),
+    `Couln't find message including "${text}"`
+  );
   ok(!msgNode.classList.contains("open"), `Error logged not expanded`);
 
-  const button = await waitFor(() => msgNode.querySelector(".collapse-button"));
+  const button = await waitFor(
+    () => msgNode.querySelector(".collapse-button"),
+    `Couldn't find the expand button on "${text}" message`
+  );
   button.click();
 
-  const framesNode = await waitFor(() => msgNode.querySelector(".frames"));
+  const framesNode = await waitFor(
+    () => msgNode.querySelector(".message-body-wrapper > .stacktrace .frames"),
+    `Couldn't find stacktrace frames on "${text}" message`
+  );
   const frameNodes = Array.from(framesNode.querySelectorAll(".frame")).filter(
-    el => el.querySelector(".filename").textContent !== "self-hosted"
+    el => {
+      const fileName = el.querySelector(".filename").textContent;
+      return (
+        fileName !== "self-hosted" &&
+        !fileName.startsWith("chrome:") &&
+        !fileName.startsWith("resource:")
+      );
+    }
   );
 
   for (let i = 0; i < frameNodes.length; i++) {
@@ -1677,4 +1739,170 @@ async function clearOutput(hud, { keepStorage = false } = {}) {
 
   ui.clearOutput(!keepStorage);
   await Promise.all(promises);
+}
+
+/**
+ * Retrieve all the items of the context selector menu.
+ *
+ * @param {WebConsole} hud
+ * @return Array<Element>
+ */
+function getContextSelectorItems(hud) {
+  const toolbox = hud.toolbox;
+  const doc = toolbox ? toolbox.doc : hud.chromeWindow.document;
+  const list = doc.getElementById(
+    "webconsole-console-evaluation-context-selector-menu-list"
+  );
+  return Array.from(list.querySelectorAll("li.menuitem button"));
+}
+
+/**
+ * Check that the evaluation context selector menu has the expected item, in the expected
+ * state.
+ *
+ * @param {WebConsole} hud
+ * @param {Array<Object>} expected: An array of object which can have the following shape:
+ *         - {String} label: The label of the target
+ *         - {String} tooltip: The tooltip of the target element in the menu
+ *         - {Boolean} checked: if the target should be selected or not
+ *         - {Boolean} separator: if the element is a simple separator
+ */
+function checkContextSelectorMenu(hud, expected) {
+  const items = getContextSelectorItems(hud);
+
+  is(
+    items.length,
+    expected.length,
+    "The context selector menu has the expected number of items"
+  );
+
+  expected.forEach(({ label, tooltip, checked, separator }, i) => {
+    const el = items[i];
+
+    if (separator === true) {
+      is(
+        el.getAttribute("role"),
+        "menuseparator",
+        "The element is a separator"
+      );
+      return;
+    }
+
+    const elChecked = el.getAttribute("aria-checked") === "true";
+    const elTooltip = el.getAttribute("title");
+    const elLabel = el.querySelector(".label").innerText;
+
+    is(elLabel, label, `The item has the expected label`);
+    is(elTooltip, tooltip, `Item "${label}" has the expected tooltip`);
+    is(
+      elChecked,
+      checked,
+      `Item "${label}" is ${checked ? "checked" : "unchecked"}`
+    );
+  });
+}
+
+/**
+ * Select a target in the context selector.
+ *
+ * @param {WebConsole} hud
+ * @param {String} targetLabel: The label of the target to select.
+ */
+function selectTargetInContextSelector(hud, targetLabel) {
+  const items = getContextSelectorItems(hud);
+  const itemToSelect = items.find(
+    item => item.querySelector(".label").innerText === targetLabel
+  );
+  if (!itemToSelect) {
+    ok(false, `Couldn't find target with "${targetLabel}" label`);
+    return;
+  }
+
+  itemToSelect.click();
+}
+
+/**
+ * A helper that returns the size of the image that was just put into the clipboard by the
+ * :screenshot command.
+ * @return The {width, height} dimension object.
+ */
+async function getImageSizeFromClipboard() {
+  const clipid = Ci.nsIClipboard;
+  const clip = Cc["@mozilla.org/widget/clipboard;1"].getService(clipid);
+  const trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(
+    Ci.nsITransferable
+  );
+  const flavor = "image/png";
+  trans.init(null);
+  trans.addDataFlavor(flavor);
+
+  clip.getData(trans, clipid.kGlobalClipboard);
+  const data = {};
+  trans.getTransferData(flavor, data);
+
+  ok(data.value, "screenshot exists");
+
+  let image = data.value;
+
+  // Due to the differences in how images could be stored in the clipboard the
+  // checks below are needed. The clipboard could already provide the image as
+  // byte streams or as image container. If it's not possible obtain a
+  // byte stream, the function throws.
+
+  if (image instanceof Ci.imgIContainer) {
+    image = Cc["@mozilla.org/image/tools;1"]
+      .getService(Ci.imgITools)
+      .encodeImage(image, flavor);
+  }
+
+  if (!(image instanceof Ci.nsIInputStream)) {
+    throw new Error("Unable to read image data");
+  }
+
+  const binaryStream = Cc["@mozilla.org/binaryinputstream;1"].createInstance(
+    Ci.nsIBinaryInputStream
+  );
+  binaryStream.setInputStream(image);
+  const available = binaryStream.available();
+  const buffer = new ArrayBuffer(available);
+  is(
+    binaryStream.readArrayBuffer(available, buffer),
+    available,
+    "Read expected amount of data"
+  );
+
+  // We are going to load the image in the content page to measure its size.
+  // We don't want to insert the image directly in the browser's document
+  // (which is value of the global `document` here). Doing so might push the
+  // toolbox upwards, shrink the content page and fail the fullpage screenshot
+  // test.
+  return SpecialPowers.spawn(gBrowser.selectedBrowser, [buffer], async function(
+    _buffer
+  ) {
+    const img = content.document.createElement("img");
+    const loaded = new Promise(r => {
+      img.addEventListener("load", r, { once: true });
+    });
+
+    // Build a URL from the buffer passed to the ContentTask
+    const url = content.URL.createObjectURL(
+      new Blob([_buffer], { type: "image/png" })
+    );
+
+    // Load the image
+    img.src = url;
+    content.document.documentElement.appendChild(img);
+
+    info("Waiting for the clipboard image to load in the content page");
+    await loaded;
+
+    // Remove the image and revoke the URL.
+    img.remove();
+    content.URL.revokeObjectURL(url);
+
+    return {
+      width: img.width,
+      height: img.height,
+    };
+  });
 }

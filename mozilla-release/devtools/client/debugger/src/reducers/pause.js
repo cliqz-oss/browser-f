@@ -226,6 +226,11 @@ function update(
       return updateThreadState({ frames, selectedFrameId });
     }
 
+    case "MAP_FRAME_DISPLAY_NAMES": {
+      const { frames } = action;
+      return updateThreadState({ frames });
+    }
+
     case "ADD_SCOPES": {
       const { frame, status, value } = action;
       const selectedFrameId = frame.id;
@@ -633,6 +638,12 @@ export function getSelectedFrameId(state: State, thread: ThreadId) {
   return getThreadPauseState(state.pause, thread).selectedFrameId;
 }
 
+export function isTopFrameSelected(state: State, thread: ThreadId) {
+  const selectedFrameId = getSelectedFrameId(state, thread);
+  const topFrame = getTopFrame(state, thread);
+  return selectedFrameId == topFrame?.id;
+}
+
 export function getTopFrame(state: State, thread: ThreadId) {
   const frames = getFrames(state, thread);
   return frames?.[0];
@@ -686,7 +697,7 @@ export function getInlinePreviewExpression(
 // NOTE: currently only used for chrome
 export function getChromeScopes(state: State, thread: ThreadId) {
   const frame: ?ChromeFrame = (getSelectedFrame(state, thread): any);
-  return frame ? frame.scopeChain : undefined;
+  return frame?.scopeChain;
 }
 
 export function getLastExpandedScopes(state: State, thread: ThreadId) {

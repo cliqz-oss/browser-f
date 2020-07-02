@@ -16,6 +16,7 @@
 #include "mozilla/DataMutex.h"
 #include "mozilla/SharedThreadPool.h"
 #include "mozilla/StaticPtr.h"
+#include "WavDumper.h"
 
 #include <thread>
 
@@ -606,7 +607,7 @@ class AudioCallbackDriver : public GraphDriver,
 
   AudioCallbackDriver* AsAudioCallbackDriver() override { return this; }
 
-  uint32_t OutputChannelCount() { return mOutputChannels; }
+  uint32_t OutputChannelCount() { return mOutputChannelCount; }
 
   uint32_t InputChannelCount() { return mInputChannelCount; }
 
@@ -645,6 +646,8 @@ class AudioCallbackDriver : public GraphDriver,
 
   // Returns the output latency for the current audio output stream.
   TimeDuration AudioOutputLatency();
+  // Returns the input latency for the current audio output stream.
+  TimeDuration AudioInputLatency();
 
  private:
   /**
@@ -683,7 +686,7 @@ class AudioCallbackDriver : public GraphDriver,
   }
 
   /* MediaTrackGraphs are always down/up mixed to output channels. */
-  const uint32_t mOutputChannels;
+  const uint32_t mOutputChannelCount;
   /* The size of this buffer comes from the fact that some audio backends can
    * call back with a number of frames lower than one block (128 frames), so we
    * need to keep at most two block in the SpillBuffer, because we always round
@@ -750,7 +753,10 @@ class AudioCallbackDriver : public GraphDriver,
     /* There is a running AudioStream. */
     Running,
     /* There is an AudioStream that is draining, and will soon stop. */
-    Stopping
+    Stopping,
+    /* There is an AudioStream that has errored, the Fallback driver needs to
+     * continue advancing the graph. */
+    Errored,
   };
   Atomic<AudioStreamState> mAudioStreamState;
   /* State of the fallback driver, see inline comments. */
@@ -782,6 +788,9 @@ class AudioCallbackDriver : public GraphDriver,
    * microphone that is located next to the left speaker.  */
   Atomic<bool> mNeedsPanning;
 #endif
+
+  WavDumper mInputStreamFile;
+  WavDumper mOutputStreamFile;
 
   virtual ~AudioCallbackDriver();
 };

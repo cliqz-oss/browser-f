@@ -379,33 +379,6 @@ async function check_autocomplete(test) {
   return input;
 }
 
-var addBookmark = async function(aBookmarkObj) {
-  await PlacesUtils.bookmarks.insert({
-    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
-    title: aBookmarkObj.title || "A bookmark",
-    url: aBookmarkObj.uri,
-  });
-
-  if (aBookmarkObj.keyword) {
-    await PlacesUtils.keywords.insert({
-      keyword: aBookmarkObj.keyword,
-      url:
-        aBookmarkObj.uri instanceof Ci.nsIURI
-          ? aBookmarkObj.uri.spec
-          : aBookmarkObj.uri,
-      postData: aBookmarkObj.postData,
-    });
-  }
-
-  if (aBookmarkObj.tags) {
-    let uri =
-      aBookmarkObj.uri instanceof Ci.nsIURI
-        ? aBookmarkObj.uri
-        : Services.io.newURI(aBookmarkObj.uri);
-    PlacesUtils.tagging.tagURI(uri, aBookmarkObj.tags);
-  }
-};
-
 async function addOpenPages(aUri, aCount = 1, aUserContextId = 0) {
   for (let i = 0; i < aCount; i++) {
     await UrlbarProviderOpenTabs.registerOpenTab(aUri.spec, aUserContextId);
@@ -472,6 +445,9 @@ function makeSearchMatch(input, extra = {}) {
     params.searchSuggestion = extra.searchSuggestion;
     style.push("suggestion");
   }
+  if ("isSearchHistory" in extra) {
+    params.isSearchHistory = extra.isSearchHistory;
+  }
   return {
     uri: makeActionURI("searchengine", params),
     title: params.engineName,
@@ -493,17 +469,19 @@ function makeVisitMatch(input, url, extra = {}) {
   if (extra.heuristic) {
     style.push("heuristic");
   }
+  let displaySpec = Services.textToSubURI.unEscapeURIForUI(url);
   return {
     uri: makeActionURI("visiturl", params),
-    title: extra.title || url,
+    title: extra.title || displaySpec,
     style,
   };
 }
 
 function makeSwitchToTabMatch(url, extra = {}) {
+  let displaySpec = Services.textToSubURI.unEscapeURIForUI(url);
   return {
     uri: makeActionURI("switchtab", { url }),
-    title: extra.title || url,
+    title: extra.title || displaySpec,
     style: ["action", "switchtab"],
   };
 }

@@ -21,7 +21,11 @@ const EXPECTED_REFLOWS = [
  * cause the existing tabs to squeeze smaller.
  */
 add_task(async function() {
+  // Force-enable tab animations
+  gReduceMotionOverride = false;
+
   await ensureNoPreloadedBrowser();
+  await disableFxaBadge();
 
   // Compute the number of tabs we can put into the strip without
   // overflowing, and remove one, so that we can create
@@ -31,7 +35,7 @@ add_task(async function() {
 
   await createTabs(TAB_COUNT_FOR_SQUEEZE);
 
-  await ensureFocusedUrlbar();
+  gURLBar.focus();
 
   let tabStripRect = gBrowser.tabContainer.arrowScrollbox.getBoundingClientRect();
   let textBoxRect = gURLBar

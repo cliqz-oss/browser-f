@@ -59,9 +59,6 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
   NS_IMETHOD GetDocumentIsEmpty(bool* aDocumentIsEmpty) override;
 
   MOZ_CAN_RUN_SCRIPT NS_IMETHOD
-  DeleteSelection(EDirection aAction, EStripWrappers aStripWrappers) override;
-
-  MOZ_CAN_RUN_SCRIPT NS_IMETHOD
   SetDocumentCharacterSet(const nsACString& characterSet) override;
 
   NS_IMETHOD GetTextLength(int32_t* aCount) override;
@@ -171,7 +168,7 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
   MOZ_CAN_RUN_SCRIPT virtual nsresult HandleKeyPressEvent(
       WidgetKeyboardEvent* aKeyboardEvent) override;
 
-  virtual dom::EventTarget* GetDOMEventTarget() override;
+  virtual dom::EventTarget* GetDOMEventTarget() const override;
 
   /**
    * PasteAsAction() pastes clipboard content to Selection.  This method
@@ -206,23 +203,6 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
   MOZ_CAN_RUN_SCRIPT virtual nsresult PasteAsQuotationAsAction(
       int32_t aClipboardType, bool aDispatchPasteEvent,
       nsIPrincipal* aPrincipal = nullptr);
-
-  /**
-   * DeleteSelectionAsAction() removes selection content or content around
-   * caret with transactions.  This should be used for handling it as an
-   * edit action.  If you'd like to remove selection for preparing to insert
-   * something, you probably should use DeleteSelectionAsSubAction().
-   *
-   * @param aDirection          How much range should be removed.
-   * @param aStripWrappers      Whether the parent blocks should be removed
-   *                            when they become empty.
-   * @param aPrincipal          Set subject principal if it may be called by
-   *                            JS.  If set to nullptr, will be treated as
-   *                            called by system.
-   */
-  MOZ_CAN_RUN_SCRIPT nsresult
-  DeleteSelectionAsAction(EDirection aDirection, EStripWrappers aStripWrappers,
-                          nsIPrincipal* aPrincipal = nullptr);
 
   /**
    * The maximum number of characters allowed.
@@ -377,34 +357,11 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
   using EditorBase::SetAttributeOrEquivalent;
 
   /**
-   * DeleteSelectionAsSubAction() removes selection content or content around
-   * caret with transactions.  This should be used for handling it as an
-   * edit sub-action.
-   *
-   * @param aDirection          How much range should be removed.
-   * @param aStripWrappers      Whether the parent blocks should be removed
-   *                            when they become empty.
-   */
-  MOZ_CAN_RUN_SCRIPT nsresult DeleteSelectionAsSubAction(
-      EDirection aDirection, EStripWrappers aStripWrappers);
-
-  /**
    * DeleteSelectionByDragAsAction() removes selection and dispatch "input"
    * event whose inputType is "deleteByDrag".
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
   DeleteSelectionByDragAsAction(bool aDispatchInputEvent);
-
-  /**
-   * DeleteSelectionWithTransaction() removes selected content or content
-   * around caret with transactions.
-   *
-   * @param aDirection          How much range should be removed.
-   * @param aStripWrappers      Whether the parent blocks should be removed
-   *                            when they become empty.
-   */
-  MOZ_CAN_RUN_SCRIPT virtual nsresult DeleteSelectionWithTransaction(
-      EDirection aAction, EStripWrappers aStripWrappers);
 
   /**
    * Replace existed string with aString.  Caller must guarantee that there
@@ -422,16 +379,6 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
    */
   MOZ_CAN_RUN_SCRIPT nsresult
   ReplaceSelectionAsSubAction(const nsAString& aString);
-
-  /**
-   * Extends the selection for given deletion operation
-   * If done, also update aAction to what's actually left to do after the
-   * extension.
-   */
-  nsresult ExtendSelectionForDelete(nsIEditor::EDirection* aAction);
-
-  static void GetDefaultEditorPrefs(int32_t& aNewLineHandling,
-                                    int32_t& aCaretStyle);
 
   /**
    * MaybeDoAutoPasswordMasking() may mask password if we're doing auto-masking.
@@ -533,16 +480,16 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
 
  protected:  // edit sub-action handler
   /**
-   * TruncateInsertionStringForMaxLength() truncates aInsertionString for
-   * making handling insertion not cause overflow from `maxlength` value.
+   * MaybeTruncateInsertionStringForMaxLength() truncates aInsertionString to
+   * `maxlength` if it was not pasted in by the user.
    *
    * @param aInsertionString    [in/out] New insertion string.  This is
-   *                            truncated if there is no enough space to
-   *                            insert the new string.
-   * @return                    If aInsertionString is truncated one or
-   *                            more characters, returns "as handled".
+   *                            truncated to `maxlength` if it was not pasted in
+   *                            by the user.
+   * @return                    If aInsertionString is truncated, it returns "as
+   *                            handled", else "as ignored."
    */
-  EditActionResult TruncateInsertionStringForMaxLength(
+  EditActionResult MaybeTruncateInsertionStringForMaxLength(
       nsAString& aInsertionString);
 
   /**
@@ -600,11 +547,11 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
    * This method handles "delete selection" commands.
    *
    * @param aDirectionAndAmount Direction of the deletion.
-   * @param aStripWrappers      Always ignored in TextEditor.
+   * @param aStripWrappers      Must be nsIEditor::eNoStrip.
    */
-  [[nodiscard]] MOZ_CAN_RUN_SCRIPT virtual EditActionResult
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT EditActionResult
   HandleDeleteSelection(nsIEditor::EDirection aDirectionAndAmount,
-                        nsIEditor::EStripWrappers aStripWrappers);
+                        nsIEditor::EStripWrappers aStripWrappers) override;
 
   /**
    * ComputeValueFromTextNodeAndPaddingBRElement() tries to compute "value" of
@@ -777,25 +724,6 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
   InsertTextFromTransferable(nsITransferable* transferable);
 
   /**
-   * DeleteSelectionAndCreateElement() creates a element whose name is aTag.
-   * And insert it into the DOM tree after removing the selected content.
-   *
-   * @param aTag                The element name to be created.
-   * @return                    Created new element.
-   */
-  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> DeleteSelectionAndCreateElement(
-      nsAtom& aTag);
-
-  /**
-   * This method first deletes the selection, if it's not collapsed.  Then if
-   * the selection lies in a CharacterData node, it splits it.  If the
-   * selection is at this point collapsed in a CharacterData node, it's
-   * adjusted to be collapsed right before or after the node instead (which is
-   * always possible, since the node was split).
-   */
-  MOZ_CAN_RUN_SCRIPT nsresult DeleteSelectionAndPrepareToCreateNode();
-
-  /**
    * Shared outputstring; returns whether selection is collapsed and resulting
    * string.
    */
@@ -825,7 +753,7 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
    */
   bool EnsureComposition(WidgetCompositionEvent& aCompositionEvent);
 
-  virtual already_AddRefed<Element> GetInputEventTargetElement() override;
+  virtual already_AddRefed<Element> GetInputEventTargetElement() const override;
 
   /**
    * See SetUnmaskRange() and SetUnmaskRangeAndNotify() for the detail.
@@ -849,7 +777,6 @@ class TextEditor : public EditorBase, public nsITimerCallback, public nsINamed {
   mutable nsString mCachedDocumentEncoderType;
 
   int32_t mMaxTextLength;
-  int32_t mCaretStyle;
 
   // Unmasked character range.  Used only when it's a password field.
   // If mUnmaskedLength is 0, it means there is no unmasked characters.

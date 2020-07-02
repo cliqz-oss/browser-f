@@ -50,6 +50,7 @@ namespace js {
 
 class GlobalScope;
 class LexicalEnvironmentObject;
+class PlainObject;
 class RegExpStatics;
 class TypeDescr;
 class TypedObjectModuleObject;
@@ -114,7 +115,6 @@ class GlobalObject : public NativeObject {
     IMPORT_ENTRY_PROTO,
     EXPORT_ENTRY_PROTO,
     REQUESTED_MODULE_PROTO,
-    FINALIZATION_ITERATOR_PROTO,
     REGEXP_STATICS,
     RUNTIME_CODEGEN_ENABLED,
     INTRINSICS,
@@ -296,6 +296,12 @@ class GlobalObject : public NativeObject {
   static NativeObject* createBlankPrototypeInheriting(JSContext* cx,
                                                       const JSClass* clasp,
                                                       HandleObject proto);
+
+  template <typename T>
+  static T* createBlankPrototypeInheriting(JSContext* cx, HandleObject proto) {
+    NativeObject* res = createBlankPrototypeInheriting(cx, &T::class_, proto);
+    return res ? &res->template as<T>() : nullptr;
+  }
 
   template <typename T>
   static T* createBlankPrototype(JSContext* cx, Handle<GlobalObject*> global) {
@@ -539,12 +545,6 @@ class GlobalObject : public NativeObject {
       return nullptr;
     }
     return &global->getPrototype(JSProto_TypedArray).toObject();
-  }
-
-  static JSObject* getOrCreateFinalizationIteratorPrototype(
-      JSContext* cx, Handle<GlobalObject*> global) {
-    return getOrCreateObject(cx, global, FINALIZATION_ITERATOR_PROTO,
-                             initFinalizationIteratorProto);
   }
 
  private:
@@ -846,10 +846,6 @@ class GlobalObject : public NativeObject {
   static bool initTypedObjectModule(JSContext* cx,
                                     Handle<GlobalObject*> global);
 
-  // Implemented in builtin/FinalizationRegistry.cpp
-  static bool initFinalizationIteratorProto(JSContext* cx,
-                                            Handle<GlobalObject*> global);
-
   static bool initStandardClasses(JSContext* cx, Handle<GlobalObject*> global);
   static bool initSelfHostingBuiltins(JSContext* cx,
                                       Handle<GlobalObject*> global,
@@ -963,7 +959,7 @@ JSObject* GenericCreateConstructor(JSContext* cx, JSProtoKey key) {
 template <typename T>
 JSObject* GenericCreatePrototype(JSContext* cx, JSProtoKey key) {
   static_assert(
-      !std::is_same<T, PlainObject>::value,
+      !std::is_same_v<T, PlainObject>,
       "creating Object.prototype is very special and isn't handled here");
   MOZ_ASSERT(&T::class_ == ProtoKeyToClass(key),
              "type mismatch--probably too much copy/paste in your ClassSpec");

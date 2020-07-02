@@ -396,6 +396,12 @@ class GZWriterWrapper : public JSONWriteFunc {
     Unused << mGZWriter->Write(aStr);
   }
 
+  void Write(const char* aStr, size_t aLen) override {
+    // Ignore any failure because JSONWriteFunc doesn't have a mechanism for
+    // handling errors.
+    Unused << mGZWriter->Write(aStr, aLen);
+  }
+
   nsresult Finish() { return mGZWriter->Finish(); }
 
  private:
@@ -430,6 +436,9 @@ class HandleReportAndFinishReportingCallbacks final
       // of the form "$PROCESS_NAME (pid $PID)", or just "(pid $PID)" if we
       // don't have a process name.  If we're the main process, we let
       // $PROCESS_NAME be "Main Process".
+      //
+      // `appendAboutMemoryMain()` in aboutMemory.js does much the same thing
+      // for live memory reports.
       if (XRE_IsParentProcess()) {
         // We're the main process.
         process.AssignLiteral("Main Process");

@@ -18,7 +18,7 @@ namespace js {
 
 namespace jit {
 
-enum class ScriptGCThingType { RegExp, Function, Scope, BigInt };
+enum class ScriptGCThingType { Atom, RegExp, Function, Scope, BigInt };
 
 // Base class for BaselineCompiler and BaselineInterpreterGenerator. The Handler
 // template is a class storing fields/methods that are interpreter or compiler
@@ -110,9 +110,6 @@ class BaselineCodeGen {
   // Load the |this|-value from the global's lexical environment.
   void loadGlobalThisValue(ValueOperand dest);
 
-  // Load script atom |index| into |dest|.
-  void loadScriptAtom(Register index, Register dest);
-
   // Computes the frame size. See BaselineFrame::debugFrameSize_.
   void computeFrameSize(Register dest);
 
@@ -188,7 +185,7 @@ class BaselineCodeGen {
   FOR_EACH_OPCODE(EMIT_OP)
 #undef EMIT_OP
 
-  // JSOp::Neg, JSOp::BitNot, JSOp::Inc, JSOp::Dec
+  // JSOp::Pos, JSOp::Neg, JSOp::BitNot, JSOp::Inc, JSOp::Dec, JSOp::ToNumeric.
   MOZ_MUST_USE bool emitUnaryArith();
 
   // JSOp::BitXor, JSOp::Lsh, JSOp::Add etc.

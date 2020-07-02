@@ -38,29 +38,17 @@ class ADocumentChannelBridge {
   // Delete the bridge, and drop any refs to the DocumentLoadListener
   virtual void Delete() = 0;
 
-  // Report a CSP violation event in the originating process, using
-  // nsCSPContext::AsyncReportViolation.
-  // aIsCspToInherit is true if aContext is the CSP to inherit (from
-  // the nsDocShellLoadState), which is used to determine the right
-  // loading Document when deserializing aContext. This should no longer be
-  // necessary after bug 1625366.
-  virtual void CSPViolation(
-      nsCSPContext* aContext, bool aIsCspToInherit, nsIURI* aBlockedURI,
-      nsCSPContext::BlockedContentSource aBlockedContentSource,
-      nsIURI* aOriginalURI, const nsAString& aViolatedDirective,
-      uint32_t aViolatedPolicyIndex, const nsAString& aObserverSubject) = 0;
-
   // Initate a switch from the DocumentChannel to the protocol-specific
   // real channel.
   virtual RefPtr<PDocumentChannelParent::RedirectToRealChannelPromise>
-  RedirectToRealChannel(uint32_t aRedirectFlags, uint32_t aLoadFlags) = 0;
+  RedirectToRealChannel(
+      nsTArray<ipc::Endpoint<extensions::PStreamFilterParent>>&&
+          aStreamFilterEndpoints,
+      uint32_t aRedirectFlags, uint32_t aLoadFlags) = 0;
 
   // Returns the process id that this bridge is connected to.
+  // If 0 indicates that the load is started from the parent process.
   virtual base::ProcessId OtherPid() const = 0;
-
-  // Attach a StreamFilterParent to the remote-side nsIChannel of this bridge.
-  virtual bool AttachStreamFilter(
-      ipc::Endpoint<mozilla::extensions::PStreamFilterParent>&& aEndpoint) = 0;
 
  protected:
   virtual ~ADocumentChannelBridge() = default;

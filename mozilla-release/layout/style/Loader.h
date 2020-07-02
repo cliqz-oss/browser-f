@@ -9,42 +9,38 @@
 #ifndef mozilla_css_Loader_h
 #define mozilla_css_Loader_h
 
+#include <tuple>
 #include <utility>
 
 #include "mozilla/Attributes.h"
 #include "mozilla/CORSMode.h"
-#include "mozilla/Maybe.h"
+#include "mozilla/dom/LinkStyle.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/StyleSheet.h"
-#include "mozilla/StyleSheetInlines.h"
 #include "mozilla/UniquePtr.h"
 #include "nsCompatibility.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsDataHashtable.h"
-#include "nsIPrincipal.h"
-#include "nsIStyleSheetLinkingElement.h"
-#include "nsRefPtrHashtable.h"
 #include "nsStringFwd.h"
 #include "nsTArray.h"
 #include "nsTObserverArray.h"
-#include "nsURIHashKey.h"
 
 class nsICSSLoaderObserver;
 class nsIConsoleReportCollector;
 class nsIContent;
+class nsIPrincipal;
 
 namespace mozilla {
+
+class StyleSheet;
+
 namespace dom {
 class DocGroup;
 class Element;
 }  // namespace dom
-}  // namespace mozilla
-
-namespace mozilla {
 
 namespace css {
 
 class SheetLoadData;
+class SheetCache;
 class ImportRule;
 
 /*********************
@@ -90,14 +86,14 @@ class Loader final {
   using ReferrerPolicy = dom::ReferrerPolicy;
 
  public:
-  typedef nsIStyleSheetLinkingElement::Completed Completed;
-  typedef nsIStyleSheetLinkingElement::HasAlternateRel HasAlternateRel;
-  typedef nsIStyleSheetLinkingElement::IsAlternate IsAlternate;
-  typedef nsIStyleSheetLinkingElement::IsInline IsInline;
-  typedef nsIStyleSheetLinkingElement::IsExplicitlyEnabled IsExplicitlyEnabled;
-  typedef nsIStyleSheetLinkingElement::MediaMatched MediaMatched;
-  typedef nsIStyleSheetLinkingElement::Update LoadSheetResult;
-  typedef nsIStyleSheetLinkingElement::SheetInfo SheetInfo;
+  using Completed = dom::LinkStyle::Completed;
+  using HasAlternateRel = dom::LinkStyle::HasAlternateRel;
+  using IsAlternate = dom::LinkStyle::IsAlternate;
+  using IsInline = dom::LinkStyle::IsInline;
+  using IsExplicitlyEnabled = dom::LinkStyle::IsExplicitlyEnabled;
+  using MediaMatched = dom::LinkStyle::MediaMatched;
+  using LoadSheetResult = dom::LinkStyle::Update;
+  using SheetInfo = dom::LinkStyle::SheetInfo;
 
   Loader();
   // aDocGroup is used for dispatching SheetLoadData in PostLoadEvent(). It
@@ -206,7 +202,7 @@ class Loader final {
       nsIURI*, SheetParsingMode = eAuthorSheetFeatures,
       UseSystemPrincipal = UseSystemPrincipal::No);
 
-  enum class IsPreload {
+  enum class IsPreload : uint8_t {
     No,
     // This is a speculative load initiated by a <link rel=stylesheet> tag
     // scanned by the parser, or @import rules found in a <style> tag.
@@ -238,10 +234,9 @@ class Loader final {
    * non-UTF8 sheets being treated as UTF-8 by this method.
    */
   Result<RefPtr<StyleSheet>, nsresult> LoadSheet(
-      nsIURI* aURI, IsPreload, nsIPrincipal* aOriginPrincipal,
-      const Encoding* aPreloadEncoding, nsIReferrerInfo* aReferrerInfo,
-      nsICSSLoaderObserver* aObserver, CORSMode aCORSMode = CORS_NONE,
-      const nsAString& aIntegrity = EmptyString());
+      nsIURI* aURI, IsPreload, const Encoding* aPreloadEncoding,
+      nsIReferrerInfo* aReferrerInfo, nsICSSLoaderObserver* aObserver,
+      CORSMode = CORS_NONE, const nsAString& aIntegrity = EmptyString());
 
   /**
    * As above, but without caring for a couple things.
@@ -342,21 +337,23 @@ class Loader final {
     Complete
   };
 
-  Tuple<RefPtr<StyleSheet>, SheetState> CreateSheet(
-      const SheetInfo& aInfo, nsIPrincipal* aLoaderPrincipal,
-      css::SheetParsingMode aParsingMode, bool aSyncLoad) {
-    return CreateSheet(aInfo.mURI, aInfo.mContent, aLoaderPrincipal,
+  std::tuple<RefPtr<StyleSheet>, SheetState> CreateSheet(
+      const SheetInfo& aInfo, nsIPrincipal* aTriggeringPrincipal,
+      css::SheetParsingMode aParsingMode, bool aSyncLoad,
+      IsPreload aIsPreload) {
+    return CreateSheet(aInfo.mURI, aInfo.mContent, aTriggeringPrincipal,
                        aParsingMode, aInfo.mCORSMode, aInfo.mReferrerInfo,
-                       aInfo.mIntegrity, aSyncLoad);
+                       aInfo.mIntegrity, aSyncLoad, aIsPreload);
   }
 
   // For inline style, the aURI param is null, but the aLinkingContent
   // must be non-null then.  The loader principal must never be null
   // if aURI is not null.
-  Tuple<RefPtr<StyleSheet>, SheetState> CreateSheet(
-      nsIURI* aURI, nsIContent* aLinkingContent, nsIPrincipal* aLoaderPrincipal,
-      css::SheetParsingMode, CORSMode, nsIReferrerInfo* aLoadingReferrerInfo,
-      const nsAString& aIntegrity, bool aSyncLoad);
+  std::tuple<RefPtr<StyleSheet>, SheetState> CreateSheet(
+      nsIURI* aURI, nsIContent* aLinkingContent,
+      nsIPrincipal* aTriggeringPrincipal, css::SheetParsingMode, CORSMode,
+      nsIReferrerInfo* aLoadingReferrerInfo, const nsAString& aIntegrity,
+      bool aSyncLoad, IsPreload aIsPreload);
 
   // Pass in either a media string or the MediaList from the CSSParser.  Don't
   // pass both.
@@ -373,23 +370,15 @@ class Loader final {
 
   Result<RefPtr<StyleSheet>, nsresult> InternalLoadNonDocumentSheet(
       nsIURI* aURL, IsPreload, SheetParsingMode aParsingMode,
-      UseSystemPrincipal, nsIPrincipal* aOriginPrincipal,
-      const Encoding* aPreloadEncoding, nsIReferrerInfo* aReferrerInfo,
-      nsICSSLoaderObserver* aObserver, CORSMode aCORSMode,
-      const nsAString& aIntegrity);
+      UseSystemPrincipal, const Encoding* aPreloadEncoding,
+      nsIReferrerInfo* aReferrerInfo, nsICSSLoaderObserver* aObserver,
+      CORSMode aCORSMode, const nsAString& aIntegrity);
 
   // Post a load event for aObserver to be notified about aSheet.  The
   // notification will be sent with status NS_OK unless the load event is
   // canceled at some point (in which case it will be sent with
-  // NS_BINDING_ABORTED).  aWasAlternate indicates the state when the load was
-  // initiated, not the state at some later time.  aURI should be the URI the
-  // sheet was loaded from (may be null for inline sheets).  aElement is the
-  // owning element for this sheet.
-  nsresult PostLoadEvent(nsIURI* aURI, StyleSheet* aSheet,
-                         nsICSSLoaderObserver* aObserver,
-                         IsAlternate aWasAlternate, MediaMatched aMediaMatched,
-                         nsIReferrerInfo* aReferrerInfo,
-                         nsIStyleSheetLinkingElement* aElement);
+  // NS_BINDING_ABORTED).
+  nsresult PostLoadEvent(RefPtr<SheetLoadData>);
 
   // Start the loads of all the sheets in mPendingDatas
   void StartDeferredLoads();
@@ -398,7 +387,7 @@ class Loader final {
 
   // Note: LoadSheet is responsible for setting the sheet to complete on
   // failure.
-  nsresult LoadSheet(SheetLoadData&, SheetState, IsPreload);
+  nsresult LoadSheet(SheetLoadData&, SheetState);
 
   enum class AllowAsyncParse {
     Yes,

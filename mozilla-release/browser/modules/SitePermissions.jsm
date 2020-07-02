@@ -302,6 +302,18 @@ var SitePermissions = {
         if (permission.type == "canvas" && !this.resistFingerprinting) {
           continue;
         }
+        /* Hide persistent storage permission when extension principal
+         * have WebExtensions-unlimitedStorage permission. */
+
+        if (
+          permission.type == "persistent-storage" &&
+          SitePermissions.getForPrincipal(
+            principal,
+            "WebExtensions-unlimitedStorage"
+          ).state == SitePermissions.ALLOW
+        ) {
+          continue;
+        }
 
         let scope = this.SCOPE_PERSISTENT;
         if (permission.expireType == Services.perms.EXPIRE_SESSION) {
@@ -769,6 +781,9 @@ var SitePermissions = {
    * Returns the localized label for the given permission state, to be used in
    * a UI for managing permissions.
    *
+   * @param {string} permissionID
+   *        The permission to get the label for.
+   *
    * @param {SitePermissions state} state
    *        The state to get the label for.
    *
@@ -873,6 +888,9 @@ var gPermissionObject = {
    *  - states
    *    Array of permission states to be exposed to the user.
    *    Defaults to ALLOW, BLOCK and the default state (see getDefault).
+   *
+   *  - getMultichoiceStateLabel
+   *    Optional method to overwrite SitePermissions#getMultichoiceStateLabel with custom label logic.
    */
 
   "autoplay-media": {
@@ -920,7 +938,7 @@ var gPermissionObject = {
             "state.multichoice.autoplayallow"
           );
       }
-      throw new Error(`Unkown state: ${state}`);
+      throw new Error(`Unknown state: ${state}`);
     },
   },
 
@@ -932,8 +950,7 @@ var gPermissionObject = {
     ],
     getDefault() {
       if (
-        Services.prefs.getIntPref("network.cookie.cookieBehavior") ==
-        Ci.nsICookieService.BEHAVIOR_REJECT
+        Services.cookies.cookieBehavior == Ci.nsICookieService.BEHAVIOR_REJECT
       ) {
         return SitePermissions.BLOCK;
       }

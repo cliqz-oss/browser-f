@@ -24,10 +24,7 @@ const Button = createFactory(
 const LearnMoreLink = createFactory(
   require("devtools/client/accessibility/components/LearnMoreLink")
 );
-const {
-  enable,
-  updateCanBeEnabled,
-} = require("devtools/client/accessibility/actions/ui");
+const { enable } = require("devtools/client/accessibility/actions/ui");
 
 // Localization
 const { L10N } = require("devtools/client/accessibility/utils/l10n");
@@ -47,8 +44,7 @@ class Description extends Component {
       canBeEnabled: PropTypes.bool,
       dispatch: PropTypes.func.isRequired,
       enableAccessibility: PropTypes.func.isRequired,
-      startListeningForLifecycleEvents: PropTypes.func.isRequired,
-      stopListeningForLifecycleEvents: PropTypes.func.isRequired,
+      autoInit: PropTypes.bool.isRequired,
     };
   }
 
@@ -60,19 +56,6 @@ class Description extends Component {
     };
 
     this.onEnable = this.onEnable.bind(this);
-    this.onCanBeEnabledChange = this.onCanBeEnabledChange.bind(this);
-  }
-
-  componentWillMount() {
-    this.props.startListeningForLifecycleEvents({
-      "can-be-enabled-change": this.onCanBeEnabledChange,
-    });
-  }
-
-  componentWillUnmount() {
-    this.props.stopListeningForLifecycleEvents({
-      "can-be-enabled-change": this.onCanBeEnabledChange,
-    });
   }
 
   onEnable() {
@@ -88,25 +71,38 @@ class Description extends Component {
       .catch(() => this.setState({ enabling: false }));
   }
 
-  onCanBeEnabledChange(canBeEnabled) {
-    this.props.dispatch(updateCanBeEnabled(canBeEnabled));
-  }
-
   render() {
-    const { canBeEnabled } = this.props;
-    const { enabling } = this.state;
-    const enableButtonStr = enabling
-      ? "accessibility.enabling"
-      : "accessibility.enable";
+    const { canBeEnabled, autoInit } = this.props;
+    let warningStringName = "accessibility.enable.disabledTitle";
+    let button;
+    if (!autoInit) {
+      const { enabling } = this.state;
+      const enableButtonStr = enabling
+        ? "accessibility.enabling"
+        : "accessibility.enable";
 
-    let title;
-    let disableButton = false;
+      let title;
+      let disableButton = false;
 
-    if (canBeEnabled) {
-      title = L10N.getStr("accessibility.enable.enabledTitle");
-    } else {
-      disableButton = true;
-      title = L10N.getStr("accessibility.enable.disabledTitle");
+      if (canBeEnabled) {
+        title = L10N.getStr("accessibility.enable.enabledTitle");
+      } else {
+        disableButton = true;
+        title = L10N.getStr("accessibility.enable.disabledTitle");
+      }
+
+      button = Button(
+        {
+          id: "accessibility-enable-button",
+          onClick: this.onEnable,
+          disabled: enabling || disableButton,
+          busy: enabling,
+          "data-standalone": true,
+          title,
+        },
+        L10N.getStr(enableButtonStr)
+      );
+      warningStringName = "accessibility.description.general.p2";
     }
 
     return div(
@@ -127,26 +123,22 @@ class Description extends Component {
             l10n: L10N,
             messageStringKey: "accessibility.description.general.p1",
           }),
-          p({}, L10N.getStr("accessibility.description.general.p2"))
+          p({}, L10N.getStr(warningStringName))
         )
       ),
-      Button(
-        {
-          id: "accessibility-enable-button",
-          onClick: this.onEnable,
-          disabled: enabling || disableButton,
-          busy: enabling,
-          "data-standalone": true,
-          title,
-        },
-        L10N.getStr(enableButtonStr)
-      )
+      button
     );
   }
 }
 
-const mapStateToProps = ({ ui }) => ({
-  canBeEnabled: ui.canBeEnabled,
+const mapStateToProps = ({
+  ui: {
+    canBeEnabled,
+    supports: { autoInit },
+  },
+}) => ({
+  canBeEnabled,
+  autoInit,
 });
 
 // Exports from this module

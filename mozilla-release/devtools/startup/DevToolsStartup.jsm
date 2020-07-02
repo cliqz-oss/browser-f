@@ -28,6 +28,7 @@ const kDebuggerPrefs = [
 ];
 
 const DEVTOOLS_ENABLED_PREF = "devtools.enabled";
+const DEVTOOLS_F12_DISABLED_PREF = "devtools.experiment.f12.shortcut_disabled";
 
 const DEVTOOLS_POLICY_DISABLED_PREF = "devtools.policy.disabled";
 
@@ -35,11 +36,6 @@ const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "ActorManagerParent",
-  "resource://gre/modules/ActorManagerParent.jsm"
-);
 ChromeUtils.defineModuleGetter(
   this,
   "Services",
@@ -358,11 +354,16 @@ DevToolsStartup.prototype = {
     const isInitialLaunch =
       cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH;
     if (isInitialLaunch) {
-      this._registerDevToolsJsWindowActors();
-
       // Enable devtools for all users on startup (onboarding experiment from Bug 1408969
       // is over).
       Services.prefs.setBoolPref(DEVTOOLS_ENABLED_PREF, true);
+
+      // The F12 shortcut might be disabled to avoid accidental usage.
+      // Users who are already considered as devtools users should not be
+      // impacted.
+      if (this.isDevToolsUser()) {
+        Services.prefs.setBoolPref(DEVTOOLS_F12_DISABLED_PREF, false);
+      }
 
       // Store devtoolsFlag to check it later in onWindowReady.
       this.devtoolsFlag = flags.devtools;
@@ -533,7 +534,7 @@ DevToolsStartup.prototype = {
    * Also, this menu duplicates its own entries from the "Web Developer"
    * menu in the system menu, under "Tools" main menu item. The system
    * menu is being hooked by "hookWebDeveloperMenu" which ends up calling
-   * devtools/client/framework/browser-menu to create the items for real,
+   * devtools/client/framework/browser-menus to create the items for real,
    * initDevTools, from onViewShowing is also calling browser-menu.
    */
   hookDeveloperToggle() {
@@ -856,7 +857,7 @@ DevToolsStartup.prototype = {
           return;
         }
         case "profilerCapture": {
-          ProfilerPopupBackground.captureProfile();
+          ProfilerPopupBackground.captureProfile("aboutprofiling");
           return;
         }
       }
@@ -1219,23 +1220,6 @@ DevToolsStartup.prototype = {
     this.recorded = true;
   },
 
-  _registerDevToolsJsWindowActors() {
-    ActorManagerParent.addActors({
-      DevToolsFrame: {
-        parent: {
-          moduleURI:
-            "resource://devtools/server/connectors/js-window-actor/DevToolsFrameParent.jsm",
-        },
-        child: {
-          moduleURI:
-            "resource://devtools/server/connectors/js-window-actor/DevToolsFrameChild.jsm",
-        },
-        allFrames: true,
-      },
-    });
-    ActorManagerParent.flush();
-  },
-
   // Used by tests and the toolbox to register the same key shortcuts in toolboxes loaded
   // in a window window.
   get KeyShortcuts() {
@@ -1320,7 +1304,7 @@ const JsonView = {
       //   principal is from the child. Null principals don't survive crossing
       //   over IPC, so there's no other principal that'll work.
       const persistable = browser.frameLoader;
-      persistable.startPersistence(0, {
+      persistable.startPersistence(null, {
         onDocumentReady(doc) {
           const uri = chrome.makeURI(doc.documentURI, doc.characterSet);
           const filename = chrome.getDefaultFileName(undefined, uri, doc, null);

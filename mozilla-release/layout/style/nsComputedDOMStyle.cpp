@@ -1545,6 +1545,12 @@ already_AddRefed<nsROCSSPrimitiveValue> nsComputedDOMStyle::GetGridTrackSize(
 already_AddRefed<CSSValue> nsComputedDOMStyle::GetGridTemplateColumnsRows(
     const StyleGridTemplateComponent& aTrackList,
     const ComputedGridTrackInfo& aTrackInfo) {
+  if (aTrackInfo.mIsMasonry) {
+    RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
+    val->SetString("masonry");
+    return val.forget();
+  }
+
   if (aTrackInfo.mIsSubgrid) {
     RefPtr<nsDOMCSSValueList> valueList = GetROCSSValueList(false);
     RefPtr<nsROCSSPrimitiveValue> subgridKeyword = new nsROCSSPrimitiveValue;
@@ -2156,7 +2162,7 @@ bool nsComputedDOMStyle::GetLineHeightCoord(nscoord& aCoord) {
   // the text zoom, if any.
   const nsStyleFont* font = StyleFont();
   float fCoord = float(aCoord);
-  if (font->mAllowZoom) {
+  if (font->mAllowZoomAndMinSize) {
     fCoord /= presContext->EffectiveTextZoom();
   }
   if (font->mFont.size != font->mSize) {
@@ -2180,13 +2186,6 @@ already_AddRefed<CSSValue> nsComputedDOMStyle::GetBorderWidthFor(
   }
   val->SetAppUnits(width);
 
-  return val.forget();
-}
-
-already_AddRefed<CSSValue> nsComputedDOMStyle::GetBorderColorFor(
-    mozilla::Side aSide) {
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  SetValueFromComplexColor(val, StyleBorder()->BorderColorFor(aSide));
   return val.forget();
 }
 

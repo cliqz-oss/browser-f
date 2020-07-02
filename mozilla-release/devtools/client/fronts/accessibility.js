@@ -16,6 +16,11 @@ const {
   simulatorSpec,
 } = require("devtools/shared/specs/accessibility");
 const events = require("devtools/shared/event-emitter");
+const Services = require("Services");
+const BROWSER_TOOLBOX_FISSION_ENABLED = Services.prefs.getBoolPref(
+  "devtools.browsertoolbox.fission",
+  false
+);
 
 class AccessibleFront extends FrontClassWithSpec(accessibleSpec) {
   constructor(client, targetFront, parentFront) {
@@ -36,6 +41,10 @@ class AccessibleFront extends FrontClassWithSpec(accessibleSpec) {
 
   marshallPool() {
     return this.getParent();
+  }
+
+  get remoteFrame() {
+    return BROWSER_TOOLBOX_FISSION_ENABLED && this._form.remoteFrame;
   }
 
   get role() {
@@ -159,6 +168,103 @@ class AccessibleFront extends FrontClassWithSpec(accessibleSpec) {
       Object.assign(this._form, properties);
     });
   }
+
+  async children() {
+    if (!this.remoteFrame) {
+      return super.children();
+    }
+
+    const { walker: domWalkerFront } = await this.targetFront.getFront(
+      "inspector"
+    );
+    const node = await domWalkerFront.getNodeFromActor(this.actorID, [
+      "rawAccessible",
+      "DOMNode",
+    ]);
+    // We are using DOM inspector/walker API here because we want to keep both
+    // the accessiblity tree and the DOM tree in sync. This is necessary for
+    // several features that the accessibility panel provides such as inspecting
+    // a corresponding DOM node or any other functionality that requires DOM
+    // node ancestries to be resolved all the way up to the top level document.
+    const {
+      nodes: [documentNodeFront],
+    } = await domWalkerFront.children(node);
+    const accessibilityFront = await documentNodeFront.targetFront.getFront(
+      "accessibility"
+    );
+    await accessibilityFront.bootstrap();
+
+    return accessibilityFront.accessibleWalkerFront.children();
+  }
+
+  /**
+   * Helper function that helps with building a complete snapshot of
+   * accessibility tree starting at the level of current accessible front. It
+   * accumulates subtrees from possible out of process frames that are children
+   * of the current accessible front.
+   * @param  {JSON} snapshot
+   *         Snapshot of the current accessible front or one of its in process
+   *         children when recursing.
+   *
+   * @return {JSON}
+   *         Complete snapshot of current accessible front.
+   */
+  async _accumulateSnapshot(snapshot) {
+    const { childCount, remoteFrame } = snapshot;
+    // No children, we are done.
+    if (childCount === 0) {
+      return snapshot;
+    }
+
+    // If current accessible is not a remote frame, continue accumulating inside
+    // its children.
+    if (!remoteFrame) {
+      const childSnapshots = [];
+      for (const childSnapshot of snapshot.children) {
+        childSnapshots.push(this._accumulateSnapshot(childSnapshot));
+      }
+      await Promise.all(childSnapshots);
+      return snapshot;
+    }
+
+    // When we have a remote frame, we need to obtain an accessible front for a
+    // remote frame document and retrieve its snapshot.
+    const inspectorFront = await this.targetFront.getFront("inspector");
+    const frameNodeFront = await inspectorFront.getNodeActorFromContentDomReference(
+      snapshot.contentDOMReference
+    );
+    // Remove contentDOMReference and remoteFrame properties.
+    delete snapshot.contentDOMReference;
+    delete snapshot.remoteFrame;
+    if (!frameNodeFront) {
+      return snapshot;
+    }
+
+    // Remote frame lives in the same process as the current accessible
+    // front we can retrieve the accessible front directly.
+    const frameAccessibleFront = await this.parentFront.getAccessibleFor(
+      frameNodeFront
+    );
+    if (!frameAccessibleFront) {
+      return snapshot;
+    }
+
+    const [docAccessibleFront] = await frameAccessibleFront.children();
+    const childSnapshot = await docAccessibleFront.snapshot();
+    snapshot.children.push(childSnapshot);
+
+    return snapshot;
+  }
+
+  /**
+   * Retrieves a complete JSON snapshot for an accessible subtree of a given
+   * accessible front (inclduing OOP frames).
+   */
+  async snapshot() {
+    const snapshot = await super.snapshot();
+    await this._accumulateSnapshot(snapshot);
+    return snapshot;
+  }
 }
 
 class AccessibleWalkerFront extends FrontClassWithSpec(accessibleWalkerSpec) {
@@ -173,6 +279,58 @@ class AccessibleWalkerFront extends FrontClassWithSpec(accessibleWalkerSpec) {
 
     return super.pick();
   }
+
+  /**
+   * Get the accessible object ancestry starting from the given accessible to
+   * the top level document. BROWSER_TOOLBOX_FISSION_ENABLED is false, the top
+   * level document is bound by current target's document. Otherwise, the top
+   * level document is in the top level content process.
+   * @param  {Object} accessible
+   *         Accessible front to determine the ancestry for.
+   *
+   * @return {Array}  ancestry
+   *         List of ancestry objects which consist of an accessible with its
+   *         children.
+   */
+  async getAncestry(accessible) {
+    const ancestry = await super.getAncestry(accessible);
+    if (!BROWSER_TOOLBOX_FISSION_ENABLED) {
+      // Do not try to get the ancestry across the remote frame hierarchy.
+      return ancestry;
+    }
+
+    const parentTarget = await this.targetFront.getParentTarget();
+    if (!parentTarget) {
+      return ancestry;
+    }
+
+    // Get an accessible front for the parent frame. We go through the
+    // inspector's walker to keep both inspector and accessibility trees in
+    // sync.
+    const { walker: domWalkerFront } = await this.targetFront.getFront(
+      "inspector"
+    );
+    const frameNodeFront = (await domWalkerFront.getRootNode()).parentNode();
+    const accessibilityFront = await parentTarget.getFront("accessibility");
+    await accessibilityFront.bootstrap();
+    const { accessibleWalkerFront } = accessibilityFront;
+    const frameAccessibleFront = await accessibleWalkerFront.getAccessibleFor(
+      frameNodeFront
+    );
+
+    // Compose the final ancestry out of ancestry for the given accessible in
+    // the current process and recursively get the ancestry for the frame
+    // accessible.
+    ancestry.push(
+      {
+        accessible: frameAccessibleFront,
+        children: await frameAccessibleFront.children(),
+      },
+      ...(await accessibleWalkerFront.getAncestry(frameAccessibleFront))
+    );
+
+    return ancestry;
+  }
 }
 
 class AccessibilityFront extends FrontClassWithSpec(accessibilitySpec) {
@@ -181,11 +339,6 @@ class AccessibilityFront extends FrontClassWithSpec(accessibilitySpec) {
 
     this.before("init", this.init.bind(this));
     this.before("shutdown", this.shutdown.bind(this));
-
-    // TODO: Deprecated. Remove after Fx75.
-    this.before("can-be-enabled-change", this.canBeEnabled.bind(this));
-    // TODO: Deprecated. Remove after Fx75.
-    this.before("can-be-disabled-change", this.canBeDisabled.bind(this));
 
     // Attribute name from which to retrieve the actorID out of the target
     // actor's form
@@ -205,12 +358,7 @@ class AccessibilityFront extends FrontClassWithSpec(accessibilitySpec) {
   async bootstrap() {
     this.accessibleWalkerFront = await super.getWalker();
     this.simulatorFront = await super.getSimulator();
-    // TODO: Deprecated. Remove canBeEnabled and canBeDisabled after Fx75.
-    ({
-      enabled: this.enabled,
-      canBeEnabled: this.canBeEnabled,
-      canBeDisabled: this.canBeDisabled,
-    } = await super.bootstrap());
+    ({ enabled: this.enabled } = await super.bootstrap());
   }
 
   init() {
@@ -219,16 +367,6 @@ class AccessibilityFront extends FrontClassWithSpec(accessibilitySpec) {
 
   shutdown() {
     this.enabled = false;
-  }
-
-  // TODO: Deprecated. Remove after Fx75.
-  canBeEnabled(canBeEnabled) {
-    this.canBeEnabled = canBeEnabled;
-  }
-
-  // TODO: Deprecated. Remove after Fx75.
-  canBeDisabled(canBeDisabled) {
-    this.canBeDisabled = canBeDisabled;
   }
 }
 

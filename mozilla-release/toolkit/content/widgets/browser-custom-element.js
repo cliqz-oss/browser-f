@@ -112,80 +112,6 @@
       });
 
       this.addEventListener(
-        "keypress",
-        event => {
-          if (event.keyCode != KeyEvent.DOM_VK_F7) {
-            return;
-          }
-
-          // shift + F7 is the default DevTools shortcut for the Style Editor.
-          if (event.shiftKey) {
-            return;
-          }
-
-          if (event.defaultPrevented || !event.isTrusted) {
-            return;
-          }
-
-          const kPrefShortcutEnabled =
-            "accessibility.browsewithcaret_shortcut.enabled";
-          const kPrefWarnOnEnable = "accessibility.warn_on_browsewithcaret";
-          const kPrefCaretBrowsingOn = "accessibility.browsewithcaret";
-
-          var isEnabled = this.mPrefs.getBoolPref(kPrefShortcutEnabled);
-          if (!isEnabled) {
-            return;
-          }
-
-          // Toggle browse with caret mode
-          var browseWithCaretOn = this.mPrefs.getBoolPref(
-            kPrefCaretBrowsingOn,
-            false
-          );
-          var warn = this.mPrefs.getBoolPref(kPrefWarnOnEnable, true);
-          if (warn && !browseWithCaretOn) {
-            var checkValue = { value: false };
-            var promptService = Services.prompt;
-
-            var buttonPressed = promptService.confirmEx(
-              window,
-              this.mStrBundle.GetStringFromName(
-                "browsewithcaret.checkWindowTitle"
-              ),
-              this.mStrBundle.GetStringFromName("browsewithcaret.checkLabel"),
-              // Make "No" the default:
-              promptService.STD_YES_NO_BUTTONS |
-                promptService.BUTTON_POS_1_DEFAULT,
-              null,
-              null,
-              null,
-              this.mStrBundle.GetStringFromName("browsewithcaret.checkMsg"),
-              checkValue
-            );
-            if (buttonPressed != 0) {
-              if (checkValue.value) {
-                try {
-                  this.mPrefs.setBoolPref(kPrefShortcutEnabled, false);
-                } catch (ex) {}
-              }
-              return;
-            }
-            if (checkValue.value) {
-              try {
-                this.mPrefs.setBoolPref(kPrefWarnOnEnable, false);
-              } catch (ex) {}
-            }
-          }
-
-          // Toggle the pref
-          try {
-            this.mPrefs.setBoolPref(kPrefCaretBrowsingOn, !browseWithCaretOn);
-          } catch (ex) {}
-        },
-        { mozSystemGroup: true }
-      );
-
-      this.addEventListener(
         "dragover",
         event => {
           if (!this.droppedLinkHandler || event.defaultPrevented) {
@@ -302,8 +228,14 @@
        * Weak reference to an optional frame loader that can be used to influence
        * process selection for this browser.
        * See nsIBrowser.sameProcessAsFrameLoader.
+       *
+       * tabbrowser sets "sameProcessAsFrameLoader" on some browsers before
+       * they are connected. This avoids clearing that out while we're doing
+       * the initial construct(), which is what would read it.
        */
-      this._sameProcessAsFrameLoader = null;
+      if (this.mInitialized) {
+        this._sameProcessAsFrameLoader = null;
+      }
 
       this._loadContext = null;
 
@@ -325,8 +257,6 @@
 
       this._remoteWebProgress = null;
 
-      this._contentTitle = "";
-
       this._characterSet = "";
 
       this._mayEnableCharacterEncodingMenu = null;
@@ -343,9 +273,7 @@
 
       this._contentRequestContextID = null;
 
-      this._fullZoom = 1;
-
-      this._textZoom = 1;
+      this._rdmFullZoom = 1.0;
 
       this._isSyntheticDocument = false;
 
@@ -358,8 +286,6 @@
       this._hasAnyPlayingMediaBeenBlocked = false;
 
       this._unselectedTabHoverMessageListenerCount = 0;
-
-      this._securityUI = null;
 
       this.urlbarChangeTracker = {
         _startedLoadSinceLastUserTyping: false,
@@ -511,6 +437,28 @@
       popupAnchor.hidden = true;
       stack.appendChild(popupAnchor);
       return popupAnchor;
+    }
+
+    set suspendMediaWhenInactive(val) {
+      if (this.isRemoteBrowser) {
+        let { frameLoader } = this;
+        if (frameLoader && frameLoader.remoteTab) {
+          frameLoader.remoteTab.suspendMediaWhenInactive = val;
+        }
+      } else if (this.docShell) {
+        this.docShell.suspendMediaWhenInactive = val;
+      }
+    }
+
+    get suspendMediaWhenInactive() {
+      if (this.isRemoteBrowser) {
+        let { frameLoader } = this;
+        if (frameLoader && frameLoader.remoteTab) {
+          return frameLoader.remoteTab.suspendMediaWhenInactive;
+        }
+        return false;
+      }
+      return this.docShell && this.docShell.suspendMediaWhenInactive;
     }
 
     set docShellIsActive(val) {
@@ -702,13 +650,9 @@
       return this.webNavigation.sessionHistory;
     }
 
-    get markupDocumentViewer() {
-      return this.docShell.contentViewer;
-    }
-
     get contentTitle() {
       return this.isRemoteBrowser
-        ? this._contentTitle
+        ? this.browsingContext?.currentWindowGlobal?.documentTitle
         : this.contentDocument.title;
     }
 
@@ -790,56 +734,59 @@
       }
     }
 
-    set fullZoom(val) {
-      if (this.isRemoteBrowser) {
-        let changed = val.toFixed(2) != this._fullZoom.toFixed(2);
-
-        if (changed) {
-          this._fullZoom = val;
-          this.sendMessageToActor("FullZoom", { value: val }, "Zoom", "roots");
-
-          let event = new Event("FullZoomChange", { bubbles: true });
-          this.dispatchEvent(event);
-        }
-      } else {
-        this.markupDocumentViewer.fullZoom = val;
-      }
-    }
-
     get referrerInfo() {
       return this.isRemoteBrowser
         ? this._referrerInfo
         : this.contentDocument.referrerInfo;
     }
 
-    get fullZoom() {
-      if (this.isRemoteBrowser) {
-        return this._fullZoom;
+    set fullZoom(val) {
+      if (val.toFixed(2) == this.fullZoom.toFixed(2)) {
+        return;
       }
-      return this.markupDocumentViewer.fullZoom;
+      if (this.browsingContext.inRDMPane) {
+        this._rdmFullZoom = val;
+        let event = document.createEvent("Events");
+        event.initEvent("FullZoomChange", true, false);
+        this.dispatchEvent(event);
+      } else {
+        this.browsingContext.fullZoom = val;
+      }
+    }
+
+    get fullZoom() {
+      if (this.browsingContext.inRDMPane) {
+        return this._rdmFullZoom;
+      }
+      return this.browsingContext.fullZoom;
     }
 
     set textZoom(val) {
-      if (this.isRemoteBrowser) {
-        let changed = val.toFixed(2) != this._textZoom.toFixed(2);
-
-        if (changed) {
-          this._textZoom = val;
-          this.sendMessageToActor("TextZoom", { value: val }, "Zoom", "roots");
-
-          let event = new Event("TextZoomChange", { bubbles: true });
-          this.dispatchEvent(event);
-        }
-      } else {
-        this.markupDocumentViewer.textZoom = val;
+      if (val.toFixed(2) == this.textZoom.toFixed(2)) {
+        return;
       }
+      this.browsingContext.textZoom = val;
     }
 
     get textZoom() {
-      if (this.isRemoteBrowser) {
-        return this._textZoom;
+      return this.browsingContext.textZoom;
+    }
+
+    enterResponsiveMode() {
+      if (this.browsingContext.inRDMPane) {
+        return;
       }
-      return this.markupDocumentViewer.textZoom;
+      this.browsingContext.inRDMPane = true;
+      this._rdmFullZoom = this.browsingContext.fullZoom;
+      this.browsingContext.fullZoom = 1.0;
+    }
+
+    leaveResponsiveMode() {
+      if (!this.browsingContext.inRDMPane) {
+        return;
+      }
+      this.browsingContext.inRDMPane = false;
+      this.browsingContext.fullZoom = this._rdmFullZoom;
     }
 
     get isSyntheticDocument() {
@@ -877,36 +824,7 @@
     }
 
     get securityUI() {
-      if (this.isRemoteBrowser) {
-        if (!this._securityUI) {
-          // Don't attempt to create the remote web progress if the
-          // messageManager has already gone away
-          if (!this.messageManager) {
-            return null;
-          }
-
-          let jsm = "resource://gre/modules/RemoteSecurityUI.jsm";
-          let RemoteSecurityUI = ChromeUtils.import(jsm, {}).RemoteSecurityUI;
-          this._securityUI = new RemoteSecurityUI();
-        }
-
-        // We want to double-wrap the JS implemented interface, so that QI and instanceof works.
-        var ptr = Cc[
-          "@mozilla.org/supports-interface-pointer;1"
-        ].createInstance(Ci.nsISupportsInterfacePointer);
-        ptr.data = this._securityUI;
-        return ptr.data.QueryInterface(Ci.nsISecureBrowserUI);
-      }
-
-      if (!this.docShell.securityUI) {
-        const SECUREBROWSERUI_CONTRACTID = "@mozilla.org/secure_browser_ui;1";
-        var securityUI = Cc[SECUREBROWSERUI_CONTRACTID].createInstance(
-          Ci.nsISecureBrowserUI
-        );
-        securityUI.init(this.docShell);
-      }
-
-      return this.docShell.securityUI;
+      return this.browsingContext.secureBrowserUI;
     }
 
     set userTypedValue(val) {
@@ -1201,7 +1119,6 @@
         this._csp = null;
 
         this.messageManager.addMessageListener("Browser:Init", this);
-        this.messageManager.addMessageListener("DOMTitleChanged", this);
 
         let jsm = "resource://gre/modules/RemoteWebProgress.jsm";
         let { RemoteWebProgressManager } = ChromeUtils.import(jsm, {});
@@ -1255,7 +1172,7 @@
             !this.isRemoteBrowser
           ) {
             try {
-              this.docShell.useGlobalHistory = true;
+              this.docShell.browsingContext.useGlobalHistory = true;
             } catch (ex) {
               // This can occur if the Places database is locked
               Cu.reportError("Error enabling browser global history: " + ex);
@@ -1269,16 +1186,6 @@
         // Ensures the securityUI is initialized.
         var securityUI = this.securityUI; // eslint-disable-line no-unused-vars
       } catch (e) {}
-
-      // tabbrowser.xml sets "sameProcessAsFrameLoader" as a direct property
-      // on some browsers before they are put into a DOM (and get a
-      // binding).  This hack makes sure that we hold a weak reference to
-      // the other browser (and go through the proper getter and setter).
-      if (this.hasOwnProperty("sameProcessAsFrameLoader")) {
-        var sameProcessAsFrameLoader = this.sameProcessAsFrameLoader;
-        delete this.sameProcessAsFrameLoader;
-        this.sameProcessAsFrameLoader = sameProcessAsFrameLoader;
-      }
 
       if (!this.isRemoteBrowser) {
         // If we've transitioned from remote to non-remote, we no longer need
@@ -1337,22 +1244,9 @@
           case "Browser:Init":
             this._outerWindowID = data.outerWindowID;
             break;
-          case "DOMTitleChanged":
-            this._contentTitle = data.title;
-            break;
           default:
             break;
         }
-      }
-    }
-
-    updateSecurityUIForSecurityChange(aSecurityInfo, aState, aIsSecureContext) {
-      if (this.isRemoteBrowser && this.messageManager) {
-        // Invoking this getter triggers the generation of the underlying object,
-        // which we need to access with ._securityUI, because .securityUI returns
-        // a wrapper that makes _update inaccessible.
-        void this.securityUI;
-        this._securityUI._update(aSecurityInfo, aState, aIsSecureContext);
       }
     }
 
@@ -1413,7 +1307,6 @@
 
         this._remoteWebNavigation._currentURI = aLocation;
         this._documentURI = aDocumentURI;
-        this._contentTitle = aTitle;
         this._contentPrincipal = aContentPrincipal;
         this._contentStoragePrincipal = aContentStoragePrincipal;
         this._csp = aCSP;
@@ -1796,7 +1689,7 @@
       // DOMLinkAdded/Removed, onStateChange) should not be swapped here,
       // because these notifications are dispatched again once the docshells
       // are swapped.
-      var fieldsToSwap = ["_webBrowserFind"];
+      var fieldsToSwap = ["_webBrowserFind", "_rdmFullZoom"];
 
       if (this.isRemoteBrowser) {
         fieldsToSwap.push(
@@ -1808,14 +1701,11 @@
             "_securityUI",
             "_documentURI",
             "_documentContentType",
-            "_contentTitle",
             "_characterSet",
             "_mayEnableCharacterEncodingMenu",
             "_charsetAutodetected",
             "_contentPrincipal",
             "_contentStoragePrincipal",
-            "_fullZoom",
-            "_textZoom",
             "_isSyntheticDocument",
             "_innerWindowID",
           ]
@@ -2017,7 +1907,25 @@
     }
 
     leaveModalState() {
-      this.sendMessageToActor("LeaveModalState", {}, "BrowserElement", "roots");
+      this.sendMessageToActor(
+        "LeaveModalState",
+        { forceLeave: true },
+        "BrowserElement",
+        "roots"
+      );
+    }
+
+    /**
+     * Can be called for a window with or without modal state.
+     * If the window is not in modal state, this is a no-op.
+     */
+    maybeLeaveModalState() {
+      this.sendMessageToActor(
+        "LeaveModalState",
+        { forceLeave: false },
+        "BrowserElement",
+        "roots"
+      );
     }
 
     getDevicePermissionOrigins(key) {
@@ -2033,6 +1941,23 @@
         this._devicePermissionOrigins.set(key, origins);
       }
       return origins;
+    }
+
+    get canPerformProcessSwitch() {
+      return this.getTabBrowser() != null;
+    }
+
+    performProcessSwitch(
+      remoteType,
+      redirectLoadSwitchId,
+      replaceBrowsingContext
+    ) {
+      return this.getTabBrowser().performProcessSwitch(
+        this,
+        remoteType,
+        redirectLoadSwitchId,
+        replaceBrowsingContext
+      );
     }
   }
 

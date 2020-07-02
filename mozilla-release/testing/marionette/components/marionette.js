@@ -219,7 +219,7 @@ const RECOMMENDED_PREFS = new Map([
   ["extensions.update.notifyUser", false],
 
   // Make sure opening about:addons will not hit the network
-  ["extensions.webservice.discoverURL", "http://%(server)s/dummy/discoveryURL"],
+  ["extensions.getAddons.discovery.api_url", "data:, "],
 
   // Allow the application to have focus even it runs in the background
   ["focusmanager.testmode", true],
@@ -242,10 +242,6 @@ const RECOMMENDED_PREFS = new Map([
 
   // Do not prompt for temporary redirects
   ["network.http.prompt-temp-redirect", false],
-
-  // Disable speculative connections so they are not reported as leaking
-  // when they are hanging around
-  ["network.http.speculative-parallel-limit", 0],
 
   // Do not automatically switch between offline and online
   ["network.manage-offline-status", false],
@@ -570,7 +566,7 @@ const MarionetteFactory = {
 
   createInstance(outer, iid) {
     if (outer) {
-      throw Cr.NS_ERROR_NO_AGGREGATION;
+      throw Components.Exception("", Cr.NS_ERROR_NO_AGGREGATION);
     }
 
     if (!this.instance_) {

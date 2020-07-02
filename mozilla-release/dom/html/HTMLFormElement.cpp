@@ -43,6 +43,7 @@
 #include "mozilla/dom/FormDataEvent.h"
 #include "mozilla/dom/SubmitEvent.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/StaticPrefs_prompts.h"
 #include "nsIFormSubmitObserver.h"
 #include "nsIObserverService.h"
 #include "nsCategoryManagerUtils.h"
@@ -54,7 +55,7 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIWebProgress.h"
 #include "nsIDocShell.h"
-#include "nsIPrompt.h"
+#include "nsIPromptService.h"
 #include "nsISecurityUITelemetry.h"
 #include "nsIStringBundle.h"
 
@@ -337,6 +338,10 @@ bool HTMLFormElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                                      nsAttrValue& aResult) {
   if (aNamespaceID == kNameSpaceID_None) {
     if (aAttribute == nsGkAtoms::method) {
+      if (StaticPrefs::dom_dialog_element_enabled()) {
+        return aResult.ParseEnumValue(aValue, kFormMethodTableDialogEnabled,
+                                      false);
+      }
       return aResult.ParseEnumValue(aValue, kFormMethodTable, false);
     }
     if (aAttribute == nsGkAtoms::enctype) {
@@ -681,6 +686,26 @@ nsresult HTMLFormElement::DoSubmit(Event* aEvent) {
   //
   // perform the submission
   //
+  if (!submission) {
+    mIsSubmitting = false;
+#ifdef DEBUG
+    HTMLDialogElement* dialog = nullptr;
+    for (nsIContent* parent = GetParent(); parent;
+         parent = parent->GetParent()) {
+      dialog = HTMLDialogElement::FromNodeOrNull(parent);
+      if (dialog) {
+        break;
+      }
+    }
+    MOZ_ASSERT(!dialog || !dialog->Open());
+#endif
+    return NS_OK;
+  }
+
+  if (DialogFormSubmission* dialogSubmission =
+          submission->GetAsDialogSubmission()) {
+    return SubmitDialog(dialogSubmission);
+  }
   return SubmitSubmission(submission.get());
 }
 
@@ -725,8 +750,10 @@ nsresult HTMLFormElement::BuildSubmission(HTMLFormSubmission** aFormSubmission,
   //
   // Dump the data into the submission object
   //
-  rv = formData->CopySubmissionDataTo(*aFormSubmission);
-  NS_ENSURE_SUBMIT_SUCCESS(rv);
+  if (!(*aFormSubmission)->GetAsDialogSubmission()) {
+    rv = formData->CopySubmissionDataTo(*aFormSubmission);
+    NS_ENSURE_SUBMIT_SUCCESS(rv);
+  }
 
   return NS_OK;
 }
@@ -840,6 +867,22 @@ nsresult HTMLFormElement::SubmitSubmission(
   return rv;
 }
 
+// https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#submit-dialog
+nsresult HTMLFormElement::SubmitDialog(DialogFormSubmission* aFormSubmission) {
+  mIsSubmitting = false;
+
+  // Close the dialog subject. If there is a result, let that be the return
+  // value.
+  HTMLDialogElement* dialog = aFormSubmission->DialogElement();
+  MOZ_ASSERT(dialog);
+
+  Optional<nsAString> retValue;
+  retValue = &aFormSubmission->ReturnValue();
+  dialog->Close(retValue);
+
+  return NS_OK;
+}
+
 nsresult HTMLFormElement::DoSecureToInsecureSubmitCheck(nsIURI* aActionURL,
                                                         bool* aCancelSubmit) {
   *aCancelSubmit = false;
@@ -886,17 +929,21 @@ nsresult HTMLFormElement::DoSecureToInsecureSubmitCheck(nsIURI* aActionURL,
   if (!docShell) {
     return NS_ERROR_FAILURE;
   }
-  nsCOMPtr<nsIPrompt> prompt = do_GetInterface(docShell);
-  if (!prompt) {
-    return NS_ERROR_FAILURE;
+
+  nsresult rv;
+  nsCOMPtr<nsIPromptService> promptSvc =
+      do_GetService("@mozilla.org/embedcomp/prompt-service;1", &rv);
+  if (NS_FAILED(rv)) {
+    return rv;
   }
+
   nsCOMPtr<nsIStringBundle> stringBundle;
   nsCOMPtr<nsIStringBundleService> stringBundleService =
       mozilla::services::GetStringBundleService();
   if (!stringBundleService) {
     return NS_ERROR_FAILURE;
   }
-  nsresult rv = stringBundleService->CreateBundle(
+  rv = stringBundleService->CreateBundle(
       "chrome://global/locale/browser.properties",
       getter_AddRefs(stringBundle));
   if (NS_FAILED(rv)) {
@@ -914,10 +961,14 @@ nsresult HTMLFormElement::DoSecureToInsecureSubmitCheck(nsIURI* aActionURL,
   int32_t buttonPressed;
   bool checkState =
       false;  // this is unused (ConfirmEx requires this parameter)
-  rv = prompt->ConfirmEx(
-      title.get(), message.get(),
-      (nsIPrompt::BUTTON_TITLE_IS_STRING * nsIPrompt::BUTTON_POS_0) +
-          (nsIPrompt::BUTTON_TITLE_CANCEL * nsIPrompt::BUTTON_POS_1),
+  rv = promptSvc->ConfirmExBC(
+      docShell->GetBrowsingContext(),
+      StaticPrefs::prompts_modalType_insecureFormSubmit(), title.get(),
+      message.get(),
+      (nsIPromptService::BUTTON_TITLE_IS_STRING *
+       nsIPromptService::BUTTON_POS_0) +
+          (nsIPromptService::BUTTON_TITLE_CANCEL *
+           nsIPromptService::BUTTON_POS_1),
       cont.get(), nullptr, nullptr, nullptr, &checkState, &buttonPressed);
   if (NS_FAILED(rv)) {
     return rv;

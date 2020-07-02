@@ -13,7 +13,7 @@
            (func (export "set_anyref") (param i32) (param anyref)
              (table.set (local.get 0) (local.get 1)))
            (func (export "set_null") (param i32)
-             (table.set (local.get 0) (ref.null)))
+             (table.set (local.get 0) (ref.null extern)))
            (func (export "set_ref") (param i32) (param anyref)
              (table.set (local.get 0) (struct.narrow anyref (ref opt $dummy) (local.get 1))))
            (func (export "make_struct") (result anyref)
@@ -27,8 +27,8 @@
     ins.exports.set_ref(5, dummy);
     assertEq(ins.exports.t.get(5), dummy);
 
-    assertErrorMessage(() => ins.exports.set_anyref(10, x), RangeError, /index out of bounds/);
-    assertErrorMessage(() => ins.exports.set_anyref(-1, x), RangeError, /index out of bounds/);
+    assertErrorMessage(() => ins.exports.set_anyref(10, x), WebAssembly.RuntimeError, /index out of bounds/);
+    assertErrorMessage(() => ins.exports.set_anyref(-1, x), WebAssembly.RuntimeError, /index out of bounds/);
 }
 
 // table.grow on table of anyref with non-null ref value

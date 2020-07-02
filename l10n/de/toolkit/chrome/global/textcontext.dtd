@@ -29,10 +29,6 @@
 
 <!ENTITY fillLoginMenu.label          "Zugangsdaten einfügen">
 <!ENTITY fillLoginMenu.accesskey      "Z">
-<!ENTITY fillGeneratedPassword.label  "Sicher erzeugtes Passwort verwenden">
-<!ENTITY fillGeneratedPassword.accesskey "S">
-<!ENTITY useGeneratedPassword.label   "Sicher erzeugtes Passwort verwenden…">
-<!ENTITY useGeneratedPassword.accesskey "S">
 <!ENTITY fillPasswordMenu.label       "Passwort einfügen">
 <!ENTITY fillPasswordMenu.accesskey   "P">
 <!ENTITY fillUsernameMenu.label       "Benutzernamen einfügen">

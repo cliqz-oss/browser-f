@@ -101,6 +101,7 @@
 #  include <math.h>
 #  include "cairo/cairo-features.h"
 #  include "mozilla/WindowsDllBlocklist.h"
+#  include "mozilla/WindowsProcessMitigations.h"
 #  include "mozilla/WinHeaderOnlyUtils.h"
 #  include "mozilla/mscom/ProcessRuntime.h"
 #  include "mozilla/widget/AudioSession.h"
@@ -217,7 +218,7 @@
 #include "GTestRunner.h"
 
 #ifdef MOZ_WIDGET_ANDROID
-#  include "GeneratedJNIWrappers.h"
+#  include "mozilla/java/GeckoAppShellWrappers.h"
 #endif
 
 #if defined(MOZ_SANDBOX)
@@ -699,6 +700,39 @@ nsXULAppInfo::GetRemoteType(nsAString& aRemoteType) {
     SetDOMStringToNull(aRemoteType);
   }
 
+  return NS_OK;
+}
+
+static nsCString gLastAppVersion;
+static nsCString gLastAppBuildID;
+
+NS_IMETHODIMP
+nsXULAppInfo::GetLastAppVersion(nsACString& aResult) {
+  if (XRE_IsContentProcess()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  if (!gLastAppVersion.IsVoid() && gLastAppVersion.IsEmpty()) {
+    NS_WARNING("Attempt to retrieve lastAppVersion before it has been set.");
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  aResult.Assign(gLastAppVersion);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXULAppInfo::GetLastAppBuildID(nsACString& aResult) {
+  if (XRE_IsContentProcess()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  if (!gLastAppBuildID.IsVoid() && gLastAppBuildID.IsEmpty()) {
+    NS_WARNING("Attempt to retrieve lastAppBuildID before it has been set.");
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  aResult.Assign(gLastAppBuildID);
   return NS_OK;
 }
 
@@ -1394,6 +1428,7 @@ static void DumpHelp() {
   printf(
       "  -h or --help       Print this message.\n"
       "  -v or --version    Print %s version.\n"
+      "  --full-version     Print %s version, build and platform build ids.\n"
       "  -P <profile>       Start with <profile>.\n"
       "  --profile <path>   Start with profile at <path>.\n"
       "  --migration        Start with migration wizard.\n"
@@ -1419,7 +1454,7 @@ static void DumpHelp() {
       "                     argument or as an environment variable, logging "
       "will be\n"
       "                     written to stdout.\n",
-      (const char*)gAppData->name);
+      (const char*)gAppData->name, (const char*)gAppData->name);
 
 #if defined(XP_WIN)
   printf("  --console          Start %s with a debugging console.\n",
@@ -1446,6 +1481,24 @@ static inline void DumpVersion() {
   // For example, for beta, we would display 42.0b2 instead of 42.0
   printf("%s", MOZ_STRINGIFY(MOZ_APP_VERSION_DISPLAY));
 
+  if (gAppData->copyright) {
+    printf(", %s", (const char*)gAppData->copyright);
+  }
+  printf("\n");
+}
+
+static inline void DumpFullVersion() {
+  if (gAppData->vendor) {
+    printf("%s ", (const char*)gAppData->vendor);
+  }
+  printf("%s ", (const char*)gAppData->name);
+
+  // Use the displayed version
+  // For example, for beta, we would display 42.0b2 instead of 42.0
+  printf("%s ", MOZ_STRINGIFY(MOZ_APP_VERSION_DISPLAY));
+
+  printf("%s ", (const char*)gAppData->buildID);
+  printf("%s ", (const char*)PlatformBuildID());
   if (gAppData->copyright) {
     printf(", %s", (const char*)gAppData->copyright);
   }
@@ -1786,12 +1839,12 @@ static ReturnAbortOnError ProfileLockedDialog(nsIFile* aProfileDir,
     NS_ENSURE_TRUE_LOG(sbs, NS_ERROR_FAILURE);
 
     NS_ConvertUTF8toUTF16 appName(gAppData->name);
-    AutoTArray<nsString, 2> params = {appName, appName};
+    AutoTArray<nsString, 3> params = {appName, appName, appName};
 
     nsAutoString killMessage;
 #ifndef XP_MACOSX
     rv = sb->FormatStringFromName(
-        aUnlocker ? "restartMessageUnlocker" : "restartMessageNoUnlocker",
+        aUnlocker ? "restartMessageUnlocker" : "restartMessageNoUnlocker2",
         params, killMessage);
 #else
     rv = sb->FormatStringFromName(
@@ -2031,6 +2084,16 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
     gDoMigration = true;
   }
 
+#if defined(XP_WIN)
+  // This arg is only used to indicate to telemetry that a profile refresh
+  // (reset+migration) was requested from the uninstaller, pass this along
+  // via an environment variable for simplicity.
+  ar = CheckArg("uninstaller-profile-refresh");
+  if (ar == ARG_FOUND) {
+    SaveToEnv("MOZ_UNINSTALLER_PROFILE_REFRESH=1");
+  }
+#endif
+
   if (EnvHasValue("XRE_RESTART_TO_PROFILE_MANAGER")) {
     return ShowProfileManager(aProfileSvc, aNative);
   }
@@ -2076,6 +2139,9 @@ struct FileWriteFunc : public JSONWriteFunc {
   explicit FileWriteFunc(FILE* aFile) : mFile(aFile) {}
 
   void Write(const char* aStr) override { fprintf(mFile, "%s", aStr); }
+  void Write(const char* aStr, size_t aLen) override {
+    fprintf(mFile, "%s", aStr);
+  }
 };
 
 static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
@@ -2368,8 +2434,7 @@ static ReturnAbortOnError CheckDowngrade(nsIFile* aProfileDir,
  */
 static void ExtractCompatVersionInfo(const nsACString& aCompatVersion,
                                      nsACString& aAppVersion,
-                                     nsACString& aAppBuildID,
-                                     nsACString& aPlatformBuildID) {
+                                     nsACString& aAppBuildID) {
   int32_t underscorePos = aCompatVersion.FindChar('_');
   int32_t slashPos = aCompatVersion.FindChar('/');
 
@@ -2381,78 +2446,12 @@ static void ExtractCompatVersionInfo(const nsACString& aCompatVersion,
     // Fall back to just using the entire string as the version.
     aAppVersion = aCompatVersion;
     aAppBuildID.Truncate(0);
-    aPlatformBuildID.Truncate(0);
     return;
   }
 
   aAppVersion = Substring(aCompatVersion, 0, underscorePos);
   aAppBuildID = Substring(aCompatVersion, underscorePos + 1,
                           slashPos - (underscorePos + 1));
-  aPlatformBuildID = Substring(aCompatVersion, slashPos + 1);
-}
-
-/**
- * Compares two build IDs. Returns 0 if they match, < 0 if newID is considered
- * newer than oldID and > 0 if the oldID is considered newer than newID.
- */
-static int32_t CompareBuildIDs(nsACString& oldID, nsACString& newID) {
-  // For Mozilla builds the build ID is a numeric date string. But it is too
-  // large a number for the version comparator to handle so try to just compare
-  // them as integer values first.
-
-  // ToInteger64 succeeds if the strings contain trailing non-digits so first
-  // check that all the characters are digits.
-  bool isNumeric = true;
-  const char* pos = oldID.BeginReading();
-  const char* end = oldID.EndReading();
-  while (pos != end) {
-    if (!IsAsciiDigit(*pos)) {
-      isNumeric = false;
-      break;
-    }
-    pos++;
-  }
-
-  if (isNumeric) {
-    pos = newID.BeginReading();
-    end = newID.EndReading();
-    while (pos != end) {
-      if (!IsAsciiDigit(*pos)) {
-        isNumeric = false;
-        break;
-      }
-      pos++;
-    }
-  }
-
-  if (isNumeric) {
-    nsresult rv;
-    CheckedInt<uint64_t> oldVal = oldID.ToInteger64(&rv);
-
-    if (NS_SUCCEEDED(rv) && oldVal.isValid()) {
-      CheckedInt<uint64_t> newVal = newID.ToInteger64(&rv);
-
-      if (NS_SUCCEEDED(rv) && newVal.isValid()) {
-        // We have simple numbers for both IDs.
-        if (oldVal.value() == newVal.value()) {
-          return 0;
-        }
-
-        if (oldVal.value() > newVal.value()) {
-          return 1;
-        }
-
-        return -1;
-      }
-    }
-  }
-
-  // If either could not be parsed as a number then something (likely a Linux
-  // distribution could have modified the build ID in some way. We don't know
-  // what format this may be so let's just fall back to assuming that it's a
-  // valid toolkit version.
-  return CompareVersions(PromiseFlatCString(oldID).get(),
-                         PromiseFlatCString(newID).get());
 }
 
 /**
@@ -2462,14 +2461,6 @@ static int32_t CompareBuildIDs(nsACString& oldID, nsACString& newID) {
  */
 int32_t CompareCompatVersions(const nsACString& aOldCompatVersion,
                               const nsACString& aNewCompatVersion) {
-  // Quick path for the common case.
-  if (aOldCompatVersion.Equals(aNewCompatVersion)) {
-    return 0;
-  }
-
-  // The versions differ for some reason so we will only ever return false from
-  // here onwards. We just have to figure out if this is a downgrade or not.
-
   // Hardcode the case where the last run was in safe mode (Bug 1556612). We
   // cannot tell if this is a downgrade or not so just assume it isn't and let
   // the user proceed.
@@ -2477,41 +2468,30 @@ int32_t CompareCompatVersions(const nsACString& aOldCompatVersion,
     return -1;
   }
 
-  nsCString oldVersion;
-  nsCString oldAppBuildID;
-  nsCString oldPlatformBuildID;
-  ExtractCompatVersionInfo(aOldCompatVersion, oldVersion, oldAppBuildID,
-                           oldPlatformBuildID);
+  // Extract the major version part from the version string and only use that
+  // for version comparison.
+  int32_t index = aOldCompatVersion.FindChar('.');
+  const nsACString& oldMajorVersion = Substring(
+      aOldCompatVersion, 0, index < 0 ? aOldCompatVersion.Length() : index);
+  index = aNewCompatVersion.FindChar('.');
+  const nsACString& newMajorVersion = Substring(
+      aNewCompatVersion, 0, index < 0 ? aNewCompatVersion.Length() : index);
 
-  nsCString newVersion;
-  nsCString newAppBuildID;
-  nsCString newPlatformBuildID;
-  ExtractCompatVersionInfo(aNewCompatVersion, newVersion, newAppBuildID,
-                           newPlatformBuildID);
-
-  // In most cases the app version will differ and this is an easy check.
-  int32_t result = CompareVersions(oldVersion.get(), newVersion.get());
-  if (result != 0) {
-    return result;
-  }
-
-  // Fall back to build ID comparison.
-  result = CompareBuildIDs(oldAppBuildID, newAppBuildID);
-  if (result != 0) {
-    return result;
-  }
-
-  return CompareBuildIDs(oldPlatformBuildID, newPlatformBuildID);
+  return CompareVersions(PromiseFlatCString(oldMajorVersion).get(),
+                         PromiseFlatCString(newMajorVersion).get());
 }
 
 /**
  * Checks the compatibility.ini file to see if we have updated our application
  * or otherwise invalidated our caches. If the application has been updated,
- * we return false; otherwise, we return true. We also write the status
- * of the caches (valid/invalid) into the return param aCachesOK. The aCachesOK
- * is always invalid if the application has been updated. aIsDowngrade is set to
- * true if the current application is older than that previously used by the
- * profile.
+ * we return false; otherwise, we return true.
+ *
+ * We also write the status of the caches (valid/invalid) into the return param
+ * aCachesOK. The aCachesOK is always invalid if the application has been
+ * updated.
+ *
+ * Finally, aIsDowngrade is set to true if the current application is older
+ * than that previously used by the profile.
  */
 static bool CheckCompatibility(nsIFile* aProfileDir, const nsCString& aVersion,
                                const nsCString& aOSABI, nsIFile* aXULRunnerDir,
@@ -2520,6 +2500,8 @@ static bool CheckCompatibility(nsIFile* aProfileDir, const nsCString& aVersion,
                                nsCString& aLastVersion) {
   *aCachesOK = false;
   *aIsDowngrade = false;
+  gLastAppVersion.SetIsVoid(true);
+  gLastAppBuildID.SetIsVoid(true);
 
   nsCOMPtr<nsIFile> file;
   aProfileDir->Clone(getter_AddRefs(file));
@@ -2535,11 +2517,19 @@ static bool CheckCompatibility(nsIFile* aProfileDir, const nsCString& aVersion,
     return false;
   }
 
-  int32_t result = CompareCompatVersions(aLastVersion, aVersion);
-  if (result != 0) {
-    *aIsDowngrade = result > 0;
+  if (!aLastVersion.Equals(aVersion)) {
+    // The version is not the same. Whether it's a downgrade depends on an
+    // actual comparison:
+    *aIsDowngrade = 0 < CompareCompatVersions(aLastVersion, aVersion);
+    ExtractCompatVersionInfo(aLastVersion, gLastAppVersion, gLastAppBuildID);
     return false;
   }
+
+  // If we get here, the version matched, but there may still be other
+  // differences between us and the build that the profile last ran under.
+
+  gLastAppVersion.Assign(gAppData->version);
+  gLastAppBuildID.Assign(gAppData->buildID);
 
   nsAutoCString buf;
   rv = parser.GetString("Compatibility", "LastOSABI", buf);
@@ -3440,7 +3430,7 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
     mStartOffline = true;
   }
 
-  // Handle --help and --version command line arguments.
+  // Handle --help, --full-version and --version command line arguments.
   // They should return quickly, so we deal with them here.
   if (CheckArg("h") || CheckArg("help") || CheckArg("?")) {
     DumpHelp();
@@ -3454,12 +3444,22 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
     return 0;
   }
 
+<<<<<<< HEAD
   if (CheckArg("migratepwdff")) {
     ServiceMigratePasswordsFromFF(gArgc, gArgv);
     *aExitFlag = true;
     return 0;
   }
 
+||||||| merged common ancestors
+=======
+  if (CheckArg("full-version")) {
+    DumpFullVersion();
+    *aExitFlag = true;
+    return 0;
+  }
+
+>>>>>>> origin/upstream-releases
   rv = XRE_InitCommandLine(gArgc, gArgv);
   NS_ENSURE_SUCCESS(rv, 1);
 
@@ -3599,26 +3599,57 @@ static void AnnotateLSBRelease(void*) {
 #endif  // defined(XP_LINUX) && !defined(ANDROID)
 
 #ifdef XP_WIN
-static void ReadAheadDll(const wchar_t* dllName) {
+static void ReadAheadSystemDll(const wchar_t* dllName) {
   wchar_t dllPath[MAX_PATH];
   if (ConstructSystem32Path(dllName, dllPath, MAX_PATH)) {
     ReadAheadLib(dllPath);
   }
 }
 
-static void PR_CALLBACK ReadAheadDlls_ThreadStart(void*) {
-  // Load DataExchange.dll and twinapi.appcore.dll for nsWindow::EnableDragDrop
-  ReadAheadDll(L"DataExchange.dll");
-  ReadAheadDll(L"twinapi.appcore.dll");
+#  ifdef NIGHTLY_BUILD
+static void ReadAheadPackagedDll(const wchar_t* dllName,
+                                 const wchar_t* aGREDir) {
+  wchar_t dllPath[MAX_PATH];
+  swprintf(dllPath, MAX_PATH, L"%s\\%s", aGREDir, dllName);
+  ReadAheadLib(dllPath);
+}
+#  endif
+
+static void PR_CALLBACK ReadAheadDlls_ThreadStart(void* arg) {
+  UniquePtr<wchar_t[]> greDir(static_cast<wchar_t*>(arg));
+
+  // In Bug 1628903, we investigated which DLLs we should prefetch in
+  // order to reduce disk I/O and improve startup on Windows machines.
+  // Our ultimate goal is to measure the impact of these improvements on
+  // retention (see Bug 1640087). Before we place this within a pref,
+  // we should ensure this feature only ships to the nightly channel
+  // and monitor results from that subset.
+#  ifdef NIGHTLY_BUILD
+  // Prefetch the DLLs shipped with firefox
+  ReadAheadPackagedDll(L"libegl.dll", greDir.get());
+  ReadAheadPackagedDll(L"libGLESv2.dll", greDir.get());
+  ReadAheadPackagedDll(L"nssckbi.dll", greDir.get());
+  ReadAheadPackagedDll(L"freebl3.dll", greDir.get());
+  ReadAheadPackagedDll(L"softokn3.dll", greDir.get());
+
+  // Prefetch the system DLLs
+  ReadAheadSystemDll(L"DWrite.dll");
+  ReadAheadSystemDll(L"D3DCompiler_47.dll");
+#  else
+  // Load DataExchange.dll and twinapi.appcore.dll for
+  // nsWindow::EnableDragDrop
+  ReadAheadSystemDll(L"DataExchange.dll");
+  ReadAheadSystemDll(L"twinapi.appcore.dll");
 
   // Load twinapi.dll for WindowsUIUtils::UpdateTabletModeState
-  ReadAheadDll(L"twinapi.dll");
+  ReadAheadSystemDll(L"twinapi.dll");
 
   // Load explorerframe.dll for WinTaskbar::Initialize
-  ReadAheadDll(L"ExplorerFrame.dll");
+  ReadAheadSystemDll(L"ExplorerFrame.dll");
 
   // Load WinTypes.dll for nsOSHelperAppService::GetApplicationDescription
-  ReadAheadDll(L"WinTypes.dll");
+  ReadAheadSystemDll(L"WinTypes.dll");
+#  endif
 }
 #endif
 
@@ -4092,7 +4123,7 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
   // profile was started with.  The format of the version stamp is defined
   // by the BuildVersion function.
   // Also check to see if something has happened to invalidate our
-  // fastload caches, like an extension upgrade or installation.
+  // fastload caches, like an app upgrade.
 
   // If we see .purgecaches, that means someone did a make.
   // Re-register components to catch potential changes.
@@ -4111,7 +4142,7 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
       mProfD, version, osABI, mDirProvider.GetGREDir(), mAppData->directory,
       flagFile, &cachesOK, &isDowngrade, lastVersion);
 
-  MOZ_RELEASE_ASSERT(!cachesOK || versionOK,
+  MOZ_RELEASE_ASSERT(!cachesOK || lastVersion.Equals(version),
                      "Caches cannot be good if the version has changed.");
 
 #ifdef MOZ_BLOCK_PROFILE_DOWNGRADE
@@ -4307,9 +4338,20 @@ nsresult XREMain::XRE_mainRun() {
 
 #ifdef XP_WIN
   if (!PR_GetEnv("XRE_NO_DLL_READAHEAD")) {
-    PR_CreateThread(PR_USER_THREAD, ReadAheadDlls_ThreadStart, 0,
-                    PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD, PR_UNJOINABLE_THREAD,
-                    0);
+    nsCOMPtr<nsIFile> greDir = mDirProvider.GetGREDir();
+    nsAutoString path;
+    rv = greDir->GetPath(path);
+    if (NS_SUCCEEDED(rv)) {
+      PRThread* readAheadThread;
+      wchar_t* pathRaw = new wchar_t[MAX_PATH];
+      wcscpy_s(pathRaw, MAX_PATH, path.get());
+      readAheadThread = PR_CreateThread(
+          PR_USER_THREAD, ReadAheadDlls_ThreadStart, (void*)pathRaw,
+          PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD, PR_UNJOINABLE_THREAD, 0);
+      if (readAheadThread == NULL) {
+        delete[] pathRaw;
+      }
+    }
   }
 #endif
 
@@ -4728,6 +4770,18 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
   mozilla::IOInterposerInit ioInterposerGuard;
 
 #if defined(XP_WIN)
+  // Initializing COM below may load modules via SetWindowHookEx, some of
+  // which may modify the executable's IAT for ntdll.dll.  If that happens,
+  // this browser process fails to launch sandbox processes because we cannot
+  // copy a modified IAT into a remote process (See SandboxBroker::LaunchApp).
+  // To prevent that, we cache the intact IAT before COM initialization.
+  // If EAF+ is enabled, CacheNtDllThunk() causes a crash, but EAF+ will
+  // also prevent an injected module from parsing the PE headers and modifying
+  // the IAT.  Therefore, we can skip CacheNtDllThunk().
+  if (!mozilla::IsEafPlusEnabled()) {
+    mozilla::ipc::GeckoChildProcessHost::CacheNtDllThunk();
+  }
+
   // Some COM settings are global to the process and must be set before any non-
   // trivial COM is run in the application. Since these settings may affect
   // stability, we should instantiate COM ASAP so that we can ensure that these
@@ -4791,6 +4845,9 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
   // has gone out of scope.  see bug #386739 for more details
   mProfileLock->Unlock();
   gProfileLock = nullptr;
+
+  gLastAppVersion.Truncate();
+  gLastAppBuildID.Truncate();
 
   mozilla::AppShutdown::MaybeDoRestart();
 
@@ -4939,18 +4996,6 @@ bool XRE_UseNativeEventProcessing() {
 
   return true;
 }
-
-#if defined(XP_WIN)
-bool XRE_Win32kCallsAllowed() {
-  switch (XRE_GetProcessType()) {
-    case GeckoProcessType_GMPlugin:
-    case GeckoProcessType_RDD:
-      return false;
-    default:
-      return true;
-  }
-}
-#endif
 
 // If you add anything to this enum, please update about:support to reflect it
 enum {

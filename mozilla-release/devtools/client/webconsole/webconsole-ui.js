@@ -197,8 +197,8 @@ class WebConsoleUI {
 
     // TODO: Re-enable as part of Bug 1627167.
     // const resourceWatcher = this.hud.resourceWatcher;
-    // resourceWatcher.unwatch(
-    //   [resourceWatcher.TYPES.CONSOLE_MESSAGES],
+    // resourceWatcher.unwatchResources(
+    //   [resourceWatcher.TYPES.CONSOLE_MESSAGE],
     //   this._onResourceAvailable
     // );
 
@@ -330,22 +330,20 @@ class WebConsoleUI {
       this._onTargetAvailable,
       this._onTargetDestroy
     );
-    // TODO: Re-enable as part of Bug 1627167.
-    // const resourceWatcher = this.hud.resourceWatcher;
-    // await resourceWatcher.watch(
-    //   [resourceWatcher.TYPES.CONSOLE_MESSAGES],
-    //   this._onResourceAvailable
-    // );
+
+    const resourceWatcher = this.hud.resourceWatcher;
+    await resourceWatcher.watchResources(
+      [
+        resourceWatcher.TYPES.CONSOLE_MESSAGE,
+        resourceWatcher.TYPES.ERROR_MESSAGE,
+        resourceWatcher.TYPES.PLATFORM_MESSAGE,
+      ],
+      { onAvailable: this._onResourceAvailable }
+    );
   }
 
   _onResourceAvailable({ resourceType, targetFront, resource }) {
-    const resourceWatcher = this.hud.resourceWatcher;
-    if (resourceType == resourceWatcher.TYPES.CONSOLE_MESSAGES) {
-      // resource is the packet sent from `ConsoleActor.getCachedMessages().messages`
-      // or via ConsoleActor's `consoleAPICall` event.
-      resource.type = "consoleAPICall";
-      this.wrapper.dispatchMessageAdd(resource);
-    }
+    this.wrapper.dispatchMessageAdd(resource);
   }
 
   /**
@@ -353,34 +351,25 @@ class WebConsoleUI {
    * i.e. it was already existing or has just been created.
    *
    * @private
-   * @param string type
-   *        One of the string of TargetList.TYPES to describe which
-   *        type of target is available.
    * @param Front targetFront
    *        The Front of the target that is available.
    *        This Front inherits from TargetMixin and is typically
    *        composed of a BrowsingContextTargetFront or ContentProcessTargetFront.
-   * @param boolean isTopLevel
-   *        If true, means that this is the top level target.
-   *        This typically happens on startup, providing the current
-   *        top level target. But also on navigation, when we navigate
-   *        to an URL which has to be loaded in a distinct process.
-   *        A new top level target is created.
    */
-  async _onTargetAvailable({ type, targetFront, isTopLevel }) {
+  async _onTargetAvailable({ targetFront }) {
     const dispatchTargetAvailable = () => {
       const store = this.wrapper && this.wrapper.getStore();
       if (store) {
         this.wrapper.getStore().dispatch({
           type: constants.TARGET_AVAILABLE,
-          targetType: type,
+          targetType: targetFront.targetType,
         });
       }
     };
 
     // This is a top level target. It may update on process switches
     // when navigating to another domain.
-    if (isTopLevel) {
+    if (targetFront.isTopLevel) {
       const fissionSupport = Services.prefs.getBoolPref(
         constants.PREFS.FEATURES.BROWSER_TOOLBOX_FISSION
       );
@@ -405,8 +394,9 @@ class WebConsoleUI {
       isContentToolbox &&
       Services.prefs.getBoolPref("devtools.contenttoolbox.fission");
     if (
-      type != this.hud.targetList.TYPES.PROCESS &&
-      (type != this.hud.targetList.TYPES.FRAME || !listenForFrames)
+      targetFront.targetType != this.hud.targetList.TYPES.PROCESS &&
+      (targetFront.targetType != this.hud.targetList.TYPES.FRAME ||
+        !listenForFrames)
     ) {
       return;
     }
@@ -422,8 +412,8 @@ class WebConsoleUI {
    * @private
    * See _onTargetAvailable for param's description.
    */
-  _onTargetDestroyed({ type, targetFront, isTopLevel }) {
-    if (isTopLevel) {
+  _onTargetDestroyed({ targetFront }) {
+    if (targetFront.isTopLevel) {
       this.proxy.disconnect();
       this.proxy = null;
     } else {
@@ -578,13 +568,14 @@ class WebConsoleUI {
    *        Notification packet received from the server.
    */
   async handleTabNavigated(packet) {
+    // Wait for completion of any async dispatch before notifying that the console
+    // is fully updated after a page reload
+    await this.wrapper.waitAsyncDispatches();
+
     if (!packet.nativeConsoleAPI) {
       this.logWarningAboutReplacedAPI();
     }
 
-    // Wait for completion of any async dispatch before notifying that the console
-    // is fully updated after a page reload
-    await this.wrapper.waitAsyncDispatches();
     this.emit("reloaded");
   }
 

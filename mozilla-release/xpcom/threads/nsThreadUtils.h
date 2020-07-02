@@ -12,6 +12,7 @@
 
 #include "MainThreadUtils.h"
 #include "mozilla/AbstractEventQueue.h"
+#include "mozilla/AbstractThread.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Maybe.h"
@@ -56,14 +57,30 @@ extern nsresult NS_NewNamedThread(
     nsIRunnable* aInitialEvent = nullptr,
     uint32_t aStackSize = nsIThreadManager::DEFAULT_STACK_SIZE);
 
+extern nsresult NS_NewNamedThread(
+    const nsACString& aName, nsIThread** aResult,
+    already_AddRefed<nsIRunnable> aInitialEvent,
+    uint32_t aStackSize = nsIThreadManager::DEFAULT_STACK_SIZE);
+
+template <size_t LEN>
+inline nsresult NS_NewNamedThread(
+    const char (&aName)[LEN], nsIThread** aResult,
+    already_AddRefed<nsIRunnable> aInitialEvent,
+    uint32_t aStackSize = nsIThreadManager::DEFAULT_STACK_SIZE) {
+  static_assert(LEN <= 16, "Thread name must be no more than 16 characters");
+  return NS_NewNamedThread(nsDependentCString(aName, LEN - 1), aResult,
+                           std::move(aInitialEvent), aStackSize);
+}
+
 template <size_t LEN>
 inline nsresult NS_NewNamedThread(
     const char (&aName)[LEN], nsIThread** aResult,
     nsIRunnable* aInitialEvent = nullptr,
     uint32_t aStackSize = nsIThreadManager::DEFAULT_STACK_SIZE) {
+  nsCOMPtr<nsIRunnable> event = aInitialEvent;
   static_assert(LEN <= 16, "Thread name must be no more than 16 characters");
   return NS_NewNamedThread(nsDependentCString(aName, LEN - 1), aResult,
-                           aInitialEvent, aStackSize);
+                           event.forget(), aStackSize);
 }
 
 /**
@@ -1750,7 +1767,7 @@ extern mozilla::TimeStamp NS_GetTimerDeadlineHintOnCurrentThread(
 extern nsresult NS_DispatchBackgroundTask(
     already_AddRefed<nsIRunnable> aEvent,
     uint32_t aDispatchFlags = NS_DISPATCH_NORMAL);
-extern nsresult NS_DispatchBackgroundTask(
+extern "C" nsresult NS_DispatchBackgroundTask(
     nsIRunnable* aEvent, uint32_t aDispatchFlags = NS_DISPATCH_NORMAL);
 
 /**
@@ -1782,12 +1799,115 @@ nsISerialEventTarget* GetCurrentThreadSerialEventTarget();
 
 nsISerialEventTarget* GetMainThreadSerialEventTarget();
 
+// Returns a wrapper around the current thread which routes normal dispatches
+// through the tail dispatcher.
+// This means that they will run at the end of the current task, rather than
+// after all the subsequent tasks queued. This is useful to allow MozPromise
+// callbacks returned by IPDL methods to avoid an extra trip through the event
+// loop, and thus maintain correct ordering relative to other IPC events. The
+// current thread implementation must support tail dispatch.
+class TailDispatchingTarget : public nsISerialEventTarget {
+ public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+  TailDispatchingTarget()
+#if DEBUG
+      : mOwnerThread(AbstractThread::GetCurrent())
+#endif
+  {
+    MOZ_ASSERT(mOwnerThread, "Must be used with AbstractThreads");
+  }
+
+  NS_IMETHOD
+  Dispatch(already_AddRefed<nsIRunnable> event, uint32_t flags) override {
+    MOZ_ASSERT(flags == DISPATCH_NORMAL);
+    MOZ_ASSERT(
+        AbstractThread::GetCurrent() == mOwnerThread,
+        "TailDispatchingTarget can only be used on the thread upon which it "
+        "was created - see the comment on the class declaration.");
+    AbstractThread::DispatchDirectTask(std::move(event));
+    return NS_OK;
+  }
+  NS_IMETHOD_(bool) IsOnCurrentThreadInfallible(void) override { return true; }
+  NS_IMETHOD IsOnCurrentThread(bool* _retval) override {
+    *_retval = true;
+    return NS_OK;
+  }
+  NS_IMETHOD DispatchFromScript(nsIRunnable* event, uint32_t flags) override {
+    MOZ_ASSERT_UNREACHABLE("not implemented");
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+  NS_IMETHOD DelayedDispatch(already_AddRefed<nsIRunnable> event,
+                             uint32_t delay) override {
+    MOZ_ASSERT_UNREACHABLE("not implemented");
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+
+ private:
+  virtual ~TailDispatchingTarget() = default;
+#if DEBUG
+  const RefPtr<AbstractThread> mOwnerThread;
+#endif
+};
+
 // Returns the number of CPUs, like PR_GetNumberOfProcessors, except
 // that it can return a cached value on platforms where sandboxing
 // would prevent reading the current value (currently Linux).  CPU
 // hotplugging is uncommon, so this is unlikely to make a difference
 // in practice.
 size_t GetNumberOfProcessors();
+
+/**
+ * A helper class to log tasks dispatch and run with "MOZ_LOG=events:1".  The
+ * output is more machine readable and creates a link between dispatch and run.
+ *
+ * Usage example for the concrete template type nsIRunnable.
+ * To log a dispatch, which means putting an event to a queue:
+ *   LogRunnable::LogDispatch(event);
+ *   theQueue.putEvent(event);
+ *
+ * To log execution (running) of the event:
+ *   nsCOMPtr<nsIRunnable> event = theQueue.popEvent();
+ *   {
+ *     LogRunnable::Run log(event);
+ *     event->Run();
+ *     event = null;  // to include the destructor code in the span
+ *   }
+ *
+ * The class is a template so that we can support various specific super-types
+ * of tasks in the future.  We can't use void* because it may cast differently
+ * and tracking the pointer in logs would then be impossible.
+ */
+template <typename T>
+class LogTaskBase {
+ public:
+  LogTaskBase() = delete;
+
+  // Adds a simple log about dispatch of this runnable.
+  static void LogDispatch(T* aEvent);
+
+  // This is designed to surround a call to `Run()` or any code representing
+  // execution of the task body.
+  // The constructor adds a simple log about start of the runnable execution and
+  // the destructor adds a log about ending the execution.
+  class MOZ_RAII Run {
+   public:
+    Run() = delete;
+    explicit Run(T* aEvent, bool aWillRunAgain = false);
+    ~Run();
+
+    // When this is called, the log in this RAII dtor will only say
+    // "interrupted" expecting that the event will run again.
+    void WillRunAgain() { mWillRunAgain = true; }
+
+   private:
+    T* mEvent;
+    bool mWillRunAgain = false;
+  };
+};
+
+typedef LogTaskBase<nsIRunnable> LogRunnable;
+// If you add new types don't forget to add:
+// `template class LogTaskBase<YourType>;` to nsThreadUtils.cpp
 
 }  // namespace mozilla
 

@@ -33,35 +33,37 @@ using namespace dom;
 
 StyleSheet::StyleSheet(css::SheetParsingMode aParsingMode, CORSMode aCORSMode,
                        const dom::SRIMetadata& aIntegrity)
-    : mParent(nullptr),
+    : mParentSheet(nullptr),
+      mRelevantGlobal(nullptr),
       mConstructorDocument(nullptr),
       mDocumentOrShadowRoot(nullptr),
       mOwningNode(nullptr),
       mOwnerRule(nullptr),
       mParsingMode(aParsingMode),
       mState(static_cast<State>(0)),
-      mAssociationMode(NotOwnedByDocumentOrShadowRoot),
       mInner(new StyleSheetInfo(aCORSMode, aIntegrity, aParsingMode)) {
   mInner->AddSheet(this);
 }
 
-StyleSheet::StyleSheet(const StyleSheet& aCopy, StyleSheet* aParentToUse,
+StyleSheet::StyleSheet(const StyleSheet& aCopy, StyleSheet* aParentSheetToUse,
                        dom::CSSImportRule* aOwnerRuleToUse,
-                       dom::DocumentOrShadowRoot* aDocumentOrShadowRoot,
+                       dom::DocumentOrShadowRoot* aDocOrShadowRootToUse,
+                       dom::Document* aConstructorDocToUse,
                        nsINode* aOwningNodeToUse)
-    : mParent(aParentToUse),
-      mConstructorDocument(aCopy.mConstructorDocument),
+    : mParentSheet(aParentSheetToUse),
+      mRelevantGlobal(nullptr),
+      mConstructorDocument(aConstructorDocToUse),
       mTitle(aCopy.mTitle),
-      mDocumentOrShadowRoot(aDocumentOrShadowRoot),
+      mDocumentOrShadowRoot(aDocOrShadowRootToUse),
       mOwningNode(aOwningNodeToUse),
       mOwnerRule(aOwnerRuleToUse),
       mParsingMode(aCopy.mParsingMode),
       mState(aCopy.mState),
-      // We only use this constructor during cloning.  It's the cloner's
-      // responsibility to notify us if we end up being owned by a document.
-      mAssociationMode(NotOwnedByDocumentOrShadowRoot),
       // Shallow copy, but concrete subclasses will fix up.
       mInner(aCopy.mInner) {
+  MOZ_ASSERT(!aConstructorDocToUse || aCopy.IsConstructed());
+  MOZ_ASSERT(!aConstructorDocToUse || !aDocOrShadowRootToUse,
+             "Should never have both of these together.");
   MOZ_ASSERT(mInner, "Should only copy StyleSheets with an mInner.");
   mInner->AddSheet(this);
   // CSSOM's been there, force full copy now.
@@ -159,30 +161,30 @@ Document* StyleSheet::GetAssociatedDocument() const {
 
 dom::DocumentOrShadowRoot* StyleSheet::GetAssociatedDocumentOrShadowRoot()
     const {
-  if (mDocumentOrShadowRoot) {
-    return mDocumentOrShadowRoot;
+  const StyleSheet& outer = OutermostSheet();
+  if (outer.mDocumentOrShadowRoot) {
+    return outer.mDocumentOrShadowRoot;
   }
-  for (auto* sheet = this; sheet; sheet = sheet->mParent) {
-    MOZ_ASSERT(!sheet->mDocumentOrShadowRoot);
-    if (sheet->IsConstructed()) {
-      return sheet->mConstructorDocument;
-    }
+  if (outer.IsConstructed()) {
+    return outer.mConstructorDocument;
   }
   return nullptr;
 }
 
-Document* StyleSheet::GetComposedDoc() const {
-  return mDocumentOrShadowRoot
-             ? mDocumentOrShadowRoot->AsNode().GetComposedDoc()
-             : nullptr;
-}
-
-bool StyleSheet::IsKeptAliveByDocument() const {
-  if (mAssociationMode != OwnedByDocumentOrShadowRoot) {
-    return false;
+Document* StyleSheet::GetKeptAliveByDocument() const {
+  const StyleSheet& outer = OutermostSheet();
+  if (outer.mDocumentOrShadowRoot) {
+    return outer.mDocumentOrShadowRoot->AsNode().GetComposedDoc();
   }
-
-  return !!GetComposedDoc();
+  if (outer.IsConstructed()) {
+    for (DocumentOrShadowRoot* adopter : outer.mAdopters) {
+      MOZ_ASSERT(adopter->AsNode().OwnerDoc() == outer.mConstructorDocument);
+      if (adopter->AsNode().IsInComposedDoc()) {
+        return outer.mConstructorDocument.get();
+      }
+    }
+  }
+  return nullptr;
 }
 
 void StyleSheet::LastRelease() {
@@ -208,14 +210,8 @@ void StyleSheet::UnlinkInner() {
   }
 
   for (StyleSheet* child : ChildSheets()) {
-    MOZ_ASSERT(child->mParent == this, "We have a unique inner!");
-    child->mParent = nullptr;
-    // We (and child) might still think we're owned by a document, because
-    // unlink order is non-deterministic, so the document's unlink, which would
-    // tell us it doesn't own us anymore, may not have happened yet.  But if
-    // we're being unlinked, clearly we're not owned by a document anymore
-    // conceptually!
-    child->ClearAssociatedDocumentOrShadowRoot();
+    MOZ_ASSERT(child->mParentSheet == this, "We have a unique inner!");
+    child->mParentSheet = nullptr;
   }
   Inner().mChildren.Clear();
 }
@@ -253,6 +249,7 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(StyleSheet)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(StyleSheet)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMedia)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mRuleList)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mRelevantGlobal)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mConstructorDocument)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mReplacePromise)
   tmp->TraverseInner(cb);
@@ -262,6 +259,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(StyleSheet)
   tmp->DropMedia();
   tmp->UnlinkInner();
   tmp->DropRuleList();
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mRelevantGlobal)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mConstructorDocument)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mReplacePromise)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
@@ -310,11 +308,12 @@ void StyleSheet::ApplicableStateChanged(bool aApplicable) {
     }
   };
 
-  if (mDocumentOrShadowRoot) {
-    Notify(*mDocumentOrShadowRoot);
+  const StyleSheet& sheet = OutermostSheet();
+  if (sheet.mDocumentOrShadowRoot) {
+    Notify(*sheet.mDocumentOrShadowRoot);
   }
 
-  for (DocumentOrShadowRoot* adopter : mAdopters) {
+  for (DocumentOrShadowRoot* adopter : sheet.mAdopters) {
     MOZ_ASSERT(adopter, "adopters should never be null");
     Notify(*adopter);
   }
@@ -419,9 +418,7 @@ void StyleSheetInfo::RemoveSheet(StyleSheet* aSheet) {
   if (aSheet == mSheets[0] && mSheets.Length() > 1) {
     StyleSheet* newParent = mSheets[1];
     for (StyleSheet* child : mChildren) {
-      child->mParent = newParent;
-      child->SetAssociatedDocumentOrShadowRoot(newParent->mDocumentOrShadowRoot,
-                                               newParent->mAssociationMode);
+      child->mParentSheet = newParent;
     }
   }
 
@@ -487,28 +484,29 @@ void StyleSheet::DropStyleSet(ServoStyleSet* aStyleSet) {
 
 // NOTE(emilio): Composed doc and containing shadow root are set in child sheets
 // too, so no need to do it for each ancestor.
-#define NOTIFY(function_, args_)                                      \
-  do {                                                                \
-    if (auto* shadow = GetContainingShadow()) {                       \
-      shadow->function_ args_;                                        \
-    }                                                                 \
-    if (auto* doc = GetComposedDoc()) {                               \
-      doc->function_ args_;                                           \
-    }                                                                 \
-    StyleSheet* current = this;                                       \
-    do {                                                              \
-      for (ServoStyleSet * set : current->mStyleSets) {               \
-        set->function_ args_;                                         \
-      }                                                               \
-      for (auto* adopter : mAdopters) {                               \
-        if (auto* shadow = ShadowRoot::FromNode(adopter->AsNode())) { \
-          shadow->function_ args_;                                    \
-        } else {                                                      \
-          adopter->AsNode().AsDocument()->function_ args_;            \
-        }                                                             \
-      }                                                               \
-      current = current->mParent;                                     \
-    } while (current);                                                \
+#define NOTIFY(function_, args_)                                          \
+  do {                                                                    \
+    StyleSheet* current = this;                                           \
+    do {                                                                  \
+      for (ServoStyleSet * set : current->mStyleSets) {                   \
+        set->function_ args_;                                             \
+      }                                                                   \
+      if (auto* docOrShadow = current->mDocumentOrShadowRoot) {           \
+        if (auto* shadow = ShadowRoot::FromNode(docOrShadow->AsNode())) { \
+          shadow->function_ args_;                                        \
+        } else {                                                          \
+          docOrShadow->AsNode().AsDocument()->function_ args_;            \
+        }                                                                 \
+      }                                                                   \
+      for (auto* adopter : mAdopters) {                                   \
+        if (auto* shadow = ShadowRoot::FromNode(adopter->AsNode())) {     \
+          shadow->function_ args_;                                        \
+        } else {                                                          \
+          adopter->AsNode().AsDocument()->function_ args_;                \
+        }                                                                 \
+      }                                                                   \
+      current = current->mParentSheet;                                    \
+    } while (current);                                                    \
   } while (0)
 
 void StyleSheet::EnsureUniqueInner() {
@@ -665,7 +663,14 @@ void StyleSheet::MaybeRejectReplacePromise() {
 // https://wicg.github.io/construct-stylesheets/#dom-cssstylesheet-replace
 already_AddRefed<dom::Promise> StyleSheet::Replace(const nsACString& aText,
                                                    ErrorResult& aRv) {
-  nsIGlobalObject* globalObject = mConstructorDocument->GetScopeObject();
+  nsIGlobalObject* globalObject = nullptr;
+  const StyleSheet& outer = OutermostSheet();
+  if (outer.mRelevantGlobal) {
+    globalObject = outer.mRelevantGlobal;
+  } else if (Document* doc = outer.GetAssociatedDocument()) {
+    globalObject = doc->GetScopeObject();
+  }
+
   RefPtr<dom::Promise> promise = dom::Promise::Create(globalObject, aRv);
   if (!promise) {
     return nullptr;
@@ -674,7 +679,7 @@ already_AddRefed<dom::Promise> StyleSheet::Replace(const nsACString& aText,
   // Step 1 and 4 are variable declarations
 
   // 2.1 Check if sheet is constructed, else reject promise.
-  if (!mConstructorDocument) {
+  if (!IsConstructed()) {
     promise->MaybeRejectWithNotAllowedError(
         "This method can only be called on "
         "constructed style sheets");
@@ -695,7 +700,8 @@ already_AddRefed<dom::Promise> StyleSheet::Replace(const nsACString& aText,
   auto* loader = mConstructorDocument->CSSLoader();
   auto loadData = MakeRefPtr<css::SheetLoadData>(
       loader, GetBaseURI(), this, /* aSyncLoad */ false,
-      /* aUseSystemPrincipal */ false, /* aPreloadEncoding */ nullptr,
+      css::Loader::UseSystemPrincipal::No, css::Loader::IsPreload::No,
+      /* aPreloadEncoding */ nullptr,
       /* aObserver */ nullptr, /* aLoaderPrincipal */ nullptr,
       GetReferrerInfo(),
       /* aRequestingNode */ nullptr);
@@ -724,7 +730,7 @@ void StyleSheet::ReplaceSync(const nsACString& aText, ErrorResult& aRv) {
   // Step 1 is a variable declaration
 
   // 2.1 Check if sheet is constructed, else throw.
-  if (!mConstructorDocument) {
+  if (!IsConstructed()) {
     return aRv.ThrowNotAllowedError(
         "Can only be called on constructed style sheets");
   }
@@ -783,14 +789,6 @@ nsresult StyleSheet::DeleteRuleFromGroup(css::GroupRule* aGroup,
 
   RuleRemoved(*rule);
   return NS_OK;
-}
-
-ShadowRoot* StyleSheet::GetContainingShadow() const {
-  auto* docOrShadow = GetAssociatedDocumentOrShadowRoot();
-  if (!docOrShadow) {
-    return nullptr;
-  }
-  return ShadowRoot::FromNode(docOrShadow->AsNode());
 }
 
 void StyleSheet::RuleAdded(css::Rule& aRule) {
@@ -872,34 +870,32 @@ uint64_t StyleSheet::FindOwningWindowInnerID() const {
     }
   }
 
-  if (windowID == 0 && mParent) {
-    windowID = mParent->FindOwningWindowInnerID();
+  if (windowID == 0 && mParentSheet) {
+    windowID = mParentSheet->FindOwningWindowInnerID();
   }
 
   return windowID;
 }
 
 void StyleSheet::RemoveFromParent() {
-  if (!mParent) {
+  if (!mParentSheet) {
     return;
   }
 
-  MOZ_ASSERT(mParent->ChildSheets().Contains(this));
-  mParent->Inner().mChildren.RemoveElement(this);
-  mParent = nullptr;
-  ClearAssociatedDocumentOrShadowRoot();
+  MOZ_ASSERT(mParentSheet->ChildSheets().Contains(this));
+  mParentSheet->Inner().mChildren.RemoveElement(this);
+  mParentSheet = nullptr;
 }
 
 void StyleSheet::UnparentChildren() {
-  // XXXbz this is a little bogus; see the XXX comment where we
-  // declare mFirstChild in StyleSheetInfo.
+  MOZ_ASSERT(!mDocumentOrShadowRoot,
+             "How did we get to the destructor, exactly, if we're owned "
+             "by a document?");
+  // XXXbz this is a little bogus; see the comment where we
+  // declare mChildren in StyleSheetInfo.
   for (StyleSheet* child : ChildSheets()) {
-    if (child->mParent == this) {
-      child->mParent = nullptr;
-      MOZ_ASSERT(child->mAssociationMode == NotOwnedByDocumentOrShadowRoot,
-                 "How did we get to the destructor, exactly, if we're owned "
-                 "by a document?");
-      child->mDocumentOrShadowRoot = nullptr;
+    if (child->mParentSheet == this) {
+      child->mParentSheet = nullptr;
     }
   }
 }
@@ -959,22 +955,17 @@ bool StyleSheet::AreRulesAvailable(nsIPrincipal& aSubjectPrincipal,
 }
 
 void StyleSheet::SetAssociatedDocumentOrShadowRoot(
-    DocumentOrShadowRoot* aDocOrShadowRoot, AssociationMode aAssociationMode) {
-  MOZ_ASSERT(aDocOrShadowRoot ||
-             aAssociationMode == NotOwnedByDocumentOrShadowRoot);
+    DocumentOrShadowRoot* aDocOrShadowRoot) {
+  MOZ_ASSERT(!IsConstructed());
+  MOZ_ASSERT(!mParentSheet || !aDocOrShadowRoot,
+             "Shouldn't be set on child sheets");
 
   // not ref counted
   mDocumentOrShadowRoot = aDocOrShadowRoot;
-  mAssociationMode = aAssociationMode;
 
-  // Now set the same document on all our child sheets....
-  // XXXbz this is a little bogus; see the XXX comment where we
-  // declare mFirstChild.
-  for (StyleSheet* child : ChildSheets()) {
-    if (child->mParent == this) {
-      child->SetAssociatedDocumentOrShadowRoot(aDocOrShadowRoot,
-                                               aAssociationMode);
-    }
+  if (Document* doc = GetAssociatedDocument()) {
+    MOZ_ASSERT(!mRelevantGlobal);
+    mRelevantGlobal = doc->GetScopeObject();
   }
 }
 
@@ -990,9 +981,7 @@ void StyleSheet::AppendStyleSheetSilently(StyleSheet& aSheet) {
 
   // This is not reference counted. Our parent tells us when
   // it's going away.
-  aSheet.mParent = this;
-  aSheet.SetAssociatedDocumentOrShadowRoot(mDocumentOrShadowRoot,
-                                           mAssociationMode);
+  aSheet.mParentSheet = this;
 }
 
 size_t StyleSheet::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const {
@@ -1015,34 +1004,75 @@ size_t StyleSheet::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const {
   return n;
 }
 
-#ifdef DEBUG
-void StyleSheet::List(FILE* out, int32_t aIndent) const {
-  int32_t index;
-
-  // Indent
-  nsAutoCString str;
-  for (index = aIndent; --index >= 0;) {
-    str.AppendLiteral("  ");
+#if defined(DEBUG) || defined(MOZ_LAYOUT_DEBUGGER)
+void StyleSheet::List(FILE* aOut, int32_t aIndent) {
+  for (StyleSheet* child : ChildSheets()) {
+    child->List(aOut, aIndent);
   }
 
-  str.AppendLiteral("CSS Style Sheet: ");
-  nsAutoCString urlSpec;
-  nsresult rv = GetSheetURI()->GetSpec(urlSpec);
-  if (NS_SUCCEEDED(rv) && !urlSpec.IsEmpty()) {
-    str.Append(urlSpec);
+  nsCString line;
+  for (int i = 0; i < aIndent; ++i) {
+    line.AppendLiteral("  ");
+  }
+
+  line.AppendLiteral("/* ");
+
+  nsCString url;
+  GetSheetURI()->GetSpec(url);
+  if (url.IsEmpty()) {
+    line.AppendLiteral("(no URL)");
+  } else {
+    line.Append(url);
+  }
+
+  line.AppendLiteral(" (");
+
+  switch (GetOrigin()) {
+    case StyleOrigin::UserAgent:
+      line.AppendLiteral("User Agent");
+      break;
+    case StyleOrigin::User:
+      line.AppendLiteral("User");
+      break;
+    case StyleOrigin::Author:
+      line.AppendLiteral("Author");
+      break;
   }
 
   if (mMedia) {
-    str.AppendLiteral(" media: ");
-    nsAutoString buffer;
+    nsString buffer;
     mMedia->GetText(buffer);
-    AppendUTF16toUTF8(buffer, str);
-  }
-  str.Append('\n');
-  fprintf_stderr(out, "%s", str.get());
 
-  for (const StyleSheet* child : ChildSheets()) {
-    child->List(out, aIndent + 1);
+    if (!buffer.IsEmpty()) {
+      line.AppendLiteral(", ");
+      AppendUTF16toUTF8(buffer, line);
+    }
+  }
+
+  line.AppendLiteral(") */");
+
+  fprintf_stderr(aOut, "%s\n\n", line.get());
+
+  nsCString newlineIndent;
+  newlineIndent.Append('\n');
+  for (int i = 0; i < aIndent; ++i) {
+    newlineIndent.AppendLiteral("  ");
+  }
+
+  ServoCSSRuleList* ruleList = GetCssRulesInternal();
+  for (uint32_t i = 0, len = ruleList->Length(); i < len; ++i) {
+    nsString cssText;
+    css::Rule* rule = ruleList->GetRule(i);
+    rule->GetCssText(cssText);
+
+    NS_ConvertUTF16toUTF8 s(cssText);
+    s.ReplaceSubstring(NS_LITERAL_CSTRING("\n"), newlineIndent);
+
+    fprintf_stderr(aOut, "%s\n", s.get());
+  }
+
+  if (ruleList->Length() != 0) {
+    fprintf_stderr(aOut, "\n");
   }
 }
 #endif
@@ -1261,17 +1291,13 @@ void StyleSheet::ReparseSheet(const nsACString& aInput, ErrorResult& aRv) {
 
   // Clean up child sheets list.
   for (StyleSheet* child : ChildSheets()) {
-    child->mParent = nullptr;
-    child->ClearAssociatedDocumentOrShadowRoot();
+    child->mParentSheet = nullptr;
   }
   Inner().mChildren.Clear();
 
   uint32_t lineNumber = 1;
-  if (mOwningNode) {
-    nsCOMPtr<nsIStyleSheetLinkingElement> link = do_QueryInterface(mOwningNode);
-    if (link) {
-      lineNumber = link->GetLineNumber();
-    }
+  if (auto* linkStyle = LinkStyle::FromNodeOrNull(mOwningNode)) {
+    lineNumber = linkStyle->GetLineNumber();
   }
 
   // Notify to the stylesets about the old rules going away.
@@ -1323,9 +1349,9 @@ already_AddRefed<StyleSheet> StyleSheet::Clone(
     nsINode* aCloneOwningNode) const {
   MOZ_ASSERT(!IsConstructed(),
              "Cannot create a non-constructed sheet from a constructed sheet");
-  RefPtr<StyleSheet> clone =
-      new StyleSheet(*this, aCloneParent, aCloneOwnerRule,
-                     aCloneDocumentOrShadowRoot, aCloneOwningNode);
+  RefPtr<StyleSheet> clone = new StyleSheet(
+      *this, aCloneParent, aCloneOwnerRule, aCloneDocumentOrShadowRoot,
+      /* aConstructorDocToUse */ nullptr, aCloneOwningNode);
   return clone.forget();
 }
 
@@ -1335,12 +1361,12 @@ already_AddRefed<StyleSheet> StyleSheet::CloneAdoptedSheet(
              "Cannot create a constructed sheet from a non-constructed sheet");
   MOZ_ASSERT(aConstructorDocument.IsStaticDocument(),
              "Should never clone adopted sheets for a non-static document");
-  RefPtr<StyleSheet> clone = new StyleSheet(*this,
-                                            /* aParentToUse */ nullptr,
-                                            /* aOwnerRuleToUse */ nullptr,
-                                            /* aDocumentOrShadowRoot */ nullptr,
-                                            /* aOwningNodeToUse */ nullptr);
-  clone->mConstructorDocument = &aConstructorDocument;
+  RefPtr<StyleSheet> clone =
+      new StyleSheet(*this,
+                     /* aParentSheetToUse */ nullptr,
+                     /* aOwnerRuleToUse */ nullptr,
+                     /* aDocOrShadowRootToUse */ nullptr, &aConstructorDocument,
+                     /* aOwningNodeToUse */ nullptr);
   return clone.forget();
 }
 
@@ -1427,8 +1453,8 @@ void StyleSheet::SetSharedContents(const ServoCssRules* aSharedRules) {
   // which we don't have.
 }
 
-const ServoCssRules* StyleSheet::ToShared(
-    RawServoSharedMemoryBuilder* aBuilder) {
+const ServoCssRules* StyleSheet::ToShared(RawServoSharedMemoryBuilder* aBuilder,
+                                          nsCString& aErrorMessage) {
   // Assert some things we assume when creating a StyleSheet using shared
   // memory.
   MOZ_ASSERT(GetReferrerInfo()->ReferrerPolicy() == ReferrerPolicy::_empty);
@@ -1438,7 +1464,18 @@ const ServoCssRules* StyleSheet::ToShared(
   MOZ_ASSERT(Inner().mIntegrity.IsEmpty());
   MOZ_ASSERT(Principal()->IsSystemPrincipal());
 
-  return Servo_SharedMemoryBuilder_AddStylesheet(aBuilder, Inner().mContents);
+  const ServoCssRules* rules = Servo_SharedMemoryBuilder_AddStylesheet(
+      aBuilder, Inner().mContents, &aErrorMessage);
+
+#ifdef DEBUG
+  if (!rules) {
+    // Print the ToShmem error message so that developers know what to fix.
+    printf_stderr("%s\n", aErrorMessage.get());
+    MOZ_CRASH("UA style sheet contents failed shared memory requirements");
+  }
+#endif
+
+  return rules;
 }
 
 bool StyleSheet::IsReadOnly() const {

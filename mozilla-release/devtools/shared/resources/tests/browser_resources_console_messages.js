@@ -3,11 +3,10 @@
 
 "use strict";
 
-// Test the ResourceWatcher API around CONSOLE_MESSAGES
+// Test the ResourceWatcher API around CONSOLE_MESSAGE
 //
 // Reproduces assertions from: devtools/shared/webconsole/test/chrome/test_cached_messages.html
 
-const { TargetList } = require("devtools/shared/resources/target-list");
 const {
   ResourceWatcher,
 } = require("devtools/shared/resources/resource-watcher");
@@ -17,16 +16,65 @@ add_task(async function() {
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
   const tab = await addTab("data:text/html,Console Messages");
 
-  // Create a TargetList for the test tab
-  const client = await createLocalClient();
-  const target = await client.mainRoot.getTab({ tab });
-  const targetList = new TargetList(client.mainRoot, target);
-  await targetList.startListening();
-
-  // Now create a ResourceWatcher
-  const resourceWatcher = new ResourceWatcher(targetList);
+  const {
+    client,
+    resourceWatcher,
+    targetList,
+  } = await initResourceWatcherAndTarget(tab);
 
   await testMessages(tab.linkedBrowser, resourceWatcher);
+
+  targetList.stopListening();
+  await client.close();
+});
+
+add_task(async function() {
+  info("Test ignoreExistingResources option for CONSOLE_MESSAGE");
+
+  const tab = await addTab("data:text/html,Console Messages");
+
+  const {
+    client,
+    resourceWatcher,
+    targetList,
+  } = await initResourceWatcherAndTarget(tab);
+
+  info(
+    "Check whether onAvailable will not be called with existing console messages"
+  );
+  await logExistingMessages(tab.linkedBrowser);
+
+  const availableResources = [];
+  await resourceWatcher.watchResources(
+    [ResourceWatcher.TYPES.CONSOLE_MESSAGE],
+    {
+      onAvailable: ({ resource }) => availableResources.push(resource),
+      ignoreExistingResources: true,
+    }
+  );
+  is(
+    availableResources.length,
+    0,
+    "onAvailable wasn't called for existing console messages"
+  );
+
+  info(
+    "Check whether onAvailable will be called with the future console messages"
+  );
+  await logRuntimeMessages(tab.linkedBrowser);
+  await waitUntil(
+    () => availableResources.length === expectedRuntimeConsoleCalls.length
+  );
+  for (let i = 0; i < expectedRuntimeConsoleCalls.length; i++) {
+    const { message, targetFront } = availableResources[i];
+    is(
+      targetFront,
+      targetList.targetFront,
+      "The targetFront property is the expected one"
+    );
+    const expected = expectedRuntimeConsoleCalls[i];
+    checkConsoleAPICall(message, expected);
+  }
 
   await targetList.stopListening();
   await client.close();
@@ -34,39 +82,46 @@ add_task(async function() {
 
 async function testMessages(browser, resourceWatcher) {
   info(
-    "Log some messages *before* calling ResourceWatcher.watch in order to assert the behavior of already existing messages."
+    "Log some messages *before* calling ResourceWatcher.watchResources in order to " +
+      "assert the behavior of already existing messages."
   );
   await logExistingMessages(browser);
 
   let runtimeDoneResolve;
+  const expectedExistingCalls = [...expectedExistingConsoleCalls];
+  const expectedRuntimeCalls = [...expectedRuntimeConsoleCalls];
   const onRuntimeDone = new Promise(resolve => (runtimeDoneResolve = resolve));
-  await resourceWatcher.watch(
-    [ResourceWatcher.TYPES.CONSOLE_MESSAGES],
-    ({ resourceType, targetFront, resource }) => {
-      is(
-        resourceType,
-        ResourceWatcher.TYPES.CONSOLE_MESSAGES,
-        "Received a message"
-      );
-      ok(resource.message, "message is wrapped into a message attribute");
-      const expected = (expectedExistingConsoleCalls.length > 0
-        ? expectedExistingConsoleCalls
-        : expectedRuntimeConsoleCalls
-      ).shift();
-      checkConsoleAPICall(resource.message, expected);
-      if (expectedRuntimeConsoleCalls.length == 0) {
-        runtimeDoneResolve();
-      }
+  const onAvailable = ({ resourceType, targetFront, resource }) => {
+    is(
+      resourceType,
+      ResourceWatcher.TYPES.CONSOLE_MESSAGE,
+      "Received a message"
+    );
+    ok(resource.message, "message is wrapped into a message attribute");
+    const expected = (expectedExistingCalls.length > 0
+      ? expectedExistingCalls
+      : expectedRuntimeCalls
+    ).shift();
+    checkConsoleAPICall(resource.message, expected);
+    if (expectedRuntimeCalls.length == 0) {
+      runtimeDoneResolve();
+    }
+  };
+
+  await resourceWatcher.watchResources(
+    [ResourceWatcher.TYPES.CONSOLE_MESSAGE],
+    {
+      onAvailable,
     }
   );
   is(
-    expectedExistingConsoleCalls.length,
+    expectedExistingCalls.length,
     0,
     "Got the expected number of existing messages"
   );
 
   info(
-    "Now log messages *after* the call to ResourceWatcher.watch and after having received all existing messages"
+    "Now log messages *after* the call to ResourceWatcher.watchResources and after having received all existing messages"
   );
   await logRuntimeMessages(browser);
 
@@ -74,7 +129,7 @@ async function testMessages(browser, resourceWatcher) {
   await onRuntimeDone;
 
   is(
-    expectedRuntimeConsoleCalls.length,
+    expectedRuntimeCalls.length,
     0,
     "Got the expected number of runtime messages"
   );
@@ -96,7 +151,6 @@ function logExistingMessages(browser) {
 }
 const expectedExistingConsoleCalls = [
   {
-    _type: "ConsoleAPI",
     level: "log",
     filename: EXPECTED_FILENAME,
     functionName: EXPECTED_FUNCTION_NAME,
@@ -104,7 +158,6 @@ const expectedExistingConsoleCalls = [
     arguments: ["foobarBaz-log", { type: "undefined" }],
   },
   {
-    _type: "ConsoleAPI",
     level: "info",
     filename: EXPECTED_FILENAME,
     functionName: EXPECTED_FUNCTION_NAME,
@@ -112,7 +165,6 @@ const expectedExistingConsoleCalls = [
     arguments: ["foobarBaz-info", { type: "null" }],
   },
   {
-    _type: "ConsoleAPI",
     level: "warn",
     filename: EXPECTED_FILENAME,
     functionName: EXPECTED_FUNCTION_NAME,
@@ -299,43 +351,11 @@ function logRuntimeMessages(browser) {
 
 // Copied from devtools/shared/webconsole/test/chrome/common.js
 function checkConsoleAPICall(call, expected) {
-  is(call.arguments.length, expected.arguments.length, "number of arguments");
+  is(
+    call.arguments?.length || 0,
+    expected.arguments?.length || 0,
+    "number of arguments"
+  );
 
   checkObject(call, expected);
-}
-
-function checkObject(object, expected) {
-  if (object && object.getGrip) {
-    object = object.getGrip();
-  }
-
-  for (const name of Object.keys(expected)) {
-    const expectedValue = expected[name];
-    const value = object[name];
-    checkValue(name, value, expectedValue);
-  }
-}
-
-function checkValue(name, value, expected) {
-  if (expected === null) {
-    ok(!value, "'" + name + "' is null");
-  } else if (value === undefined) {
-    ok(false, "'" + name + "' is undefined");
-  } else if (value === null) {
-    ok(false, "'" + name + "' is null");
-  } else if (
-    typeof expected == "string" ||
-    typeof expected == "number" ||
-    typeof expected == "boolean"
-  ) {
-    is(value, expected, "property '" + name + "'");
-  } else if (expected instanceof RegExp) {
-    ok(expected.test(value), name + ": " + expected + " matched " + value);
-  } else if (Array.isArray(expected)) {
-    info("checking array for property '" + name + "'");
-    checkObject(value, expected);
-  } else if (typeof expected == "object") {
-    info("checking object for property '" + name + "'");
-    checkObject(value, expected);
-  }
 }

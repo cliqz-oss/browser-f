@@ -165,11 +165,11 @@ nsIconChannel::IconSyncOpenTask::Run() {
 nsIconChannel::nsIconChannel() {}
 
 nsIconChannel::~nsIconChannel() {
-  NS_ReleaseOnMainThreadSystemGroup("nsIconChannel::mLoadInfo",
-                                    mLoadInfo.forget());
+  if (mLoadInfo) {
+    NS_ReleaseOnMainThread("nsIconChannel::mLoadInfo", mLoadInfo.forget());
+  }
   if (mLoadGroup) {
-    NS_ReleaseOnMainThreadSystemGroup("nsIconChannel::mLoadGroup",
-                                      mLoadGroup.forget());
+    NS_ReleaseOnMainThread("nsIconChannel::mLoadGroup", mLoadGroup.forget());
   }
 }
 
@@ -366,8 +366,8 @@ nsIconChannel::AsyncOpen(nsIStreamListener* aListener) {
           mLoadInfo->GetInitialSecurityCheckDone() ||
           (mLoadInfo->GetSecurityMode() ==
                nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL &&
-           mLoadInfo->LoadingPrincipal() &&
-           mLoadInfo->LoadingPrincipal()->IsSystemPrincipal()),
+           mLoadInfo->GetLoadingPrincipal() &&
+           mLoadInfo->GetLoadingPrincipal()->IsSystemPrincipal()),
       "security flags in loadInfo but doContentSecurityCheck() not called");
 
   nsCOMPtr<nsIInputStream> inStream;

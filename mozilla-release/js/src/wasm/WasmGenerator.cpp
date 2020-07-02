@@ -58,6 +58,15 @@ bool CompiledCode::swap(MacroAssembler& masm) {
   return true;
 }
 
+bool CompiledCode::swapCranelift(MacroAssembler& masm,
+                                 CraneliftReusableData& data) {
+  if (!swap(masm)) {
+    return false;
+  }
+  std::swap(data, craneliftReusableData);
+  return true;
+}
+
 // ****************************************************************************
 // ModuleGenerator
 
@@ -379,11 +388,17 @@ bool ModuleGenerator::init(Metadata* maybeAsmJSMetadata) {
         seg->active() && env_->tables[seg->tableIndex].kind == TableKind::AsmJS;
     if (!isAsmJS) {
       for (uint32_t funcIndex : seg->elemFuncIndices) {
-        if (funcIndex == NullFuncIndex) {
-          continue;
+        if (funcIndex != NullFuncIndex) {
+          addOrMerge(ExportedFunc(funcIndex, false));
         }
-        addOrMerge(ExportedFunc(funcIndex, false));
       }
+    }
+  }
+
+  for (const GlobalDesc& global : env_->globals) {
+    if (global.isVariable() &&
+        global.initExpr().kind() == InitExpr::Kind::RefFunc) {
+      addOrMerge(ExportedFunc(global.initExpr().refFuncIndex(), false));
     }
   }
 
@@ -1086,7 +1101,7 @@ SharedMetadata ModuleGenerator::finishMetadata(const Bytes& bytecode) {
   metadata_->moduleName = env_->moduleName;
   metadata_->funcNames = std::move(env_->funcNames);
   metadata_->omitsBoundsChecks = env_->hugeMemoryEnabled();
-  metadata_->bigIntEnabled = env_->bigIntEnabled();
+  metadata_->v128Enabled = env_->v128Enabled();
 
   // Copy over additional debug information.
 

@@ -20,7 +20,7 @@
 #include "mozilla/LoadInfo.h"
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/SystemGroup.h"
+#include "mozilla/SchedulerGroup.h"
 #include "nsClassHashtable.h"
 #include "nsContentUtils.h"
 #include "nsError.h"
@@ -385,8 +385,14 @@ class ReleasingTimerHolder final : public Runnable,
 
     auto raii = MakeScopeExit([holder] { holder->CancelTimerAndRevokeURI(); });
 
-    nsresult rv = SystemGroup::EventTargetFor(TaskCategory::Other)
-                      ->Dispatch(holder.forget());
+    // ReleasingTimerHolder potentially dispatches after we've
+    // shutdown the main thread, so guard agains that.
+    if (NS_WARN_IF(gXPCOMThreadsShutDown)) {
+      return;
+    }
+
+    nsresult rv =
+        SchedulerGroup::Dispatch(TaskCategory::Other, holder.forget());
     NS_ENSURE_SUCCESS_VOID(rv);
 
     raii.release();
@@ -400,8 +406,7 @@ class ReleasingTimerHolder final : public Runnable,
     auto raii = MakeScopeExit([self] { self->CancelTimerAndRevokeURI(); });
 
     nsresult rv = NS_NewTimerWithCallback(
-        getter_AddRefs(mTimer), this, RELEASING_TIMER, nsITimer::TYPE_ONE_SHOT,
-        SystemGroup::EventTargetFor(TaskCategory::Other));
+        getter_AddRefs(mTimer), this, RELEASING_TIMER, nsITimer::TYPE_ONE_SHOT);
     NS_ENSURE_SUCCESS(rv, NS_OK);
 
     nsCOMPtr<nsIAsyncShutdownClient> phase = GetShutdownPhase();
@@ -798,7 +803,15 @@ BlobURLProtocolHandler::NewChannel(nsIURI* aURI, nsILoadInfo* aLoadInfo,
   }
 
   if (blobURL->Revoked()) {
+#ifdef MOZ_WIDGET_ANDROID
+    // if the channel was not triggered by the system principal,
+    // then we return here because the URL had been revoked
+    if (aLoadInfo && !aLoadInfo->TriggeringPrincipal()->IsSystemPrincipal()) {
+      return NS_OK;
+    }
+#else
     return NS_OK;
+#endif
   }
 
   // We want to be sure that we stop the creation of the channel if the blob URL
@@ -811,8 +824,8 @@ BlobURLProtocolHandler::NewChannel(nsIURI* aURI, nsILoadInfo* aLoadInfo,
   // principal and which is never mutated to have a non-zero mPrivateBrowsingId
   // or container.
   if (aLoadInfo &&
-      (!aLoadInfo->LoadingPrincipal() ||
-       !aLoadInfo->LoadingPrincipal()->IsSystemPrincipal()) &&
+      (!aLoadInfo->GetLoadingPrincipal() ||
+       !aLoadInfo->GetLoadingPrincipal()->IsSystemPrincipal()) &&
       !ChromeUtils::IsOriginAttributesEqualIgnoringFPD(
           aLoadInfo->GetOriginAttributes(),
           BasePrincipal::Cast(info->mPrincipal)->OriginAttributesRef())) {

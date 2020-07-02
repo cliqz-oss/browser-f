@@ -2783,6 +2783,12 @@ void SVGTextFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
                NS_FRAME_SVG_LAYOUT | NS_FRAME_IS_SVG_TEXT);
 
   mMutationObserver = new MutationObserver(this);
+
+  if (mState & NS_FRAME_IS_NONDISPLAY) {
+    // We're inserting a new <text> element into a non-display context.
+    // Ensure that we get reflowed.
+    ScheduleReflowSVGNonDisplayText(IntrinsicDirty::StyleChange);
+  }
 }
 
 void SVGTextFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -5234,8 +5240,8 @@ double SVGTextFrame::GetFontSizeScaleFactor() const {
  * it to the appropriate frame user space of aChildFrame according to
  * which rendered run the point hits.
  */
-Point SVGTextFrame::TransformFramePointToTextChild(const Point& aPoint,
-                                                   nsIFrame* aChildFrame) {
+Point SVGTextFrame::TransformFramePointToTextChild(
+    const Point& aPoint, const nsIFrame* aChildFrame) {
   NS_ASSERTION(aChildFrame && nsLayoutUtils::GetClosestFrameOfType(
                                   aChildFrame->GetParent(),
                                   LayoutFrameType::SVGText) == this,

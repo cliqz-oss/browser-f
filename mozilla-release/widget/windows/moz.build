@@ -6,9 +6,13 @@
 
 with Files("**"):
     BUG_COMPONENT = ("Core", "Widget: Win32")
+    SCHEDULES.exclusive = ['windows']
 
 with Files("*CompositorWidget*"):
     BUG_COMPONENT = ("Core", "Graphics")
+
+with Files("OSK*"):
+    BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
 
 TEST_DIRS += ['tests']
 
@@ -96,10 +100,16 @@ SOURCES += [
     'nsFilePicker.cpp',
     'nsSharePicker.cpp',
     'nsWidgetFactory.cpp',
+    'OSKInputPaneManager.cpp',
     'WinCompositorWidget.cpp',
     'WindowsSMTCProvider.cpp',
     'WindowsUIUtils.cpp',
     'WinMouseScrollHandler.cpp',
+]
+
+# These files redefine the winsdk api version macro and we don't want it to leak to other files.
+SOURCES += [
+    'DirectManipulationOwner.cpp',
 ]
 
 # Needs INITGUID and we don't allow INITGUID in unified sources since bug 970429.

@@ -9,7 +9,7 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/Monitor.h"
-#include "mozcontainer.h"
+#include "MozContainer.h"
 #include "VsyncSource.h"
 #include "base/thread.h"
 #include "nsWaylandDisplay.h"
@@ -51,8 +51,6 @@ class WaylandVsyncSource final : public gfx::VsyncSource {
   struct WaylandFrameCallbackContext;
 
   class WaylandDisplay final : public mozilla::gfx::VsyncSource::Display {
-    NS_INLINE_DECL_THREADSAFE_REFCOUNTING(WaylandDisplay);
-
    public:
     explicit WaylandDisplay(MozContainer* container);
 

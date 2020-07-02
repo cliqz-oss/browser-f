@@ -5,16 +5,7 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 from mozboot.base import BaseBootstrapper
-from mozboot.linux_common import (
-    ClangStaticAnalysisInstall,
-    FixStacksInstall,
-    LucetcInstall,
-    NasmInstall,
-    NodeInstall,
-    SccacheInstall,
-    StyloInstall,
-    WasiSysrootInstall,
-)
+from mozboot.linux_common import LinuxBootstrapper
 
 
 MERCURIAL_INSTALL_PROMPT = '''
@@ -35,14 +26,7 @@ Your choice: '''
 
 
 class DebianBootstrapper(
-        ClangStaticAnalysisInstall,
-        FixStacksInstall,
-        LucetcInstall,
-        NasmInstall,
-        NodeInstall,
-        SccacheInstall,
-        StyloInstall,
-        WasiSysrootInstall,
+        LinuxBootstrapper,
         BaseBootstrapper):
 
     # These are common packages for all Debian-derived distros (such as
@@ -51,7 +35,6 @@ class DebianBootstrapper(
         'autoconf2.13',
         'build-essential',
         'nodejs',
-        'python-pip',
         'python-setuptools',
         'unzip',
         'uuid',
@@ -79,7 +62,6 @@ class DebianBootstrapper(
         'libpulse-dev',
         'libx11-xcb-dev',
         'libxt-dev',
-        'python-dbus',
         'xvfb',
         'yasm',
     ]
@@ -97,12 +79,13 @@ class DebianBootstrapper(
     # Subclasses can add packages to this variable to have them installed.
     MOBILE_ANDROID_DISTRO_PACKAGES = []
 
-    def __init__(self, distro, version, dist_id, **kwargs):
+    def __init__(self, distro, version, dist_id, codename, **kwargs):
         BaseBootstrapper.__init__(self, **kwargs)
 
         self.distro = distro
         self.version = version
         self.dist_id = dist_id
+        self.codename = codename
 
         self.packages = self.COMMON_PACKAGES + self.DISTRO_PACKAGES
         if self.distro == 'debian':
@@ -112,6 +95,14 @@ class DebianBootstrapper(
         if self.distro == 'ubuntu' and int(self.version.split('.')[0]) >= 20:
             self.packages.extend(['python2.7', 'python2.7-dev'])
         else:
+            if (self.distro == 'ubuntu'
+                or (self.distro == 'debian' and self.codename not in ('bullseye', 'sid',))):
+                # On old Ubuntu and Debian before bullseye (11), it was called this way
+                # Note that we don't use Debian version code as the Python API doesn't provide
+                # it yet
+                # TODO: Update once bullseye is released in 2021
+                self.packages.append('python-pip')
+
             self.packages.append('python-dev')
         self.browser_packages = self.BROWSER_COMMON_PACKAGES + self.BROWSER_DISTRO_PACKAGES
         self.mobile_android_packages = self.MOBILE_ANDROID_COMMON_PACKAGES + \
@@ -122,7 +113,8 @@ class DebianBootstrapper(
         # install if found.
         packages = list(self.packages)
 
-        have_python3 = any([self.which('python3'), self.which('python3.6'),
+        have_python3 = any([self.which('python3'), self.which('python3.8'),
+                            self.which('python3.7'), self.which('python3.6'),
                             self.which('python3.5')])
         python3_packages = self.check_output(
             ['apt-cache', 'pkgnames', 'python3'], universal_newlines=True)
@@ -199,4 +191,4 @@ class DebianBootstrapper(
 
         # pip.
         assert res == 1
-        self.run_as_root(['pip', 'install', '--upgrade', 'Mercurial'])
+        self.run_as_root(['pip3', 'install', '--upgrade', 'Mercurial'])

@@ -13,7 +13,7 @@
 
 #include "builtin/TypedObject.h"
 #include "gc/Allocator.h"
-#include "gc/GCTrace.h"
+#include "gc/GCProbes.h"
 #include "gc/MaybeRooted.h"
 #include "js/Result.h"
 #include "proxy/Proxy.h"
@@ -532,28 +532,9 @@ inline bool NativeObject::isInWholeCellBuffer() const {
     nobj = SetNewObjectMetadata(cx, nobj);
   }
 
-  js::gc::gcTracer.traceCreateObject(nobj);
+  js::gc::gcprobes::CreateObject(nobj);
 
   return nobj;
-}
-
-/* static */ inline JS::Result<PlainObject*, JS::OOM&>
-PlainObject::createWithTemplate(JSContext* cx,
-                                Handle<PlainObject*> templateObject) {
-  RootedObjectGroup group(cx, templateObject->group());
-  MOZ_ASSERT(group->clasp() == &PlainObject::class_);
-
-  gc::InitialHeap heap = GetInitialHeap(GenericObject, group);
-
-  RootedShape shape(cx, templateObject->lastProperty());
-
-  gc::AllocKind kind = gc::GetGCObjectKind(shape->numFixedSlots());
-  MOZ_ASSERT(CanChangeToBackgroundAllocKind(kind, shape->getObjectClass()));
-  kind = gc::ForegroundToBackgroundAllocKind(kind);
-
-  return create(cx, kind, heap, shape, group).map([](NativeObject* obj) {
-    return &obj->as<PlainObject>();
-  });
 }
 
 MOZ_ALWAYS_INLINE bool NativeObject::updateSlotsForSpan(JSContext* cx,
@@ -622,80 +603,6 @@ inline js::gc::AllocKind NativeObject::allocKindForTenure() const {
 }
 
 inline js::GlobalObject& NativeObject::global() const { return nonCCWGlobal(); }
-
-inline js::gc::AllocKind PlainObject::allocKindForTenure() const {
-  using namespace js::gc;
-  AllocKind kind = GetGCObjectFixedSlotsKind(numFixedSlots());
-  MOZ_ASSERT(!IsBackgroundFinalized(kind));
-  MOZ_ASSERT(CanChangeToBackgroundAllocKind(kind, getClass()));
-  return ForegroundToBackgroundAllocKind(kind);
-}
-
-/* Make an object with pregenerated shape from a NEWOBJECT bytecode. */
-static inline PlainObject* CopyInitializerObject(
-    JSContext* cx, HandlePlainObject baseobj,
-    NewObjectKind newKind = GenericObject) {
-  MOZ_ASSERT(!baseobj->inDictionaryMode());
-
-  gc::AllocKind allocKind =
-      gc::GetGCObjectFixedSlotsKind(baseobj->numFixedSlots());
-  allocKind = gc::ForegroundToBackgroundAllocKind(allocKind);
-  MOZ_ASSERT_IF(baseobj->isTenured(),
-                allocKind == baseobj->asTenured().getAllocKind());
-  RootedPlainObject obj(
-      cx, NewBuiltinClassInstance<PlainObject>(cx, allocKind, newKind));
-  if (!obj) {
-    return nullptr;
-  }
-
-  if (!obj->setLastProperty(cx, baseobj->lastProperty())) {
-    return nullptr;
-  }
-
-  return obj;
-}
-
-inline NativeObject* NewNativeObjectWithGivenTaggedProto(
-    JSContext* cx, const JSClass* clasp, Handle<TaggedProto> proto,
-    gc::AllocKind allocKind, NewObjectKind newKind) {
-  return MaybeNativeObject(
-      NewObjectWithGivenTaggedProto(cx, clasp, proto, allocKind, newKind));
-}
-
-inline NativeObject* NewNativeObjectWithGivenTaggedProto(
-    JSContext* cx, const JSClass* clasp, Handle<TaggedProto> proto,
-    NewObjectKind newKind = GenericObject) {
-  return MaybeNativeObject(
-      NewObjectWithGivenTaggedProto(cx, clasp, proto, newKind));
-}
-
-inline NativeObject* NewNativeObjectWithGivenProto(JSContext* cx,
-                                                   const JSClass* clasp,
-                                                   HandleObject proto,
-                                                   gc::AllocKind allocKind,
-                                                   NewObjectKind newKind) {
-  return MaybeNativeObject(
-      NewObjectWithGivenProto(cx, clasp, proto, allocKind, newKind));
-}
-
-inline NativeObject* NewNativeObjectWithGivenProto(
-    JSContext* cx, const JSClass* clasp, HandleObject proto,
-    NewObjectKind newKind = GenericObject) {
-  return MaybeNativeObject(NewObjectWithGivenProto(cx, clasp, proto, newKind));
-}
-
-inline NativeObject* NewNativeObjectWithClassProto(
-    JSContext* cx, const JSClass* clasp, HandleObject proto,
-    gc::AllocKind allocKind, NewObjectKind newKind = GenericObject) {
-  return MaybeNativeObject(
-      NewObjectWithClassProto(cx, clasp, proto, allocKind, newKind));
-}
-
-inline NativeObject* NewNativeObjectWithClassProto(
-    JSContext* cx, const JSClass* clasp, HandleObject proto,
-    NewObjectKind newKind = GenericObject) {
-  return MaybeNativeObject(NewObjectWithClassProto(cx, clasp, proto, newKind));
-}
 
 /*
  * Call obj's resolve hook.

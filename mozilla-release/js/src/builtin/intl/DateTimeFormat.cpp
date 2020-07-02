@@ -34,6 +34,7 @@
 #include "vm/DateTime.h"
 #include "vm/GlobalObject.h"
 #include "vm/JSContext.h"
+#include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/Runtime.h"
 
 #include "vm/JSObject-inl.h"
@@ -824,6 +825,14 @@ static FieldType GetFieldTypeForFormatField(UDateFormatField fieldName) {
       return &JSAtomState::unknown;
 #endif
 
+    case UDAT_FLEXIBLE_DAY_PERIOD_FIELD:
+#ifdef NIGHTLY_BUILD
+      return &JSAtomState::dayPeriod;
+#else
+      // Currently restricted to Nightly.
+      return &JSAtomState::unknown;
+#endif
+
 #ifndef U_HIDE_INTERNAL_API
     case UDAT_RELATED_YEAR_FIELD:
       return &JSAtomState::relatedYear;
@@ -842,7 +851,6 @@ static FieldType GetFieldTypeForFormatField(UDateFormatField fieldName) {
     case UDAT_TIMEZONE_ISO_FIELD:
     case UDAT_TIMEZONE_ISO_LOCAL_FIELD:
     case UDAT_AM_PM_MIDNIGHT_NOON_FIELD:
-    case UDAT_FLEXIBLE_DAY_PERIOD_FIELD:
 #ifndef U_HIDE_INTERNAL_API
     case UDAT_TIME_SEPARATOR_FIELD:
 #endif

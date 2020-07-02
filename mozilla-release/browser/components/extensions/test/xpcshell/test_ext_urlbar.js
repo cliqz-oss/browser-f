@@ -49,6 +49,7 @@ add_task(async function startup() {
     false
   );
   await AddonTestUtils.promiseStartupManager();
+  await UrlbarTestUtils.initXPCShellDependencies();
 
   // Add a test engine and make it default so that when we do searches below,
   // Firefox doesn't try to include search suggestions from the actual default
@@ -275,8 +276,7 @@ add_task(async function test_onProviderResultsRequested() {
 
   // Check the results.
   let expectedResults = [
-    // The first result should be a search result returned by the
-    // UnifiedComplete provider.
+    // The first result should be a search result returned by UnifiedComplete.
     {
       type: UrlbarUtils.RESULT_TYPE.SEARCH,
       source: UrlbarUtils.RESULT_SOURCE.SEARCH,
@@ -286,7 +286,11 @@ add_task(async function test_onProviderResultsRequested() {
         query: "test",
         engine: "Test engine",
         suggestion: undefined,
+        tailPrefix: undefined,
+        tail: undefined,
+        tailOffsetIndex: -1,
         keyword: undefined,
+        isSearchHistory: false,
         icon: "",
         keywordOffer: false,
       },
@@ -313,9 +317,7 @@ add_task(async function test_onProviderResultsRequested() {
       payload: {
         title: "Test remote_tab-tabs result",
         url: "http://example.com/remote_tab-tabs",
-        displayUrl:
-          (UrlbarPrefs.get("update1.view.stripHttps") ? "http://" : "") +
-          "example.com/remote_tab-tabs",
+        displayUrl: "http://example.com/remote_tab-tabs",
         device: "device",
       },
     },
@@ -327,9 +329,7 @@ add_task(async function test_onProviderResultsRequested() {
       payload: {
         title: "Test tab-tabs result",
         url: "http://example.com/tab-tabs",
-        displayUrl:
-          (UrlbarPrefs.get("update1.view.stripHttps") ? "http://" : "") +
-          "example.com/tab-tabs",
+        displayUrl: "http://example.com/tab-tabs",
       },
     },
     {
@@ -353,9 +353,7 @@ add_task(async function test_onProviderResultsRequested() {
       payload: {
         title: "Test url-history result",
         url: "http://example.com/url-history",
-        displayUrl:
-          (UrlbarPrefs.get("update1.view.stripHttps") ? "http://" : "") +
-          "example.com/url-history",
+        displayUrl: "http://example.com/url-history",
       },
     },
   ];

@@ -5,13 +5,27 @@
 app-manager-window =
     .title = Anwendungs-Details
     .style = width: 30em; min-height: 20em;
+
 app-manager-remove =
     .label = Entfernen
     .accesskey = E
+<<<<<<< HEAD
 app-manager-handle-webfeeds = Du kannst Web-Feeds mit folgenden Anwendungen benutzen.
+||||||| merged common ancestors
+app-manager-handle-webfeeds = Sie können Web-Feeds mit folgenden Anwendungen benutzen.
+=======
+
+>>>>>>> origin/upstream-releases
 # Variables:
 #   $type (String) - the URI scheme of the link (e.g. mailto:)
+<<<<<<< HEAD
 app-manager-handle-protocol = Du kannst { $type }-Links mit folgenden Anwendungen benutzen.
+||||||| merged common ancestors
+app-manager-handle-protocol = Sie können { $type }-Links mit folgenden Anwendungen benutzen.
+=======
+app-manager-handle-protocol = Sie können { $type }-Links mit folgenden Anwendungen benutzen.
+
+>>>>>>> origin/upstream-releases
 # Variables:
 #   $type (String) - the MIME type (e.g. application/binary)
 app-manager-handle-file = Du kannst { $type }-Inhalte mit folgenden Anwendungen benutzen.

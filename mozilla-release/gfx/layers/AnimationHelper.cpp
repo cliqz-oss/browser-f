@@ -27,7 +27,6 @@ void CompositorAnimationStorage::Clear() {
 
   mAnimatedValues.Clear();
   mAnimations.Clear();
-  mAnimationRenderRoots.Clear();
 }
 
 void CompositorAnimationStorage::ClearById(const uint64_t& aId) {
@@ -35,7 +34,6 @@ void CompositorAnimationStorage::ClearById(const uint64_t& aId) {
 
   mAnimatedValues.Remove(aId);
   mAnimations.Remove(aId);
-  mAnimationRenderRoots.Remove(aId);
 }
 
 AnimatedValue* CompositorAnimationStorage::GetAnimatedValue(
@@ -77,55 +75,58 @@ OMTAValue CompositorAnimationStorage::GetOMTAValue(const uint64_t& aId) const {
 }
 
 void CompositorAnimationStorage::SetAnimatedValue(
-    uint64_t aId, gfx::Matrix4x4&& aTransformInDevSpace,
-    gfx::Matrix4x4&& aFrameTransform, const TransformData& aData) {
+    uint64_t aId, AnimatedValue* aPreviousValue,
+    gfx::Matrix4x4&& aTransformInDevSpace, gfx::Matrix4x4&& aFrameTransform,
+    const TransformData& aData) {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
-  auto count = mAnimatedValues.Count();
-  AnimatedValue* value = mAnimatedValues.LookupOrAdd(
-      aId, std::move(aTransformInDevSpace), std::move(aFrameTransform), aData);
-  if (count == mAnimatedValues.Count()) {
-    MOZ_ASSERT(value->Is<AnimationTransform>());
-    *value = AnimatedValue(std::move(aTransformInDevSpace),
-                           std::move(aFrameTransform), aData);
+  if (!aPreviousValue) {
+    MOZ_ASSERT(!mAnimatedValues.Contains(aId));
+    mAnimatedValues.Put(
+        aId, MakeUnique<AnimatedValue>(std::move(aTransformInDevSpace),
+                                       std::move(aFrameTransform), aData));
+    return;
   }
-}
+  MOZ_ASSERT(aPreviousValue->Is<AnimationTransform>());
+  MOZ_ASSERT(aPreviousValue == GetAnimatedValue(aId));
 
-void CompositorAnimationStorage::SetAnimatedValue(
-    uint64_t aId, gfx::Matrix4x4&& aTransformInDevSpace) {
-  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
-  const TransformData dontCare = {};
-  SetAnimatedValue(aId, std::move(aTransformInDevSpace), gfx::Matrix4x4(),
-                   dontCare);
+  aPreviousValue->SetTransform(std::move(aTransformInDevSpace),
+                               std::move(aFrameTransform), aData);
 }
 
 void CompositorAnimationStorage::SetAnimatedValue(uint64_t aId,
+                                                  AnimatedValue* aPreviousValue,
                                                   nscolor aColor) {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
-  auto count = mAnimatedValues.Count();
-  AnimatedValue* value = mAnimatedValues.LookupOrAdd(aId, aColor);
-  if (count == mAnimatedValues.Count()) {
-    MOZ_ASSERT(value->Is<nscolor>());
-    *value = AnimatedValue(aColor);
+  if (!aPreviousValue) {
+    MOZ_ASSERT(!mAnimatedValues.Contains(aId));
+    mAnimatedValues.Put(aId, MakeUnique<AnimatedValue>(aColor));
+    return;
   }
+
+  MOZ_ASSERT(aPreviousValue->Is<nscolor>());
+  MOZ_ASSERT(aPreviousValue == GetAnimatedValue(aId));
+  aPreviousValue->SetColor(aColor);
 }
 
 void CompositorAnimationStorage::SetAnimatedValue(uint64_t aId,
-                                                  const float& aOpacity) {
+                                                  AnimatedValue* aPreviousValue,
+                                                  float aOpacity) {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
-  auto count = mAnimatedValues.Count();
-  AnimatedValue* value = mAnimatedValues.LookupOrAdd(aId, aOpacity);
-  if (count == mAnimatedValues.Count()) {
-    MOZ_ASSERT(value->Is<float>());
-    *value = AnimatedValue(aOpacity);
+  if (!aPreviousValue) {
+    MOZ_ASSERT(!mAnimatedValues.Contains(aId));
+    mAnimatedValues.Put(aId, MakeUnique<AnimatedValue>(aOpacity));
+    return;
   }
+
+  MOZ_ASSERT(aPreviousValue->Is<float>());
+  MOZ_ASSERT(aPreviousValue == GetAnimatedValue(aId));
+  aPreviousValue->SetOpacity(aOpacity);
 }
 
 void CompositorAnimationStorage::SetAnimations(uint64_t aId,
-                                               const AnimationArray& aValue,
-                                               wr::RenderRoot aRenderRoot) {
+                                               const AnimationArray& aValue) {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   mAnimations.Put(aId, AnimationHelper::ExtractAnimations(aValue));
-  mAnimationRenderRoots.Put(aId, aRenderRoot);
 }
 
 enum class CanSkipCompose {
@@ -318,10 +319,11 @@ AnimationHelper::SampleResult AnimationHelper::SampleAnimationForEachNode(
     // Initialize animation value with base style.
     RefPtr<RawServoAnimationValue> currValue = group.mBaseStyle;
 
-    CanSkipCompose canSkipCompose = aPropertyAnimationGroups.Length() == 1 &&
-                                            group.mAnimations.Length() == 1
-                                        ? CanSkipCompose::IfPossible
-                                        : CanSkipCompose::No;
+    CanSkipCompose canSkipCompose =
+        aPreviousValue && aPropertyAnimationGroups.Length() == 1 &&
+                group.mAnimations.Length() == 1
+            ? CanSkipCompose::IfPossible
+            : CanSkipCompose::No;
 
     MOZ_ASSERT(
         !group.mAnimations.IsEmpty() ||
@@ -364,7 +366,7 @@ AnimationHelper::SampleResult AnimationHelper::SampleAnimationForEachNode(
   SampleResult rv =
       aAnimationValues.IsEmpty() ? SampleResult::None : SampleResult::Sampled;
   if (rv == SampleResult::Sampled) {
-    aAnimationValues.AppendElements(nonAnimatingValues);
+    aAnimationValues.AppendElements(std::move(nonAnimatingValues));
   }
   return rv;
 }
@@ -610,14 +612,16 @@ bool AnimationHelper::SampleAnimations(CompositorAnimationStorage* aStorage,
     switch (lastPropertyAnimationGroup.mProperty) {
       case eCSSProperty_background_color: {
         aStorage->SetAnimatedValue(
-            iter.Key(), Servo_AnimationValue_GetColor(animationValues[0],
-                                                      NS_RGBA(0, 0, 0, 0)));
+            iter.Key(), previousValue,
+            Servo_AnimationValue_GetColor(animationValues[0],
+                                          NS_RGBA(0, 0, 0, 0)));
         break;
       }
       case eCSSProperty_opacity: {
         MOZ_ASSERT(animationValues.Length() == 1);
         aStorage->SetAnimatedValue(
-            iter.Key(), Servo_AnimationValue_GetOpacity(animationValues[0]));
+            iter.Key(), previousValue,
+            Servo_AnimationValue_GetOpacity(animationValues[0]));
         break;
       }
       case eCSSProperty_rotate:
@@ -630,25 +634,20 @@ bool AnimationHelper::SampleAnimations(CompositorAnimationStorage* aStorage,
       case eCSSProperty_offset_anchor: {
         MOZ_ASSERT(animationStorageData.mTransformData);
 
-        gfx::Matrix4x4 transform = ServoAnimationValueToMatrix4x4(
-            animationValues, *animationStorageData.mTransformData,
-            animationStorageData.mCachedMotionPath);
-        gfx::Matrix4x4 frameTransform = transform;
-        // If the parent has perspective transform, then the offset into
-        // reference frame coordinates is already on this transform. If not,
-        // then we need to ask for it to be added here.
         const TransformData& transformData =
             *animationStorageData.mTransformData;
-        if (!transformData.hasPerspectiveParent()) {
-          nsLayoutUtils::PostTranslate(transform, transformData.origin(),
-                                       transformData.appUnitsPerDevPixel(),
-                                       true);
-        }
+        MOZ_ASSERT(transformData.origin() == nsPoint());
+
+        gfx::Matrix4x4 transform = ServoAnimationValueToMatrix4x4(
+            animationValues, transformData,
+            animationStorageData.mCachedMotionPath);
+        gfx::Matrix4x4 frameTransform = transform;
 
         transform.PostScale(transformData.inheritedXScale(),
                             transformData.inheritedYScale(), 1);
 
-        aStorage->SetAnimatedValue(iter.Key(), std::move(transform),
+        aStorage->SetAnimatedValue(iter.Key(), previousValue,
+                                   std::move(transform),
                                    std::move(frameTransform), transformData);
         break;
       }
@@ -735,8 +734,7 @@ gfx::Matrix4x4 AnimationHelper::ServoAnimationValueToMatrix4x4(
       motion, transformOrigin);
 
   return nsDisplayTransform::GetResultingTransformMatrix(
-      props, refBox, aTransformData.origin(),
-      aTransformData.appUnitsPerDevPixel(), 0);
+      props, refBox, aTransformData.appUnitsPerDevPixel());
 }
 
 }  // namespace layers

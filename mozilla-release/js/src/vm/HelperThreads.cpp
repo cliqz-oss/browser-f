@@ -594,8 +594,10 @@ void ScriptParseTask<Unit>::parse(JSContext* cx) {
   // initialized SSO.
   sourceObjects.infallibleAppend(compilationInfo.sourceObject);
 
+  uint32_t len = data.length();
+  SourceExtent extent = SourceExtent::makeGlobalExtent(len, options);
   frontend::GlobalSharedContext globalsc(cx, scopeKind, compilationInfo,
-                                         compilationInfo.directives);
+                                         compilationInfo.directives, extent);
   JSScript* script =
       frontend::CompileGlobalScript(compilationInfo, globalsc, data);
 
@@ -1673,20 +1675,20 @@ bool GlobalHelperThreadState::canStartCompressionTask(
 }
 
 void GlobalHelperThreadState::startHandlingCompressionTasks(
-    const AutoLockHelperThreadState& lock) {
-  scheduleCompressionTasks(lock);
+    const AutoLockHelperThreadState& lock, ScheduleCompressionTask schedule) {
+  scheduleCompressionTasks(lock, schedule);
   if (canStartCompressionTask(lock)) {
     notifyOne(PRODUCER, lock);
   }
 }
 
 void GlobalHelperThreadState::scheduleCompressionTasks(
-    const AutoLockHelperThreadState& lock) {
+    const AutoLockHelperThreadState& lock, ScheduleCompressionTask schedule) {
   auto& pending = compressionPendingList(lock);
   auto& worklist = compressionWorklist(lock);
 
   for (size_t i = 0; i < pending.length(); i++) {
-    if (pending[i]->shouldStart()) {
+    if (pending[i]->shouldStart() || schedule != ScheduleCompressionTask::GC) {
       // OOMing during appending results in the task not being scheduled
       // and deleted.
       Unused << worklist.append(std::move(pending[i]));
@@ -2367,12 +2369,16 @@ void js::RunPendingSourceCompressions(JSRuntime* runtime) {
     return;
   }
 
-  HelperThreadState().startHandlingCompressionTasks(lock);
+  HelperThreadState().startHandlingCompressionTasks(
+      lock, GlobalHelperThreadState::ScheduleCompressionTask::API);
 
-  // Wait for all in-process compression tasks to complete.
+  // Wait until all tasks have started compression.
   while (!HelperThreadState().compressionWorklist(lock).empty()) {
     HelperThreadState().wait(lock, GlobalHelperThreadState::CONSUMER);
   }
+
+  // Wait for all in-process compression tasks to complete.
+  HelperThreadState().waitForAllThreadsLocked(lock);
 
   AttachFinishedCompressions(runtime, lock);
 }

@@ -58,7 +58,7 @@ class ProviderUnifiedComplete extends UrlbarProvider {
    * @returns {integer} one of the types from UrlbarUtils.PROVIDER_TYPE.*
    */
   get type() {
-    return UrlbarUtils.PROVIDER_TYPE.IMMEDIATE;
+    return UrlbarUtils.PROVIDER_TYPE.HEURISTIC;
   }
 
   /**
@@ -208,11 +208,16 @@ function makeUrlbarResult(tokens, info) {
               action.params.searchSuggestion,
               UrlbarUtils.HIGHLIGHT.SUGGESTED,
             ],
+            // For test interoperabilty with UrlbarProviderSearchSuggestions.
+            tailPrefix: undefined,
+            tail: undefined,
+            tailOffsetIndex: -1,
             keyword: [action.params.alias, UrlbarUtils.HIGHLIGHT.TYPED],
             query: [
               action.params.searchQuery.trim(),
-              UrlbarUtils.HIGHLIGHT.TYPED,
+              UrlbarUtils.HIGHLIGHT.NONE,
             ],
+            isSearchHistory: !!action.params.isSearchHistory,
             icon: [info.icon],
             keywordOffer,
           })
