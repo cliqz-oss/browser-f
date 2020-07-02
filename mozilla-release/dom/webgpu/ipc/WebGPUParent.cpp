@@ -5,11 +5,36 @@
 
 #include "WebGPUParent.h"
 #include "mozilla/webgpu/ffi/wgpu.h"
+#include "mozilla/layers/ImageDataSerializer.h"
+#include "mozilla/layers/TextureHost.h"
 
 namespace mozilla {
 namespace webgpu {
 
 const uint64_t POLL_TIME_MS = 100;
+
+class PresentationData {
+  NS_INLINE_DECL_REFCOUNTING(PresentationData);
+
+ public:
+  RawId mDeviceId = 0;
+  RawId mQueueId = 0;
+  RefPtr<layers::MemoryTextureHost> mTextureHost;
+  uint32_t mSourcePitch = 0;
+  uint32_t mTargetPitch = 0;
+  uint32_t mRowCount = 0;
+  std::vector<RawId> mUnassignedBufferIds;
+  std::vector<RawId> mAvailableBufferIds;
+  std::vector<RawId> mQueuedBufferIds;
+  Mutex mBuffersLock;
+
+  PresentationData() : mBuffersLock("WebGPU presentation buffers") {
+    MOZ_COUNT_CTOR(PresentationData);
+  }
+
+ private:
+  ~PresentationData() { MOZ_COUNT_DTOR(PresentationData); }
+};
 
 static void FreeAdapter(RawId id, void* param) {
   if (!static_cast<WebGPUParent*>(param)->SendFreeAdapter(id)) {
@@ -154,7 +179,6 @@ ipc::IPCResult WebGPUParent::RecvAdapterRequestDevice(
   desc.limits.max_bind_groups = aDesc.mLimits.WasPassed()
                                     ? aDesc.mLimits.Value().mMaxBindGroups
                                     : WGPUDEFAULT_BIND_GROUPS;
-  Unused << aDesc;  // no useful fields
   // TODO: fill up the descriptor
   ffi::wgpu_server_adapter_request_device(mContext, aSelfId, &desc, aNewId);
   return IPC_OK();
@@ -171,14 +195,11 @@ ipc::IPCResult WebGPUParent::RecvDeviceDestroy(RawId aSelfId) {
 }
 
 ipc::IPCResult WebGPUParent::RecvDeviceCreateBuffer(
-    RawId aSelfId, const dom::GPUBufferDescriptor& aDesc, RawId aNewId) {
-  ffi::WGPUBufferDescriptor desc = {};
-  desc.usage = aDesc.mUsage;
-  desc.size = aDesc.mSize;
-  // tweak: imply STORAGE_READ. This is yet to be figured out by the spec,
-  // see https://github.com/gpuweb/gpuweb/issues/541
-  if (desc.usage & WGPUBufferUsage_STORAGE) {
-    desc.usage |= WGPUBufferUsage_STORAGE_READ;
+    RawId aSelfId, const ffi::WGPUBufferDescriptor& aDesc,
+    const nsCString& aLabel, RawId aNewId) {
+  ffi::WGPUBufferDescriptor desc = aDesc;
+  if (!aLabel.IsEmpty()) {
+    desc.label = aLabel.Data();
   }
   ffi::wgpu_server_device_create_buffer(mContext, aSelfId, &desc, aNewId);
   return IPC_OK();
@@ -186,10 +207,16 @@ ipc::IPCResult WebGPUParent::RecvDeviceCreateBuffer(
 
 ipc::IPCResult WebGPUParent::RecvDeviceUnmapBuffer(RawId aSelfId,
                                                    RawId aBufferId,
-                                                   Shmem&& shmem) {
-  ffi::wgpu_server_device_set_buffer_sub_data(mContext, aSelfId, aBufferId, 0,
-                                              shmem.get<uint8_t>(),
-                                              shmem.Size<uint8_t>());
+                                                   Shmem&& aShmem,
+                                                   bool aFlush) {
+  if (aFlush) {
+    ffi::wgpu_server_device_set_buffer_sub_data(mContext, aSelfId, aBufferId, 0,
+                                                aShmem.get<uint8_t>(),
+                                                aShmem.Size<uint8_t>());
+  } else {
+    ffi::wgpu_server_buffer_unmap(mContext, aBufferId);
+  }
+  DeallocShmem(aShmem);
   return IPC_OK();
 }
 
@@ -201,8 +228,8 @@ struct MapReadRequest {
       : mShmem(shmem), mResolver(resolver) {}
 };
 
-void MapReadCallback(ffi::WGPUBufferMapAsyncStatus status, const uint8_t* ptr,
-                     uint8_t* userdata) {
+static void MapReadCallback(ffi::WGPUBufferMapAsyncStatus status,
+                            const uint8_t* ptr, uint8_t* userdata) {
   auto req = reinterpret_cast<MapReadRequest*>(userdata);
   // TODO: better handle errors
   MOZ_ASSERT(status == ffi::WGPUBufferMapAsyncStatus_Success);
@@ -212,9 +239,9 @@ void MapReadCallback(ffi::WGPUBufferMapAsyncStatus status, const uint8_t* ptr,
 }
 
 ipc::IPCResult WebGPUParent::RecvBufferMapRead(
-    RawId aSelfId, Shmem&& shmem, BufferMapReadResolver&& resolver) {
-  auto size = shmem.Size<uint8_t>();
-  auto request = new MapReadRequest(std::move(shmem), std::move(resolver));
+    RawId aSelfId, Shmem&& aShmem, BufferMapReadResolver&& aResolver) {
+  auto size = aShmem.Size<uint8_t>();
+  auto request = new MapReadRequest(std::move(aShmem), std::move(aResolver));
   ffi::wgpu_server_buffer_map_read(mContext, aSelfId, 0, size, &MapReadCallback,
                                    reinterpret_cast<uint8_t*>(request));
   return IPC_OK();
@@ -226,14 +253,24 @@ ipc::IPCResult WebGPUParent::RecvBufferDestroy(RawId aSelfId) {
 }
 
 ipc::IPCResult WebGPUParent::RecvDeviceCreateTexture(
-    RawId aSelfId, const ffi::WGPUTextureDescriptor& aDesc, RawId aNewId) {
-  ffi::wgpu_server_device_create_texture(mContext, aSelfId, &aDesc, aNewId);
+    RawId aSelfId, const ffi::WGPUTextureDescriptor& aDesc,
+    const nsCString& aLabel, RawId aNewId) {
+  ffi::WGPUTextureDescriptor desc = aDesc;
+  if (!aLabel.IsEmpty()) {
+    desc.label = aLabel.Data();
+  }
+  ffi::wgpu_server_device_create_texture(mContext, aSelfId, &desc, aNewId);
   return IPC_OK();
 }
 
 ipc::IPCResult WebGPUParent::RecvTextureCreateView(
-    RawId aSelfId, const ffi::WGPUTextureViewDescriptor& aDesc, RawId aNewId) {
-  ffi::wgpu_server_texture_create_view(mContext, aSelfId, &aDesc, aNewId);
+    RawId aSelfId, const ffi::WGPUTextureViewDescriptor& aDesc,
+    const nsCString& aLabel, RawId aNewId) {
+  ffi::WGPUTextureViewDescriptor desc = aDesc;
+  if (!aLabel.IsEmpty()) {
+    desc.label = aLabel.Data();
+  }
+  ffi::wgpu_server_texture_create_view(mContext, aSelfId, &desc, aNewId);
   return IPC_OK();
 }
 
@@ -248,22 +285,12 @@ ipc::IPCResult WebGPUParent::RecvTextureViewDestroy(RawId aSelfId) {
 }
 
 ipc::IPCResult WebGPUParent::RecvDeviceCreateSampler(
-    RawId aSelfId, const dom::GPUSamplerDescriptor& aDesc, RawId aNewId) {
-  ffi::WGPUSamplerDescriptor desc = {};
-  desc.address_mode_u = ffi::WGPUAddressMode(aDesc.mAddressModeU);
-  desc.address_mode_v = ffi::WGPUAddressMode(aDesc.mAddressModeV);
-  desc.address_mode_w = ffi::WGPUAddressMode(aDesc.mAddressModeW);
-  desc.mag_filter = ffi::WGPUFilterMode(aDesc.mMagFilter);
-  desc.min_filter = ffi::WGPUFilterMode(aDesc.mMinFilter);
-  desc.mipmap_filter = ffi::WGPUFilterMode(aDesc.mMipmapFilter);
-  desc.lod_min_clamp = aDesc.mLodMinClamp;
-  desc.lod_max_clamp = aDesc.mLodMaxClamp;
-  ffi::WGPUCompareFunction compare;
-  if (aDesc.mCompare.WasPassed()) {
-    compare = ffi::WGPUCompareFunction(aDesc.mCompare.Value());
-    desc.compare = &compare;
+    RawId aSelfId, const ffi::WGPUSamplerDescriptor& aDesc,
+    const nsCString& aLabel, RawId aNewId) {
+  ffi::WGPUSamplerDescriptor desc = aDesc;
+  if (!aLabel.IsEmpty()) {
+    desc.label = aLabel.Data();
   }
-
   ffi::wgpu_server_device_create_sampler(mContext, aSelfId, &desc, aNewId);
   return IPC_OK();
 }
@@ -276,8 +303,10 @@ ipc::IPCResult WebGPUParent::RecvSamplerDestroy(RawId aSelfId) {
 ipc::IPCResult WebGPUParent::RecvDeviceCreateCommandEncoder(
     RawId aSelfId, const dom::GPUCommandEncoderDescriptor& aDesc,
     RawId aNewId) {
-  Unused << aDesc;  // no useful fields
   ffi::WGPUCommandEncoderDescriptor desc = {};
+  if (aDesc.mLabel.WasPassed()) {
+    // TODO: desc.label = aDesc.mLabel.Value();
+  }
   ffi::wgpu_server_device_create_encoder(mContext, aSelfId, &desc, aNewId);
   return IPC_OK();
 }
@@ -292,17 +321,41 @@ ipc::IPCResult WebGPUParent::RecvCommandEncoderCopyBufferToBuffer(
   return IPC_OK();
 }
 
+ipc::IPCResult WebGPUParent::RecvCommandEncoderCopyBufferToTexture(
+    RawId aSelfId, WGPUBufferCopyView aSource, WGPUTextureCopyView aDestination,
+    WGPUExtent3d aCopySize) {
+  ffi::wgpu_server_encoder_copy_buffer_to_texture(mContext, aSelfId, &aSource,
+                                                  &aDestination, aCopySize);
+  return IPC_OK();
+}
+ipc::IPCResult WebGPUParent::RecvCommandEncoderCopyTextureToBuffer(
+    RawId aSelfId, WGPUTextureCopyView aSource, WGPUBufferCopyView aDestination,
+    WGPUExtent3d aCopySize) {
+  ffi::wgpu_server_encoder_copy_texture_to_buffer(mContext, aSelfId, &aSource,
+                                                  &aDestination, aCopySize);
+  return IPC_OK();
+}
+ipc::IPCResult WebGPUParent::RecvCommandEncoderCopyTextureToTexture(
+    RawId aSelfId, WGPUTextureCopyView aSource,
+    WGPUTextureCopyView aDestination, WGPUExtent3d aCopySize) {
+  ffi::wgpu_server_encoder_copy_texture_to_texture(mContext, aSelfId, &aSource,
+                                                   &aDestination, aCopySize);
+  return IPC_OK();
+}
+
 ipc::IPCResult WebGPUParent::RecvCommandEncoderRunComputePass(RawId aSelfId,
-                                                              Shmem&& shmem) {
-  ffi::wgpu_server_encode_compute_pass(mContext, aSelfId, shmem.get<uint8_t>(),
-                                       shmem.Size<uint8_t>());
+                                                              Shmem&& aShmem) {
+  ffi::wgpu_server_encode_compute_pass(mContext, aSelfId, aShmem.get<uint8_t>(),
+                                       aShmem.Size<uint8_t>());
+  DeallocShmem(aShmem);
   return IPC_OK();
 }
 
 ipc::IPCResult WebGPUParent::RecvCommandEncoderRunRenderPass(RawId aSelfId,
-                                                             Shmem&& shmem) {
-  ffi::wgpu_server_encode_render_pass(mContext, aSelfId, shmem.get<uint8_t>(),
-                                      shmem.Size<uint8_t>());
+                                                             Shmem&& aShmem) {
+  ffi::wgpu_server_encode_render_pass(mContext, aSelfId, aShmem.get<uint8_t>(),
+                                      aShmem.Size<uint8_t>());
+  DeallocShmem(aShmem);
   return IPC_OK();
 }
 
@@ -438,14 +491,8 @@ ipc::IPCResult WebGPUParent::RecvDeviceCreateRenderPipeline(
       aDesc.mVertexStage.mEntryPoint);
   const NS_LossyConvertUTF16toASCII fsEntryPoint(
       aDesc.mFragmentStage.mEntryPoint);
-  size_t totalAttributes = 0;
-  for (const auto& vertexBuffer : aDesc.mVertexState.mVertexBuffers) {
-    totalAttributes += vertexBuffer.mAttributeSet.Length();
-  }
   nsTArray<ffi::WGPUVertexBufferLayoutDescriptor> vertexBuffers(
       aDesc.mVertexState.mVertexBuffers.Length());
-  nsTArray<ffi::WGPUVertexAttributeDescriptor> vertexAttributes(
-      totalAttributes);
 
   ffi::WGPURenderPipelineDescriptor desc = {};
   ffi::WGPUProgrammableStageDescriptor fragmentDesc = {};
@@ -466,16 +513,12 @@ ipc::IPCResult WebGPUParent::RecvDeviceCreateRenderPipeline(
   if (aDesc.mDepthStencilState.isSome()) {
     desc.depth_stencil_state = aDesc.mDepthStencilState.ptr();
   }
-  totalAttributes = 0;
   for (const auto& vertexBuffer : aDesc.mVertexState.mVertexBuffers) {
     ffi::WGPUVertexBufferLayoutDescriptor vb = {};
     vb.array_stride = vertexBuffer.mArrayStride;
     vb.step_mode = vertexBuffer.mStepMode;
-    vb.attributes = vertexAttributes.Elements() + totalAttributes;
-    vb.attributes_length = vertexBuffer.mAttributeSet.Length();
-    for (const auto& attribute : vertexBuffer.mAttributeSet) {
-      vertexAttributes.AppendElement(attribute);
-    }
+    vb.attributes = vertexBuffer.mAttributes.Elements();
+    vb.attributes_length = vertexBuffer.mAttributes.Length();
     vertexBuffers.AppendElement(vb);
   }
   desc.vertex_state.index_format = aDesc.mVertexState.mIndexFormat;
@@ -494,8 +537,190 @@ ipc::IPCResult WebGPUParent::RecvRenderPipelineDestroy(RawId aSelfId) {
   return IPC_OK();
 }
 
+// TODO: proper destruction
+static const uint64_t kBufferAlignment = 0x100;
+
+static uint64_t Align(uint64_t value) {
+  return (value | (kBufferAlignment - 1)) + 1;
+}
+
+ipc::IPCResult WebGPUParent::RecvDeviceCreateSwapChain(
+    RawId aSelfId, RawId aQueueId, const RGBDescriptor& aDesc,
+    const nsTArray<RawId>& aBufferIds, ExternalImageId aExternalId) {
+  const auto rows = aDesc.size().height;
+  const auto bufferStride =
+      Align(static_cast<uint64_t>(aDesc.size().width) * 4);
+  const auto textureStride = layers::ImageDataSerializer::GetRGBStride(aDesc);
+  const auto wholeBufferSize = CheckedInt<size_t>(textureStride) * rows;
+  if (!wholeBufferSize.isValid()) {
+    NS_ERROR("Invalid total buffer size!");
+    return IPC_OK();
+  }
+  auto textureHostData = new (fallible) uint8_t[wholeBufferSize.value()];
+  if (!textureHostData) {
+    NS_ERROR("Unable to allocate host data!");
+    return IPC_OK();
+  }
+  auto textureHost = new layers::MemoryTextureHost(
+      textureHostData, aDesc, layers::TextureFlags::NO_FLAGS);
+  textureHost->CreateRenderTexture(aExternalId);
+  nsTArray<RawId> bufferIds(aBufferIds.Clone());
+  RefPtr<PresentationData> data = new PresentationData();
+  data->mDeviceId = aSelfId;
+  data->mQueueId = aQueueId;
+  data->mTextureHost = textureHost;
+  data->mSourcePitch = bufferStride;
+  data->mTargetPitch = textureStride;
+  data->mRowCount = rows;
+  for (const RawId id : bufferIds) {
+    data->mUnassignedBufferIds.push_back(id);
+  }
+  if (!mCanvasMap.insert({AsUint64(aExternalId), data}).second) {
+    NS_ERROR("External image is already registered as WebGPU canvas!");
+  }
+  return IPC_OK();
+}
+
+static void PresentCallback(ffi::WGPUBufferMapAsyncStatus status,
+                            const uint8_t* ptr, uint8_t* userdata) {
+  auto data = reinterpret_cast<PresentationData*>(userdata);
+  if (status == ffi::WGPUBufferMapAsyncStatus_Success) {
+    uint8_t* dst = data->mTextureHost->GetBuffer();
+    for (uint32_t row = 0; row < data->mRowCount; ++row) {
+      memcpy(dst, ptr, data->mTargetPitch);
+      dst += data->mTargetPitch;
+      ptr += data->mSourcePitch;
+    }
+  } else {
+    // TODO: better handle errors
+    NS_WARNING("WebGPU frame mapping failed!");
+  }
+  data->mBuffersLock.Lock();
+  RawId bufferId = data->mQueuedBufferIds.back();
+  data->mQueuedBufferIds.pop_back();
+  data->mAvailableBufferIds.push_back(bufferId);
+  data->mBuffersLock.Unlock();
+  // We artificially did `AddRef` before calling `wgpu_server_buffer_map_read`.
+  // Now we can let it go again.
+  data->Release();
+}
+
+ipc::IPCResult WebGPUParent::RecvSwapChainPresent(
+    wr::ExternalImageId aExternalId, RawId aTextureId,
+    RawId aCommandEncoderId) {
+  // step 0: get the data associated with the swapchain
+  const auto& lookup = mCanvasMap.find(AsUint64(aExternalId));
+  if (lookup == mCanvasMap.end()) {
+    NS_WARNING("WebGPU presenting on a destroyed swap chain!");
+    return IPC_OK();
+  }
+  RefPtr<PresentationData> data = lookup->second.get();
+  RawId bufferId = 0;
+  const auto& size = data->mTextureHost->GetSize();
+  const auto bufferSize = data->mRowCount * data->mSourcePitch;
+
+  // step 1: find an available staging buffer, or create one
+  data->mBuffersLock.Lock();
+  if (!data->mAvailableBufferIds.empty()) {
+    bufferId = data->mAvailableBufferIds.back();
+    wgpu_server_buffer_unmap(mContext, bufferId);
+    data->mAvailableBufferIds.pop_back();
+  } else if (!data->mUnassignedBufferIds.empty()) {
+    bufferId = data->mUnassignedBufferIds.back();
+    data->mUnassignedBufferIds.pop_back();
+
+    ffi::WGPUBufferUsage usage =
+        WGPUBufferUsage_COPY_DST | WGPUBufferUsage_MAP_READ;
+    ffi::WGPUBufferDescriptor desc = {};
+    desc.size = bufferSize;
+    desc.usage = usage;
+    ffi::wgpu_server_device_create_buffer(mContext, data->mDeviceId, &desc,
+                                          bufferId);
+  } else {
+    bufferId = 0;
+  }
+  if (bufferId) {
+    data->mQueuedBufferIds.insert(data->mQueuedBufferIds.begin(), bufferId);
+  }
+  data->mBuffersLock.Unlock();
+  if (!bufferId) {
+    // TODO: add a warning - no buffer are available!
+    return IPC_OK();
+  }
+
+  // step 3: submit a copy command for the frame
+  ffi::WGPUCommandEncoderDescriptor encoderDesc = {};
+  ffi::wgpu_server_device_create_encoder(mContext, data->mDeviceId,
+                                         &encoderDesc, aCommandEncoderId);
+  const ffi::WGPUTextureCopyView texView = {
+      aTextureId,
+  };
+  const ffi::WGPUBufferCopyView bufView = {
+      bufferId,
+      0,
+      data->mSourcePitch,
+      0,
+  };
+  const ffi::WGPUExtent3d extent = {
+      static_cast<uint32_t>(size.width),
+      static_cast<uint32_t>(size.height),
+      1,
+  };
+  ffi::wgpu_server_encoder_copy_texture_to_buffer(mContext, aCommandEncoderId,
+                                                  &texView, &bufView, extent);
+  ffi::WGPUCommandBufferDescriptor commandDesc = {};
+  ffi::wgpu_server_encoder_finish(mContext, aCommandEncoderId, &commandDesc);
+  ffi::wgpu_server_queue_submit(mContext, data->mQueueId, &aCommandEncoderId,
+                                1);
+
+  // step 4: request the pixels to be copied into the external texture
+  // TODO: this isn't strictly necessary. When WR wants to Lock() the external
+  // texture,
+  // we can just give it the contents of the last mapped buffer instead of the
+  // copy.
+  // This `AddRef` is needed for passing `data` as a raw pointer to
+  // `wgpu_server_buffer_map_read` to serve as `userdata`. It's released at
+  // the end of `PresentCallback` body.
+  const auto userData = do_AddRef(data).take();
+  ffi::wgpu_server_buffer_map_read(mContext, bufferId, 0, bufferSize,
+                                   &PresentCallback,
+                                   reinterpret_cast<uint8_t*>(userData));
+
+  return IPC_OK();
+}
+
+ipc::IPCResult WebGPUParent::RecvSwapChainDestroy(
+    wr::ExternalImageId aExternalId) {
+  const auto& lookup = mCanvasMap.find(AsUint64(aExternalId));
+  MOZ_ASSERT(lookup != mCanvasMap.end());
+  RefPtr<PresentationData> data = lookup->second.get();
+  mCanvasMap.erase(AsUint64(aExternalId));
+  data->mTextureHost = nullptr;
+  layers::TextureHost::DestroyRenderTexture(aExternalId);
+
+  data->mBuffersLock.Lock();
+  for (const auto bid : data->mUnassignedBufferIds) {
+    if (!SendFreeBuffer(bid)) {
+      NS_WARNING("Unable to free an ID for non-assigned buffer");
+    }
+  }
+  for (const auto bid : data->mAvailableBufferIds) {
+    ffi::wgpu_server_buffer_destroy(mContext, bid);
+  }
+  for (const auto bid : data->mQueuedBufferIds) {
+    ffi::wgpu_server_buffer_destroy(mContext, bid);
+  }
+  data->mBuffersLock.Unlock();
+  return IPC_OK();
+}
+
 ipc::IPCResult WebGPUParent::RecvShutdown() {
   mTimer.Stop();
+  for (const auto& p : mCanvasMap) {
+    const wr::ExternalImageId extId = {p.first};
+    layers::TextureHost::DestroyRenderTexture(extId);
+  }
+  mCanvasMap.clear();
   ffi::wgpu_server_poll_all_devices(mContext, true);
   ffi::wgpu_server_delete(const_cast<ffi::WGPUGlobal*>(mContext));
   return IPC_OK();

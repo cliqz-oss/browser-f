@@ -370,6 +370,18 @@ export class TopSite extends React.PureComponent {
           })
         );
       }
+      if (this.props.link.overriddenSearchTopSite) {
+        this.props.dispatch(
+          ac.OnlyToMain({
+            type: at.TOP_SITES_ATTRIBUTION,
+            data: {
+              searchProvider: this.props.link.hostname,
+              siteURL: this.props.link.url,
+              source: "newtab",
+            },
+          })
+        );
+      }
     } else {
       this.props.dispatch(
         ac.OnlyToMain({

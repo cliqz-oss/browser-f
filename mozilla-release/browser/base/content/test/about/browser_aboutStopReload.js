@@ -15,6 +15,9 @@ function stopReloadMutationCallback() {
   );
 }
 
+// Force-enable the animation
+gReduceMotionOverride = false;
+
 add_task(async function checkDontShowStopOnNewTab() {
   let stopReloadContainer = document.getElementById("stop-reload-button");
   let stopReloadContainerObserver = new MutationObserver(

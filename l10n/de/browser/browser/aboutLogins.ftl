@@ -2,6 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+# NOTE: New strings should use the about-logins- prefix.
+
 about-logins-page-title = Zugangsdaten und Passwörter
 
 # "Google Play" and "App Store" are both branding and should not be translated
@@ -26,6 +32,7 @@ menu =
     .title = Menü öffnen
 # This menuitem is only visible on Windows and macOS
 about-logins-menu-menuitem-import-from-another-browser = Daten aus anderem Browser importieren…
+about-logins-menu-menuitem-export-logins = Zugangsdaten exportieren…
 menu-menuitem-preferences =
     { PLATFORM() ->
         [windows] Einstellungen
@@ -47,7 +54,6 @@ login-list-count =
 login-list-sort-label-text = Sortieren nach:
 login-list-name-option = Name (A-Z)
 login-list-name-reverse-option = Name (Z-A)
-login-list-breached-option = Websites mit Datenlecks
 about-logins-login-list-alerts-option = Warnungen
 login-list-last-changed-option = Zuletzt geändert
 login-list-last-used-option = Zuletzt verwendet
@@ -106,21 +112,26 @@ about-logins-os-auth-dialog-caption = { -brand-full-name }
 ## and includes subtitle of "Enter password for the user "xxx" to allow this." These
 ## notes are only valid for English. Please test in your respected locale.
 
-# This message can be seen by attempting to edit a login in about:logins
-about-logins-edit-login-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um die gespeicherten Zugangsdaten zu bearbeiten.
-# This message can be seen by attempting to edit a login in about:logins
+# This message can be seen when attempting to edit a login in about:logins on Windows.
+about-logins-edit-login-os-auth-dialog-message-win = Um die Zugangsdaten zu bearbeiten, müssen die Anmeldedaten des Windows-Benutzerkontos eingegeben werden. Dies dient dem Schutz Ihrer Zugangsdaten.
+# This message can be seen when attempting to edit a login in about:logins
 # On MacOS, only provide the reason that account verification is needed. Do not put a complete sentence here.
 about-logins-edit-login-os-auth-dialog-message-macosx = gespeicherte Zugangsdaten bearbeiten
-# This message can be seen by attempting to reveal a password in about:logins
-about-logins-reveal-password-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um das gespeicherte Passwort anzuzeigen.
-# This message can be seen by attempting to reveal a password in about:logins
+# This message can be seen when attempting to reveal a password in about:logins on Windows.
+about-logins-reveal-password-os-auth-dialog-message-win = Um das Passwort anzuzeigen, müssen die Anmeldedaten des Windows-Benutzerkontos eingegeben werden. Dies dient dem Schutz Ihrer Zugangsdaten.
+# This message can be seen when attempting to reveal a password in about:logins
 # On MacOS, only provide the reason that account verification is needed. Do not put a complete sentence here.
-about-logins-reveal-password-os-auth-dialog-message-macosx = gespeichertes Passwort anzeigen
-# This message can be seen by attempting to copy a password in about:logins
-about-logins-copy-password-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um das gespeicherte Passwort zu kopieren.
-# This message can be seen by attempting to copy a password in about:logins
+about-logins-reveal-password-os-auth-dialog-message-macosx = ein gespeichertes Passwort anzeigen
+# This message can be seen when attempting to copy a password in about:logins on Windows.
+about-logins-copy-password-os-auth-dialog-message-win = Um das Passwort zu kopieren, müssen die Anmeldedaten des Windows-Benutzerkontos eingegeben werden. Dies dient dem Schutz Ihrer Zugangsdaten.
+# This message can be seen when attempting to copy a password in about:logins
 # On MacOS, only provide the reason that account verification is needed. Do not put a complete sentence here.
 about-logins-copy-password-os-auth-dialog-message-macosx = gespeichertes Passwort kopieren
+# This message can be seen when attempting to export a password in about:logins on Windows.
+about-logins-export-password-os-auth-dialog-message-win = Um die Zugangsdaten zu exportieren, müssen die Anmeldedaten des Windows-Benutzerkontos eingegeben werden. Dies dient dem Schutz Ihrer Zugangsdaten.
+# This message can be seen when attempting to export a password in about:logins
+# On MacOS, only provide the reason that account verification is needed. Do not put a complete sentence here.
+about-logins-export-password-os-auth-dialog-message-macosx = gespeicherte Zugangsdaten und Passwörter exportieren
 
 ## Master Password notification
 
@@ -155,6 +166,9 @@ confirmation-dialog-dismiss-button =
 about-logins-confirm-remove-dialog-title = Diese Zugangsdaten entfernen?
 confirm-delete-dialog-message = Diese Aktion kann nicht rückgängig gemacht werden.
 about-logins-confirm-remove-dialog-confirm-button = Entfernen
+about-logins-confirm-export-dialog-title = Zugangsdaten und Passwörter exportieren
+about-logins-confirm-export-dialog-message = Ihre Passwörter werden als lesbarer Text gespeichert (z.B. P@ssw0rt). Dadurch hat jede Person, welche die exportierte Datei öffnen kann, Zugriff auf das unverschlüsselte Passwort.
+about-logins-confirm-export-dialog-confirm-button = Exportieren…
 confirm-discard-changes-dialog-title = Nicht gespeicherte Änderungen verwerfen?
 confirm-discard-changes-dialog-message = Alle nicht gespeicherten Änderungen gehen verloren.
 confirm-discard-changes-dialog-confirm-button = Verwerfen
@@ -163,9 +177,6 @@ confirm-discard-changes-dialog-confirm-button = Verwerfen
 
 about-logins-breach-alert-title = Datenleck einer Website
 breach-alert-text = Passwörter dieser Website wurden veröffentlicht oder gestohlen, seit Sie Ihre Zugangsdaten zuletzt aktualisiert haben. Ändern Sie Ihr Passwort, um Ihr Konto zu schützen.
-breach-alert-link = Weitere Informationen über dieses Datenleck
-breach-alert-dismiss =
-    .title = Alarm schließen
 about-logins-breach-alert-date = Das Datenleck wurde am { DATETIME($date, day: "numeric", month: "long", year: "numeric") } registriert.
 # Variables:
 #   $hostname (String) - The hostname of the website associated with the login, e.g. "example.com"
@@ -190,3 +201,19 @@ about-logins-vulnerable-alert-learn-more-link = Weitere Informationen
 about-logins-error-message-duplicate-login-with-link = Ein Eintrag für { $loginTitle } mit diesem Benutzernamen ist bereits vorhanden. <a data-l10n-name="duplicate-link">Bestehenden Eintrag aufrufen?</a>
 # This is a generic error message.
 about-logins-error-message-default = Beim Versuch, dieses Passwort zu speichern, ist ein Fehler aufgetreten.
+
+## Login Export Dialog
+
+# Title of the file picker dialog
+about-logins-export-file-picker-title = Zugangsdaten in Datei exportieren
+# The default file name shown in the file picker when exporting saved logins.
+# This must end in .csv
+about-logins-export-file-picker-default-filename = zugangsdaten.csv
+about-logins-export-file-picker-export-button = Exportieren
+# A description for the .csv file format that may be shown as the file type
+# filter by the operating system.
+about-logins-export-file-picker-csv-filter-title =
+    { PLATFORM() ->
+        [macos] CSV-Dokument
+       *[other] CSV-Datei
+    }

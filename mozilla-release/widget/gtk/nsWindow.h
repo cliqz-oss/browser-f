@@ -19,7 +19,7 @@
 #  include "base/thread.h"
 #  include "WaylandVsyncSource.h"
 #endif
-#include "mozcontainer.h"
+#include "MozContainer.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "nsIDragService.h"
@@ -124,10 +124,10 @@ class nsWindow final : public nsBaseWidget {
 
   // nsIWidget
   using nsBaseWidget::Create;  // for Create signature not overridden here
-  virtual MOZ_MUST_USE nsresult Create(nsIWidget* aParent,
-                                       nsNativeWidget aNativeParent,
-                                       const LayoutDeviceIntRect& aRect,
-                                       nsWidgetInitData* aInitData) override;
+  [[nodiscard]] virtual nsresult Create(nsIWidget* aParent,
+                                        nsNativeWidget aNativeParent,
+                                        const LayoutDeviceIntRect& aRect,
+                                        nsWidgetInitData* aInitData) override;
   virtual void Destroy() override;
   virtual nsIWidget* GetParent() override;
   virtual float GetDPI() override;
@@ -151,8 +151,8 @@ class nsWindow final : public nsBaseWidget {
 
   void SetZIndex(int32_t aZIndex) override;
   virtual void SetSizeMode(nsSizeMode aMode) override;
-  virtual int32_t GetWorkspaceID() override;
-  virtual void MoveToWorkspace(int32_t workspaceID) override;
+  virtual void GetWorkspaceID(nsAString& workspaceID) override;
+  virtual void MoveToWorkspace(const nsAString& workspaceID) override;
   virtual void Enable(bool aState) override;
   virtual void SetFocus(Raise, mozilla::dom::CallerType aCallerType) override;
   virtual LayoutDeviceIntRect GetScreenBounds() override;
@@ -170,7 +170,7 @@ class nsWindow final : public nsBaseWidget {
   virtual void CaptureMouse(bool aCapture) override;
   virtual void CaptureRollupEvents(nsIRollupListener* aListener,
                                    bool aDoCapture) override;
-  virtual MOZ_MUST_USE nsresult GetAttention(int32_t aCycleCount) override;
+  [[nodiscard]] virtual nsresult GetAttention(int32_t aCycleCount) override;
   virtual nsresult SetWindowClipRegion(
       const nsTArray<LayoutDeviceIntRect>& aRects,
       bool aIntersectWithExisting) override;
@@ -288,9 +288,9 @@ class nsWindow final : public nsBaseWidget {
 
   static guint32 sLastButtonPressTime;
 
-  virtual MOZ_MUST_USE nsresult BeginResizeDrag(mozilla::WidgetGUIEvent* aEvent,
-                                                int32_t aHorizontal,
-                                                int32_t aVertical) override;
+  [[nodiscard]] virtual nsresult BeginResizeDrag(
+      mozilla::WidgetGUIEvent* aEvent, int32_t aHorizontal,
+      int32_t aVertical) override;
 
   MozContainer* GetMozContainer() { return mContainer; }
   LayoutDeviceIntRect GetMozContainerSize();
@@ -407,9 +407,6 @@ class nsWindow final : public nsBaseWidget {
   nsresult SetSystemFont(const nsCString& aFontName) override;
   nsresult GetSystemFont(nsCString& aFontName) override;
 
-  nsresult SetPrefersReducedMotionOverrideForTest(bool aValue) final;
-  nsresult ResetPrefersReducedMotionOverrideForTest() final;
-
   typedef enum {
     CSD_SUPPORT_SYSTEM,  // CSD including shadows
     CSD_SUPPORT_CLIENT,  // CSD without shadows
@@ -427,6 +424,13 @@ class nsWindow final : public nsBaseWidget {
   static bool TitlebarCanUseShapeMask();
 #ifdef MOZ_WAYLAND
   virtual nsresult GetScreenRect(LayoutDeviceIntRect* aRect) override;
+  virtual nsRect GetPreferredPopupRect() override {
+    return mPreferredPopupRect;
+  };
+  virtual void FlushPreferredPopupRect() override {
+    mPreferredPopupRect = nsRect(0, 0, 0, 0);
+    mPreferredPopupRectFlushed = true;
+  };
 #endif
   bool IsRemoteContent() { return HasRemoteContent(); }
   static void HideWaylandOpenedPopups();
@@ -536,6 +540,7 @@ class nsWindow final : public nsBaseWidget {
   uint32_t mHasMappedToplevel : 1, mIsFullyObscured : 1, mRetryPointerGrab : 1;
   nsSizeMode mSizeState;
   float mAspectRatio;
+  float mAspectRatioSaved;
   nsIntPoint mClientOffset;
 
 #if GTK_CHECK_VERSION(3, 4, 0)
@@ -577,6 +582,7 @@ class nsWindow final : public nsBaseWidget {
   LayoutDeviceIntRegion mDraggableRegion;
   // It's PictureInPicture window.
   bool mIsPIPWindow;
+  bool mAlwaysOnTop;
 
 #ifdef ACCESSIBILITY
   RefPtr<mozilla::a11y::Accessible> mRootAccessible;
@@ -694,6 +700,10 @@ class nsWindow final : public nsBaseWidget {
   GtkWindow* GetCurrentWindow();
   GtkWindow* GetTopmostWindow();
   bool IsWidgetOverflowWindow();
+  nsRect mPreferredPopupRect;
+  bool mPreferredPopupRectFlushed;
+  bool mWaitingForMoveToRectCB;
+  LayoutDeviceIntRect mPendingSizeRect;
 
   /**
    * |mIMContext| takes all IME related stuff.

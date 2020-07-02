@@ -300,7 +300,7 @@ pub extern "C" fn Servo_TraverseSubtree(
     let global_style_data = &*GLOBAL_STYLE_DATA;
     let guard = global_style_data.shared_lock.read();
 
-    let was_initial_style = element.get_data().is_none();
+    let was_initial_style = !element.has_data();
 
     if needs_animation_only_restyle {
         debug!(
@@ -349,9 +349,7 @@ pub extern "C" fn Servo_TraverseSubtree(
 #[no_mangle]
 pub extern "C" fn Servo_MaybeGCRuleTree(raw_data: &RawServoStyleSet) {
     let per_doc_data = PerDocumentStyleData::from_ffi(raw_data).borrow_mut();
-    unsafe {
-        per_doc_data.stylist.rule_tree().maybe_gc();
-    }
+    per_doc_data.stylist.rule_tree().maybe_gc();
 }
 
 #[no_mangle]
@@ -3387,20 +3385,33 @@ pub unsafe extern "C" fn Servo_CounterStyleRule_GetSpeakAs(
     });
 }
 
+#[repr(u8)]
+pub enum CounterSystem {
+  Cyclic = 0,
+  Numeric,
+  Alphabetic,
+  Symbolic,
+  Additive,
+  Fixed,
+  Extends
+}
+
 #[no_mangle]
-pub unsafe extern "C" fn Servo_CounterStyleRule_GetSystem(rule: &RawServoCounterStyleRule) -> u8 {
+pub unsafe extern "C" fn Servo_CounterStyleRule_GetSystem(
+    rule: &RawServoCounterStyleRule
+) -> CounterSystem {
     use style::counter_style::System;
     read_locked_arc(rule, |rule: &CounterStyleRule| {
         match *rule.resolved_system() {
-            System::Cyclic => structs::NS_STYLE_COUNTER_SYSTEM_CYCLIC,
-            System::Numeric => structs::NS_STYLE_COUNTER_SYSTEM_NUMERIC,
-            System::Alphabetic => structs::NS_STYLE_COUNTER_SYSTEM_ALPHABETIC,
-            System::Symbolic => structs::NS_STYLE_COUNTER_SYSTEM_SYMBOLIC,
-            System::Additive => structs::NS_STYLE_COUNTER_SYSTEM_ADDITIVE,
-            System::Fixed { .. } => structs::NS_STYLE_COUNTER_SYSTEM_FIXED,
-            System::Extends(_) => structs::NS_STYLE_COUNTER_SYSTEM_EXTENDS,
+            System::Cyclic => CounterSystem::Cyclic,
+            System::Numeric => CounterSystem::Numeric,
+            System::Alphabetic => CounterSystem::Alphabetic,
+            System::Symbolic => CounterSystem::Symbolic,
+            System::Additive => CounterSystem::Additive,
+            System::Fixed { .. } => CounterSystem::Fixed,
+            System::Extends(_) => CounterSystem::Extends,
         }
-    }) as u8
+    })
 }
 
 #[no_mangle]
@@ -3718,7 +3729,7 @@ pub extern "C" fn Servo_SetExplicitStyle(element: &RawGeckoElement, style: &Comp
     debug!("Servo_SetExplicitStyle: {:?}", element);
     // We only support this API for initial styling. There's no reason it couldn't
     // work for other things, we just haven't had a reason to do so.
-    debug_assert!(element.get_data().is_none());
+    debug_assert!(!element.has_data());
     let mut data = unsafe { element.ensure_data() };
     data.styles.primary = Some(unsafe { ArcBorrow::from_ref(style) }.clone_arc());
 }
@@ -3975,6 +3986,11 @@ pub extern "C" fn Servo_ComputedValues_EqualForCachedAnonymousContentStyle(
 #[no_mangle]
 pub extern "C" fn Servo_StyleSet_Init(doc: &structs::Document) -> *mut RawServoStyleSet {
     let data = Box::new(PerDocumentStyleData::new(doc));
+
+    // Do this here rather than in Servo_Initialize since we need a document to
+    // get the default computed values from.
+    style::gecko_properties::assert_initial_values_match(&data);
+
     Box::into_raw(data) as *mut RawServoStyleSet
 }
 
@@ -5003,7 +5019,6 @@ pub extern "C" fn Servo_DeclarationBlock_SetNumberValue(
     use style::properties::longhands::_moz_script_level::SpecifiedValue as MozScriptLevel;
     use style::properties::longhands::_moz_script_size_multiplier::SpecifiedValue as MozScriptSizeMultiplier;
     use style::properties::PropertyDeclaration;
-    use style::values::specified::Number;
 
     let long = get_longhand_from_id!(property);
 
@@ -5011,7 +5026,6 @@ pub extern "C" fn Servo_DeclarationBlock_SetNumberValue(
         MozScriptSizeMultiplier => MozScriptSizeMultiplier(value),
         // Gecko uses Number values to signal that it is absolute
         MozScriptLevel => MozScriptLevel::MozAbsolute(value as i32),
-        AspectRatio => Number::new(value),
     };
     write_locked_arc(declarations, |decls: &mut PropertyDeclarationBlock| {
         decls.push(prop, Importance::Normal);
@@ -5194,6 +5208,21 @@ pub extern "C" fn Servo_DeclarationBlock_SetTextDecorationColorOverride(
 
     let decoration = TextDecorationLine::COLOR_OVERRIDE;
     let decl = PropertyDeclaration::TextDecorationLine(decoration);
+    write_locked_arc(declarations, |decls: &mut PropertyDeclarationBlock| {
+        decls.push(decl, Importance::Normal);
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn Servo_DeclarationBlock_SetAspectRatio(
+    declarations: &RawServoDeclarationBlock,
+    width: f32,
+    height: f32,
+) {
+    use style::properties::PropertyDeclaration;
+    use style::values::generics::position::AspectRatio;
+
+    let decl = PropertyDeclaration::AspectRatio(AspectRatio::from_mapped_ratio(width, height));
     write_locked_arc(declarations, |decls: &mut PropertyDeclarationBlock| {
         decls.push(decl, Importance::Normal);
     })
@@ -5775,7 +5804,7 @@ fn fill_in_missing_keyframe_values(
         if !longhands_at_offset.contains(property) {
             unsafe {
                 Gecko_AppendPropertyValuePair(
-                    &mut (*keyframe).mPropertyValues,
+                    &mut *(*keyframe).mPropertyValues,
                     property.to_nscsspropertyid(),
                 );
             }
@@ -5857,7 +5886,7 @@ pub unsafe extern "C" fn Servo_StyleSet_GetKeyframesForName(
                     seen.insert(property);
 
                     Gecko_AppendPropertyValuePair(
-                        &mut (*keyframe).mPropertyValues,
+                        &mut *(*keyframe).mPropertyValues,
                         property.to_nscsspropertyid(),
                     );
                 }
@@ -5906,7 +5935,7 @@ pub unsafe extern "C" fn Servo_StyleSet_GetKeyframesForName(
                     }
 
                     let pair = Gecko_AppendPropertyValuePair(
-                        &mut (*keyframe).mPropertyValues,
+                        &mut *(*keyframe).mPropertyValues,
                         id.to_nscsspropertyid(),
                     );
 
@@ -5929,7 +5958,7 @@ pub unsafe extern "C" fn Servo_StyleSet_GetKeyframesForName(
 
                 if custom_properties.any_normal() {
                     let pair = Gecko_AppendPropertyValuePair(
-                        &mut (*keyframe).mPropertyValues,
+                        &mut *(*keyframe).mPropertyValues,
                         nsCSSPropertyID::eCSSPropertyExtra_variable,
                     );
 
@@ -6783,6 +6812,7 @@ pub unsafe extern "C" fn Servo_SharedMemoryBuilder_Create(
 pub unsafe extern "C" fn Servo_SharedMemoryBuilder_AddStylesheet(
     builder: &mut RawServoSharedMemoryBuilder,
     raw_contents: &RawServoStyleSheetContents,
+    error_message: &mut nsACString,
 ) -> *const ServoCssRules {
     let builder = SharedMemoryBuilder::from_ffi_mut(builder);
     let contents = StylesheetContents::as_arc(&raw_contents);
@@ -6794,10 +6824,15 @@ pub unsafe extern "C" fn Servo_SharedMemoryBuilder_AddStylesheet(
     debug_assert!(contents.source_map_url.read().is_none());
     debug_assert!(contents.source_url.read().is_none());
 
-    let rules = &contents.rules;
-    let shared_rules: &Arc<Locked<CssRules>> = &*builder.write(rules);
-    (&*shared_rules)
-        .with_raw_offset_arc(|arc| *Locked::<CssRules>::arc_as_borrowed(arc) as *const _)
+    match builder.write(&contents.rules) {
+        Ok(rules_ptr) => {
+            (*rules_ptr).with_raw_offset_arc(|arc| *Locked::arc_as_borrowed(arc) as *const _)
+        },
+        Err(message) => {
+            error_message.assign(&message);
+            ptr::null()
+        },
+    }
 }
 
 #[no_mangle]

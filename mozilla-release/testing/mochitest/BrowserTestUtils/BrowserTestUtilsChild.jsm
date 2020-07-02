@@ -219,6 +219,7 @@ class BrowserTestUtilsChild extends JSWindowActorChild {
         );
 
         let dies = function() {
+          dump("\nEt tu, Brute?\n");
           ChromeUtils.privateNoteIntentionalCrash();
 
           switch (aMessage.data.crashType) {
@@ -242,8 +243,15 @@ class BrowserTestUtilsChild extends JSWindowActorChild {
           }
         };
 
-        dump("\nEt tu, Brute?\n");
-        dies();
+        if (aMessage.data.asyncCrash) {
+          let { setTimeout } = ChromeUtils.import(
+            "resource://gre/modules/Timer.jsm"
+          );
+          // Get out of the stack.
+          setTimeout(dies, 0);
+        } else {
+          dies();
+        }
       }
     }
 
@@ -256,7 +264,9 @@ class BrowserTestUtilsChild extends JSWindowActorChild {
       case "load": {
         this.sendAsyncMessage(aEvent.type, {
           internalURL: aEvent.target.documentURI,
-          visibleURL: aEvent.target.location.href,
+          visibleURL: aEvent.target.location
+            ? aEvent.target.location.href
+            : null,
         });
         break;
       }
@@ -284,7 +294,8 @@ class BrowserTestUtilsChild extends JSWindowActorChild {
         // Account for nodes found in iframes.
         let cur = target;
         do {
-          let frame = cur.ownerGlobal.frameElement;
+          // eslint-disable-next-line mozilla/use-ownerGlobal
+          let frame = cur.ownerDocument.defaultView.frameElement;
           let rect = frame.getBoundingClientRect();
 
           left += rect.left;

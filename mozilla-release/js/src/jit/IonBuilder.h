@@ -12,6 +12,8 @@
 
 #include "mozilla/Maybe.h"
 
+#include "jsfriendapi.h"
+
 #include "jit/BaselineInspector.h"
 #include "jit/BytecodeAnalysis.h"
 #include "jit/IonAnalysis.h"
@@ -291,8 +293,7 @@ class MOZ_STACK_CLASS IonBuilder {
 
   MInstruction* addBoundsCheck(MDefinition* index, MDefinition* length);
 
-  MInstruction* addShapeGuard(MDefinition* obj, Shape* const shape,
-                              BailoutKind bailoutKind);
+  MInstruction* addShapeGuard(MDefinition* obj, Shape* const shape);
   MInstruction* addGroupGuard(MDefinition* obj, ObjectGroup* group,
                               BailoutKind bailoutKind);
   MInstruction* addSharedTypedArrayGuard(MDefinition* obj);
@@ -396,8 +397,6 @@ class MOZ_STACK_CLASS IonBuilder {
   MDefinition* maybeConvertToNumber(MDefinition* def);
 
   // jsop_bitop helpers.
-  AbortReasonOr<MBinaryBitwiseInstruction*> binaryBitOpEmit(
-      JSOp op, MIRType specialization, MDefinition* left, MDefinition* right);
   AbortReasonOr<Ok> binaryBitOpTrySpecialized(bool* emitted, JSOp op,
                                               MDefinition* left,
                                               MDefinition* right);
@@ -519,6 +518,11 @@ class MOZ_STACK_CLASS IonBuilder {
     addTypedArrayLengthAndData(obj, SkipBoundsCheck, nullptr, &length, nullptr);
     return length;
   }
+
+  // Add instructions to compute a data view's data and convert |*index| into a
+  // bounds-checked definition.
+  void addDataViewData(MDefinition* obj, Scalar::Type type, MDefinition** index,
+                       MInstruction** elements);
 
   // Add an instruction to compute a typed array's byte offset to the current
   // block.
@@ -729,6 +733,10 @@ class MOZ_STACK_CLASS IonBuilder {
   // Boolean natives.
   InliningResult inlineBoolean(CallInfo& callInfo);
 
+  // DataView natives.
+  InliningResult inlineDataViewGet(CallInfo& callInfo, Scalar::Type type);
+  InliningResult inlineDataViewSet(CallInfo& callInfo, Scalar::Type type);
+
   // Iterator intrinsics.
   InliningResult inlineNewIterator(CallInfo& callInfo, MNewIterator::Type type);
   InliningResult inlineArrayIteratorPrototypeOptimizable(CallInfo& callInfo);
@@ -750,7 +758,7 @@ class MOZ_STACK_CLASS IonBuilder {
   InliningResult inlineMathTrunc(CallInfo& callInfo);
   InliningResult inlineMathSign(CallInfo& callInfo);
   InliningResult inlineMathFunction(CallInfo& callInfo,
-                                    MMathFunction::Function function);
+                                    UnaryMathFunction function);
 
   // String natives.
   InliningResult inlineStringObject(CallInfo& callInfo);

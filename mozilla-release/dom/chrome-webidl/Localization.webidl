@@ -42,7 +42,18 @@ dictionary L10nMessage {
  * and produces an iterator over FluentBundle objects used for
  * localization with fallbacks.
  */
-callback GenerateMessages = Promise<any> (sequence<DOMString> aResourceIds);
+callback GenerateBundles = Promise<any> (sequence<DOMString> aResourceIds);
+callback GenerateBundlesSync = any (sequence<DOMString> aResourceIds);
+
+/**
+ * The structure provides custom methods for the Localization API that
+ * will be used to generate the `FluentBundle` iterator.
+ * This allows the consumer to overload the default Gecko generator.
+ */
+dictionary BundleGenerator {
+  GenerateBundles generateBundles;
+  GenerateBundlesSync generateBundlesSync;
+};
 
 /**
  * Localization is an implementation of the Fluent Localization API.
@@ -64,23 +75,27 @@ callback GenerateMessages = Promise<any> (sequence<DOMString> aResourceIds);
 interface Localization {
   /**
    * Constructor arguments:
-   *    - aResourceids       - a list of localization resource URIs
-   *                           which will provide messages for this
-   *                           Localization instance.
-   *    - aGenerateMessages  - a callback function which will be
-   *                           used to generate an iterator
-   *                           over FluentBundle instances.
+   *    - aResourceids         - a list of localization resource URIs
+   *                             which will provide messages for this
+   *                             Localization instance.
+   *    - aSync                - Specifies if the initial state of the Localization API is synchronous.
+   *                             This enables a number of synchronous methods on the
+   *                             Localization API.
+   *    - aBundleGenerator     - an object with two methods - `generateBundles` and
+   *                             `generateBundlesSync` allowing consumers to overload the
+   *                             default generators provided by Gecko.
    */
   [Throws]
-  constructor(optional sequence<DOMString> aResourceIds,
-              optional GenerateMessages aGenerateMessages);
+  constructor(sequence<DOMString> aResourceIds,
+              optional boolean aSync = false,
+              optional BundleGenerator aBundleGenerator = {});
 
   /**
    * A method for adding resources to the localization context.
    *
    * Returns a new count of resources used by the context.
    */
-  unsigned long addResourceIds(sequence<DOMString> aResourceIds, optional boolean aEager = false);
+  unsigned long addResourceIds(sequence<DOMString> aResourceIds);
 
   /**
    * A method for removing resources from the localization context.
@@ -98,7 +113,7 @@ interface Localization {
    *    let value = await document.l10n.formatValue("unread-emails", {count: 5});
    *    assert.equal(value, "You have 5 unread emails");
    */
-  [NewObject] Promise<UTF8String> formatValue(UTF8String aId, optional L10nArgs aArgs);
+  [NewObject] Promise<UTF8String?> formatValue(UTF8String aId, optional L10nArgs aArgs);
 
   /**
    * Formats values of a list of messages with given ids.
@@ -113,7 +128,7 @@ interface Localization {
    *      "You have 5 unread emails"
    *    ]);
    */
-  [NewObject] Promise<sequence<UTF8String>> formatValues(sequence<L10nKey> aKeys);
+  [NewObject] Promise<sequence<UTF8String?>> formatValues(sequence<L10nKey> aKeys);
 
   /**
    * Formats values and attributes of a list of messages with given ids.
@@ -136,7 +151,16 @@ interface Localization {
    *      }
    *    ]);
    */
-  [NewObject] Promise<sequence<L10nMessage>> formatMessages(sequence<L10nKey> aKeys);
+  [NewObject] Promise<sequence<L10nMessage?>> formatMessages(sequence<L10nKey> aKeys);
+
+  void setIsSync(boolean aIsSync);
+
+  [NewObject, Throws]
+  UTF8String? formatValueSync(UTF8String aId, optional L10nArgs aArgs);
+  [NewObject, Throws]
+  sequence<UTF8String?> formatValuesSync(sequence<L10nKey> aKeys);
+  [NewObject, Throws]
+  sequence<L10nMessage?> formatMessagesSync(sequence<L10nKey> aKeys);
 };
 
 /**

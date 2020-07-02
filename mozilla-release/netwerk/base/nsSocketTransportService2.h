@@ -32,6 +32,7 @@ class nsIPrefBranch;
 //-----------------------------------------------------------------------------
 
 namespace mozilla {
+class AbstractThread;
 namespace net {
 
 //
@@ -143,6 +144,10 @@ class nsSocketTransportService final : public nsPISocketTransportService,
   //-------------------------------------------------------------------------
 
   nsCOMPtr<nsIThread> mThread;  // protected by mLock
+  // We create an AbstractThread for mThread thread so that we can use direct
+  // task dispatching with MozPromise, which is similar (but not identical to)
+  // the microtask semantics of JS promises.
+  RefPtr<AbstractThread> mAbstractThread;
   UniquePtr<PollableEvent> mPollableEvent;
 
   // Returns mThread, protecting the get-and-addref with mLock
@@ -291,7 +296,7 @@ class nsSocketTransportService final : public nsPISocketTransportService,
   // <1> the less-or-equal port number of the range to remap
   // <2> the port number to remap to, when the given port number falls to the
   // range
-  typedef nsTArray<Tuple<uint16_t, uint16_t, uint16_t>> TPortRemapping;
+  typedef CopyableTArray<Tuple<uint16_t, uint16_t, uint16_t>> TPortRemapping;
   Maybe<TPortRemapping> mPortRemapping;
 
   // Called on the socket thread to apply the mapping build on the main thread

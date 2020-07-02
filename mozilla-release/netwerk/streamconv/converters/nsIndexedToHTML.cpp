@@ -92,7 +92,7 @@ nsIndexedToHTML::AsyncConvertData(const char* aFromType, const char* aToType,
 
 NS_IMETHODIMP
 nsIndexedToHTML::GetConvertedType(const nsACString& aFromType,
-                                  nsACString& aToType) {
+                                  nsIChannel* aChannel, nsACString& aToType) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -200,7 +200,6 @@ nsresult nsIndexedToHTML::DoOnStartRequest(nsIRequest* request,
     nsCOMPtr<nsIFile> file;
     rv = fileUrl->GetFile(getter_AddRefs(file));
     if (NS_FAILED(rv)) return rv;
-    file->SetFollowLinks(true);
 
     nsAutoCString url;
     rv = net_GetURLSpecFromFile(file, url);

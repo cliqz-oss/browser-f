@@ -41,14 +41,14 @@ jobs:
             platform: linux32-shippable/opt
         worker-type: b-linux
         worker:
-            docker-image: {in-tree: debian7-i386-build}
+            docker-image: {in-tree: debian8-i386-build}
         run:
             config:
                 - builds/releng_base_firefox.py
                 - builds/releng_base_linux_32_builds.py
             mozconfig-variant: profile-generate
             tooltool-downloads: public
-        run-on-projects: ['try', 'release']
+        run-on-projects: ['release']
         fetches:
             toolchain:
                 - linux64-binutils
@@ -110,6 +110,7 @@ jobs:
             tooltool-downloads: internal
         fetches:
             toolchain:
+                - linux64-binutils
                 - linux64-cctools-port
                 - linux64-clang-macosx-cross
                 - linux64-hfsplus
@@ -123,7 +124,7 @@ jobs:
                 - linux64-lucetc
                 - wasi-sysroot
 
-    android-api-16/pgo:
+    android-api-16-shippable/opt:
         description: "Android 4.0 api-16+ PGO instrumented"
         index:
             product: mobile
@@ -202,7 +203,7 @@ jobs:
                 - linux64-dump-syms
                 - linux64-wine
                 - linux64-liblowercase
-                - win64-winchecksec
+                - linux64-winchecksec
             fetch:
                 - nsis-3.01-win
                 - upx-3.95-win
@@ -245,7 +246,7 @@ jobs:
                 - linux64-dump-syms
                 - linux64-wine
                 - linux64-liblowercase
-                - win64-winchecksec
+                - linux64-winchecksec
             fetch:
                 - nsis-3.01-win
                 - upx-3.95-win

@@ -14,6 +14,7 @@ const { SiteDataTestUtils } = ChromeUtils.import(
 const { PermissionTestUtils } = ChromeUtils.import(
   "resource://testing-common/PermissionTestUtils.jsm"
 );
+const { setTimeout } = ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(
   this,
@@ -147,6 +148,146 @@ add_task(async function() {
     PermissionTestUtils.remove(permissionOrigin, "storageAccessAPI");
     await SiteDataTestUtils.clear();
   }
+
+  UrlClassifierTestUtils.cleanupTestTrackers();
+});
+
+/**
+ * Test that quota storage (even without cookies) is considered when purging trackers.
+ */
+add_task(async function() {
+  await UrlClassifierTestUtils.addTestTrackers();
+
+  let testCases = [
+    { localStorage: true, indexedDB: true },
+    { localStorage: false, indexedDB: true },
+    { localStorage: true, indexedDB: false },
+  ];
+
+  for (let { localStorage, indexedDB } of testCases) {
+    PermissionTestUtils.add(
+      TRACKING_PAGE,
+      "storageAccessAPI",
+      Services.perms.ALLOW_ACTION
+    );
+
+    if (localStorage) {
+      SiteDataTestUtils.addToLocalStorage(TRACKING_PAGE);
+      SiteDataTestUtils.addToLocalStorage(BENIGN_PAGE);
+    }
+
+    if (indexedDB) {
+      await SiteDataTestUtils.addToIndexedDB(TRACKING_PAGE);
+      await SiteDataTestUtils.addToIndexedDB(BENIGN_PAGE);
+    }
+
+    // Purge while storage access permission exists.
+    await PurgeTrackerService.purgeTrackingCookieJars();
+
+    if (localStorage) {
+      ok(
+        SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
+        "localStorage should not have been removed while storage access permission exists."
+      );
+    }
+
+    if (indexedDB) {
+      Assert.greater(
+        await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
+        0,
+        `We have data for ${TRACKING_PAGE}`
+      );
+    }
+
+    // Run purge after storage access permission has been removed.
+    PermissionTestUtils.remove(TRACKING_PAGE, "storageAccessAPI");
+    await PurgeTrackerService.purgeTrackingCookieJars();
+
+    if (localStorage) {
+      ok(
+        SiteDataTestUtils.hasLocalStorage(BENIGN_PAGE),
+        "localStorage should not have been removed for benign page."
+      );
+      ok(
+        !SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
+        "localStorage should have been removed."
+      );
+    }
+
+    if (indexedDB) {
+      Assert.greater(
+        await SiteDataTestUtils.getQuotaUsage(BENIGN_PAGE),
+        0,
+        "quota storage for benign page was not deleted"
+      );
+      Assert.equal(
+        await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
+        0,
+        "quota storage was deleted"
+      );
+    }
+
+    await SiteDataTestUtils.clear();
+  }
+
+  UrlClassifierTestUtils.cleanupTestTrackers();
+});
+
+/**
+ * Test that we correctly delete cookies and storage for sites
+ * with an expired interaction permission.
+ */
+add_task(async function() {
+  await UrlClassifierTestUtils.addTestTrackers();
+
+  PermissionTestUtils.add(
+    TRACKING_PAGE,
+    "storageAccessAPI",
+    Services.perms.ALLOW_ACTION,
+    Services.perms.EXPIRE_TIME,
+    Date.now() + 500
+  );
+
+  SiteDataTestUtils.addToLocalStorage(TRACKING_PAGE);
+  SiteDataTestUtils.addToCookies(TRACKING_PAGE);
+  await SiteDataTestUtils.addToIndexedDB(TRACKING_PAGE);
+
+  // Purge while storage access permission exists.
+  await PurgeTrackerService.purgeTrackingCookieJars();
+
+  ok(
+    SiteDataTestUtils.hasCookies(TRACKING_PAGE),
+    "cookie remains while storage access permission exists."
+  );
+  ok(
+    SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
+    "localStorage should not have been removed while storage access permission exists."
+  );
+  Assert.greater(
+    await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
+    0,
+    `We have data for ${TRACKING_PAGE}`
+  );
+
+  // Run purge after storage access permission has been removed.
+  // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+  await new Promise(c => setTimeout(c, 500));
+  await PurgeTrackerService.purgeTrackingCookieJars();
+
+  // Cookie should have been removed.
+  ok(
+    !SiteDataTestUtils.hasCookies(TRACKING_PAGE),
+    "cookie is removed after purge with no storage access permission."
+  );
+  ok(
+    !SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
+    "localStorage should not have been removed while storage access permission exists."
+  );
+  Assert.equal(
+    await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
+    0,
+    "quota storage was deleted"
+  );
 
   UrlClassifierTestUtils.cleanupTestTrackers();
 });

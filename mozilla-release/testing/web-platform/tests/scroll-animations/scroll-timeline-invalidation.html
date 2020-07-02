@@ -11,6 +11,7 @@
     overflow: auto;
     height: 100px;
     width: 100px;
+    will-change: transform;
   }
   .contents {
     height: 1000px;
@@ -28,6 +29,9 @@ promise_test(async t => {
   const scroller = animation.timeline.scrollSource;
   const maxScroll = scroller.scrollHeight - scroller.clientHeight;
   scroller.scrollTop = 0.2 * maxScroll;
+  // Wait for new animation frame  which allows the timeline to compute new
+  // current time.
+  await waitForNextFrame();
 
   animation.play();
   await animation.ready;
@@ -52,6 +56,9 @@ promise_test(async t => {
   const scroller = animation.timeline.scrollSource;
   const maxScroll = scroller.scrollHeight - scroller.clientHeight;
   scroller.scrollTop = 0.2 * maxScroll;
+  // Wait for new animation frame  which allows the timeline to compute new
+  // current time.
+  await waitForNextFrame();
 
   animation.play();
   await animation.ready;
@@ -85,14 +92,15 @@ promise_test(async t => {
   await animation.ready;
   await waitForNextFrame();
   scroller.scrollTop = 0.2 * maxScroll;
+  // Wait for new animation frame  which allows the timeline to compute new
+  // current time.
+  await waitForNextFrame();
   assert_times_equal(timeline.currentTime, 200,
-    'Timeline current time is updated after scroller update.');
-
+    'Timeline current time is updated after animation frame.');
   await waitForNextFrame();
   assert_times_equal(timeline.currentTime, 163.636,
-    'Timeline current time is updated after animation frame and ' +
+    'Timeline current time is updated after two animation frames and ' +
     'reflects single layout run.');
-
 }, 'If scroll animation resizes its scroll timeline scroller, ' +
    'layout runs only once to reflect the initial update.');
 </script>

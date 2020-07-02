@@ -24,7 +24,6 @@
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/SyncRunnable.h"
-#include "mozilla/SystemGroup.h"
 #include "mozilla/Unused.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsComponentManagerUtils.h"
@@ -82,7 +81,7 @@ GeckoMediaPluginServiceParent::GeckoMediaPluginServiceParent()
       mInitPromiseMonitor("GeckoMediaPluginServiceParent::mInitPromiseMonitor"),
       mInitPromise(&mInitPromiseMonitor),
       mLoadPluginsFromDiskComplete(false),
-      mMainThread(SystemGroup::AbstractMainThreadFor(TaskCategory::Other)) {
+      mMainThread(AbstractThread::MainThread()) {
   MOZ_ASSERT(NS_IsMainThread());
 }
 
@@ -341,8 +340,8 @@ GeckoMediaPluginServiceParent::GetContentParent(
       thread, __func__,
       [self = RefPtr<GeckoMediaPluginServiceParent>(this),
        nodeIdString = nsCString(aNodeIdString), api = nsCString(aAPI),
-       tags = nsTArray<nsCString>(aTags),
-       helper = RefPtr<GMPCrashHelper>(aHelper), holder = std::move(holder)](
+       tags = aTags.Clone(), helper = RefPtr<GMPCrashHelper>(aHelper),
+       holder = std::move(holder)](
           const GenericPromise::ResolveOrRejectValue& aValue) mutable -> void {
         if (aValue.IsReject()) {
           NS_WARNING("GMPService::EnsureInitialized failed.");

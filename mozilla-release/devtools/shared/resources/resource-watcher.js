@@ -32,7 +32,19 @@ class ResourceWatcher {
     this._availableListeners = new EventEmitter();
     this._destroyedListeners = new EventEmitter();
 
+    // Cache for all resources by the order that the resource was taken.
+    this._cache = [];
     this._listenerCount = new Map();
+  }
+
+  get contentToolboxFissionPrefValue() {
+    if (!this._contentToolboxFissionPrefValue) {
+      this._contentToolboxFissionPrefValue = Services.prefs.getBoolPref(
+        "devtools.contenttoolbox.fission",
+        false
+      );
+    }
+    return this._contentToolboxFissionPrefValue;
   }
 
   /**
@@ -41,14 +53,21 @@ class ResourceWatcher {
    *
    * @param {Array:string} resources
    *        List of all resources which should be fetched and observed.
-   * @param {Function} onAvailable
-   *        Function which will be called once per existing resource and
-   *        each time a resource is created
-   * @param {Function} onDestroyed
-   *        Function which will be called each time a resource in the remote
-   *        target is destroyed
+   * @param {Object} options
+   *        - {Function} onAvailable: This attribute is mandatory.
+   *                                  Function which will be called once per existing
+   *                                  resource and each time a resource is created.
+   *        - {Function} onDestroyed: This attribute is optional.
+   *                                  Function which will be called each time a resource in
+   *                                  the remote target is destroyed.
+   *        - {boolean} ignoreExistingResources:
+   *                                  This attribute is optional. Default value is false.
+   *                                  If set to true, onAvailable won't be called with
+   *                                  existing resources.
    */
-  async watch(resources, onAvailable, onDestroyed) {
+  async watchResources(resources, options) {
+    const { onAvailable, ignoreExistingResources = false } = options;
+
     // First ensuring enabling listening to targets.
     // This will call onTargetAvailable for all already existing targets,
     // as well as for the one created later.
@@ -57,19 +76,22 @@ class ResourceWatcher {
     await this._watchAllTargets();
 
     for (const resource of resources) {
-      this._availableListeners.on(resource, onAvailable);
-      if (onDestroyed) {
-        this._destroyedListeners.on(resource, onDestroyed);
-      }
       await this._startListening(resource);
+      this._registerListeners(resource, options);
+    }
+
+    if (!ignoreExistingResources) {
+      await this._forwardCachedResources(resources, onAvailable);
     }
   }
 
   /**
    * Stop watching for given type of resources.
-   * See `watch` for the arguments as both methods receive the same.
+   * See `watchResources` for the arguments as both methods receive the same.
    */
-  unwatch(resources, onAvailable, onDestroyed) {
+  unwatchResources(resources, options) {
+    const { onAvailable, onDestroyed } = options;
+
     for (const resource of resources) {
       this._availableListeners.off(resource, onAvailable);
       if (onDestroyed) {
@@ -85,6 +107,20 @@ class ResourceWatcher {
     }
     if (listeners <= 0) {
       this._unwatchAllTargets();
+    }
+  }
+
+  /**
+   * Register listeners to watch for a given type of resource.
+   *
+   * @param {Object}
+   *        - {Function} onAvailable: mandatory
+   *        - {Function} onDestroyed: optional
+   */
+  _registerListeners(resource, { onAvailable, onDestroyed }) {
+    this._availableListeners.on(resource, onAvailable);
+    if (onDestroyed) {
+      this._destroyedListeners.on(resource, onDestroyed);
     }
   }
 
@@ -121,21 +157,18 @@ class ResourceWatcher {
   /**
    * Method called by the TargetList for each already existing or target which has just been created.
    *
-   * @param {string} type
-   *        One of the string of TargetList.TYPES to describe which
-   *        type of target is available.
    * @param {Front} targetFront
    *        The Front of the target that is available.
    *        This Front inherits from TargetMixin and is typically
    *        composed of a BrowsingContextTargetFront or ContentProcessTargetFront.
-   * @param {boolean} isTopLevel
-   *        If true, means that this is the top level target.
-   *        This typically happens on startup, providing the current
-   *        top level target. But also on navigation, when we navigate
-   *        to an URL which has to be loaded in a distinct process.
-   *        A new top level target is created.
    */
-  async _onTargetAvailable({ type, targetFront, isTopLevel }) {
+  async _onTargetAvailable({ targetFront, isTargetSwitching }) {
+    if (isTargetSwitching) {
+      this._onWillNavigate(targetFront);
+    }
+
+    targetFront.on("will-navigate", () => this._onWillNavigate(targetFront));
+
     // For each resource type...
     for (const resourceType of Object.values(ResourceWatcher.TYPES)) {
       // ...which has at least one listener...
@@ -143,12 +176,7 @@ class ResourceWatcher {
         continue;
       }
       // ...request existing resource and new one to come from this one target
-      await this._watchResourcesForTarget(
-        type,
-        targetFront,
-        isTopLevel,
-        resourceType
-      );
+      await this._watchResourcesForTarget(targetFront, resourceType);
     }
   }
 
@@ -156,7 +184,7 @@ class ResourceWatcher {
    * Method called by the TargetList when a target has just been destroyed
    * See _onTargetAvailable for arguments, they are the same.
    */
-  _onTargetDestroyed({ type, targetFront }) {
+  _onTargetDestroyed({ targetFront }) {
     //TODO: Is there a point in doing anything?
     //
     // We could remove the available/destroyed event, but as the target is destroyed
@@ -172,19 +200,27 @@ class ResourceWatcher {
    *
    * @param {Front} targetFront
    *        The Target Front from which this resource comes from.
-   * @param {String} resourceType
-   *        One string of ResourceWatcher.TYPES, which designes the types of resources
-   *        being reported
-   * @param {json/Front} resource
-   *        Depending on the resource Type, it can be a JSON object or a Front
+   * @param {Array<json/Front>} resources
+   *        Depending on the resource Type, it can be an Array composed of either JSON objects or Fronts,
    *        which describes the resource.
    */
-  _onResourceAvailable(targetFront, resourceType, resource) {
-    this._availableListeners.emit(resourceType, {
-      resourceType,
-      targetFront,
-      resource,
-    });
+  _onResourceAvailable(targetFront, resources) {
+    for (const resource of resources) {
+      // Put the targetFront on the resource for easy retrieval.
+      if (!resource.targetFront) {
+        resource.targetFront = targetFront;
+      }
+      const { resourceType } = resource;
+
+      this._availableListeners.emit(resourceType, {
+        // XXX: We may want to read resource.resourceType instead of passing this resourceType argument?
+        resourceType,
+        targetFront,
+        resource,
+      });
+
+      this._cache.push(resource);
+    }
   }
 
   /**
@@ -194,11 +230,27 @@ class ResourceWatcher {
    * XXX: No usage of this yet. May be useful for the inspector? sources?
    */
   _onResourceDestroyed(targetFront, resourceType, resource) {
+    const index = this._cache.indexOf(resource);
+    if (index >= 0) {
+      this._cache.splice(index, 1);
+    }
+
     this._destroyedListeners.emit(resourceType, {
       resourceType,
       targetFront,
       resource,
     });
+  }
+
+  _onWillNavigate(targetFront) {
+    if (targetFront.isTopLevel) {
+      this._cache = [];
+      return;
+    }
+
+    this._cache = this._cache.filter(
+      cachedResource => cachedResource.targetFront !== targetFront
+    );
   }
 
   /**
@@ -214,44 +266,44 @@ class ResourceWatcher {
     let listeners = this._listenerCount.get(resourceType) || 0;
     listeners++;
     this._listenerCount.set(resourceType, listeners);
+
     if (listeners > 1) {
       return;
     }
+
     // If this is the first listener for this type of resource,
     // we should go through all the existing targets as onTargetAvailable
     // has already been called for these existing targets.
     const promises = [];
-    for (const targetType of this.targetList.ALL_TYPES) {
-      // XXX: May be expose a getReallyAllTarget() on TargetList?
-      for (const target of this.targetList.getAllTargets(targetType)) {
-        promises.push(
-          this._watchResourcesForTarget(
-            targetType,
-            target,
-            target == this.targetList.targetFront,
-            resourceType
-          )
-        );
-      }
+    const targets = this.targetList.getAllTargets(this.targetList.ALL_TYPES);
+    for (const target of targets) {
+      promises.push(this._watchResourcesForTarget(target, resourceType));
     }
     await Promise.all(promises);
+  }
+
+  async _forwardCachedResources(resourceTypes, onAvailable) {
+    for (const resource of this._cache) {
+      if (resourceTypes.includes(resource.resourceType)) {
+        await onAvailable({
+          resourceType: resource.resourceType,
+          targetFront: resource.targetFront,
+          resource,
+        });
+      }
+    }
   }
 
   /**
    * Call backward compatibility code from `LegacyListeners` in order to listen for a given
    * type of resource from a given target.
    */
-  _watchResourcesForTarget(targetType, targetFront, isTopLevel, resourceType) {
-    const onAvailable = this._onResourceAvailable.bind(
-      this,
-      targetFront,
-      resourceType
-    );
+  _watchResourcesForTarget(targetFront, resourceType) {
+    const onAvailable = this._onResourceAvailable.bind(this, targetFront);
     return LegacyListeners[resourceType]({
       targetList: this.targetList,
-      targetType,
       targetFront,
-      isTopLevel,
+      isFissionEnabledOnContentToolbox: this.contentToolboxFissionPrefValue,
       onAvailable,
     });
   }
@@ -272,20 +324,24 @@ class ResourceWatcher {
     if (listeners > 0) {
       return;
     }
+
+    // Clear the cached resources of the type.
+    this._cache = this._cache.filter(
+      cachedResource => cachedResource.resourceType !== resourceType
+    );
+
     // If this was the last listener, we should stop watching these events from the actors
     // and the actors should stop watching things from the platform
-    for (const targetType of this.targetList.ALL_TYPES) {
-      // XXX: May be expose a getReallyAllTarget() on TargetList?
-      for (const target of this.targetList.getAllTargets(targetType)) {
-        this._unwatchResourcesForTarget(targetType, target, resourceType);
-      }
+    const targets = this.targetList.getAllTargets(this.targetList.ALL_TYPES);
+    for (const target of targets) {
+      this._unwatchResourcesForTarget(target, resourceType);
     }
   }
 
   /**
    * Backward compatibility code, reverse of _watchResourcesForTarget.
    */
-  _unwatchResourcesForTarget(targetType, targetFront, resourceType) {
+  _unwatchResourcesForTarget(targetFront, resourceType) {
     // Is there really a point in:
     // - unregistering `onAvailable` RDP event callbacks from target-scoped actors?
     // - calling `stopListeners()` as we are most likely closing the toolbox and destroying everything?
@@ -300,7 +356,11 @@ class ResourceWatcher {
 }
 
 ResourceWatcher.TYPES = ResourceWatcher.prototype.TYPES = {
-  CONSOLE_MESSAGES: "console-messages",
+  CONSOLE_MESSAGE: "console-message",
+  ERROR_MESSAGE: "error-message",
+  PLATFORM_MESSAGE: "platform-message",
+  DOCUMENT_EVENT: "document-event",
+  ROOT_NODE: "root-node",
 };
 module.exports = { ResourceWatcher };
 
@@ -308,47 +368,29 @@ module.exports = { ResourceWatcher };
 // Each section added here should eventually be removed once the equivalent server
 // code is implement in Firefox, in its release channel.
 const LegacyListeners = {
-  // Bug 1620243 aims at implementing this from the actor and will eventually replace
-  // this client side code.
-  async [ResourceWatcher.TYPES.CONSOLE_MESSAGES]({
+  [ResourceWatcher.TYPES
+    .CONSOLE_MESSAGE]: require("devtools/shared/resources/legacy-listeners/console-messages"),
+  [ResourceWatcher.TYPES
+    .ERROR_MESSAGE]: require("devtools/shared/resources/legacy-listeners/error-messages"),
+  [ResourceWatcher.TYPES
+    .PLATFORM_MESSAGE]: require("devtools/shared/resources/legacy-listeners/platform-messages"),
+  async [ResourceWatcher.TYPES.DOCUMENT_EVENT]({
     targetList,
-    targetType,
     targetFront,
-    isTopLevel,
     onAvailable,
   }) {
-    // Allow the top level target unconditionnally.
-    // Also allow frame, but only in content toolbox, when the fission/content toolbox pref is
-    // set. i.e. still ignore them in the content of the browser toolbox as we inspect
-    // messages via the process targets
-    // Also ignore workers as they are not supported yet. (see bug 1592584)
-    const isContentToolbox = targetList.targetFront.isLocalTab;
-    const listenForFrames =
-      isContentToolbox &&
-      Services.prefs.getBoolPref("devtools.contenttoolbox.fission");
-    const isAllowed =
-      isTopLevel ||
-      targetType === targetList.TYPES.PROCESS ||
-      (targetType === targetList.TYPES.FRAME && listenForFrames);
-
-    if (!isAllowed) {
+    // DocumentEventsListener of webconsole handles only top level document.
+    if (!targetFront.isTopLevel) {
       return;
     }
 
     const webConsoleFront = await targetFront.getFront("console");
-
-    // Request notifying about new messages
-    await webConsoleFront.startListeners(["ConsoleAPI"]);
-
-    // Fetch already existing messages
-    // /!\ The actor implementation requires to call startListeners(ConsoleAPI) first /!\
-    const { messages } = await webConsoleFront.getCachedMessages([
-      "ConsoleAPI",
-    ]);
-    // Wrap the message into a `message` attribute, to match `consoleAPICall` behavior
-    messages.map(message => ({ message })).forEach(onAvailable);
-
-    // Forward new message events
-    webConsoleFront.on("consoleAPICall", onAvailable);
+    webConsoleFront.on("documentEvent", event => {
+      event.resourceType = ResourceWatcher.TYPES.DOCUMENT_EVENT;
+      onAvailable([event]);
+    });
+    await webConsoleFront.startListeners(["DocumentEvents"]);
   },
+  [ResourceWatcher.TYPES
+    .ROOT_NODE]: require("devtools/shared/resources/legacy-listeners/root-node"),
 };

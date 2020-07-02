@@ -166,6 +166,7 @@ rusty-enums = [
     "mozilla::StyleBlend",
     "mozilla::StyleMaskComposite",
     "mozilla::StyleControlCharacterVisibility",
+    "mozilla::StyleFontSize",
 ]
 whitelist-vars = [
     "NS_ATTRVALUE_.*",
@@ -413,6 +414,7 @@ opaque-types = [
 # FIXME(emilio): We probably want to automate this somehow...
 cbindgen-types = [
     { gecko = "StyleAppearance", servo = "values::specified::Appearance" },
+    { gecko = "StyleAspectRatio", servo = "values::computed::position::AspectRatio" },
     { gecko = "StyleComputedFontStretchRange", servo = "font_face::ComputedFontStretchRange" },
     { gecko = "StyleComputedFontStyleDescriptor", servo = "font_face::ComputedFontStyleDescriptor" },
     { gecko = "StyleComputedFontWeightRange", servo = "font_face::ComputedFontWeightRange" },
@@ -563,6 +565,8 @@ cbindgen-types = [
     { gecko = "StyleJustifySelf", servo = "values::computed::JustifySelf" },
     { gecko = "StyleAlignSelf", servo = "values::computed::AlignSelf" },
     { gecko = "StyleAlignContent", servo = "values::computed::align::AlignContent" },
+    { gecko = "StyleJustifyTracks", servo = "values::computed::align::JustifyTracks" },
+    { gecko = "StyleAlignTracks", servo = "values::computed::align::AlignTracks" },
     { gecko = "StyleJustifyContent", servo = "values::computed::align::JustifyContent" },
     { gecko = "StyleComputedValueFlags", servo = "computed_value_flags::ComputedValueFlags" },
     { gecko = "StyleImage", servo = "values::computed::Image" },

@@ -20,7 +20,6 @@
 #endif
 #include "mozilla/Services.h"
 #include "mozilla/SyncRunnable.h"
-#include "mozilla/SystemGroup.h"
 #include "mozilla/Unused.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsComponentManagerUtils.h"
@@ -64,9 +63,8 @@ class GMPServiceCreateHelper final : public mozilla::Runnable {
       RefPtr<GMPServiceCreateHelper> createHelper =
           new GMPServiceCreateHelper();
 
-      mozilla::SyncRunnable::DispatchToThread(
-          SystemGroup::EventTargetFor(mozilla::TaskCategory::Other),
-          createHelper, true);
+      mozilla::SyncRunnable::DispatchToThread(GetMainThreadSerialEventTarget(),
+                                              createHelper, true);
 
       service = std::move(createHelper->mService);
     }
@@ -231,9 +229,12 @@ RefPtr<GetCDMParentPromise> GeckoMediaPluginService::GetCDM(
           thread, __func__,
           [rawHolder, helper](RefPtr<GMPContentParent::CloseBlocker> wrapper) {
             RefPtr<GMPContentParent> parent = wrapper->mParent;
+            MOZ_ASSERT(
+                parent,
+                "Wrapper should wrap a valid parent if we're in this path.");
             UniquePtr<PromiseHolder> holder(rawHolder);
             RefPtr<ChromiumCDMParent> cdm = parent->GetChromiumCDM();
-            if (!parent) {
+            if (!cdm) {
               nsPrintfCString reason(
                   "%s::%s failed since GetChromiumCDM returns nullptr.",
                   __CLASS__, __FUNCTION__);

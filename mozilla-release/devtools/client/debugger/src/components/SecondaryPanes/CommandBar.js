@@ -9,11 +9,12 @@ import React, { Component } from "react";
 
 import { connect } from "../../utils/connect";
 import classnames from "classnames";
-import { features } from "../../utils/prefs";
+import { features, prefs } from "../../utils/prefs";
 import {
   getIsWaitingOnBreak,
   getSkipPausing,
   getCurrentThread,
+  isTopFrameSelected,
   getThreadContext,
 } from "../../selectors";
 import { formatKeyShortcut } from "../../utils/text";
@@ -24,6 +25,13 @@ import "./CommandBar.css";
 
 import { appinfo } from "devtools-services";
 import type { ThreadContext } from "../../types";
+
+// $FlowIgnore
+const MenuButton = require("devtools/client/shared/components/menu/MenuButton");
+// $FlowIgnore
+const MenuItem = require("devtools/client/shared/components/menu/MenuItem");
+// $FlowIgnore
+const MenuList = require("devtools/client/shared/components/menu/MenuList");
 
 const isMacOS = appinfo.OS === "Darwin";
 
@@ -82,6 +90,8 @@ type Props = {
   isWaitingOnBreak: boolean,
   horizontal: boolean,
   skipPausing: boolean,
+  javascriptEnabled: boolean,
+  topFrameSelected: boolean,
   resume: typeof actions.resume,
   stepIn: typeof actions.stepIn,
   stepOut: typeof actions.stepOut,
@@ -89,6 +99,9 @@ type Props = {
   breakOnNext: typeof actions.breakOnNext,
   pauseOnExceptions: typeof actions.pauseOnExceptions,
   toggleSkipPausing: typeof actions.toggleSkipPausing,
+  toggleInlinePreview: typeof actions.toggleInlinePreview,
+  toggleSourceMapsEnabled: typeof actions.toggleSourceMapsEnabled,
+  toggleJavaScriptEnabled: typeof actions.toggleJavaScriptEnabled,
 };
 
 class CommandBar extends Component<Props> {
@@ -134,7 +147,7 @@ class CommandBar extends Component<Props> {
   }
 
   renderStepButtons() {
-    const { cx } = this.props;
+    const { cx, topFrameSelected } = this.props;
     const className = cx.isPaused ? "active" : "disabled";
     const isDisabled = !cx.isPaused;
 
@@ -152,7 +165,7 @@ class CommandBar extends Component<Props> {
         "stepIn",
         className,
         L10N.getFormatStr("stepInTooltip", formatKey("stepIn")),
-        isDisabled
+        isDisabled || (features.frameStep && !topFrameSelected)
       ),
       debugBtn(
         () => this.props.stepOut(cx),
@@ -226,6 +239,56 @@ class CommandBar extends Component<Props> {
     );
   }
 
+  renderSettingsButton() {
+    const { toolboxDoc } = this.context;
+
+    return (
+      <MenuButton
+        menuId="debugger-settings-menu-button"
+        toolboxDoc={toolboxDoc}
+        className="devtools-button command-bar-button debugger-settings-menu-button"
+        title={L10N.getStr("settings.button.label")}
+      >
+        {() => this.renderSettingsMenuItems()}
+      </MenuButton>
+    );
+  }
+
+  renderSettingsMenuItems() {
+    return (
+      <MenuList id="debugger-settings-menu-list">
+        <MenuItem
+          key="debugger-settings-menu-item-disable-javascript"
+          className="menu-item debugger-settings-menu-item-disable-javascript"
+          checked={!this.props.javascriptEnabled}
+          label={L10N.getStr("settings.disableJavaScript.label")}
+          tooltip={L10N.getStr("settings.disableJavaScript.tooltip")}
+          onClick={() => {
+            this.props.toggleJavaScriptEnabled(!this.props.javascriptEnabled);
+          }}
+        />
+        <MenuItem
+          key="debugger-settings-menu-item-disable-inline-previews"
+          checked={features.inlinePreview}
+          label={L10N.getStr("inlinePreview.toggle.label")}
+          tooltip={L10N.getStr("inlinePreview.toggle.tooltip")}
+          onClick={() =>
+            this.props.toggleInlinePreview(!features.inlinePreview)
+          }
+        />
+        <MenuItem
+          key="debugger-settings-menu-item-disable-sourcemaps"
+          checked={prefs.clientSourceMapsEnabled}
+          label={L10N.getStr("settings.toggleSourceMaps.label")}
+          tooltip={L10N.getStr("settings.toggleSourceMaps.tooltip")}
+          onClick={() =>
+            this.props.toggleSourceMapsEnabled(!prefs.clientSourceMapsEnabled)
+          }
+        />
+      </MenuList>
+    );
+  }
+
   render() {
     return (
       <div
@@ -236,6 +299,8 @@ class CommandBar extends Component<Props> {
         {this.renderStepButtons()}
         <div className="filler" />
         {this.renderSkipPausingButton()}
+        <div className="devtools-separator" />
+        {this.renderSettingsButton()}
       </div>
     );
   }
@@ -243,12 +308,15 @@ class CommandBar extends Component<Props> {
 
 CommandBar.contextTypes = {
   shortcuts: PropTypes.object,
+  toolboxDoc: PropTypes.object,
 };
 
 const mapStateToProps = state => ({
   cx: getThreadContext(state),
   isWaitingOnBreak: getIsWaitingOnBreak(state, getCurrentThread(state)),
   skipPausing: getSkipPausing(state),
+  topFrameSelected: isTopFrameSelected(state, getCurrentThread(state)),
+  javascriptEnabled: state.ui.javascriptEnabled,
 });
 
 export default connect<Props, OwnProps, _, _, _, _>(mapStateToProps, {
@@ -259,4 +327,7 @@ export default connect<Props, OwnProps, _, _, _, _>(mapStateToProps, {
   breakOnNext: actions.breakOnNext,
   pauseOnExceptions: actions.pauseOnExceptions,
   toggleSkipPausing: actions.toggleSkipPausing,
+  toggleInlinePreview: actions.toggleInlinePreview,
+  toggleSourceMapsEnabled: actions.toggleSourceMapsEnabled,
+  toggleJavaScriptEnabled: actions.toggleJavaScriptEnabled,
 })(CommandBar);

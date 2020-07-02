@@ -6711,8 +6711,8 @@ WorkerDispatcher.prototype = {
   start(url, win = window) {
     this.worker = new win.Worker(url);
 
-    this.worker.onerror = () => {
-      console.error(`Error in worker ${url}`);
+    this.worker.onerror = err => {
+      console.error(`Error in worker ${url}`, err.message);
     };
   },
 
@@ -9143,7 +9143,15 @@ function isYieldExpression(path) {
 }
 
 function isObjectShorthand(parent) {
-  return t.isObjectProperty(parent) && parent.value && parent.key.start == parent.value.start && parent.key.loc.identifierName === parent.value.loc.identifierName;
+  if (!t.isObjectProperty(parent)) {
+    return false;
+  }
+
+  if (parent.value && parent.value.left) {
+    return parent.value.type === "AssignmentPattern" && parent.value.left.type === "Identifier";
+  }
+
+  return parent.value && parent.key.start == parent.value.start && parent.key.loc.identifierName === parent.value.loc.identifierName;
 }
 
 function getObjectExpressionValue(node) {
@@ -9231,7 +9239,7 @@ function getVariables(dec) {
     // e.g. const [{a, b }] = 2
 
 
-    return dec.id.elements.filter(element => element).map(element => {
+    return dec.id.elements.filter(Boolean).map(element => {
       var _element$argument;
 
       return {

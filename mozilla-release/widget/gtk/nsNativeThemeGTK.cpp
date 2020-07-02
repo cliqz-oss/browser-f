@@ -572,11 +572,7 @@ bool nsNativeThemeGTK::GetGtkWidgetAndState(StyleAppearance aAppearance,
       aGtkWidgetType = MOZ_GTK_ENTRY;
       break;
     case StyleAppearance::Textarea:
-#ifdef MOZ_WIDGET_GTK
       aGtkWidgetType = MOZ_GTK_TEXT_VIEW;
-#else
-      aGtkWidgetType = MOZ_GTK_ENTRY;
-#endif
       break;
     case StyleAppearance::Listbox:
     case StyleAppearance::Treeview:
@@ -1511,6 +1507,14 @@ nsNativeThemeGTK::GetMinimumWidgetSize(nsPresContext* aPresContext,
       }
       *aIsOverridable = false;
     } break;
+    case StyleAppearance::ScrollbarNonDisappearing: {
+      const ScrollbarGTKMetrics* verticalMetrics =
+          GetActiveScrollbarMetrics(GTK_ORIENTATION_VERTICAL);
+      const ScrollbarGTKMetrics* horizontalMetrics =
+          GetActiveScrollbarMetrics(GTK_ORIENTATION_HORIZONTAL);
+      aResult->width = verticalMetrics->size.scrollbar.width;
+      aResult->height = horizontalMetrics->size.scrollbar.height;
+    } break;
     case StyleAppearance::ScrollbarHorizontal:
     case StyleAppearance::ScrollbarVertical: {
       /* While we enforce a minimum size for the thumb, this is ignored
@@ -1656,15 +1660,42 @@ nsNativeThemeGTK::GetMinimumWidgetSize(nsPresContext* aPresContext,
       aResult->width += border.left + border.right;
       aResult->height += border.top + border.bottom;
     } break;
-#ifdef MOZ_WIDGET_GTK
     case StyleAppearance::MenulistTextfield:
     case StyleAppearance::NumberInput:
     case StyleAppearance::Textfield: {
-      moz_gtk_get_entry_min_height(aFrame->GetWritingMode().IsVertical()
-                                       ? &aResult->width
-                                       : &aResult->height);
+      gint contentHeight = 0;
+      gint borderPaddingHeight = 0;
+      moz_gtk_get_entry_min_height(&contentHeight, &borderPaddingHeight);
+
+      // Scale the min content height proportionately with the font-size if it's
+      // smaller than the default one. This prevents <input type=text
+      // style="font-size: .5em"> from keeping a ridiculously large size, for
+      // example.
+      const gfxFloat fieldFontSizeInCSSPixels = [] {
+        gfxFontStyle fieldFontStyle;
+        nsAutoString unusedFontName;
+        DebugOnly<bool> result = LookAndFeel::GetFont(
+            LookAndFeel::eFont_Field, unusedFontName, fieldFontStyle);
+        MOZ_ASSERT(result, "GTK look and feel supports the field font");
+        // NOTE: GetFont returns font sizes in CSS pixels, and we want just
+        // that.
+        return fieldFontStyle.size;
+      }();
+
+      const gfxFloat fontSize =
+          CSSPixel::FromAppUnits(aFrame->StyleFont()->mFont.size);
+      if (fieldFontSizeInCSSPixels > fontSize) {
+        contentHeight =
+            std::round(contentHeight * fontSize / fieldFontSizeInCSSPixels);
+      }
+
+      gint height = contentHeight + borderPaddingHeight;
+      if (aFrame->GetWritingMode().IsVertical()) {
+        aResult->width = height;
+      } else {
+        aResult->height = height;
+      }
     } break;
-#endif
     case StyleAppearance::Separator: {
       gint separator_width;
 
@@ -1812,7 +1843,9 @@ NS_IMETHODIMP_(bool)
 nsNativeThemeGTK::ThemeSupportsWidget(nsPresContext* aPresContext,
                                       nsIFrame* aFrame,
                                       StyleAppearance aAppearance) {
-  if (IsWidgetTypeDisabled(mDisabledWidgetTypes, aAppearance)) return false;
+  if (IsWidgetTypeDisabled(mDisabledWidgetTypes, aAppearance)) {
+    return false;
+  }
 
   if (IsWidgetScrollbarPart(aAppearance)) {
     ComputedStyle* cs = nsLayoutUtils::StyleForScrollbar(aFrame);
@@ -1888,6 +1921,7 @@ nsNativeThemeGTK::ThemeSupportsWidget(nsPresContext* aPresContext,
     case StyleAppearance::ScrollbartrackVertical:
     case StyleAppearance::ScrollbarthumbHorizontal:
     case StyleAppearance::ScrollbarthumbVertical:
+    case StyleAppearance::ScrollbarNonDisappearing:
     case StyleAppearance::MenulistTextfield:
     case StyleAppearance::NumberInput:
     case StyleAppearance::Textfield:
@@ -1915,9 +1949,7 @@ nsNativeThemeGTK::ThemeSupportsWidget(nsPresContext* aPresContext,
     case StyleAppearance::Splitter:
     case StyleAppearance::Window:
     case StyleAppearance::Dialog:
-#ifdef MOZ_WIDGET_GTK
     case StyleAppearance::MozGtkInfoBar:
-#endif
       return !IsWidgetStyled(aPresContext, aFrame, aAppearance);
 
     case StyleAppearance::MozWindowButtonBox:
@@ -1969,13 +2001,19 @@ nsNativeThemeGTK::WidgetIsContainer(StyleAppearance aAppearance) {
 }
 
 bool nsNativeThemeGTK::ThemeDrawsFocusForWidget(StyleAppearance aAppearance) {
-  if (aAppearance == StyleAppearance::Menulist ||
-      aAppearance == StyleAppearance::MenulistButton ||
-      aAppearance == StyleAppearance::Button ||
-      aAppearance == StyleAppearance::Treeheadercell)
-    return true;
-
-  return false;
+  switch (aAppearance) {
+    case StyleAppearance::Button:
+    case StyleAppearance::Menulist:
+    case StyleAppearance::MenulistButton:
+    case StyleAppearance::MenulistTextfield:
+    case StyleAppearance::Textarea:
+    case StyleAppearance::Textfield:
+    case StyleAppearance::Treeheadercell:
+    case StyleAppearance::NumberInput:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool nsNativeThemeGTK::ThemeNeedsComboboxDropmarker() { return false; }
@@ -1990,14 +2028,13 @@ nsITheme::Transparency nsNativeThemeGTK::GetWidgetTransparency(
       return eOpaque;
     case StyleAppearance::ScrollbarVertical:
     case StyleAppearance::ScrollbarHorizontal:
-#ifdef MOZ_WIDGET_GTK
       // Make scrollbar tracks opaque on the window's scroll frame to prevent
       // leaf layers from overlapping. See bug 1179780.
       if (!(CheckBooleanAttr(aFrame, nsGkAtoms::root_) &&
             aFrame->PresContext()->IsRootContentDocument() &&
-            IsFrameContentNodeInNamespace(aFrame, kNameSpaceID_XUL)))
+            IsFrameContentNodeInNamespace(aFrame, kNameSpaceID_XUL))) {
         return eTransparent;
-#endif
+      }
       return eOpaque;
     // Tooltips use gtk_paint_flat_box() on Gtk2
     // but are shaped on Gtk3

@@ -9,6 +9,7 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 import json
+import logging
 import os
 import shutil
 import socket
@@ -18,9 +19,12 @@ import sys
 import mozfile
 from mach.decorators import Command, CommandProvider
 from mozboot.util import get_state_dir
-from mozbuild.base import MachCommandBase, MozbuildObject
+from mozbuild.base import (
+    MachCommandBase,
+    MozbuildObject,
+    BinaryNotFoundException,
+)
 from mozbuild.base import MachCommandConditions as Conditions
-from raptor.power import enable_charging, disable_charging
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 
@@ -58,7 +62,9 @@ class RaptorRunner(MozbuildObject):
         self.memory_test = kwargs['memory_test']
         self.power_test = kwargs['power_test']
         self.cpu_test = kwargs['cpu_test']
+        self.live_sites = kwargs['live_sites']
         self.disable_perf_tuning = kwargs['disable_perf_tuning']
+        self.conditioned_profile_scenario = kwargs['conditioned_profile_scenario']
         self.device_name = kwargs['device_name']
 
         if Conditions.is_android(self) or kwargs["app"] in ANDROID_BROWSERS:
@@ -157,7 +163,9 @@ class RaptorRunner(MozbuildObject):
             'power_test': self.power_test,
             'memory_test': self.memory_test,
             'cpu_test': self.cpu_test,
+            'live_sites': self.live_sites,
             'disable_perf_tuning': self.disable_perf_tuning,
+            'conditioned_profile_scenario': self.conditioned_profile_scenario,
             'is_release_build': self.is_release_build,
             'device_name': self.device_name,
         }
@@ -213,6 +221,10 @@ class MachRaptor(MachCommandBase):
              description='Run Raptor performance tests.',
              parser=create_parser)
     def run_raptor(self, **kwargs):
+        # Defers this import so that a transitive dependency doesn't
+        # stop |mach bootstrap| from running
+        from raptor.power import enable_charging, disable_charging
+
         build_obj = self
 
         is_android = Conditions.is_android(build_obj) or \
@@ -239,6 +251,14 @@ class MachRaptor(MachCommandBase):
                 device = ADBAndroid(verbose=True)
                 disable_charging(device)
             return raptor.run_test(sys.argv[2:], kwargs)
+        except BinaryNotFoundException as e:
+            self.log(logging.ERROR, 'raptor',
+                     {'error': str(e)},
+                     'ERROR: {error}')
+            self.log(logging.INFO, 'raptor',
+                     {'help': e.help()},
+                     '{help}')
+            return 1
         except Exception as e:
             print(repr(e))
             return 1

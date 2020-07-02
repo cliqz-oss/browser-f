@@ -70,7 +70,8 @@ describe("Personality Provider", () => {
       .callsFake(pref => pref);
     globals.set("RemoteSettings", RemoteSettingsStub);
 
-    instance = new PersonalityProvider(TIME_SEGMENTS, PARAMETER_SETS);
+    instance = new PersonalityProvider();
+    instance.setAffinities(TIME_SEGMENTS, PARAMETER_SETS);
     instance.interestConfig = {
       history_item_builder: "history_item_builder",
       history_required_fields: ["a", "b", "c"],
@@ -128,6 +129,14 @@ describe("Personality Provider", () => {
       sinon.spy(instance, "teardownSyncAttachment");
       instance.teardown();
       assert.calledTwice(instance.teardownSyncAttachment);
+    });
+    it("should terminate worker", () => {
+      const terminateStub = sandbox.stub().returns();
+      instance._personalityProviderWorker = {
+        terminate: terminateStub,
+      };
+      instance.teardown();
+      assert.calledOnce(terminateStub);
     });
   });
   describe("#setupSyncAttachment", () => {

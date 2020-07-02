@@ -700,18 +700,23 @@ class ScrollFrameHelper : public nsIReflowCallback {
   friend class AutoScrollbarRepaintSuppression;
   class AutoScrollbarRepaintSuppression {
    public:
-    AutoScrollbarRepaintSuppression(ScrollFrameHelper* aHelper, bool aSuppress)
+    AutoScrollbarRepaintSuppression(ScrollFrameHelper* aHelper,
+                                    AutoWeakFrame& aWeakOuter, bool aSuppress)
         : mHelper(aHelper),
+          mWeakOuter(aWeakOuter),
           mOldSuppressValue(aHelper->mSuppressScrollbarRepaints) {
       mHelper->mSuppressScrollbarRepaints = aSuppress;
     }
 
     ~AutoScrollbarRepaintSuppression() {
-      mHelper->mSuppressScrollbarRepaints = mOldSuppressValue;
+      if (mWeakOuter.IsAlive()) {
+        mHelper->mSuppressScrollbarRepaints = mOldSuppressValue;
+      }
     }
 
    private:
     ScrollFrameHelper* mHelper;
+    AutoWeakFrame& mWeakOuter;
     bool mOldSuppressValue;
   };
 
@@ -739,13 +744,6 @@ class ScrollFrameHelper : public nsIReflowCallback {
 
   // Removes any RefreshDriver observers we might have registered.
   void RemoveObservers();
-
-  static void EnsureFrameVisPrefsCached();
-  static bool sFrameVisPrefsCached;
-  // The number of scrollports wide/high to expand when tracking frame
-  // visibility.
-  static uint32_t sHorzExpandScrollPort;
-  static uint32_t sVertExpandScrollPort;
 };
 
 }  // namespace mozilla

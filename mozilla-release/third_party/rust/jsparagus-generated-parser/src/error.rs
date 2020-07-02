@@ -1,6 +1,7 @@
 use crate::stack_value_generated::AstError;
 use crate::DeclarationKind;
 use crate::Token;
+use static_assertions::assert_eq_size;
 use std::{convert::Infallible, error::Error, fmt};
 
 #[derive(Debug)]
@@ -38,6 +39,12 @@ pub enum ParseError<'alloc> {
     DuplicateBinding(&'alloc str, DeclarationKind, usize, DeclarationKind, usize),
     DuplicateExport(&'alloc str, usize, usize),
     MissingExport(&'alloc str, usize),
+
+    // Labelled Statement Errors
+    DuplicateLabel,
+    BadContinue,
+    ToughBreak,
+    LabelNotFound,
 
     // Annex B. FunctionDeclarations in IfStatement Statement Clauses
     // https://tc39.es/ecma262/#sec-functiondeclarations-in-ifstatement-statement-clauses
@@ -106,6 +113,18 @@ impl<'alloc> ParseError<'alloc> {
             ParseError::LabelledFunctionDeclInSingleStatement => format!(
                 "functions can only be labelled inside blocks"
             ),
+            ParseError::DuplicateLabel => format!(
+                "duplicate label"
+            ),
+            ParseError::BadContinue => format!(
+                "continue must be inside loop"
+            ),
+            ParseError::ToughBreak => format!(
+                "unlabeled break must be inside loop or switch"
+            ),
+            ParseError::LabelNotFound => format!(
+                "label not found"
+            ),
         }
     }
 }
@@ -134,6 +153,25 @@ impl<'alloc> From<AstError> for ParseError<'alloc> {
     }
 }
 
-impl<'alloc> Error for ParseError<'alloc> {}
+impl<'alloc> From<Infallible> for std::boxed::Box<ParseError<'alloc>> {
+    fn from(err: Infallible) -> std::boxed::Box<ParseError<'alloc>> {
+        match err {}
+    }
+}
 
-pub type Result<'alloc, T> = std::result::Result<T, ParseError<'alloc>>;
+impl<'alloc> From<AstError> for std::boxed::Box<ParseError<'alloc>> {
+    fn from(err: AstError) -> std::boxed::Box<ParseError<'alloc>> {
+        ParseError::AstError(err).into()
+    }
+}
+
+impl<'a, 'alloc: 'a> Error for &'a ParseError<'alloc> {}
+
+// NOTE: This is not the Bump allocator, as error are allocated infrequently and
+// this avoid propagating the bump allocator to all places, while keeping these
+// implementation possible.
+pub type BoxedParseError<'alloc> = std::boxed::Box<ParseError<'alloc>>;
+pub type Result<'alloc, T> = std::result::Result<T, BoxedParseError<'alloc>>;
+
+assert_eq_size!(BoxedParseError<'static>, usize);
+assert_eq_size!(Result<'static, ()>, usize);

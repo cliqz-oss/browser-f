@@ -869,10 +869,8 @@ void APZCTesterBase::PinchWithPinchInput(
   mcc->AdvanceBy(TIME_BETWEEN_PINCH_INPUT);
 
   actualStatus = aTarget->ReceiveInputEvent(
-      CreatePinchGestureInput(
-          PinchGestureInput::PINCHGESTURE_END,
-          PinchGestureInput::BothFingersLifted<ScreenPixel>(), 10.0 * aScale,
-          10.0 * aScale, mcc->Time()),
+      CreatePinchGestureInput(PinchGestureInput::PINCHGESTURE_END, aSecondFocus,
+                              10.0 * aScale, 10.0 * aScale, mcc->Time()),
       nullptr);
   if (aOutEventStatuses) {
     (*aOutEventStatuses)[2] = actualStatus;
@@ -887,7 +885,7 @@ void APZCTesterBase::PinchWithPinchInputAndCheckStatus(
   PinchWithPinchInput(aTarget, aFocus, aFocus, aScale, &statuses);
 
   nsEventStatus expectedStatus = aShouldTriggerPinch
-                                     ? nsEventStatus_eConsumeNoDefault
+                                     ? nsEventStatus_eConsumeDoDefault
                                      : nsEventStatus_eIgnore;
   EXPECT_EQ(expectedStatus, statuses[0]);
   EXPECT_EQ(expectedStatus, statuses[1]);

@@ -18,11 +18,11 @@
 #include "js/Utility.h"
 
 #include "mozilla/Attributes.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/dom/ChromeUtils.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/HoldDropJSObjects.h"
-#include "mozilla/SystemGroup.h"
 #include "nsCCUncollectableMarker.h"
 #include "nsCycleCollectionParticipant.h"
 
@@ -112,6 +112,9 @@ nsresult AsyncScriptCompiler::Start(
                      nsIContentPolicy::TYPE_OTHER);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  // allow deprecated HTTP request from SystemPrincipal
+  nsCOMPtr<nsILoadInfo> loadInfo = channel->LoadInfo();
+  loadInfo->SetAllowDeprecatedSystemRequests(true);
   nsCOMPtr<nsIIncrementalStreamLoader> loader;
   rv = NS_NewIncrementalStreamLoader(getter_AddRefs(loader), this);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -126,7 +129,7 @@ static void OffThreadScriptLoaderCallback(JS::OffThreadToken* aToken,
 
   scriptCompiler->SetToken(aToken);
 
-  SystemGroup::Dispatch(TaskCategory::Other, scriptCompiler.forget());
+  SchedulerGroup::Dispatch(TaskCategory::Other, scriptCompiler.forget());
 }
 
 bool AsyncScriptCompiler::StartCompile(JSContext* aCx) {

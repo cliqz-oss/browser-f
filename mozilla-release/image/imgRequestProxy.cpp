@@ -16,7 +16,6 @@
 #include "imgLoader.h"
 #include "mozilla/Telemetry.h"     // for Telemetry
 #include "mozilla/dom/DocGroup.h"  // for DocGroup
-#include "mozilla/dom/TabGroup.h"  // for TabGroup
 #include "nsCRTGlue.h"
 #include "nsError.h"
 
@@ -94,10 +93,11 @@ NS_IMPL_ADDREF(imgRequestProxy)
 NS_IMPL_RELEASE(imgRequestProxy)
 
 NS_INTERFACE_MAP_BEGIN(imgRequestProxy)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, imgIRequest)
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, PreloaderBase)
   NS_INTERFACE_MAP_ENTRY(imgIRequest)
   NS_INTERFACE_MAP_ENTRY(nsIRequest)
   NS_INTERFACE_MAP_ENTRY(nsISupportsPriority)
+  NS_INTERFACE_MAP_ENTRY_CONCRETE(imgRequestProxy)
   NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsITimedChannel, TimedChannel() != nullptr)
 NS_INTERFACE_MAP_END
 
@@ -277,7 +277,7 @@ nsresult imgRequestProxy::DispatchWithTargetIfAvailable(
 void imgRequestProxy::DispatchWithTarget(already_AddRefed<nsIRunnable> aEvent) {
   LOG_FUNC(gImgLog, "imgRequestProxy::DispatchWithTarget");
 
-  MOZ_ASSERT(mListener || mTabGroup);
+  MOZ_ASSERT(mListener);
   MOZ_ASSERT(mEventTarget);
 
   mHadDispatch = true;
@@ -302,9 +302,6 @@ void imgRequestProxy::AddToOwner(Document* aLoadingDocument) {
   if (aLoadingDocument) {
     RefPtr<mozilla::dom::DocGroup> docGroup = aLoadingDocument->GetDocGroup();
     if (docGroup) {
-      mTabGroup = docGroup->GetTabGroup();
-      MOZ_ASSERT(mTabGroup);
-
       mEventTarget = docGroup->EventTargetFor(mozilla::TaskCategory::Other);
       MOZ_ASSERT(mEventTarget);
     }
@@ -525,10 +522,11 @@ bool imgRequestProxy::StartDecodingWithResult(uint32_t aFlags) {
   return false;
 }
 
-bool imgRequestProxy::RequestDecodeWithResult(uint32_t aFlags) {
+imgIContainer::DecodeResult imgRequestProxy::RequestDecodeWithResult(
+    uint32_t aFlags) {
   if (IsValidating()) {
     mDecodeRequested = true;
-    return false;
+    return imgIContainer::DECODE_REQUESTED;
   }
 
   RefPtr<Image> image = GetImage();
@@ -540,7 +538,7 @@ bool imgRequestProxy::RequestDecodeWithResult(uint32_t aFlags) {
     GetOwner()->StartDecoding();
   }
 
-  return false;
+  return imgIContainer::DECODE_REQUESTED;
 }
 
 NS_IMETHODIMP
@@ -1038,6 +1036,22 @@ void imgRequestProxy::OnLoadComplete(bool aLastPart) {
   if (aLastPart || (mLoadFlags & nsIRequest::LOAD_BACKGROUND) == 0) {
     if (aLastPart) {
       RemoveFromLoadGroup();
+
+      nsresult errorCode = NS_OK;
+      // if the load is cross origin without CORS, or the CORS access is
+      // rejected, always fire load event to avoid leaking site information for
+      // <link rel=preload>.
+      // XXXedgar, currently we don't do the same thing for <img>.
+      imgRequest* request = GetOwner();
+      if (!request || !(request->IsDeniedCrossSiteCORSRequest() ||
+                        request->IsCrossSiteNoCORSRequest())) {
+        uint32_t status = imgIRequest::STATUS_NONE;
+        GetImageStatus(&status);
+        if (status & imgIRequest::STATUS_ERROR) {
+          errorCode = NS_ERROR_FAILURE;
+        }
+      }
+      NotifyStop(errorCode);
     } else {
       // More data is coming, so change the request to be a background request
       // and put it back in the loadgroup.
@@ -1070,11 +1084,6 @@ void imgRequestProxy::NullOutListener() {
   } else {
     mListener = nullptr;
   }
-
-  // Note that we don't free the event target. We actually need that to ensure
-  // we get removed from the ProgressTracker properly. No harm in keeping it
-  // however.
-  mTabGroup = nullptr;
 }
 
 NS_IMETHODIMP
@@ -1196,6 +1205,15 @@ imgCacheValidator* imgRequestProxy::GetValidator() const {
     return nullptr;
   }
   return owner->GetValidator();
+}
+
+void imgRequestProxy::PrioritizeAsPreload() {
+  if (imgRequest* owner = GetOwner()) {
+    owner->PrioritizeAsPreload();
+  }
+  if (imgCacheValidator* validator = GetValidator()) {
+    validator->PrioritizeAsPreload();
+  }
 }
 
 ////////////////// imgRequestProxyStatic methods

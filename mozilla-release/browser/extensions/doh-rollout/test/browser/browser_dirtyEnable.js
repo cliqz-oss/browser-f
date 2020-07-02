@@ -6,11 +6,10 @@ add_task(async function testDirtyEnable() {
   // Set up a failing environment, pre-set DoH to enabled, and verify that
   // when the add-on is enabled, it doesn't do anything - DoH remains turned on.
   setFailingHeuristics();
+  let prefPromise = TestUtils.waitForPrefChange(prefs.DOH_DISABLED_PREF);
   Preferences.set(prefs.TRR_MODE_PREF, 2);
   Preferences.set(prefs.DOH_ENABLED_PREF, true);
-  await BrowserTestUtils.waitForCondition(() => {
-    return Preferences.get(prefs.DOH_DISABLED_PREF, false);
-  });
+  await prefPromise;
   is(
     Preferences.get(prefs.DOH_DISABLED_PREF, false),
     true,
@@ -21,6 +20,12 @@ add_task(async function testDirtyEnable() {
     undefined,
     "Breadcrumb not saved."
   );
+  is(
+    Preferences.get(prefs.DOH_TRR_SELECT_URI_PREF),
+    undefined,
+    "TRR selection not performed."
+  );
+  ensureNoTRRSelectionTelemetry();
   await ensureNoTRRModeChange(2);
   checkHeuristicsTelemetry("prefHasUserValue", "first_run");
 
@@ -31,6 +36,7 @@ add_task(async function testDirtyEnable() {
 
   // Restart for good measure.
   await restartAddon();
+  ensureNoTRRSelectionTelemetry();
   await ensureNoTRRModeChange(2);
   ensureNoHeuristicsTelemetry();
 

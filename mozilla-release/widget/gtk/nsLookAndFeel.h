@@ -100,8 +100,12 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
   bool mCSDCloseButton = false;
   bool mCSDReversedPlacement = false;
   bool mSystemUsesDarkTheme = false;
+  bool mPrefersReducedMotion = false;
   bool mHighContrast = false;
   bool mInitialized = false;
+  int32_t mCSDMaximizeButtonPosition = 0;
+  int32_t mCSDMinimizeButtonPosition = 0;
+  int32_t mCSDCloseButtonPosition = 0;
 
   void EnsureInit();
   void ConfigureContentGtkTheme();

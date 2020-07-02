@@ -341,8 +341,7 @@ class RefreshDriverTimer {
       return;
     }
 
-    nsTArray<RefPtr<nsRefreshDriver>> drivers(aDrivers);
-    for (nsRefreshDriver* driver : drivers) {
+    for (nsRefreshDriver* driver : aDrivers.Clone()) {
       // don't poke this driver if it's in test mode
       if (driver->IsTestControllingRefreshesEnabled()) {
         continue;
@@ -979,7 +978,7 @@ class InactiveRefreshDriverTimer final
 
     mLastFireTime = now;
 
-    nsTArray<RefPtr<nsRefreshDriver>> drivers(mContentRefreshDrivers);
+    nsTArray<RefPtr<nsRefreshDriver>> drivers(mContentRefreshDrivers.Clone());
     drivers.AppendElements(mRootRefreshDrivers);
     size_t index = mNextDriverIndex;
 
@@ -1040,7 +1039,13 @@ void nsRefreshDriver::CreateVsyncRefreshTimer() {
   }
 
   // If available, we fetch the widget-specific vsync source.
-  nsIWidget* widget = GetPresContext()->GetRootWidget();
+  //
+  // NOTE(heycam): If we are initializing an nsRefreshDriver under
+  // nsPresContext::Init, then this GetRootWidget() call will fail, as the
+  // pres context does not yet have a pres shell. For now, null check the
+  // pres shell to avoid a console warning.
+  nsPresContext* pc = GetPresContext();
+  nsIWidget* widget = pc->GetPresShell() ? pc->GetRootWidget() : nullptr;
   if (widget) {
     RefPtr<gfx::VsyncSource> localVsyncSource = widget->GetVsyncSource();
     if (localVsyncSource) {
@@ -1753,8 +1758,8 @@ void nsRefreshDriver::RunFrameRequestCallbacks(TimeStamp aNowTime) {
           // it's currently only clamping for RFP mode. RFP mode gives a much
           // lower time precision, so we accept the security leak here for now
           if (!perf->IsSystemPrincipal()) {
-            timeStamp = nsRFPService::ReduceTimePrecisionAsMSecs(
-                timeStamp, 0, TimerPrecisionType::RFPOnly);
+            timeStamp =
+                nsRFPService::ReduceTimePrecisionAsMSecsRFPOnly(timeStamp, 0);
           }
         }
         // else window is partially torn down already

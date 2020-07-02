@@ -89,6 +89,12 @@ nsresult ThirdPartyUtil::IsThirdPartyInternal(const nsCString& aFirstDomain,
     return NS_ERROR_INVALID_ARG;
   }
 
+  // BlobURLs are always first-party.
+  if (aSecondURI->SchemeIs("blob")) {
+    *aResult = false;
+    return NS_OK;
+  }
+
   // Get the base domain for aSecondURI.
   nsAutoCString secondDomain;
   nsresult rv = GetBaseDomain(aSecondURI, secondDomain);
@@ -140,9 +146,8 @@ ThirdPartyUtil::GetURIFromWindow(mozIDOMWindowProxy* aWin, nsIURI** result) {
     LOG(("ThirdPartyUtil::GetURIFromWindow can't use null principal\n"));
     return NS_ERROR_INVALID_ARG;
   }
-
-  rv = prin->GetURI(result);
-  return rv;
+  auto* basePrin = BasePrincipal::Cast(prin);
+  return basePrin->GetURI(result);
 }
 
 NS_IMETHODIMP
@@ -275,6 +280,39 @@ ThirdPartyUtil::IsThirdPartyWindow(mozIDOMWindowProxy* aWindow, nsIURI* aURI,
   return NS_ERROR_UNEXPECTED;
 }
 
+nsresult ThirdPartyUtil::IsThirdPartyGlobal(
+    mozilla::dom::WindowGlobalParent* aWindowGlobal, bool* aResult) {
+  NS_ENSURE_ARG(aWindowGlobal);
+  NS_ASSERTION(aResult, "null outparam pointer");
+
+  auto* currentWGP = aWindowGlobal;
+  do {
+    MOZ_ASSERT(currentWGP->BrowsingContext());
+    if (currentWGP->BrowsingContext()->IsTop()) {
+      *aResult = false;
+      return NS_OK;
+    }
+    nsCOMPtr<nsIPrincipal> currentPrincipal = currentWGP->DocumentPrincipal();
+    RefPtr<WindowGlobalParent> parent =
+        currentWGP->BrowsingContext()->GetEmbedderWindowGlobal();
+    if (!parent) {
+      return NS_ERROR_FAILURE;
+    }
+    nsCOMPtr<nsIPrincipal> parentPrincipal = parent->DocumentPrincipal();
+    nsresult rv =
+        currentPrincipal->IsThirdPartyPrincipal(parentPrincipal, aResult);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+
+    if (*aResult) {
+      return NS_OK;
+    }
+
+    currentWGP = parent;
+  } while (true);
+}
+
 // Determine if the URI associated with aChannel or any URI of the window
 // hierarchy associated with the channel is foreign with respect to aSecondURI.
 // See docs for mozIThirdPartyUtil.
@@ -319,23 +357,22 @@ ThirdPartyUtil::IsThirdPartyChannel(nsIChannel* aChannel, nsIURI* aURI,
   if (NS_FAILED(rv)) return rv;
 
   if (!doForce) {
-    if (nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo()) {
-      parentIsThird = loadInfo->GetIsInThirdPartyContext();
-      if (!parentIsThird && loadInfo->GetExternalContentPolicyType() !=
-                                nsIContentPolicy::TYPE_DOCUMENT) {
-        // Check if the channel itself is third-party to its own requestor.
-        // Unforunately, we have to go through the loading principal.
+    nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
+    parentIsThird = loadInfo->GetIsInThirdPartyContext();
+    BasePrincipal* loadingPrincipal =
+        BasePrincipal::Cast(loadInfo->GetLoadingPrincipal());
+    if (!parentIsThird &&
+        loadInfo->GetExternalContentPolicyType() !=
+            nsIContentPolicy::TYPE_DOCUMENT &&
+        (!loadingPrincipal->AddonPolicy() ||
+         !loadingPrincipal->AddonAllowsLoad(channelURI))) {
+      // Check if the channel itself is third-party to its own requestor.
+      // Unforunately, we have to go through the loading principal.
 
-        rv = loadInfo->LoadingPrincipal()->IsThirdPartyURI(channelURI,
-                                                           &parentIsThird);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
+      rv = loadingPrincipal->IsThirdPartyURI(channelURI, &parentIsThird);
+      if (NS_FAILED(rv)) {
+        return rv;
       }
-    } else {
-      NS_WARNING(
-          "Found channel with no loadinfo, assuming third-party request");
-      parentIsThird = true;
     }
   }
 

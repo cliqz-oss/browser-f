@@ -467,7 +467,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     }
 
     const doc = this.getRawAccessibleFor(this.rootDoc);
-    if (isStale(doc)) {
+    if (!doc || isStale(doc)) {
       return this.once("document-ready").then(docAcc => this.addRef(docAcc));
     }
 
@@ -484,9 +484,17 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
    */
   getAccessibleFor(domNode) {
     // We need to make sure that the document is loaded processed by a11y first.
-    return this.getDocument().then(() =>
-      this.addRef(this.getRawAccessibleFor(domNode.rawNode))
-    );
+    return this.getDocument().then(() => {
+      const rawAccessible = this.getRawAccessibleFor(domNode.rawNode);
+      // Not all DOM nodes have corresponding accessible objects. It's usually
+      // the case where there is no semantics or relevance to the accessibility
+      // client.
+      if (!rawAccessible) {
+        return null;
+      }
+
+      return this.addRef(rawAccessible);
+    });
   },
 
   /**

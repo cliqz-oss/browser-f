@@ -32,6 +32,7 @@ struct DNSCacheEntries {
   int64_t expiration;
   nsCString netInterface;
   bool TRR;
+  nsCString originAttributesSuffix;
 };
 
 struct HttpConnInfo {
@@ -44,9 +45,9 @@ struct HttpConnInfo {
 
 struct HttpRetParams {
   nsCString host;
-  nsTArray<HttpConnInfo> active;
-  nsTArray<HttpConnInfo> idle;
-  nsTArray<HalfOpenSockets> halfOpens;
+  CopyableTArray<HttpConnInfo> active;
+  CopyableTArray<HttpConnInfo> idle;
+  CopyableTArray<HalfOpenSockets> halfOpens;
   uint32_t counter;
   uint16_t port;
   nsCString httpVersion;

@@ -21,11 +21,18 @@ struct ParamTraits<mozilla::dom::MediaControlKeysEvent>
           mozilla::dom::MediaControlKeysEvent::eStop> {};
 
 template <>
-struct ParamTraits<mozilla::dom::ControlledMediaState>
+struct ParamTraits<mozilla::dom::MediaPlaybackState>
     : public ContiguousEnumSerializerInclusive<
-          mozilla::dom::ControlledMediaState,
-          mozilla::dom::ControlledMediaState::eStarted,
-          mozilla::dom::ControlledMediaState::eStopped> {};
+          mozilla::dom::MediaPlaybackState,
+          mozilla::dom::MediaPlaybackState::eStarted,
+          mozilla::dom::MediaPlaybackState::eStopped> {};
+
+template <>
+struct ParamTraits<mozilla::dom::MediaAudibleState>
+    : public ContiguousEnumSerializerInclusive<
+          mozilla::dom::MediaAudibleState,
+          mozilla::dom::MediaAudibleState::eInaudible,
+          mozilla::dom::MediaAudibleState::eAudible> {};
 
 }  // namespace IPC
 

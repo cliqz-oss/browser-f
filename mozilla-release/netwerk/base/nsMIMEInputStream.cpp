@@ -375,7 +375,7 @@ void nsMIMEInputStream::SerializeInternal(InputStreamParams& aParams,
     params.optionalStream().emplace(wrappedParams);
   }
 
-  params.headers() = mHeaders;
+  params.headers() = mHeaders.Clone();
   params.startedReading() = mStartedReading;
 
   aParams = params;
@@ -392,7 +392,7 @@ bool nsMIMEInputStream::Deserialize(
   const MIMEInputStreamParams& params = aParams.get_MIMEInputStreamParams();
   const Maybe<InputStreamParams>& wrappedParams = params.optionalStream();
 
-  mHeaders = params.headers();
+  mHeaders = params.headers().Clone();
   mStartedReading = params.startedReading();
 
   if (wrappedParams.isSome()) {

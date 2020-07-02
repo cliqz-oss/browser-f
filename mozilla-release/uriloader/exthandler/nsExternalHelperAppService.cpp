@@ -15,6 +15,7 @@
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/WindowGlobalParent.h"
+#include "mozilla/StaticPrefs_security.h"
 #include "nsXULAppAPI.h"
 
 #include "nsExternalHelperAppService.h"
@@ -484,6 +485,9 @@ static const nsExtraMimeTypeEntry extraMimeEntries[] = {
 #ifdef MOZ_WIDGET_ANDROID
     {"application/vnd.android.package-archive", "apk", "Android Package"},
 #endif
+
+    // Note: if you add new image types, please also update the list in
+    // contentAreaUtils.js to match.
     {IMAGE_ART, "art", "ART Image"},
     {IMAGE_BMP, "bmp", "BMP Image"},
     {IMAGE_GIF, "gif", "GIF Image"},
@@ -495,6 +499,8 @@ static const nsExtraMimeTypeEntry extraMimeEntries[] = {
     {IMAGE_XBM, "xbm", "XBM Image"},
     {IMAGE_SVG_XML, "svg", "Scalable Vector Graphics"},
     {IMAGE_WEBP, "webp", "WebP Image"},
+    {IMAGE_AVIF, "avif", "AV1 Image File"},
+
     {MESSAGE_RFC822, "eml", "RFC-822 data"},
     {TEXT_PLAIN, "txt,text", "Text File"},
     {APPLICATION_JSON, "json", "JavaScript Object Notation"},
@@ -727,7 +733,7 @@ NS_IMETHODIMP nsExternalHelperAppService::CreateListener(
   // Try to find a mime object by looking at the mime type/extension
   nsCOMPtr<nsIMIMEInfo> mimeInfo;
   if (aMimeContentType.Equals(APPLICATION_GUESS_FROM_EXT,
-                              nsCaseInsensitiveCStringComparator())) {
+                              nsCaseInsensitiveCStringComparator)) {
     nsAutoCString mimeType;
     if (!fileExtension.IsEmpty()) {
       mimeSvc->GetFromTypeAndExtension(EmptyCString(), fileExtension,
@@ -920,13 +926,13 @@ static const char kExternalProtocolDefaultPref[] =
 
 NS_IMETHODIMP
 nsExternalHelperAppService::LoadURI(nsIURI* aURI,
-                                    nsIInterfaceRequestor* aWindowContext) {
+                                    nsIPrincipal* aTriggeringPrincipal,
+                                    BrowsingContext* aBrowsingContext) {
   NS_ENSURE_ARG_POINTER(aURI);
 
   if (XRE_IsContentProcess()) {
-    nsCOMPtr<nsIBrowserChild> browserChild(do_GetInterface(aWindowContext));
     mozilla::dom::ContentChild::GetSingleton()->SendLoadURIExternal(
-        aURI, static_cast<dom::BrowserChild*>(browserChild.get()));
+        aURI, aTriggeringPrincipal, aBrowsingContext);
     return NS_OK;
   }
 
@@ -963,6 +969,36 @@ nsExternalHelperAppService::LoadURI(nsIURI* aURI,
     return NS_OK;  // explicitly denied
   }
 
+  // Now check if the principal is allowed to access the navigated context.
+  // We allow navigating subframes, even if not same-origin - non-external
+  // links can always navigate everywhere, so this is a minor additional
+  // restriction, only aiming to prevent some types of spoofing attacks
+  // from otherwise disjoint browsingcontext trees.
+  if (aBrowsingContext && aTriggeringPrincipal &&
+      !StaticPrefs::security_allow_disjointed_external_uri_loads() &&
+      !aTriggeringPrincipal->IsSystemPrincipal()) {
+    RefPtr<BrowsingContext> bc = aBrowsingContext;
+    WindowGlobalParent* wgp = bc->Canonical()->GetCurrentWindowGlobal();
+    bool foundAccessibleFrame = false;
+
+    // Also allow this load if the target is a toplevel BC and contains a
+    // non-web-controlled about:blank document
+    if (bc->IsTop() && !bc->HadOriginalOpener()) {
+      RefPtr<nsIURI> uri = wgp->GetDocumentURI();
+      foundAccessibleFrame =
+          uri && uri->GetSpecOrDefault().EqualsLiteral("about:blank");
+    }
+
+    while (wgp && !foundAccessibleFrame) {
+      foundAccessibleFrame =
+          aTriggeringPrincipal->Subsumes(wgp->DocumentPrincipal());
+      wgp = wgp->GetParentWindowContext();
+    }
+    if (!foundAccessibleFrame) {
+      return NS_OK;  // deny the load.
+    }
+  }
+
   nsCOMPtr<nsIHandlerInfo> handler;
   rv = GetProtocolHandlerInfo(scheme, getter_AddRefs(handler));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -976,7 +1012,7 @@ nsExternalHelperAppService::LoadURI(nsIURI* aURI,
   // a helper app or the system default, we just launch the URI.
   if (!alwaysAsk && (preferredAction == nsIHandlerInfo::useHelperApp ||
                      preferredAction == nsIHandlerInfo::useSystemDefault)) {
-    rv = handler->LaunchWithURI(uri, aWindowContext);
+    rv = handler->LaunchWithURI(uri, aBrowsingContext);
     // We are not supposed to ask, but when file not found the user most likely
     // uninstalled the application which handles the uri so we will continue
     // by application chooser dialog.
@@ -989,7 +1025,7 @@ nsExternalHelperAppService::LoadURI(nsIURI* aURI,
       do_CreateInstance("@mozilla.org/content-dispatch-chooser;1", &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return chooser->Ask(handler, aWindowContext, uri,
+  return chooser->Ask(handler, uri, aTriggeringPrincipal, aBrowsingContext,
                       nsIContentDispatchChooser::REASON_CANNOT_HANDLE);
 }
 
@@ -1154,6 +1190,7 @@ nsExternalAppHandler::nsExternalAppHandler(
       mStopRequestIssued(false),
       mIsFileChannel(false),
       mShouldCloseWindow(false),
+      mHandleInternally(false),
       mReason(aReason),
       mTempFileIsExecutable(false),
       mTimeDownloadStarted(0),
@@ -1273,6 +1310,12 @@ NS_IMETHODIMP nsExternalAppHandler::GetContentLength(int64_t* aContentLength) {
   return NS_OK;
 }
 
+NS_IMETHODIMP nsExternalAppHandler::GetBrowsingContextId(
+    uint64_t* aBrowsingContextId) {
+  *aBrowsingContextId = mBrowsingContext->Id();
+  return NS_OK;
+}
+
 void nsExternalAppHandler::RetargetLoadNotifications(nsIRequest* request) {
   // we are going to run the downloading of the helper app in our own little
   // docloader / load group context. so go ahead and force the creation of a
@@ -1318,7 +1361,7 @@ void nsExternalAppHandler::EnsureTempFileExtension(const nsString& aFileExt) {
   if (mTempFileExtension.Length() > 1) {
     // Now, compare fileExt to mTempFileExtension.
     if (aFileExt.Equals(mTempFileExtension,
-                        nsCaseInsensitiveStringComparator())) {
+                        nsCaseInsensitiveStringComparator)) {
       // Matches -> mTempFileExtension can be empty
       mTempFileExtension.Truncate();
     }
@@ -1581,7 +1624,7 @@ NS_IMETHODIMP nsExternalAppHandler::OnStartRequest(nsIRequest* request) {
   if (NS_FAILED(rv)) {
     nsresult transferError = rv;
 
-    rv = CreateFailedTransfer(aChannel && NS_UsePrivateBrowsing(aChannel));
+    rv = CreateFailedTransfer();
     if (NS_FAILED(rv)) {
       LOG(
           ("Failed to create transfer to report failure."
@@ -1678,6 +1721,13 @@ NS_IMETHODIMP nsExternalAppHandler::OnStartRequest(nsIRequest* request) {
     alwaysAsk = (action != nsIMIMEInfo::saveToDisk);
   }
 
+  // If we're not asking, check we actually know what to do:
+  if (!alwaysAsk) {
+    alwaysAsk = action != nsIMIMEInfo::saveToDisk &&
+                action != nsIMIMEInfo::useHelperApp &&
+                action != nsIMIMEInfo::useSystemDefault;
+  }
+
   // if we were told that we _must_ save to disk without asking, all the stuff
   // before this is irrelevant; override it
   if (mForceSave) {
@@ -1733,9 +1783,9 @@ NS_IMETHODIMP nsExternalAppHandler::OnStartRequest(nsIRequest* request) {
 #endif
     if (action == nsIMIMEInfo::useHelperApp ||
         action == nsIMIMEInfo::useSystemDefault) {
-      rv = LaunchWithApplication(nullptr, false);
+      rv = LaunchWithApplication(mHandleInternally);
     } else {
-      rv = SaveToDisk(nullptr, false);
+      rv = PromptForSaveDestination();
     }
   }
 
@@ -2009,7 +2059,7 @@ nsExternalAppHandler::OnSaveComplete(nsIBackgroundFileSaver* aSaver,
       // have to.
       if (!mTransfer) {
         // We don't care if this fails.
-        CreateFailedTransfer(channel && NS_UsePrivateBrowsing(channel));
+        CreateFailedTransfer();
       }
 
       SendStatusChange(kWriteError, aStatus, nullptr, path);
@@ -2102,10 +2152,17 @@ nsresult nsExternalAppHandler::CreateTransfer() {
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIChannel> channel = do_QueryInterface(mRequest);
+  if (mBrowsingContext) {
+    rv = transfer->InitWithBrowsingContext(
+        mSourceUrl, target, EmptyString(), mMimeInfo, mTimeDownloadStarted,
+        mTempFile, this, channel && NS_UsePrivateBrowsing(channel),
+        mBrowsingContext, mHandleInternally);
+  } else {
+    rv = transfer->Init(mSourceUrl, target, EmptyString(), mMimeInfo,
+                        mTimeDownloadStarted, mTempFile, this,
+                        channel && NS_UsePrivateBrowsing(channel));
+  }
 
-  rv = transfer->Init(mSourceUrl, target, EmptyString(), mMimeInfo,
-                      mTimeDownloadStarted, mTempFile, this,
-                      channel && NS_UsePrivateBrowsing(channel));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // If we were cancelled since creating the transfer, just return. It is
@@ -2141,7 +2198,7 @@ nsresult nsExternalAppHandler::CreateTransfer() {
   return rv;
 }
 
-nsresult nsExternalAppHandler::CreateFailedTransfer(bool aIsPrivateBrowsing) {
+nsresult nsExternalAppHandler::CreateFailedTransfer() {
   nsresult rv;
   nsCOMPtr<nsITransfer> transfer =
       do_CreateInstance(NS_TRANSFER_CONTRACTID, &rv);
@@ -2162,8 +2219,18 @@ nsresult nsExternalAppHandler::CreateFailedTransfer(bool aIsPrivateBrowsing) {
   rv = NS_NewFileURI(getter_AddRefs(pseudoTarget), pseudoFile);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = transfer->Init(mSourceUrl, pseudoTarget, EmptyString(), mMimeInfo,
-                      mTimeDownloadStarted, nullptr, this, aIsPrivateBrowsing);
+  nsCOMPtr<nsIChannel> channel = do_QueryInterface(mRequest);
+  if (mBrowsingContext) {
+    rv = transfer->InitWithBrowsingContext(
+        mSourceUrl, pseudoTarget, EmptyString(), mMimeInfo,
+        mTimeDownloadStarted, nullptr, this,
+        channel && NS_UsePrivateBrowsing(channel), mBrowsingContext,
+        mHandleInternally);
+  } else {
+    rv = transfer->Init(mSourceUrl, pseudoTarget, EmptyString(), mMimeInfo,
+                        mTimeDownloadStarted, nullptr, this,
+                        channel && NS_UsePrivateBrowsing(channel));
+  }
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Our failed transfer is ready.
@@ -2216,29 +2283,26 @@ void nsExternalAppHandler::RequestSaveDestination(
   }
 }
 
-// SaveToDisk should only be called by the helper app dialog which allows
-// the user to say launch with application or save to disk. It doesn't actually
-// perform the save, it just prompts for the destination file name.
-NS_IMETHODIMP nsExternalAppHandler::SaveToDisk(nsIFile* aNewFileLocation,
-                                               bool aRememberThisPreference) {
+// PromptForSaveDestination should only be called by the helper app dialog which
+// allows the user to say launch with application or save to disk.
+NS_IMETHODIMP nsExternalAppHandler::PromptForSaveDestination() {
   if (mCanceled) return NS_OK;
 
   mMimeInfo->SetPreferredAction(nsIMIMEInfo::saveToDisk);
 
-  if (!aNewFileLocation) {
-    if (mSuggestedFileName.IsEmpty())
-      RequestSaveDestination(mTempLeafName, mTempFileExtension);
-    else {
-      nsAutoString fileExt;
-      int32_t pos = mSuggestedFileName.RFindChar('.');
-      if (pos >= 0)
-        mSuggestedFileName.Right(fileExt, mSuggestedFileName.Length() - pos);
-      if (fileExt.IsEmpty()) fileExt = mTempFileExtension;
-
-      RequestSaveDestination(mSuggestedFileName, fileExt);
-    }
+  if (mSuggestedFileName.IsEmpty()) {
+    RequestSaveDestination(mTempLeafName, mTempFileExtension);
   } else {
-    ContinueSave(aNewFileLocation);
+    nsAutoString fileExt;
+    int32_t pos = mSuggestedFileName.RFindChar('.');
+    if (pos >= 0) {
+      mSuggestedFileName.Right(fileExt, mSuggestedFileName.Length() - pos);
+    }
+    if (fileExt.IsEmpty()) {
+      fileExt = mTempFileExtension;
+    }
+
+    RequestSaveDestination(mSuggestedFileName, fileExt);
   }
 
   return NS_OK;
@@ -2292,17 +2356,12 @@ nsresult nsExternalAppHandler::ContinueSave(nsIFile* aNewFileLocation) {
 }
 
 // LaunchWithApplication should only be called by the helper app dialog which
-// allows the user to say launch with application or save to disk. It doesn't
-// actually perform launch with application.
+// allows the user to say launch with application or save to disk.
 NS_IMETHODIMP nsExternalAppHandler::LaunchWithApplication(
-    nsIFile* aApplication, bool aRememberThisPreference) {
+    bool aHandleInternally) {
   if (mCanceled) return NS_OK;
 
-  if (mMimeInfo && aApplication) {
-    PlatformLocalHandlerApp_t* handlerApp =
-        new PlatformLocalHandlerApp_t(EmptyString(), aApplication);
-    mMimeInfo->SetPreferredApplicationHandler(handlerApp);
-  }
+  mHandleInternally = aHandleInternally;
 
   // Now check if the file is local, in which case we won't bother with saving
   // it to a temporary directory and just launch it from where it is
@@ -2460,7 +2519,7 @@ NS_IMETHODIMP nsExternalHelperAppService::GetFromTypeAndExtension(
   // We promise to only send lower case mime types to the OS
   ToLowerCase(typeToUse);
 
-  // (1) Ask the OS for a mime info
+  // First, ask the OS for a mime info
   bool found;
   nsresult rv = GetMIMEInfoFromOS(typeToUse, aFileExt, &found, _retval);
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -2471,7 +2530,49 @@ NS_IMETHODIMP nsExternalHelperAppService::GetFromTypeAndExtension(
   // If we got no mimeinfo, something went wrong. Probably lack of memory.
   if (!*_retval) return NS_ERROR_OUT_OF_MEMORY;
 
-  // (2) Now, let's see if we can find something in our datastore
+  // The handler service can make up for bad mime types by checking the file
+  // extension. If the mime type is known (in extras or in the handler
+  // service), we stop it doing so by flipping this bool to true.
+  bool trustMIMEType = false;
+
+  // Check extras - not everything we support will be known by the OS store,
+  // unfortunately, and it may even miss some extensions that we know should
+  // be accepted. We only do this for non-octet-stream mimetypes, because
+  // our information for octet-stream would lead to us trying to open all such
+  // files as Binary file with exe, com or bin extension regardless of the
+  // real extension.
+  if (!typeToUse.Equals(APPLICATION_OCTET_STREAM,
+                        nsCaseInsensitiveCStringComparator)) {
+    rv = FillMIMEInfoForMimeTypeFromExtras(typeToUse, !found, *_retval);
+    LOG(("Searched extras (by type), rv 0x%08" PRIX32 "\n",
+         static_cast<uint32_t>(rv)));
+    trustMIMEType = NS_SUCCEEDED(rv);
+    found = found || NS_SUCCEEDED(rv);
+  }
+
+  // Next, overwrite with generic description if the extension is PDF
+  // since the file format is supported by Firefox and we don't want
+  // other brands positioning themselves as the sole viewer for a system.
+  if (aFileExt.LowerCaseEqualsASCII("pdf") ||
+      aFileExt.LowerCaseEqualsASCII(".pdf")) {
+    nsCOMPtr<nsIStringBundleService> bundleService =
+        do_GetService(NS_STRINGBUNDLE_CONTRACTID, &rv);
+    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIStringBundle> unknownContentTypeBundle;
+    rv = bundleService->CreateBundle(
+        "chrome://mozapps/locale/downloads/unknownContentType.properties",
+        getter_AddRefs(unknownContentTypeBundle));
+    if (NS_SUCCEEDED(rv)) {
+      nsAutoString pdfHandlerDescription;
+      rv = unknownContentTypeBundle->GetStringFromName("pdfHandlerDescription",
+                                                       pdfHandlerDescription);
+      if (NS_SUCCEEDED(rv)) {
+        (*_retval)->SetDescription(pdfHandlerDescription);
+      }
+    }
+  }
+
+  // Now, let's see if we can find something in our datastore.
   // This will not overwrite the OS information that interests us
   // (i.e. default application, default app. description)
   nsCOMPtr<nsIHandlerService> handlerSvc =
@@ -2483,56 +2584,47 @@ NS_IMETHODIMP nsExternalHelperAppService::GetFromTypeAndExtension(
       rv = handlerSvc->FillHandlerInfo(*_retval, EmptyCString());
       LOG(("Data source: Via type: retval 0x%08" PRIx32 "\n",
            static_cast<uint32_t>(rv)));
+      trustMIMEType = trustMIMEType || NS_SUCCEEDED(rv);
     } else {
       rv = NS_ERROR_NOT_AVAILABLE;
     }
 
     found = found || NS_SUCCEEDED(rv);
+  }
 
-    if (!found || NS_FAILED(rv)) {
-      // No type match, try extension match
-      if (!aFileExt.IsEmpty()) {
-        nsAutoCString overrideType;
-        rv = handlerSvc->GetTypeFromExtension(aFileExt, overrideType);
-        if (NS_SUCCEEDED(rv) && !overrideType.IsEmpty()) {
-          // We can't check handlerSvc->Exists() here, because we have a
-          // overideType. That's ok, it just results in some console noise.
-          // (If there's no handler for the override type, it throws)
-          rv = handlerSvc->FillHandlerInfo(*_retval, overrideType);
-          LOG(("Data source: Via ext: retval 0x%08" PRIx32 "\n",
-               static_cast<uint32_t>(rv)));
-          found = found || NS_SUCCEEDED(rv);
-        }
-      }
+  // If we still haven't found anything, try finding a match for
+  // an extension in extras first:
+  if (!found && !aFileExt.IsEmpty()) {
+    rv = FillMIMEInfoForExtensionFromExtras(aFileExt, *_retval);
+    LOG(("Searched extras (by ext), rv 0x%08" PRIX32 "\n",
+         static_cast<uint32_t>(rv)));
+  }
+
+  // Then check the handler service - but only do so if we really do not know
+  // the mimetype. This avoids overwriting good mimetype info with bad file
+  // extension info.
+  if ((!found || !trustMIMEType) && handlerSvc && !aFileExt.IsEmpty()) {
+    nsAutoCString overrideType;
+    rv = handlerSvc->GetTypeFromExtension(aFileExt, overrideType);
+    if (NS_SUCCEEDED(rv) && !overrideType.IsEmpty()) {
+      // We can't check handlerSvc->Exists() here, because we have a
+      // overideType. That's ok, it just results in some console noise.
+      // (If there's no handler for the override type, it throws)
+      rv = handlerSvc->FillHandlerInfo(*_retval, overrideType);
+      LOG(("Data source: Via ext: retval 0x%08" PRIx32 "\n",
+           static_cast<uint32_t>(rv)));
+      found = found || NS_SUCCEEDED(rv);
     }
   }
 
-  // (3) No match yet. Ask extras.
-  if (!found) {
-    rv = NS_ERROR_FAILURE;
-    // Getting info for application/octet-stream content-type from extras
-    // does not make a sense because this tends to open all octet-streams
-    // as Binary file with exe, com or bin extension regardless the real
-    // extension.
-    if (!typeToUse.Equals(APPLICATION_OCTET_STREAM,
-                          nsCaseInsensitiveCStringComparator()))
-      rv = FillMIMEInfoForMimeTypeFromExtras(typeToUse, *_retval);
-    LOG(("Searched extras (by type), rv 0x%08" PRIX32 "\n",
-         static_cast<uint32_t>(rv)));
-    // If that didn't work out, try file extension from extras
-    if (NS_FAILED(rv) && !aFileExt.IsEmpty()) {
-      rv = FillMIMEInfoForExtensionFromExtras(aFileExt, *_retval);
-      LOG(("Searched extras (by ext), rv 0x%08" PRIX32 "\n",
-           static_cast<uint32_t>(rv)));
-    }
-    // If that still didn't work, set the file description to "ext File"
-    if (NS_FAILED(rv) && !aFileExt.IsEmpty()) {
-      // XXXzpao This should probably be localized
-      nsAutoCString desc(aFileExt);
-      desc.AppendLiteral(" File");
-      (*_retval)->SetDescription(NS_ConvertASCIItoUTF16(desc));
-      LOG(("Falling back to 'File' file description\n"));
-    }
+  // If we still don't have a match, at least set the file description
+  // to `${aFileExt} File` if it's empty:
+  if (!found && !aFileExt.IsEmpty()) {
+    // XXXzpao This should probably be localized
+    nsAutoCString desc(aFileExt);
+    desc.AppendLiteral(" File");
+    (*_retval)->SetDescription(NS_ConvertASCIItoUTF16(desc));
+    LOG(("Falling back to 'File' file description\n"));
   }
 
   // Finally, check if we got a file extension and if yes, if it is an
@@ -2715,7 +2807,8 @@ NS_IMETHODIMP nsExternalHelperAppService::GetTypeFromFile(
 }
 
 nsresult nsExternalHelperAppService::FillMIMEInfoForMimeTypeFromExtras(
-    const nsACString& aContentType, nsIMIMEInfo* aMIMEInfo) {
+    const nsACString& aContentType, bool aOverwriteDescription,
+    nsIMIMEInfo* aMIMEInfo) {
   NS_ENSURE_ARG(aMIMEInfo);
 
   NS_ENSURE_ARG(!aContentType.IsEmpty());
@@ -2723,14 +2816,26 @@ nsresult nsExternalHelperAppService::FillMIMEInfoForMimeTypeFromExtras(
   // Look for default entry with matching mime type.
   nsAutoCString MIMEType(aContentType);
   ToLowerCase(MIMEType);
-  int32_t numEntries = ArrayLength(extraMimeEntries);
-  for (int32_t index = 0; index < numEntries; index++) {
-    if (MIMEType.Equals(extraMimeEntries[index].mMimeType)) {
+  for (auto entry : extraMimeEntries) {
+    if (MIMEType.Equals(entry.mMimeType)) {
       // This is the one. Set attributes appropriately.
-      aMIMEInfo->SetFileExtensions(
-          nsDependentCString(extraMimeEntries[index].mFileExtensions));
-      aMIMEInfo->SetDescription(
-          NS_ConvertASCIItoUTF16(extraMimeEntries[index].mDescription));
+      nsDependentCString extensions(entry.mFileExtensions);
+      nsACString::const_iterator start, end;
+      extensions.BeginReading(start);
+      extensions.EndReading(end);
+      while (start != end) {
+        nsACString::const_iterator cursor = start;
+        mozilla::Unused << FindCharInReadable(',', cursor, end);
+        aMIMEInfo->AppendExtension(Substring(start, cursor));
+        // If a comma was found, skip it for the next search.
+        start = cursor != end ? ++cursor : cursor;
+      }
+
+      nsAutoString desc;
+      aMIMEInfo->GetDescription(desc);
+      if (aOverwriteDescription || desc.IsEmpty()) {
+        aMIMEInfo->SetDescription(NS_ConvertASCIItoUTF16(entry.mDescription));
+      }
       return NS_OK;
     }
   }
@@ -2743,7 +2848,7 @@ nsresult nsExternalHelperAppService::FillMIMEInfoForExtensionFromExtras(
   nsAutoCString type;
   bool found = GetTypeFromExtras(aExtension, type);
   if (!found) return NS_ERROR_NOT_AVAILABLE;
-  return FillMIMEInfoForMimeTypeFromExtras(type, aMIMEInfo);
+  return FillMIMEInfoForMimeTypeFromExtras(type, true, aMIMEInfo);
 }
 
 bool nsExternalHelperAppService::GetTypeFromExtras(const nsACString& aExtension,
@@ -2761,7 +2866,7 @@ bool nsExternalHelperAppService::GetTypeFromExtras(const nsACString& aExtension,
     while (start != end) {
       FindCharInReadable(',', iter, end);
       if (Substring(start, iter)
-              .Equals(aExtension, nsCaseInsensitiveCStringComparator())) {
+              .Equals(aExtension, nsCaseInsensitiveCStringComparator)) {
         aMIMEType = extraMimeEntries[index].mMimeType;
         return true;
       }

@@ -124,6 +124,31 @@ depending on the user's locale.
 You can specify ``"default"`` as a region in the configuration if
 the engine is to be included when we do not know the user's region.
 
+"override"
+----------
+
+The `"override"` field can be set to true if you want a section to
+only override otherwise included engines. For example:
+
+.. code-block:: js
+
+    {
+      "webExtension": {
+        "id": "web@ext"
+      },
+      "appliesTo": [{
+        // Complicated and lengthy inclusion rules
+      }, {
+        "override": true,
+        "application": { "distributions": ["mydistrocode"]},
+        "params": {
+          "searchUrlGetParams": [
+            { "name": "custom", "value": "foobar" }
+          ]
+        }
+      }]
+    }
+
 Application Scoping
 ===================
 
@@ -309,11 +334,11 @@ Experiments
 ===========
 
 We can run experiments by giving sections within ``appliesTo`` a
-``cohort`` value, the Search Service can then optionally pass in a
-matching ``cohort`` value to match those sections.
+``experiment`` value, the Search Service can then optionally pass in a
+matching ``experiment`` value to match those sections.
 
-Sections which have a ``cohort`` will not be used unless a matching
-``cohort`` has been passed in, for example:
+Sections which have a ``experiment`` will not be used unless a matching
+``experiment`` has been passed in, for example:
 
 .. code-block:: js
 
@@ -325,7 +350,7 @@ Sections which have a ``cohort`` will not be used unless a matching
         "included": {
           "everywhere": true
         },
-        "cohort": "nov-16",
+        "experiment": "nov-16",
         "webExtension": {
           "id": "web-experimental@ext"
         }

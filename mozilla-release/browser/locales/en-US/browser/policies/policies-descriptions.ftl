@@ -93,6 +93,9 @@ policy-DownloadDirectory = Set and lock the download directory.
 # “lock” means that the user won’t be able to change this setting
 policy-EnableTrackingProtection = Enable or disable Content Blocking and optionally lock it.
 
+# “lock” means that the user won’t be able to change this setting
+policy-EncryptedMediaExtensions = Enable or disable Encrypted Media Extensions and optionally lock it.
+
 # A “locked” extension can’t be disabled or removed by the user. This policy
 # takes 3 keys (“Install”, ”Uninstall”, ”Locked”), you can either keep them in
 # English or translate them as verbs.
@@ -105,6 +108,8 @@ policy-ExtensionUpdate = Enable or disable automatic extension updates.
 policy-FirefoxHome = Configure Firefox Home.
 
 policy-FlashPlugin = Allow or deny usage of the Flash plugin.
+
+policy-Handlers = Configure default application handlers.
 
 policy-HardwareAcceleration = If false, turn off hardware acceleration.
 
@@ -141,7 +146,12 @@ policy-OverridePostUpdatePage = Override the post-update “What’s New” page
 
 policy-PasswordManagerEnabled = Enable saving passwords to the password manager.
 
+# PDF.js and PDF should not be translated
+policy-PDFjs = Disable or configure PDF.js, the built-in PDF viewer in { -brand-short-name }.
+
 policy-Permissions2 = Configure permissions for camera, microphone, location, notifications, and autoplay.
+
+policy-PictureInPicture = Enable or disable Picture-in-Picture.
 
 policy-PopupBlocking = Allow certain websites to display popups by default.
 

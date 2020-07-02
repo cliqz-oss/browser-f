@@ -8,6 +8,7 @@
 
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Encoding.h"
+#include "mozilla/SchedulerGroup.h"
 #include "nsContentUtils.h"
 #include "nsHtml5Tokenizer.h"
 #include "nsIHttpChannel.h"
@@ -19,7 +20,6 @@
 #include "nsIDocShell.h"
 #include "nsIScriptError.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/SystemGroup.h"
 #include "mozilla/StaticPrefs_intl.h"
 #include "mozilla/StaticPrefs_html5.h"
 #include "mozilla/UniquePtrExtensions.h"
@@ -310,8 +310,9 @@ void nsHtml5StreamParser::FeedDetector(Span<const uint8_t> aBuffer,
 void nsHtml5StreamParser::SetViewSourceTitle(nsIURI* aURL) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsIDocShell* docshell = mExecutor->GetDocument()->GetDocShell();
-  if (docshell && docshell->GetWatchedByDevtools()) {
+  BrowsingContext* browsingContext =
+      mExecutor->GetDocument()->GetBrowsingContext();
+  if (browsingContext && browsingContext->WatchedByDevTools()) {
     mURIToSendToDevtools = aURL;
 
     nsID uuid;
@@ -1121,8 +1122,8 @@ nsresult nsHtml5StreamParser::OnStartRequest(nsIRequest* aRequest) {
       // the request.
       nsCOMPtr<nsIRunnable> runnable =
           new MaybeRunCollector(mExecutor->GetDocument()->GetDocShell());
-      mozilla::SystemGroup::Dispatch(mozilla::TaskCategory::GarbageCollection,
-                                     runnable.forget());
+      mozilla::SchedulerGroup::Dispatch(
+          mozilla::TaskCategory::GarbageCollection, runnable.forget());
     }
   }
 

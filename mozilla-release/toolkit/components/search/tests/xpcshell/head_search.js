@@ -9,6 +9,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
+  Region: "resource://gre/modules/Region.jsm",
   RemoteSettings: "resource://services-settings/remote-settings.js",
   RemoteSettingsClient: "resource://services-settings/RemoteSettingsClient.jsm",
   SearchEngineSelector: "resource://gre/modules/SearchEngineSelector.jsm",
@@ -24,6 +25,9 @@ var { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm");
 var { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
 var { AddonTestUtils } = ChromeUtils.import(
   "resource://testing-common/AddonTestUtils.jsm"
+);
+const { ExtensionTestUtils } = ChromeUtils.import(
+  "resource://testing-common/ExtensionXPCShellUtils.jsm"
 );
 
 const PREF_SEARCH_URL = "geoSpecificDefaults.url";
@@ -42,6 +46,7 @@ var XULRuntime = Cc["@mozilla.org/xre/runtime;1"].getService(Ci.nsIXULRuntime);
 
 // Expand the amount of information available in error logs
 Services.prefs.setBoolPref("browser.search.log", true);
+Services.prefs.setBoolPref("browser.region.log", true);
 
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
@@ -442,7 +447,7 @@ async function withGeoServer(
   let geoLookupUrl = geoLookupData
     ? `http://localhost:${srv.identity.primaryPort}/lookup_geoip`
     : 'data:application/json,{"country_code": "FR"}';
-  Services.prefs.setCharPref("geo.provider-country.network.url", geoLookupUrl);
+  Services.prefs.setCharPref("browser.region.network.url", geoLookupUrl);
 
   try {
     await testFn(gRequests);
@@ -452,7 +457,7 @@ async function withGeoServer(
     Services.prefs.clearUserPref(
       SearchUtils.BROWSER_SEARCH_PREF + PREF_SEARCH_URL
     );
-    Services.prefs.clearUserPref("geo.provider-country.network.url");
+    Services.prefs.clearUserPref("browser.region.network.url");
   }
 }
 
@@ -529,14 +534,12 @@ function installTestEngine() {
 }
 
 async function asyncReInit({ awaitRegionFetch = false } = {}) {
-  let promises = [SearchTestUtils.promiseSearchNotification("reinit-complete")];
-  if (awaitRegionFetch) {
-    promises.push(
-      SearchTestUtils.promiseSearchNotification("ensure-known-region-done")
-    );
-  }
+  let promises = [
+    SearchTestUtils.promiseSearchNotification("reinit-complete"),
+    SearchTestUtils.promiseSearchNotification("ensure-known-region-done"),
+  ];
 
-  Services.search.reInit(awaitRegionFetch);
+  Services.search.reInit();
 
   return Promise.all(promises);
 }
@@ -545,7 +548,7 @@ async function asyncReInit({ awaitRegionFetch = false } = {}) {
 const TELEMETRY_RESULT_ENUM = {
   SUCCESS: 0,
   SUCCESS_WITHOUT_DATA: 1,
-  XHRTIMEOUT: 2,
+  TIMEOUT: 2,
   ERROR: 3,
 };
 
@@ -608,7 +611,7 @@ function useCustomGeoServer(region, waitToRespond = Promise.resolve()) {
   });
 
   Services.prefs.setCharPref(
-    "geo.provider-country.network.url",
+    "browser.region.network.url",
     `http://localhost:${srv.identity.primaryPort}/fetch_region`
   );
 }

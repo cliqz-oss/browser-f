@@ -17,10 +17,12 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Casting.h"
+#include "mozilla/net/SocketProcessParent.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/PublicSSL.h"
 #include "mozilla/Services.h"
+#include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/Telemetry.h"
@@ -36,6 +38,7 @@
 #include "nsIFile.h"
 #include "nsILocalFileWin.h"
 #include "nsIObserverService.h"
+#include "nsIOService.h"
 #include "nsIPrompt.h"
 #include "nsIProperties.h"
 #include "nsITokenPasswordDialogs.h"
@@ -581,9 +584,9 @@ nsresult nsNSSComponent::CommonGetEnterpriseCerts(
       if (NS_FAILED(rv)) {
         return rv;
       }
-      if (!enterpriseCerts.AppendElement(std::move(certCopy))) {
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
+      // XXX(Bug 1631371) Check if this should use a fallible operation as it
+      // pretended earlier.
+      enterpriseCerts.AppendElement(std::move(certCopy));
     }
   }
   return NS_OK;
@@ -599,6 +602,31 @@ NS_IMETHODIMP
 nsNSSComponent::GetEnterpriseIntermediates(
     nsTArray<nsTArray<uint8_t>>& enterpriseIntermediates) {
   return CommonGetEnterpriseCerts(enterpriseIntermediates, false);
+}
+
+NS_IMETHODIMP
+nsNSSComponent::AddEnterpriseIntermediate(
+    const nsTArray<uint8_t>& intermediateBytes) {
+  nsresult rv = BlockUntilLoadableCertsLoaded();
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  EnterpriseCert intermediate;
+  rv = intermediate.Init(intermediateBytes.Elements(),
+                         intermediateBytes.Length(), false);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  {
+    MutexAutoLock nsNSSComponentLock(mMutex);
+    if (!mEnterpriseCerts.append(std::move(intermediate))) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
+  }
+
+  UpdateCertVerifierWithEnterpriseRoots();
+  return NS_OK;
 }
 
 class LoadLoadableCertsTask final : public Runnable {
@@ -645,6 +673,9 @@ nsresult LoadLoadableCertsTask::Dispatch() {
 
 NS_IMETHODIMP
 LoadLoadableCertsTask::Run() {
+  Telemetry::AutoScalarTimer<Telemetry::ScalarID::NETWORKING_LOADING_CERTS_TASK>
+      timer;
+
   nsresult loadLoadableRootsResult = LoadLoadableRoots();
   if (NS_WARN_IF(NS_FAILED(loadLoadableRootsResult))) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Error, ("LoadLoadableRoots failed"));
@@ -824,8 +855,24 @@ nsresult nsNSSComponent::BlockUntilLoadableCertsLoaded() {
   return mLoadableCertsLoadedResult;
 }
 
+#ifndef MOZ_NO_SMART_CARDS
+static StaticMutex sCheckForSmartCardChangesMutex;
+static TimeStamp sLastCheckedForSmartCardChanges = TimeStamp::Now();
+#endif
+
 nsresult nsNSSComponent::CheckForSmartCardChanges() {
 #ifndef MOZ_NO_SMART_CARDS
+  {
+    StaticMutexAutoLock lock(sCheckForSmartCardChangesMutex);
+    // Do this at most once every 3 seconds.
+    TimeStamp now = TimeStamp::Now();
+    if (now - sLastCheckedForSmartCardChanges <
+        TimeDuration::FromSeconds(3.0)) {
+      return NS_OK;
+    }
+    sLastCheckedForSmartCardChanges = now;
+  }
+
   // SECMOD_UpdateSlotList attempts to acquire the list lock as well,
   // so we have to do this in two steps. The lock protects the list itself, so
   // if we get our own owned references to the modules we're interested in,
@@ -1003,16 +1050,20 @@ static const CipherPref sCipherPrefs[] = {
      TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA, true},
 
     {"security.ssl3.dhe_rsa_aes_128_sha", TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
-     true},
+     false},
 
     {"security.ssl3.dhe_rsa_aes_256_sha", TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
-     true},
+     false},
 
     {"security.tls13.aes_128_gcm_sha256", TLS_AES_128_GCM_SHA256, true},
     {"security.tls13.chacha20_poly1305_sha256", TLS_CHACHA20_POLY1305_SHA256,
      true},
     {"security.tls13.aes_256_gcm_sha384", TLS_AES_256_GCM_SHA384, true},
 
+    {"security.ssl3.rsa_aes_128_gcm_sha256", TLS_RSA_WITH_AES_128_GCM_SHA256,
+     true},  // deprecated (RSA key exchange)
+    {"security.ssl3.rsa_aes_256_gcm_sha384", TLS_RSA_WITH_AES_256_GCM_SHA384,
+     true},  // deprecated (RSA key exchange)
     {"security.ssl3.rsa_aes_128_sha", TLS_RSA_WITH_AES_128_CBC_SHA,
      true},  // deprecated (RSA key exchange)
     {"security.ssl3.rsa_aes_256_sha", TLS_RSA_WITH_AES_256_CBC_SHA,
@@ -1234,6 +1285,33 @@ void SetValidationOptionsCommon() {
       ctMode != CertVerifier::CertificateTransparencyMode::Disabled;
   PublicSSLState()->SetSignedCertTimestampsEnabled(sctsEnabled);
   PrivateSSLState()->SetSignedCertTimestampsEnabled(sctsEnabled);
+
+  CertVerifier::PinningMode pinningMode =
+      static_cast<CertVerifier::PinningMode>(
+          Preferences::GetInt("security.cert_pinning.enforcement_level",
+                              CertVerifier::pinningDisabled));
+  if (pinningMode > CertVerifier::pinningEnforceTestMode) {
+    pinningMode = CertVerifier::pinningDisabled;
+  }
+  PublicSSLState()->SetPinningMode(pinningMode);
+  PrivateSSLState()->SetPinningMode(pinningMode);
+
+  BRNameMatchingPolicy::Mode nameMatchingMode =
+      static_cast<BRNameMatchingPolicy::Mode>(Preferences::GetInt(
+          "security.pki.name_matching_mode",
+          static_cast<int32_t>(BRNameMatchingPolicy::Mode::DoNotEnforce)));
+  switch (nameMatchingMode) {
+    case BRNameMatchingPolicy::Mode::Enforce:
+    case BRNameMatchingPolicy::Mode::EnforceAfter23August2015:
+    case BRNameMatchingPolicy::Mode::EnforceAfter23August2016:
+    case BRNameMatchingPolicy::Mode::DoNotEnforce:
+      break;
+    default:
+      nameMatchingMode = BRNameMatchingPolicy::Mode::DoNotEnforce;
+      break;
+  }
+  PublicSSLState()->SetNameMatchingMode(nameMatchingMode);
+  PrivateSSLState()->SetNameMatchingMode(nameMatchingMode);
 }
 
 namespace {
@@ -1297,7 +1375,7 @@ nsresult CipherSuiteChangeObserver::Observe(nsISupports* /*aSubject*/,
         bool cipherEnabled =
             Preferences::GetBool(cp[i].pref, cp[i].enabledByDefault);
         SSL_CipherPrefSetDefault(cp[i].id, cipherEnabled);
-        nsNSSComponent::ClearSSLExternalAndInternalSessionCacheNative();
+        nsNSSComponent::DoClearSSLExternalAndInternalSessionCache();
         break;
       }
     }
@@ -1355,14 +1433,6 @@ void nsNSSComponent::setValidationOptions(
     Telemetry::Accumulate(Telemetry::CERT_OCSP_REQUIRED, ocspRequired);
   }
 
-  CertVerifier::PinningMode pinningMode =
-      static_cast<CertVerifier::PinningMode>(
-          Preferences::GetInt("security.cert_pinning.enforcement_level",
-                              CertVerifier::pinningDisabled));
-  if (pinningMode > CertVerifier::pinningEnforceTestMode) {
-    pinningMode = CertVerifier::pinningDisabled;
-  }
-
   CertVerifier::SHA1Mode sha1Mode =
       static_cast<CertVerifier::SHA1Mode>(Preferences::GetInt(
           "security.pki.sha1_enforcement_level",
@@ -1382,21 +1452,6 @@ void nsNSSComponent::setValidationOptions(
   // Convert a previously-available setting to a safe one.
   if (sha1Mode == CertVerifier::SHA1Mode::UsedToBeBefore2016ButNowIsForbidden) {
     sha1Mode = CertVerifier::SHA1Mode::Forbidden;
-  }
-
-  BRNameMatchingPolicy::Mode nameMatchingMode =
-      static_cast<BRNameMatchingPolicy::Mode>(Preferences::GetInt(
-          "security.pki.name_matching_mode",
-          static_cast<int32_t>(BRNameMatchingPolicy::Mode::DoNotEnforce)));
-  switch (nameMatchingMode) {
-    case BRNameMatchingPolicy::Mode::Enforce:
-    case BRNameMatchingPolicy::Mode::EnforceAfter23August2015:
-    case BRNameMatchingPolicy::Mode::EnforceAfter23August2016:
-    case BRNameMatchingPolicy::Mode::DoNotEnforce:
-      break;
-    default:
-      nameMatchingMode = BRNameMatchingPolicy::Mode::DoNotEnforce;
-      break;
   }
 
   NetscapeStepUpPolicy netscapeStepUpPolicy =
@@ -1448,8 +1503,9 @@ void nsNSSComponent::setValidationOptions(
                                  softTimeout, hardTimeout, proofOfLock);
 
   mDefaultCertVerifier = new SharedCertVerifier(
-      odc, osc, softTimeout, hardTimeout, certShortLifetimeInDays, pinningMode,
-      sha1Mode, nameMatchingMode, netscapeStepUpPolicy, ctMode,
+      odc, osc, softTimeout, hardTimeout, certShortLifetimeInDays,
+      PublicSSLState()->PinningMode(), sha1Mode,
+      PublicSSLState()->NameMatchingMode(), netscapeStepUpPolicy, ctMode,
       distrustedCAPolicy, crliteMode, mEnterpriseCerts);
 }
 
@@ -1478,7 +1534,7 @@ void nsNSSComponent::UpdateCertVerifierWithEnterpriseRoots() {
 nsresult nsNSSComponent::SetEnabledTLSVersions() {
   // Keep these values in sync with all.js.
   // 1 means TLS 1.0, 2 means TLS 1.1, etc.
-  static const uint32_t PSM_DEFAULT_MIN_TLS_VERSION = 1;
+  static const uint32_t PSM_DEFAULT_MIN_TLS_VERSION = 3;
   static const uint32_t PSM_DEFAULT_MAX_TLS_VERSION = 4;
   static const uint32_t PSM_DEPRECATED_TLS_VERSION = 1;
 
@@ -1487,8 +1543,8 @@ nsresult nsNSSComponent::SetEnabledTLSVersions() {
   uint32_t maxFromPrefs = Preferences::GetUint("security.tls.version.max",
                                                PSM_DEFAULT_MAX_TLS_VERSION);
 
-  // This override should be removed after PSM_DEFAULT_MIN_TLS_VERSION is
-  // increased to 3 in March 2020, see bug 1579285.
+  // This override should be removed some time after
+  // PSM_DEFAULT_MIN_TLS_VERSION is increased to 3.
   bool enableDeprecated =
       Preferences::GetBool("security.tls.version.enable-deprecated", false);
   if (enableDeprecated) {
@@ -1972,8 +2028,8 @@ nsresult nsNSSComponent::InitializeNSS() {
     return NS_ERROR_UNEXPECTED;
   }
 
-  nsCOMPtr<nsIClientAuthRemember> cars =
-      do_GetService(NS_CLIENTAUTHREMEMBER_CONTRACTID);
+  nsCOMPtr<nsIClientAuthRememberService> cars =
+      do_GetService(NS_CLIENTAUTHREMEMBERSERVICE_CONTRACTID);
 
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("NSS Initialization done\n"));
 
@@ -2078,6 +2134,9 @@ nsresult nsNSSComponent::Init() {
   if (!XRE_IsParentProcess()) {
     return NS_ERROR_NOT_AVAILABLE;
   }
+
+  Telemetry::AutoScalarTimer<Telemetry::ScalarID::NETWORKING_NSS_INITIALIZATION>
+      timer;
 
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("Beginning NSS initialization\n"));
 
@@ -2205,8 +2264,8 @@ nsresult nsNSSComponent::LogoutAuthenticatedPK11() {
         NS_LITERAL_CSTRING("all:temporary-certificates"), 0);
   }
 
-  nsCOMPtr<nsIClientAuthRemember> svc =
-      do_GetService(NS_CLIENTAUTHREMEMBER_CONTRACTID);
+  nsCOMPtr<nsIClientAuthRememberService> svc =
+      do_GetService(NS_CLIENTAUTHREMEMBERSERVICE_CONTRACTID);
 
   if (svc) {
     nsresult rv = svc->ClearRememberedDecisions();
@@ -2323,6 +2382,21 @@ nsNSSComponent::GetDefaultCertVerifier(SharedCertVerifier** result) {
 
 // static
 void nsNSSComponent::ClearSSLExternalAndInternalSessionCacheNative() {
+  MOZ_ASSERT(XRE_IsParentProcess());
+
+  if (mozilla::net::nsIOService::UseSocketProcess()) {
+    if (mozilla::net::gIOService) {
+      mozilla::net::gIOService->CallOrWaitForSocketProcess([]() {
+        Unused << mozilla::net::SocketProcessParent::GetSingleton()
+                      ->SendClearSessionCache();
+      });
+    }
+  }
+  DoClearSSLExternalAndInternalSessionCache();
+}
+
+// static
+void nsNSSComponent::DoClearSSLExternalAndInternalSessionCache() {
   SSL_ClearSessionCache();
   mozilla::net::SSLTokensCache::Clear();
 }
@@ -2377,6 +2451,10 @@ UniqueCERTCertList FindClientCertificatesWithPrivateKeys() {
       PK11SlotInfo* slot = list->module->slots[i];
       MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
               ("    slot '%s'", PK11_GetSlotName(slot)));
+      if (!PK11_IsPresent(slot)) {
+        MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("    (not present)"));
+        continue;
+      }
       // We may need to log in to be able to find private keys.
       if (PK11_Authenticate(slot, true, nullptr) != SECSuccess) {
         MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("    (couldn't authenticate)"));

@@ -24,6 +24,7 @@
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
 #include "vm/EnvironmentObject.h"
+#include "vm/FunctionFlags.h"  // js::FunctionFlags
 #include "vm/Interpreter.h"
 #include "vm/JSFunction.h"
 #include "vm/TraceLogging.h"
@@ -50,6 +51,9 @@ using mozilla::AssertedCast;
 using mozilla::Maybe;
 
 namespace js {
+
+class PlainObject;
+
 namespace jit {
 
 BaselineCompilerHandler::BaselineCompilerHandler(JSContext* cx,
@@ -244,7 +248,7 @@ MethodStatus BaselineCompiler::compile() {
 
   UniquePtr<BaselineScript> baselineScript(
       BaselineScript::New(
-          script, warmUpCheckPrologueOffset_.offset(),
+          cx, warmUpCheckPrologueOffset_.offset(),
           profilerEnterFrameToggleOffset_.offset(),
           profilerExitFrameToggleOffset_.offset(),
           handler.retAddrEntries().length(), handler.osrEntries().length(),
@@ -420,21 +424,6 @@ void BaselineInterpreterCodeGen::restoreInterpreterPCReg() {
   if (HasInterpreterPCReg()) {
     masm.loadPtr(frame.addressOfInterpreterPC(), InterpreterPCReg);
   }
-}
-
-template <>
-void BaselineCompilerCodeGen::loadScriptAtom(Register index, Register dest) {
-  MOZ_CRASH("BaselineCompiler shouldn't call loadScriptAtom");
-}
-
-template <>
-void BaselineInterpreterCodeGen::loadScriptAtom(Register index, Register dest) {
-  MOZ_ASSERT(index != dest);
-  loadScript(dest);
-  masm.loadPtr(Address(dest, JSScript::offsetOfSharedData()), dest);
-  masm.loadPtr(
-      BaseIndex(dest, index, ScalePointer, RuntimeScriptData::offsetOfAtoms()),
-      dest);
 }
 
 template <>
@@ -898,26 +887,11 @@ void BaselineInterpreterCodeGen::pushBytecodePCArg() {
   }
 }
 
-template <>
-void BaselineCompilerCodeGen::pushScriptNameArg(Register scratch1,
-                                                Register scratch2) {
-  pushArg(ImmGCPtr(handler.script()->getName(handler.pc())));
-}
-
-template <>
-void BaselineInterpreterCodeGen::pushScriptNameArg(Register scratch1,
-                                                   Register scratch2) {
-  MOZ_ASSERT(scratch1 != scratch2);
-
-  LoadInt32Operand(masm, scratch1);
-
-  loadScriptAtom(scratch1, scratch2);
-  pushArg(scratch2);
-}
-
 static gc::Cell* GetScriptGCThing(JSScript* script, jsbytecode* pc,
                                   ScriptGCThingType type) {
   switch (type) {
+    case ScriptGCThingType::Atom:
+      return script->getAtom(pc);
     case ScriptGCThingType::RegExp:
       return script->getRegExp(pc);
     case ScriptGCThingType::Function:
@@ -956,6 +930,13 @@ void BaselineInterpreterCodeGen::loadScriptGCThing(ScriptGCThingType type,
 
   // Clear the tag bits.
   switch (type) {
+    case ScriptGCThingType::Atom:
+      // Use xorPtr with a 32-bit immediate because it's more efficient than
+      // andPtr on 64-bit.
+      static_assert(uintptr_t(TraceKind::String) == 2,
+                    "Unexpected tag bits for string GCCellPtr");
+      masm.xorPtr(Imm32(2), dest);
+      break;
     case ScriptGCThingType::RegExp:
     case ScriptGCThingType::Function:
       // No-op because GCCellPtr tag bits are zero for objects.
@@ -1001,6 +982,12 @@ void BaselineInterpreterCodeGen::pushScriptGCThingArg(ScriptGCThingType type,
                                                       Register scratch2) {
   loadScriptGCThing(type, scratch1, scratch2);
   pushArg(scratch1);
+}
+
+template <typename Handler>
+void BaselineCodeGen<Handler>::pushScriptNameArg(Register scratch1,
+                                                 Register scratch2) {
+  pushScriptGCThingArg(ScriptGCThingType::Atom, scratch1, scratch2);
 }
 
 template <>
@@ -2154,46 +2141,12 @@ bool BaselineCodeGen<Handler>::emit_Not() {
 
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_Pos() {
-  // Keep top stack value in R0.
-  frame.popRegsAndSync(1);
-
-  // Inline path for int32 and double; otherwise call VM.
-  Label done;
-  masm.branchTestNumber(Assembler::Equal, R0, &done);
-
-  prepareVMCall();
-  pushArg(R0);
-
-  using Fn = bool (*)(JSContext*, HandleValue, MutableHandleValue);
-  if (!callVM<Fn, DoToNumber>()) {
-    return false;
-  }
-
-  masm.bind(&done);
-  frame.push(R0);
-  return true;
+  return emitUnaryArith();
 }
 
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_ToNumeric() {
-  // Keep top stack value in R0.
-  frame.popRegsAndSync(1);
-
-  // Inline path for int32 and double; otherwise call VM.
-  Label done;
-  masm.branchTestNumber(Assembler::Equal, R0, &done);
-
-  prepareVMCall();
-  pushArg(R0);
-
-  using Fn = bool (*)(JSContext*, HandleValue, MutableHandleValue);
-  if (!callVM<Fn, DoToNumeric>()) {
-    return false;
-  }
-
-  masm.bind(&done);
-  frame.push(R0);
-  return true;
+  return emitUnaryArith();
 }
 
 template <typename Handler>
@@ -2254,24 +2207,6 @@ bool BaselineCodeGen<Handler>::emit_CheckIsObj() {
   }
 
   masm.bind(&ok);
-  return true;
-}
-
-template <typename Handler>
-bool BaselineCodeGen<Handler>::emit_CheckIsCallable() {
-  frame.syncStack(0);
-  masm.loadValue(frame.addressOfStackValue(-1), R0);
-
-  prepareVMCall();
-
-  pushUint8BytecodeOperandArg(R1.scratchReg());
-  pushArg(R0);
-
-  using Fn = bool (*)(JSContext*, HandleValue, CheckIsCallableKind);
-  if (!callVM<Fn, CheckIsCallable>()) {
-    return false;
-  }
-
   return true;
 }
 
@@ -2539,11 +2474,8 @@ template <>
 bool BaselineInterpreterCodeGen::emit_String() {
   Register scratch1 = R0.scratchReg();
   Register scratch2 = R1.scratchReg();
-  LoadInt32Operand(masm, scratch1);
-
-  loadScriptAtom(scratch1, scratch2);
-
-  masm.tagValue(JSVAL_TYPE_STRING, scratch2, R0);
+  loadScriptGCThing(ScriptGCThingType::Atom, scratch1, scratch2);
+  masm.tagValue(JSVAL_TYPE_STRING, scratch1, R0);
   frame.push(R0);
   return true;
 }
@@ -6365,7 +6297,7 @@ bool BaselineCodeGen<Handler>::emit_InitHomeObject() {
 
   Label skipBarrier;
   masm.branchPtrInNurseryChunk(Assembler::Equal, func, temp, &skipBarrier);
-  masm.branchValueIsNurseryObject(Assembler::NotEqual, R0, temp, &skipBarrier);
+  masm.branchValueIsNurseryCell(Assembler::NotEqual, R0, temp, &skipBarrier);
   masm.call(&postBarrierSlot_);
   masm.bind(&skipBarrier);
 
@@ -6407,7 +6339,7 @@ bool BaselineCodeGen<Handler>::emit_ObjWithProto() {
   prepareVMCall();
   pushArg(R0);
 
-  using Fn = JSObject* (*)(JSContext*, HandleValue);
+  using Fn = PlainObject* (*)(JSContext*, HandleValue);
   if (!callVM<Fn, js::ObjectWithProtoOperation>()) {
     return false;
   }

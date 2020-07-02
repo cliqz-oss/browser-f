@@ -12,10 +12,10 @@
 #include "mozIGeckoMediaPluginChromeService.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/SyncRunnable.h"
-#include "mozilla/SystemGroup.h"
 #include "nsComponentManagerUtils.h"
 #include "nsCOMPtr.h"
 #include "nsIObserverService.h"
@@ -59,12 +59,11 @@ GeckoMediaPluginServiceChild::GetContentParent(
 
   nsCString nodeIdString(aNodeIdString);
   nsCString api(aAPI);
-  nsTArray<nsCString> tags(aTags);
   RefPtr<GMPCrashHelper> helper(aHelper);
   RefPtr<GeckoMediaPluginServiceChild> self(this);
   GetServiceChild()->Then(
       thread, __func__,
-      [self, nodeIdString, api, tags, helper,
+      [self, nodeIdString, api, tags = aTags.Clone(), helper,
        rawHolder](GMPServiceChild* child) {
         UniquePtr<MozPromiseHolder<GetGMPContentParentPromise>> holder(
             rawHolder);
@@ -136,12 +135,12 @@ GeckoMediaPluginServiceChild::GetContentParent(
 
   NodeIdData nodeId(aNodeId.mOrigin, aNodeId.mTopLevelOrigin, aNodeId.mGMPName);
   nsCString api(aAPI);
-  nsTArray<nsCString> tags(aTags);
   RefPtr<GMPCrashHelper> helper(aHelper);
   RefPtr<GeckoMediaPluginServiceChild> self(this);
   GetServiceChild()->Then(
       thread, __func__,
-      [self, nodeId, api, tags, helper, rawHolder](GMPServiceChild* child) {
+      [self, nodeId, api, tags = aTags.Clone(), helper,
+       rawHolder](GMPServiceChild* child) {
         UniquePtr<MozPromiseHolder<GetGMPContentParentPromise>> holder(
             rawHolder);
         nsresult rv;
@@ -388,7 +387,7 @@ GeckoMediaPluginServiceChild::GetServiceChild() {
     if (mGetServiceChildPromises.Length() == 1) {
       nsCOMPtr<nsIRunnable> r =
           WrapRunnable(contentChild, &dom::ContentChild::SendCreateGMPService);
-      SystemGroup::Dispatch(TaskCategory::Other, r.forget());
+      SchedulerGroup::Dispatch(TaskCategory::Other, r.forget());
     }
     return promise;
   }

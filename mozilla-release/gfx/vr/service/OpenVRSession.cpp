@@ -67,6 +67,9 @@ struct StringWriteFunc : public JSONWriteFunc {
   explicit StringWriteFunc(nsACString& buffer) : mBuffer(buffer) {}
 
   void Write(const char* aStr) override { mBuffer.Append(aStr); }
+  void Write(const char* aStr, size_t aLen) override {
+    mBuffer.Append(aStr, aLen);
+  }
 };
 
 class ControllerManifestFile {
@@ -991,6 +994,7 @@ void OpenVRSession::EnumerateControllers(VRSystemState& aState) {
         strncpy(controllerState.controllerName, deviceId.BeginReading(),
                 kVRControllerNameMaxLen);
         controllerState.numHaptics = kNumOpenVRHaptics;
+        controllerState.targetRayMode = gfx::TargetRayMode::TrackedPointer;
         controllerState.type = controllerType;
       }
       controllerPresent[stateIndex] = true;
@@ -1046,6 +1050,8 @@ void OpenVRSession::UpdateControllerButtons(VRSystemState& aState) {
     VRControllerState& controllerState = aState.controllerState[stateIndex];
     controllerState.hand = GetControllerHandFromControllerRole(role);
     mControllerMapper->UpdateButtons(controllerState, mControllerHand[role]);
+    SetControllerSelectionAndSqueezeFrameId(
+        controllerState, aState.displayState.lastSubmittedFrameId);
   }
 }
 
@@ -1060,7 +1066,7 @@ void OpenVRSession::UpdateControllerPoses(VRSystemState& aState) {
     }
     VRControllerState& controllerState = aState.controllerState[stateIndex];
     vr::InputPoseActionData_t poseData;
-    if (vr::VRInput()->GetPoseActionData(
+    if (vr::VRInput()->GetPoseActionDataRelativeToNow(
             mControllerHand[role].mActionPose.handle,
             vr::TrackingUniverseSeated, 0, &poseData, sizeof(poseData),
             vr::k_ulInvalidInputValueHandle) != vr::VRInputError_None ||
@@ -1070,8 +1076,10 @@ void OpenVRSession::UpdateControllerPoses(VRSystemState& aState) {
     } else {
       const ::vr::TrackedDevicePose_t& pose = poseData.pose;
       if (pose.bDeviceIsConnected) {
-        controllerState.flags = (dom::GamepadCapabilityFlags::Cap_Orientation |
-                                 dom::GamepadCapabilityFlags::Cap_Position);
+        controllerState.flags =
+            (dom::GamepadCapabilityFlags::Cap_Orientation |
+             dom::GamepadCapabilityFlags::Cap_Position |
+             dom::GamepadCapabilityFlags::Cap_GripSpacePosition);
       } else {
         controllerState.flags = dom::GamepadCapabilityFlags::Cap_None;
       }
@@ -1113,6 +1121,24 @@ void OpenVRSession::UpdateControllerPoses(VRSystemState& aState) {
         controllerState.pose.linearAcceleration[1] = 0.0f;
         controllerState.pose.linearAcceleration[2] = 0.0f;
         controllerState.isPositionValid = true;
+
+        // Calculate its target ray space by shifting degrees in x-axis
+        // for ergonomic.
+        const float kPointerAngleDegrees = -0.698;  // 40 degrees.
+        gfx::Matrix4x4 rayMtx(m);
+        rayMtx.RotateX(kPointerAngleDegrees);
+        gfx::Quaternion rayRot;
+        rayRot.SetFromRotationMatrix(rayMtx);
+        rayRot.Invert();
+
+        controllerState.targetRayPose = controllerState.pose;
+        controllerState.targetRayPose.orientation[0] = rayRot.x;
+        controllerState.targetRayPose.orientation[1] = rayRot.y;
+        controllerState.targetRayPose.orientation[2] = rayRot.z;
+        controllerState.targetRayPose.orientation[3] = rayRot.w;
+        controllerState.targetRayPose.position[0] = rayMtx._41;
+        controllerState.targetRayPose.position[1] = rayMtx._42;
+        controllerState.targetRayPose.position[2] = rayMtx._43;
       }
     }
   }
@@ -1230,7 +1256,6 @@ void OpenVRSession::ProcessEvents(mozilla::gfx::VRSystemState& aSystemState) {
       // process to shutdown the VR process, and we need to avoid it.
       // case ::vr::EVREventType::VREvent_ProcessQuit:
       case ::vr::EVREventType::VREvent_QuitAcknowledged:
-      case ::vr::EVREventType::VREvent_QuitAborted_UserPrompt:
         mShouldQuit = true;
         break;
       default:

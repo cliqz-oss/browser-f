@@ -12,7 +12,7 @@
 // @ts-ignore
 const { OS } = require("resource://gre/modules/osfile.jsm");
 
-const UNITS = ["B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+const UNITS = ["B", "kiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
 
 /**
  * Linearly interpolate between values.
@@ -42,7 +42,7 @@ function clamp(val, min, max) {
 /**
  * Formats a file size.
  * @param {number} num - The number (in bytes) to format.
- * @returns {string} e.g. "10 B", "100 MB"
+ * @returns {string} e.g. "10 B", "100 MiB"
  */
 function formatFileSize(num) {
   if (!Number.isFinite(num)) {
@@ -60,10 +60,10 @@ function formatFileSize(num) {
   }
 
   const exponent = Math.min(
-    Math.floor(Math.log(num) / Math.log(1000)),
+    Math.floor(Math.log2(num) / Math.log2(1024)),
     UNITS.length - 1
   );
-  const numStr = Number((num / Math.pow(1000, exponent)).toPrecision(3));
+  const numStr = Number((num / Math.pow(1024, exponent)).toPrecision(3));
   const unit = UNITS[exponent];
 
   return (neg ? "-" : "") + numStr + " " + unit;
@@ -92,6 +92,45 @@ function makeExponentialScale(rangeStart, rangeEnd) {
   /** @type {NumberScaler} */
   const fromFractionToSingleDigitValue = frac => {
     return +fromFractionToValue(frac).toPrecision(1);
+  };
+
+  return {
+    // Takes a number ranged 0-1 and returns it within the range.
+    fromFractionToValue,
+    // Takes a number in the range, and returns a value between 0-1
+    fromValueToFraction,
+    // Takes a number ranged 0-1 and returns a value in the range, but with
+    // a single digit value.
+    fromFractionToSingleDigitValue,
+  };
+}
+
+/**
+ * Creates numbers that scale exponentially as powers of 2.
+ *
+ * @param {number} rangeStart
+ * @param {number} rangeEnd
+ *
+ * @returns {ScaleFunctions}
+ */
+function makePowerOf2Scale(rangeStart, rangeEnd) {
+  const startExp = Math.log2(rangeStart);
+  const endExp = Math.log2(rangeEnd);
+
+  /** @type {NumberScaler} */
+  const fromFractionToValue = frac =>
+    Math.pow(2, Math.round((1 - frac) * startExp + frac * endExp));
+
+  /** @type {NumberScaler} */
+  const fromValueToFraction = value =>
+    (Math.log2(value) - startExp) / (endExp - startExp);
+
+  /** @type {NumberScaler} */
+  const fromFractionToSingleDigitValue = frac => {
+    // fromFractionToValue returns an exact power of 2, we don't want to change
+    // its precision. Note that formatFileSize will display it in a nice binary
+    // unit with up to 3 digits.
+    return fromFractionToValue(frac);
   };
 
   return {
@@ -283,12 +322,6 @@ const featureDescriptions = [
     recommended: true,
   },
   {
-    name: "Responsiveness",
-    value: "responsiveness",
-    title: "Collect thread responsiveness information.",
-    recommended: true,
-  },
-  {
     name: "Java",
     value: "java",
     title: "Profile Java code",
@@ -307,14 +340,25 @@ const featureDescriptions = [
     title: "Disable interval-based stack sampling",
   },
   {
-    name: "Main Thread IO",
+    name: "Main Thread File IO",
     value: "mainthreadio",
-    title: "Record main thread I/O markers.",
+    title: "Record main thread File I/O markers.",
   },
   {
-    name: "Privacy",
-    value: "privacy",
-    title: "Remove some potentially user-identifiable information.",
+    name: "Profiled Threads File IO",
+    value: "fileio",
+    title: "Record File I/O markers from only profiled threads.",
+  },
+  {
+    name: "All File IO",
+    value: "fileioall",
+    title:
+      "Record File I/O markers from all threads, even unregistered threads.",
+  },
+  {
+    name: "No File IO Stack Sampling",
+    value: "noiostacks",
+    title: "Do not sample stacks when recording File I/O markers.",
   },
   {
     name: "Sequential Styling",
@@ -322,14 +366,10 @@ const featureDescriptions = [
     title: "Disable parallel traversal in styling.",
   },
   {
-    name: "JIT Optimizations",
-    value: "trackopts",
-    title: "Track JIT optimizations in the JS engine.",
-  },
-  {
     name: "TaskTracer",
     value: "tasktracer",
-    title: "Enable TaskTracer (Experimental.)",
+    title: "Enable TaskTracer",
+    experimental: true,
     disabledReason:
       "TaskTracer requires a custom build with the environment variable MOZ_TASK_TRACER set.",
   },
@@ -341,7 +381,8 @@ const featureDescriptions = [
   {
     name: "JSTracer",
     value: "jstracer",
-    title: "Trace JS engine (Experimental.)",
+    title: "Trace JS engine",
+    experimental: true,
     disabledReason:
       "JS Tracer is currently disabled due to crashes. See Bug 1565788.",
   },
@@ -358,18 +399,19 @@ const featureDescriptions = [
   {
     name: "JS Allocations",
     value: "jsallocations",
-    title: "Track JavaScript allocations (Experimental.)",
+    title: "Track JavaScript allocations",
   },
   {
     name: "Native Allocations",
     value: "nativeallocations",
-    title: "Track native allocations (Experimental.)",
+    title: "Track native allocations",
   },
 ];
 
 module.exports = {
   formatFileSize,
   makeExponentialScale,
+  makePowerOf2Scale,
   scaleRangeWithClamping,
   calculateOverhead,
   withCommonPathPrefixRemoved,

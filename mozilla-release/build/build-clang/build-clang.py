@@ -18,10 +18,13 @@ import glob
 import errno
 import re
 import sys
+import tarfile
 from contextlib import contextmanager
 from distutils.dir_util import copy_tree
 
 from shutil import which
+
+import zstandard
 
 
 def symlink(source, link_name):
@@ -73,12 +76,20 @@ def check_run(args):
 
 
 def run_in(path, args):
+    with chdir(path):
+        check_run(args)
+
+
+@contextmanager
+def chdir(path):
     d = os.getcwd()
     print('cd "%s"' % path, file=sys.stderr)
     os.chdir(path)
-    check_run(args)
-    print('cd "%s"' % d, file=sys.stderr)
-    os.chdir(d)
+    try:
+        yield
+    finally:
+        print('cd "%s"' % d, file=sys.stderr)
+        os.chdir(d)
 
 
 def patch(patch, srcdir):
@@ -121,21 +132,16 @@ def updated_env(env):
     os.environ.update(old_env)
 
 
-def build_tar_package(tar, name, base, directory):
+def build_tar_package(name, base, directory):
     name = os.path.realpath(name)
-    # On Windows, we have to convert this into an msys path so that tar can
-    # understand it.
-    if is_windows():
-        name = name.replace('\\', '/')
+    print('tarring {} from {}/{}'.format(name, base, directory), file=sys.stderr)
+    assert name.endswith(".tar.zst")
 
-        def f(match):
-            return '/' + match.group(1).lower()
-        name = re.sub(r'^([A-Za-z]):', f, name)
-    run_in(base, [tar,
-                  "-c",
-                  "-%s" % ("J" if ".xz" in name else "j"),
-                  "-f",
-                  name, directory])
+    cctx = zstandard.ZstdCompressor()
+    with open(name, "wb") as f, cctx.stream_writer(f) as z:
+        with tarfile.open(mode="w|", fileobj=z) as tf:
+            with chdir(base):
+                tf.add(directory)
 
 
 def mkdir_p(path):
@@ -231,7 +237,7 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
                     compiler_rt_source_dir=None, runtimes_source_link=None,
                     compiler_rt_source_link=None,
                     is_final_stage=False, android_targets=None,
-                    extra_targets=None):
+                    extra_targets=None, pgo_phase=None):
     if is_final_stage and (android_targets or extra_targets):
         # Linking compiler-rt under "runtimes" activates LLVM_RUNTIME_TARGETS
         # and related arguments.
@@ -252,6 +258,7 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
         return path.replace('\\', '/')
 
     def cmake_base_args(cc, cxx, asm, ld, ar, ranlib, libtool, inst_dir):
+        machine_targets = "X86;ARM;AArch64" if is_final_stage else "X86"
         cmake_args = [
             "-GNinja",
             "-DCMAKE_C_COMPILER=%s" % slashify_path(cc[0]),
@@ -266,12 +273,14 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
             "-DCMAKE_SHARED_LINKER_FLAGS=%s" % ' '.join(ld[1:]),
             "-DCMAKE_BUILD_TYPE=%s" % build_type,
             "-DCMAKE_INSTALL_PREFIX=%s" % inst_dir,
-            "-DLLVM_TARGETS_TO_BUILD=X86;ARM;AArch64",
+            "-DLLVM_TARGETS_TO_BUILD=%s" % machine_targets,
             "-DLLVM_ENABLE_ASSERTIONS=%s" % ("ON" if assertions else "OFF"),
             "-DPYTHON_EXECUTABLE=%s" % slashify_path(python_path),
             "-DLLVM_TOOL_LIBCXX_BUILD=%s" % ("ON" if build_libcxx else "OFF"),
             "-DLLVM_ENABLE_BINDINGS=OFF",
         ]
+        if not is_final_stage:
+            cmake_args += ["-DLLVM_ENABLE_PROJECTS=clang;compiler-rt"]
         if build_wasm:
             cmake_args += ["-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly"]
         if is_linux():
@@ -305,6 +314,16 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
                 "-DDARWIN_osx_ARCHS=x86_64",
                 "-DDARWIN_osx_SYSROOT=%s" % slashify_path(os.getenv("CROSS_SYSROOT")),
                 "-DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-apple-darwin"
+            ]
+        if pgo_phase == "gen":
+            # Per https://releases.llvm.org/10.0.0/docs/HowToBuildWithPGO.html
+            cmake_args += [
+                "-DLLVM_BUILD_INSTRUMENTED=IR",
+                "-DLLVM_BUILD_RUNTIME=No",
+            ]
+        if pgo_phase == "use":
+            cmake_args += [
+                "-DLLVM_PROFDATA_FILE=%s/merged.profdata" % stage_dir,
             ]
         return cmake_args
 
@@ -425,8 +444,9 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
             ]
             build_package(compiler_rt_build_dir, cmake_args)
             os.environ['LIB'] = old_lib
-        install_import_library(build_dir, inst_dir)
-        install_asan_symbols(build_dir, inst_dir)
+        if is_final_stage:
+            install_import_library(build_dir, inst_dir)
+            install_asan_symbols(build_dir, inst_dir)
 
 
 # Return the absolute path of a build tool.  We first look to see if the
@@ -500,7 +520,8 @@ def prune_final_dir_for_clang_tidy(final_dir, osx_cross_compile):
 
     # Remove the target-specific files.
     if is_linux():
-        shutil.rmtree(os.path.join(final_dir, "x86_64-unknown-linux-gnu"))
+        if os.path.exists(os.path.join(final_dir, "x86_64-unknown-linux-gnu")):
+            shutil.rmtree(os.path.join(final_dir, "x86_64-unknown-linux-gnu"))
 
     # In lib/, only keep lib/clang/N.M.O/include and the LLVM shared library.
     re_ver_num = re.compile(r"^\d+\.\d+\.\d+$", re.I)
@@ -521,7 +542,7 @@ def prune_final_dir_for_clang_tidy(final_dir, osx_cross_compile):
         if os.path.basename(f) != "include":
             delete(f)
 
-    # Completely remove libexec/, msbuilld-bin and tools, if it exists.
+    # Completely remove libexec/, msbuild-bin and tools, if it exists.
     shutil.rmtree(os.path.join(final_dir, "libexec"))
     for d in ("msbuild-bin", "tools"):
         d = os.path.join(final_dir, d)
@@ -592,8 +613,15 @@ if __name__ == "__main__":
     stages = 3
     if "stages" in config:
         stages = int(config["stages"])
-        if stages not in (1, 2, 3):
-            raise ValueError("We only know how to build 1, 2, or 3 stages")
+        if stages not in (1, 2, 3, 4):
+            raise ValueError("We only know how to build 1, 2, 3, or 4 stages.")
+    pgo = False
+    if "pgo" in config:
+        pgo = config["pgo"]
+        if pgo not in (True, False):
+            raise ValueError("Only boolean values are accepted for pgo.")
+        if pgo and stages != 4:
+            raise ValueError("PGO is only supported in 4-stage builds.")
     build_type = "Release"
     if "build_type" in config:
         build_type = config["build_type"]
@@ -780,15 +808,17 @@ if __name__ == "__main__":
         [ld] + extra_ldflags,
         ar, ranlib, libtool,
         llvm_source_dir, stage1_dir, package_name, build_libcxx, osx_cross_compile,
-        build_type, assertions, python_path, gcc_dir, libcxx_include_dir, build_wasm)
+        build_type, assertions, python_path, gcc_dir, libcxx_include_dir, build_wasm,
+        is_final_stage=(stages == 1))
 
     runtimes_source_link = llvm_source_dir + "/runtimes/compiler-rt"
 
-    if stages > 1:
+    if stages >= 2:
         stage2_dir = build_dir + '/stage2'
         stage2_inst_dir = stage2_dir + '/' + package_name
         final_stage_dir = stage2_dir
         final_inst_dir = stage2_inst_dir
+        pgo_phase = "gen" if pgo else None
         build_one_stage(
             [stage1_inst_dir + "/bin/%s%s" %
                 (cc_name, exe_ext)] + extra_cflags2,
@@ -802,9 +832,9 @@ if __name__ == "__main__":
             build_type, assertions, python_path, gcc_dir, libcxx_include_dir, build_wasm,
             compiler_rt_source_dir, runtimes_source_link, compiler_rt_source_link,
             is_final_stage=(stages == 2), android_targets=android_targets,
-            extra_targets=extra_targets)
+            extra_targets=extra_targets, pgo_phase=pgo_phase)
 
-    if stages > 2:
+    if stages >= 3:
         stage3_dir = build_dir + '/stage3'
         stage3_inst_dir = stage3_dir + '/' + package_name
         final_stage_dir = stage3_dir
@@ -822,6 +852,35 @@ if __name__ == "__main__":
             build_type, assertions, python_path, gcc_dir, libcxx_include_dir, build_wasm,
             compiler_rt_source_dir, runtimes_source_link, compiler_rt_source_link,
             (stages == 3), extra_targets=extra_targets)
+
+    if stages >= 4:
+        stage4_dir = build_dir + '/stage4'
+        stage4_inst_dir = stage4_dir + '/' + package_name
+        final_stage_dir = stage4_dir
+        final_inst_dir = stage4_inst_dir
+        pgo_phase = None
+        if pgo:
+            pgo_phase = "use"
+            llvm_profdata = stage3_inst_dir + "/bin/llvm-profdata%s" % exe_ext
+            merge_cmd = [llvm_profdata, 'merge', '-o', 'merged.profdata']
+            profraw_files = glob.glob(os.path.join(stage2_dir, 'build',
+                                                   'profiles', '*.profraw'))
+            if not os.path.exists(stage4_dir):
+                os.mkdir(stage4_dir)
+            run_in(stage4_dir, merge_cmd + profraw_files)
+        build_one_stage(
+            [stage3_inst_dir + "/bin/%s%s" %
+                (cc_name, exe_ext)] + extra_cflags2,
+            [stage3_inst_dir + "/bin/%s%s" %
+                (cxx_name, exe_ext)] + extra_cxxflags2,
+            [stage3_inst_dir + "/bin/%s%s" %
+                (cc_name, exe_ext)] + extra_asmflags,
+            [ld] + extra_ldflags,
+            ar, ranlib, libtool,
+            llvm_source_dir, stage4_dir, package_name, build_libcxx, osx_cross_compile,
+            build_type, assertions, python_path, gcc_dir, libcxx_include_dir, build_wasm,
+            compiler_rt_source_dir, runtimes_source_link, compiler_rt_source_link,
+            (stages == 4), extra_targets=extra_targets, pgo_phase=pgo_phase)
 
     if build_clang_tidy:
         prune_final_dir_for_clang_tidy(os.path.join(final_stage_dir, package_name),
@@ -844,5 +903,4 @@ if __name__ == "__main__":
                 copy_tree(srcdir, destdir)
 
     if not args.skip_tar:
-        ext = "bz2" if is_darwin() or is_windows() else "xz"
-        build_tar_package("tar", "%s.tar.%s" % (package_name, ext), final_stage_dir, package_name)
+        build_tar_package("%s.tar.zst" % package_name, final_stage_dir, package_name)

@@ -1,10 +1,8 @@
-%if 0
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-%endif
 
-@import url("chrome://global/skin/");
+@import url("chrome://global/skin/global.css");
 @namespace html url("http://www.w3.org/1999/xhtml");
 
 /* View buttons */
@@ -50,8 +48,7 @@
 }
 
 #mainDeck {
-  padding-left: 2px;
-  padding-right: 2px;
+  padding-inline: 2px;
 }
 
 #mainDeck {
@@ -101,8 +98,7 @@ html|input:disabled {
 /* Media Tab */
 #imagetree {
   min-height: 10em;
-  margin-top: 2px;
-  margin-bottom: 0;
+  margin-block: 2px 0;
 }
 
 #mediaSplitter {

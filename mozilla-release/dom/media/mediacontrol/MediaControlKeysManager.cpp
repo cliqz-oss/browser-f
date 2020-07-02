@@ -17,6 +17,11 @@
   MOZ_LOG(gMediaControlLog, LogLevel::Debug, \
           ("MediaControlKeysManager=%p, " msg, this, ##__VA_ARGS__))
 
+#undef LOG_INFO
+#define LOG_INFO(msg, ...)                  \
+  MOZ_LOG(gMediaControlLog, LogLevel::Info, \
+          ("MediaControlKeysManager=%p, " msg, this, ##__VA_ARGS__))
+
 namespace mozilla {
 namespace dom {
 
@@ -59,7 +64,7 @@ void MediaControlKeysManager::StartMonitoringControlKeys() {
     return;
   }
 
-  LOG("StartMonitoringControlKeys");
+  LOG_INFO("StartMonitoringControlKeys");
   if (!mEventSource->IsOpened() && mEventSource->Open()) {
     mEventSource->SetPlaybackState(mPlaybackState);
     mEventSource->SetMediaMetadata(mMetadata);
@@ -69,7 +74,7 @@ void MediaControlKeysManager::StartMonitoringControlKeys() {
 
 void MediaControlKeysManager::StopMonitoringControlKeys() {
   if (mEventSource && mEventSource->IsOpened()) {
-    LOG("StopMonitoringControlKeys");
+    LOG_INFO("StopMonitoringControlKeys");
     mEventSource->Close();
   }
 }
@@ -94,10 +99,14 @@ void MediaControlKeysManager::SetPlaybackState(
     MediaSessionPlaybackState aState) {
   if (mEventSource && mEventSource->IsOpened()) {
     mEventSource->SetPlaybackState(aState);
-  } else {
-    // If the event source hasn't been created or been opened yet, we would
-    // cache the state, and set it again when creating the event source.
-    mPlaybackState = aState;
+  }
+  mPlaybackState = aState;
+  LOG_INFO("playbackState=%s", ToMediaSessionPlaybackStateStr(mPlaybackState));
+  if (StaticPrefs::media_mediacontrol_testingevents_enabled()) {
+    if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
+      obs->NotifyObservers(nullptr, "media-displayed-playback-changed",
+                           nullptr);
+    }
   }
 }
 
@@ -111,10 +120,17 @@ void MediaControlKeysManager::SetMediaMetadata(
     const MediaMetadataBase& aMetadata) {
   if (mEventSource && mEventSource->IsOpened()) {
     mEventSource->SetMediaMetadata(aMetadata);
-  } else {
-    // If the event source hasn't been created or been opened yet, we would
-    // cache the state, and set it again when creating the event source.
-    mMetadata = aMetadata;
+  }
+  mMetadata = aMetadata;
+  LOG_INFO("title=%s, artist=%s album=%s",
+           NS_ConvertUTF16toUTF8(mMetadata.mTitle).get(),
+           NS_ConvertUTF16toUTF8(mMetadata.mArtist).get(),
+           NS_ConvertUTF16toUTF8(mMetadata.mAlbum).get());
+  if (StaticPrefs::media_mediacontrol_testingevents_enabled()) {
+    if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
+      obs->NotifyObservers(nullptr, "media-displayed-metadata-changed",
+                           nullptr);
+    }
   }
 }
 

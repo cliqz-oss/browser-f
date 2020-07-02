@@ -57,13 +57,9 @@ class ClientState;
 class ContentFrameMessageManager;
 class DocGroup;
 class Document;
-class TabGroup;
 class Element;
 class Navigator;
 class Performance;
-class Report;
-class ReportBody;
-class ReportingObserver;
 class Selection;
 class ServiceWorker;
 class ServiceWorkerDescriptor;
@@ -314,7 +310,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   void TryToCacheTopInnerWindow();
 
   // Increase/Decrease the number of active IndexedDB databases for the
-  // decision making of TabGroup scheduling and timeout-throttling.
+  // decision making of timeout-throttling.
   void UpdateActiveIndexedDBDatabaseCount(int32_t aDelta);
 
   // Return true if there is any active IndexedDB databases which could block
@@ -339,12 +335,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   void NoteCalledRegisterForServiceWorkerScope(const nsACString& aScope);
 
   void NoteDOMContentLoaded();
-
-  mozilla::dom::TabGroup* TabGroup();
-
-  // Like MaybeTabGroup, but it is more tolerant of being called at peculiar
-  // times, and it can return null.
-  mozilla::dom::TabGroup* MaybeTabGroup();
 
   virtual mozilla::dom::CustomElementRegistry* CustomElements() = 0;
 
@@ -565,18 +555,9 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   virtual nsISerialEventTarget* EventTargetFor(
       mozilla::TaskCategory aCategory) const = 0;
 
-  void RegisterReportingObserver(mozilla::dom::ReportingObserver* aObserver,
-                                 bool aBuffered);
+  void SaveStorageAccessGranted();
 
-  void UnregisterReportingObserver(mozilla::dom::ReportingObserver* aObserver);
-
-  void BroadcastReport(mozilla::dom::Report* aReport);
-
-  MOZ_CAN_RUN_SCRIPT void NotifyReportingObservers();
-
-  void SaveStorageAccessGranted(const nsACString& aPermissionKey);
-
-  bool HasStorageAccessGranted(const nsACString& aPermissionKey);
+  bool HasStorageAccessGranted();
 
   nsIPrincipal* GetDocumentContentBlockingAllowListPrincipal() const;
 
@@ -639,8 +620,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // The AudioContexts created for the current document, if any.
   nsTArray<mozilla::dom::AudioContext*> mAudioContexts;  // Weak
 
-  RefPtr<mozilla::dom::TabGroup> mTabGroup;
-
   RefPtr<mozilla::dom::BrowsingContext> mBrowsingContext;
 
   // A unique (as long as our 64-bit counter doesn't roll over) id for
@@ -672,14 +651,11 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // the event object alive.
   mozilla::dom::Event* mEvent;
 
-  // List of Report objects for ReportingObservers.
-  nsTArray<RefPtr<mozilla::dom::ReportingObserver>> mReportingObservers;
-  nsTArray<RefPtr<mozilla::dom::Report>> mReportRecords;
-
-  // This is a list of storage access granted for the current window. These are
-  // also set as permissions, but it could happen that we need to access them
-  // synchronously in this context, and for this, we need a copy here.
-  nsTArray<nsCString> mStorageAccessGranted;
+  // A boolean flag indicating whether storage access is granted for the
+  // current window. These are also set as permissions, but it could happen
+  // that we need to access them synchronously in this context, and for
+  // this, we need a copy here.
+  bool mStorageAccessGranted;
 
   // The WindowGlobalChild actor for this window.
   //
@@ -768,12 +744,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
 
   bool IsTopLevelWindow();
   bool HadOriginalOpener() const;
-
-  mozilla::dom::TabGroup* TabGroup();
-
-  // Like MaybeTabGroup, but it is more tolerant of being called at peculiar
-  // times, and it can return null.
-  mozilla::dom::TabGroup* MaybeTabGroup();
 
   virtual nsPIDOMWindowOuter* GetPrivateRoot() = 0;
 
@@ -874,6 +844,11 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
    * Get the browsing context in this window.
    */
   inline mozilla::dom::BrowsingContext* GetBrowsingContext() const;
+
+  /**
+   * Get the browsing context group this window belongs to.
+   */
+  mozilla::dom::BrowsingContextGroup* GetBrowsingContextGroup() const;
 
   /**
    * Set a new document in the window. Calling this method will in most cases
@@ -1059,21 +1034,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   virtual nsISerialEventTarget* EventTargetFor(
       mozilla::TaskCategory aCategory) const = 0;
 
-  /**
-   * These methods provide a way to specify the opener value for the content in
-   * the window before the content itself is created. This is important in order
-   * to set the DocGroup of a document, as the opener must be set before the
-   * document is created.
-   *
-   * SetOpenerForInitialContentBrowser is used to set which opener will be used,
-   * and TakeOpenerForInitialContentBrowser is used by nsXULElement in order to
-   * take the value set earlier, and null out the value in the window.
-   */
-  void SetOpenerForInitialContentBrowser(
-      mozilla::dom::BrowsingContext* aOpener);
-  already_AddRefed<mozilla::dom::BrowsingContext>
-  TakeOpenerForInitialContentBrowser();
-
   already_AddRefed<nsIDocShellTreeOwner> GetTreeOwner();
   already_AddRefed<nsIBaseWindow> GetTreeOwnerWindow();
   already_AddRefed<nsIWebBrowserChrome> GetWebBrowserChrome();
@@ -1139,8 +1099,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   // And these are the references between inner and outer windows.
   nsPIDOMWindowInner* MOZ_NON_OWNING_REF mInnerWindow;
 
-  RefPtr<mozilla::dom::TabGroup> mTabGroup;
-
   // A unique (as long as our 64-bit counter doesn't roll over) id for
   // this window.
   uint64_t mWindowID;
@@ -1152,8 +1110,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   bool mServiceWorkersTestingEnabled;
 
   mozilla::dom::LargeAllocStatus mLargeAllocStatus;
-
-  RefPtr<mozilla::dom::BrowsingContext> mOpenerForInitialContentBrowser;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsPIDOMWindowOuter, NS_PIDOMWINDOWOUTER_IID)

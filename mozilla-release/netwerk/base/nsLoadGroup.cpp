@@ -22,6 +22,7 @@
 #include "CacheObserver.h"
 #include "MainThreadUtils.h"
 #include "RequestContextService.h"
+#include "mozilla/StoragePrincipalHelper.h"
 #include "mozilla/Unused.h"
 
 namespace mozilla {
@@ -93,6 +94,7 @@ nsLoadGroup::nsLoadGroup()
       mIsCanceling(false),
       mDefaultLoadIsTimed(false),
       mBrowsingContextDiscarded(false),
+      mExternalRequestContext(false),
       mTimedRequests(0),
       mCachedRequests(0) {
   LOG(("LOADGROUP [%p]: Created.\n", this));
@@ -104,8 +106,11 @@ nsLoadGroup::~nsLoadGroup() {
 
   mDefaultLoadRequest = nullptr;
 
-  if (mRequestContext) {
+  if (mRequestContext && !mExternalRequestContext) {
     mRequestContextService->RemoveRequestContext(mRequestContext->GetID());
+    if (IsNeckoChild() && gNeckoChild) {
+      gNeckoChild->SendRemoveRequestContext(mRequestContext->GetID());
+    }
   }
 
   nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
@@ -159,10 +164,9 @@ static bool AppendRequestsToArray(PLDHashTable* aTable,
     nsIRequest* request = e->mKey;
     NS_ASSERTION(request, "What? Null key in PLDHashTable entry?");
 
-    bool ok = !!aArray->AppendElement(request);
-    if (!ok) {
-      break;
-    }
+    // XXX(Bug 1631371) Check if this should use a fallible operation as it
+    // pretended earlier.
+    aArray->AppendElement(request);
     NS_ADDREF(request);
   }
 
@@ -975,12 +979,30 @@ nsresult nsLoadGroup::Init() {
   return NS_OK;
 }
 
+nsresult nsLoadGroup::InitWithRequestContextId(
+    const uint64_t& aRequestContextId) {
+  mRequestContextService = RequestContextService::GetOrCreate();
+  if (mRequestContextService) {
+    Unused << mRequestContextService->GetRequestContext(
+        aRequestContextId, getter_AddRefs(mRequestContext));
+  }
+  mExternalRequestContext = true;
+
+  nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+  NS_ENSURE_STATE(os);
+
+  Unused << os->AddObserver(this, "last-pb-context-exited", true);
+
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 nsLoadGroup::Observe(nsISupports* aSubject, const char* aTopic,
                      const char16_t* aData) {
   MOZ_ASSERT(!strcmp(aTopic, "last-pb-context-exited"));
 
-  OriginAttributes attrs = nsContentUtils::GetOriginAttributes(this);
+  OriginAttributes attrs;
+  StoragePrincipalHelper::GetRegularPrincipalOriginAttributes(this, attrs);
   if (attrs.mPrivateBrowsingId == 0) {
     return NS_OK;
   }

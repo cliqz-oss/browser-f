@@ -184,16 +184,11 @@ nsJARChannel::~nsJARChannel() {
   }
 
   // Proxy release the following members to main thread.
-  NS_ReleaseOnMainThreadSystemGroup("nsJARChannel::mLoadInfo",
-                                    mLoadInfo.forget());
-  NS_ReleaseOnMainThreadSystemGroup("nsJARChannel::mCallbacks",
-                                    mCallbacks.forget());
-  NS_ReleaseOnMainThreadSystemGroup("nsJARChannel::mProgressSink",
-                                    mProgressSink.forget());
-  NS_ReleaseOnMainThreadSystemGroup("nsJARChannel::mLoadGroup",
-                                    mLoadGroup.forget());
-  NS_ReleaseOnMainThreadSystemGroup("nsJARChannel::mListener",
-                                    mListener.forget());
+  NS_ReleaseOnMainThread("nsJARChannel::mLoadInfo", mLoadInfo.forget());
+  NS_ReleaseOnMainThread("nsJARChannel::mCallbacks", mCallbacks.forget());
+  NS_ReleaseOnMainThread("nsJARChannel::mProgressSink", mProgressSink.forget());
+  NS_ReleaseOnMainThread("nsJARChannel::mLoadGroup", mLoadGroup.forget());
+  NS_ReleaseOnMainThread("nsJARChannel::mListener", mListener.forget());
 }
 
 NS_IMPL_ISUPPORTS_INHERITED(nsJARChannel, nsHashPropertyBag, nsIRequest,
@@ -874,8 +869,8 @@ nsJARChannel::AsyncOpen(nsIStreamListener* aListener) {
           mLoadInfo->GetInitialSecurityCheckDone() ||
           (mLoadInfo->GetSecurityMode() ==
                nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL &&
-           mLoadInfo->LoadingPrincipal() &&
-           mLoadInfo->LoadingPrincipal()->IsSystemPrincipal()),
+           mLoadInfo->GetLoadingPrincipal() &&
+           mLoadInfo->GetLoadingPrincipal()->IsSystemPrincipal()),
       "security flags in loadInfo but doContentSecurityCheck() not called");
 
   NS_ENSURE_ARG_POINTER(listener);
@@ -1002,7 +997,6 @@ nsJARChannel::OnStartRequest(nsIRequest* req) {
 
   mRequest = req;
   nsresult rv = mListener->OnStartRequest(this);
-  mRequest = nullptr;
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -1043,6 +1037,7 @@ nsJARChannel::OnStopRequest(nsIRequest* req, nsresult status) {
 
   if (mLoadGroup) mLoadGroup->RemoveRequest(this, nullptr, status);
 
+  mRequest = nullptr;
   mPump = nullptr;
   mIsPending = false;
 

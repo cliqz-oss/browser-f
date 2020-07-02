@@ -7,13 +7,19 @@
 const nodeConstants = require("devtools/shared/dom-node-constants");
 
 loader.lazyGetter(this, "mdnCompatibility", () => {
-  const MDNCompatibility = require("devtools/client/inspector/compatibility/lib/MDNCompatibility");
-  const cssPropertiesCompatData = require("devtools/client/inspector/compatibility/lib/dataset/css-properties.json");
+  const MDNCompatibility = require("devtools/shared/compatibility/MDNCompatibility");
+  const cssPropertiesCompatData = require("devtools/shared/compatibility/dataset/css-properties.json");
   return new MDNCompatibility(cssPropertiesCompatData);
 });
 
+const UserSettings = require("devtools/client/inspector/compatibility/UserSettings");
+
 const {
   COMPATIBILITY_APPEND_NODE,
+  COMPATIBILITY_INIT_USER_SETTINGS_START,
+  COMPATIBILITY_INIT_USER_SETTINGS_SUCCESS,
+  COMPATIBILITY_INIT_USER_SETTINGS_FAILURE,
+  COMPATIBILITY_INIT_USER_SETTINGS_COMPLETE,
   COMPATIBILITY_UPDATE_NODE,
   COMPATIBILITY_UPDATE_NODES_START,
   COMPATIBILITY_UPDATE_NODES_SUCCESS,
@@ -24,6 +30,7 @@ const {
   COMPATIBILITY_UPDATE_SELECTED_NODE_FAILURE,
   COMPATIBILITY_UPDATE_SELECTED_NODE_COMPLETE,
   COMPATIBILITY_UPDATE_SELECTED_NODE_ISSUES,
+  COMPATIBILITY_UPDATE_SETTINGS_VISIBILITY,
   COMPATIBILITY_UPDATE_TARGET_BROWSERS_START,
   COMPATIBILITY_UPDATE_TARGET_BROWSERS_SUCCESS,
   COMPATIBILITY_UPDATE_TARGET_BROWSERS_FAILURE,
@@ -33,6 +40,30 @@ const {
   COMPATIBILITY_UPDATE_TOP_LEVEL_TARGET_FAILURE,
   COMPATIBILITY_UPDATE_TOP_LEVEL_TARGET_COMPLETE,
 } = require("devtools/client/inspector/compatibility/actions/index");
+
+function initUserSettings() {
+  return async ({ dispatch, getState }) => {
+    dispatch({ type: COMPATIBILITY_INIT_USER_SETTINGS_START });
+
+    try {
+      const defaultTargetBrowsers = UserSettings.getDefaultTargetBrowsers();
+      const targetBrowsers = UserSettings.getTargetBrowsers();
+
+      dispatch({
+        type: COMPATIBILITY_INIT_USER_SETTINGS_SUCCESS,
+        defaultTargetBrowsers,
+        targetBrowsers,
+      });
+    } catch (error) {
+      dispatch({
+        type: COMPATIBILITY_INIT_USER_SETTINGS_FAILURE,
+        error,
+      });
+    }
+
+    dispatch({ type: COMPATIBILITY_INIT_USER_SETTINGS_COMPLETE });
+  };
+}
 
 function updateNodes(selector) {
   return async ({ dispatch, getState }) => {
@@ -94,11 +125,20 @@ function updateSelectedNode(node) {
   };
 }
 
+function updateSettingsVisibility(visibility) {
+  return {
+    type: COMPATIBILITY_UPDATE_SETTINGS_VISIBILITY,
+    visibility,
+  };
+}
+
 function updateTargetBrowsers(targetBrowsers) {
   return async ({ dispatch, getState }) => {
     dispatch({ type: COMPATIBILITY_UPDATE_TARGET_BROWSERS_START });
 
     try {
+      UserSettings.setTargetBrowsers(targetBrowsers);
+
       const { selectedNode, topLevelTarget } = getState().compatibility;
 
       if (selectedNode) {
@@ -207,8 +247,10 @@ async function _updateTopLevelTargetIssues(target, targetBrowsers, dispatch) {
 }
 
 module.exports = {
+  initUserSettings,
   updateNodes,
   updateSelectedNode,
+  updateSettingsVisibility,
   updateTargetBrowsers,
   updateTopLevelTarget,
 };

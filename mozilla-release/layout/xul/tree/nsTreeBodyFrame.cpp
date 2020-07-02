@@ -190,7 +190,7 @@ nsSize nsTreeBodyFrame::GetXULMinSize(nsBoxLayoutState& aBoxLayoutState) {
 
   min.height = mRowHeight * desiredRows;
 
-  AddBorderAndPadding(min);
+  AddXULBorderAndPadding(min);
   bool widthSet, heightSet;
   nsIFrame::AddXULMinSize(this, min, widthSet, heightSet);
 
@@ -1918,8 +1918,7 @@ nsresult nsTreeBodyFrame::GetImage(int32_t aRowIndex, nsTreeColumn* aCol,
           getter_AddRefs(srcURI), imageSrc, doc, mContent->GetBaseURI());
       if (!srcURI) return NS_ERROR_FAILURE;
 
-      nsCOMPtr<nsIReferrerInfo> referrerInfo = new mozilla::dom::ReferrerInfo();
-      referrerInfo->InitWithDocument(doc);
+      auto referrerInfo = MakeRefPtr<mozilla::dom::ReferrerInfo>(*doc);
 
       // XXXbz what's the origin principal for this stuff that comes from our
       // view?  I guess we should assume that it's the node's principal...
@@ -2273,7 +2272,8 @@ nsresult nsTreeBodyFrame::HandleEvent(nsPresContext* aPresContext,
                                       WidgetGUIEvent* aEvent,
                                       nsEventStatus* aEventStatus) {
   if (aEvent->mMessage == eMouseOver || aEvent->mMessage == eMouseMove) {
-    nsPoint pt = nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, this);
+    nsPoint pt =
+        nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, RelativeTo{this});
     int32_t xTwips = pt.x - mInnerBox.x;
     int32_t yTwips = pt.y - mInnerBox.y;
     int32_t newrow = GetRowAtInternal(xTwips, yTwips);
@@ -4035,7 +4035,8 @@ void nsTreeBodyFrame::ComputeDropPosition(WidgetGUIEvent* aEvent, int32_t* aRow,
 
   // Convert the event's point to our coordinates.  We want it in
   // the coordinates of our inner box's coordinates.
-  nsPoint pt = nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, this);
+  nsPoint pt =
+      nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, RelativeTo{this});
   int32_t xTwips = pt.x - mInnerBox.x;
   int32_t yTwips = pt.y - mInnerBox.y;
 

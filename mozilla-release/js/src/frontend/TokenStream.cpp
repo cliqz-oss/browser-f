@@ -531,11 +531,11 @@ TokenStreamAnyChars::TokenStreamAnyChars(JSContext* cx,
 }
 
 template <typename Unit>
-TokenStreamCharsBase<Unit>::TokenStreamCharsBase(JSContext* cx,
-                                                 const Unit* units,
-                                                 size_t length,
-                                                 size_t startOffset)
-    : TokenStreamCharsShared(cx), sourceUnits(units, length, startOffset) {}
+TokenStreamCharsBase<Unit>::TokenStreamCharsBase(
+    JSContext* cx, CompilationInfo* compilationInfo, const Unit* units,
+    size_t length, size_t startOffset)
+    : TokenStreamCharsShared(cx, compilationInfo),
+      sourceUnits(units, length, startOffset) {}
 
 template <>
 MOZ_MUST_USE bool TokenStreamCharsBase<char16_t>::
@@ -600,9 +600,9 @@ MOZ_MUST_USE bool TokenStreamCharsBase<Utf8Unit>::
 
 template <typename Unit, class AnyCharsAccess>
 TokenStreamSpecific<Unit, AnyCharsAccess>::TokenStreamSpecific(
-    JSContext* cx, const ReadOnlyCompileOptions& options, const Unit* units,
-    size_t length)
-    : TokenStreamChars<Unit, AnyCharsAccess>(cx, units, length,
+    JSContext* cx, CompilationInfo* compilationInfo,
+    const ReadOnlyCompileOptions& options, const Unit* units, size_t length)
+    : TokenStreamChars<Unit, AnyCharsAccess>(cx, compilationInfo, units, length,
                                              options.scriptSourceOffset) {}
 
 bool TokenStreamAnyChars::checkOptions() {
@@ -1738,14 +1738,13 @@ bool TokenStreamCharsBase<Unit>::addLineOfContext(ErrorMetadata* err,
   // always the case for Unit=char16_t), the UTF-16 offsets are exactly the
   // encoded offsets.  Otherwise we must convert offset/length from UTF-8 to
   // UTF-16.
-  if (std::is_same<Unit, char16_t>::value) {
+  if constexpr (std::is_same_v<Unit, char16_t>) {
     MOZ_ASSERT(utf16WindowLength == encodedWindowLength,
                "UTF-16 to UTF-16 shouldn't change window length");
     err->tokenOffset = encodedTokenOffset;
     err->lineLength = encodedWindowLength;
   } else {
-    MOZ_ASSERT((std::is_same<Unit, Utf8Unit>::value),
-               "should only see UTF-8 here");
+    static_assert(std::is_same_v<Unit, Utf8Unit>, "should only see UTF-8 here");
 
     bool simple = utf16WindowLength == encodedWindowLength;
 #ifdef DEBUG
@@ -3125,7 +3124,11 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
 
       case '|':
         if (matchCodeUnit('|')) {
+#ifdef NIGHTLY_BUILD
+          simpleKind = matchCodeUnit('=') ? TokenKind::OrAssign : TokenKind::Or;
+#else
           simpleKind = TokenKind::Or;
+#endif
 #ifdef ENABLE_PIPELINE_OPERATOR
         } else if (matchCodeUnit('>')) {
           simpleKind = TokenKind::Pipeline;
@@ -3143,7 +3146,12 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
 
       case '&':
         if (matchCodeUnit('&')) {
+#ifdef NIGHTLY_BUILD
+          simpleKind =
+              matchCodeUnit('=') ? TokenKind::AndAssign : TokenKind::And;
+#else
           simpleKind = TokenKind::And;
+#endif
         } else {
           simpleKind =
               matchCodeUnit('=') ? TokenKind::BitAndAssign : TokenKind::BitAnd;
@@ -3164,9 +3172,15 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
             ungetCodeUnit(unit);
             simpleKind = TokenKind::OptionalChain;
           }
+        } else if (matchCodeUnit('?')) {
+#ifdef NIGHTLY_BUILD
+          simpleKind = matchCodeUnit('=') ? TokenKind::CoalesceAssign
+                                          : TokenKind::Coalesce;
+#else
+          simpleKind = TokenKind::Coalesce;
+#endif
         } else {
-          simpleKind =
-              matchCodeUnit('?') ? TokenKind::Coalesce : TokenKind::Hook;
+          simpleKind = TokenKind::Hook;
         }
         break;
 

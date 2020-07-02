@@ -59,18 +59,27 @@ void js::ZoneAllocator::updateMemoryCountersOnGCStart() {
   mallocHeapSize.updateOnGCStart();
 }
 
-void js::ZoneAllocator::updateGCThresholds(GCRuntime& gc,
-                                           JSGCInvocationKind invocationKind,
-                                           const js::AutoLockGC& lock) {
-  // This is called repeatedly during a GC to update thresholds as memory is
-  // freed.
+void js::ZoneAllocator::updateGCStartThresholds(
+    GCRuntime& gc, JSGCInvocationKind invocationKind,
+    const js::AutoLockGC& lock) {
   bool isAtomsZone = JS::Zone::from(this)->isAtomsZone();
-  gcHeapThreshold.updateAfterGC(gcHeapSize.retainedBytes(), invocationKind,
-                                gc.tunables, gc.schedulingState, isAtomsZone,
-                                lock);
-  mallocHeapThreshold.updateAfterGC(mallocHeapSize.retainedBytes(),
-                                    gc.tunables.mallocThresholdBase(),
-                                    gc.tunables.mallocGrowthFactor(), lock);
+  gcHeapThreshold.updateStartThreshold(gcHeapSize.retainedBytes(),
+                                       invocationKind, gc.tunables,
+                                       gc.schedulingState, isAtomsZone, lock);
+  mallocHeapThreshold.updateStartThreshold(mallocHeapSize.retainedBytes(),
+                                           gc.tunables, lock);
+}
+
+void js::ZoneAllocator::setGCSliceThresholds(GCRuntime& gc) {
+  gcHeapThreshold.setSliceThreshold(this, gcHeapSize, gc.tunables);
+  mallocHeapThreshold.setSliceThreshold(this, mallocHeapSize, gc.tunables);
+  jitHeapThreshold.setSliceThreshold(this, jitHeapSize, gc.tunables);
+}
+
+void js::ZoneAllocator::clearGCSliceThresholds() {
+  gcHeapThreshold.clearSliceThreshold();
+  mallocHeapThreshold.clearSliceThreshold();
+  jitHeapThreshold.clearSliceThreshold();
 }
 
 bool ZoneAllocator::addSharedMemory(void* mem, size_t nbytes, MemoryUse use) {
@@ -179,9 +188,9 @@ JS::Zone::Zone(JSRuntime* rt)
   MOZ_ASSERT(reinterpret_cast<JS::shadow::Zone*>(this) ==
              static_cast<JS::shadow::Zone*>(this));
 
-  // We can't call updateGCThresholds until the Zone has been constructed.
+  // We can't call updateGCStartThresholds until the Zone has been constructed.
   AutoLockGC lock(rt);
-  updateGCThresholds(rt->gc, GC_NORMAL, lock);
+  updateGCStartThresholds(rt->gc, GC_NORMAL, lock);
 }
 
 Zone::~Zone() {
@@ -473,6 +482,13 @@ void Zone::discardJitCode(JSFreeOp* fop,
     jitZone()->optimizedStubSpace()->freeAllAfterMinorGC(this);
     jitZone()->purgeIonCacheIRStubInfo();
   }
+}
+
+void JS::Zone::delegatePreWriteBarrierInternal(JSObject* obj,
+                                               JSObject* delegate) {
+  MOZ_ASSERT(js::gc::detail::GetDelegate(obj) == delegate);
+  MOZ_ASSERT(needsIncrementalBarrier());
+  GCMarker::fromTracer(barrierTracer())->severWeakDelegate(obj, delegate);
 }
 
 #ifdef JSGC_HASH_TABLE_CHECKS

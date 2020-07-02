@@ -102,6 +102,12 @@ Try Configuration
     The contents of the ``try_task_config.json`` file, or ``{}`` if
     ``try_mode`` is not ``try_task_config``.
 
+Test Configuration
+------------------
+
+``test_manifest_loader``
+   The test manifest loader to use as defined in ``taskgraph.util.chunking.manifest_loaders``.
+
 Target Set
 ----------
 
@@ -158,7 +164,7 @@ Release Promotion
    Specify the next version for version bump tasks.
 
 ``release_type``
-   The type of release being promoted. One of "nightly", "beta", "esr68", "release-rc", or "release".
+   The type of release being promoted. One of "nightly", "beta", "esr68", "esr78", "release-rc", or "release".
 
 ``release_eta``
    The time and date when a release is scheduled to live. This value is passed to Balrog.

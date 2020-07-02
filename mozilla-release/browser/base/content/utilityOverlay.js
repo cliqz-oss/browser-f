@@ -111,13 +111,12 @@ function doGetProtocolFlags(aURI) {
 /**
  * openUILink handles clicks on UI elements that cause URLs to load.
  *
- * As the third argument, you may pass an object with the same properties as
- * accepted by openUILinkIn, plus "ignoreButton" and "ignoreAlt".
- *
- * @param url {string}
- * @param event {Event | Object} Event or JSON object representing an Event
+ * @param {string} url
+ * @param {Event | Object} event Event or JSON object representing an Event
  * @param {Boolean | Object} aIgnoreButton
- * @param {Boolean} aIgnoreButton
+ *                           Boolean or object with the same properties as
+ *                           accepted by openUILinkIn, plus "ignoreButton"
+ *                           and "ignoreAlt".
  * @param {Boolean} aIgnoreAlt
  * @param {Boolean} aAllowThirdPartyFixup
  * @param {Object} aPostData
@@ -223,10 +222,14 @@ function whereToOpenLink(e, ignoreButton, ignoreAlt) {
   var alt = e.altKey && !ignoreAlt;
 
   // ignoreButton allows "middle-click paste" to use function without always opening in a new window.
-  var middle = !ignoreButton && e.button == 1;
-  var middleUsesTabs = Services.prefs.getBoolPref(
+  let middle = !ignoreButton && e.button == 1;
+  let middleUsesTabs = Services.prefs.getBoolPref(
     "browser.tabs.opentabfor.middleclick",
     true
+  );
+  let middleUsesNewWindow = Services.prefs.getBoolPref(
+    "middlemouse.openNewWindow",
+    false
   );
 
   // Don't do anything special with right-mouse clicks.  They're probably clicks on context menu items.
@@ -240,7 +243,7 @@ function whereToOpenLink(e, ignoreButton, ignoreAlt) {
     return "save";
   }
 
-  if (shift || (middle && !middleUsesTabs)) {
+  if (shift || (middle && !middleUsesTabs && middleUsesNewWindow)) {
     return "window";
   }
 
@@ -385,8 +388,6 @@ function openLinkIn(url, where, params) {
   }
 
   if (where == "save") {
-    // TODO(1073187): propagate referrerPolicy.
-    // ContentClick.jsm passes isContentWindowPrivate for saveURL instead of passing a CPOW initiatingDoc
     if ("isContentWindowPrivate" in params) {
       saveURL(
         url,
@@ -667,6 +668,7 @@ function openLinkIn(url, where, params) {
         allowInheritPrincipal: aAllowInheritPrincipal,
         csp: aCsp,
         focusUrlBar,
+        openerBrowser: params.openerBrowser,
       });
       targetBrowser = tabUsedForLoad.linkedBrowser;
 

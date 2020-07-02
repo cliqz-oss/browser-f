@@ -642,9 +642,11 @@ void nsBaseWidget::SetSizeMode(nsSizeMode aMode) {
   mSizeMode = aMode;
 }
 
-int32_t nsBaseWidget::GetWorkspaceID() { return 0; }
+void nsBaseWidget::GetWorkspaceID(nsAString& workspaceID) {
+  workspaceID.Truncate();
+}
 
-void nsBaseWidget::MoveToWorkspace(int32_t workspaceID) {
+void nsBaseWidget::MoveToWorkspace(const nsAString& workspaceID) {
   // Noop.
 }
 
@@ -821,12 +823,6 @@ bool nsBaseWidget::IsSmallPopup() const {
 }
 
 bool nsBaseWidget::ComputeShouldAccelerate() {
-  if (gfx::gfxVars::UseWebRender() && !AllowWebRenderForThisWindow()) {
-    // If WebRender is enabled, non-WebRender widgets use the basic compositor
-    // (at least for now), even though they would get an accelerated compositor
-    // if WebRender wasn't enabled.
-    return false;
-  }
   return gfx::gfxConfig::IsEnabled(gfx::Feature::HW_COMPOSITING) &&
          WidgetTypeSupportsAcceleration();
 }
@@ -837,13 +833,6 @@ bool nsBaseWidget::UseAPZ() {
            WindowType() == eWindowType_child ||
            (WindowType() == eWindowType_popup && HasRemoteContent() &&
             StaticPrefs::apz_popups_enabled())));
-}
-
-bool nsBaseWidget::AllowWebRenderForThisWindow() {
-  return WindowType() == eWindowType_toplevel ||
-         WindowType() == eWindowType_child ||
-         WindowType() == eWindowType_dialog ||
-         (WindowType() == eWindowType_popup && HasRemoteContent());
 }
 
 void nsBaseWidget::CreateCompositor() {
@@ -899,7 +888,7 @@ void nsBaseWidget::ConfigureAPZCTreeManager() {
                 uint64_t, StoreCopyPassByLRef<nsTArray<TouchBehaviorFlags>>>(
                 "layers::IAPZCTreeManager::SetAllowedTouchBehavior",
                 treeManager, &IAPZCTreeManager::SetAllowedTouchBehavior,
-                aInputBlockId, aFlags));
+                aInputBlockId, aFlags.Clone()));
       };
 
   mRootContentController = CreateRootContentController();
@@ -918,7 +907,7 @@ void nsBaseWidget::ConfigureAPZCTreeManager() {
 
 void nsBaseWidget::ConfigureAPZControllerThread() {
   // By default the controller thread is the main thread.
-  APZThreadUtils::SetControllerThread(MessageLoop::current());
+  APZThreadUtils::SetControllerThread(NS_GetCurrentThread());
 }
 
 void nsBaseWidget::SetConfirmedTargetAPZC(
@@ -928,7 +917,7 @@ void nsBaseWidget::SetConfirmedTargetAPZC(
       NewRunnableMethod<uint64_t,
                         StoreCopyPassByRRef<nsTArray<ScrollableLayerGuid>>>(
           "layers::IAPZCTreeManager::SetTargetAPZC", mAPZC,
-          &IAPZCTreeManager::SetTargetAPZC, aInputBlockId, aTargets));
+          &IAPZCTreeManager::SetTargetAPZC, aInputBlockId, aTargets.Clone()));
 }
 
 void nsBaseWidget::UpdateZoomConstraints(
@@ -965,17 +954,6 @@ nsEventStatus nsBaseWidget::ProcessUntransformedAPZEvent(
   uint64_t inputBlockId = aApzResult.mInputBlockId;
   InputAPZContext context(aApzResult.mTargetGuid, inputBlockId,
                           aApzResult.mStatus);
-
-  // If this is an event that the APZ has targeted to an APZC in the root
-  // process, apply that APZC's callback-transform before dispatching the
-  // event. If the event is instead targeted to an APZC in the child process,
-  // the transform will be applied in the child process before dispatching
-  // the event there (see e.g. BrowserChild::RecvRealTouchEvent()).
-  if (aApzResult.mTargetGuid.mLayersId ==
-      mCompositorSession->RootLayerTreeId()) {
-    APZCCallbackHelper::ApplyCallbackTransform(*aEvent, targetGuid,
-                                               GetDefaultScale());
-  }
 
   // Make a copy of the original event for the APZCCallbackHelper helpers that
   // we call later, because the event passed to DispatchEvent can get mutated in
@@ -1210,9 +1188,8 @@ already_AddRefed<LayerManager> nsBaseWidget::CreateCompositorSession(
     // If widget type does not supports acceleration, we use ClientLayerManager
     // even when gfxVars::UseWebRender() is true. WebRender could coexist only
     // with BasicCompositor.
-    bool enableWR = gfx::gfxVars::UseWebRender() &&
-                    WidgetTypeSupportsAcceleration() &&
-                    AllowWebRenderForThisWindow();
+    bool enableWR =
+        gfx::gfxVars::UseWebRender() && WidgetTypeSupportsAcceleration();
     bool enableAPZ = UseAPZ();
     CompositorOptions options(enableAPZ, enableWR);
 
@@ -1252,6 +1229,7 @@ already_AddRefed<LayerManager> nsBaseWidget::CreateCompositorSession(
       if (textureFactoryIdentifier.mParentBackend != LayersBackend::LAYERS_WR) {
         retry = true;
         DestroyCompositor();
+        // gfxVars::UseDoubleBufferingWithCompositor() is also disabled.
         gfx::GPUProcessManager::Get()->DisableWebRender(
             wr::WebRenderError::INITIALIZE);
       }
@@ -1403,6 +1381,13 @@ LayerManager* nsBaseWidget::CreateBasicLayerManager() {
 
 CompositorBridgeChild* nsBaseWidget::GetRemoteRenderer() {
   return mCompositorBridgeChild;
+}
+
+void nsBaseWidget::ClearCachedWebrenderResources() {
+  if (!mLayerManager || !mLayerManager->AsWebRenderLayerManager()) {
+    return;
+  }
+  mLayerManager->ClearCachedResources();
 }
 
 already_AddRefed<gfx::DrawTarget> nsBaseWidget::StartRemoteDrawing() {

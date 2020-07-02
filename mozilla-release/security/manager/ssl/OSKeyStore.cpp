@@ -52,7 +52,7 @@ OSKeyStore::OSKeyStore() : mKs(nullptr), mKsIsNSSKeyStore(false) {
 }
 
 static nsresult GenerateRandom(std::vector<uint8_t>& r) {
-  if (r.size() < 1) {
+  if (r.empty()) {
     return NS_ERROR_INVALID_ARG;
   }
   UniquePK11SlotInfo slot(PK11_GetInternalSlot());
@@ -663,6 +663,7 @@ nsresult AbstractOSKeyStore::DoCipher(const UniquePK11SymKey& aSymKey,
   CK_GCM_PARAMS gcm_params;
   gcm_params.pIv = const_cast<unsigned char*>(ivp);
   gcm_params.ulIvLen = mIVLength;
+  gcm_params.ulIvBits = gcm_params.ulIvLen * 8;
   gcm_params.ulTagBits = 128;
   gcm_params.pAAD = nullptr;
   gcm_params.ulAADLen = 0;

@@ -11,6 +11,12 @@ createEnum(
     // Append node that caused issues.
     "COMPATIBILITY_APPEND_NODE",
 
+    // Init user settings.
+    "COMPATIBILITY_INIT_USER_SETTINGS_START",
+    "COMPATIBILITY_INIT_USER_SETTINGS_SUCCESS",
+    "COMPATIBILITY_INIT_USER_SETTINGS_FAILURE",
+    "COMPATIBILITY_INIT_USER_SETTINGS_COMPLETE",
+
     // Updates a node.
     "COMPATIBILITY_UPDATE_NODE",
 
@@ -28,6 +34,9 @@ createEnum(
 
     // Updates the selected node issues.
     "COMPATIBILITY_UPDATE_SELECTED_NODE_ISSUES",
+
+    // Updates the settings panel visibility.
+    "COMPATIBILITY_UPDATE_SETTINGS_VISIBILITY",
 
     // Updates the target browsers.
     "COMPATIBILITY_UPDATE_TARGET_BROWSERS_START",

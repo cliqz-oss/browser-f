@@ -23,6 +23,7 @@ bool is_glcontext_gles(void* glcontext_ptr);
 bool is_glcontext_angle(void* glcontext_ptr);
 bool gfx_use_wrench();
 const char* gfx_wr_resource_path_override();
+bool gfx_wr_use_optimized_shaders();
 void gfx_critical_note(const char* msg);
 void gfx_critical_error(const char* msg);
 void gecko_printf_stderr_output(const char* msg);
@@ -92,7 +93,6 @@ void apz_deregister_updater(mozilla::wr::WrWindowId aWindowId);
 void apz_register_sampler(mozilla::wr::WrWindowId aWindowId);
 void apz_sample_transforms(
     mozilla::wr::WrWindowId aWindowId, mozilla::wr::Transaction* aTransaction,
-    mozilla::wr::DocumentId aRenderRootId,
     const mozilla::wr::WrPipelineIdEpochs* aPipelineEpochs);
 void apz_deregister_sampler(mozilla::wr::WrWindowId aWindowId);
 }  // extern "C"

@@ -491,34 +491,15 @@ void MacroAssembler::branchPtrInNurseryChunkImpl(Condition cond, Register ptr,
            Imm32(int32_t(gc::ChunkLocation::Nursery)), label);
 }
 
-void MacroAssembler::branchValueIsNurseryObject(Condition cond,
-                                                ValueOperand value,
-                                                Register temp, Label* label) {
-  MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
-
-  Label done;
-
-  branchTestObject(Assembler::NotEqual, value,
-                   cond == Assembler::Equal ? &done : label);
-  branchPtrInNurseryChunk(cond, value.payloadReg(), temp, label);
-
-  bind(&done);
-}
-
 void MacroAssembler::branchValueIsNurseryCell(Condition cond,
                                               const Address& address,
                                               Register temp, Label* label) {
   MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
-  Label done, checkAddress;
 
-  Register tag = extractTag(address, temp);
-  MOZ_ASSERT(tag == temp);
-  branchTestObject(Assembler::Equal, tag, &checkAddress);
-  branchTestString(Assembler::Equal, tag, &checkAddress);
-  branchTestBigInt(Assembler::NotEqual, tag,
-                   cond == Assembler::Equal ? &done : label);
+  Label done;
 
-  bind(&checkAddress);
+  branchTestGCThing(Assembler::NotEqual, address,
+                    cond == Assembler::Equal ? &done : label);
   branchPtrInNurseryChunk(cond, ToPayload(address), temp, label);
 
   bind(&done);
@@ -528,14 +509,11 @@ void MacroAssembler::branchValueIsNurseryCell(Condition cond,
                                               ValueOperand value, Register temp,
                                               Label* label) {
   MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
-  Label done, checkAddress;
 
-  branchTestObject(Assembler::Equal, value, &checkAddress);
-  branchTestString(Assembler::Equal, value, &checkAddress);
-  branchTestBigInt(Assembler::NotEqual, value,
-                   cond == Assembler::Equal ? &done : label);
+  Label done;
 
-  bind(&checkAddress);
+  branchTestGCThing(Assembler::NotEqual, value,
+                    cond == Assembler::Equal ? &done : label);
   branchPtrInNurseryChunk(cond, value.payloadReg(), temp, label);
 
   bind(&done);
@@ -632,6 +610,7 @@ void MacroAssembler::wasmLoad(const wasm::MemoryAccessDesc& access,
       vmovsd(srcAddr, out.fpu());
       break;
     case Scalar::Int64:
+    case Scalar::Simd128:
     case Scalar::Uint8Clamped:
     case Scalar::BigInt64:
     case Scalar::BigUint64:
@@ -705,6 +684,7 @@ void MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access,
     case Scalar::Float32:
     case Scalar::Float64:
       MOZ_CRASH("non-int64 loads should use load()");
+    case Scalar::Simd128:
     case Scalar::Uint8Clamped:
     case Scalar::BigInt64:
     case Scalar::BigUint64:
@@ -748,6 +728,7 @@ void MacroAssembler::wasmStore(const wasm::MemoryAccessDesc& access,
     case Scalar::MaxTypedArrayViewType:
     case Scalar::BigInt64:
     case Scalar::BigUint64:
+    case Scalar::Simd128:
       MOZ_CRASH("unexpected type");
   }
 

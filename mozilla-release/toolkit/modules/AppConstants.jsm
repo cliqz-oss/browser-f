@@ -254,6 +254,13 @@ this.AppConstants = Object.freeze({
   false,
 #endif
 
+  TSAN:
+#ifdef MOZ_TSAN
+  true,
+#else
+  false,
+#endif
+
   MOZ_SYSTEM_NSS:
 #ifdef MOZ_SYSTEM_NSS
   true,
@@ -400,6 +407,13 @@ this.AppConstants = Object.freeze({
 
   ENABLE_REMOTE_AGENT:
 #ifdef ENABLE_REMOTE_AGENT
+    true,
+#else
+    false,
+#endif
+
+  MOZ_RUST_FXA_CLIENT:
+#ifdef MOZ_RUST_FXA_CLIENT
     true,
 #else
     false,

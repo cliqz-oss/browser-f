@@ -25,12 +25,6 @@
 #include "mozilla/gfx/Rect.h"
 #include "mozilla/ReentrantMonitor.h"  // for ReentrantMonitor, etc
 
-class MessageLoop;
-
-namespace base {
-class Thread;
-}  // namespace base
-
 namespace mozilla {
 namespace ipc {
 class Shmem;
@@ -166,14 +160,7 @@ class ImageBridgeChild final : public PImageBridgeChild,
    *
    * Can be called from any thread.
    */
-  base::Thread* GetThread() const;
-
-  /**
-   * Returns the ImageBridgeChild's message loop.
-   *
-   * Can be called from any thread.
-   */
-  MessageLoop* GetMessageLoop() const override;
+  nsISerialEventTarget* GetThread() const override;
 
   base::ProcessId GetParentPid() const override { return OtherPid(); }
 
@@ -267,8 +254,7 @@ class ImageBridgeChild final : public PImageBridgeChild,
    * See CompositableForwarder::UseTextures
    */
   void UseTextures(CompositableClient* aCompositable,
-                   const nsTArray<TimedTextureClient>& aTextures,
-                   const Maybe<wr::RenderRoot>& aRenderRoot) override;
+                   const nsTArray<TimedTextureClient>& aTextures) override;
   void UseComponentAlphaTextures(CompositableClient* aCompositable,
                                  TextureClient* aClientOnBlack,
                                  TextureClient* aClientOnWhite) override;
@@ -295,9 +281,8 @@ class ImageBridgeChild final : public PImageBridgeChild,
   bool DestroyInTransaction(PTextureChild* aTexture) override;
   bool DestroyInTransaction(const CompositableHandle& aHandle);
 
-  void RemoveTextureFromCompositable(
-      CompositableClient* aCompositable, TextureClient* aTexture,
-      const Maybe<wr::RenderRoot>& aRenderRoot) override;
+  void RemoveTextureFromCompositable(CompositableClient* aCompositable,
+                                     TextureClient* aTexture) override;
 
   void UseTiledLayerBuffer(
       CompositableClient* aCompositable,

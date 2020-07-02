@@ -14,7 +14,7 @@ job-defaults:
         fetch:
             # If you update this, make sure to update the minimum version in
             # build/moz.configure/bindgen.configure as well.
-            - cbindgen-0.13.1
+            - cbindgen-0.14.1
 
 linux64-cbindgen:
     treeherder:
@@ -35,7 +35,6 @@ macosx64-cbindgen:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/macosx64/cross-releng.manifest"
     run-on-projects:
         - trunk
-        - try
     run:
         arguments: ['x86_64-apple-darwin']
         resources:

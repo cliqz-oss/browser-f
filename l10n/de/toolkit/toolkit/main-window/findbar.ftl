@@ -9,8 +9,10 @@ findbar-next =
     .tooltiptext = Das nächste Vorkommen des Ausdrucks suchen
 findbar-previous =
     .tooltiptext = Das vorherige Vorkommen des Ausdrucks suchen
+
 findbar-find-button-close =
     .tooltiptext = Suchleiste schließen
+
 findbar-highlight-all2 =
     .label = Alle hervorheben
     .accesskey =
@@ -19,14 +21,17 @@ findbar-highlight-all2 =
            *[other] v
         }
     .tooltiptext = Jedes Vorkommen des Ausdrucks im Text hervorheben
+
 findbar-case-sensitive =
     .label = Groß-/Kleinschreibung
     .accesskey = G
     .tooltiptext = Bei der Suche zwischen Groß- und Kleinschreibung unterscheiden
+
 findbar-match-diacritics =
     .label = Akzente
     .accesskey = z
     .tooltiptext = Bei der Suche zwischen akzentuierten (é) und nicht-akzentuierten (e) Buchstaben unterscheiden
+
 findbar-entire-word =
     .label = Ganze Wörter
     .accesskey = W

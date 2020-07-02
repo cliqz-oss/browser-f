@@ -22,6 +22,7 @@
 #include "mozilla/layers/SharedSurfacesChild.h"  // for SharedSurfacesAnimation
 #include "mozilla/layers/SharedRGBImage.h"
 #include "mozilla/layers/TextureClientRecycleAllocator.h"
+#include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "nsISupportsUtils.h"  // for NS_IF_ADDREF
 #include "YCbCrUtils.h"        // for YCbCr conversions
@@ -296,6 +297,7 @@ void ImageContainer::ClearImagesFromImageBridge() {
 }
 
 void ImageContainer::SetCurrentImages(const nsTArray<NonOwningImage>& aImages) {
+  AUTO_PROFILER_LABEL("ImageContainer::SetCurrentImages", GRAPHICS);
   MOZ_ASSERT(!aImages.IsEmpty());
   RecursiveMutexAutoLock lock(mRecursiveMutex);
   if (mIsAsync) {
@@ -370,7 +372,7 @@ void ImageContainer::GetCurrentImages(nsTArray<OwningImage>* aImages,
                                       uint32_t* aGenerationCounter) {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
 
-  *aImages = mCurrentImages;
+  *aImages = mCurrentImages.Clone();
   if (aGenerationCounter) {
     *aGenerationCounter = mGenerationCounter;
   }
@@ -421,6 +423,19 @@ void ImageContainer::EnsureRecycleAllocatorForRDD(
 
   if (mRecycleAllocator &&
       aKnowsCompositor == mRecycleAllocator->GetKnowsCompositor()) {
+    return;
+  }
+
+  bool useRecycleAllocator =
+      StaticPrefs::layers_recycle_allocator_rdd_AtStartup();
+#ifdef XP_MACOSX
+  // Disable RecycleAllocator for RDD on MacOS without WebRender.
+  // Recycling caused rendering artifact on a MacOS PC with OpenGL compositor.
+  if (!gfxVars::UseWebRender()) {
+    useRecycleAllocator = false;
+  }
+#endif
+  if (!useRecycleAllocator) {
     return;
   }
 

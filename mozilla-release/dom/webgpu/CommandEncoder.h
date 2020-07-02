@@ -22,6 +22,7 @@ struct GPUCommandBufferDescriptor;
 struct GPUImageBitmapCopyView;
 struct GPURenderPassDescriptor;
 struct GPUTextureCopyView;
+typedef UnsignedLongSequenceOrGPUExtent3DDict GPUExtent3D;
 }  // namespace dom
 namespace webgpu {
 
@@ -45,7 +46,9 @@ class CommandEncoder final : public ObjectBase, public ChildOf<Device> {
   ~CommandEncoder();
   void Cleanup();
 
-  const RefPtr<WebGPUChild> mBridge;
+  RefPtr<WebGPUChild> mBridge;
+  // TODO: support multiple target canvases per command encoder
+  WeakPtr<dom::HTMLCanvasElement> mTargetCanvasElement;
 
  public:
   void EndComputePass(Span<const uint8_t> aData, ErrorResult& aRv);
@@ -55,6 +58,16 @@ class CommandEncoder final : public ObjectBase, public ChildOf<Device> {
                           const Buffer& aDestination,
                           BufferAddress aDestinationOffset,
                           BufferAddress aSize);
+  void CopyBufferToTexture(const dom::GPUBufferCopyView& aSource,
+                           const dom::GPUTextureCopyView& aDestination,
+                           const dom::GPUExtent3D& aCopySize);
+  void CopyTextureToBuffer(const dom::GPUTextureCopyView& aSource,
+                           const dom::GPUBufferCopyView& aDestination,
+                           const dom::GPUExtent3D& aCopySize);
+  void CopyTextureToTexture(const dom::GPUTextureCopyView& aSource,
+                            const dom::GPUTextureCopyView& aDestination,
+                            const dom::GPUExtent3D& aCopySize);
+
   already_AddRefed<ComputePassEncoder> BeginComputePass(
       const dom::GPUComputePassDescriptor& aDesc);
   already_AddRefed<RenderPassEncoder> BeginRenderPass(

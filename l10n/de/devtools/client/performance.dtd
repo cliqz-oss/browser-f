@@ -15,11 +15,6 @@
   -  is displayed as the tooltip for the buffer capacity during a recording. -->
 <!ENTITY performanceUI.bufferStatusTooltip "Die Laufzeitanalyse speichert die Einträge in einem kontinuierlichen Puffer. Sobald der Puffer an die Maximalgrenze für die Aufnahme kommt, überschreiben neue Einträge die alten vom Beginn der Aufnahme.">
 
-<!-- LOCALIZATION NOTE (performanceUI.disabledRealTime.nonE10SBuild): This string
-  -  is displayed as a message for why the real time overview graph is disabled
-  -  when running on a non-multiprocess build. -->
-<!ENTITY performanceUI.disabledRealTime.nonE10SBuild "Die Aufnahme von Daten in Echtzeit ist nur möglich, wenn Firefox mit mehreren Prozessen ausgeführt wird.">
-
 <!-- LOCALIZATION NOTE (performanceUI.disabledRealTime.disabledE10S): This string
   -  is displayed as a message for why the real time overview graph is disabled
   -  when running on a build that can run multiprocess Firefox, but just is not enabled. -->

@@ -361,9 +361,9 @@ static CVReturn VsyncCallback(CVDisplayLinkRef aDisplayLink,
 
 class OSXVsyncSource final : public VsyncSource {
  public:
-  OSXVsyncSource() {}
+  OSXVsyncSource() : mGlobalDisplay(new OSXDisplay()) {}
 
-  Display& GetGlobalDisplay() override { return mGlobalDisplay; }
+  Display& GetGlobalDisplay() override { return *mGlobalDisplay; }
 
   class OSXDisplay final : public VsyncSource::Display {
    public:
@@ -507,7 +507,7 @@ class OSXVsyncSource final : public VsyncSource {
  private:
   virtual ~OSXVsyncSource() = default;
 
-  OSXDisplay mGlobalDisplay;
+  RefPtr<OSXDisplay> mGlobalDisplay;
 };  // OSXVsyncSource
 
 static CVReturn VsyncCallback(CVDisplayLinkRef aDisplayLink,
@@ -560,6 +560,11 @@ gfxPlatformMac::CreateHardwareVsyncSource() {
 }
 
 nsTArray<uint8_t> gfxPlatformMac::GetPlatformCMSOutputProfileData() {
+  nsTArray<uint8_t> prefProfileData = GetPrefCMSOutputProfileData();
+  if (!prefProfileData.IsEmpty()) {
+    return prefProfileData;
+  }
+
   CGColorSpaceRef cspace = ::CGDisplayCopyColorSpace(::CGMainDisplayID());
   if (!cspace) {
     cspace = ::CGColorSpaceCreateDeviceRGB();

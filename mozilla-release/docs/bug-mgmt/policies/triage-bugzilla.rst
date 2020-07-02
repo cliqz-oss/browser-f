@@ -7,10 +7,21 @@ Expectations
 All teams working on Firefox using either or both Mozilla-central and
 Bugzilla are expected to follow the following process.
 
+What is a Triaged Bug
+---------------------
+
+The new definition of Triaged will be Firefox-related bugs of type
+``defect`` where the component is not
+``UNTRIAGED``, and a non-default value not equal to ``--`` or ``N/A``.
+
+Bugs of type Task or Enhancement may have a severity of ``N/A``,
+but defects must have a severity that is neither ``--`` or
+``N/A``.
+
 Why Triage
 ----------
 
-We want to make sure that we looked at every defect and a priority has
+We want to make sure that we looked at every defect and a severity has
 been defined. This way, we make sure that we did not miss any critical
 issues during the development and stabilization cycles.
 
@@ -26,15 +37,14 @@ Staying on top of the bugs in your component means:
 
    -  Members of your team do not see the bug queue and get the
       ‘wiggins’
-
+      
 Who Triages
 -----------
 
 Engineering managers and directors are responsible for naming the
-individuals responsible for triaging `defect and task
-bugs <bug-types>`__ in a component.
+individuals responsible for triaging :ref:`all types of bugs <Bug Types>` in a component.
 
-We use Bugzilla to track this. See the `list of triage
+We use Bugzilla to manage this. See the `list of triage
 owners <https://bugzilla.mozilla.org/page.cgi?id=triage_owners.html>`__.
 
 If you need to change who is responsible for triaging a bug in a
@@ -63,13 +73,7 @@ there’s another component with a high liklihood of fit, and if a
 threshold confidence is achieved, the bug is moved to that component.
 
 Members of the community also review bugs in this component and try to
-move them to a component.
-
-There are also two, rotating triagers for the component. They review the
-remaining bugs over the course of a month and move them if possible.
-
-To volunteer for this rotation, contact the Bugzilla team on Slack
-(#bmo.)
+move them.
 
 What Do You Triage
 ------------------
@@ -78,21 +82,15 @@ As a triage owner the queries you should be following for your component
 are:
 
 -  All open bugs, in your components without a pending ``needinfo`` flag
-   or a ``stalled`` keyword since start of current release cycle which
-   do not have a priority set
+   which do not have a valid value of severity set
 -  All bugs with active review requests in your component which have not
    been modified in five days
 -  All bugs with reviewed, but unlanded patches in your components
 -  All bugs with a needinfo request unanswered for more than 10 days
 
-There’s a tool to help you find bugs
+There’s a tool with these queries to help you find bugs
 https://mozilla.github.io/triage-center/ and the source is at
 https://github.com/mozilla/triage-center/.
-
-These bugs are reviewed in the weekly Regression Triage meeting \* Bugs
-of type ``defect`` with the ``regression`` keyword without
--status-firefoxNN decisions \* Bugs of type ``defect`` with the
-``regression`` keyword without a regression range
 
 If a bug is an enhancement it needs a priority set and a target release
 or program milestone. These bugs are normally reviewed by product
@@ -103,57 +101,21 @@ If a bug is a task resulting in a changeset, release managers will need
 to known when this work will be done. A task such as refactoring fragile
 code can be risky.
 
-Weekly or More Frequently (depending on the component) find `un-triaged
-bugs in the components you
-triage <https://bugzilla.mozilla.org/buglist.cgi?f1=triage_owner&bug_type=defect&o1=equals&resolution=---&priority=--&v1=%25user%25>`__.
+Weekly or More Frequently (depending on the component) find un-triaged
+bugs in the components you triage.
 
-For each bug decide :ref:`priority <Priority definitions>` (you can override what’s already been set,
-as a triage lead, you are the decider.)
+Decide the :ref:`Severity <Defect Severity>`  for each untriaged bug
+(you can override what’s already been set.)
 
-What About Release Status (status_firefoxNN) Flags
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+These bugs are reviewed in the weekly Regression Triage meeting
 
-Release status (and tracking) flags are set independent of triage
-decisions, but should be consistent with triage decisions.
+- Bugs of type ``defect`` with the ``regression`` keyword without
+  ``status-firefoxNN`` decisions
+- Bugs of type ``defect`` with the ``regression`` keyword without
+  a regression range
 
-Also, as a release approaches, the release status of open, high priority
-(P1) bugs can change. Triagers and engineering leads must review open
-bugs with a release status of affected and fix_optional, and decide
-which of these to keep, and move the others to wontfix for the current
-cycle.
-
-The flag ``status_firefoxNN`` has many values, here’s a cheat sheet.
-
-== ========== ========== ============ =================
-—  ?          unaffected affected     fixed
-== ========== ========== ============ =================
-?  unaffected            wontfix      verified
-\  affected              fix-optional disabled
-\                        fixed        verified-disabled
-== ========== ========== ============ =================
-
-The headers of the table are values of the status flag. Each column are
-the states reachable from the column headings.
-
--  “—” we don’t know whether Firefox N is affected
--  “?” we don’t know whether Firefox N is affected, but we want to find
-   out.
--  “affected” - present in this release
--  “unaffected” - not present in this release
--  “fixed” - a contributor has landed a fix to address the issue
--  “verified” - the fix has been verified by QA or other contributors
--  “disabled” - the fix or the feature has been backed out or disabled
--  “verified disabled” - QA or other contributors confirmed the fix or
-   the feature has been backed out or disabled
--  “wontfix” - we have decided not to accept/uplift a fix for this
-   release cycle (it is not the same as the bug resolution WONTFIX).
-   This can also mean that we don’t know how to fix that and will ship
-   with this bug
--  “fix-optional” - we would take a fix for the current release but
-   don’t consider it as important/blocking for the release
-
-Automatic Triage Overrides
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Automatic Bug Updates
+~~~~~~~~~~~~~~~~~~~~~
 
 When a bug is tracked for a release, i.e. the ``tracking_firefoxNN``
 flag is set to ``+`` or ``blocking`` triage decisions will be overridden,
@@ -171,27 +133,36 @@ and
 `P2 <https://bugzilla.mozilla.org/buglist.cgi?priority=P2&f1=triage_owner&o1=equals&resolution=---&v1=%25user%25>`__
 bugs frequently.
 
+Assumptions
+~~~~~~~~~~~
+
+If a bug's release status in Firefox version N was ``affected`` or ``wontfix``,
+its Severity is ``S3`` or ``S4`` and its Priority is ``P3`` or lower (backlog,)
+then its release status in Firefox version N+1, if the bug is still open,
+is considered to be ``wontfix``.
+
 Questions and Edge Cases
-~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------
 
 This bug is a feature request
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Set the bug’s type to ``enhancement``, add the ``feature`` keyword if
-relevant, and state to ``NEW``. This bug will be excluded from future
-triage queries.
+relevant, and state to ``NEW``. Set the bug's Severity to ``N/A``. This
+bug will be excluded from future triage queries.
 
 This bug is a task, not a defect
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Set the bug’s type to ``task``, and state to ``NEW``. This bug will be
-excluded from future triage queries.
+Set the bug’s type to ``task``, and state to ``NEW``. Set the bug's
+Severity to ``N/A``. This bug will be excluded from future triage queries.
 
-If you are not sure of a bug’s type, check `our rules for bug
-types <task-defect-enhancement>`__.
+
+If you are not sure of a bug’s type, check :ref:`our rules for bug
+types <Bug Types>`.
 
 This bug’s state is ``UNCONFIRMED``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Are there steps to reproduce? If not, needinfo the person who filed the
 bug, requesting steps to reproduce. You are not obligated to wait
@@ -199,20 +170,20 @@ forever for a response, and bugs for which open requests for information
 go unanswered can be ``RESOLVED`` as ``INCOMPLETE``.
 
 I need help reproducing the bug
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Set a needinfo for the QA managers, Softvision project managers, or the
 QA owner of the component of the bug.
 
 I don’t have enough information to make a decision
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you don’t have a reproduction or confirmation, or have questions
 about how to proceed, ``needinfo`` the person who filed the bug, or
 someone who can answer.
 
 The ``stalled`` keyword
-^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~
 
 The extreme case of not-enough-information is one which cannot be
 answered with a ``needinfo`` request. The reporter has shared all they
@@ -230,32 +201,40 @@ automation.
 Bugs which remain ``stalled`` for long periods of time should be
 reviewed, and closed if necessary.
 
-This doesn’t fit into a P1, P2, P3, P4, or P5 framework
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Mark it as a P3.
-
-If it’s a tracking bug, make sure has “[meta]” in the title and has the
-``meta`` keyword added. This will remove it from the list of untriaged
-bugs.
-
 Bug is in the wrong Component
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Remove any priority set, then either move to what you think is the
-correct component, or needinfo the person responsible for the component
-to ask them.
+If the bug has a Severity of ``S3``, ``S4``, or ``N/A`` move the what
+you think is the correct component, or needinfo the person
+responsible for the component to ask them.
 
-I don’t think we should work on it at any time
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If you’ll accept a patch, mark it as P5, otherwise, close it as WONTFIX
+If the bug has a Severity of ``S1`` or ``S2`` then notify Release Management
+and contact the triage owner of the component for which you think it belongs to.
+We cannot lose track of a high severity bug because it is in the wrong component.
 
 My project is on GitHub
-^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~
 
-We have `a guide for GitHub projects to follow </labels>`__ when
-triaging.
+We have :ref:`a guide for GitHub projects to follow <GitHub Metadata Recommendations>` when
+triaging. (Note: this guide needs updating.)
+
+Summary
+-------
+
+Multiple times weekly
+~~~~~~~~~~~~~~~~~~~~~
+
+Use queries for the components you are responsible for in
+https://mozilla.github.io/triage-center/ to find bugs in
+need of triage.
+
+For each untriaged bug:
+
+-  Assign a Severity
+-  **Do not** assign a ``defect`` a Severity of
+   ``N/A``
+
+You can, but are not required to set the bug's :ref:`Priority <Priority Definitions>`.
 
 Watch open needinfo flags
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -266,50 +245,34 @@ Close minor bugs with unresponded needinfo flags.
 
 Follow up on needinfo flag requests.
 
-The tool will help you find these (the query is imperfect.)
+The `Triage Center tool <https://mozilla.github.io/triage-center/>`__ will help you find these.
 
 End of Iteration/Release Cycle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Review P1s
-^^^^^^^^^^
+Any open ``S1`` or ``S2`` bugs at the end of the release cycle
+will require review by engineering and release management. A
+policy on this is forthcoming.
 
-Are there unresolved P1s?
+Optional
+^^^^^^^^
 
-Revisit their priority, and move to backlog (P3.)
+(The guidelines on bug priority are under review.)
 
-Review P2s
-^^^^^^^^^^
+Are there open P1s? Revisit their priority,
+and move to them to the backlog (``P3``) or ``P2``.
 
-Are there P2s that should move to P1s for the next cycle?
+Are there ``P2`` bugs that should move to ``P1``
+for the next cycle?
 
-Are there P2s you now know are lower priority, move to P3.
+Are there ``P2`` you now know are lower priority,
+move to ``P3``.
 
-Review P3s
-^^^^^^^^^^
+Are there ``P3`` bugs you now know you won’t get to?
+Either demote to ``P5`` (will accept patch) or
+resolve as ``WONTFIX``.
 
-Are there P3 bugs you now know you won’t get to? Either demote to P5
-(will accept patch) or resolve as WONTFIX.
+Getting help
+------------
 
-Tools
------
-
-Triage with me
-~~~~~~~~~~~~~~
-
-   One tool we use in addons is triage-with-me. Its a Firefox Add-on
-   that sends all the pages you click on in bugzilla into a server which
-   then sends the URL to everyone else in the triage. – Andy McKay
-
-The upshot is, one person clicks on links in Bugzilla, the bugs open up
-on everyone else’s computer.
-
--  https://addons.mozilla.org/en-US/firefox/addon/triage-with-me/.
--  http://www.agmweb.ca/2013-09-06-triage/
--  http://www.agmweb.ca/2015-03-10-triage-with-me-update/
-
-Questions
----------
-
--  Ask in #bugmasters on irc.mozilla.org
--  Email emceeaich@mozilla.com
+-  Ask in #bug-handling on chat.mozilla.org

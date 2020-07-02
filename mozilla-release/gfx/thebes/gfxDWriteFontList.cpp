@@ -636,8 +636,11 @@ gfxFont* gfxDWriteFontEntry::CreateFontInstance(
     if (NS_FAILED(rv)) {
       return nullptr;
     }
+    // Only pass in the underlying IDWriteFont if the unscaled font doesn't
+    // reflect a data font. This signals whether or not we can safely query
+    // a descriptor to represent the font for various transport use-cases.
     unscaledFont =
-        new UnscaledFontDWrite(fontFace, mIsSystemFont ? mFont : nullptr);
+        new UnscaledFontDWrite(fontFace, !mIsDataUserFont ? mFont : nullptr);
     unscaledFontPtr = unscaledFont;
   }
   RefPtr<IDWriteFontFace> fontFace;
@@ -1009,6 +1012,26 @@ void gfxDWriteFontList::AppendFamiliesFromCollection(
     IDWriteFontCollection* aCollection,
     nsTArray<fontlist::Family::InitData>& aFamilies,
     const nsTArray<nsCString>* aForceClassicFams) {
+  auto allFacesUltraBold = [](IDWriteFontFamily* aFamily) -> bool {
+    for (UINT32 i = 0; i < aFamily->GetFontCount(); i++) {
+      RefPtr<IDWriteFont> font;
+      HRESULT hr = aFamily->GetFont(i, getter_AddRefs(font));
+      if (FAILED(hr)) {
+        NS_WARNING("Failed to get existing font from family.");
+        continue;
+      }
+      nsAutoCString faceName;
+      hr = GetDirectWriteFontName(font, faceName);
+      if (FAILED(hr)) {
+        continue;
+      }
+      if (faceName.Find(NS_LITERAL_CSTRING("Ultra Bold")) == kNotFound) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   for (unsigned i = 0; i < aCollection->GetFontFamilyCount(); ++i) {
     RefPtr<IDWriteFontFamily> family;
     aCollection->GetFontFamily(i, getter_AddRefs(family));
@@ -1025,7 +1048,18 @@ void gfxDWriteFontList::AppendFamiliesFromCollection(
     BuildKeyNameFromFontName(key);
     bool bad = mBadUnderlineFamilyNames.ContainsSorted(key);
     bool classic = aForceClassicFams && aForceClassicFams->ContainsSorted(key);
-    FontVisibility visibility = GetVisibilityForFamily(name);
+    FontVisibility visibility;
+    // Special case: hide the "Gill Sans" family that contains only UltraBold
+    // faces, as this leads to breakage on sites with CSS that targeted the
+    // Gill Sans family as found on macOS. (Bug 551313, bug 1632738)
+    // TODO (jfkthame): the ultrabold faces from Gill Sans should be treated
+    // as belonging to the Gill Sans MT family.
+    if (key.EqualsLiteral("gill sans") && allFacesUltraBold(family)) {
+      visibility = FontVisibility::Hidden;
+    } else {
+      visibility = aCollection == mSystemFonts ? GetVisibilityForFamily(name)
+                                               : FontVisibility::Base;
+    }
     aFamilies.AppendElement(fontlist::Family::InitData(
         key, name, i, visibility, aCollection != mSystemFonts, bad, classic));
   }
@@ -1517,7 +1551,9 @@ void gfxDWriteFontList::GetFontsFromCollection(
       continue;
     }
 
-    FontVisibility visibility = GetVisibilityForFamily(familyName);
+    FontVisibility visibility = aCollection == mSystemFonts
+                                    ? GetVisibilityForFamily(familyName)
+                                    : FontVisibility::Base;
 
     fam = new gfxDWriteFontFamily(familyName, visibility, family,
                                   aCollection == mSystemFonts);
@@ -1815,7 +1851,7 @@ IFACEMETHODIMP DWriteFontFallbackRenderer::DrawGlyphRun(
 
 gfxFontEntry* gfxDWriteFontList::PlatformGlobalFontFallback(
     const uint32_t aCh, Script aRunScript, const gfxFontStyle* aMatchStyle,
-    FontFamily* aMatchedFamily) {
+    FontFamily& aMatchedFamily) {
   HRESULT hr;
 
   RefPtr<IDWriteFactory> dwFactory = Factory::GetDWriteFactory();
@@ -1883,7 +1919,7 @@ gfxFontEntry* gfxDWriteFontList::PlatformGlobalFontFallback(
       fontEntry = family.mUnshared->FindFontForStyle(*aMatchStyle);
     }
     if (fontEntry && fontEntry->HasCharacter(aCh)) {
-      *aMatchedFamily = family;
+      aMatchedFamily = family;
       return fontEntry;
     }
     Telemetry::Accumulate(Telemetry::BAD_FALLBACK_FONT, true);

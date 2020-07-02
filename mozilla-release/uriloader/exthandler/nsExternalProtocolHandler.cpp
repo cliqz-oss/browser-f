@@ -158,14 +158,14 @@ nsresult nsExtProtocolChannel::OpenURL() {
                  "the protocol?");
 #endif
 
-    nsCOMPtr<nsIInterfaceRequestor> aggCallbacks;
-    rv = NS_NewNotificationCallbacksAggregation(mCallbacks, mLoadGroup,
-                                                getter_AddRefs(aggCallbacks));
+    RefPtr<mozilla::dom::BrowsingContext> ctx;
+    rv = mLoadInfo->GetTargetBrowsingContext(getter_AddRefs(ctx));
     if (NS_FAILED(rv)) {
       goto finish;
     }
 
-    rv = extProtService->LoadURI(mUrl, aggCallbacks);
+    RefPtr<nsIPrincipal> principal = mLoadInfo->TriggeringPrincipal();
+    rv = extProtService->LoadURI(mUrl, principal, ctx);
 
     if (NS_SUCCEEDED(rv) && mListener) {
       mStatus = NS_ERROR_NO_CONTENT;
@@ -213,8 +213,8 @@ NS_IMETHODIMP nsExtProtocolChannel::AsyncOpen(nsIStreamListener* aListener) {
           mLoadInfo->GetInitialSecurityCheckDone() ||
           (mLoadInfo->GetSecurityMode() ==
                nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL &&
-           mLoadInfo->LoadingPrincipal() &&
-           mLoadInfo->LoadingPrincipal()->IsSystemPrincipal()),
+           mLoadInfo->GetLoadingPrincipal() &&
+           mLoadInfo->GetLoadingPrincipal()->IsSystemPrincipal()),
       "security flags in loadInfo but doContentSecurityCheck() not called");
 
   NS_ENSURE_ARG_POINTER(listener);

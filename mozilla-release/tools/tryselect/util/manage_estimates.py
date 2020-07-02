@@ -8,6 +8,7 @@ import os
 import requests
 import json
 from datetime import datetime, timedelta
+import six
 
 
 TASK_DURATION_URL = 'https://storage.googleapis.com/mozilla-mach-data/task_duration_history.json'
@@ -67,7 +68,7 @@ def download_task_history_data(cache_dir):
     # The data retrieved from google storage is a newline-separated
     # list of json entries, which Python's json module can't parse.
     duration_data = list()
-    for line in r.content.splitlines():
+    for line in r.text.splitlines():
         duration_data.append(json.loads(line))
 
     # Reformat duration data to avoid list of dicts, as this is slow in the preview window
@@ -84,7 +85,7 @@ def download_task_history_data(cache_dir):
         return
 
     with open(graph_quantile_cache, 'w') as f:
-        f.write(r.content)
+        f.write(six.ensure_text(r.content))
 
     with open(task_duration_tag_file, 'w') as f:
         json.dump({

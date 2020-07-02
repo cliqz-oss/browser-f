@@ -27,10 +27,10 @@ function snapshotHistograms() {
       "FX_URLBAR_SELECTED_RESULT_INDEX"
     ),
     resultTypeHist: TelemetryTestUtils.getAndClearHistogram(
-      "FX_URLBAR_SELECTED_RESULT_TYPE"
+      "FX_URLBAR_SELECTED_RESULT_TYPE_2"
     ),
     resultIndexByTypeHist: TelemetryTestUtils.getAndClearKeyedHistogram(
-      "FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE"
+      "FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE_2"
     ),
     resultMethodHist: TelemetryTestUtils.getAndClearHistogram(
       "FX_URLBAR_SELECTED_RESULT_METHOD"
@@ -69,8 +69,8 @@ async function updateTopSites(condition, searchShortcuts = false) {
   // Toggle the pref to clear the feed cache and force an update.
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["browser.newtabpage.activity-stream.feeds.topsites", false],
-      ["browser.newtabpage.activity-stream.feeds.topsites", true],
+      ["browser.newtabpage.activity-stream.feeds.system.topsites", false],
+      ["browser.newtabpage.activity-stream.feeds.system.topsites", true],
       [
         "browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts",
         searchShortcuts,
@@ -88,8 +88,7 @@ async function updateTopSites(condition, searchShortcuts = false) {
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["browser.urlbar.update1", true],
-      ["browser.urlbar.openViewOnFocus", true],
+      ["browser.urlbar.suggest.topsites", true],
       ["browser.newtabpage.activity-stream.default.sites", EN_US_TOPSITES],
     ],
   });

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+"use strict";
+
 var unsafeAboutModule = {
   QueryInterface: ChromeUtils.generateQI([Ci.nsIAboutModule]),
   newChannel(aURI, aLoadInfo) {
@@ -18,12 +20,12 @@ var unsafeAboutModule = {
 var factory = {
   createInstance(aOuter, aIID) {
     if (aOuter) {
-      throw Cr.NS_ERROR_NO_AGGREGATION;
+      throw Components.Exception("", Cr.NS_ERROR_NO_AGGREGATION);
     }
     return unsafeAboutModule.QueryInterface(aIID);
   },
   lockFactory(aLock) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
   QueryInterface: ChromeUtils.generateQI([Ci.nsIFactory]),
 };

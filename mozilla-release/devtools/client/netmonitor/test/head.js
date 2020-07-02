@@ -6,7 +6,7 @@
    verifyRequestItemTarget, waitFor, waitForDispatch, testFilterButtons,
    performRequestsInContent, waitForNetworkEvents, selectIndexAndWaitForSourceEditor,
    testColumnsAlignment, hideColumn, showColumn, performRequests, waitForRequestData,
-   toggleBlockedUrl */
+   toggleBlockedUrl, registerFaviconNotifier */
 
 "use strict";
 
@@ -14,6 +14,10 @@
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this
+);
+
+const { LinkHandlerParent } = ChromeUtils.import(
+  "resource:///actors/LinkHandlerParent.jsm"
 );
 
 const {
@@ -126,6 +130,13 @@ const TEST_IMAGE = EXAMPLE_URL + "test-image.png";
 const TEST_IMAGE_DATA_URI =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAHWSURBVHjaYvz//z8DJQAggJiQOe/fv2fv7Oz8rays/N+VkfG/iYnJfyD/1+rVq7ffu3dPFpsBAAHEAHIBCJ85c8bN2Nj4vwsDw/8zQLwKiO8CcRoQu0DxqlWrdsHUwzBAAIGJmTNnPgYa9j8UqhFElwPxf2MIDeIrKSn9FwSJoRkAEEAM0DD4DzMAyPi/G+QKY4hh5WAXGf8PDQ0FGwJ22d27CjADAAIIrLmjo+MXA9R2kAHvGBA2wwx6B8W7od6CeQcggKCmCEL8bgwxYCbUIGTDVkHDBia+CuotgACCueD3TDQN75D4xmAvCoK9ARMHBzAw0AECiBHkAlC0Mdy7x9ABNA3obAZXIAa6iKEcGlMVQHwWyjYuL2d4v2cPg8vZswx7gHyAAAK7AOif7SAbOqCmn4Ha3AHFsIDtgPq/vLz8P4MSkJ2W9h8ggBjevXvHDo4FQUQg/kdypqCg4H8lUIACnQ/SOBMYI8bAsAJFPcj1AAEEjwVQqLpAbXmH5BJjqI0gi9DTAAgDBBCcAVLkgmQ7yKCZxpCQxqUZhAECCJ4XgMl493ug21ZD+aDAXH0WLM4A9MZPXJkJIIAwTAR5pQMalaCABQUULttBGCCAGCnNzgABBgAMJ5THwGvJLAAAAABJRU5ErkJggg==";
 
+const SETTINGS_MENU_ITEMS = {
+  "persist-logs": ".netmonitor-settings-persist-item",
+  "import-har": ".netmonitor-settings-import-har-item",
+  "save-har": ".netmonitor-settings-import-save-item",
+  "copy-har": ".netmonitor-settings-import-copy-item",
+};
+
 /* eslint-enable no-unused-vars, max-len */
 
 // All tests are asynchronous.
@@ -146,7 +157,7 @@ const gDefaultFilters = Services.prefs.getCharPref(
 // Reveal many columns for test
 Services.prefs.setCharPref(
   "devtools.netmonitor.visibleColumns",
-  '["cause","initiator","contentSize","cookies","domain","duration",' +
+  '["initiator","contentSize","cookies","domain","duration",' +
     '"endTime","file","url","latency","method","protocol",' +
     '"remoteip","responseTime","scheme","setCookies",' +
     '"startTime","status","transferred","type","waterfall"]'
@@ -159,15 +170,12 @@ Services.prefs.setCharPref(
     '{"name":"domain","minWidth":30,"width":10},' +
     '{"name":"file","minWidth":30,"width":25},' +
     '{"name":"url","minWidth":30,"width":25},' +
-    '{"name":"cause","minWidth":30,"width":10},' +
+    '{"name":"initiator","minWidth":30,"width":20},' +
     '{"name":"type","minWidth":30,"width":5},' +
     '{"name":"transferred","minWidth":30,"width":10},' +
     '{"name":"contentSize","minWidth":30,"width":5},' +
-    '{"name":"waterfall","minWidth":150,"width":25}]'
+    '{"name":"waterfall","minWidth":150,"width":15}]'
 );
-
-// Increase UI limit for responses rendered using CodeMirror in tests.
-Services.prefs.setIntPref("devtools.netmonitor.response.ui.limit", 1024 * 105);
 
 registerCleanupFunction(() => {
   info("finish() was called, cleaning up...");
@@ -176,7 +184,6 @@ registerCleanupFunction(() => {
   Services.prefs.setCharPref("devtools.netmonitor.filters", gDefaultFilters);
   Services.prefs.clearUserPref("devtools.cache.disabled");
   Services.prefs.clearUserPref("devtools.netmonitor.columnsData");
-  Services.prefs.clearUserPref("devtools.netmonitor.response.ui.limit");
   Services.prefs.clearUserPref("devtools.netmonitor.visibleColumns");
   Services.cookies.removeAll();
 });
@@ -673,15 +680,18 @@ function verifyRequestItemTarget(
   }
   if (cause !== undefined) {
     const value = Array.from(
-      target.querySelector(".requests-list-cause").childNodes
-    ).filter(node => node.nodeType === Node.TEXT_NODE)[0].textContent;
+      target.querySelector(".requests-list-initiator").childNodes
+    )
+      .filter(node => node.nodeType === Node.ELEMENT_NODE)
+      .map(({ textContent }) => textContent)
+      .join("");
     const tooltip = target
-      .querySelector(".requests-list-cause")
+      .querySelector(".requests-list-initiator")
       .getAttribute("title");
     info("Displayed cause: " + value);
     info("Tooltip cause: " + tooltip);
-    is(value, cause.type, "The displayed cause is correct.");
-    is(tooltip, cause.type, "The tooltip cause is correct.");
+    ok(value.includes(cause.type), "The displayed cause is correct.");
+    ok(tooltip.includes(cause.type), "The tooltip cause is correct.");
   }
   if (type !== undefined) {
     const value = target.querySelector(".requests-list-type").textContent;
@@ -852,8 +862,6 @@ function performRequestsInContent(requests) {
  *        shared/test/frame-script-utils.js
  * @param Object data
  *        Optional data to send along
- * @param Object objects
- *        Optional CPOW objects to send along
  * @param Boolean expectResponse
  *        If set to false, don't wait for a response with the same name from the
  *        content script. Defaults to true.
@@ -862,15 +870,10 @@ function performRequestsInContent(requests) {
  *         Resolves to the response data if a response is expected, immediately
  *         resolves otherwise
  */
-function executeInContent(
-  name,
-  data = {},
-  objects = {},
-  expectResponse = true
-) {
+function executeInContent(name, data = {}, expectResponse = true) {
   const mm = gBrowser.selectedBrowser.messageManager;
 
-  mm.sendAsyncMessage(name, data, objects);
+  mm.sendAsyncMessage(name, data);
   if (expectResponse) {
     return waitForContentMessage(name);
   }
@@ -963,7 +966,7 @@ async function showColumn(monitor, column) {
  * @param {Number} index The request index to be selected
  */
 async function selectIndexAndWaitForSourceEditor(monitor, index) {
-  const document = monitor.panelWin.document;
+  const { document } = monitor.panelWin;
   const onResponseContent = monitor.panelWin.api.once(
     TEST_EVENTS.RECEIVED_RESPONSE_CONTENT
   );
@@ -1000,8 +1003,31 @@ async function performRequests(monitor, tab, count) {
  * Helper function for retrieving `.CodeMirror` content
  */
 function getCodeMirrorValue(monitor) {
-  const document = monitor.panelWin.document;
+  const { document } = monitor.panelWin;
   return document.querySelector(".CodeMirror").CodeMirror.getValue();
+}
+
+/**
+ * Helper function opening the options menu
+ */
+function openSettingsMenu(monitor) {
+  const { document } = monitor.panelWin;
+  document.querySelector(".netmonitor-settings-menu-button").click();
+}
+
+function clickSettingsMenuItem(monitor, itemKey) {
+  openSettingsMenu(monitor);
+  const node = getSettingsMenuItem(monitor, itemKey);
+  node.click();
+}
+
+function getSettingsMenuItem(monitor, itemKey) {
+  // The settings menu is injected into the toolbox document,
+  // so we must use the panelWin parent to query for items
+  const { parent } = monitor.panelWin;
+  const { document } = parent;
+
+  return document.querySelector(SETTINGS_MENU_ITEMS[itemKey]);
 }
 
 /**
@@ -1093,7 +1119,7 @@ function validateRequests(requests, monitor) {
       { cause: { type: causeType, loadingDocumentUri: causeUri } }
     );
 
-    const stacktrace = requestItem.stacktrace;
+    const { stacktrace } = requestItem;
     const stackLen = stacktrace ? stacktrace.length : 0;
 
     if (stack) {
@@ -1106,26 +1132,33 @@ function validateRequests(requests, monitor) {
       // if "stack" is array, check the details about the top stack frames
       if (Array.isArray(stack)) {
         stack.forEach((frame, j) => {
-          is(
-            stacktrace[j].functionName,
-            frame.fn,
-            `Request #${i} has the correct function on JS stack frame #${j}`
-          );
-          is(
-            stacktrace[j].filename.split("/").pop(),
-            frame.file,
-            `Request #${i} has the correct file on JS stack frame #${j}`
-          );
-          is(
-            stacktrace[j].lineNumber,
-            frame.line,
-            `Request #${i} has the correct line number on JS stack frame #${j}`
-          );
-          is(
-            stacktrace[j].asyncCause,
-            frame.asyncCause,
-            `Request #${i} has the correct async cause on JS stack frame #${j}`
-          );
+          // If the `fn` is "*", it means the request is triggered from chrome
+          // resources, e.g. `resource:///modules/XX.jsm`, so we skip checking
+          // the function name for now (bug 1280266).
+          if (frame.file.startsWith("resource:///")) {
+            todo(false, "Requests from chrome resource should not be included");
+          } else {
+            is(
+              stacktrace[j].functionName,
+              frame.fn,
+              `Request #${i} has the correct function on JS stack frame #${j}`
+            );
+            is(
+              stacktrace[j].filename.split("/").pop(),
+              frame.file.split("/").pop(),
+              `Request #${i} has the correct file on JS stack frame #${j}`
+            );
+            is(
+              stacktrace[j].lineNumber,
+              frame.line,
+              `Request #${i} has the correct line number on JS stack frame #${j}`
+            );
+            is(
+              stacktrace[j].asyncCause,
+              frame.asyncCause,
+              `Request #${i} has the correct async cause on JS stack frame #${j}`
+            );
+          }
         });
       }
     } else {
@@ -1198,4 +1231,45 @@ async function toggleBlockedUrl(element, monitor, store, action = "block") {
 
 function clickElement(element, monitor) {
   EventUtils.synthesizeMouseAtCenter(element, {}, monitor.panelWin);
+}
+
+/**
+ * Register a listener to be notified when a favicon finished loading and
+ * dispatch a "devtools:test:favicon" event to the favicon's link element.
+ *
+ * @param {Browser} browser
+ *        Target browser to observe the favicon load.
+ */
+function registerFaviconNotifier(browser) {
+  const listener = async (name, data) => {
+    if (name == "SetIcon" || name == "SetFailedIcon") {
+      await SpecialPowers.spawn(browser, [], async () => {
+        content.document
+          .querySelector("link[rel='icon']")
+          .dispatchEvent(new content.CustomEvent("devtools:test:favicon"));
+      });
+      LinkHandlerParent.removeListenerForTests(listener);
+    }
+  };
+  LinkHandlerParent.addListenerForTests(listener);
+}
+
+/**
+ * Predicates used when sorting items.
+ *
+ * @param object first
+ *        The first item used in the comparison.
+ * @param object second
+ *        The second item used in the comparison.
+ * @return number
+ *         <0 to sort first to a lower index than second
+ *         =0 to leave first and second unchanged with respect to each other
+ *         >0 to sort second to a lower index than first
+ */
+
+function compareValues(first, second) {
+  if (first === second) {
+    return 0;
+  }
+  return first > second ? 1 : -1;
 }

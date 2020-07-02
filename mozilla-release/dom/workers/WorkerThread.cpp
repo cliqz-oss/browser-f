@@ -6,14 +6,15 @@
 
 #include "WorkerThread.h"
 
-#include "mozilla/Assertions.h"
-#include "mozilla/ipc/BackgroundChild.h"
 #include "EventQueue.h"
-#include "mozilla/ThreadEventQueue.h"
-#include "mozilla/PerformanceCounter.h"
-#include "nsIThreadInternal.h"
 #include "WorkerPrivate.h"
 #include "WorkerRunnable.h"
+#include "mozilla/AbstractThread.h"
+#include "mozilla/Assertions.h"
+#include "mozilla/PerformanceCounter.h"
+#include "mozilla/ThreadEventQueue.h"
+#include "mozilla/ipc/BackgroundChild.h"
+#include "nsIThreadInternal.h"
 
 #ifdef DEBUG
 #  include "nsThreadManager.h"
@@ -93,6 +94,8 @@ already_AddRefed<WorkerThread> WorkerThread::Create(
     NS_WARNING("Failed to create new thread!");
     return nullptr;
   }
+  thread->mAbstractThread = AbstractThread::CreateXPCOMThreadWrapper(
+      thread, false /* aRequireTailDispatch */);
 
   return thread.forget();
 }
@@ -322,11 +325,20 @@ uint32_t WorkerThread::RecursionDepth(
   return mNestedEventLoopDepth;
 }
 
-PerformanceCounter* WorkerThread::GetPerformanceCounter(nsIRunnable* aEvent) {
+PerformanceCounter* WorkerThread::GetPerformanceCounter(
+    nsIRunnable* aEvent) const {
   if (mWorkerPrivate) {
     return mWorkerPrivate->GetPerformanceCounter();
   }
   return nullptr;
+}
+
+NS_IMETHODIMP
+WorkerThread::Shutdown() {
+  MOZ_ALWAYS_SUCCEEDS(nsThread::Shutdown());
+  // We need to break the cycle.
+  mAbstractThread = nullptr;
+  return NS_OK;
 }
 
 NS_IMPL_ISUPPORTS(WorkerThread::Observer, nsIThreadObserver)

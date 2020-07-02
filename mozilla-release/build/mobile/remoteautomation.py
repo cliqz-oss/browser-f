@@ -308,25 +308,31 @@ class RemoteAutomation(object):
                 parsed_messages = self.messageLogger.write(line)
 
             for message in parsed_messages:
-                if isinstance(message, dict) and message.get('action') == 'test_start':
-                    self.lastTestSeen = message['test']
-                if isinstance(message, dict) and message.get('action') == 'log':
-                    line = message['message'].strip()
-                    if self.counts:
-                        m = re.match(".*:\s*(\d*)", line)
-                        if m:
-                            try:
-                                val = int(m.group(1))
-                                if "Passed:" in line:
-                                    self.counts['pass'] += val
-                                elif "Failed:" in line:
-                                    self.counts['fail'] += val
-                                elif "Todo:" in line:
-                                    self.counts['todo'] += val
-                            except ADBTimeoutError:
-                                raise
-                            except Exception:
-                                pass
+                if isinstance(message, dict):
+                    if message.get('action') == 'test_start':
+                        self.lastTestSeen = message['test']
+                    elif message.get('action') == 'test_end':
+                        self.lastTestSeen = '{} (finished)'.format(message['test'])
+                    elif message.get('action') == 'suite_end':
+                        self.lastTestSeen = "Last test finished"
+                    elif message.get('action') == 'log':
+                        line = message['message'].strip()
+                        if self.counts:
+                            m = re.match(".*:\s*(\d*)", line)
+                            if m:
+                                try:
+                                    val = int(m.group(1))
+                                    if "Passed:" in line:
+                                        self.counts['pass'] += val
+                                        self.lastTestSeen = "Last test finished"
+                                    elif "Failed:" in line:
+                                        self.counts['fail'] += val
+                                    elif "Todo:" in line:
+                                        self.counts['todo'] += val
+                                except ADBTimeoutError:
+                                    raise
+                                except Exception:
+                                    pass
 
         return True
 
@@ -348,10 +354,13 @@ class RemoteAutomation(object):
         endTime = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
         # wait for log creation on startup
         retries = 0
-        while retries < 20 and not self.device.is_file(self.remoteLog):
+        while retries < 20 and not self.device.is_file(self.remoteLog, root=True):
             retries += 1
             time.sleep(1)
-        if not self.device.is_file(self.remoteLog):
+        if self.device.is_file(self.remoteLog, root=True):
+            # We must change the remote log's permissions so that the shell can read it.
+            self.device.chmod(self.remoteLog, mask="666", root=True)
+        else:
             print("Failed wait for remote log: %s missing?" % self.remoteLog)
         while top == self.procName:
             # Get log updates on each interval, but if it is taking

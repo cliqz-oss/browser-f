@@ -35,24 +35,23 @@
 #include "frontend/NameCollections.h"      // AtomIndexMap
 #include "frontend/ParseNode.h"            // ParseNode and subclasses
 #include "frontend/Parser.h"               // Parser, PropListType
-#include "frontend/SharedContext.h"        // SharedContext
+#include "frontend/SharedContext.h"        // SharedContext, TopLevelFunction
 #include "frontend/SourceNotes.h"          // SrcNoteType
 #include "frontend/TokenStream.h"          // TokenPos
 #include "frontend/ValueUsage.h"           // ValueUsage
 #include "js/RootingAPI.h"                 // JS::Rooted, JS::Handle
 #include "js/TypeDecls.h"                  // jsbytecode
 #include "vm/BytecodeUtil.h"               // JSOp
-#include "vm/CheckIsCallableKind.h"        // CheckIsCallableKind
 #include "vm/CheckIsObjectKind.h"          // CheckIsObjectKind
 #include "vm/FunctionPrefixKind.h"         // FunctionPrefixKind
 #include "vm/GeneratorResumeKind.h"        // GeneratorResumeKind
 #include "vm/Instrumentation.h"            // InstrumentationKind
 #include "vm/Iteration.h"                  // IteratorKind
 #include "vm/JSFunction.h"                 // JSFunction
-#include "vm/JSScript.h"     // JSScript, BaseScript, FieldInitializers
-#include "vm/Runtime.h"      // ReportOutOfMemory
-#include "vm/StringType.h"   // JSAtom
-#include "vm/TryNoteKind.h"  // TryNoteKind
+#include "vm/JSScript.h"      // JSScript, BaseScript, FieldInitializers
+#include "vm/Runtime.h"       // ReportOutOfMemory
+#include "vm/StencilEnums.h"  // TryNoteKind
+#include "vm/StringType.h"    // JSAtom
 
 namespace js {
 namespace frontend {
@@ -67,6 +66,7 @@ class PropOpEmitter;
 class OptionalEmitter;
 class TDZCheckCache;
 class TryEmitter;
+class ScriptStencil;
 
 enum class ValueIsOnStack { Yes, No };
 
@@ -79,13 +79,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   // Enclosing function or global context.
   BytecodeEmitter* const parent = nullptr;
 
-  // The JSScript we're ultimately producing.
-  JS::Rooted<JSScript*> script;
-
-  // The lazy script if mode is LazyFunction, nullptr otherwise.
-  JS::Rooted<BaseScript*> lazyScript;
-
- private:
   BytecodeSection bytecodeSection_;
 
  public:
@@ -103,9 +96,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   // switchToMain sets this to the bytecode offset of the main section.
   mozilla::Maybe<uint32_t> mainOffset_ = {};
 
-  /* field info for enclosing class */
-  const FieldInitializers fieldInitializers_;
-
  public:
   // Private storage for parser wrapper. DO NOT REFERENCE INTERNALLY. May not be
   // initialized. Use |parser| instead.
@@ -113,10 +103,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   BCEParserHandle* parser = nullptr;
 
   CompilationInfo& compilationInfo;
-
-  // First line and column, for JSScript::fullyInitFromStencil.
-  unsigned firstLine = 0;
-  unsigned firstColumn = 0;
 
   uint32_t maxFixedSlots = 0; /* maximum number of fixed frame slots so far */
 
@@ -127,8 +113,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   NestableControl* innermostNestableControl = nullptr;
   EmitterScope* innermostEmitterScope_ = nullptr;
   TDZCheckCache* innermostTDZCheckCache = nullptr;
-
-  const FieldInitializers& getFieldInitializers() { return fieldInitializers_; }
 
 #ifdef DEBUG
   bool unstableEmitterScope = false;
@@ -149,8 +133,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
 
   // True while emitting a lambda which is only expected to run once.
   bool emittingRunOnceLambda = false;
-
-  bool isRunOnceLambda();
 
   enum EmitterMode {
     Normal,
@@ -184,11 +166,8 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
    */
  private:
   // Internal constructor, for delegation use only.
-  BytecodeEmitter(
-      BytecodeEmitter* parent, SharedContext* sc, JS::Handle<JSScript*> script,
-      JS::Handle<BaseScript*> lazyScript, uint32_t line, uint32_t column,
-      CompilationInfo& compilationInfo, EmitterMode emitterMode,
-      FieldInitializers fieldInitializers = FieldInitializers::Invalid());
+  BytecodeEmitter(BytecodeEmitter* parent, SharedContext* sc,
+                  CompilationInfo& compilationInfo, EmitterMode emitterMode);
 
   void initFromBodyPosition(TokenPos bodyPosition);
 
@@ -202,30 +181,21 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
                                const ListNode* argsList);
 
  public:
-  BytecodeEmitter(
-      BytecodeEmitter* parent, BCEParserHandle* parser, SharedContext* sc,
-      JS::Handle<JSScript*> script, JS::Handle<BaseScript*> lazyScript,
-      uint32_t line, uint32_t column, CompilationInfo& compilationInfo,
-      EmitterMode emitterMode = Normal,
-      FieldInitializers fieldInitializers = FieldInitializers::Invalid());
+  BytecodeEmitter(BytecodeEmitter* parent, BCEParserHandle* handle,
+                  SharedContext* sc, CompilationInfo& compilationInfo,
+                  EmitterMode emitterMode = Normal);
 
-  BytecodeEmitter(
-      BytecodeEmitter* parent, const EitherParser& parser, SharedContext* sc,
-      JS::Handle<JSScript*> script, JS::Handle<BaseScript*> lazyScript,
-      uint32_t line, uint32_t column, CompilationInfo& compilationInfo,
-      EmitterMode emitterMode = Normal,
-      FieldInitializers fieldInitializers = FieldInitializers::Invalid());
+  BytecodeEmitter(BytecodeEmitter* parent, const EitherParser& parser,
+                  SharedContext* sc, CompilationInfo& compilationInfo,
+                  EmitterMode emitterMode = Normal);
 
   template <typename Unit>
-  BytecodeEmitter(
-      BytecodeEmitter* parent, Parser<FullParseHandler, Unit>* parser,
-      SharedContext* sc, JS::Handle<JSScript*> script,
-      JS::Handle<BaseScript*> lazyScript, uint32_t line, uint32_t column,
-      CompilationInfo& compilationInfo, EmitterMode emitterMode = Normal,
-      FieldInitializers fieldInitializers = FieldInitializers::Invalid())
-      : BytecodeEmitter(parent, EitherParser(parser), sc, script, lazyScript,
-                        line, column, compilationInfo, emitterMode,
-                        fieldInitializers) {}
+  BytecodeEmitter(BytecodeEmitter* parent,
+                  Parser<FullParseHandler, Unit>* parser, SharedContext* sc,
+                  CompilationInfo& compilationInfo,
+                  EmitterMode emitterMode = Normal)
+      : BytecodeEmitter(parent, EitherParser(parser), sc, compilationInfo,
+                        emitterMode) {}
 
   MOZ_MUST_USE bool init();
   MOZ_MUST_USE bool init(TokenPos bodyPosition);
@@ -278,7 +248,11 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
       return true;
     }
 
-    uint32_t index = perScriptData().atomIndices()->count();
+    uint32_t index;
+    if (!perScriptData().gcThingList().append(atom, &index)) {
+      return false;
+    }
+
     if (!perScriptData().atomIndices()->add(p, atom, index)) {
       ReportOutOfMemory(cx);
       return false;
@@ -324,6 +298,9 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   void reportError(ParseNode* pn, unsigned errorNumber, ...);
   void reportError(const mozilla::Maybe<uint32_t>& maybeOffset,
                    unsigned errorNumber, ...);
+
+  // Fill in a ScriptStencil using this BCE data.
+  bool intoScriptStencil(ScriptStencil* stencil);
 
   // If pn contains a useful expression, return true with *answer set to true.
   // If pn contains a useless expression, return true with *answer set to
@@ -386,7 +363,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   MOZ_MUST_USE bool getNslots(uint32_t* nslots);
 
   // Emit function code for the tree rooted at body.
-  enum class TopLevelFunction { No, Yes };
   MOZ_MUST_USE bool emitFunctionScript(FunctionNode* funNode,
                                        TopLevelFunction isTopLevel);
 
@@ -417,11 +393,14 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   // Helper to emit JSOp::Pop or JSOp::PopN.
   MOZ_MUST_USE bool emitPopN(unsigned n);
 
+  // Helper to emit JSOp::Swap or JSOp::Pick.
+  MOZ_MUST_USE bool emitPickN(uint8_t n);
+
+  // Helper to emit JSOp::Swap or JSOp::Unpick.
+  MOZ_MUST_USE bool emitUnpickN(uint8_t n);
+
   // Helper to emit JSOp::CheckIsObj.
   MOZ_MUST_USE bool emitCheckIsObj(CheckIsObjectKind kind);
-
-  // Helper to emit JSOp::CheckIsCallable.
-  MOZ_MUST_USE bool emitCheckIsCallable(CheckIsCallableKind kind);
 
   // Push whether the value atop of the stack is non-undefined and non-null.
   MOZ_MUST_USE bool emitPushNotUndefinedOrNull();
@@ -712,6 +691,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   MOZ_MUST_USE bool emitTemplateString(ListNode* templateString);
   MOZ_MUST_USE bool emitAssignmentOrInit(ParseNodeKind kind, ParseNode* lhs,
                                          ParseNode* rhs);
+  MOZ_MUST_USE bool emitShortCircuitAssignment(AssignmentNode* node);
 
   MOZ_MUST_USE bool emitReturn(UnaryNode* returnNode);
   MOZ_MUST_USE bool emitExpressionStatement(UnaryNode* exprStmt);
@@ -777,6 +757,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   MOZ_MUST_USE bool emitSelfHostedDefineDataProperty(BinaryNode* callNode);
   MOZ_MUST_USE bool emitSelfHostedGetPropertySuper(BinaryNode* callNode);
   MOZ_MUST_USE bool emitSelfHostedHasOwn(BinaryNode* callNode);
+  MOZ_MUST_USE bool emitSelfHostedToNumeric(BinaryNode* callNode);
 
   MOZ_MUST_USE bool emitDo(BinaryNode* doNode);
   MOZ_MUST_USE bool emitWhile(BinaryNode* whileNode);

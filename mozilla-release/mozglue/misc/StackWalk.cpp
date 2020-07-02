@@ -795,6 +795,11 @@ bool MFBT_API MozDescribeCodeAddress(void* aPC,
   aDetails->library[mozilla::ArrayLength(aDetails->library) - 1] = '\0';
   aDetails->loffset = (char*)aPC - (char*)info.dli_fbase;
 
+#  if !defined(XP_FREEBSD)
+  // On FreeBSD, dli_sname is unusably bad, it often returns things like
+  // 'gtk_xtbin_new' or 'XRE_GetBootstrap' instead of long C++ symbols. Just let
+  // GetFunction do the lookup directly in the ELF image.
+
   const char* symbol = info.dli_sname;
   if (!symbol || symbol[0] == '\0') {
     return true;
@@ -809,6 +814,8 @@ bool MFBT_API MozDescribeCodeAddress(void* aPC,
   }
 
   aDetails->foffset = (char*)aPC - (char*)info.dli_saddr;
+#  endif
+
   return true;
 }
 
@@ -906,8 +913,8 @@ MFBT_API void MozFormatCodeAddress(char* aBuffer, uint32_t aBufferSize,
              aFileName, aLineNo);
   } else if (aLibrary && aLibrary[0]) {
     // We have no filename, but we do have a library name. Use it and the
-    // library offset, and print them in a way that scripts like
-    // fix_{linux,macosx}_stacks.py can easily post-process.
+    // library offset, and print them in a way that `fix_stacks.py` can
+    // post-process.
     snprintf(aBuffer, aBufferSize, "#%02u: %s[%s +0x%" PRIxPTR "]",
              aFrameNumber, function, aLibrary,
              static_cast<uintptr_t>(aLOffset));

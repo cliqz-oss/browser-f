@@ -16,6 +16,7 @@
 
 #include "builtin/MapObject.h"
 #include "js/GCVector.h"
+#include "shell/ModuleLoader.h"
 #include "threading/ConditionVariable.h"
 #include "threading/LockGuard.h"
 #include "threading/Mutex.h"
@@ -31,6 +32,15 @@
 
 namespace js {
 namespace shell {
+
+// Define use of application-specific slots on the shell's global object.
+enum GlobalAppSlot {
+  GlobalAppSlotModuleRegistry,
+  GlobalAppSlotModuleResolveHook,  // HostResolveImportedModule
+  GlobalAppSlotCount
+};
+static_assert(GlobalAppSlotCount <= JSCLASS_GLOBAL_APPLICATION_SLOTS,
+              "Too many applications slots defined for shell global");
 
 enum JSShellErrNum {
 #define MSG_DEF(name, count, exception, format) name,
@@ -97,7 +107,6 @@ extern int sArgc;
 extern char** sArgv;
 
 // Shell state set once at startup.
-extern bool enableDeferredMode;
 extern bool enableCodeCoverage;
 extern bool enableDisassemblyDumps;
 extern bool offthreadCompilation;
@@ -107,17 +116,19 @@ extern bool enableSharedMemory;
 extern bool enableWasmBaseline;
 extern bool enableWasmIon;
 extern bool enableWasmCranelift;
+extern bool enableWasmReftypes;
 #ifdef ENABLE_WASM_GC
 extern bool enableWasmGc;
 #endif
 #ifdef ENABLE_WASM_MULTI_VALUE
 extern bool enableWasmMultiValue;
 #endif
+#ifdef ENABLE_WASM_SIMD
+extern bool enableWasmSimd;
+#endif
 extern bool enableWasmVerbose;
 extern bool enableTestWasmAwaitTier2;
-#ifdef ENABLE_WASM_BIGINT
-extern bool enableWasmBigInt;
-#endif
+extern bool enableSourcePragmas;
 extern bool enableAsyncStacks;
 extern bool enableStreams;
 extern bool enableReadableByteStreams;
@@ -127,6 +138,7 @@ extern bool enableReadableStreamPipeTo;
 extern bool enableWeakRefs;
 extern bool enableToSource;
 extern bool enablePropertyErrorMessageFix;
+extern bool enableIteratorHelpers;
 #ifdef JS_GC_ZEAL
 extern uint32_t gZealBits;
 extern uint32_t gZealFrequency;
@@ -228,7 +240,7 @@ struct ShellContext {
 
   UniquePtr<ProfilingStack> geckoProfilingStack;
 
-  JS::UniqueChars moduleLoadPath;
+  UniquePtr<ModuleLoader> moduleLoader;
 
   UniquePtr<MarkBitObservers> markObservers;
 
@@ -245,6 +257,9 @@ extern ShellContext* GetShellContext(JSContext* cx);
 
 extern MOZ_MUST_USE bool PrintStackTrace(JSContext* cx,
                                          JS::Handle<JSObject*> stackObj);
+
+extern JSObject* CreateScriptPrivate(JSContext* cx,
+                                     HandleString path = nullptr);
 
 } /* namespace shell */
 } /* namespace js */

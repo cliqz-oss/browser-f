@@ -93,16 +93,6 @@ bool AbstractScopePtr::isArrow() const {
   return scope()->as<FunctionScope>().canonicalFunction()->isArrow();
 }
 
-JSFunction* AbstractScopePtr::canonicalFunction() const {
-  // nullptr will also fail the below assert, so effectively also checking
-  // !isNullptr()
-  MOZ_ASSERT(is<FunctionScope>());
-  if (isScopeCreationData()) {
-    return scopeCreationData().get().canonicalFunction();
-  }
-  return scope()->as<FunctionScope>().canonicalFunction();
-}
-
 uint32_t AbstractScopePtr::nextFrameSlot() const {
   if (isScopeCreationData()) {
     return scopeCreationData().get().nextFrameSlot();

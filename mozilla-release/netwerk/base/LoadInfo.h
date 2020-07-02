@@ -30,6 +30,7 @@ namespace dom {
 class PerformanceStorage;
 class XMLHttpRequestMainThread;
 class CanonicalBrowsingContext;
+class WindowGlobalParent;
 }  // namespace dom
 
 namespace net {
@@ -56,6 +57,7 @@ class LoadInfo final : public nsILoadInfo {
   NS_DECL_ISUPPORTS
   NS_DECL_NSILOADINFO
 
+  // Used for TYPE_SUBDOCUMENT load.
   // aLoadingPrincipal MUST NOT BE NULL.
   LoadInfo(nsIPrincipal* aLoadingPrincipal, nsIPrincipal* aTriggeringPrincipal,
            nsINode* aLoadingContext, nsSecurityFlags aSecurityFlags,
@@ -65,6 +67,10 @@ class LoadInfo final : public nsILoadInfo {
            const Maybe<mozilla::dom::ServiceWorkerDescriptor>& aController =
                Maybe<mozilla::dom::ServiceWorkerDescriptor>(),
            uint32_t aSandboxFlags = 0);
+  // Used for TYPE_SUBDOCUMENT load.
+  LoadInfo(dom::CanonicalBrowsingContext* aBrowsingContext,
+           nsIPrincipal* aTriggeringPrincipal, uint64_t aFrameOuterWindowID,
+           nsSecurityFlags aSecurityFlags, uint32_t aSandboxFlags);
 
   // Constructor used for TYPE_DOCUMENT loads which have a different
   // loadingContext than other loads. This ContextForTopLevelLoad is
@@ -91,7 +97,7 @@ class LoadInfo final : public nsILoadInfo {
   already_AddRefed<nsILoadInfo> CloneForNewRequest() const;
 
   void SetIsPreflight();
-  void SetUpgradeInsecureRequests();
+  void SetUpgradeInsecureRequests(bool aValue);
   void SetBrowserUpgradeInsecureRequests();
   void SetBrowserWouldUpgradeInsecureRequests();
   void SetIsFromProcessingFrameAttributes();
@@ -151,7 +157,8 @@ class LoadInfo final : public nsILoadInfo {
            uint64_t aTopOuterWindowID, uint64_t aFrameOuterWindowID,
            uint64_t aBrowsingContextID, uint64_t aFrameBrowsingContextID,
            bool aInitialSecurityCheckDone, bool aIsThirdPartyRequest,
-           bool aIsFormSubmission, bool aSendCSPViolationEvents,
+           bool aIsThirdPartyContextToTopWindow, bool aIsFormSubmission,
+           bool aSendCSPViolationEvents,
            const OriginAttributes& aOriginAttributes,
            RedirectHistoryArray& aRedirectChainIncludingInternalRedirects,
            RedirectHistoryArray& aRedirectChain,
@@ -163,8 +170,11 @@ class LoadInfo final : public nsILoadInfo {
            bool aDocumentHasUserInteracted, bool aDocumentHasLoaded,
            bool aAllowListFutureDocumentsCreatedFromThisRedirectChain,
            const nsAString& aCspNonce, bool aSkipContentSniffing,
-           uint32_t aHttpsOnlyStatus, bool aHasStoragePermission,
-           uint32_t aRequestBlockingReason, nsINode* aLoadingContext);
+           uint32_t aHttpsOnlyStatus, bool aHasValidUserGestureActivation,
+           bool aAllowDeprecatedSystemRequests, bool aParserCreatedScript,
+           bool aHasStoragePermission, uint32_t aRequestBlockingReason,
+           nsINode* aLoadingContext,
+           nsILoadInfo::CrossOriginEmbedderPolicy aLoadingEmbedderPolicy);
   LoadInfo(const LoadInfo& rhs);
 
   NS_IMETHOD GetRedirects(JSContext* aCx,
@@ -178,6 +188,7 @@ class LoadInfo final : public nsILoadInfo {
   ~LoadInfo() = default;
 
   void ComputeIsThirdPartyContext(nsPIDOMWindowOuter* aOuterWindow);
+  void ComputeIsThirdPartyContext(dom::WindowGlobalParent* aGlobal);
 
   // This function is the *only* function which can change the securityflags
   // of a loadinfo. It only exists because of the XHR code. Don't call it
@@ -241,6 +252,7 @@ class LoadInfo final : public nsILoadInfo {
   uint64_t mFrameBrowsingContextID;
   bool mInitialSecurityCheckDone;
   bool mIsThirdPartyContext;
+  bool mIsThirdPartyContextToTopWindow;
   bool mIsFormSubmission;
   bool mSendCSPViolationEvents;
   OriginAttributes mOriginAttributes;
@@ -260,12 +272,21 @@ class LoadInfo final : public nsILoadInfo {
   nsString mCspNonce;
   bool mSkipContentSniffing;
   uint32_t mHttpsOnlyStatus;
+  bool mHasValidUserGestureActivation;
+  bool mAllowDeprecatedSystemRequests;
+  bool mParserCreatedScript;
   bool mHasStoragePermission;
 
   // Is true if this load was triggered by processing the attributes of the
   // browsing context container.
   // See nsILoadInfo.isFromProcessingFrameAttributes
   bool mIsFromProcessingFrameAttributes;
+
+  // The cross origin embedder policy that the loading need to respect.
+  // If the value is nsILoadInfo::EMBEDDER_POLICY_REQUIRE_CORP, CORP checking
+  // must be performed for the loading.
+  // See https://wicg.github.io/cross-origin-embedder-policy/#corp-check.
+  nsILoadInfo::CrossOriginEmbedderPolicy mLoadingEmbedderPolicy;
 };
 
 }  // namespace net

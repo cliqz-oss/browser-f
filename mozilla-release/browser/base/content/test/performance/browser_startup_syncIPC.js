@@ -139,7 +139,8 @@ const startupPhases = {
     },
     {
       name: "PLayerTransaction::Msg_GetTextureFactoryIdentifier",
-      condition: !MAC && !WEBRENDER,
+      condition: (!MAC && !WEBRENDER) || (WIN && WEBRENDER),
+      ignoreIfUnused: true, // intermittently occurs in "before becoming idle"
       maxCount: 1,
     },
     {
@@ -185,10 +186,9 @@ const startupPhases = {
       maxCount: 1,
     },
     {
-      // bug 1554234
-      name: "PLayerTransaction::Msg_GetTextureFactoryIdentifier",
+      name: "PWebRenderBridge::Msg_EnsureConnected",
       condition: WIN && WEBRENDER,
-      ignoreIfUnused: true, // intermittently occurs in "before becoming idle"
+      ignoreIfUnused: true,
       maxCount: 1,
     },
   ],
@@ -218,19 +218,25 @@ const startupPhases = {
     {
       // bug 1554234
       name: "PLayerTransaction::Msg_GetTextureFactoryIdentifier",
-      condition: WIN && WEBRENDER,
+      condition: WIN,
       ignoreIfUnused: true, // intermittently occurs in "before handling user events"
       maxCount: 1,
     },
     {
-      name: "PCompositorBridge::Msg_Initialize",
+      name: "PWebRenderBridge::Msg_EnsureConnected",
       condition: WIN && WEBRENDER,
+      ignoreIfUnused: true,
+      maxCount: 1,
+    },
+    {
+      name: "PCompositorBridge::Msg_Initialize",
+      condition: WIN,
       ignoreIfUnused: true, // Intermittently occurs in "before handling user events"
       maxCount: 1,
     },
     {
       name: "PCompositorWidget::Msg_Initialize",
-      condition: WIN && WEBRENDER,
+      condition: WIN,
       ignoreIfUnused: true, // Intermittently occurs in "before handling user events"
       maxCount: 1,
     },
@@ -242,7 +248,7 @@ const startupPhases = {
     },
     {
       name: "PCompositorBridge::Msg_FlushRendering",
-      condition: MAC,
+      condition: MAC || LINUX,
       ignoreIfUnused: true,
       maxCount: 1,
     },

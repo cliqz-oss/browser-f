@@ -13,11 +13,11 @@
 ##
 ## Reference: https://www.mozilla.org/styleguide/communications/translation/
 
+-brand-shorter-name = Firefox
 -brand-short-name = Firefox
+-brand-full-name = Mozilla Firefox
 # This brand name can be used in messages where the product name needs to
 # remain unchanged across different versions (Nightly, Beta, etc.).
 -brand-product-name = Firefox
 -vendor-short-name = Mozilla
--brand-full-name = Mozilla Firefox
--brand-shorter-name = Firefox
 trademarkInfo = Firefox und die Firefox-Logos sind Warenzeichen der Mozilla Foundation.

@@ -129,7 +129,7 @@ struct DynamicEventInfo {
       : category(category),
         method(method),
         object(object),
-        extra_keys(extra_keys),
+        extra_keys(extra_keys.Clone()),
         recordOnRelease(recordOnRelease),
         builtin(builtin) {}
 
@@ -139,7 +139,7 @@ struct DynamicEventInfo {
   const nsCString category;
   const nsCString method;
   const nsCString object;
-  const nsTArray<nsCString> extra_keys;
+  const CopyableTArray<nsCString> extra_keys;
   const bool recordOnRelease;
   const bool builtin;
 
@@ -167,13 +167,16 @@ enum class RecordEventResult {
   WrongProcess,
 };
 
-typedef nsTArray<EventExtraEntry> ExtraArray;
+typedef CopyableTArray<EventExtraEntry> ExtraArray;
 
 class EventRecord {
  public:
   EventRecord(double timestamp, const EventKey& key,
               const Maybe<nsCString>& value, const ExtraArray& extra)
-      : mTimestamp(timestamp), mEventKey(key), mValue(value), mExtra(extra) {}
+      : mTimestamp(timestamp),
+        mEventKey(key),
+        mValue(value),
+        mExtra(extra.Clone()) {}
 
   EventRecord(const EventRecord& other) = default;
 
@@ -904,10 +907,12 @@ nsresult TelemetryEvent::RecordEvent(const nsACString& aCategory,
   // Trigger warnings or errors where needed.
   switch (res) {
     case RecordEventResult::UnknownEvent: {
-      JS_ReportErrorASCII(cx, R"(Unknown event: ["%s", "%s", "%s"])",
+      nsPrintfCString msg(R"(Unknown event: ["%s", "%s", "%s"])",
                           PromiseFlatCString(aCategory).get(),
                           PromiseFlatCString(aMethod).get(),
                           PromiseFlatCString(aObject).get());
+      LogToBrowserConsole(nsIScriptError::errorFlag,
+                          NS_ConvertUTF8toUTF16(msg));
       return NS_OK;
     }
     case RecordEventResult::InvalidExtraKey: {
@@ -951,7 +956,7 @@ void TelemetryEvent::RecordEventNative(
   // Truncate any over-long extra values.
   ExtraArray extra;
   if (aExtra) {
-    extra = aExtra.ref();
+    extra = aExtra.value();
     for (auto& item : extra) {
       if (item.value.Length() > kMaxExtraValueByteLength) {
         TruncateToByteLength(item.value, kMaxExtraValueByteLength);

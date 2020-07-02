@@ -10,7 +10,6 @@ extern crate log;
 extern crate serde;
 
 mod angle;
-mod binary_frame_reader;
 mod blob;
 mod egl;
 mod parse_function;
@@ -19,16 +18,10 @@ mod png;
 mod premultiply;
 mod rawtest;
 mod reftest;
-mod ron_frame_writer;
-mod scene;
 mod wrench;
 mod yaml_frame_reader;
-mod yaml_frame_writer;
 mod yaml_helper;
-#[cfg(target_os = "macos")]
-mod cgfont_to_data;
 
-use crate::binary_frame_reader::BinaryFrameReader;
 use gleam::gl;
 #[cfg(feature = "software")]
 use gleam::gl::Gl;
@@ -54,7 +47,7 @@ use webrender::api::*;
 use webrender::api::units::*;
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::VirtualKeyCode;
-use crate::wrench::{Wrench, WrenchThing};
+use crate::wrench::{CapturedSequence, Wrench, WrenchThing};
 use crate::yaml_frame_reader::YamlFrameReader;
 
 pub const PLATFORM_DEFAULT_FACE_NAME: &str = "Arial";
@@ -237,7 +230,6 @@ impl WindowWrapper {
         }
     }
 
-    #[cfg(feature = "software")]
     pub fn software_gl(&self) -> Option<&swgl::Context> {
         match *self {
             WindowWrapper::WindowedContext(_, _, ref swgl) |
@@ -263,6 +255,10 @@ impl WindowWrapper {
         }
     }
 
+    pub fn is_software(&self) -> bool {
+        self.software_gl().is_some()
+    }
+
     #[cfg(not(feature = "software"))]
     pub fn gl(&self) -> &dyn gl::Gl {
         self.native_gl()
@@ -277,6 +273,7 @@ impl WindowWrapper {
                     #[cfg(feature = "software")]
                     Some(ref swgl) => Rc::new(swgl.clone()),
                     None => gl.clone(),
+                    #[cfg(not(feature = "software"))]
                     _ => panic!(),
                 }
             }
@@ -407,6 +404,7 @@ fn make_window(
                         },
                     }
                 }
+                #[cfg(not(feature = "software"))]
                 _ => panic!(),
             };
             WindowWrapper::Headless(HeadlessContext::new(size.width, size.height), gl, sw_ctx)
@@ -555,12 +553,6 @@ fn main() {
     // handle some global arguments
     let res_path = args.value_of("shaders").map(|s| PathBuf::from(s));
     let dp_ratio = args.value_of("dp_ratio").map(|v| v.parse::<f32>().unwrap());
-    let save_type = args.value_of("save").map(|s| match s {
-        "yaml" => wrench::SaveType::Yaml,
-        "ron" => wrench::SaveType::Ron,
-        "binary" => wrench::SaveType::Binary,
-        _ => panic!("Save type must be ron, yaml, or binary")
-    });
     let size = args.value_of("size")
         .map(|s| if s == "720p" {
             DeviceIntSize::new(1280, 720)
@@ -655,8 +647,8 @@ fn main() {
         &mut window,
         events_loop.as_mut().map(|el| el.create_proxy()),
         res_path,
+        !args.is_present("use_unoptimized_shaders"),
         dp_ratio,
-        save_type,
         dim,
         args.is_present("rebuild"),
         args.is_present("no_subpixel_aa"),
@@ -764,13 +756,18 @@ fn render<'a>(
     let input_path = subargs.value_of("INPUT").map(PathBuf::from).unwrap();
 
     // If the input is a directory, we are looking at a capture.
-    let mut thing = if input_path.as_path().is_dir() {
-        let mut documents = wrench.api.load_capture(input_path);
+    let mut thing = if input_path.join("scenes").as_path().is_dir() {
+        let scene_id = subargs.value_of("scene-id").map(|z| z.parse::<u32>().unwrap());
+        let frame_id = subargs.value_of("frame-id").map(|z| z.parse::<u32>().unwrap());
+        Box::new(CapturedSequence::new(
+            input_path,
+            scene_id.unwrap_or(1),
+            frame_id.unwrap_or(1),
+        ))
+    } else if input_path.as_path().is_dir() {
+        let mut documents = wrench.api.load_capture(input_path, None);
         println!("loaded {:?}", documents.iter().map(|cd| cd.document_id).collect::<Vec<_>>());
         let captured = documents.swap_remove(0);
-        if let Some(fb_size) = wrench.renderer.device_size() {
-            window.resize(fb_size);
-        }
         wrench.document_id = captured.document_id;
         Box::new(captured) as Box<dyn WrenchThing>
     } else {
@@ -782,7 +779,6 @@ fn render<'a>(
 
         match extension {
             "yaml" => Box::new(YamlFrameReader::new_from_args(subargs)) as Box<dyn WrenchThing>,
-            "bin" => Box::new(BinaryFrameReader::new_from_args(subargs)) as Box<dyn WrenchThing>,
             _ => panic!("Tried to render with an unknown file type."),
         }
     };
@@ -793,6 +789,10 @@ fn render<'a>(
 
     window.update(wrench);
     thing.do_frame(wrench);
+
+    if let Some(fb_size) = wrench.renderer.device_size() {
+        window.resize(fb_size);
+    }
 
     let mut debug_flags = DebugFlags::empty();
     debug_flags.set(DebugFlags::DISABLE_BATCHING, no_batch);

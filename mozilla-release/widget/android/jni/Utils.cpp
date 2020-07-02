@@ -11,8 +11,9 @@
 #include <pthread.h>
 
 #include "mozilla/Assertions.h"
+#include "mozilla/java/GeckoAppShellWrappers.h"
+#include "mozilla/java/GeckoThreadWrappers.h"
 
-#include "GeneratedJNIWrappers.h"
 #include "AndroidBuild.h"
 #include "nsAppShell.h"
 #include "nsExceptionHandler.h"
@@ -254,7 +255,8 @@ bool EnsureJNIObject(JNIEnv* env, jobject instance) {
     sJNIObjectHandleField = env->GetFieldID(sJNIObjectClass, "mHandle", "J");
   }
 
-  MOZ_ASSERT(env->IsInstanceOf(instance, sJNIObjectClass));
+  MOZ_ASSERT(env->IsInstanceOf(instance, sJNIObjectClass),
+             "Java class is not derived from JNIObject");
   return true;
 }
 

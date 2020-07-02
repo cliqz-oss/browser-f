@@ -33,7 +33,6 @@ class FirefoxConnector {
     this.willNavigate = this.willNavigate.bind(this);
     this.navigate = this.navigate.bind(this);
     this.displayCachedEvents = this.displayCachedEvents.bind(this);
-    this.onDocEvent = this.onDocEvent.bind(this);
     this.sendHTTPRequest = this.sendHTTPRequest.bind(this);
     this.setPreferences = this.setPreferences.bind(this);
     this.triggerActivity = this.triggerActivity.bind(this);
@@ -47,6 +46,7 @@ class FirefoxConnector {
     this.getLongString = this.getLongString.bind(this);
     this.getNetworkRequest = this.getNetworkRequest.bind(this);
     this.onTargetAvailable = this.onTargetAvailable.bind(this);
+    this.onResourceAvailable = this.onResourceAvailable.bind(this);
   }
 
   get currentTarget() {
@@ -72,6 +72,11 @@ class FirefoxConnector {
       [this.toolbox.targetList.TYPES.FRAME],
       this.onTargetAvailable
     );
+
+    await this.toolbox.resourceWatcher.watchResources(
+      [this.toolbox.resourceWatcher.TYPES.DOCUMENT_EVENT],
+      { onAvailable: this.onResourceAvailable }
+    );
   }
 
   disconnect() {
@@ -87,6 +92,11 @@ class FirefoxConnector {
       this.onTargetAvailable
     );
 
+    this.toolbox.resourceWatcher.unwatchResources(
+      [this.toolbox.resourceWatcher.TYPES.DOCUMENT_EVENT],
+      { onAvailable: this.onResourceAvailable }
+    );
+
     if (this.actions) {
       this.actions.batchReset();
     }
@@ -94,7 +104,6 @@ class FirefoxConnector {
     this.removeListeners();
 
     this.currentTarget.off("will-navigate", this.willNavigate);
-    this.currentTarget.off("navigate", this.navigate);
 
     this.webConsoleFront = null;
     this.dataProvider = null;
@@ -108,8 +117,8 @@ class FirefoxConnector {
     await this.addListeners();
   }
 
-  async onTargetAvailable({ targetFront, isTopLevel, isTargetSwitching }) {
-    if (!isTopLevel) {
+  async onTargetAvailable({ targetFront, isTargetSwitching }) {
+    if (!targetFront.isTopLevel) {
       return;
     }
 
@@ -123,7 +132,6 @@ class FirefoxConnector {
     // Paused network panel should be automatically resumed when page
     // reload, so `will-navigate` listener needs to be there all the time.
     targetFront.on("will-navigate", this.willNavigate);
-    targetFront.on("navigate", this.navigate);
 
     this.webConsoleFront = await this.currentTarget.getFront("console");
 
@@ -145,13 +153,18 @@ class FirefoxConnector {
     }
   }
 
+  async onResourceAvailable({ resourceType, targetFront, resource }) {
+    if (resourceType === this.toolbox.resourceWatcher.TYPES.DOCUMENT_EVENT) {
+      this.onDocEvent(resource);
+    }
+  }
+
   async addListeners() {
     this.webConsoleFront.on("networkEvent", this.dataProvider.onNetworkEvent);
     this.webConsoleFront.on(
       "networkEventUpdate",
       this.dataProvider.onNetworkEventUpdate
     );
-    this.webConsoleFront.on("documentEvent", this.onDocEvent);
 
     // Support for WebSocket monitoring is currently hidden behind this pref.
     if (Services.prefs.getBoolPref("devtools.netmonitor.features.webSockets")) {
@@ -175,9 +188,25 @@ class FirefoxConnector {
       }
     }
 
-    // The console actor supports listening to document events like
-    // DOMContentLoaded and load.
-    await this.webConsoleFront.startListeners(["DocumentEvents"]);
+    // Support for EventSource monitoring is currently hidden behind this pref.
+    if (
+      Services.prefs.getBoolPref(
+        "devtools.netmonitor.features.serverSentEvents"
+      )
+    ) {
+      const eventSourceFront = await this.currentTarget.getFront("eventSource");
+      eventSourceFront.startListening();
+
+      eventSourceFront.on(
+        "eventSourceConnectionOpened",
+        this.dataProvider.onEventSourceConnectionOpened
+      );
+      eventSourceFront.on(
+        "eventSourceConnectionClosed",
+        this.dataProvider.onEventSourceConnectionClosed
+      );
+      eventSourceFront.on("eventReceived", this.dataProvider.onEventReceived);
+    }
   }
 
   removeListeners() {
@@ -204,7 +233,19 @@ class FirefoxConnector {
         "networkEventUpdate",
         this.dataProvider.onNetworkEventUpdate
       );
-      this.webConsoleFront.off("docEvent", this.onDocEvent);
+    }
+
+    const eventSourceFront = this.currentTarget.getCachedFront("eventSource");
+    if (eventSourceFront) {
+      eventSourceFront.off(
+        "eventSourceConnectionOpened",
+        this.dataProvider.onEventSourceConnectionOpened
+      );
+      eventSourceFront.off(
+        "eventSourceConnectionClosed",
+        this.dataProvider.onEventSourceConnectionClosed
+      );
+      eventSourceFront.off("eventReceived", this.dataProvider.onEventReceived);
     }
   }
 
@@ -290,8 +331,17 @@ class FirefoxConnector {
    * @param {object} marker
    */
   onDocEvent(event) {
+    if (event.name === "dom-loading") {
+      // Netmonitor does not support dom-loading event yet.
+      return;
+    }
+
     if (this.actions) {
       this.actions.addTimingMarker(event);
+    }
+
+    if (event.name === "dom-complete") {
+      this.navigate();
     }
 
     this.emitForTests(TEST_EVENTS.TIMELINE_EVENT, event);

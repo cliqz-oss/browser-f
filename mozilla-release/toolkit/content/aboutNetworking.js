@@ -124,6 +124,7 @@ function displayDns(data) {
 
     row.appendChild(column);
     row.appendChild(col(data.entries[i].expiration));
+    row.appendChild(col(data.entries[i].originAttributesSuffix));
     new_cont.appendChild(row);
   }
 
@@ -427,8 +428,10 @@ function setLogModules() {
     } else if (module == "sync") {
       Services.prefs.setBoolPref("logging.config.sync", true);
     } else {
-      let [key, value] = module.split(":");
-      Services.prefs.setIntPref(`logging.${key}`, parseInt(value, 10));
+      let lastColon = module.lastIndexOf(":");
+      let key = module.slice(0, lastColon);
+      let value = parseInt(module.slice(lastColon + 1), 10);
+      Services.prefs.setIntPref(`logging.${key}`, value);
     }
   }
 

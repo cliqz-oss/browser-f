@@ -4,6 +4,10 @@
 
 "use strict";
 
+/**
+ * @typedef {import("../experiments/@types/ExperimentManager").Recipe} Recipe
+ */
+
 const EXPORTED_SYMBOLS = [
   "_RemoteSettingsExperimentLoader",
   "RemoteSettingsExperimentLoader",
@@ -51,6 +55,9 @@ class _RemoteSettingsExperimentLoader {
     // Are we in the middle of updating recipes already?
     this._updating = false;
 
+    // Make it possible to override for testing
+    this.manager = ExperimentManager;
+
     XPCOMUtils.defineLazyGetter(this, "remoteSettingsClient", () => {
       return RemoteSettings(COLLECTION_ID);
     });
@@ -92,45 +99,70 @@ class _RemoteSettingsExperimentLoader {
     this._initialized = false;
   }
 
+  /**
+   * Checks targeting of a recipe if it is defined
+   * @param {Recipe} recipe
+   * @param {{[key: string]: any}} customContext A custom filter context
+   * @returns {Promise<boolean>} Should we process the recipe?
+   */
+  async checkTargeting(recipe, customContext = {}) {
+    const { targeting } = recipe;
+    if (!targeting) {
+      log.debug("No targeting for recipe, so it matches automatically");
+      return true;
+    }
+    log.debug("Testing targeting expression:", targeting);
+    const result = await ASRouterTargeting.isMatch(
+      targeting,
+      customContext,
+      err => {
+        log.debug("Targeting failed because of an error");
+        Cu.reportError(err);
+      }
+    );
+    return Boolean(result);
+  }
+
+  /**
+   * Get all recipes from remote settings
+   * @param {string} trigger What caused the update to occur?
+   */
   async updateRecipes(trigger) {
     if (this._updating || !this._initialized) {
       return;
     }
     this._updating = true;
 
-    log.debug("Updating recipes");
+    log.debug("Updating recipes" + (trigger ? ` with trigger ${trigger}` : ""));
 
     let recipes;
     let loadingError = false;
 
     try {
       recipes = await this.remoteSettingsClient.get();
+      log.debug(`Got ${recipes.length} recipes from Remote Settings`);
     } catch (e) {
+      log.debug("Error getting recipes from remote settings.");
       loadingError = true;
       Cu.reportError(e);
     }
 
+    let matches = 0;
     if (recipes && !loadingError) {
-      log.debug("Updating ExperimentManager with new recipes");
+      const context = this.manager.createTargetingContext();
+
       for (const r of recipes) {
-        if (
-          await ASRouterTargeting.isMatch(
-            r.filter_expression,
-            ExperimentManager.filterContext,
-            err => {
-              log.debug("Targeting failed because of an error");
-              Cu.reportError(err);
-            }
-          )
-        ) {
-          log.debug(`${r.id} passed filter_expression`);
-          await ExperimentManager.onRecipe(r.arguments, "rs-loader");
+        if (await this.checkTargeting(r, context)) {
+          matches++;
+          log.debug(`${r.id} matched`);
+          await this.manager.onRecipe(r.arguments, "rs-loader");
         } else {
-          log.debug(`${r.id} failed filter_expression`);
+          log.debug(`${r.id} did not match due to targeting`);
         }
       }
 
-      ExperimentManager.onFinalize("rs-loader");
+      log.debug(`${matches} recipes matched. Finalizing ExperimentManager.`);
+      this.manager.onFinalize("rs-loader");
     }
 
     if (trigger !== "timer") {
@@ -149,9 +181,11 @@ class _RemoteSettingsExperimentLoader {
     }
   }
 
+  /**
+   * Sets a timer to update recipes every this.intervalInSeconds
+   */
   setTimer() {
-    // When this function is called, updateRecipes is called immediately
-    // and then every this.intervalInSeconds
+    // When this function is called, updateRecipes is also called immediately
     timerManager.registerTimer(
       TIMER_NAME,
       () => this.updateRecipes("timer"),

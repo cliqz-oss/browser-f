@@ -48,7 +48,10 @@ fn with_glean_mut<F, R>(f: F) -> R
 where
     F: Fn(&mut Glean) -> R,
 {
-    let mut glean = global_glean().lock().unwrap();
+    let mut glean = global_glean()
+        .expect("Global Glean not initialized")
+        .lock()
+        .unwrap();
     f(&mut glean)
 }
 
@@ -98,7 +101,9 @@ fn initialize_core_metrics(glean: &Glean, client_info: &ClientInfo) {
     core_metrics
         .os_version
         .set(glean, &client_info.os_version[..]);
-    core_metrics.architecture.set(glean, &client_info.architecture);
+    core_metrics
+        .architecture
+        .set(glean, &client_info.architecture);
     // FIXME(bug 1625207): Device manufacturer should be made optional.
     core_metrics
         .device_manufacturer

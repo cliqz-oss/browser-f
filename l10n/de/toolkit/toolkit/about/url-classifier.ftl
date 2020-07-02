@@ -40,6 +40,7 @@ url-classifier-debug-sb-modules = Im abgesicherten Modus zu protokollierende Mod
 url-classifier-debug-modules = Derzeit protokollierte Module
 url-classifier-debug-sbjs-modules = JS-Protokoll im Abgesicherten Modus
 url-classifier-debug-file = Derzeitige Protokolldatei
+
 url-classifier-trigger-update = Update starten
 url-classifier-not-available = Nicht verfügbar
 url-classifier-disable-sbjs-log = JS-Protokoll im abgesicherten Modus deaktivieren

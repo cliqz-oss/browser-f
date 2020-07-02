@@ -23,7 +23,7 @@ WebRenderLayerScrollData::WebRenderLayerScrollData()
       mEventRegionsOverride(EventRegionsOverride::NoOverride),
       mFixedPositionSides(mozilla::SideBits::eNone),
       mFixedPosScrollContainerId(ScrollableLayerGuid::NULL_SCROLL_ID),
-      mRenderRoot(wr::RenderRoot::Default) {}
+      mStickyPosScrollContainerId(ScrollableLayerGuid::NULL_SCROLL_ID) {}
 
 WebRenderLayerScrollData::~WebRenderLayerScrollData() = default;
 
@@ -34,13 +34,11 @@ void WebRenderLayerScrollData::InitializeRoot(int32_t aDescendantCount) {
 void WebRenderLayerScrollData::Initialize(
     WebRenderScrollData& aOwner, nsDisplayItem* aItem, int32_t aDescendantCount,
     const ActiveScrolledRoot* aStopAtAsr,
-    const Maybe<gfx::Matrix4x4>& aAncestorTransform,
-    wr::RenderRoot aRenderRoot) {
+    const Maybe<gfx::Matrix4x4>& aAncestorTransform) {
   MOZ_ASSERT(aDescendantCount >= 0);  // Ensure value is valid
   MOZ_ASSERT(mDescendantCount ==
              -1);  // Don't allow re-setting an already set value
   mDescendantCount = aDescendantCount;
-  mRenderRoot = aRenderRoot;
 
   MOZ_ASSERT(aItem);
   aItem->UpdateScrollData(&aOwner, this);
@@ -135,8 +133,16 @@ void WebRenderLayerScrollData::Dump(const WebRenderScrollData& aOwner) const {
   printf_stderr("  scrollbar type: %d animation: %" PRIx64 "\n",
                 (int)mScrollbarData.mScrollbarLayerType,
                 mScrollbarAnimationId.valueOr(0));
-  printf_stderr("  fixed pos container: %" PRIu64 "\n",
-                mFixedPosScrollContainerId);
+  printf_stderr("  fixed container: %" PRIu64 " animation %" PRIx64 "\n",
+                mFixedPosScrollContainerId,
+                mFixedPositionAnimationId.valueOr(0));
+  printf_stderr("  sticky container: %" PRIu64 " animation %" PRIx64
+                " inner: %s outer: %s\n",
+                mStickyPosScrollContainerId,
+                mStickyPositionAnimationId.valueOr(0),
+                Stringify(mStickyScrollRangeInner).c_str(),
+                Stringify(mStickyScrollRangeOuter).c_str());
+  printf_stderr("  fixed/sticky side bits: 0x%x\n", (int)mFixedPositionSides);
 }
 
 WebRenderScrollData::WebRenderScrollData()

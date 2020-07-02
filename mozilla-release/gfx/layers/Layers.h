@@ -800,14 +800,14 @@ class LayerManager : public FrameRecorder {
    */
   virtual bool SetPendingScrollUpdateForNextTransaction(
       ScrollableLayerGuid::ViewID aScrollId,
-      const ScrollUpdateInfo& aUpdateInfo, wr::RenderRoot aRenderRoot);
+      const ScrollUpdateInfo& aUpdateInfo);
   Maybe<ScrollUpdateInfo> GetPendingScrollInfoUpdate(
       ScrollableLayerGuid::ViewID aScrollId);
   std::unordered_set<ScrollableLayerGuid::ViewID>
   ClearPendingScrollInfoUpdate();
 
  protected:
-  wr::RenderRootArray<ScrollUpdatesMap> mPendingScrollUpdates;
+  ScrollUpdatesMap mPendingScrollUpdates;
 };
 
 /**
@@ -897,7 +897,12 @@ class Layer {
      * This layer is hidden if the backface of the layer is visible
      * to user.
      */
-    CONTENT_BACKFACE_HIDDEN = 0x80
+    CONTENT_BACKFACE_HIDDEN = 0x80,
+
+    /**
+     * This layer should be snapped to the pixel grid.
+     */
+    CONTENT_SNAP_TO_GRID = 0x100
   };
   /**
    * CONSTRUCTION PHASE ONLY
@@ -984,7 +989,7 @@ class Layer {
     if (mScrollMetadata != aMetadataArray) {
       MOZ_LAYERS_LOG_IF_SHADOWABLE(this,
                                    ("Layer::Mutated(%p) FrameMetrics", this));
-      mScrollMetadata = aMetadataArray;
+      mScrollMetadata = aMetadataArray.Clone();
       ScrollMetadataChanged();
       Mutated();
     }
@@ -1160,7 +1165,7 @@ class Layer {
     if (aLayers != mAncestorMaskLayers) {
       MOZ_LAYERS_LOG_IF_SHADOWABLE(
           this, ("Layer::Mutated(%p) AncestorMaskLayers", this));
-      mAncestorMaskLayers = aLayers;
+      mAncestorMaskLayers = aLayers.Clone();
       Mutated();
     }
   }
@@ -2423,7 +2428,7 @@ class ContainerLayer : public Layer {
   // be part of mTransform.
   float mInheritedXScale;
   float mInheritedYScale;
-  // For layers corresponding to an nsDisplayResolution, the resolution of the
+  // For layers corresponding to an nsDisplayAsyncZoom, the resolution of the
   // associated pres shell; for other layers, 1.0.
   float mPresShellResolution;
   bool mUseIntermediateSurface;

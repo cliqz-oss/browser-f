@@ -22,6 +22,7 @@
 #include "nsServiceManagerUtils.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/LoadInfo.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/StorageAccess.h"
 #include "mozilla/dom/ClientIPCTypes.h"
 #include "mozilla/dom/DOMMozPromiseRequestHolder.h"
@@ -730,14 +731,14 @@ nsresult FillInOriginNoSuffix(const ServiceWorkerDescriptor& aServiceWorker,
 
   nsresult rv;
 
-  nsCOMPtr<nsIPrincipal> principal =
-      PrincipalInfoToPrincipal(aServiceWorker.PrincipalInfo(), &rv);
-  if (NS_FAILED(rv) || !principal) {
-    return rv;
+  auto principalOrErr =
+      PrincipalInfoToPrincipal(aServiceWorker.PrincipalInfo());
+  if (NS_WARN_IF(principalOrErr.isErr())) {
+    return principalOrErr.unwrapErr();
   }
 
   nsAutoCString originUTF8;
-  rv = principal->GetOriginNoSuffix(originUTF8);
+  rv = principalOrErr.unwrap()->GetOriginNoSuffix(originUTF8);
   if (NS_FAILED(rv)) {
     return rv;
   }

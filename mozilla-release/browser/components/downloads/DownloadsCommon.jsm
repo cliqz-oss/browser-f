@@ -38,11 +38,9 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   PluralForm: "resource://gre/modules/PluralForm.jsm",
-  AppConstants: "resource://gre/modules/AppConstants.jsm",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   DownloadHistory: "resource://gre/modules/DownloadHistory.jsm",
   Downloads: "resource://gre/modules/Downloads.jsm",
-  DownloadUIHelper: "resource://gre/modules/DownloadUIHelper.jsm",
   DownloadUtils: "resource://gre/modules/DownloadUtils.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
@@ -431,70 +429,23 @@ var DownloadsCommon = {
   /**
    * Opens a downloaded file.
    *
-   * @param aFile
-   *        the downloaded file to be opened.
-   * @param aMimeInfo
-   *        the mime type info object.  May be null.
-   * @param aOwnerWindow
-   *        the window with which this action is associated.
+   * @param downloadProperties
+   *        A Download object or the initial properties of a serialized download
+   * @param options.openWhere
+   *        Optional string indicating how to handle opening a download target file URI.
+   *        One of "window", "tab", "tabshifted".
+   * @return {Promise}
+   * @resolves When the instruction to launch the file has been
+   *           successfully given to the operating system or handled internally
+   * @rejects  JavaScript exception if there was an error trying to launch
+   *           the file.
    */
-  openDownloadedFile(aFile, aMimeInfo, aOwnerWindow) {
-    if (!(aFile instanceof Ci.nsIFile)) {
-      throw new Error("aFile must be a nsIFile object");
+  async openDownload(download, options) {
+    // some download objects got serialized and need reconstituting
+    if (typeof download.launch !== "function") {
+      download = await Downloads.createDownload(download);
     }
-    if (aMimeInfo && !(aMimeInfo instanceof Ci.nsIMIMEInfo)) {
-      throw new Error("Invalid value passed for aMimeInfo");
-    }
-    if (!(aOwnerWindow instanceof Ci.nsIDOMWindow)) {
-      throw new Error("aOwnerWindow must be a dom-window object");
-    }
-
-    let isWindowsExe =
-      AppConstants.platform == "win" &&
-      aFile.leafName.toLowerCase().endsWith(".exe");
-
-    let promiseShouldLaunch;
-    // Don't prompt on Windows for .exe since there will be a native prompt.
-    if (aFile.isExecutable() && !isWindowsExe) {
-      // We get a prompter for the provided window here, even though anchoring
-      // to the most recently active window should work as well.
-      promiseShouldLaunch = DownloadUIHelper.getPrompter(
-        aOwnerWindow
-      ).confirmLaunchExecutable(aFile.path);
-    } else {
-      promiseShouldLaunch = Promise.resolve(true);
-    }
-
-    promiseShouldLaunch
-      .then(shouldLaunch => {
-        if (!shouldLaunch) {
-          return;
-        }
-
-        // Actually open the file.
-        try {
-          if (
-            aMimeInfo &&
-            aMimeInfo.preferredAction == aMimeInfo.useHelperApp
-          ) {
-            aMimeInfo.launchWithFile(aFile);
-            return;
-          }
-        } catch (ex) {}
-
-        // If either we don't have the mime info, or the preferred action failed,
-        // attempt to launch the file directly.
-        try {
-          aFile.launch();
-        } catch (ex) {
-          // If launch fails, try sending it through the system's external "file:"
-          // URL handler.
-          Cc["@mozilla.org/uriloader/external-protocol-service;1"]
-            .getService(Ci.nsIExternalProtocolService)
-            .loadURI(NetUtil.newURI(aFile));
-        }
-      })
-      .catch(Cu.reportError);
+    return download.launch(options).catch(ex => Cu.reportError(ex));
   },
 
   /**
@@ -1078,7 +1029,7 @@ const DownloadsViewPrototype = {
    * @note Subclasses should override this.
    */
   onDownloadStateChanged(download) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
   /**
@@ -1110,7 +1061,7 @@ const DownloadsViewPrototype = {
    * @note Subclasses should override this.
    */
   onDownloadRemoved(download) {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
   /**
@@ -1120,7 +1071,7 @@ const DownloadsViewPrototype = {
    * @note Subclasses should override this.
    */
   _refreshProperties() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
   /**
@@ -1129,7 +1080,7 @@ const DownloadsViewPrototype = {
    * @note Subclasses should override this.
    */
   _updateView() {
-    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
   /**

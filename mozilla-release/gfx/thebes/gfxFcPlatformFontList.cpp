@@ -1356,7 +1356,8 @@ void gfxFcPlatformFontList::AddPatternToFontList(
     aFontFamily =
         static_cast<gfxFontconfigFontFamily*>(mFontFamilies.GetWeak(keyName));
     if (!aFontFamily) {
-      FontVisibility visibility = GetVisibilityForFamily(keyName);
+      FontVisibility visibility =
+          aAppFonts ? FontVisibility::Base : GetVisibilityForFamily(keyName);
       aFontFamily = new gfxFontconfigFontFamily(aFamilyName, visibility);
       mFontFamilies.Put(keyName, RefPtr{aFontFamily});
     }
@@ -1609,7 +1610,8 @@ void gfxFcPlatformFontList::InitSharedFontListForPlatform() {
         }
         */
 
-        FontVisibility visibility = GetVisibilityForFamily(keyName);
+        FontVisibility visibility =
+            aAppFont ? FontVisibility::Base : GetVisibilityForFamily(keyName);
         families.AppendElement(fontlist::Family::InitData(
             keyName, aFamilyName, /*index*/ 0, visibility,
             /*bundled*/ aAppFont, /*badUnderline*/ false));
@@ -1951,12 +1953,11 @@ bool gfxFcPlatformFontList::FindAndAddFamilies(
 
   // Because the FcConfigSubstitute call is quite expensive, we cache the
   // actual font families found via this process. So check the cache first:
-  AutoTArray<FamilyAndGeneric, 10> cachedFamilies;
-  if (mFcSubstituteCache.Get(familyName, &cachedFamilies)) {
-    if (cachedFamilies.IsEmpty()) {
+  if (auto* cachedFamilies = mFcSubstituteCache.GetValue(familyName)) {
+    if (cachedFamilies->IsEmpty()) {
       return false;
     }
-    aOutput->AppendElements(cachedFamilies);
+    aOutput->AppendElements(*cachedFamilies);
     return true;
   }
 
@@ -1976,6 +1977,7 @@ bool gfxFcPlatformFontList::FindAndAddFamilies(
   FcConfigSubstitute(nullptr, fontWithSentinel, FcMatchPattern);
 
   // Add all font family matches until reaching the sentinel.
+  AutoTArray<FamilyAndGeneric, 10> cachedFamilies;
   FcChar8* substName = nullptr;
   for (int i = 0; FcPatternGetString(fontWithSentinel, FC_FAMILY, i,
                                      &substName) == FcResultMatch;

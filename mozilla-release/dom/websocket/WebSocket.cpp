@@ -23,6 +23,7 @@
 #include "mozilla/dom/nsMixedContentBlocker.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/SerializedStackHolder.h"
+#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/WorkerRunnable.h"
@@ -579,10 +580,8 @@ void WebSocketImpl::Disconnect() {
     rv.SuppressException();
   }
 
-  NS_ReleaseOnMainThreadSystemGroup("WebSocketImpl::mChannel",
-                                    mChannel.forget());
-  NS_ReleaseOnMainThreadSystemGroup("WebSocketImpl::mService",
-                                    mService.forget());
+  NS_ReleaseOnMainThread("WebSocketImpl::mChannel", mChannel.forget());
+  NS_ReleaseOnMainThread("WebSocketImpl::mService", mService.forget());
 
   mWebSocket->DontKeepAliveAnyMore();
   mWebSocket->mImpl = nullptr;
@@ -791,10 +790,14 @@ WebSocketImpl::OnAcknowledge(nsISupports* aContext, uint32_t aSize) {
     return NS_ERROR_UNEXPECTED;
   }
 
-  mWebSocket->mOutgoingBufferedAmount -= aSize;
-  if (!mWebSocket->mOutgoingBufferedAmount.isValid()) {
+  CheckedUint64 outgoingBufferedAmount = mWebSocket->mOutgoingBufferedAmount;
+  outgoingBufferedAmount -= aSize;
+  if (!outgoingBufferedAmount.isValid()) {
     return NS_ERROR_UNEXPECTED;
   }
+
+  mWebSocket->mOutgoingBufferedAmount = outgoingBufferedAmount;
+  MOZ_RELEASE_ASSERT(mWebSocket->mOutgoingBufferedAmount.isValid());
 
   return NS_OK;
 }
@@ -894,58 +897,27 @@ JSObject* WebSocket::WrapObject(JSContext* cx,
   return WebSocket_Binding::Wrap(cx, this, aGivenProto);
 }
 
-void WebSocket::BindToOwner(nsIGlobalObject* aNew) {
-  auto scopeExit =
-      MakeScopeExit([&] { DOMEventTargetHelper::BindToOwner(aNew); });
-
-  // If we're disconnected, then there is no state to update.
-  if (!mImpl || mImpl->mDisconnectingOrDisconnected) {
-    return;
-  }
-
-  // Update state on the old window.
-  if (GetOwner()) {
-    GetOwner()->UpdateWebSocketCount(-1);
-  }
-
-  // Update state on the new window
-  nsCOMPtr<nsPIDOMWindowInner> newWindow = do_QueryInterface(aNew);
-  if (newWindow) {
-    newWindow->UpdateWebSocketCount(1);
-  }
-}
-
 //---------------------------------------------------------------------------
 // WebIDL
 //---------------------------------------------------------------------------
 
 // Constructor:
-already_AddRefed<WebSocket> WebSocket::Constructor(const GlobalObject& aGlobal,
-                                                   const nsAString& aUrl,
-                                                   ErrorResult& aRv) {
-  Sequence<nsString> protocols;
-  return WebSocket::ConstructorCommon(aGlobal, aUrl, protocols, nullptr,
-                                      EmptyCString(), aRv);
-}
+already_AddRefed<WebSocket> WebSocket::Constructor(
+    const GlobalObject& aGlobal, const nsAString& aUrl,
+    const StringOrStringSequence& aProtocols, ErrorResult& aRv) {
+  if (aProtocols.IsStringSequence()) {
+    return WebSocket::ConstructorCommon(aGlobal, aUrl,
+                                        aProtocols.GetAsStringSequence(),
+                                        nullptr, EmptyCString(), aRv);
+  }
 
-already_AddRefed<WebSocket> WebSocket::Constructor(const GlobalObject& aGlobal,
-                                                   const nsAString& aUrl,
-                                                   const nsAString& aProtocol,
-                                                   ErrorResult& aRv) {
   Sequence<nsString> protocols;
-  if (!protocols.AppendElement(aProtocol, fallible)) {
+  if (!protocols.AppendElement(aProtocols.GetAsString(), fallible)) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return nullptr;
   }
 
   return WebSocket::ConstructorCommon(aGlobal, aUrl, protocols, nullptr,
-                                      EmptyCString(), aRv);
-}
-
-already_AddRefed<WebSocket> WebSocket::Constructor(
-    const GlobalObject& aGlobal, const nsAString& aUrl,
-    const Sequence<nsString>& aProtocols, ErrorResult& aRv) {
-  return WebSocket::ConstructorCommon(aGlobal, aUrl, aProtocols, nullptr,
                                       EmptyCString(), aRv);
 }
 
@@ -1365,8 +1337,8 @@ already_AddRefed<WebSocket> WebSocket::ConstructorCommon(
     nsPIDOMWindowOuter* outerWindow = ownerWindow->GetOuterWindow();
 
     UniquePtr<SerializedStackHolder> stack;
-    nsIDocShell* docShell = outerWindow->GetDocShell();
-    if (docShell && docShell->GetWatchedByDevtools()) {
+    BrowsingContext* browsingContext = ownerWindow->GetBrowsingContext();
+    if (browsingContext && browsingContext->WatchedByDevTools()) {
       stack = GetCurrentStackForNetMonitor(aGlobal.Context());
     }
 
@@ -1390,7 +1362,7 @@ already_AddRefed<WebSocket> WebSocket::ConstructorCommon(
 
     UniquePtr<SerializedStackHolder> stack;
     WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
-    if (workerPrivate->IsWatchedByDevtools()) {
+    if (workerPrivate->IsWatchedByDevTools()) {
       stack = GetCurrentStackForNetMonitor(aGlobal.Context());
     }
 
@@ -1581,22 +1553,28 @@ nsresult WebSocketImpl::Init(JSContext* aCx, nsIPrincipal* aLoadingPrincipal,
 
   // If the HTTPS-Only mode is enabled, we need to upgrade the websocket
   // connection from ws:// to wss:// and mark it as secure.
-  if (!mIsServerSide && !mSecure &&
-      StaticPrefs::dom_security_https_only_mode()) {
-    // let's use the old specification before the upgrade for logging
-    AutoTArray<nsString, 2> params;
-    CopyUTF8toUTF16(mURI, *params.AppendElement());
+  if (!mIsServerSide && !mSecure) {
+    nsCOMPtr<nsIURI> uri;
+    nsresult rv = NS_NewURI(getter_AddRefs(uri), mURI);
+    NS_ENSURE_SUCCESS(rv, rv);
 
-    mURI.ReplaceSubstring("ws://", "wss://");
-    if (NS_WARN_IF(mURI.Find("wss://") != 0)) {
-      return NS_OK;
+    uint32_t httpsOnlyStatus = nsILoadInfo::HTTPS_ONLY_UNINITIALIZED;
+    if (originDoc) {
+      nsCOMPtr<nsIChannel> channel = originDoc->GetChannel();
+      if (channel) {
+        nsCOMPtr<nsILoadInfo> loadInfo = channel->LoadInfo();
+        httpsOnlyStatus = loadInfo->GetHttpsOnlyStatus();
+      }
     }
-    mSecure = true;
 
-    params.AppendElement(NS_LITERAL_STRING("wss"));
-    nsHTTPSOnlyUtils::LogLocalizedString("HTTPSOnlyUpgradeInsecureRequest",
-                                         params, nsIScriptError::warningFlag,
-                                         mInnerWindowID, mPrivateBrowsing);
+    if (nsHTTPSOnlyUtils::ShouldUpgradeWebSocket(
+            uri, mInnerWindowID, mPrivateBrowsing, httpsOnlyStatus)) {
+      mURI.ReplaceSubstring("ws://", "wss://");
+      if (NS_WARN_IF(mURI.Find("wss://") != 0)) {
+        return NS_OK;
+      }
+      mSecure = true;
+    }
   }
 
   // Potentially the page uses the CSP directive 'upgrade-insecure-requests'.
@@ -2195,8 +2173,8 @@ void WebSocket::SetReadyState(uint16_t aReadyState) {
   mReadyState = aReadyState;
 }
 
-// webIDL: readonly attribute unsigned long bufferedAmount;
-uint32_t WebSocket::BufferedAmount() const {
+// webIDL: readonly attribute unsigned long long bufferedAmount;
+uint64_t WebSocket::BufferedAmount() const {
   AssertIsOnTargetThread();
   MOZ_RELEASE_ASSERT(mOutgoingBufferedAmount.isValid());
   return mOutgoingBufferedAmount.value();
@@ -2305,12 +2283,16 @@ void WebSocket::Send(nsIInputStream* aMsgStream, const nsACString& aMsgString,
     return;
   }
 
-  // Always increment outgoing buffer len, even if closed
-  mOutgoingBufferedAmount += aMsgLength;
-  if (!mOutgoingBufferedAmount.isValid()) {
+  CheckedUint64 outgoingBufferedAmount = mOutgoingBufferedAmount;
+  outgoingBufferedAmount += aMsgLength;
+  if (!outgoingBufferedAmount.isValid()) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return;
   }
+
+  // Always increment outgoing buffer len, even if closed
+  mOutgoingBufferedAmount = outgoingBufferedAmount;
+  MOZ_RELEASE_ASSERT(mOutgoingBufferedAmount.isValid());
 
   if (readyState == CLOSING || readyState == CLOSED) {
     return;

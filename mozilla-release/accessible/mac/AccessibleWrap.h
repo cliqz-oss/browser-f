@@ -47,18 +47,10 @@ class AccessibleWrap : public Accessible {
 
   virtual void Shutdown() override;
 
-  virtual bool InsertChildAt(uint32_t aIdx, Accessible* aChild) override;
-  virtual bool RemoveChild(Accessible* aAccessible) override;
-
   virtual nsresult HandleAccEvent(AccEvent* aEvent) override;
 
  protected:
   friend class xpcAccessibleMacInterface;
-
-  /**
-   * Return true if the parent doesn't have children to expose to AT.
-   */
-  bool AncestorIsFlat();
 
   /**
    * Get the native object. Create it if needed.

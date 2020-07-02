@@ -2708,14 +2708,14 @@ const {
   }
 } = __webpack_require__(24);
 
-function shouldRenderRootsInReps(roots) {
+function shouldRenderRootsInReps(roots, props = {}) {
   if (roots.length !== 1) {
     return false;
   }
 
   const root = roots[0];
   const name = root && root.name;
-  return (name === null || typeof name === "undefined") && (nodeIsPrimitive(root) || nodeIsError(root));
+  return (name === null || typeof name === "undefined") && (nodeIsPrimitive(root) || nodeIsError(root) && (props === null || props === void 0 ? void 0 : props.customFormat) === true);
 }
 
 function renderRep(item, props) {
@@ -2857,7 +2857,7 @@ function FunctionRep(props) {
     // appearing in the wrong direction
     dir: "ltr"
   };
-  const parameterNames = (grip.parameterNames || []).filter(param => param);
+  const parameterNames = (grip.parameterNames || []).filter(Boolean);
 
   if (grip.isClassConstructor) {
     return span(elProps, getClassTitle(grip, props), getFunctionName(grip, props), ...getClassBody(parameterNames, props), jumpToDefinitionButton);
@@ -3099,11 +3099,30 @@ ErrorRep.propTypes = {
   // An optional function that will be used to render the Error stacktrace.
   renderStacktrace: PropTypes.func
 };
+/**
+ * Render an Error object.
+ * The customFormat prop allows to print a simplified view of the object, with only the
+ * message and the stacktrace, e.g.:
+ *      Error: "blah"
+ *          <anonymous> debugger eval code:1
+ *
+ * The customFormat prop will only be taken into account if the mode isn't tiny and the
+ * depth is 0. This is because we don't want error in previews or in object to be
+ * displayed unlike other objects:
+ *      - Object { err: Error }
+ *      - ▼ {
+ *            err: Error: "blah"
+ *        }
+ */
 
 function ErrorRep(props) {
-  const object = props.object;
+  const {
+    object,
+    mode,
+    depth
+  } = props;
   const preview = object.preview;
-  const mode = props.mode;
+  const customFormat = props.customFormat && mode !== MODE.TINY && !depth;
   let name;
 
   if (preview && preview.name && typeof preview.name === "string" && preview.kind) {
@@ -3123,23 +3142,42 @@ function ErrorRep(props) {
     name = "Error";
   }
 
+  const errorTitle = mode === MODE.TINY ? name : `${name}: `;
   const content = [];
 
-  if (mode === MODE.TINY || typeof preview.message !== "string") {
-    content.push(name);
+  if (customFormat) {
+    content.push(errorTitle);
   } else {
-    content.push(`${name}: "${preview.message}"`);
+    content.push(span({
+      className: "objectTitle",
+      key: "title"
+    }, errorTitle));
   }
 
-  if (preview.stack && mode !== MODE.TINY && mode !== MODE.SHORT) {
+  if (mode !== MODE.TINY) {
+    const {
+      Rep
+    } = __webpack_require__(24);
+
+    content.push(Rep({ ...props,
+      key: "message",
+      object: preview.message,
+      mode: props.mode || MODE.TINY,
+      useQuotes: false
+    }));
+  }
+
+  const renderStack = preview.stack && customFormat;
+
+  if (renderStack) {
     const stacktrace = props.renderStacktrace ? props.renderStacktrace(parseStackString(preview.stack)) : getStacktraceElements(props, preview);
     content.push(stacktrace);
   }
 
   return span({
     "data-link-actor-id": object.actor,
-    className: "objectBox-stackTrace"
-  }, content);
+    className: `objectBox-stackTrace ${customFormat ? "reps-custom-format" : ""}`
+  }, ...content);
 }
 /**
  * Returns a React element reprensenting the Error stacktrace, i.e.
@@ -5130,6 +5168,7 @@ function getLinkifiedElements({
         // displayed in content page (e.g. in the JSONViewer).
         href: openLink || isInContentPage ? useUrl : null,
         target: "_blank",
+        rel: "noopener noreferrer",
         onClick: openLink ? e => {
           e.preventDefault();
           openLink(useUrl, e);
@@ -6796,7 +6835,8 @@ const {
 const {
   getGripType,
   isGrip,
-  wrapRender
+  wrapRender,
+  ELLIPSIS
 } = __webpack_require__(2);
 /**
  * Renders a grip object with regular expression.
@@ -6818,7 +6858,15 @@ function RegExp(props) {
 }
 
 function getSource(grip) {
-  return grip.displayString;
+  const {
+    displayString
+  } = grip;
+
+  if ((displayString === null || displayString === void 0 ? void 0 : displayString.type) === "longString") {
+    return `${displayString.initial}${ELLIPSIS}`;
+  }
+
+  return displayString;
 } // Registration
 
 
@@ -7884,7 +7932,7 @@ module.exports = props => {
     return null;
   }
 
-  if (shouldRenderRootsInReps(roots)) {
+  if (shouldRenderRootsInReps(roots, props)) {
     return renderRep(roots[0], props);
   }
 

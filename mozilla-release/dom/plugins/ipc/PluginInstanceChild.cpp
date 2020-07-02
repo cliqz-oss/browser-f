@@ -49,7 +49,6 @@ using namespace mozilla::widget;
 #  include <gtk/gtk.h>
 #  include <gdk/gdkx.h>
 #  include <gdk/gdk.h>
-#  include "gtk2xtbin.h"
 
 #elif defined(OS_WIN)
 
@@ -124,8 +123,8 @@ PluginInstanceChild::PluginInstanceChild(const NPPluginFuncs* aPluginIface,
                                          const nsTArray<nsCString>& aValues)
     : mPluginIface(aPluginIface),
       mMimeType(aMimeType),
-      mNames(aNames),
-      mValues(aValues)
+      mNames(aNames.Clone()),
+      mValues(aValues.Clone())
 #if defined(XP_DARWIN) || defined(XP_WIN)
       ,
       mContentsScaleFactor(1.0)

@@ -376,6 +376,11 @@ static nsTArray<uint8_t> GetDisplayICCProfile(Display* dpy, Window& root) {
 }
 
 nsTArray<uint8_t> gfxPlatformGtk::GetPlatformCMSOutputProfileData() {
+  nsTArray<uint8_t> prefProfileData = GetPrefCMSOutputProfileData();
+  if (!prefProfileData.IsEmpty()) {
+    return prefProfileData;
+  }
+
   if (!mIsX11Display) {
     return nsTArray<uint8_t>();
   }
@@ -495,8 +500,6 @@ class GtkVsyncSource final : public VsyncSource {
   virtual Display& GetGlobalDisplay() override { return *mGlobalDisplay; }
 
   class GLXDisplay final : public VsyncSource::Display {
-    NS_INLINE_DECL_THREADSAFE_REFCOUNTING(GLXDisplay)
-
    public:
     GLXDisplay()
         : mGLContext(nullptr),

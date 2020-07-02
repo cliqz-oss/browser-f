@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/HTMLEditor.h"
+#include "HTMLEditor.h"
 
+#include "HTMLEditUtils.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/PresShellInlines.h"
@@ -193,8 +194,8 @@ ManualNACPtr HTMLEditor::CreateAnonymousElement(nsAtom* aTag,
     styleSet->StyleNewSubtree(newNativeAnonymousContent);
   }
 
-  ElementDeletionObserver* observer = new ElementDeletionObserver(
-      newNativeAnonymousContent, aParentContent.AsElement());
+  auto* observer = new ElementDeletionObserver(newNativeAnonymousContent,
+                                               aParentContent.AsElement());
   NS_ADDREF(observer);  // NodeWillBeDestroyed releases.
   aParentContent.AddMutationObserver(observer);
   newNativeAnonymousContent->AddMutationObserver(observer);
@@ -247,7 +248,7 @@ void HTMLEditor::DeleteRefToAnonymousNode(ManualNACPtr aContent,
   // See bug 338129.
   if (aContent->IsInComposedDoc() && aPresShell &&
       !aPresShell->IsDestroying()) {
-    MOZ_ASSERT(aContent->IsRootOfAnonymousSubtree());
+    MOZ_ASSERT(aContent->IsRootOfNativeAnonymousSubtree());
     MOZ_ASSERT(!aContent->GetPreviousSibling(), "NAC has no siblings");
 
     // FIXME(emilio): This is the only caller to PresShell::ContentRemoved that
@@ -361,13 +362,16 @@ nsresult HTMLEditor::RefreshEditingUI() {
     // Absolute Positioning support is enabled, is the selection contained
     // in an absolutely positioned element ?
     absPosElement = GetAbsolutelyPositionedSelectionContainer();
+    if (NS_WARN_IF(Destroyed())) {
+      return NS_ERROR_EDITOR_DESTROYED;
+    }
   }
 
   RefPtr<Element> cellElement;
   if (IsObjectResizerEnabled() || IsInlineTableEditorEnabled()) {
     // Resizing or Inline Table Editing is enabled, we need to check if the
     // selection is contained in a table cell
-    cellElement = GetElementOrParentByTagNameAtSelection(*nsGkAtoms::td);
+    cellElement = GetInclusiveAncestorByTagNameAtSelection(*nsGkAtoms::td);
   }
 
   if (IsObjectResizerEnabled() && cellElement) {
@@ -379,9 +383,10 @@ nsresult HTMLEditor::RefreshEditingUI() {
       // the element container of the selection is not an image, so we'll show
       // the resizers around the table
       // XXX There may be a bug.  cellElement may be not in <table> in invalid
-      //     tree.  So, perhaps, GetEnclosingTable() returns nullptr, we should
-      //     not set focusTagAtom to nsGkAtoms::table.
-      focusElement = GetEnclosingTable(cellElement);
+      //     tree.  So, perhaps, GetClosestAncestorTableElement() returns
+      //     nullptr, we should not set focusTagAtom to nsGkAtoms::table.
+      focusElement =
+          HTMLEditUtils::GetClosestAncestorTableElement(*cellElement);
       focusTagAtom = nsGkAtoms::table;
     }
   }
@@ -433,7 +438,8 @@ nsresult HTMLEditor::RefreshEditingUI() {
   nsIContent* hostContent = GetActiveEditingHost();
 
   if (IsObjectResizerEnabled() && focusElement &&
-      IsModifiableNode(*focusElement) && focusElement != hostContent) {
+      HTMLEditUtils::IsSimplyEditableNode(*focusElement) &&
+      focusElement != hostContent) {
     if (nsGkAtoms::img == focusTagAtom) {
       mResizedObjectIsAnImage = true;
     }
@@ -453,7 +459,8 @@ nsresult HTMLEditor::RefreshEditingUI() {
   }
 
   if (IsAbsolutePositionEditorEnabled() && absPosElement &&
-      IsModifiableNode(*absPosElement) && absPosElement != hostContent) {
+      HTMLEditUtils::IsSimplyEditableNode(*absPosElement) &&
+      absPosElement != hostContent) {
     if (mAbsolutelyPositionedObject) {
       nsresult rv = RefreshGrabberInternal();
       if (NS_FAILED(rv)) {
@@ -469,8 +476,10 @@ nsresult HTMLEditor::RefreshEditingUI() {
     }
   }
 
+  // XXX Shouldn't we check whether the `<table>` element is editable or not?
   if (IsInlineTableEditorEnabled() && cellElement &&
-      IsModifiableNode(*cellElement) && cellElement != hostContent) {
+      HTMLEditUtils::IsSimplyEditableNode(*cellElement) &&
+      cellElement != hostContent) {
     if (mInlineEditedCell) {
       nsresult rv = RefreshInlineTableEditingUIInternal();
       if (NS_FAILED(rv)) {
@@ -505,6 +514,9 @@ nsresult HTMLEditor::GetPositionAndDimensions(Element& aElement, int32_t& aX,
     nsAutoString positionValue;
     DebugOnly<nsresult> rvIgnored = CSSEditUtils::GetComputedProperty(
         aElement, *nsGkAtoms::position, positionValue);
+    if (NS_WARN_IF(Destroyed())) {
+      return NS_ERROR_EDITOR_DESTROYED;
+    }
     NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                          "CSSEditUtils::GetComputedProperty(nsGkAtoms::"
                          "position) failed, but ignored");

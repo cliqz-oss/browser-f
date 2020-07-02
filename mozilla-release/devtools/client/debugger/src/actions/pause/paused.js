@@ -8,12 +8,13 @@ import {
   isEvaluatingExpression,
   getSelectedFrame,
   getThreadContext,
+  getIsPaused,
 } from "../../selectors";
 
 import { mapFrames, fetchFrames } from ".";
 import { removeBreakpoint } from "../breakpoints";
 import { evaluateExpressions } from "../expressions";
-import { selectLocation } from "../sources";
+import { selectSpecificLocation } from "../sources";
 import assert from "../../utils/assert";
 
 import { fetchScopes } from "./fetchScopes";
@@ -32,6 +33,11 @@ export function paused(pauseInfo: Pause) {
   return async function({ dispatch, getState, client, sourceMaps }: ThunkArgs) {
     const { thread, frame, why } = pauseInfo;
 
+    // prevents redundant pauses, which is possible when we call checkIfAlreadyPaused. This can likely go away in the next set of patches , which exclusively use targetList
+    if (getIsPaused(getState(), thread)) {
+      return;
+    }
+
     dispatch({ type: "PAUSED", thread, why, frame });
 
     // Get a context capturing the newly paused and selected thread.
@@ -49,7 +55,7 @@ export function paused(pauseInfo: Pause) {
 
     const selectedFrame = getSelectedFrame(getState(), thread);
     if (selectedFrame) {
-      await dispatch(selectLocation(cx, selectedFrame.location));
+      await dispatch(selectSpecificLocation(cx, selectedFrame.location));
     }
 
     await dispatch(fetchScopes(cx));

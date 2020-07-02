@@ -42,6 +42,8 @@
 <!ENTITY  newMessageCmd.accesskey "N">
 <!ENTITY  newContactCmd.label "Adressbuchkontakt…">
 <!ENTITY  newContactCmd.accesskey "k">
+<!ENTITY openMenuCmd.label "Öffnen">
+<!ENTITY openMenuCmd.accesskey "Ö">
 <!ENTITY openMessageFileCmd.label "Datei öffnen…">
 <!ENTITY openMessageFileCmd.accesskey "ö">
 <!ENTITY saveAsMenu.label "Speichern als">
@@ -172,7 +174,6 @@
 <!ENTITY compactVersion.accesskey "K">
 <!ENTITY folderPaneBar.label "Konten-/Ordneransicht">
 <!ENTITY folderPaneBar.accesskey "K">
-<!ENTITY folderModeSelector.label "Ordneransichten">
 
 <!-- Sort Menu -->
 <!ENTITY sortMenu.label "Sortieren nach">
@@ -288,6 +289,8 @@
 <!ENTITY searchMailCmd.label "Nachrichten suchen…">
 <!ENTITY searchMailCmd.accesskey "N">
 <!ENTITY searchMailCmd.key "f">
+<!ENTITY glodaSearchCmd.label "Globale Suche…">
+<!ENTITY glodaSearchCmd.accesskey "G">
 <!ENTITY searchAddressesCmd.label "Adressen suchen…">
 <!ENTITY searchAddressesCmd.accesskey "A">
 
@@ -323,7 +326,6 @@
 <!ENTITY goBackCmd.commandKey "[">
 <!ENTITY goChatCmd.label "Chat">
 <!ENTITY goChatCmd.accesskey "h">
-<!ENTITY goChatCmd.key "I">
 <!ENTITY goChatCmd2.key "H">
 <!ENTITY prevStarredMsgCmd.label "Gekennzeichnete Nachricht">
 <!ENTITY prevStarredMsgCmd.accesskey "G">
@@ -441,9 +443,6 @@
 <!ENTITY openMessageWindowCmd.label "Öffnen">
 <!ENTITY openMessageWindowCmd.accesskey "Ö">
 <!ENTITY openMessageWindowCmd.key "o">
-<!ENTITY openConversationCmd.label "In Themenbaum anzeigen">
-<!ENTITY openConversationCmd.accesskey "z">
-<!ENTITY openConversationCmd.key "o">
 <!ENTITY openInConversationCmd.label "In Themenbaum anzeigen">
 <!ENTITY openInConversationCmd.accesskey "z">
 <!ENTITY openInConversationCmd.key "o">
@@ -519,8 +518,6 @@
 <!ENTITY devToolboxCmd.label "Entwickler-Werkzeugkasten">
 <!ENTITY devToolboxCmd.accesskey "W">
 <!ENTITY devToolboxCmd.commandkey "i">
-<!ENTITY addonDebugCmd.label "Addon-Debugger">
-<!ENTITY addonDebugCmd.accesskey "A">
 <!ENTITY debugAddonsCmd.label "Add-ons debuggen">
 <!ENTITY debugAddonsCmd.accesskey "A">
 <!ENTITY tabsDebugCmd.label "Inhaltsframe-Debugger">
@@ -593,6 +590,7 @@
 <!ENTITY fileButton.tooltip "Gewählte Nachricht(en) ablegen">
 <!ENTITY archiveButton.tooltip "Gewählte Nachricht(en) archivieren">
 <!ENTITY openConversationButton.tooltip "Themenbaum der Nachricht anzeigen">
+<!ENTITY openMsgConversationButton.tooltip "Konversation für ausgewählte Nachrichten anzeigen">
 <!ENTITY nextButton.tooltip "Gehe zur nächsten ungelesenen Nachricht">
 <!ENTITY nextMsgButton.tooltip "Gehe zur nächsten Nachricht">
 <!ENTITY previousButton.tooltip "Gehe zur vorherigen ungelesenen Nachricht">
@@ -712,6 +710,7 @@
 <!ENTITY saveAsVirtualFolderMenu.label "Als virtuellen Ordner speichern…">
 
 <!-- Thread Pane -->
+<!ENTITY selectColumn.label "Nachrichten auswählen">
 <!ENTITY threadColumn.label "Thema">
 <!ENTITY fromColumn.label "Von">
 <!ENTITY recipientColumn.label "Empfänger">
@@ -733,8 +732,11 @@
 <!ENTITY idColumn.label "Eingangsreihenfolge">
 <!ENTITY attachmentColumn.label "Anhänge">
 
+<!ENTITY deleteColumn.label "Löschen">
+
 <!-- Thread Pane Tooltips -->
 <!ENTITY columnChooser2.tooltip "Anzuzeigende Spalten auswählen">
+<!ENTITY selectColumn.tooltip "Auswahl der angezeigten Nachrichten umschalten">
 <!ENTITY threadColumn2.tooltip "Themenbäume anzeigen">
 <!ENTITY fromColumn2.tooltip "Nach Von sortieren">
 <!ENTITY recipientColumn2.tooltip "Nach Empfänger sortieren">
@@ -755,6 +757,8 @@
 <!ENTITY locationColumn2.tooltip "Nach Ablageort sortieren">
 <!ENTITY idColumn2.tooltip "Nach Eingangsreihenfolge sortieren">
 <!ENTITY attachmentColumn2.tooltip "Nach Anhängen sortieren">
+
+<!ENTITY deleteColumn.tooltip "Nachricht löschen">
 
 <!-- Thread Pane Context Menu -->
 <!ENTITY contextNewMsgFromTemplate.label "Neue Nachricht aus Vorlage">
@@ -821,11 +825,7 @@
 <!ENTITY contextPrintPreview.accesskey "u">
 
 <!-- Thread Pane Column Picker -->
-<!-- LOCALIZATION NOTE (columnPicker.resetToInbox.label):
-   This option in the thread pane column picker causes us to reset the
-   customizations for the thread pane columns in this folder to their default.
-  -->
-<!ENTITY columnPicker.resetToInbox.label "Standardspalten wiederherstellen">
+
 <!-- LOCALIZATION NOTE (columnPicker.applyTo.label):
    This option in the thread pane column picker pops up a sub-menu containing
    the "columnPicker.applyToFolder.label" and
@@ -982,3 +982,7 @@
 <!ENTITY dockOptions.label              "Dock-Symbol-Einstellungen…">
 <!ENTITY writeNewMessageDock.label      "Neue Nachricht verfassen">
 <!ENTITY openAddressBookDock.label      "Adressbuch öffnen">
+
+<!-- Content tab Navigation buttons -->
+<!ENTITY browseBackButton.tooltip    "Eine Seite zurück">
+<!ENTITY browseForwardButton.tooltip "Eine Seite vor">

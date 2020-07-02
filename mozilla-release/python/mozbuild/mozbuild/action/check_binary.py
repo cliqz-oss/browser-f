@@ -22,8 +22,9 @@ from mozpack.executables import (
 )
 
 
-STDCXX_MAX_VERSION = Version('3.4.17')
-GLIBC_MAX_VERSION = Version('2.12')
+STDCXX_MAX_VERSION = Version('3.4.19')
+CXXABI_MAX_VERSION = Version('1.3.7')
+GLIBC_MAX_VERSION = Version('2.17')
 LIBGCC_MAX_VERSION = Version('4.8')
 
 HOST = {
@@ -160,8 +161,15 @@ def check_dep_versions(target, binary, lib, prefix, max_version):
     prefix = prefix + '_'
     try:
         for sym in at_least_one(iter_symbols(binary)):
-            if sym['addr'] == 0 and sym['version'] and \
-                    sym['version'].startswith(prefix):
+            # Only check versions on undefined symbols
+            if sym['addr'] != 0:
+                continue
+
+            # No version to check
+            if not sym['version']:
+                continue
+
+            if sym['version'].startswith(prefix):
                 version = Version(sym['version'][len(prefix):])
                 if version > max_version:
                     unwanted.append(sym)
@@ -178,6 +186,8 @@ def check_dep_versions(target, binary, lib, prefix, max_version):
 def check_stdcxx(target, binary):
     check_dep_versions(
         target, binary, 'libstdc++', 'GLIBCXX', STDCXX_MAX_VERSION)
+    check_dep_versions(
+        target, binary, 'libstdc++', 'CXXABI', CXXABI_MAX_VERSION)
 
 
 def check_libgcc(target, binary):

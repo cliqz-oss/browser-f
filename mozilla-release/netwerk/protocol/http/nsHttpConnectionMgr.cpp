@@ -590,8 +590,8 @@ class nsCompleteUpgradeData : public ARefBase {
 
  private:
   virtual ~nsCompleteUpgradeData() {
-    NS_ReleaseOnMainThreadSystemGroup("nsCompleteUpgradeData.mUpgradeListener",
-                                      mUpgradeListener.forget());
+    NS_ReleaseOnMainThread("nsCompleteUpgradeData.mUpgradeListener",
+                           mUpgradeListener.forget());
   }
 };
 
@@ -5720,6 +5720,10 @@ void nsHttpConnectionMgr::MoveToWildCardConnEntry(
 }
 
 nsHttpConnectionMgr* nsHttpConnectionMgr::AsHttpConnectionMgr() { return this; }
+
+HttpConnectionMgrParent* nsHttpConnectionMgr::AsHttpConnectionMgrParent() {
+  return nullptr;
+}
 
 }  // namespace net
 }  // namespace mozilla

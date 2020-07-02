@@ -3,9 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*
- */
-
 #ifndef nsDocLoader_h__
 #define nsDocLoader_h__
 
@@ -34,6 +31,7 @@
 namespace mozilla {
 namespace dom {
 class BrowserBridgeChild;
+class BrowsingContext;
 }  // namespace dom
 }  // namespace mozilla
 
@@ -63,7 +61,9 @@ class nsDocLoader : public nsIDocumentLoader,
 
   nsDocLoader();
 
-  virtual MOZ_MUST_USE nsresult Init();
+  [[nodiscard]] virtual nsresult Init();
+  [[nodiscard]] nsresult InitWithBrowsingContext(
+      mozilla::dom::BrowsingContext* aBrowsingContext);
 
   static already_AddRefed<nsDocLoader> GetAsDocLoader(nsISupports* aSupports);
   // Needed to deal with ambiguous inheritance from nsISupports...
@@ -72,8 +72,8 @@ class nsDocLoader : public nsIDocumentLoader,
   }
 
   // Add aDocLoader as a child to the docloader service.
-  static MOZ_MUST_USE nsresult
-  AddDocLoaderAsChildOfRoot(nsDocLoader* aDocLoader);
+  [[nodiscard]] static nsresult AddDocLoaderAsChildOfRoot(
+      nsDocLoader* aDocLoader);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsDocLoader, nsIDocumentLoader)
@@ -89,16 +89,17 @@ class nsDocLoader : public nsIDocumentLoader,
 
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSICHANNELEVENTSINK
-  NS_DECL_NSISUPPORTSPRIORITY
+  NS_DECL_NSISUPPORTSPRIORITY;  // semicolon for clang-format bug 1629756
 
   // Implementation specific methods...
 
   // Remove aChild from our childlist.  This nulls out the child's mParent
   // pointer.
-  MOZ_MUST_USE nsresult RemoveChildLoader(nsDocLoader* aChild);
+  [[nodiscard]] nsresult RemoveChildLoader(nsDocLoader* aChild);
+
   // Add aChild to our child list.  This will set aChild's mParent pointer to
   // |this|.
-  MOZ_MUST_USE nsresult AddChildLoader(nsDocLoader* aChild);
+  [[nodiscard]] nsresult AddChildLoader(nsDocLoader* aChild);
   nsDocLoader* GetParent() const { return mParent; }
 
   struct nsListenerInfo {
@@ -160,7 +161,7 @@ class nsDocLoader : public nsIDocumentLoader,
  protected:
   virtual ~nsDocLoader();
 
-  virtual MOZ_MUST_USE nsresult SetDocLoaderParent(nsDocLoader* aLoader);
+  [[nodiscard]] virtual nsresult SetDocLoaderParent(nsDocLoader* aLoader);
 
   bool IsBusy();
 
@@ -204,8 +205,9 @@ class nsDocLoader : public nsIDocumentLoader,
   void FireOnLocationChange(nsIWebProgress* aWebProgress, nsIRequest* aRequest,
                             nsIURI* aUri, uint32_t aFlags);
 
-  MOZ_MUST_USE bool RefreshAttempted(nsIWebProgress* aWebProgress, nsIURI* aURI,
-                                     int32_t aDelay, bool aSameURI);
+  [[nodiscard]] bool RefreshAttempted(nsIWebProgress* aWebProgress,
+                                      nsIURI* aURI, int32_t aDelay,
+                                      bool aSameURI);
 
   // this function is overridden by the docshell, it is provided so that we
   // can pass more information about redirect state (the normal OnStateChange
@@ -227,7 +229,7 @@ class nsDocLoader : public nsIDocumentLoader,
 
   // Inform a parent docloader that aChild is about to call its onload
   // handler.
-  MOZ_MUST_USE bool ChildEnteringOnload(nsIDocumentLoader* aChild) {
+  [[nodiscard]] bool ChildEnteringOnload(nsIDocumentLoader* aChild) {
     // It's ok if we're already in the list -- we'll just be in there twice
     // and then the RemoveObject calls from ChildDoneWithOnload will remove
     // us.

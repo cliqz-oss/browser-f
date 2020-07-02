@@ -446,7 +446,7 @@ static inline bool IsSystemPrincipal(nsIPrincipal* aPrincipal) {
 
 bool ChannelWrapper::IsSystemLoad() const {
   if (nsCOMPtr<nsILoadInfo> loadInfo = GetLoadInfo()) {
-    if (nsIPrincipal* prin = loadInfo->LoadingPrincipal()) {
+    if (nsIPrincipal* prin = loadInfo->GetLoadingPrincipal()) {
       return IsSystemPrincipal(prin);
     }
 
@@ -470,7 +470,7 @@ bool ChannelWrapper::CanModify() const {
   }
 
   if (nsCOMPtr<nsILoadInfo> loadInfo = GetLoadInfo()) {
-    if (nsIPrincipal* prin = loadInfo->LoadingPrincipal()) {
+    if (nsIPrincipal* prin = loadInfo->GetLoadingPrincipal()) {
       if (IsSystemPrincipal(prin)) {
         return false;
       }
@@ -489,7 +489,8 @@ already_AddRefed<nsIURI> ChannelWrapper::GetOriginURI() const {
   if (nsCOMPtr<nsILoadInfo> loadInfo = GetLoadInfo()) {
     if (nsIPrincipal* prin = loadInfo->TriggeringPrincipal()) {
       if (prin->GetIsContentPrincipal()) {
-        Unused << prin->GetURI(getter_AddRefs(uri));
+        auto* basePrin = BasePrincipal::Cast(prin);
+        Unused << basePrin->GetURI(getter_AddRefs(uri));
       }
     }
   }
@@ -499,9 +500,10 @@ already_AddRefed<nsIURI> ChannelWrapper::GetOriginURI() const {
 already_AddRefed<nsIURI> ChannelWrapper::GetDocumentURI() const {
   nsCOMPtr<nsIURI> uri;
   if (nsCOMPtr<nsILoadInfo> loadInfo = GetLoadInfo()) {
-    if (nsIPrincipal* prin = loadInfo->LoadingPrincipal()) {
+    if (nsIPrincipal* prin = loadInfo->GetLoadingPrincipal()) {
       if (prin->GetIsContentPrincipal()) {
-        Unused << prin->GetURI(getter_AddRefs(uri));
+        auto* basePrin = BasePrincipal::Cast(prin);
+        Unused << basePrin->GetURI(getter_AddRefs(uri));
       }
     }
   }
@@ -697,12 +699,7 @@ nsresult ChannelWrapper::GetFrameAncestors(
 
   for (uint32_t i = 0; i < size; ++i) {
     auto ancestor = aFrameAncestors.AppendElement();
-    nsCOMPtr<nsIURI> uri;
-    MOZ_TRY(ancestorPrincipals[i]->GetURI(getter_AddRefs(uri)));
-    if (!uri) {
-      return NS_ERROR_UNEXPECTED;
-    }
-    MOZ_TRY(uri->GetSpec(ancestor->mUrl));
+    MOZ_TRY(ancestorPrincipals[i]->GetAsciiSpec(ancestor->mUrl));
     ancestor->mFrameId =
         NormalizeWindowID(aLoadInfo, ancestorOuterWindowIDs[i]);
   }
@@ -773,8 +770,6 @@ MozContentPolicyType GetContentPolicyType(uint32_t aType) {
     // TYPE_FETCH returns xmlhttprequest for cross-browser compatibility.
     case nsIContentPolicy::TYPE_FETCH:
       return MozContentPolicyType::Xmlhttprequest;
-    case nsIContentPolicy::TYPE_XBL:
-      return MozContentPolicyType::Xbl;
     case nsIContentPolicy::TYPE_XSLT:
       return MozContentPolicyType::Xslt;
     case nsIContentPolicy::TYPE_PING:
@@ -1039,8 +1034,8 @@ NS_IMPL_ISUPPORTS(ChannelWrapper::RequestListener, nsIStreamListener,
                   nsIRequestObserver, nsIThreadRetargetableStreamListener)
 
 ChannelWrapper::RequestListener::~RequestListener() {
-  NS_ReleaseOnMainThreadSystemGroup("RequestListener::mChannelWrapper",
-                                    mChannelWrapper.forget());
+  NS_ReleaseOnMainThread("RequestListener::mChannelWrapper",
+                         mChannelWrapper.forget());
 }
 
 nsresult ChannelWrapper::RequestListener::Init() {

@@ -38,12 +38,21 @@ void RemoteDecoderManagerChild::InitializeThread() {
 
   if (!sRemoteDecoderManagerChildThread) {
     RefPtr<nsIThread> childThread;
-    nsresult rv = NS_NewNamedThread("RemVidChild", getter_AddRefs(childThread));
+    nsresult rv = NS_NewNamedThread(
+        "RemVidChild", getter_AddRefs(childThread),
+        NS_NewRunnableFunction(
+            "RemoteDecoderManagerChild::InitializeThread::AbstractThread",
+            []() {
+              // We create an AbstractThread for this thread so that we can
+              // use direct task
+              // dispatching with MozPromise, which is similar (but not
+              // identical to) the microtask semantics of JS promises.
+              sRemoteDecoderManagerChildAbstractThread =
+                  AbstractThread::CreateXPCOMThreadWrapper(
+                      NS_GetCurrentThread(), false /* require tail dispatch */);
+            }));
     NS_ENSURE_SUCCESS_VOID(rv);
     sRemoteDecoderManagerChildThread = childThread;
-
-    sRemoteDecoderManagerChildAbstractThread =
-        AbstractThread::CreateXPCOMThreadWrapper(childThread, false);
 
     sRecreateTasks = MakeUnique<nsTArray<RefPtr<Runnable>>>();
   }
@@ -91,8 +100,8 @@ void RemoteDecoderManagerChild::Shutdown() {
             }),
         NS_DISPATCH_NORMAL);
 
-    sRemoteDecoderManagerChildAbstractThread = nullptr;
     sRemoteDecoderManagerChildThread->Shutdown();
+    sRemoteDecoderManagerChildAbstractThread = nullptr;
     sRemoteDecoderManagerChildThread = nullptr;
 
     sRecreateTasks = nullptr;
@@ -128,11 +137,6 @@ RemoteDecoderManagerChild* RemoteDecoderManagerChild::GetGPUProcessSingleton() {
 /* static */
 nsIThread* RemoteDecoderManagerChild::GetManagerThread() {
   return sRemoteDecoderManagerChildThread;
-}
-
-/* static */
-AbstractThread* RemoteDecoderManagerChild::GetManagerAbstractThread() {
-  return sRemoteDecoderManagerChildAbstractThread;
 }
 
 PRemoteDecoderChild* RemoteDecoderManagerChild::AllocPRemoteDecoderChild(

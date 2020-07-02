@@ -158,10 +158,6 @@ add_task(async function open_10_tabs() {
     "network.loadinfo.skip_type_assertion": {
       // This is accessed in debug only.
     },
-    "toolkit.cosmeticAnimations.enabled": {
-      min: 5,
-      max: 20,
-    },
   };
 
   Services.prefs.resetStats();
@@ -197,10 +193,6 @@ add_task(async function navigate_around() {
     "network.loadinfo.skip_type_assertion": {
       // This is accessed in debug only.
     },
-    "toolkit.cosmeticAnimations.enabled": {
-      min: 45,
-      max: 55,
-    },
   };
 
   if (SpecialPowers.useRemoteSubframes) {
@@ -232,6 +224,27 @@ add_task(async function navigate_around() {
         max: 51,
       };
       whitelist["security.sandbox.content.force-namespace"] = {
+        min: 50,
+        max: 51,
+      };
+    } else if (AppConstants.platform == "win") {
+      // The following 2 graphics prefs are covered by
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=1639497
+      whitelist["gfx.canvas.azure.backends"] = {
+        min: 100,
+        max: 101,
+      };
+      whitelist["gfx.content.azure.backends"] = {
+        min: 100,
+        max: 101,
+      };
+      // The following 2 sandbox prefs are covered by
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=1639494
+      whitelist["security.sandbox.content.read_path_whitelist"] = {
+        min: 50,
+        max: 51,
+      };
+      whitelist["security.sandbox.logging.enabled"] = {
         min: 50,
         max: 51,
       };

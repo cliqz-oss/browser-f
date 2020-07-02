@@ -8,6 +8,7 @@
 
 #include <utility>
 
+#include "js/Exception.h"  // JS::ExceptionStack, JS::StealPendingExceptionStack
 #include "jsapi.h"
 
 #include "nsCOMPtr.h"
@@ -30,8 +31,8 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/OwningNonNull.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/ScopeExit.h"
-#include "mozilla/SystemGroup.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/BindingDeclarations.h"
@@ -380,7 +381,8 @@ bool ServiceWorkerOp::MaybeStart(RemoteWorkerChild* aOwner,
 
   mStarted = true;
 
-  MOZ_ALWAYS_SUCCEEDS(SystemGroup::Dispatch(TaskCategory::Other, r.forget()));
+  MOZ_ALWAYS_SUCCEEDS(
+      SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
 
   return true;
 }
@@ -972,7 +974,7 @@ class MessageEventOp final : public ExtendableEventOp {
     // https://w3c.github.io/ServiceWorker/#service-worker-postmessage
     if (!deserializationFailed) {
       init.mData = messageData;
-      init.mPorts = ports;
+      init.mPorts = std::move(ports);
     }
 
     init.mSource.SetValue().SetAsClient() = new Client(
@@ -1050,16 +1052,14 @@ class MOZ_STACK_CLASS FetchEventOp::AutoCancel {
     MOZ_ASSERT(!aRv.Failed());
 
     // Let's take the pending exception.
-    JS::Rooted<JS::Value> exn(aCx);
-    if (!JS_GetPendingException(aCx, &exn)) {
+    JS::ExceptionStack exnStack(aCx);
+    if (!JS::StealPendingExceptionStack(aCx, &exnStack)) {
       return;
     }
 
-    JS_ClearPendingException(aCx);
-
-    // Converting the exception in a js::ErrorReport.
-    js::ErrorReport report(aCx);
-    if (!report.init(aCx, exn, js::ErrorReport::WithSideEffects)) {
+    // Converting the exception in a JS::ErrorReportBuilder.
+    JS::ErrorReportBuilder report(aCx);
+    if (!report.init(aCx, exnStack, JS::ErrorReportBuilder::WithSideEffects)) {
       JS_ClearPendingException(aCx);
       return;
     }
@@ -1502,7 +1502,8 @@ nsresult FetchEventOp::DispatchFetchEvent(JSContext* aCx,
    * correct thread before creating this op, so we can take its saved
    * InternalRequest.
    */
-  RefPtr<InternalRequest> internalRequest = mActor->ExtractInternalRequest();
+  SafeRefPtr<InternalRequest> internalRequest =
+      mActor->ExtractInternalRequest();
 
   /**
    * Step 2: get the worker's global object
@@ -1520,7 +1521,7 @@ nsresult FetchEventOp::DispatchFetchEvent(JSContext* aCx,
    * which should be aborted if the loading is aborted. See but 1394102.
    */
   RefPtr<Request> request =
-      new Request(globalObjectAsSupports, internalRequest, nullptr);
+      new Request(globalObjectAsSupports, internalRequest.clonePtr(), nullptr);
   MOZ_ASSERT_IF(internalRequest->IsNavigationRequest(),
                 request->Redirect() == RequestRedirect::Manual);
 

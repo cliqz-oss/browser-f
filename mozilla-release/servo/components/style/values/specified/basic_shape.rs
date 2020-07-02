@@ -126,12 +126,7 @@ impl Parse for ClipPath {
             return Ok(ClipPath::Url(url));
         }
 
-        parse_shape_or_box(
-            context,
-            input,
-            ClipPath::Shape,
-            ClipPath::Box,
-        )
+        parse_shape_or_box(context, input, ClipPath::Shape, ClipPath::Box)
     }
 }
 
@@ -152,12 +147,7 @@ impl Parse for ShapeOutside {
             return Ok(ShapeOutside::Image(image));
         }
 
-        parse_shape_or_box(
-            context,
-            input,
-            ShapeOutside::Shape,
-            ShapeOutside::Box,
-        )
+        parse_shape_or_box(context, input, ShapeOutside::Shape, ShapeOutside::Box)
     }
 }
 
@@ -270,22 +260,6 @@ impl Ellipse {
             semiaxis_y: b,
             position: position,
         })
-    }
-}
-
-impl Parse for ShapeRadius {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
-        if let Ok(lp) = input.try(|i| NonNegativeLengthPercentage::parse(context, i)) {
-            return Ok(generic::ShapeRadius::Length(lp));
-        }
-
-        try_match_ident_ignore_ascii_case! { input,
-            "closest-side" => Ok(generic::ShapeRadius::ClosestSide),
-            "farthest-side" => Ok(generic::ShapeRadius::FarthestSide),
-        }
     }
 }
 

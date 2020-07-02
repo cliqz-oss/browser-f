@@ -207,8 +207,33 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin,
         env["MOZ_JAR_LOG_FILE"] = jarlog
         env["LLVM_PROFILE_FILE"] = profdata
 
+        if self.query_minidump_stackwalk():
+            os.environ['MINIDUMP_STACKWALK'] = self.minidump_stackwalk_path
+        os.environ['MINIDUMP_SAVE_PATH'] = self.query_abs_dirs()['abs_blob_upload_dir']
+        if not self.symbols_path:
+            self.symbols_path = os.environ.get("MOZ_FETCHES_DIR")
+
+        # Force test_root to be on the sdcard for android pgo
+        # builds which fail for Android 4.3 when profiles are located
+        # in /data/local/tmp/tests with
+        # E AndroidRuntime: FATAL EXCEPTION: Gecko
+        # E AndroidRuntime: java.lang.IllegalArgumentException: \
+        #    Profile directory must be writable if specified: /data/local/tmp/tests/profile
+        # This occurs when .can-write-sentinel is written to
+        # the profile in
+        # mobile/android/geckoview/src/main/java/org/mozilla/gecko/GeckoProfile.java.
+        # This is not a problem on later versions of Android. This
+        # over-ride of test_root should be removed when Android 4.3 is no
+        # longer supported.
+        sdcard_test_root = '/sdcard/tests'
         adbdevice = ADBDevice(adb=adb,
-                              device='emulator-5554')
+                              device='emulator-5554',
+                              test_root=sdcard_test_root)
+        if adbdevice.test_root != sdcard_test_root:
+            # If the test_root was previously set and shared
+            # the initializer will not have updated the shared
+            # value. Force it to match the sdcard_test_root.
+            adbdevice.test_root = sdcard_test_root
         adbdevice.mkdir(outputdir)
 
         try:
@@ -222,6 +247,7 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin,
                 connect_to_running_emulator=True,
                 startup_timeout=1000,
                 env=env,
+                symbols_path=self.symbols_path,
             )
             driver.start_session()
 

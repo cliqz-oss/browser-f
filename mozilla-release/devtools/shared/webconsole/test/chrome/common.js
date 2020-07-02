@@ -63,7 +63,8 @@ var _attachConsole = async function(listeners, attachToTab, attachToWorker) {
       const targetDescriptor = await client.mainRoot.getMainProcess();
       target = await targetDescriptor.getTarget();
     } else {
-      target = await client.mainRoot.getTab();
+      const targetDescriptor = await client.mainRoot.getTab();
+      target = await targetDescriptor.getTarget();
       if (attachToWorker) {
         const workerName = "console-test-worker.js#" + new Date().getTime();
         worker = new Worker(workerName);
@@ -137,9 +138,11 @@ function checkConsoleAPICalls(consoleCalls, expectedConsoleCalls) {
 }
 
 function checkConsoleAPICall(call, expected) {
-  if (expected.level != "trace" && expected.arguments) {
-    is(call.arguments.length, expected.arguments.length, "number of arguments");
-  }
+  is(
+    call.arguments?.length || 0,
+    expected.arguments?.length || 0,
+    "number of arguments"
+  );
 
   checkObject(call, expected);
 }

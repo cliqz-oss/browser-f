@@ -73,7 +73,10 @@ elif toolkit == 'cocoa':
         'nsINativeMenuService.h',
     ]
 
-TEST_DIRS += ['tests']
+TEST_DIRS += [
+    'tests',
+    'tests/gtest'
+]
 
 DIRS += ['headless']
 
@@ -85,9 +88,6 @@ DIRS += ['headless']
 #
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
     DIRS += ['gtk']
-
-    if CONFIG['MOZ_X11']:
-        DIRS += ['gtkxtbin']
 
     XPIDL_SOURCES += [
         'nsIGtkTaskbarProgress.idl',

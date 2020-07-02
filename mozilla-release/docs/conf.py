@@ -56,6 +56,7 @@ js_source_path = [
     'toolkit/components/extensions/parent',
     'toolkit/components/featuregates',
     'toolkit/mozapps/extensions',
+    'toolkit/components/prompts/src',
 ]
 root_for_relative_js_paths = '.'
 jsdoc_config_path = 'jsdoc.json'
@@ -64,7 +65,7 @@ templates_path = ['_templates']
 source_suffix = '.rst'
 source_suffix = ['.rst', '.md']
 master_doc = 'index'
-project = u'Mozilla Source Tree Docs'
+project = u'Firefox Source Tree Docs'
 year = datetime.now().year
 
 # Grab the version from the source tree's milestone.

@@ -143,11 +143,9 @@ impl Rectangle {
             api::BorderRadius::uniform(20.),
             api::ClipMode::Clip
         );
-        let clip_id = builder.define_clip(
+        let clip_id = builder.define_clip_rounded_rect(
             &api::SpaceAndClipInfo::root_scroll(pipeline_id),
-            rect,
-            vec![region],
-            None,
+            region,
         );
 
         builder.push_rect(

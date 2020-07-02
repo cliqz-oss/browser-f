@@ -156,8 +156,8 @@ struct HistogramInfo {
 // Structs used to keep information about the histograms for which a
 // snapshot should be created.
 struct HistogramSnapshotData {
-  nsTArray<base::Histogram::Sample> mBucketRanges;
-  nsTArray<base::Histogram::Count> mBucketCounts;
+  CopyableTArray<base::Histogram::Sample> mBucketRanges;
+  CopyableTArray<base::Histogram::Count> mBucketCounts;
   int64_t mSampleSum;  // Same type as base::Histogram::SampleSet::sum_
 };
 
@@ -747,20 +747,19 @@ nsresult internal_GetHistogramAndSamples(const StaticMutexAutoLock& aLock,
   // Convert the ranges of the buckets to a nsTArray.
   const size_t bucketCount = h->bucket_count();
   for (size_t i = 0; i < bucketCount; i++) {
-    if (!aSnapshot.mBucketRanges.AppendElement(h->ranges(i))) {
-      return NS_ERROR_FAILURE;
-    }
+    // XXX(Bug 1631371) Check if this should use a fallible operation as it
+    // pretended earlier, or change the return type to void.
+    aSnapshot.mBucketRanges.AppendElement(h->ranges(i));
   }
 
   // Get a snapshot of the samples.
-  base::Histogram::SampleSet ss;
-  h->SnapshotSample(&ss);
+  base::Histogram::SampleSet ss = h->SnapshotSample();
 
   // Get the number of samples in each bucket.
   for (size_t i = 0; i < bucketCount; i++) {
-    if (!aSnapshot.mBucketCounts.AppendElement(ss.counts(i))) {
-      return NS_ERROR_FAILURE;
-    }
+    // XXX(Bug 1631371) Check if this should use a fallible operation as it
+    // pretended earlier, or change the return type to void.
+    aSnapshot.mBucketCounts.AppendElement(ss.counts(i));
   }
 
   // Finally, save the |sum|. We don't need to reflect declared_min,
@@ -1684,8 +1683,10 @@ bool internal_JSHistogram_CoerceValue(JSContext* aCx,
     nsresult rv = gHistogramInfos[aId].label_id(
         NS_ConvertUTF16toUTF8(label).get(), &aValue);
     if (NS_FAILED(rv)) {
+      nsPrintfCString msg("'%s' is an invalid string label",
+                          NS_ConvertUTF16toUTF8(label).get());
       LogToBrowserConsole(nsIScriptError::errorFlag,
-                          NS_LITERAL_STRING("Invalid string label"));
+                          NS_ConvertUTF8toUTF16(msg));
       return false;
     }
   } else if (!(aElement.isNumber() || aElement.isBoolean())) {

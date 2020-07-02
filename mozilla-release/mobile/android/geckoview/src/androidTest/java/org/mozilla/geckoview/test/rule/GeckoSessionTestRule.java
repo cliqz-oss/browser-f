@@ -1098,6 +1098,9 @@ public class GeckoSessionTestRule implements TestRule {
     }
 
     protected void prepareSession(final GeckoSession session) {
+        UiThreadUtils.waitForCondition(() ->
+                        RuntimeCreator.sTestSupport.get() != RuntimeCreator.TEST_SUPPORT_INITIAL,
+                env.getDefaultTimeoutMillis());
         session.getWebExtensionController()
                 .setMessageDelegate(RuntimeCreator.sTestSupportExtension,
                                     mMessageDelegate,
@@ -1202,14 +1205,20 @@ public class GeckoSessionTestRule implements TestRule {
         WebExtensionController controller = getRuntime().getWebExtensionController();
         List<WebExtension> list = waitForResult(controller.list());
 
+        boolean hasTestSupport = false;
         // Uninstall any left-over extensions
         for (WebExtension extension : list) {
-            waitForResult(controller.uninstall(extension));
+            if (!extension.id.equals(RuntimeCreator.TEST_SUPPORT_EXTENSION_ID)) {
+                waitForResult(controller.uninstall(extension));
+            } else {
+                hasTestSupport = true;
+            }
         }
 
-        // If an extension was still installed, this test should fail
+        // If an extension was still installed, this test should fail.
+        // Note the test support extension is always kept for speed.
         assertThat("A WebExtension was left installed during this test.",
-                list.size(), equalTo(0));
+                list.size(), equalTo(hasTestSupport ? 1 : 0));
     }
 
     protected void cleanupStatement() throws Throwable {
@@ -1877,6 +1886,11 @@ public class GeckoSessionTestRule implements TestRule {
         return waitForMessage(id);
     }
 
+    public int getSessionPid(final @NonNull GeckoSession session) {
+        final Double dblPid = (Double) webExtensionApiCall(session, "GetPidForTab", null);
+        return dblPid.intValue();
+    }
+
     private Object waitForMessage(String id) {
         UiThreadUtils.waitForCondition(() -> mPendingMessages.containsKey(id),
                 mTimeoutMillis);
@@ -2107,10 +2121,21 @@ public class GeckoSessionTestRule implements TestRule {
         });
     }
 
-    private Object webExtensionApiCall(final String apiName, SetArgs argsSetter) {
+    private Object webExtensionApiCall(final @NonNull String apiName, final @NonNull SetArgs argsSetter) {
+        return webExtensionApiCall(null, apiName, argsSetter);
+    }
+
+    private Object webExtensionApiCall(final GeckoSession session, final @NonNull String apiName,
+                                       final @NonNull SetArgs argsSetter) {
         // Ensure background script is connected
         UiThreadUtils.waitForCondition(() -> RuntimeCreator.backgroundPort() != null,
                 mTimeoutMillis);
+
+        if (session != null) {
+            // Ensure content script is connected
+            UiThreadUtils.waitForCondition(() -> mPorts.get(session) != null,
+                    mTimeoutMillis);
+        }
 
         final String id = UUID.randomUUID().toString();
 
@@ -2129,7 +2154,15 @@ public class GeckoSessionTestRule implements TestRule {
             throw new RuntimeException(ex);
         }
 
-        RuntimeCreator.backgroundPort().postMessage(message);
+        if (session == null) {
+            RuntimeCreator.backgroundPort().postMessage(message);
+        } else {
+            // We post the message using session's port instead of the background port. By routing
+            // the message through the extension's content script, we are able to obtain and attach
+            // the session's WebExtension tab as a `tab` argument to the API.
+            mPorts.get(session).postMessage(message);
+        }
+
         return waitForMessage(id);
     }
 

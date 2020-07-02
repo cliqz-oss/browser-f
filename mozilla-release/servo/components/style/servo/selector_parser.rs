@@ -19,7 +19,7 @@ use crate::{Atom, CaseSensitivityExt, LocalName, Namespace, Prefix};
 use cssparser::{serialize_identifier, CowRcStr, Parser as CssParser, SourceLocation, ToCss};
 use fxhash::FxHashMap;
 use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
-use selectors::parser::{SelectorParseErrorKind, Visit};
+use selectors::parser::SelectorParseErrorKind;
 use selectors::visitor::SelectorVisitor;
 use std::fmt;
 use std::mem;
@@ -315,6 +315,13 @@ impl ::selectors::parser::NonTSPseudoClass for NonTSPseudoClass {
     fn has_zero_specificity(&self) -> bool {
         false
     }
+
+    fn visit<V>(&self, _: &mut V) -> bool
+    where
+        V: SelectorVisitor<Impl = Self::Impl>,
+    {
+        true
+    }
 }
 
 impl ToCss for NonTSPseudoClass {
@@ -352,17 +359,6 @@ impl ToCss for NonTSPseudoClass {
     }
 }
 
-impl Visit for NonTSPseudoClass {
-    type Impl = SelectorImpl;
-
-    fn visit<V>(&self, _: &mut V) -> bool
-    where
-        V: SelectorVisitor<Impl = Self::Impl>,
-    {
-        true
-    }
-}
-
 impl NonTSPseudoClass {
     /// Gets a given state flag for this pseudo-class. This is used to do
     /// selector matching, and it's set from the DOM.
@@ -394,12 +390,6 @@ impl NonTSPseudoClass {
     /// Returns true if the given pseudoclass should trigger style sharing cache revalidation.
     pub fn needs_cache_revalidation(&self) -> bool {
         self.state_flag().is_empty()
-    }
-
-    /// Returns true if the evaluation of the pseudo-class depends on the
-    /// element's attributes.
-    pub fn is_attr_based(&self) -> bool {
-        matches!(*self, NonTSPseudoClass::Lang(..))
     }
 }
 

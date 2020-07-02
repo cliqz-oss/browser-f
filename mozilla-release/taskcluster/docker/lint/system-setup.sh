@@ -14,6 +14,7 @@ apt_packages+=('curl')
 apt_packages+=('iproute2')
 apt_packages+=('locales')
 apt_packages+=('git')
+apt_packages+=('graphviz')
 apt_packages+=('python')
 apt_packages+=('python-pip')
 apt_packages+=('python3')
@@ -43,6 +44,12 @@ tooltool_fetch() {
 cd /build
 # shellcheck disable=SC1091
 . install-mercurial.sh
+
+###
+# zstandard
+###
+pip install zstandard==0.13.0
+pip3 install zstandard==0.13.0
 
 ###
 # ESLint Setup

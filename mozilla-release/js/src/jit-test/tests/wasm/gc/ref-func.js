@@ -11,7 +11,7 @@ wasmFullPass(`
 		(elem declare $run)
 		(func $run (result i32)
 			ref.func $run
-			ref.is_null
+			ref.is_null func
 		)
 		(export "run" (func $run))
 	)
@@ -88,24 +88,25 @@ function validFuncRefText(forwardDeclare, tbl_type) {
 }
 
 // referenced function must be forward declared somehow
-assertErrorMessage(() => validFuncRefText('', 'funcref'), WebAssembly.CompileError, /function index is not in an element segment/);
+assertErrorMessage(() => validFuncRefText('', 'funcref'), WebAssembly.CompileError, /function index is not declared in a section before the code section/);
 
 // referenced function can be forward declared via segments
 assertEq(validFuncRefText('(elem 0 (i32.const 0) func $referenced)', 'funcref') instanceof WebAssembly.Instance, true);
 assertEq(validFuncRefText('(elem func $referenced)', 'funcref') instanceof WebAssembly.Instance, true);
 assertEq(validFuncRefText('(elem declare $referenced)', 'funcref') instanceof WebAssembly.Instance, true);
 
-// also when the segment is passive or active 'anyref'
-assertEq(validFuncRefText('(elem 0 (i32.const 0) anyref (ref.func $referenced))', 'anyref') instanceof WebAssembly.Instance, true);
-assertEq(validFuncRefText('(elem anyref (ref.func $referenced))', 'anyref') instanceof WebAssembly.Instance, true);
+// also when the segment is passive or active 'funcref'
+assertEq(validFuncRefText('(elem 0 (i32.const 0) funcref (ref.func $referenced))', 'funcref') instanceof WebAssembly.Instance, true);
+assertEq(validFuncRefText('(elem funcref (ref.func $referenced))', 'funcref') instanceof WebAssembly.Instance, true);
 
-// referenced function cannot be forward declared via start section or export
-assertErrorMessage(() => validFuncRefText('(start $referenced)', 'funcref'),
-                   WebAssembly.CompileError,
-                   /function index is not in an element segment/);
-assertErrorMessage(() => validFuncRefText('(export "referenced" (func $referenced))', 'funcref'),
-                   WebAssembly.CompileError,
-                   /function index is not in an element segment/);
+// reference function can be forward declared via globals
+assertEq(validFuncRefText('(global funcref (ref.func $referenced))', 'anyref') instanceof WebAssembly.Instance, true);
+
+// reference function can be forward declared via export
+assertEq(validFuncRefText('(export "referenced" (func $referenced))', 'anyref') instanceof WebAssembly.Instance, true);
+
+// reference function cannot be forward declared via start
+assertErrorMessage(() => validFuncRefText('(start $referenced)', 'anyref'), WebAssembly.CompileError, /function index is not declared in a section before the code section/);
 
 // Tests not expressible in the text format.
 
@@ -190,7 +191,7 @@ checkPassiveElemSegment("end", /failed to read end of initializer expression/);
            (elem (i32.const 3) $m)
            (elem (i32.const 6) $m)
            (elem (i32.const 8) $m)
-           (elem funcref (ref.func $f) (ref.null) (ref.func $g) (ref.null) (ref.func $h))
+           (elem funcref (ref.func $f) (ref.null func) (ref.func $g) (ref.null func) (ref.func $h))
            (func $m)
            (func $f)
            (func $g)
@@ -213,3 +214,40 @@ checkPassiveElemSegment("end", /failed to read end of initializer expression/);
     assertEq(typeof ins.exports.t.get(9), "function");
 }
 
+// Test ref.func in global initializer expressions
+
+for (let mutable of [true, false]) {
+  for (let imported of [true, false]) {
+    for (let exported of [true, false]) {
+      let globalType = mutable ? `(mut funcref)` : `funcref`;
+
+      let imports = {};
+
+      if (imported) {
+        imports = wasmEvalText(`
+          (module
+            (global $g (export "g") ${globalType} (ref.func $f))
+            (func $f (export "f") (result i32) i32.const 42)
+          )
+        `).exports;
+      }
+
+      let exports = wasmEvalText(`
+        (module
+          (global $g ${exported ? `(export "g")` : ``} ${imported ? `(import "" "g")` : ``} ${globalType} ${imported ? `` : `(ref.func $f)`})
+          ${exported ? `` : `(func (export "get_g") (result funcref) global.get $g)`}
+          (func $f (export "f") (result i32) i32.const 42)
+        )
+      `, { "": imports }).exports;
+
+      let targetFunc = imported ? imports.f : exports.f;
+      let globalVal = exported ? exports.g.value : exports.get_g();
+      assertEq(targetFunc(), 42);
+      assertEq(globalVal(), 42);
+      assertEq(targetFunc, globalVal);
+      if (imported && exported) {
+        assertEq(imports.g, exports.g);
+      }
+    }
+  }
+}

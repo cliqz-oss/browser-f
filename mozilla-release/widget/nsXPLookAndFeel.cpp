@@ -279,7 +279,7 @@ void nsXPLookAndFeel::IntPrefChanged(nsLookAndFeelIntPref* data) {
 #endif
   }
 
-  NotifyPrefChanged();
+  NotifyChangedAllWindows();
 }
 
 // static
@@ -305,7 +305,7 @@ void nsXPLookAndFeel::FloatPrefChanged(nsLookAndFeelFloatPref* data) {
 #endif
   }
 
-  NotifyPrefChanged();
+  NotifyChangedAllWindows();
 }
 
 // static
@@ -339,15 +339,7 @@ void nsXPLookAndFeel::ColorPrefChanged(unsigned int index,
 #endif
   }
 
-  NotifyPrefChanged();
-}
-
-// static
-void nsXPLookAndFeel::NotifyPrefChanged() {
-  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
-  if (obs) {
-    obs->NotifyObservers(nullptr, "look-and-feel-pref-changed", nullptr);
-  }
+  NotifyChangedAllWindows();
 }
 
 void nsXPLookAndFeel::InitFromPref(nsLookAndFeelIntPref* aPref) {
@@ -1019,6 +1011,13 @@ void nsXPLookAndFeel::RecordTelemetry() {
 namespace mozilla {
 
 // static
+void LookAndFeel::NotifyChangedAllWindows() {
+  if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
+    obs->NotifyObservers(nullptr, "look-and-feel-changed", nullptr);
+  }
+}
+
+// static
 nsresult LookAndFeel::GetColor(ColorID aID, nscolor* aResult) {
   return nsLookAndFeel::GetInstance()->GetColorImpl(aID, false, *aResult);
 }
@@ -1081,33 +1080,6 @@ nsTArray<LookAndFeelInt> LookAndFeel::GetIntCache() {
 void LookAndFeel::SetIntCache(
     const nsTArray<LookAndFeelInt>& aLookAndFeelIntCache) {
   return nsLookAndFeel::GetInstance()->SetIntCacheImpl(aLookAndFeelIntCache);
-}
-
-// static
-void LookAndFeel::SetShouldRetainCacheForTest(bool aValue) {
-  nsLookAndFeel::GetInstance()->SetShouldRetainCacheImplForTest(aValue);
-}
-
-// static
-void LookAndFeel::SetPrefersReducedMotionOverrideForTest(bool aValue) {
-  // Tell that the cache value we are going to set isn't cleared via
-  // nsPresContext::ThemeChangedInternal which is called right before
-  // we queue the media feature value change for this prefers-reduced-motion
-  // change.
-  SetShouldRetainCacheForTest(true);
-
-  int32_t value = aValue ? 1 : 0;
-
-  AutoTArray<LookAndFeelInt, 1> lookAndFeelCache;
-  lookAndFeelCache.AppendElement(
-      LookAndFeelInt{.id = eIntID_PrefersReducedMotion, .value = value});
-
-  SetIntCache(lookAndFeelCache);
-}
-
-// static
-void LookAndFeel::ResetPrefersReducedMotionOverrideForTest() {
-  SetShouldRetainCacheForTest(false);
 }
 
 }  // namespace mozilla

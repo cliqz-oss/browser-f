@@ -75,17 +75,21 @@ async function verifyHeaders(monitor) {
     "User-Agent",
   ];
 
-  const labelCells = document.querySelectorAll(".treeLabelCell");
+  const responseLabelCells = document.querySelectorAll(
+    "#responseHeaders .treeLabelCell"
+  );
+  const requestLabelCells = document.querySelectorAll(
+    "#requestHeaders .treeLabelCell"
+  );
   const actualResponseHeaders = [];
   const actualRequestHeaders = [];
 
-  const responseHeadersLength = expectedResponseHeaders.length;
-  for (let i = 1; i < responseHeadersLength + 1; i++) {
-    actualResponseHeaders.push(labelCells[i].innerText);
+  for (let i = 0; i < responseLabelCells.length; i++) {
+    actualResponseHeaders.push(responseLabelCells[i].innerText);
   }
 
-  for (let i = responseHeadersLength + 2; i < labelCells.length; i++) {
-    actualRequestHeaders.push(labelCells[i].innerText);
+  for (let i = 0; i < requestLabelCells.length; i++) {
+    actualRequestHeaders.push(requestLabelCells[i].innerText);
   }
 
   is(
@@ -159,7 +163,7 @@ async function verifyRawHeaders(monitor) {
   const responseHeadersText = rawArr[0].textContent;
 
   const rawRequestHeadersArray = requestHeadersText.split("\n");
-  for (let i = 0; i < rawRequestHeadersArray.length; i++) {
+  for (let i = 1; i < rawRequestHeadersArray.length; i++) {
     const header = rawRequestHeadersArray[i];
     actualRequestHeaders.push(header.split(":")[0]);
   }

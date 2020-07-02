@@ -24,8 +24,6 @@ with Files('IdpSandbox.jsm'):
     BUG_COMPONENT = component_signaling
 with Files('PeerConnection*'):
     BUG_COMPONENT = component_signaling
-with Files('RTC*'):
-    BUG_COMPONENT = component_signaling
 
 component_av = ('Core', 'WebRTC: Audio/Video')
 with Files('GetUserMedia*'):
@@ -91,8 +89,6 @@ BROWSER_CHROME_MANIFESTS += [
 
 if CONFIG['MOZ_WEBRTC']:
     MOCHITEST_MANIFESTS += ['tests/mochitest/mochitest.ini']
-    WEBRTC_SIGNALLING_TEST_MANIFESTS += ['tests/mochitest/steeplechase.ini']
-    WEBRTC_SIGNALLING_TEST_MANIFESTS += ['tests/mochitest/steeplechase_long/steeplechase_long.ini']
 
 XPIDL_SOURCES += [
     'nsIAudioDeviceInfo.idl',

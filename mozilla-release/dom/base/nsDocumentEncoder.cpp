@@ -245,7 +245,7 @@ class nsDocumentEncoder : public nsIDocumentEncoder {
                             nsINode* aFixupNode = nullptr);
   // This serializes the content of aNode.
   nsresult SerializeToStringIterative(nsINode* aNode);
-  nsresult SerializeRangeToString(nsRange* aRange);
+  nsresult SerializeRangeToString(const nsRange* aRange);
   nsresult SerializeRangeNodes(const nsRange* aRange, nsINode* aNode,
                                int32_t aDepth);
   nsresult SerializeRangeContextStart(const nsTArray<nsINode*>& aAncestorArray);
@@ -428,7 +428,7 @@ nsresult nsDocumentEncoder::SerializeSelection() {
   nsCOMPtr<nsINode> prevNode;
   uint32_t firstRangeStartDepth = 0;
   for (uint32_t i = 0; i < count; ++i) {
-    RefPtr<nsRange> range = selection->GetRangeAt(i);
+    RefPtr<const nsRange> range = selection->GetRangeAt(i);
 
     // Bug 236546: newlines not added when copying table cells into clipboard
     // Each selected cell shows up as a range containing a row with a single
@@ -464,6 +464,13 @@ nsresult nsDocumentEncoder::SerializeSelection() {
       } else if (prevNode) {
         // Went from a <tr> to a non-<tr>
         mDisableContextSerialize = false;
+
+        // `mCommonInclusiveAncestors` is used in `EncodeToStringWithContext`
+        // too. Update it here to mimic the old behavior.
+        mCommonInclusiveAncestors.Clear();
+        nsContentUtils::GetInclusiveAncestors(prevNode->GetParentNode(),
+                                              mCommonInclusiveAncestors);
+
         rv = SerializeRangeContextEnd();
         NS_ENSURE_SUCCESS(rv, rv);
         prevNode = nullptr;
@@ -482,6 +489,13 @@ nsresult nsDocumentEncoder::SerializeSelection() {
     rv = SerializeNodeEnd(*prevNode);
     NS_ENSURE_SUCCESS(rv, rv);
     mDisableContextSerialize = false;
+
+    // `mCommonInclusiveAncestors` is used in `EncodeToStringWithContext`
+    // too. Update it here to mimic the old behavior.
+    mCommonInclusiveAncestors.Clear();
+    nsContentUtils::GetInclusiveAncestors(prevNode->GetParentNode(),
+                                          mCommonInclusiveAncestors);
+
     rv = SerializeRangeContextEnd();
     NS_ENSURE_SUCCESS(rv, rv);
   }
@@ -984,7 +998,6 @@ nsresult nsDocumentEncoder::SerializeRangeContextStart(
 
   while (i > 0) {
     nsINode* node = aAncestorArray.ElementAt(--i);
-
     if (!node) break;
 
     // Either a general inclusion or as immediate context
@@ -1018,7 +1031,7 @@ nsresult nsDocumentEncoder::SerializeRangeContextEnd() {
   return rv;
 }
 
-nsresult nsDocumentEncoder::SerializeRangeToString(nsRange* aRange) {
+nsresult nsDocumentEncoder::SerializeRangeToString(const nsRange* aRange) {
   if (!aRange || aRange->Collapsed()) return NS_OK;
 
   mClosestCommonInclusiveAncestorOfRange =

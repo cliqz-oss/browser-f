@@ -29,8 +29,10 @@ NS_IMPL_RELEASE_INHERITED(DocumentChannelChild, DocumentChannel)
 DocumentChannelChild::DocumentChannelChild(nsDocShellLoadState* aLoadState,
                                            net::LoadInfo* aLoadInfo,
                                            nsLoadFlags aLoadFlags,
-                                           uint32_t aCacheKey)
-    : DocumentChannel(aLoadState, aLoadInfo, aLoadFlags, aCacheKey) {
+                                           uint32_t aCacheKey,
+                                           bool aUriModified, bool aIsXFOError)
+    : DocumentChannel(aLoadState, aLoadInfo, aLoadFlags, aCacheKey,
+                      aUriModified, aIsXFOError) {
   LOG(("DocumentChannelChild ctor [this=%p, uri=%s]", this,
        aLoadState->URI()->GetSpecOrDefault().get()));
 }
@@ -73,20 +75,20 @@ DocumentChannelChild::AsyncOpen(nsIStreamListener* aListener) {
 
   gHttpHandler->OnOpeningDocumentRequest(this);
 
+  if (!GetDocShell() || !GetDocShell()->GetBrowsingContext() ||
+      GetDocShell()->GetBrowsingContext()->IsDiscarded()) {
+    return NS_ERROR_FAILURE;
+  }
+
   DocumentChannelCreationArgs args;
 
   args.loadState() = mLoadState->Serialize();
-  Maybe<LoadInfoArgs> maybeArgs;
-  rv = LoadInfoToLoadInfoArgs(mLoadInfo, &maybeArgs);
-  NS_ENSURE_SUCCESS(rv, rv);
-  MOZ_DIAGNOSTIC_ASSERT(maybeArgs);
-
-  args.loadInfo() = *maybeArgs;
-  args.loadFlags() = mLoadFlags;
   args.cacheKey() = mCacheKey;
   args.channelId() = mChannelId;
   args.asyncOpenTime() = mAsyncOpenTime;
-  args.outerWindowId() = mLoadInfo->GetOuterWindowID();
+  args.outerWindowId() = GetDocShell()->GetOuterWindowID();
+  args.uriModified() = mUriModified;
+  args.isXFOError() = mIsXFOError;
 
   Maybe<IPCClientInfo> ipcClientInfo;
   if (mInitialClientInfo.isSome()) {
@@ -98,23 +100,13 @@ DocumentChannelChild::AsyncOpen(nsIStreamListener* aListener) {
     args.timing() = Some(mTiming);
   }
 
-  nsCOMPtr<nsIBrowserChild> iBrowserChild;
-  NS_QueryNotificationCallbacks(mCallbacks, mLoadGroup,
-                                NS_GET_TEMPLATE_IID(nsIBrowserChild),
-                                getter_AddRefs(iBrowserChild));
-  BrowserChild* browserChild = static_cast<BrowserChild*>(iBrowserChild.get());
-  if (MissingRequiredBrowserChild(browserChild, "documentchannel")) {
-    return NS_ERROR_ILLEGAL_VALUE;
-  }
-
-  if (!GetDocShell() || !GetDocShell()->GetBrowsingContext() ||
-      GetDocShell()->GetBrowsingContext()->IsDiscarded()) {
-    return NS_ERROR_FAILURE;
-  }
+  args.hasValidTransientUserAction() =
+      GetDocShell()
+          ->GetBrowsingContext()
+          ->HasValidTransientUserGestureActivation();
 
   gNeckoChild->SendPDocumentChannelConstructor(
-      this, browserChild, GetDocShell()->GetBrowsingContext(),
-      IPC::SerializedLoadContext(this), args);
+      this, GetDocShell()->GetBrowsingContext(), args);
 
   mIsPending = true;
   mWasOpened = true;
@@ -129,48 +121,9 @@ IPCResult DocumentChannelChild::RecvFailedAsyncOpen(
   return IPC_OK();
 }
 
-void DocumentChannelChild::ShutdownListeners(nsresult aStatusCode) {
-  LOG(("DocumentChannelChild ShutdownListeners [this=%p, status=%" PRIx32 "]",
-       this, static_cast<uint32_t>(aStatusCode)));
-  mStatus = aStatusCode;
-
-  nsCOMPtr<nsIStreamListener> l = mListener;
-  if (l) {
-    l->OnStartRequest(this);
-  }
-
-  mIsPending = false;
-
-  l = mListener;  // it might have changed!
-  if (l) {
-    l->OnStopRequest(this, aStatusCode);
-  }
-  mListener = nullptr;
-  mCallbacks = nullptr;
-
-  if (mLoadGroup) {
-    mLoadGroup->RemoveRequest(this, nullptr, aStatusCode);
-    mLoadGroup = nullptr;
-  }
-
-  if (CanSend()) {
-    Send__delete__(this);
-  }
-}
-
 IPCResult DocumentChannelChild::RecvDisconnectChildListeners(
     const nsresult& aStatus, const nsresult& aLoadGroupStatus) {
-  MOZ_ASSERT(NS_FAILED(aStatus));
-  mStatus = aLoadGroupStatus;
-  // Make sure we remove from the load group before
-  // setting mStatus, as existing tests expect the
-  // status to be successful when we disconnect.
-  if (mLoadGroup) {
-    mLoadGroup->RemoveRequest(this, nullptr, aStatus);
-    mLoadGroup = nullptr;
-  }
-
-  ShutdownListeners(aStatus);
+  DisconnectChildListeners(aStatus, aLoadGroupStatus);
   return IPC_OK();
 }
 
@@ -183,6 +136,7 @@ IPCResult DocumentChannelChild::RecvDeleteSelf() {
 
 IPCResult DocumentChannelChild::RecvRedirectToRealChannel(
     RedirectToRealChannelArgs&& aArgs,
+    nsTArray<Endpoint<extensions::PStreamFilterParent>>&& aEndpoints,
     RedirectToRealChannelResolver&& aResolve) {
   LOG(("DocumentChannelChild RecvRedirectToRealChannel [this=%p, uri=%s]", this,
        aArgs.uri()->GetSpecOrDefault().get()));
@@ -204,8 +158,6 @@ IPCResult DocumentChannelChild::RecvRedirectToRealChannel(
   MOZ_ALWAYS_SUCCEEDS(LoadInfoArgsToLoadInfo(
       aArgs.loadInfo(), cspToInheritLoadingDocument, getter_AddRefs(loadInfo)));
 
-  mLastVisitInfo = std::move(aArgs.lastVisitInfo());
-  mRedirects = std::move(aArgs.redirects());
   mRedirectResolver = std::move(aResolve);
 
   nsCOMPtr<nsIChannel> newChannel;
@@ -290,6 +242,7 @@ IPCResult DocumentChannelChild::RecvRedirectToRealChannel(
     }
   }
   mRedirectChannel = newChannel;
+  mStreamFilterEndpoints = std::move(aEndpoints);
 
   rv = gHttpHandler->AsyncOnChannelRedirect(
       this, newChannel, aArgs.redirectFlags(), GetMainThreadEventTarget());
@@ -331,6 +284,11 @@ DocumentChannelChild::OnRedirectVerifyCallback(nsresult aStatusCode) {
     redirectChannel->SetNotificationCallbacks(nullptr);
   }
 
+  for (auto& endpoint : mStreamFilterEndpoints) {
+    extensions::StreamFilterParent::Attach(redirectChannel,
+                                           std::move(endpoint));
+  }
+
   redirectResolver(rv);
 
   if (NS_FAILED(rv)) {
@@ -351,65 +309,6 @@ DocumentChannelChild::OnRedirectVerifyCallback(nsresult aStatusCode) {
   }
 
   return NS_OK;
-}
-
-mozilla::ipc::IPCResult DocumentChannelChild::RecvCSPViolation(
-    const CSPInfo& aCSP, bool aIsCspToInherit, nsIURI* aBlockedURI,
-    uint32_t aBlockedContentSource, nsIURI* aOriginalURI,
-    const nsAString& aViolatedDirective, uint32_t aViolatedPolicyIndex,
-    const nsAString& aObserverSubject) {
-  if (aBlockedContentSource > nsCSPContext::BlockedContentSource::eSelf) {
-    return IPC_FAIL(this, "Invalid BlockedContentSource value");
-  }
-  nsCSPContext::BlockedContentSource blockedContentSource =
-      static_cast<nsCSPContext::BlockedContentSource>(aBlockedContentSource);
-
-  RefPtr<dom::Document> cspLoadingDocument;
-  if (aIsCspToInherit) {
-    // If this is the cspToInherit from the loadstate, then it should match
-    // the csp from the load state. Copy across the loading context from
-    // that policy.
-    nsCOMPtr<nsIContentSecurityPolicy> policy = mLoadState->Csp();
-    MOZ_ASSERT(policy,
-               "How is this a CSP to inherit violation if we didn't have a "
-               "policy to inherit!");
-    nsWeakPtr ctx =
-        static_cast<nsCSPContext*>(policy.get())->GetLoadingContext();
-    cspLoadingDocument = do_QueryReferent(ctx);
-  } else {
-    // Otherwise we're the normal csp (preload csp is never used for
-    // Documents), so the loading context is that of our embedder
-    // Element. Note that this won't necessarily work with fission
-    // enabled, since the embedder Element might be OOP, bug 1625366
-    // is filed to fix this.
-    nsCOMPtr<nsINode> loadingContext;
-    RefPtr<BrowsingContext> frameBrowsingContext =
-        GetDocShell()->GetBrowsingContext();
-    if (frameBrowsingContext) {
-      loadingContext = frameBrowsingContext->GetEmbedderElement();
-      if (loadingContext) {
-        cspLoadingDocument = loadingContext->OwnerDoc();
-      }
-    }
-  }
-  nsCOMPtr<nsIContentSecurityPolicy> csp =
-      CSPInfoToCSP(aCSP, cspLoadingDocument);
-  if (!csp) {
-    return IPC_OK();
-  }
-
-  nsCSPContext::AsyncReportViolation(
-      static_cast<nsCSPContext*>(csp.get()), nullptr, nullptr, aBlockedURI,
-      blockedContentSource, aOriginalURI, aViolatedDirective,
-      aViolatedPolicyIndex, aObserverSubject, nsString(), nsString(), 0, 0);
-
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult DocumentChannelChild::RecvAttachStreamFilter(
-    Endpoint<extensions::PStreamFilterParent>&& aEndpoint) {
-  extensions::StreamFilterParent::Attach(this, std::move(aEndpoint));
-  return IPC_OK();
 }
 
 NS_IMETHODIMP

@@ -94,12 +94,9 @@ inline auto AutoAssertCast(const From val) {
   return detail::AutoAssertCastT<From>(val);
 }
 
-namespace ipc {
-template <typename T>
-struct PcqParamTraits;
-}
-
 namespace webgl {
+template <typename T>
+struct QueueParamTraits;
 class TexUnpackBytes;
 class TexUnpackImage;
 class TexUnpackSurface;
@@ -620,6 +617,18 @@ struct CompileResult final {
 
 // -
 
+struct OpaqueFramebufferOptions {
+  bool depthStencil = true;
+  bool antialias = true;
+  uint32_t width = 0;
+  uint32_t height = 0;
+
+  OpaqueFramebufferOptions() = default;
+  OpaqueFramebufferOptions(const OpaqueFramebufferOptions&) = default;
+};
+
+// -
+
 struct ActiveInfo {
   GLenum elemType = 0;     // `type`
   uint32_t elemCount = 0;  // `size`
@@ -721,7 +730,7 @@ class RawBuffer {
   // true if we should delete[] the mData on destruction
   bool mOwnsData = false;
 
-  friend mozilla::ipc::PcqParamTraits<RawBuffer>;
+  friend struct mozilla::webgl::QueueParamTraits<RawBuffer<T>>;
 
  public:
   using ElementType = T;

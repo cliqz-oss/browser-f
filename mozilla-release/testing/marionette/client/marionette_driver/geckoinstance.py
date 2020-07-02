@@ -11,6 +11,7 @@
 
 from __future__ import absolute_import
 
+import codecs
 import os
 import sys
 import tempfile
@@ -23,6 +24,7 @@ import mozversion
 
 from mozprofile import Profile
 from mozrunner import Runner, FennecEmulatorRunner
+import six
 from six import reraise
 
 from . import errors
@@ -42,8 +44,6 @@ class GeckoInstance(object):
         "apz.content_response_timeout": 60000,
 
         # Do not send Firefox health reports to the production server
-        # removed in Firefox 59
-        "datareporting.healthreport.about.reportUrl": "http://%(server)s/dummy/abouthealthreport/",
         "datareporting.healthreport.documentServerURI": "http://%(server)s/dummy/healthreport/",
 
         # Do not show datareporting policy notifications which can interfer with tests
@@ -75,7 +75,7 @@ class GeckoInstance(object):
         "extensions.update.enabled": False,
         "extensions.update.notifyUser": False,
         # Make sure opening about:addons won"t hit the network
-        "extensions.webservice.discoverURL": "http://%(server)s/dummy/discoveryURL",
+        "extensions.getAddons.discovery.api_url": "data:, ",
 
         # Allow the application to have focus even it runs in the background
         "focusmanager.testmode": True,
@@ -217,7 +217,7 @@ class GeckoInstance(object):
             profile_path = profile
 
             # If a path to a profile is given then clone it
-            if isinstance(profile_path, basestring):
+            if isinstance(profile_path, six.string_types):
                 profile_args["path_from"] = profile_path
                 profile_args["path_to"] = tempfile.mkdtemp(
                     suffix=u".{}".format(profile_name or os.path.basename(profile_path)),
@@ -296,8 +296,8 @@ class GeckoInstance(object):
             instance_class = apps[app]
         except (IOError, KeyError):
             exc, val, tb = sys.exc_info()
-            msg = 'Application "{0}" unknown (should be one of {1})'
-            reraise(NotImplementedError, msg.format(app, apps.keys()), tb)
+            msg = 'Application "{0}" unknown (should be one of {1})'.format(app, apps.keys())
+            reraise(NotImplementedError, NotImplementedError(msg), tb)
 
         return instance_class(*args, **kwargs)
 
@@ -309,10 +309,14 @@ class GeckoInstance(object):
     def _get_runner_args(self):
         process_args = {
             "processOutputLine": [NullOutput()],
+            "universal_newlines": True,
         }
 
         if self.gecko_log == "-":
-            process_args["stream"] = sys.stdout
+            if six.PY2:
+                process_args["stream"] = codecs.getwriter('utf-8')(sys.stdout)
+            else:
+                process_args["stream"] = codecs.getwriter('utf-8')(sys.stdout.buffer)
         else:
             process_args["logfile"] = self.gecko_log
 
@@ -457,6 +461,7 @@ class FennecInstance(GeckoInstance):
     def _get_runner_args(self):
         process_args = {
             "processOutputLine": [NullOutput()],
+            "universal_newlines": True,
         }
 
         env = {} if self.env is None else self.env.copy()

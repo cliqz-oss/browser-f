@@ -37,6 +37,7 @@
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/GeckoBindings.h"
 #include "mozilla/PreferenceSheet.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/StaticPresData.h"
 #include "mozilla/Likely.h"
 #include "nsIURI.h"
@@ -207,7 +208,7 @@ void Gecko_LoadData_Drop(StyleLoadData* aData) {
       task->Run();
     } else {
       // if Resolve was not called at some point, mDocGroup is not set.
-      SystemGroup::Dispatch(TaskCategory::Other, task.forget());
+      SchedulerGroup::Dispatch(TaskCategory::Other, task.forget());
     }
   }
 
@@ -230,7 +231,7 @@ nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
       mMathDisplay(aSrc.mMathDisplay),
       mMinFontSizeRatio(aSrc.mMinFontSizeRatio),
       mExplicitLanguage(aSrc.mExplicitLanguage),
-      mAllowZoom(aSrc.mAllowZoom),
+      mAllowZoomAndMinSize(aSrc.mAllowZoomAndMinSize),
       mScriptUnconstrainedSize(aSrc.mScriptUnconstrainedSize),
       mScriptMinSize(aSrc.mScriptMinSize),
       mScriptSizeMultiplier(aSrc.mScriptSizeMultiplier),
@@ -244,14 +245,14 @@ nsStyleFont::nsStyleFont(const Document& aDocument)
       mSize(ZoomText(aDocument, mFont.size)),
       mFontSizeFactor(1.0),
       mFontSizeOffset(0),
-      mFontSizeKeyword(NS_STYLE_FONT_SIZE_MEDIUM),
+      mFontSizeKeyword(StyleFontSize::Medium),
       mGenericID(StyleGenericFontFamily::None),
       mScriptLevel(0),
       mMathVariant(NS_MATHML_MATHVARIANT_NONE),
       mMathDisplay(NS_MATHML_DISPLAYSTYLE_INLINE),
       mMinFontSizeRatio(100),  // 100%
       mExplicitLanguage(false),
-      mAllowZoom(true),
+      mAllowZoomAndMinSize(true),
       mScriptUnconstrainedSize(mSize),
       mScriptMinSize(nsPresContext::CSSTwipsToAppUnits(
           NS_POINTS_TO_TWIPS(NS_MATHML_DEFAULT_SCRIPT_MIN_SIZE_PT))),
@@ -268,8 +269,9 @@ nsStyleFont::nsStyleFont(const Document& aDocument)
 }
 
 nsChangeHint nsStyleFont::CalcDifference(const nsStyleFont& aNewData) const {
-  MOZ_ASSERT(mAllowZoom == aNewData.mAllowZoom,
-             "expected mAllowZoom to be the same on both nsStyleFonts");
+  MOZ_ASSERT(
+      mAllowZoomAndMinSize == aNewData.mAllowZoomAndMinSize,
+      "expected mAllowZoomAndMinSize to be the same on both nsStyleFonts");
   if (mSize != aNewData.mSize || mLanguage != aNewData.mLanguage ||
       mExplicitLanguage != aNewData.mExplicitLanguage ||
       mMathVariant != aNewData.mMathVariant ||
@@ -1080,9 +1082,9 @@ nsStylePosition::nsStylePosition(const Document& aDocument)
       mMinHeight(StyleSize::Auto()),
       mMaxHeight(StyleMaxSize::None()),
       mFlexBasis(StyleFlexBasis::Size(StyleSize::Auto())),
-      mAspectRatio(0.0f),
+      mAspectRatio(StyleAspectRatio::Auto()),
       mGridAutoFlow(StyleGridAutoFlow::ROW),
-      mBoxSizing(StyleBoxSizing::Content),
+      mMasonryAutoFlow(NS_STYLE_MASONRY_AUTO_FLOW_INITIAL_VALUE),
       mAlignContent({StyleAlignFlags::NORMAL}),
       mAlignItems({StyleAlignFlags::NORMAL}),
       mAlignSelf({StyleAlignFlags::AUTO}),
@@ -1092,6 +1094,7 @@ nsStylePosition::nsStylePosition(const Document& aDocument)
       mFlexDirection(StyleFlexDirection::Row),
       mFlexWrap(StyleFlexWrap::Nowrap),
       mObjectFit(StyleObjectFit::Fill),
+      mBoxSizing(StyleBoxSizing::Content),
       mOrder(NS_STYLE_ORDER_INITIAL),
       mFlexGrow(0.0f),
       mFlexShrink(1.0f),
@@ -1115,7 +1118,9 @@ nsStylePosition::nsStylePosition(const Document& aDocument)
 nsStylePosition::~nsStylePosition() { MOZ_COUNT_DTOR(nsStylePosition); }
 
 nsStylePosition::nsStylePosition(const nsStylePosition& aSource)
-    : mObjectPosition(aSource.mObjectPosition),
+    : mAlignTracks(aSource.mAlignTracks),
+      mJustifyTracks(aSource.mJustifyTracks),
+      mObjectPosition(aSource.mObjectPosition),
       mOffset(aSource.mOffset),
       mWidth(aSource.mWidth),
       mMinWidth(aSource.mMinWidth),
@@ -1128,7 +1133,7 @@ nsStylePosition::nsStylePosition(const nsStylePosition& aSource)
       mGridAutoRows(aSource.mGridAutoRows),
       mAspectRatio(aSource.mAspectRatio),
       mGridAutoFlow(aSource.mGridAutoFlow),
-      mBoxSizing(aSource.mBoxSizing),
+      mMasonryAutoFlow(aSource.mMasonryAutoFlow),
       mAlignContent(aSource.mAlignContent),
       mAlignItems(aSource.mAlignItems),
       mAlignSelf(aSource.mAlignSelf),
@@ -1138,6 +1143,7 @@ nsStylePosition::nsStylePosition(const nsStylePosition& aSource)
       mFlexDirection(aSource.mFlexDirection),
       mFlexWrap(aSource.mFlexWrap),
       mObjectFit(aSource.mObjectFit),
+      mBoxSizing(aSource.mBoxSizing),
       mOrder(aSource.mOrder),
       mFlexGrow(aSource.mFlexGrow),
       mFlexShrink(aSource.mFlexShrink),
@@ -1167,6 +1173,14 @@ static bool IsAutonessEqual(const StyleRect<LengthPercentageOrAuto>& aSides1,
 nsChangeHint nsStylePosition::CalcDifference(
     const nsStylePosition& aNewData,
     const nsStyleVisibility& aOldStyleVisibility) const {
+  if (mGridTemplateColumns.IsMasonry() !=
+          aNewData.mGridTemplateColumns.IsMasonry() ||
+      mGridTemplateRows.IsMasonry() != aNewData.mGridTemplateRows.IsMasonry()) {
+    // XXXmats this could be optimized to AllReflowHints with a bit of work,
+    // but I'll assume this is a very rare use case in practice. (bug 1623886)
+    return nsChangeHint_ReconstructFrame;
+  }
+
   nsChangeHint hint = nsChangeHint(0);
 
   // Changes to "z-index" require a repaint.
@@ -1197,21 +1211,25 @@ nsChangeHint nsStylePosition::CalcDifference(
     return hint | nsChangeHint_AllReflowHints;
   }
 
+  if (mAlignItems != aNewData.mAlignItems ||
+      mAlignSelf != aNewData.mAlignSelf ||
+      mJustifyTracks != aNewData.mJustifyTracks ||
+      mAlignTracks != aNewData.mAlignTracks) {
+    return hint | nsChangeHint_AllReflowHints;
+  }
+
   // Properties that apply to flex items:
   // XXXdholbert These should probably be more targeted (bug 819536)
-  if (mAlignSelf != aNewData.mAlignSelf || mFlexBasis != aNewData.mFlexBasis ||
-      mFlexGrow != aNewData.mFlexGrow || mFlexShrink != aNewData.mFlexShrink) {
+  if (mFlexBasis != aNewData.mFlexBasis || mFlexGrow != aNewData.mFlexGrow ||
+      mFlexShrink != aNewData.mFlexShrink) {
     return hint | nsChangeHint_AllReflowHints;
   }
 
   // Properties that apply to flex containers:
   // - flex-direction can swap a flex container between vertical & horizontal.
-  // - align-items can change the sizing of a flex container & the positioning
-  //   of its children.
   // - flex-wrap changes whether a flex container's children are wrapped, which
   //   impacts their sizing/positioning and hence impacts the container's size.
-  if (mAlignItems != aNewData.mAlignItems ||
-      mFlexDirection != aNewData.mFlexDirection ||
+  if (mFlexDirection != aNewData.mFlexDirection ||
       mFlexWrap != aNewData.mFlexWrap) {
     return hint | nsChangeHint_AllReflowHints;
   }
@@ -1224,7 +1242,8 @@ nsChangeHint nsStylePosition::CalcDifference(
       mGridTemplateAreas != aNewData.mGridTemplateAreas ||
       mGridAutoColumns != aNewData.mGridAutoColumns ||
       mGridAutoRows != aNewData.mGridAutoRows ||
-      mGridAutoFlow != aNewData.mGridAutoFlow) {
+      mGridAutoFlow != aNewData.mGridAutoFlow ||
+      mMasonryAutoFlow != aNewData.mMasonryAutoFlow) {
     return hint | nsChangeHint_AllReflowHints;
   }
 

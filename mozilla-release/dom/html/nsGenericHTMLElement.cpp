@@ -16,7 +16,6 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/TextEditor.h"
-#include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_layout.h"
 
 #include "nscore.h"
@@ -103,6 +102,26 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
+static const uint8_t NS_INPUTMODE_NONE = 1;
+static const uint8_t NS_INPUTMODE_TEXT = 2;
+static const uint8_t NS_INPUTMODE_TEL = 3;
+static const uint8_t NS_INPUTMODE_URL = 4;
+static const uint8_t NS_INPUTMODE_EMAIL = 5;
+static const uint8_t NS_INPUTMODE_NUMERIC = 6;
+static const uint8_t NS_INPUTMODE_DECIMAL = 7;
+static const uint8_t NS_INPUTMODE_SEARCH = 8;
+
+static const nsAttrValue::EnumTable kInputmodeTable[] = {
+    {"none", NS_INPUTMODE_NONE},
+    {"text", NS_INPUTMODE_TEXT},
+    {"tel", NS_INPUTMODE_TEL},
+    {"url", NS_INPUTMODE_URL},
+    {"email", NS_INPUTMODE_EMAIL},
+    {"numeric", NS_INPUTMODE_NUMERIC},
+    {"decimal", NS_INPUTMODE_DECIMAL},
+    {"search", NS_INPUTMODE_SEARCH},
+    {nullptr, 0}};
+
 nsresult nsGenericHTMLElement::CopyInnerTo(Element* aDst) {
   MOZ_ASSERT(!aDst->GetUncomposedDoc(),
              "Should not CopyInnerTo an Element in a document");
@@ -126,7 +145,7 @@ static const nsAttrValue::EnumTable kDirTable[] = {
 void nsGenericHTMLElement::AddToNameTable(nsAtom* aName) {
   MOZ_ASSERT(HasName(), "Node doesn't have name?");
   Document* doc = GetUncomposedDoc();
-  if (doc && !IsInAnonymousSubtree()) {
+  if (doc && !IsInNativeAnonymousSubtree()) {
     doc->AddToNameTable(this, aName);
   }
 }
@@ -834,6 +853,10 @@ bool nsGenericHTMLElement::ParseAttribute(int32_t aNamespaceID,
       aResult.ParseAtomArray(aValue);
       return true;
     }
+
+    if (aAttribute == nsGkAtoms::inputmode) {
+      return aResult.ParseEnumValue(aValue, kInputmodeTable, false);
+    }
   }
 
   return nsGenericHTMLElementBase::ParseAttribute(
@@ -1301,7 +1324,7 @@ void nsGenericHTMLElement::MapImageSizeAttributesInto(
     }
 
     if (w && h && *w != 0 && *h != 0) {
-      aDecls.SetNumberValue(eCSSProperty_aspect_ratio, *w / *h);
+      aDecls.SetAspectRatio(*w, *h);
     }
   }
 }
@@ -1522,12 +1545,6 @@ already_AddRefed<nsINodeList> nsGenericHTMLElement::Labels() {
   return labels.forget();
 }
 
-bool nsGenericHTMLElement::IsInteractiveHTMLContent(
-    bool aIgnoreTabindex) const {
-  return IsAnyOfHTMLElements(nsGkAtoms::embed) ||
-         (!aIgnoreTabindex && HasAttr(kNameSpaceID_None, nsGkAtoms::tabindex));
-}
-
 // static
 bool nsGenericHTMLElement::LegacyTouchAPIEnabled(JSContext* aCx,
                                                  JSObject* aGlobal) {
@@ -1641,44 +1658,13 @@ nsIContent::IMEState nsGenericHTMLFormElement::GetDesiredIMEState() {
   return state;
 }
 
-static bool IsSameOriginAsTop(const BindContext& aContext,
-                              const nsGenericHTMLFormElement* aElement) {
-  MOZ_ASSERT(aElement);
-
-  BrowsingContext* browsingContext = aContext.OwnerDoc().GetBrowsingContext();
-  if (!browsingContext) {
-    return false;
-  }
-
-  nsPIDOMWindowOuter* topWindow = browsingContext->Top()->GetDOMWindow();
-  if (!topWindow) {
-    // If we don't have a DOMWindow, We are not in same origin.
-    return false;
-  }
-
-  Document* topLevelDocument = topWindow->GetExtantDoc();
-  if (!topLevelDocument) {
-    return false;
-  }
-
-  return NS_SUCCEEDED(
-      nsContentUtils::CheckSameOrigin(topLevelDocument, aElement));
-}
-
 nsresult nsGenericHTMLFormElement::BindToTree(BindContext& aContext,
                                               nsINode& aParent) {
   nsresult rv = nsGenericHTMLElement::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // An autofocus event has to be launched if the autofocus attribute is
-  // specified and the element accepts the autofocus attribute and only if the
-  // target document is in the same origin as the top level document.
-  // https://html.spec.whatwg.org/multipage/interaction.html#the-autofocus-attribute:same-origin
-  // In addition, the document should not be already loaded and the
-  // "browser.autofocus" preference should be 'true'.
-  if (IsAutofocusable() && HasAttr(kNameSpaceID_None, nsGkAtoms::autofocus) &&
-      StaticPrefs::browser_autofocus() && IsInUncomposedDoc() &&
-      IsSameOriginAsTop(aContext, this)) {
+  if (IsAutofocusable() && HasAttr(nsGkAtoms::autofocus) &&
+      aContext.AllowsAutoFocus()) {
     aContext.OwnerDoc().SetAutoFocusElement(this);
   }
 
@@ -1959,10 +1945,10 @@ EventStates nsGenericHTMLFormElement::IntrinsicState() const {
   }
 
   // Make the text controls read-write
-  if (!state.HasState(NS_EVENT_STATE_MOZ_READWRITE) && DoesReadOnlyApply()) {
-    if (!GetBoolAttr(nsGkAtoms::readonly)) {
-      state |= NS_EVENT_STATE_MOZ_READWRITE;
-      state &= ~NS_EVENT_STATE_MOZ_READONLY;
+  if (!state.HasState(NS_EVENT_STATE_READWRITE) && DoesReadOnlyApply()) {
+    if (!GetBoolAttr(nsGkAtoms::readonly) && !IsDisabled()) {
+      state |= NS_EVENT_STATE_READWRITE;
+      state &= ~NS_EVENT_STATE_READONLY;
     }
   }
 
@@ -2184,23 +2170,21 @@ void nsGenericHTMLFormElement::UpdateDisabledState(bool aNotify) {
     return;
   }
 
-  bool isDisabled = HasAttr(kNameSpaceID_None, nsGkAtoms::disabled);
-  if (!isDisabled && mFieldSet) {
-    isDisabled = mFieldSet->IsDisabled();
-  }
+  const bool isDisabled =
+      HasAttr(nsGkAtoms::disabled) || (mFieldSet && mFieldSet->IsDisabled());
 
-  EventStates disabledStates;
-  if (isDisabled) {
-    disabledStates |= NS_EVENT_STATE_DISABLED;
-  } else {
-    disabledStates |= NS_EVENT_STATE_ENABLED;
-  }
+  const EventStates disabledStates =
+      isDisabled ? NS_EVENT_STATE_DISABLED : NS_EVENT_STATE_ENABLED;
 
   EventStates oldDisabledStates = State() & DISABLED_STATES;
   EventStates changedStates = disabledStates ^ oldDisabledStates;
 
   if (!changedStates.IsEmpty()) {
     ToggleStates(changedStates, aNotify);
+    if (DoesReadOnlyApply()) {
+      // :disabled influences :read-only / :read-write.
+      UpdateState(aNotify);
+    }
   }
 }
 
@@ -2317,6 +2301,7 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
   int32_t tabIndex = TabIndex();
   bool disabled = false;
   bool disallowOverridingFocusability = true;
+  Maybe<int32_t> attrVal = GetTabIndexAttrValue();
 
   if (IsEditableRoot()) {
     // Editable roots should always be focusable.
@@ -2324,7 +2309,7 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
 
     // Ignore the disabled attribute in editable contentEditable/designMode
     // roots.
-    if (!HasAttr(kNameSpaceID_None, nsGkAtoms::tabindex)) {
+    if (attrVal.isNothing()) {
       // The default value for tabindex should be 0 for editable
       // contentEditable roots.
       tabIndex = 0;
@@ -2345,9 +2330,7 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
 
   // If a tabindex is specified at all, or the default tabindex is 0, we're
   // focusable
-  *aIsFocusable =
-      (tabIndex >= 0 ||
-       (!disabled && HasAttr(kNameSpaceID_None, nsGkAtoms::tabindex)));
+  *aIsFocusable = (tabIndex >= 0 || (!disabled && attrVal.isSome()));
 
   return disallowOverridingFocusability;
 }
@@ -2384,14 +2367,15 @@ bool nsGenericHTMLElement::PerformAccesskey(bool aKeyCausesActivation,
 
   // It's hard to say what HTML4 wants us to do in all cases.
   bool focused = true;
-  nsFocusManager* fm = nsFocusManager::GetFocusManager();
-  if (fm) {
-    fm->SetFocus(this, nsIFocusManager::FLAG_BYKEY |
-                           nsIFocusManager::FLAG_BYELEMENTFOCUS);
+  if (nsFocusManager* fm = nsFocusManager::GetFocusManager()) {
+    fm->SetFocus(this, nsIFocusManager::FLAG_BYKEY);
 
     // Return true if the element became the current focus within its window.
+    //
+    // FIXME(emilio): Shouldn't this check `window->GetFocusedElement() == this`
+    // based on the above comment?
     nsPIDOMWindowOuter* window = OwnerDoc()->GetWindow();
-    focused = (window && window->GetFocusedElement());
+    focused = window && window->GetFocusedElement();
   }
 
   if (aKeyCausesActivation) {

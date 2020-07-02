@@ -114,8 +114,8 @@ void RemoveProfileFiles(nsIToolkitProfile* aProfile, bool aInBackground) {
         lock->Unlock();
         // nsIProfileLock is not threadsafe so release our reference to it on
         // the main thread.
-        NS_ReleaseOnMainThreadSystemGroup(
-            "nsToolkitProfile::RemoveProfileFiles::Unlock", lock.forget());
+        NS_ReleaseOnMainThread("nsToolkitProfile::RemoveProfileFiles::Unlock",
+                               lock.forget());
 
         rv = rootDir->Remove(true);
         NS_ENSURE_SUCCESS_VOID(rv);
@@ -492,7 +492,7 @@ bool nsToolkitProfileService::IsProfileForCurrentInstall(
   lastGreDirPath = lastGreDir->NativePath();
   currentGreDirPath = currentGreDir->NativePath();
   if (lastGreDirPath.Equals(currentGreDirPath,
-                            nsCaseInsensitiveStringComparator())) {
+                            nsCaseInsensitiveStringComparator)) {
     return true;
   }
 
@@ -504,12 +504,12 @@ bool nsToolkitProfileService::IsProfileForCurrentInstall(
   if (SUCCEEDED(hres)) {
     nsDependentString strPathX86(pathX86);
     if (!StringBeginsWith(currentGreDirPath, strPathX86,
-                          nsCaseInsensitiveStringComparator())) {
+                          nsCaseInsensitiveStringComparator)) {
       PWSTR path = nullptr;
       hres = SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &path);
       if (SUCCEEDED(hres)) {
         if (StringBeginsWith(currentGreDirPath, nsDependentString(path),
-                             nsCaseInsensitiveStringComparator())) {
+                             nsCaseInsensitiveStringComparator)) {
           currentGreDirPath.Replace(0, wcslen(path), strPathX86);
         }
       }
@@ -519,7 +519,7 @@ bool nsToolkitProfileService::IsProfileForCurrentInstall(
   CoTaskMemFree(pathX86);
 
   return lastGreDirPath.Equals(currentGreDirPath,
-                               nsCaseInsensitiveStringComparator());
+                               nsCaseInsensitiveStringComparator);
 #  endif
 #endif
 

@@ -482,8 +482,16 @@ class MediaTrack : public mozilla::LinkedListElement<MediaTrack> {
   virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const;
 
   bool IsSuspended() const { return mSuspendedCount > 0; }
+  /**
+   * Increment suspend count and move it to mGraph->mSuspendedTracks if
+   * necessary.  Graph thread.
+   */
   void IncrementSuspendCount();
-  void DecrementSuspendCount();
+  /**
+   * Increment suspend count on aTrack and move it to mGraph->mTracks if
+   * necessary.  GraphThread.
+   */
+  virtual void DecrementSuspendCount();
 
  protected:
   // Called on graph thread before handing control to the main thread to
@@ -922,6 +930,7 @@ class ProcessedMediaTrack : public MediaTrack {
   void InputSuspended(MediaInputPort* aPort);
   void InputResumed(MediaInputPort* aPort);
   void DestroyImpl() override;
+  void DecrementSuspendCount() override;
   /**
    * This gets called after we've computed the blocking states for all
    * tracks (mBlocked is up to date up to mStateComputedTime).
@@ -1026,7 +1035,7 @@ class MediaTrackGraph {
   AbstractThread* AbstractMainThread();
 
   // Idempotent
-  static void DestroyNonRealtimeInstance(MediaTrackGraph* aGraph);
+  void ForceShutDown();
 
   virtual nsresult OpenAudioInput(CubebUtils::AudioDeviceID aID,
                                   AudioDataListener* aListener) = 0;
@@ -1063,15 +1072,27 @@ class MediaTrackGraph {
 
   /* From the main thread, ask the MTG to tell us when the graph
    * thread is running, and audio is being processed, by resolving the returned
-   * promise. The promise is rejected with NS_ERROR_NOT_AVAILABLE if aNodeTrack
+   * promise. The promise is rejected with NS_ERROR_NOT_AVAILABLE if aTrack
    * is destroyed, or NS_ERROR_ILLEGAL_DURING_SHUTDOWN if the graph is shut
    * down, before the promise could be resolved. */
   using GraphStartedPromise = GenericPromise;
-  RefPtr<GraphStartedPromise> NotifyWhenGraphStarted(AudioNodeTrack* aTrack);
-  /* From the main thread, suspend, resume or close an AudioContext.
+  RefPtr<GraphStartedPromise> NotifyWhenGraphStarted(MediaTrack* aTrack);
+  /* Same as above but the promise is resolved when the devices has started.
+   * Audio is initially processed in the FallbackDriver's thread during the
+   * device is start up. In a newly created graph, the promise from this method
+   * will be resolved later than the promise of the method above.*/
+  RefPtr<GraphStartedPromise> NotifyWhenDeviceStarted(MediaTrack* aTrack);
+
+  /* From the main thread, suspend, resume or close an AudioContext.  Calls
+   * are not counted.  Even Resume calls can be more frequent than Suspend
+   * calls.
+   *
    * aTracks are the tracks of all the AudioNodes of the AudioContext that
-   * need to be suspended or resumed. This can be empty if this is a second
-   * consecutive suspend call and all the nodes are already suspended.
+   * need to be suspended or resumed.  Suspend and Resume operations on these
+   * tracks are counted.  Resume operations must not outnumber Suspends and a
+   * track will not resume until the number of Resume operations matches the
+   * number of Suspends.  This array may be empty if, for example, this is a
+   * second consecutive suspend call and all the nodes are already suspended.
    *
    * This can possibly pause the graph thread, releasing system resources, if
    * all tracks have been suspended/closed.
@@ -1089,6 +1110,12 @@ class MediaTrackGraph {
    * Start processing non-realtime for a specific number of ticks.
    */
   void StartNonRealtimeProcessing(uint32_t aTicksToProcess);
+
+  /**
+   * NotifyJSContext() is called on the graph thread before content script
+   * runs.
+   */
+  void NotifyJSContext(JSContext* aCx);
 
   /**
    * Media graph thread only.

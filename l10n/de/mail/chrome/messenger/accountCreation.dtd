@@ -2,22 +2,28 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY autoconfigWizard.title          "Konto einrichten">
 <!ENTITY autoconfigWizard2.title         "Konto für eine bestehende E-Mail-Adresse einrichten">
+
+<!ENTITY emailWizard.title               "Bestehende E-Mail-Adresse einrichten">
+<!ENTITY emailWizard.caption             "Richten Sie Ihre derzeitige E-Mail-Adresse ein">
 <!ENTITY name.label                      "Ihr Name:">
 <!ENTITY name.accesskey                  "n">
 <!ENTITY name.placeholder                "Vorname Nachname">
+<!ENTITY fullname.placeholder            "Ihr vollständiger Name">
 <!ENTITY name.text                       "Ihr Name, wie er anderen Personen gezeigt wird">
+<!ENTITY name.error                      "Bitte geben Sie Ihren Namen ein">
 <!ENTITY email.label                     "E-Mail-Adresse:">
 <!ENTITY email.accesskey                 "E">
-<!ENTITY email.placeholder               "email@example.com">
 <!-- LOCALIZATION NOTE(email.placeholder): Domain @example.com must stay in English -->
 <!ENTITY email2.placeholder              "ich@example.com">
+<!ENTITY email3.placeholder              "Ihre E-Mail-Adresse">
 <!ENTITY email.text                      "Bestehende E-Mail-Adresse">
+<!ENTITY email.error                     "Ungültige E-Mail-Adresse">
 <!ENTITY password.label                  "Passwort:">
 <!ENTITY password.accesskey              "P">
 <!ENTITY password.placeholder            "Passwort">
 <!ENTITY password.text                   "Freiwillig, wird zur Bestätigung des Benutzernamens verwendet">
+<!ENTITY password.toggle                 "Passwortanzeige umschalten">
 <!ENTITY rememberPassword.label          "Passwort speichern">
 <!ENTITY rememberPassword.accesskey      "P">
 <!ENTITY usernameEx.label                "Ihr Benutzername:">
@@ -27,15 +33,22 @@
 <!-- LOCALIZATION NOTE(usernameEx.text): Domain refers to the Windows domain in ActiveDirectory. We mean the user's login in Windows at the local corporate network. -->
 <!ENTITY usernameEx.text                 "Domänen-Anmeldung">
 
+<!ENTITY protocol.label                  "Protokoll:">
 <!ENTITY imapLong.label                  "IMAP (Nachrichten auf dem Server speichern)">
 <!ENTITY pop3Long.label                  "POP3 (Nachrichten auf diesem Computer speichern)">
 
+<!ENTITY manualConfigTable.summary       "Server-Einstellungen">
 <!ENTITY incoming.label                  "Posteingangs-Server:">
+<!ENTITY incomingColumn.label            "Posteingangs-Server:">
 <!ENTITY outgoing.label                  "Postausgangs-Server:">
+<!ENTITY outgoingColumn.label            "Postausgangs-Server:">
 <!ENTITY username.label                  "Benutzername:">
 <!ENTITY hostname.label                  "Server-Adresse">
 <!ENTITY port.label                      "Port">
 <!ENTITY ssl.label                       "SSL">
+<!ENTITY serverRow.label                 "Server:">
+<!ENTITY portRow.label                   "Port:">
+<!ENTITY sslRow.label                    "SSL:">
 <!ENTITY auth.label                      "Authentifizierung">
 <!ENTITY imap.label                      "IMAP">
 <!ENTITY pop3.label                      "POP3">
@@ -68,10 +81,14 @@
 <!ENTITY half-manual-test.accesskey      "t">
 <!ENTITY manual-edit.label               "Manuell bearbeiten">
 <!ENTITY manual-edit.accesskey           "M">
-<!ENTITY switch-to-provisioner.label     "Neue E-Mail-Adresse erhalten…">
-<!ENTITY switch-to-provisioner.accesskey "N">
+<!ENTITY manual-config.label             "Manuell einrichten…">
+<!ENTITY manual-config.accesskey         "M">
 <!ENTITY open-provisioner.label          "Neue E-Mail-Adresse erhalten…">
 <!ENTITY open-provisioner.accesskey      "u">
+
+
+<!ENTITY get-help.label                  "Hilfe erhalten">
+<!ENTITY get-help.accesskey              "H">
 
 
 <!ENTITY warning.label                   "Warnung!">

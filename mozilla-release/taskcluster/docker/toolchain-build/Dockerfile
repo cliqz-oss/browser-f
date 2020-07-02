@@ -38,6 +38,9 @@ RUN apt-get update && \
       python-pip \
       python-setuptools \
       python-virtualenv \
+      python3-distutils-extra \
+      python3-requests \
+      python3-pytoml \
       subversion \
       tar \
       unzip \

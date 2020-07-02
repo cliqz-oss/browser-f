@@ -112,9 +112,6 @@ var formatter = new Log.BasicFormatter();
 // Set parent logger (and its children) to append to
 // the Javascript section of the Browser Console
 parentLogger.addAppender(new Log.ConsoleAppender(formatter));
-// Set parent logger (and its children) to
-// also append to standard out
-parentLogger.addAppender(new Log.DumpAppender(formatter));
 
 // Create a new logger (child of 'addons' logger)
 // for use by the Addons Manager
@@ -535,7 +532,6 @@ var gFinalShutdownBarrier = null;
 var gBeforeShutdownBarrier = null;
 var gRepoShutdownState = "";
 var gShutdownInProgress = false;
-var gPluginPageListener = null;
 var gBrowserUpdated = null;
 
 var AMTelemetry;
@@ -823,18 +819,6 @@ var AddonManagerInternal = {
         }
       }
 
-      // Support for remote about:plugins. Note that this module isn't loaded
-      // at the top because Services.appinfo is defined late in tests.
-      let { RemotePages } = ChromeUtils.import(
-        "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm"
-      );
-
-      gPluginPageListener = new RemotePages("about:plugins");
-      gPluginPageListener.addMessageListener(
-        "RequestPlugins",
-        this.requestPlugins
-      );
-
       gStartupComplete = true;
       this.recordTimestamp("AMI_startup_end");
     } catch (e) {
@@ -1064,8 +1048,6 @@ var AddonManagerInternal = {
     Services.prefs.removeObserver(PREF_EM_CHECK_UPDATE_SECURITY, this);
     Services.prefs.removeObserver(PREF_EM_UPDATE_ENABLED, this);
     Services.prefs.removeObserver(PREF_EM_AUTOUPDATE_DEFAULT, this);
-    gPluginPageListener.destroy();
-    gPluginPageListener = null;
 
     let savedError = null;
     // Only shut down providers if they've been started.
@@ -1115,30 +1097,6 @@ var AddonManagerInternal = {
     if (savedError) {
       throw savedError;
     }
-  },
-
-  async requestPlugins({ target: port }) {
-    // Lists all the properties that plugins.html needs
-    const NEEDED_PROPS = [
-      "name",
-      "pluginLibraries",
-      "pluginFullpath",
-      "version",
-      "isActive",
-      "blocklistState",
-      "description",
-      "pluginMimeTypes",
-    ];
-    function filterProperties(plugin) {
-      let filtered = {};
-      for (let prop of NEEDED_PROPS) {
-        filtered[prop] = plugin[prop];
-      }
-      return filtered;
-    }
-
-    let aPlugins = await AddonManager.getAddonsByTypes(["plugin"]);
-    port.sendAsyncMessage("PluginList", aPlugins.map(filterProperties));
   },
 
   /**
@@ -1841,9 +1799,11 @@ var AddonManagerInternal = {
    * @param  aTelemetryInfo
    *         An optional object which provides details about the installation source
    *         included in the addon manager telemetry events.
+   * @param  aUseSystemLocation
+   *         If true the addon is installed into the system profile location.
    * @throws if the aFile or aCallback arguments are not specified
    */
-  getInstallForFile(aFile, aMimetype, aTelemetryInfo) {
+  getInstallForFile(aFile, aMimetype, aTelemetryInfo, aUseSystemLocation) {
     if (!gStarted) {
       throw Components.Exception(
         "AddonManager is not initialized",
@@ -1871,7 +1831,8 @@ var AddonManagerInternal = {
           provider,
           "getInstallForFile",
           aFile,
-          aTelemetryInfo
+          aTelemetryInfo,
+          aUseSystemLocation
         );
 
         if (install) {
@@ -1881,6 +1842,25 @@ var AddonManagerInternal = {
 
       return null;
     })();
+  },
+
+  /**
+   * Uninstall an addon from the system profile location.
+   *
+   * @param {string} aID
+   *         The ID of the addon to remove.
+   * @returns A promise that resolves when the addon is uninstalled.
+   */
+  uninstallSystemProfileAddon(aID) {
+    if (!gStarted) {
+      throw Components.Exception(
+        "AddonManager is not initialized",
+        Cr.NS_ERROR_NOT_INITIALIZED
+      );
+    }
+    return AddonManagerInternal._getProviderByName(
+      "XPIProvider"
+    ).uninstallSystemProfileAddon(aID);
   },
 
   /**
@@ -3999,12 +3979,22 @@ var AddonManager = {
     return AddonManagerInternal.getInstallForURL(aUrl, aOptions);
   },
 
-  getInstallForFile(aFile, aMimetype, aTelemetryInfo) {
+  getInstallForFile(
+    aFile,
+    aMimetype,
+    aTelemetryInfo,
+    aUseSystemLocation = false
+  ) {
     return AddonManagerInternal.getInstallForFile(
       aFile,
       aMimetype,
-      aTelemetryInfo
+      aTelemetryInfo,
+      aUseSystemLocation
     );
+  },
+
+  uninstallSystemProfileAddon(aID) {
+    return AddonManagerInternal.uninstallSystemProfileAddon(aID);
   },
 
   /**

@@ -33,6 +33,7 @@
 
 #include "jsmath.h"
 
+#include "frontend/FunctionSyntaxKind.h"  // FunctionSyntaxKind
 #include "frontend/ParseNode.h"
 #include "frontend/Parser.h"
 #include "gc/Policy.h"
@@ -45,6 +46,8 @@
 #include "util/StringBuffer.h"
 #include "util/Text.h"
 #include "vm/ErrorReporting.h"
+#include "vm/FunctionFlags.h"          // js::FunctionFlags
+#include "vm/GeneratorAndAsyncKind.h"  // js::GeneratorKind, js::FunctionAsyncKind
 #include "vm/SelfHosting.h"
 #include "vm/Time.h"
 #include "vm/TypedArrayObject.h"
@@ -170,7 +173,7 @@ struct LitValPOD {
   }
 };
 
-static_assert(std::is_pod<LitValPOD>::value,
+static_assert(std::is_pod_v<LitValPOD>,
               "must be POD to be simply serialized/deserialized");
 
 // An AsmJSGlobal represents a JS global variable in the asm.js module function.
@@ -1351,7 +1354,7 @@ class MOZ_STACK_CLASS JS_HAZ_ROOTED ModuleValidatorShared {
         compilerEnv_(CompileMode::Once, Tier::Optimized, OptimizedBackend::Ion,
                      DebugEnabled::False, /* multi value */ false,
                      /* ref types */ false, /* gc types */ false,
-                     /* huge memory */ false, /* bigint */ false),
+                     /* huge memory */ false, /* v128 */ false),
         env_(&compilerEnv_, Shareable::False, ModuleKind::AsmJS) {
     compilerEnv_.computeParameters();
     env_.minMemoryLength = RoundUpToNextValidAsmJSHeapLength(0);
@@ -1725,7 +1728,7 @@ class MOZ_STACK_CLASS JS_HAZ_ROOTED ModuleValidatorShared {
       return false;
     }
     seg->tableIndex = tableIndex;
-    seg->offsetIfActive = Some(InitExpr(LitVal(uint32_t(0))));
+    seg->offsetIfActive = Some(InitExpr::fromConstant(LitVal(uint32_t(0))));
     seg->elemFuncIndices = std::move(elems);
     return env_.elemSegments.append(std::move(seg));
   }
@@ -6031,7 +6034,7 @@ static bool ParseFunction(ModuleValidator<Unit>& m, FunctionNode** funNodeOut,
   if (!funbox) {
     return false;
   }
-  funbox->initWithEnclosingParseContext(outerpc, fun,
+  funbox->initWithEnclosingParseContext(outerpc, fun->flags(),
                                         FunctionSyntaxKind::Statement);
 
   Directives newDirectives = directives;
@@ -6545,6 +6548,8 @@ static bool ValidateGlobalVariable(JSContext* cx, const AsmJSGlobal& global,
         }
         case ValType::I64:
           MOZ_CRASH("int64");
+        case ValType::V128:
+          MOZ_CRASH("v128");
         case ValType::F32: {
           float f;
           if (!RoundFloat32(cx, v, &f)) {
@@ -7096,8 +7101,8 @@ static bool DoCompileAsmJS(JSContext* cx, AsmJSParser<Unit>& parser,
 
   // Hand over ownership to a GC object wrapper which can then be referenced
   // from the module function.
-  Rooted<WasmModuleObject*> moduleObj(cx,
-                                      WasmModuleObject::create(cx, *module));
+  Rooted<WasmModuleObject*> moduleObj(
+      cx, WasmModuleObject::create(cx, *module, nullptr));
   if (!moduleObj) {
     return false;
   }
@@ -7116,7 +7121,7 @@ static bool DoCompileAsmJS(JSContext* cx, AsmJSParser<Unit>& parser,
   // generating bytecode for asm.js functions, allowing this asm.js module
   // function to be the finished result.
   MOZ_ASSERT(funbox->isInterpreted());
-  funbox->clobberFunction(moduleFun);
+  funbox->setAsmJSModule(moduleFun);
 
   // Success! Write to the console with a "warning" message indicating
   // total compilation time.

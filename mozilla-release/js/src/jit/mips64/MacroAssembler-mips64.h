@@ -207,7 +207,7 @@ class MacroAssemblerMIPS64Compat : public MacroAssemblerMIPS64 {
     ma_daddu(dest, address.base, Imm32(address.offset));
   }
 
-  inline void computeEffectiveAddress(const BaseIndex& address, Register dest);
+  void computeEffectiveAddress(const BaseIndex& address, Register dest);
 
   void j(Label* dest) { ma_b(dest); }
 
@@ -379,9 +379,12 @@ class MacroAssemblerMIPS64Compat : public MacroAssemblerMIPS64 {
     ma_dins(dest, zero, Imm32(JSVAL_TAG_SHIFT + 3), Imm32(1));
   }
 
-  void unboxGCThingForPreBarrierTrampoline(const Address& src, Register dest) {
+  void unboxGCThingForGCBarrier(const Address& src, Register dest) {
     loadPtr(src, dest);
     ma_dext(dest, dest, Imm32(0), Imm32(JSVAL_TAG_SHIFT));
+  }
+  void unboxGCThingForGCBarrier(const ValueOperand& src, Register dest) {
+    ma_dext(dest, src.valueReg(), Imm32(0), Imm32(JSVAL_TAG_SHIFT));
   }
 
   void unboxInt32(const ValueOperand& operand, Register dest);
@@ -613,18 +616,39 @@ class MacroAssemblerMIPS64Compat : public MacroAssemblerMIPS64 {
   void load16SignExtend(const Address& address, Register dest);
   void load16SignExtend(const BaseIndex& src, Register dest);
 
+  template <typename S>
+  void load16UnalignedSignExtend(const S& src, Register dest) {
+    MOZ_CRASH("NYI");
+  }
+
   void load16ZeroExtend(const Address& address, Register dest);
   void load16ZeroExtend(const BaseIndex& src, Register dest);
+
+  template <typename S>
+  void load16UnalignedZeroExtend(const S& src, Register dest) {
+    MOZ_CRASH("NYI");
+  }
 
   void load32(const Address& address, Register dest);
   void load32(const BaseIndex& address, Register dest);
   void load32(AbsoluteAddress address, Register dest);
   void load32(wasm::SymbolicAddress address, Register dest);
+
+  template <typename S>
+  void load32Unaligned(const S& src, Register dest) {
+    MOZ_CRASH("NYI");
+  }
+
   void load64(const Address& address, Register64 dest) {
     loadPtr(address, dest.reg);
   }
   void load64(const BaseIndex& address, Register64 dest) {
     loadPtr(address, dest.reg);
+  }
+
+  template <typename S>
+  void load64Unaligned(const S& src, Register64 dest) {
+    MOZ_CRASH("NYI");
   }
 
   void loadPtr(const Address& address, Register dest);
@@ -651,6 +675,11 @@ class MacroAssemblerMIPS64Compat : public MacroAssemblerMIPS64 {
   void store16(Register src, const BaseIndex& address);
   void store16(Imm32 imm, const BaseIndex& address);
 
+  template <typename S, typename T>
+  void store16Unaligned(const S& src, const T& dest) {
+    MOZ_CRASH("NYI");
+  }
+
   void store32(Register src, AbsoluteAddress address);
   void store32(Register src, const Address& address);
   void store32(Register src, const BaseIndex& address);
@@ -663,6 +692,11 @@ class MacroAssemblerMIPS64Compat : public MacroAssemblerMIPS64 {
     store32(src, address);
   }
 
+  template <typename S, typename T>
+  void store32Unaligned(const S& src, const T& dest) {
+    MOZ_CRASH("NYI");
+  }
+
   void store64(Imm64 imm, Address address) {
     storePtr(ImmWord(imm.value), address);
   }
@@ -673,6 +707,11 @@ class MacroAssemblerMIPS64Compat : public MacroAssemblerMIPS64 {
   void store64(Register64 src, Address address) { storePtr(src.reg, address); }
   void store64(Register64 src, const BaseIndex& address) {
     storePtr(src.reg, address);
+  }
+
+  template <typename S, typename T>
+  void store64Unaligned(const S& src, const T& dest) {
+    MOZ_CRASH("NYI");
   }
 
   template <typename T>

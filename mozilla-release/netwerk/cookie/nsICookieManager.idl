@@ -47,6 +47,14 @@ interface nsICookieManager : nsISupports
   readonly attribute Array<nsICookie> sessionCookies;
 
   /**
+   * Returns current effective value of the "network.cookie.cookieBehavior".
+   */
+  readonly attribute uint32_t cookieBehavior;
+  %{C++
+    static uint32_t GetCookieBehavior();
+  %}
+
+  /**
    * Called to remove an individual cookie from the cookie list, specified
    * by host, name, and path. If the cookie cannot be found, no exception
    * is thrown. Typically, the arguments to this method will be obtained
@@ -198,15 +206,6 @@ interface nsICookieManager : nsISupports
                                       in jsval aOriginAttributes);
 
   /**
-   * Import an old-style cookie file. Imported cookies will be added to the
-   * existing database. If the database contains any cookies the same as those
-   * being imported (i.e. domain, name, and path match), they will be replaced.
-   *
-   * @param aCookieFile the file to import, usually cookies.txt
-   */
-  void importCookies(in nsIFile aCookieFile);
-
-  /**
    * Returns an array of all cookies whose origin attributes matches aPattern
    *
    * @param aPattern origin attribute pattern in JSON format
@@ -247,4 +246,9 @@ interface nsICookieManager : nsISupports
    */
   [implicit_jscontext]
   Promise removeAllSince(in int64_t aSinceWhen);
+
+  /**
+   * Retrieves all the cookies that were created on or after aSinceWhen, order
+   * by creation time */
+  Array<nsICookie> getCookiesSince(in int64_t aSinceWhen);
 };

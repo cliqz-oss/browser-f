@@ -8,6 +8,7 @@ import {
   getOriginalFrameScope,
   getGeneratedFrameScope,
   getInlinePreviews,
+  getSelectedLocation,
 } from "../../selectors";
 import { features } from "../../utils/prefs";
 import { validateThreadContext } from "../../utils/context";
@@ -15,10 +16,11 @@ import { validateThreadContext } from "../../utils/context";
 import type { OriginalScope } from "../../utils/pause/mapScopes";
 import type { ThreadContext, Frame, Scope, Preview } from "../../types";
 import type { ThunkArgs } from "../types";
+import type { SourceScope } from "../../workers/parser/getScopes";
 
 // We need to display all variables in the current functional scope so
 // include all data for block scopes until the first functional scope
-function getLocalScopeLevels(originalAstScopes): number {
+function getLocalScopeLevels(originalAstScopes: SourceScope[]): number {
   let levels = 0;
   while (
     originalAstScopes[levels] &&
@@ -62,14 +64,21 @@ export function generateInlinePreview(cx: ThreadContext, frame: ?Frame) {
       return;
     }
 
-    const originalAstScopes = await parser.getScopes(frame.location);
+    // It's important to use selectedLocation, because we don't know
+    // if we'll be viewing the original or generated frame location
+    const selectedLocation = getSelectedLocation(getState());
+    if (!selectedLocation) {
+      return;
+    }
+
+    const originalAstScopes = await parser.getScopes(selectedLocation);
     validateThreadContext(getState(), cx);
     if (!originalAstScopes) {
       return;
     }
 
     const allPreviews = [];
-    const pausedOnLine: number = frame.location.line;
+    const pausedOnLine: number = selectedLocation.line;
     const levels: number = getLocalScopeLevels(originalAstScopes);
 
     for (

@@ -12,14 +12,17 @@
 #include "mozilla/EditorDOMPoint.h"
 #include "mozilla/GuardObjects.h"
 #include "mozilla/RangeBoundary.h"
+#include "mozilla/dom/HTMLBRElement.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/StaticRange.h"
+#include "nsAtom.h"
 #include "nsCOMPtr.h"
+#include "nsContentUtils.h"
+#include "nscore.h"
 #include "nsDebug.h"
 #include "nsRange.h"
-#include "nscore.h"
+#include "nsString.h"
 
-class nsAtom;
 class nsISimpleEnumerator;
 class nsITransferable;
 
@@ -380,7 +383,7 @@ inline MoveNodeResult MoveNodeHandled(
 
 /***************************************************************************
  * SplitNodeResult is a simple class for
- * EditorBase::SplitNodeDeepWithTransaction().
+ * HTMLEditor::SplitNodeDeepWithTransaction().
  * This makes the callers' code easier to read.
  */
 class MOZ_STACK_CLASS SplitNodeResult final {
@@ -781,6 +784,9 @@ class MOZ_RAII DOMSubtreeIterator final : public DOMIterator {
 
 class EditorUtils final {
  public:
+  using EditorType = EditorBase::EditorType;
+  using Selection = dom::Selection;
+
   /**
    * IsDescendantOf() checks if aNode is a child or a descendant of aParent.
    * aOutPoint is set to the child of aParent.
@@ -793,6 +799,69 @@ class EditorUtils final {
                              EditorDOMPoint* aOutPoint);
 
   /**
+   * Returns true if aContent is a <br> element and it's marked as padding for
+   * empty editor.
+   */
+  static bool IsPaddingBRElementForEmptyEditor(const nsIContent& aContent) {
+    const dom::HTMLBRElement* brElement =
+        dom::HTMLBRElement::FromNode(&aContent);
+    return brElement && brElement->IsPaddingForEmptyEditor();
+  }
+
+  /**
+   * Returns true if aContent is a <br> element and it's marked as padding for
+   * empty last line.
+   */
+  static bool IsPaddingBRElementForEmptyLastLine(const nsIContent& aContent) {
+    const dom::HTMLBRElement* brElement =
+        dom::HTMLBRElement::FromNode(&aContent);
+    return brElement && brElement->IsPaddingForEmptyLastLine();
+  }
+
+  /**
+   * IsEditableContent() returns true if aContent's data or children is ediable
+   * for the given editor type.  Be aware, returning true does NOT mean the
+   * node can be removed from its parent node, and returning false does NOT
+   * mean the node cannot be removed from the parent node.
+   * XXX May be the anonymous nodes in TextEditor not editable?  If it's not
+   *     so, we can get rid of aEditorType.
+   */
+  static bool IsEditableContent(const nsIContent& aContent,
+                                EditorType aEditorType) {
+    if ((aEditorType == EditorType::HTML && !aContent.IsEditable()) ||
+        EditorUtils::IsPaddingBRElementForEmptyEditor(aContent)) {
+      return false;
+    }
+
+    // In HTML editors, if we're dealing with an element, then ask it
+    // whether it's editable.
+    if (aContent.IsElement()) {
+      return aEditorType == EditorType::HTML ? aContent.IsEditable() : true;
+    }
+    // Text nodes are considered to be editable by both typed of editors.
+    return aContent.IsText();
+  }
+
+  /**
+   * Returns true if aContent is a usual element node (not padding <br> element
+   * for empty editor) or a text node.  In other words, returns true if
+   * aContent is a usual element node or visible data node.
+   */
+  static bool IsElementOrText(const nsIContent& aContent) {
+    if (aContent.IsText()) {
+      return true;
+    }
+    return aContent.IsElement() &&
+           !EditorUtils::IsPaddingBRElementForEmptyEditor(aContent);
+  }
+
+  /**
+   * IsContentPreformatted() checks the style info for the node for the
+   * preformatted text style.  This does NOT flush layout.
+   */
+  static bool IsContentPreformatted(nsIContent& aContent);
+
+  /**
    * Helper method for `AppendString()` and `AppendSubString()`.  This should
    * be called only when `aText` is in a password field.  This method masks
    * A part of or all of `aText` (`aStartOffsetInText` and later) should've
@@ -802,6 +871,43 @@ class EditorUtils final {
   static void MaskString(nsString& aString, dom::Text* aText,
                          uint32_t aStartOffsetInString,
                          uint32_t aStartOffsetInText);
+
+  static nsStaticAtom* GetTagNameAtom(const nsAString& aTagName) {
+    if (aTagName.IsEmpty()) {
+      return nullptr;
+    }
+    nsAutoString lowerTagName;
+    nsContentUtils::ASCIIToLower(aTagName, lowerTagName);
+    return NS_GetStaticAtom(lowerTagName);
+  }
+
+  static nsStaticAtom* GetAttributeAtom(const nsAString& aAttribute) {
+    if (aAttribute.IsEmpty()) {
+      return nullptr;  // Don't use nsGkAtoms::_empty for attribute.
+    }
+    return NS_GetStaticAtom(aAttribute);
+  }
+
+  /**
+   * Helper method for deletion.  When this returns true, Selection will be
+   * computed with nsFrameSelection that also requires flushed layout
+   * information.
+   */
+  static bool IsFrameSelectionRequiredToExtendSelection(
+      nsIEditor::EDirection aDirectionAndAmount, Selection& aSelection) {
+    switch (aDirectionAndAmount) {
+      case nsIEditor::eNextWord:
+      case nsIEditor::ePreviousWord:
+      case nsIEditor::eToBeginningOfLine:
+      case nsIEditor::eToEndOfLine:
+        return true;
+      case nsIEditor::ePrevious:
+      case nsIEditor::eNext:
+        return aSelection.IsCollapsed();
+      default:
+        return false;
+    }
+  }
 };
 
 }  // namespace mozilla

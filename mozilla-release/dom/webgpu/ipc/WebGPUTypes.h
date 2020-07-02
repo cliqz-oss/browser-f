@@ -18,6 +18,7 @@ typedef uint64_t RawId;
 typedef uint64_t BufferAddress;
 
 struct SerialBindGroupLayoutDescriptor {
+  nsCString mLabel;
   nsTArray<ffi::WGPUBindGroupLayoutEntry> mEntries;
 };
 
@@ -41,6 +42,7 @@ struct SerialBindGroupEntry {
 };
 
 struct SerialBindGroupDescriptor {
+  nsCString mLabel;
   RawId mLayout;
   nsTArray<SerialBindGroupEntry> mEntries;
 };
@@ -58,7 +60,7 @@ struct SerialComputePipelineDescriptor {
 struct SerialVertexBufferLayoutDescriptor {
   ffi::WGPUBufferAddress mArrayStride;
   ffi::WGPUInputStepMode mStepMode;
-  nsTArray<ffi::WGPUVertexAttributeDescriptor> mAttributeSet;
+  nsTArray<ffi::WGPUVertexAttributeDescriptor> mAttributes;
 };
 
 struct SerialVertexStateDescriptor {

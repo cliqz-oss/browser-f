@@ -292,7 +292,7 @@ shortcuts-no-commands = The following extensions do not have shortcuts:
 shortcuts-input =
   .placeholder = Type a shortcut
 
-shortcuts-browserAction = Activate extension
+shortcuts-browserAction2 = Activate toolbar button
 shortcuts-pageAction = Activate page action
 shortcuts-sidebarAction = Toggle the sidebar
 
@@ -485,8 +485,6 @@ updates-heading = Manage Your Updates
 discover-heading = Personalize Your { -brand-short-name }
 shortcuts-heading = Manage Extension Shortcuts
 
-theme-heading-search-label = Find more themes
-extension-heading-search-label = Find more extensions
 default-heading-search-label = Find more add-ons
 addons-heading-search-input =
     .placeholder = Search addons.mozilla.org

@@ -563,7 +563,7 @@ export class ASRouterAdminInner extends React.PureComponent {
   }
 
   handleBlock(msg) {
-    if (msg.bundled) {
+    if (msg.bundled && msg.template !== "onboarding") {
       // If we are blocking a message that belongs to a bundle, block all other messages that are bundled of that same template
       let bundle = this.findOtherBundledMessagesOfSameTemplate(msg.template);
       return () => ASRouterUtils.blockBundle(bundle);
@@ -572,7 +572,7 @@ export class ASRouterAdminInner extends React.PureComponent {
   }
 
   handleUnblock(msg) {
-    if (msg.bundled) {
+    if (msg.bundled && msg.template !== "onboarding") {
       // If we are unblocking a message that belongs to a bundle, unblock all other messages that are bundled of that same template
       let bundle = this.findOtherBundledMessagesOfSameTemplate(msg.template);
       return () => ASRouterUtils.unblockBundle(bundle);
@@ -791,9 +791,8 @@ export class ASRouterAdminInner extends React.PureComponent {
     const isBlockedByGroup = this.state.groups
       .filter(group => msg.groups.includes(group.id))
       .some(group => !group.enabled);
-    const msgProvider = this.state.providers.find(
-      provider => provider.id === msg.provider
-    );
+    const msgProvider =
+      this.state.providers.find(provider => provider.id === msg.provider) || {};
     const isProviderExcluded =
       msgProvider.exclude && msgProvider.exclude.includes(msg.id);
     const isMessageBlocked =
@@ -878,6 +877,11 @@ export class ASRouterAdminInner extends React.PureComponent {
     }
   }
 
+  modifyJson(content) {
+    let newContent = JSON.parse(content);
+    ASRouterUtils.modifyMessageJson(newContent);
+  }
+
   renderWNMessageItem(msg) {
     const isBlocked =
       this.state.messageBlockList.includes(msg.id) ||
@@ -919,7 +923,25 @@ export class ASRouterAdminInner extends React.PureComponent {
         </td>
         <td className={`message-summary`}>
           <pre className={isCollapsed ? "collapsed" : "expanded"}>
-            {JSON.stringify(msg, null, 2)}
+            <button
+              className="button json-button"
+              name={msg.id}
+              // eslint-disable-next-line react/jsx-no-bind
+              onClick={e =>
+                this.modifyJson(
+                  document.getElementById(`${msg.id}-textarea`).value
+                )
+              }
+            >
+              Modify Template
+            </button>
+            <textarea
+              id={`${msg.id}-textarea`}
+              className="wnp-textarea"
+              name={msg.id}
+            >
+              {JSON.stringify(msg, null, 2)}
+            </textarea>
           </pre>
         </td>
       </tr>
@@ -1066,6 +1088,21 @@ export class ASRouterAdminInner extends React.PureComponent {
               );
             } else if (provider.type === "remote-settings") {
               label = `remote settings (${provider.bucket})`;
+            } else if (provider.type === "remote-experiments") {
+              label = (
+                <span>
+                  remote settings (
+                  <a
+                    className="providerUrl"
+                    target="_blank"
+                    href="https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/messaging-experiments/records"
+                    rel="noopener noreferrer"
+                  >
+                    messaging-experiments
+                  </a>
+                  )
+                </span>
+              );
             }
 
             let reasonsDisabled = [];
@@ -1517,7 +1554,10 @@ export class ASRouterAdminInner extends React.PureComponent {
             To correctly render selected messages, please check "Disable Popup
             Auto-Hide" in the browser toolbox, or set{" "}
             <i>ui.popup.disable_autohide</i> to <b>true</b> in{" "}
-            <i>about:config</i>.
+            <i>about:config</i>. <br />
+            To modify a message, render it first using 'Render Selected
+            Messages'. Then, modify the JSON and click 'Modify Template' to see
+            your changes.
           </span>
         </p>
         <div>

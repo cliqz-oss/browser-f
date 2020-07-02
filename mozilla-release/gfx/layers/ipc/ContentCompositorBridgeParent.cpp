@@ -227,13 +227,12 @@ ContentCompositorBridgeParent::AllocPWebRenderBridgeParent(
     }
   }
 
-  nsTArray<RefPtr<wr::WebRenderAPI>> apis;
-  bool cloneSuccess = false;
+  RefPtr<wr::WebRenderAPI> api;
   if (root) {
-    cloneSuccess = root->CloneWebRenderAPIs(apis);
+    api = root->GetWebRenderAPI();
   }
 
-  if (!cloneSuccess) {
+  if (!root || !api) {
     // This could happen when this function is called after
     // CompositorBridgeParent destruction. This was observed during Tab move
     // between different windows.
@@ -247,10 +246,11 @@ ContentCompositorBridgeParent::AllocPWebRenderBridgeParent(
     return parent;
   }
 
+  api = api->Clone();
   RefPtr<AsyncImagePipelineManager> holder = root->AsyncImageManager();
   RefPtr<CompositorAnimationStorage> animStorage = cbp->GetAnimationStorage();
   WebRenderBridgeParent* parent = new WebRenderBridgeParent(
-      this, aPipelineId, nullptr, root->CompositorScheduler(), std::move(apis),
+      this, aPipelineId, nullptr, root->CompositorScheduler(), std::move(api),
       std::move(holder), std::move(animStorage), cbp->GetVsyncInterval());
   parent->AddRef();  // IPDL reference
 
@@ -351,7 +351,7 @@ void ContentCompositorBridgeParent::ShadowLayersUpdated(
   UpdateIndirectTree(id, shadowRoot, aInfo.targetConfig());
 
   // Cache the plugin data for this remote layer tree
-  state->mPluginData = aInfo.plugins();
+  state->mPluginData = aInfo.plugins().Clone();
   state->mUpdatedPluginDataAvailable = true;
 
   state->mParent->NotifyShadowTreeTransaction(
@@ -411,7 +411,7 @@ void ContentCompositorBridgeParent::ShadowLayersUpdated(
     profiler_add_marker_for_thread(
         profiler_current_thread_id(), JS::ProfilingCategoryPair::GRAPHICS,
         "CONTENT_FULL_PAINT_TIME",
-        MakeUnique<ContentBuildPayload>(aInfo.transactionStart(), endTime));
+        ContentBuildPayload(aInfo.transactionStart(), endTime));
   }
 #endif
   Telemetry::Accumulate(
@@ -766,11 +766,9 @@ mozilla::ipc::IPCResult ContentCompositorBridgeParent::RecvPreferredDXGIAdapter(
 }
 
 already_AddRefed<dom::PWebGLParent>
-ContentCompositorBridgeParent::AllocPWebGLParent(
-    const webgl::InitContextDesc& aInitDesc,
-    webgl::InitContextResult* const out) {
-  RefPtr<dom::PWebGLParent> ret = dom::WebGLParent::Create(aInitDesc, out);
-  return ret.forget();
+ContentCompositorBridgeParent::AllocPWebGLParent() {
+  RefPtr<dom::PWebGLParent> parent = new dom::WebGLParent();
+  return parent.forget();
 }
 
 }  // namespace layers

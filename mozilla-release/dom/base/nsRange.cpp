@@ -2488,7 +2488,7 @@ void nsRange::ToString(nsAString& aReturn, ErrorResult& aErr) {
 void nsRange::Detach() {}
 
 already_AddRefed<DocumentFragment> nsRange::CreateContextualFragment(
-    const nsAString& aFragment, ErrorResult& aRv) {
+    const nsAString& aFragment, ErrorResult& aRv) const {
   if (!mIsPositioned) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
@@ -2626,7 +2626,8 @@ static nsresult GetPartialTextRect(nsLayoutUtils::RectCallback* aCallback,
                                nsIFrame::TextOffsetType::OffsetsInContentText,
                                nsIFrame::TrailingWhitespace::DontTrim);
 
-        aTextList->AppendElement(renderedText.mString, fallible);
+        NS_ENSURE_TRUE(aTextList->AppendElement(renderedText.mString, fallible),
+                       NS_ERROR_OUT_OF_MEMORY);
       }
     }
   }

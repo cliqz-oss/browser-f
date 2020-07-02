@@ -32,7 +32,6 @@
 #include "mozilla/layers/CompositorController.h"
 #include "mozilla/layers/CompositorOptions.h"
 #include "mozilla/layers/CompositorVsyncSchedulerOwner.h"
-#include "mozilla/layers/GeckoContentController.h"
 #include "mozilla/layers/ISurfaceAllocator.h"  // for IShmemAllocator
 #include "mozilla/layers/LayersMessages.h"     // for TargetConfig
 #include "mozilla/layers/MetricsSharingController.h"
@@ -47,7 +46,6 @@
 #include "mozilla/layers/UiCompositorControllerParent.h"
 #include "mozilla/VsyncDispatcher.h"
 
-class MessageLoop;
 class nsIWidget;
 
 namespace mozilla {
@@ -55,7 +53,6 @@ namespace mozilla {
 class CancelableRunnable;
 
 namespace dom {
-class HostWebGLCommandSink;
 class WebGLParent;
 }  // namespace dom
 
@@ -90,6 +87,7 @@ class CompositorAnimationStorage;
 class CompositorBridgeParent;
 class CompositorManagerParent;
 class CompositorVsyncScheduler;
+class GeckoContentController;
 class HostLayerManager;
 class IAPZCTreeManager;
 class LayerTransactionParent;
@@ -303,8 +301,7 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
     return IPC_FAIL_NO_REASON(this);
   }
 
-  virtual already_AddRefed<PWebGLParent> AllocPWebGLParent(
-      const webgl::InitContextDesc&, webgl::InitContextResult* out) = 0;
+  virtual already_AddRefed<PWebGLParent> AllocPWebGLParent() = 0;
 
   bool mCanSend;
 
@@ -451,8 +448,7 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
                               TimeStamp& aCompositeStart,
                               TimeStamp& aRenderStart, TimeStamp& aCompositeEnd,
                               wr::RendererStats* aStats = nullptr);
-  void NotifyDidSceneBuild(const nsTArray<wr::RenderRoot>& aRenderRoots,
-                           RefPtr<const wr::WebRenderPipelineInfo> aInfo);
+  void NotifyDidSceneBuild(RefPtr<const wr::WebRenderPipelineInfo> aInfo);
   RefPtr<AsyncImagePipelineManager> GetAsyncImagePipelineManager() const;
 
   PCompositorWidgetParent* AllocPCompositorWidgetParent(
@@ -478,8 +474,7 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   void AsyncRender();
 
   // Can be called from any thread
-  void ScheduleRenderOnCompositorThread(
-      const wr::RenderRootSet& aRenderRoots) override;
+  void ScheduleRenderOnCompositorThread() override;
   void SchedulePauseOnCompositorThread();
   void InvalidateOnCompositorThread();
   /**
@@ -489,8 +484,7 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   bool ScheduleResumeOnCompositorThread();
   bool ScheduleResumeOnCompositorThread(int x, int y, int width, int height);
 
-  void ScheduleComposition(
-      const wr::RenderRootSet& aRenderRoots = wr::RenderRootSet());
+  void ScheduleComposition();
 
   void NotifyShadowTreeTransaction(LayersId aId, bool aIsFirstPaint,
                                    const FocusTarget& aFocusTarget,
@@ -658,9 +652,6 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   PAPZParent* AllocPAPZParent(const LayersId& aLayersId) override;
   bool DeallocPAPZParent(PAPZParent* aActor) override;
 
-#if defined(MOZ_WIDGET_ANDROID)
-  AndroidDynamicToolbarAnimator* GetAndroidDynamicToolbarAnimator();
-#endif
   RefPtr<APZSampler> GetAPZSampler();
   RefPtr<APZUpdater> GetAPZUpdater();
 
@@ -694,15 +685,10 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   static already_AddRefed<IAPZCTreeManager> GetAPZCTreeManager(
       LayersId aLayersId);
 
-#if defined(MOZ_WIDGET_ANDROID)
-  gfx::IntSize GetEGLSurfaceSize() { return mEGLSurfaceSize; }
-#endif  // defined(MOZ_WIDGET_ANDROID)
-
   WebRenderBridgeParent* GetWrBridge() { return mWrBridge; }
   webgpu::WebGPUParent* GetWebGPUBridge() { return mWebGPUBridge; }
 
-  already_AddRefed<PWebGLParent> AllocPWebGLParent(
-      const webgl::InitContextDesc&, webgl::InitContextResult*) override {
+  already_AddRefed<PWebGLParent> AllocPWebGLParent() override {
     MOZ_ASSERT_UNREACHABLE(
         "This message is CrossProcessCompositorBridgeParent only");
     return nullptr;
@@ -760,7 +746,6 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
       const LayersId& aId) override;
   bool DeallocPLayerTransactionParent(
       PLayerTransactionParent* aLayers) override;
-  virtual void ScheduleTask(already_AddRefed<CancelableRunnable>, int);
 
   void SetEGLSurfaceRect(int x, int y, int width, int height);
 

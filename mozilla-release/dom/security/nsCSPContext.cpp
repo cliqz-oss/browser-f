@@ -42,6 +42,7 @@
 #include "mozilla/dom/CSPReportBinding.h"
 #include "mozilla/dom/CSPDictionariesBinding.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
+#include "mozilla/dom/WindowGlobalParent.h"
 #include "nsINetworkInterceptController.h"
 #include "nsSandboxFlags.h"
 #include "nsIScriptElement.h"
@@ -53,6 +54,7 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
+using namespace mozilla::ipc;
 
 static LogModule* GetCspContextLog() {
   static LazyLogModule gCspContextPRLog("CSPContext");
@@ -114,23 +116,11 @@ static void BlockedContentSourceToString(
 NS_IMETHODIMP
 nsCSPContext::ShouldLoad(nsContentPolicyType aContentType,
                          nsICSPEventListener* aCSPEventListener,
-                         nsIURI* aContentLocation, nsISupports* aRequestContext,
+                         nsIURI* aContentLocation,
                          const nsACString& aMimeTypeGuess,
                          nsIURI* aOriginalURIIfRedirect,
                          bool aSendViolationReports, const nsAString& aNonce,
-                         int16_t* outDecision) {
-  return ShouldLoad(AsyncReportViolationCallback(AsyncReportViolation),
-                    aContentType, aCSPEventListener, aContentLocation,
-                    aRequestContext, aMimeTypeGuess, aOriginalURIIfRedirect,
-                    aSendViolationReports, aNonce, outDecision);
-}
-
-nsresult nsCSPContext::ShouldLoad(
-    const AsyncReportViolationCallback& aCallback,
-    nsContentPolicyType aContentType, nsICSPEventListener* aCSPEventListener,
-    nsIURI* aContentLocation, nsISupports* aRequestContext,
-    const nsACString& aMimeTypeGuess, nsIURI* aOriginalURIIfRedirect,
-    bool aSendViolationReports, const nsAString& aNonce, int16_t* outDecision) {
+                         bool aParserCreated, int16_t* outDecision) {
   if (CSPCONTEXTLOGENABLED()) {
     CSPCONTEXTLOG(("nsCSPContext::ShouldLoad, aContentLocation: %s",
                    aContentLocation->GetSpecOrDefault().get()));
@@ -164,23 +154,15 @@ nsresult nsCSPContext::ShouldLoad(
     return NS_OK;
   }
 
-  bool parserCreated = false;
-  if (!isPreload) {
-    nsCOMPtr<nsIScriptElement> script = do_QueryInterface(aRequestContext);
-    if (script && script->GetParserCreated() != mozilla::dom::NOT_FROM_PARSER) {
-      parserCreated = true;
-    }
-  }
-
   bool permitted =
-      permitsInternal(aCallback, dir,
+      permitsInternal(dir,
                       nullptr,  // aTriggeringElement
                       aCSPEventListener, aContentLocation,
                       aOriginalURIIfRedirect, aNonce, isPreload,
                       false,  // allow fallback to default-src
                       aSendViolationReports,
                       true,  // send blocked URI in violation reports
-                      parserCreated);
+                      aParserCreated);
 
   *outDecision =
       permitted ? nsIContentPolicy::ACCEPT : nsIContentPolicy::REJECT_SERVER;
@@ -196,12 +178,12 @@ nsresult nsCSPContext::ShouldLoad(
 }
 
 bool nsCSPContext::permitsInternal(
-    const AsyncReportViolationCallback& aCallback, CSPDirective aDir,
-    Element* aTriggeringElement, nsICSPEventListener* aCSPEventListener,
-    nsIURI* aContentLocation, nsIURI* aOriginalURIIfRedirect,
-    const nsAString& aNonce, bool aIsPreload, bool aSpecific,
-    bool aSendViolationReports, bool aSendContentLocationInViolationReports,
-    bool aParserCreated) {
+    CSPDirective aDir, Element* aTriggeringElement,
+    nsICSPEventListener* aCSPEventListener, nsIURI* aContentLocation,
+    nsIURI* aOriginalURIIfRedirect, const nsAString& aNonce, bool aIsPreload,
+    bool aSpecific, bool aSendViolationReports,
+    bool aSendContentLocationInViolationReports, bool aParserCreated) {
+  EnsureIPCPoliciesRead();
   bool permits = true;
 
   nsAutoString violatedDirective;
@@ -229,18 +211,19 @@ bool nsCSPContext::permitsInternal(
           // If GetCallingLocation fails linenumber & columnNumber are set to 0
           // anyway so we can skip checking if that is the case.
         }
-        aCallback(this, aTriggeringElement, aCSPEventListener,
-                  (aSendContentLocationInViolationReports ? aContentLocation
-                                                          : nullptr),
-                  BlockedContentSource::eUnknown, /* a BlockedContentSource */
-                  aOriginalURIIfRedirect, /* in case of redirect originalURI is
-                                             not null */
-                  violatedDirective, p,   /* policy index        */
-                  EmptyString(),          /* no observer subject */
-                  spec,                   /* source file      */
-                  EmptyString(),          /* no script sample    */
-                  lineNumber,             /* line number      */
-                  columnNumber);          /*  column number    */
+        AsyncReportViolation(
+            aTriggeringElement, aCSPEventListener,
+            (aSendContentLocationInViolationReports ? aContentLocation
+                                                    : nullptr),
+            BlockedContentSource::eUnknown, /* a BlockedContentSource */
+            aOriginalURIIfRedirect, /* in case of redirect originalURI is not
+                                       null */
+            violatedDirective, p,   /* policy index        */
+            EmptyString(),          /* no observer subject */
+            spec,                   /* source file      */
+            EmptyString(),          /* no script sample    */
+            lineNumber,             /* line number      */
+            columnNumber);          /*  column number    */
       }
     }
   }
@@ -327,7 +310,7 @@ nsresult nsCSPContext::InitFromOther(nsCSPContext* aOtherContext) {
     AppendPolicy(policyStr, policy->getReportOnlyFlag(),
                  policy->getDeliveredViaMetaTagFlag());
   }
-  mIPCPolicies = aOtherContext->mIPCPolicies;
+  mIPCPolicies = aOtherContext->mIPCPolicies.Clone();
   return NS_OK;
 }
 
@@ -518,7 +501,7 @@ void nsCSPContext::reportInlineViolation(
     columnNumber = aColumnNumber;
   }
 
-  AsyncReportViolation(this, aTriggeringElement, aCSPEventListener,
+  AsyncReportViolation(aTriggeringElement, aCSPEventListener,
                        nullptr,                        // aBlockedURI
                        BlockedContentSource::eInline,  // aBlockedSource
                        mSelfURI,                       // aOriginalURI
@@ -612,15 +595,6 @@ NS_IMETHODIMP
 nsCSPContext::GetAllowsNavigateTo(nsIURI* aURI, bool aIsFormSubmission,
                                   bool aWasRedirected, bool aEnforceWhitelist,
                                   bool* outAllowsNavigateTo) {
-  return GetAllowsNavigateTo(AsyncReportViolationCallback(AsyncReportViolation),
-                             aURI, aIsFormSubmission, aWasRedirected,
-                             aEnforceWhitelist, outAllowsNavigateTo);
-}
-
-nsresult nsCSPContext::GetAllowsNavigateTo(
-    const AsyncReportViolationCallback& aCallback, nsIURI* aURI,
-    bool aIsFormSubmission, bool aWasRedirected, bool aEnforceWhitelist,
-    bool* outAllowsNavigateTo) {
   /*
    * The matrix below shows the different values of (aWasRedirect,
    * aEnforceWhitelist) for the three different checks we do.
@@ -681,8 +655,7 @@ nsresult nsCSPContext::GetAllowsNavigateTo(
       }
 
       // Report the violation
-      nsresult rv = aCallback(
-          this,
+      nsresult rv = AsyncReportViolation(
           nullptr,                                    // aTriggeringElement
           nullptr,                                    // aCSPEventListener
           blockedURIForReporting,                     // aBlockedURI
@@ -733,24 +706,24 @@ nsresult nsCSPContext::GetAllowsNavigateTo(
  * GetAllowsInline() and do not call this macro, hence we can pass 'false'
  * as the argument _aParserCreated_ to allows().
  */
-#define CASE_CHECK_AND_REPORT(violationType, contentPolicyType, nonceOrHash,   \
-                              keyword, observerTopic)                          \
-  case nsIContentSecurityPolicy::VIOLATION_TYPE_##violationType:               \
-    PR_BEGIN_MACRO                                                             \
-    if (!mPolicies[p]->allows(nsIContentPolicy::TYPE_##contentPolicyType,      \
-                              keyword, nonceOrHash, false)) {                  \
-      nsAutoString violatedDirective;                                          \
-      bool reportSample = false;                                               \
-      mPolicies[p]->getDirectiveStringAndReportSampleForContentType(           \
-          nsIContentPolicy::TYPE_##contentPolicyType, violatedDirective,       \
-          &reportSample);                                                      \
-      AsyncReportViolation(                                                    \
-          this, aTriggeringElement, aCSPEventListener, nullptr,                \
-          blockedContentSource, nullptr, violatedDirective, p,                 \
-          NS_LITERAL_STRING(observerTopic), aSourceFile,                       \
-          reportSample ? aScriptSample : EmptyString(), aLineNum, aColumnNum); \
-    }                                                                          \
-    PR_END_MACRO;                                                              \
+#define CASE_CHECK_AND_REPORT(violationType, contentPolicyType, nonceOrHash, \
+                              keyword, observerTopic)                        \
+  case nsIContentSecurityPolicy::VIOLATION_TYPE_##violationType:             \
+    PR_BEGIN_MACRO                                                           \
+    if (!mPolicies[p]->allows(nsIContentPolicy::TYPE_##contentPolicyType,    \
+                              keyword, nonceOrHash, false)) {                \
+      nsAutoString violatedDirective;                                        \
+      bool reportSample = false;                                             \
+      mPolicies[p]->getDirectiveStringAndReportSampleForContentType(         \
+          nsIContentPolicy::TYPE_##contentPolicyType, violatedDirective,     \
+          &reportSample);                                                    \
+      AsyncReportViolation(aTriggeringElement, aCSPEventListener, nullptr,   \
+                           blockedContentSource, nullptr, violatedDirective, \
+                           p, NS_LITERAL_STRING(observerTopic), aSourceFile, \
+                           reportSample ? aScriptSample : EmptyString(),     \
+                           aLineNum, aColumnNum);                            \
+    }                                                                        \
+    PR_END_MACRO;                                                            \
     break
 
 /**
@@ -1035,9 +1008,17 @@ nsresult nsCSPContext::GatherSecurityPolicyViolationEventData(
 
   // blocked-uri
   if (aBlockedURI) {
+    // in case of blocking a browsing context (frame) we have to report
+    // the final URI in case of a redirect. For subresources we report
+    // the URI before redirects.
+    nsCOMPtr<nsIURI> uriToReport;
+    if (aViolatedDirective.EqualsLiteral("frame-src")) {
+      uriToReport = aBlockedURI;
+    } else {
+      uriToReport = aOriginalURI ? aOriginalURI : aBlockedURI;
+    }
     nsAutoCString reportBlockedURI;
-    StripURIForReporting(aOriginalURI ? aOriginalURI : aBlockedURI, mSelfURI,
-                         reportBlockedURI);
+    StripURIForReporting(uriToReport, mSelfURI, reportBlockedURI);
     aViolationEventInit.mBlockedURI = NS_ConvertUTF8toUTF16(reportBlockedURI);
   } else {
     aViolationEventInit.mBlockedURI = NS_ConvertUTF8toUTF16(aBlockedString);
@@ -1334,6 +1315,17 @@ nsresult nsCSPContext::FireViolationEvent(
     eventTarget = doc;
   }
 
+  if (!eventTarget && mInnerWindowID && XRE_IsParentProcess()) {
+    if (RefPtr<WindowGlobalParent> parent =
+            WindowGlobalParent::GetByInnerWindowId(mInnerWindowID)) {
+      nsAutoString json;
+      if (aViolationEventInit.ToJSON(json)) {
+        Unused << parent->SendDispatchSecurityPolicyViolation(json);
+      }
+    }
+    return NS_OK;
+  }
+
   if (!eventTarget) {
     // If we are here, we are probably dealing with workers. Those are handled
     // via nsICSPEventListener. Nothing to do here.
@@ -1514,25 +1506,24 @@ class CSPReportSenderRunnable final : public Runnable {
  *        source column number of the violation (if available)
  */
 nsresult nsCSPContext::AsyncReportViolation(
-    nsCSPContext* aContext, Element* aTriggeringElement,
-    nsICSPEventListener* aCSPEventListener, nsIURI* aBlockedURI,
-    BlockedContentSource aBlockedContentSource, nsIURI* aOriginalURI,
-    const nsAString& aViolatedDirective, uint32_t aViolatedPolicyIndex,
-    const nsAString& aObserverSubject, const nsAString& aSourceFile,
-    const nsAString& aScriptSample, uint32_t aLineNum, uint32_t aColumnNum) {
-  aContext->EnsureIPCPoliciesRead();
-  NS_ENSURE_ARG_MAX(aViolatedPolicyIndex, aContext->mPolicies.Length() - 1);
+    Element* aTriggeringElement, nsICSPEventListener* aCSPEventListener,
+    nsIURI* aBlockedURI, BlockedContentSource aBlockedContentSource,
+    nsIURI* aOriginalURI, const nsAString& aViolatedDirective,
+    uint32_t aViolatedPolicyIndex, const nsAString& aObserverSubject,
+    const nsAString& aSourceFile, const nsAString& aScriptSample,
+    uint32_t aLineNum, uint32_t aColumnNum) {
+  EnsureIPCPoliciesRead();
+  NS_ENSURE_ARG_MAX(aViolatedPolicyIndex, mPolicies.Length() - 1);
 
   nsCOMPtr<nsIRunnable> task = new CSPReportSenderRunnable(
       aTriggeringElement, aCSPEventListener, aBlockedURI, aBlockedContentSource,
       aOriginalURI, aViolatedPolicyIndex,
-      aContext->mPolicies[aViolatedPolicyIndex]->getReportOnlyFlag(),
-      aViolatedDirective, aObserverSubject, aSourceFile, aScriptSample,
-      aLineNum, aColumnNum, aContext);
+      mPolicies[aViolatedPolicyIndex]->getReportOnlyFlag(), aViolatedDirective,
+      aObserverSubject, aSourceFile, aScriptSample, aLineNum, aColumnNum, this);
 
   if (XRE_IsContentProcess()) {
-    if (aContext->mEventTarget) {
-      aContext->mEventTarget->Dispatch(task.forget(), NS_DISPATCH_NORMAL);
+    if (mEventTarget) {
+      mEventTarget->Dispatch(task.forget(), NS_DISPATCH_NORMAL);
       return NS_OK;
     }
   }
@@ -1552,6 +1543,7 @@ nsresult nsCSPContext::AsyncReportViolation(
 NS_IMETHODIMP
 nsCSPContext::PermitsAncestry(nsILoadInfo* aLoadInfo,
                               bool* outPermitsAncestry) {
+  MOZ_ASSERT(XRE_IsParentProcess(), "frame-ancestor check only in parent");
   nsresult rv;
 
   *outPermitsAncestry = true;
@@ -1565,16 +1557,9 @@ nsCSPContext::PermitsAncestry(nsILoadInfo* aLoadInfo,
 
   while (ctx) {
     nsCOMPtr<nsIURI> currentURI;
-    // If fission is enabled, then permitsAncestry is called in the parent
-    // process, otherwise in the content process. After Bug 1574372 we should
-    // be able to remove that branching code for querying currentURI.
-    if (XRE_IsParentProcess()) {
-      WindowGlobalParent* window = ctx->Canonical()->GetCurrentWindowGlobal();
-      if (window) {
-        currentURI = window->GetDocumentURI();
-      }
-    } else if (nsPIDOMWindowOuter* windowOuter = ctx->GetDOMWindow()) {
-      currentURI = windowOuter->GetDocumentURI();
+    WindowGlobalParent* window = ctx->Canonical()->GetCurrentWindowGlobal();
+    if (window) {
+      currentURI = window->GetDocumentURI();
     }
 
     if (currentURI) {
@@ -1615,8 +1600,7 @@ nsCSPContext::PermitsAncestry(nsILoadInfo* aLoadInfo,
         NS_SecurityCompareURIs(ancestorsArray[a], mSelfURI, true);
 
     bool permits =
-        permitsInternal(AsyncReportViolation,  // violation callback
-                        nsIContentSecurityPolicy::FRAME_ANCESTORS_DIRECTIVE,
+        permitsInternal(nsIContentSecurityPolicy::FRAME_ANCESTORS_DIRECTIVE,
                         nullptr,  // triggering element
                         nullptr,  // nsICSPEventListener
                         ancestorsArray[a],
@@ -1643,15 +1627,27 @@ nsCSPContext::Permits(Element* aTriggeringElement,
     return NS_ERROR_FAILURE;
   }
 
-  *outPermits = permitsInternal(AsyncReportViolation, aDir, aTriggeringElement,
-                                aCSPEventListener, aURI,
-                                nullptr,  // no original (pre-redirect) URI
-                                EmptyString(),  // no nonce
-                                false,          // not a preload.
-                                aSpecific,
-                                true,  // send violation reports
-                                true,  // send blocked URI in violation reports
-                                false);  // not parser created
+  if (aURI->SchemeIs("resource")) {
+    // XXX Ideally we would call SubjectToCSP() here but that would also
+    // allowlist e.g. javascript: URIs which should not be allowlisted here.
+    // As a hotfix we just allowlist pdf.js internals here explicitly.
+    nsAutoCString uriSpec;
+    aURI->GetSpec(uriSpec);
+    if (StringBeginsWith(uriSpec, NS_LITERAL_CSTRING("resource://pdf.js/"))) {
+      *outPermits = true;
+      return NS_OK;
+    }
+  }
+
+  *outPermits =
+      permitsInternal(aDir, aTriggeringElement, aCSPEventListener, aURI,
+                      nullptr,        // no original (pre-redirect) URI
+                      EmptyString(),  // no nonce
+                      false,          // not a preload.
+                      aSpecific,
+                      true,    // send violation reports
+                      true,    // send blocked URI in violation reports
+                      false);  // not parser created
 
   if (CSPCONTEXTLOGENABLED()) {
     CSPCONTEXTLOG(("nsCSPContext::Permits, aUri: %s, aDir: %d, isAllowed: %s",
@@ -1672,7 +1668,9 @@ nsCSPContext::ToJSON(nsAString& outCSPinJSON) {
   for (uint32_t p = 0; p < mPolicies.Length(); p++) {
     dom::CSP jsonCSP;
     mPolicies[p]->toDomCSPStruct(jsonCSP);
-    jsonPolicies.mCsp_policies.Value().AppendElement(jsonCSP, fallible);
+    if (!jsonPolicies.mCsp_policies.Value().AppendElement(jsonCSP, fallible)) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
   }
 
   // convert the gathered information to JSON
@@ -1860,8 +1858,8 @@ nsCSPContext::Read(nsIObjectInputStream* aStream) {
     bool deliveredViaMetaTag = false;
     rv = aStream->ReadBoolean(&deliveredViaMetaTag);
     NS_ENSURE_SUCCESS(rv, rv);
-    mIPCPolicies.AppendElement(mozilla::ipc::ContentSecurityPolicy(
-        policyString, reportOnly, deliveredViaMetaTag));
+    AddIPCPolicy(mozilla::ipc::ContentSecurityPolicy(policyString, reportOnly,
+                                                     deliveredViaMetaTag));
   }
 
   return NS_OK;
@@ -1895,4 +1893,21 @@ nsCSPContext::Write(nsIObjectOutputStream* aStream) {
     aStream->WriteBoolean(policy.deliveredViaMetaTagFlag());
   }
   return NS_OK;
+}
+
+void nsCSPContext::AddIPCPolicy(const ContentSecurityPolicy& aPolicy) {
+  mIPCPolicies.AppendElement(aPolicy);
+}
+
+void nsCSPContext::SerializePolicies(
+    nsTArray<ContentSecurityPolicy>& aPolicies) {
+  for (auto* policy : mPolicies) {
+    nsAutoString policyString;
+    policy->toString(policyString);
+    aPolicies.AppendElement(
+        ContentSecurityPolicy(policyString, policy->getReportOnlyFlag(),
+                              policy->getDeliveredViaMetaTagFlag()));
+  }
+
+  aPolicies.AppendElements(mIPCPolicies);
 }

@@ -106,6 +106,8 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD Equals(nsIPrincipal* other, bool* _retval) final;
   NS_IMETHOD EqualsConsideringDomain(nsIPrincipal* other, bool* _retval) final;
   NS_IMETHOD EqualsURI(nsIURI* aOtherURI, bool* _retval) override;
+  NS_IMETHOD EqualsForPermission(nsIPrincipal* other, bool aExactHost,
+                                 bool* _retval) final;
   NS_IMETHOD Subsumes(nsIPrincipal* other, bool* _retval) final;
   NS_IMETHOD SubsumesConsideringDomain(nsIPrincipal* other,
                                        bool* _retval) final;
@@ -129,9 +131,11 @@ class BasePrincipal : public nsJSPrincipals {
                                  JS::MutableHandle<JS::Value> aVal) final;
   NS_IMETHOD GetAsciiSpec(nsACString& aSpec) override;
   NS_IMETHOD GetExposablePrePath(nsACString& aResult) override;
+  NS_IMETHOD GetExposableSpec(nsACString& aSpec) override;
   NS_IMETHOD GetHostPort(nsACString& aRes) override;
   NS_IMETHOD GetHost(nsACString& aRes) override;
   NS_IMETHOD GetPrepath(nsACString& aResult) override;
+  NS_IMETHOD GetFilePath(nsACString& aResult) override;
   NS_IMETHOD GetOriginSuffix(nsACString& aOriginSuffix) final;
   NS_IMETHOD GetIsIpAddress(bool* aIsIpAddress) override;
   NS_IMETHOD GetIsOnion(bool* aIsOnion) override;
@@ -142,11 +146,15 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD GetSiteOrigin(nsACString& aOrigin) override;
   NS_IMETHOD IsThirdPartyURI(nsIURI* uri, bool* aRes) override;
   NS_IMETHOD IsThirdPartyPrincipal(nsIPrincipal* uri, bool* aRes) override;
+  NS_IMETHOD IsThirdPartyChannel(nsIChannel* aChannel, bool* aRes) override;
   NS_IMETHOD GetIsOriginPotentiallyTrustworthy(bool* aResult) override;
   NS_IMETHOD IsSameOrigin(nsIURI* aURI, bool aIsPrivateWin,
                           bool* aRes) override;
   NS_IMETHOD GetPrefLightCacheKey(nsIURI* aURI, bool aWithCredentials,
                                   nsACString& _retval) override;
+  NS_IMETHOD HasFirstpartyStorageAccess(mozIDOMWindow* aCheckWindow,
+                                        uint32_t* aRejectedReason,
+                                        bool* aOutAllowed) override;
   NS_IMETHOD GetAsciiHost(nsACString& aAsciiHost) override;
   NS_IMETHOD GetLocalStorageQuotaKey(nsACString& aRes) override;
   NS_IMETHOD AllowsRelaxStrictFileOriginPolicy(nsIURI* aURI,
@@ -156,6 +164,9 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD GetIsScriptAllowedByPolicy(
       bool* aIsScriptAllowedByPolicy) override;
   NS_IMETHOD GetStorageOriginKey(nsACString& aOriginKey) override;
+
+  NS_IMETHOD GetNextSubDomainPrincipal(
+      nsIPrincipal** aNextSubDomainPrincipal) override;
   nsresult ToJSON(nsACString& aJSON);
   static already_AddRefed<BasePrincipal> FromJSON(const nsACString& aJSON);
   // Method populates a passed Json::Value with serializable fields

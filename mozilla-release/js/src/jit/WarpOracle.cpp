@@ -6,11 +6,19 @@
 
 #include "jit/WarpOracle.h"
 
+#include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/ScopeExit.h"
 
+#include <algorithm>
+
+#include "jit/CacheIR.h"
+#include "jit/CacheIRCompiler.h"
+#include "jit/CacheIROpsGenerated.h"
 #include "jit/JitScript.h"
+#include "jit/JitSpewer.h"
 #include "jit/MIRGenerator.h"
 #include "jit/WarpBuilder.h"
+#include "jit/WarpCacheIRTranspiler.h"
 #include "vm/BytecodeIterator.h"
 #include "vm/BytecodeLocation.h"
 #include "vm/Instrumentation.h"
@@ -45,6 +53,14 @@ mozilla::GenericErrorResult<AbortReason> WarpOracle::abort(AbortReason r,
 }
 
 AbortReasonOr<WarpSnapshot*> WarpOracle::createSnapshot() {
+  JitSpew(JitSpew_IonScripts,
+          "Warp %sompiling script %s:%u:%u (%p) (warmup-counter=%" PRIu32
+          ", level=%s)",
+          (script_->hasIonScript() ? "Rec" : "C"), script_->filename(),
+          script_->lineno(), script_->column(), static_cast<JSScript*>(script_),
+          script_->getWarmUpCount(),
+          OptimizationLevelString(mirGen_.optimizationInfo().level()));
+
   WarpScriptSnapshot* scriptSnapshot;
   MOZ_TRY_VAR(scriptSnapshot, createScriptSnapshot(script_));
 
@@ -53,13 +69,15 @@ AbortReasonOr<WarpSnapshot*> WarpOracle::createSnapshot() {
     return abort(AbortReason::Alloc);
   }
 
+#ifdef JS_JITSPEW
+  if (JitSpewEnabled(JitSpew_WarpSnapshots)) {
+    Fprinter& out = JitSpewPrinter();
+    snapshot->dump(out);
+  }
+#endif
+
   return snapshot;
 }
-
-WarpSnapshot::WarpSnapshot(JSContext* cx, WarpScriptSnapshot* script)
-    : script_(script),
-      globalLexicalEnv_(&cx->global()->lexicalEnvironment()),
-      globalLexicalEnvThis_(globalLexicalEnv_->thisValue()) {}
 
 template <typename T, typename... Args>
 static MOZ_MUST_USE bool AddOpSnapshot(TempAllocator& alloc,
@@ -100,20 +118,17 @@ static MOZ_MUST_USE bool AddWarpGetImport(TempAllocator& alloc,
 
 AbortReasonOr<WarpEnvironment> WarpOracle::createEnvironment(
     HandleScript script) {
-  WarpEnvironment env;
-
   // Don't do anything if the script doesn't use the environment chain.
   // Always make an environment chain if the script needs an arguments object
   // because ArgumentsObject construction requires the environment chain to be
   // passed in.
   if (!script->jitScript()->usesEnvironmentChain() && !script->needsArgsObj()) {
-    MOZ_ASSERT(env.kind() == WarpEnvironment::Kind::None);
-    return env;
+    return WarpEnvironment(NoEnvironment());
   }
 
   if (ModuleObject* module = script->module()) {
-    env.initConstantObject(&module->initialEnvironment());
-    return env;
+    JSObject* obj = &module->initialEnvironment();
+    return WarpEnvironment(ConstantObjectEnvironment(obj));
   }
 
   JSFunction* fun = script->function();
@@ -122,8 +137,8 @@ AbortReasonOr<WarpEnvironment> WarpOracle::createEnvironment(
     // chain is the global lexical environment.
     MOZ_ASSERT(!script->isForEval());
     MOZ_ASSERT(!script->hasNonSyntacticScope());
-    env.initConstantObject(&script->global().lexicalEnvironment());
-    return env;
+    JSObject* obj = &script->global().lexicalEnvironment();
+    return WarpEnvironment(ConstantObjectEnvironment(obj));
   }
 
   // TODO: Parameter expression-induced extra var environment not
@@ -147,24 +162,9 @@ AbortReasonOr<WarpEnvironment> WarpOracle::createEnvironment(
     namedLambdaTemplate = &templateEnv->as<LexicalEnvironmentObject>();
   }
 
-  env.initFunction(callObjectTemplate, namedLambdaTemplate);
-  return env;
+  return WarpEnvironment(
+      FunctionEnvironment(callObjectTemplate, namedLambdaTemplate));
 }
-
-WarpScriptSnapshot::WarpScriptSnapshot(
-    JSScript* script, const WarpEnvironment& env,
-    WarpOpSnapshotList&& opSnapshots, ModuleObject* moduleObject,
-    JSObject* instrumentationCallback,
-    mozilla::Maybe<int32_t> instrumentationScriptId,
-    mozilla::Maybe<bool> instrumentationActive)
-    : script_(script),
-      environment_(env),
-      opSnapshots_(std::move(opSnapshots)),
-      moduleObject_(moduleObject),
-      instrumentationCallback_(instrumentationCallback),
-      instrumentationScriptId_(instrumentationScriptId),
-      instrumentationActive_(instrumentationActive),
-      isArrowFunction_(script->isFunction() && script->function()->isArrow()) {}
 
 AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
     HandleScript script) {
@@ -178,7 +178,7 @@ AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
     return abort(AbortReason::Disable, "Try-finally not supported");
   }
 
-  WarpEnvironment environment;
+  WarpEnvironment environment{NoEnvironment()};
   MOZ_TRY_VAR(environment, createEnvironment(script));
 
   // Unfortunately LinkedList<> asserts the list is empty in its destructor.
@@ -334,6 +334,7 @@ AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
                        "GetElemSuper with profiling is not supported on x86");
         }
 #endif
+        MOZ_TRY(maybeInlineIC(opSnapshots, script, loc));
         break;
       }
 
@@ -386,6 +387,106 @@ AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
         break;
       }
 
+      case JSOp::NewArray: {
+        // TODO: optimize ICEntry lookup.
+        const ICEntry& entry = script->jitScript()->icEntryFromPCOffset(offset);
+        auto* stub = entry.fallbackStub()->toNewArray_Fallback();
+        if (ArrayObject* templateObj = stub->templateObject()) {
+          // Only inline elements are supported without a VM call.
+          size_t numInlineElements =
+              gc::GetGCKindSlots(templateObj->asTenured().getAllocKind()) -
+              ObjectElements::VALUES_PER_HEADER;
+          bool useVMCall = loc.getNewArrayLength() > numInlineElements;
+          if (!AddOpSnapshot<WarpNewArray>(alloc_, opSnapshots, offset,
+                                           templateObj, useVMCall)) {
+            return abort(AbortReason::Alloc);
+          }
+        }
+        break;
+      }
+
+      case JSOp::NewObject:
+      case JSOp::NewObjectWithGroup:
+      case JSOp::NewInit: {
+        // TODO: optimize ICEntry lookup.
+        const ICEntry& entry = script->jitScript()->icEntryFromPCOffset(offset);
+        auto* stub = entry.fallbackStub()->toNewObject_Fallback();
+        if (JSObject* templateObj = stub->templateObject()) {
+          if (!AddOpSnapshot<WarpNewObject>(alloc_, opSnapshots, offset,
+                                            templateObj)) {
+            return abort(AbortReason::Alloc);
+          }
+        }
+        break;
+      }
+
+      case JSOp::GetName:
+      case JSOp::GetGName:
+      case JSOp::GetProp:
+      case JSOp::CallProp:
+      case JSOp::Length:
+      case JSOp::GetElem:
+      case JSOp::CallElem:
+      case JSOp::SetProp:
+      case JSOp::StrictSetProp:
+      case JSOp::Call:
+      case JSOp::CallIgnoresRv:
+      case JSOp::FunCall:
+      case JSOp::FunApply:
+      case JSOp::New:
+      case JSOp::ToNumeric:
+      case JSOp::Pos:
+      case JSOp::Inc:
+      case JSOp::Dec:
+      case JSOp::Neg:
+      case JSOp::BitNot:
+      case JSOp::Iter:
+      case JSOp::Eq:
+      case JSOp::Ne:
+      case JSOp::Lt:
+      case JSOp::Le:
+      case JSOp::Gt:
+      case JSOp::Ge:
+      case JSOp::StrictEq:
+      case JSOp::StrictNe:
+      case JSOp::BindName:
+      case JSOp::BindGName:
+      case JSOp::Add:
+      case JSOp::Sub:
+      case JSOp::Mul:
+      case JSOp::Div:
+      case JSOp::Mod:
+      case JSOp::Pow:
+      case JSOp::BitAnd:
+      case JSOp::BitOr:
+      case JSOp::BitXor:
+      case JSOp::Lsh:
+      case JSOp::Rsh:
+      case JSOp::Ursh:
+      case JSOp::In:
+      case JSOp::HasOwn:
+      case JSOp::Instanceof:
+      case JSOp::GetPropSuper:
+      case JSOp::InitProp:
+      case JSOp::InitLockedProp:
+      case JSOp::InitHiddenProp:
+      case JSOp::InitElem:
+      case JSOp::InitHiddenElem:
+      case JSOp::InitElemInc:
+      case JSOp::SetName:
+      case JSOp::StrictSetName:
+      case JSOp::SetGName:
+      case JSOp::StrictSetGName:
+      case JSOp::InitGLexical:
+      case JSOp::SetElem:
+      case JSOp::StrictSetElem:
+        MOZ_TRY(maybeInlineIC(opSnapshots, script, loc));
+        break;
+
+      case JSOp::InitElemArray:
+        // WarpBuilder does not use an IC for this op.
+        break;
+
       case JSOp::Nop:
       case JSOp::NopDestructuring:
       case JSOp::TryDestructuring:
@@ -423,32 +524,6 @@ AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
       case JSOp::InitLexical:
       case JSOp::GetArg:
       case JSOp::SetArg:
-      case JSOp::ToNumeric:
-      case JSOp::Pos:
-      case JSOp::Inc:
-      case JSOp::Dec:
-      case JSOp::Neg:
-      case JSOp::BitNot:
-      case JSOp::Add:
-      case JSOp::Sub:
-      case JSOp::Mul:
-      case JSOp::Div:
-      case JSOp::Mod:
-      case JSOp::Pow:
-      case JSOp::BitAnd:
-      case JSOp::BitOr:
-      case JSOp::BitXor:
-      case JSOp::Lsh:
-      case JSOp::Rsh:
-      case JSOp::Ursh:
-      case JSOp::Eq:
-      case JSOp::Ne:
-      case JSOp::Lt:
-      case JSOp::Le:
-      case JSOp::Gt:
-      case JSOp::Ge:
-      case JSOp::StrictEq:
-      case JSOp::StrictNe:
       case JSOp::JumpTarget:
       case JSOp::LoopHead:
       case JSOp::IfEq:
@@ -482,36 +557,12 @@ AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
       case JSOp::SetAliasedVar:
       case JSOp::InitAliasedLexical:
       case JSOp::EnvCallee:
-      case JSOp::Iter:
       case JSOp::IterNext:
       case JSOp::MoreIter:
       case JSOp::EndIter:
       case JSOp::IsNoIter:
-      case JSOp::Call:
-      case JSOp::CallIgnoresRv:
       case JSOp::CallIter:
-      case JSOp::FunCall:
-      case JSOp::FunApply:
-      case JSOp::New:
       case JSOp::SuperCall:
-      case JSOp::GetName:
-      case JSOp::GetGName:
-      case JSOp::BindName:
-      case JSOp::BindGName:
-      case JSOp::GetProp:
-      case JSOp::CallProp:
-      case JSOp::Length:
-      case JSOp::GetElem:
-      case JSOp::CallElem:
-      case JSOp::SetProp:
-      case JSOp::StrictSetProp:
-      case JSOp::SetName:
-      case JSOp::StrictSetName:
-      case JSOp::SetGName:
-      case JSOp::StrictSetGName:
-      case JSOp::InitGLexical:
-      case JSOp::SetElem:
-      case JSOp::StrictSetElem:
       case JSOp::DelProp:
       case JSOp::StrictDelProp:
       case JSOp::DelElem:
@@ -532,10 +583,6 @@ AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
       case JSOp::InitHomeObject:
       case JSOp::SuperBase:
       case JSOp::SuperFun:
-      case JSOp::NewArray:
-      case JSOp::NewObject:
-      case JSOp::NewObjectWithGroup:
-      case JSOp::NewInit:
       case JSOp::InitPropGetter:
       case JSOp::InitPropSetter:
       case JSOp::InitHiddenPropGetter:
@@ -544,21 +591,9 @@ AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
       case JSOp::InitElemSetter:
       case JSOp::InitHiddenElemGetter:
       case JSOp::InitHiddenElemSetter:
-      case JSOp::In:
-      case JSOp::HasOwn:
-      case JSOp::Instanceof:
       case JSOp::NewTarget:
       case JSOp::CheckIsObj:
-      case JSOp::CheckIsCallable:
       case JSOp::CheckObjCoercible:
-      case JSOp::GetPropSuper:
-      case JSOp::InitProp:
-      case JSOp::InitLockedProp:
-      case JSOp::InitHiddenProp:
-      case JSOp::InitElem:
-      case JSOp::InitHiddenElem:
-      case JSOp::InitElemArray:
-      case JSOp::InitElemInc:
       case JSOp::FunWithProto:
       case JSOp::SpreadCall:
       case JSOp::SpreadNew:
@@ -600,4 +635,140 @@ AbortReasonOr<WarpScriptSnapshot*> WarpOracle::createScriptSnapshot(
   autoClearOpSnapshots.release();
 
   return scriptSnapshot;
+}
+
+static void LineNumberAndColumn(HandleScript script, BytecodeLocation loc,
+                                unsigned* line, unsigned* column) {
+#ifdef DEBUG
+  *line = PCToLineNumber(script, loc.toRawBytecode(), column);
+#else
+  *line = script->lineno();
+  *column = script->column();
+#endif
+}
+
+AbortReasonOr<Ok> WarpOracle::maybeInlineIC(WarpOpSnapshotList& snapshots,
+                                            HandleScript script,
+                                            BytecodeLocation loc) {
+  // Add a WarpCacheIR snapshot if the Baseline IC has a single ICStub we can
+  // inline.
+
+  MOZ_ASSERT(loc.opHasIC());
+
+  uint32_t offset = loc.bytecodeToOffset(script);
+
+  // TODO: slow. Should traverse ICEntries as we go, like BaselineCompiler.
+  const ICEntry& entry = script->jitScript()->icEntryFromPCOffset(offset);
+
+  ICStub* stub = entry.firstStub();
+
+  if (stub->isFallback()) {
+    [[maybe_unused]] unsigned line, column;
+    LineNumberAndColumn(script, loc, &line, &column);
+
+    // No optimized stubs.
+    JitSpew(JitSpew_WarpTranspiler,
+            "fallback stub (entered-count: %" PRIu32
+            ") for JSOp::%s @ %s:%u:%u",
+            stub->toFallbackStub()->enteredCount(), CodeName(loc.getOp()),
+            script->filename(), line, column);
+    return Ok();
+  }
+
+  // Don't optimize if there are other stubs with entered-count > 0. Counters
+  // are reset when a new stub is attached so this means the stub that was added
+  // most recently didn't handle all cases.
+  for (ICStub* next = stub->next(); next; next = next->next()) {
+    if (next->getEnteredCount() == 0) {
+      continue;
+    }
+
+    [[maybe_unused]] unsigned line, column;
+    LineNumberAndColumn(script, loc, &line, &column);
+
+    JitSpew(JitSpew_WarpTranspiler,
+            "multiple active stubs for JSOp::%s @ %s:%u:%u",
+            CodeName(loc.getOp()), script->filename(), line, column);
+    return Ok();
+  }
+
+  // TODO: check stub's hit count if we're not doing eager compilation.
+  // TODO: don't inline if the IC had unhandled cases => CacheIR is incomplete.
+  // TOOD: have a consistent bailout => invalidate story. Set a flag on the IC?
+
+  const CacheIRStubInfo* stubInfo = nullptr;
+  const uint8_t* stubData = nullptr;
+  switch (stub->kind()) {
+    case ICStub::CacheIR_Regular:
+      stubInfo = stub->toCacheIR_Regular()->stubInfo();
+      stubData = stub->toCacheIR_Regular()->stubDataStart();
+      break;
+    case ICStub::CacheIR_Monitored:
+      stubInfo = stub->toCacheIR_Monitored()->stubInfo();
+      stubData = stub->toCacheIR_Monitored()->stubDataStart();
+      break;
+    case ICStub::CacheIR_Updated:
+      stubInfo = stub->toCacheIR_Updated()->stubInfo();
+      stubData = stub->toCacheIR_Updated()->stubDataStart();
+      break;
+    default:
+      MOZ_CRASH("Unexpected stub");
+  }
+
+  // TODO: we don't support stubs with nursery pointers for now. Handling this
+  // well requires special machinery. See bug 1631267.
+  if (stub->stubDataHasNurseryPointers(stubInfo)) {
+    return Ok();
+  }
+
+  // Only create a snapshots if all opcodes are supported by the transpiler.
+  CacheIRReader reader(stubInfo);
+  while (reader.more()) {
+    CacheOp op = reader.readOp();
+    uint32_t argLength = CacheIROpArgLengths[size_t(op)];
+    reader.skip(argLength);
+
+    switch (op) {
+#define DEFINE_OP(op, ...) \
+  case CacheOp::op:        \
+    break;
+      CACHE_IR_TRANSPILER_OPS(DEFINE_OP)
+#undef DEFINE_OP
+
+      default: {
+        [[maybe_unused]] unsigned line, column;
+        LineNumberAndColumn(script, loc, &line, &column);
+
+        // Unsupported CacheIR opcode.
+        JitSpew(JitSpew_WarpTranspiler,
+                "unsupported CacheIR opcode %s for JSOp::%s @ %s:%u:%u",
+                CacheIROpNames[size_t(op)], CodeName(loc.getOp()),
+                script->filename(), line, column);
+        return Ok();
+      }
+    }
+  }
+
+  // Copy the ICStub data to protect against the stub being unlinked or mutated.
+  // We don't need to copy the CacheIRStubInfo: because we store and trace the
+  // stub's JitCode*, the baselineCacheIRStubCodes_ map in JitZone will keep it
+  // alive.
+  size_t bytesNeeded = stubInfo->stubDataSize();
+  uint8_t* stubDataCopy = alloc_.allocateArray<uint8_t>(bytesNeeded);
+  if (!stubDataCopy) {
+    return abort(AbortReason::Alloc);
+  }
+
+  // We don't need any GC barriers because the stub data does not contain
+  // nursery pointers (checked above) so we can do a bitwise copy.
+  std::copy_n(stubData, bytesNeeded, stubDataCopy);
+
+  JitCode* jitCode = stub->jitCode();
+
+  if (!AddOpSnapshot<WarpCacheIR>(alloc_, snapshots, offset, jitCode, stubInfo,
+                                  stubDataCopy)) {
+    return abort(AbortReason::Alloc);
+  }
+
+  return Ok();
 }

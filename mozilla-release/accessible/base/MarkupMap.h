@@ -66,7 +66,7 @@ MARKUPMAP(
     [](Element* aElement, Accessible* aContext) -> Accessible* {
       // Never create an accessible if we're part of an anonymous
       // subtree.
-      if (aElement->IsInAnonymousSubtree()) {
+      if (aElement->IsInNativeAnonymousSubtree()) {
         return nullptr;
       }
       // Always create an accessible if the div has an id.
@@ -213,13 +213,13 @@ MARKUPMAP(
       }
       if (aElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
                                 nsGkAtoms::time, eIgnoreCase)) {
-        return new EnumRoleAccessible<roles::GROUPING>(aElement,
-                                                       aContext->Document());
+        return new HTMLDateTimeAccessible<roles::GROUPING>(
+            aElement, aContext->Document());
       }
       if (aElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
                                 nsGkAtoms::date, eIgnoreCase)) {
-        return new EnumRoleAccessible<roles::DATE_EDITOR>(aElement,
-                                                          aContext->Document());
+        return new HTMLDateTimeAccessible<roles::DATE_EDITOR>(
+            aElement, aContext->Document());
       }
       return nullptr;
     },

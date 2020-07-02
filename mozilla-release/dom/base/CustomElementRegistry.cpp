@@ -692,10 +692,9 @@ bool CustomElementRegistry::JSObjectToAtomArray(
         return false;
       }
 
-      if (!aArray.AppendElement(NS_Atomize(attrStr))) {
-        aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-        return false;
-      }
+      // XXX(Bug 1631371) Check if this should use a fallible operation as it
+      // pretended earlier.
+      aArray.AppendElement(NS_Atomize(attrStr));
     }
   }
 
@@ -1243,6 +1242,15 @@ already_AddRefed<nsISupports> CustomElementRegistry::CallGetCustomInterface(
   }
 
   return wrapper.forget();
+}
+
+void CustomElementRegistry::TraceDefinitions(JSTracer* aTrc) {
+  for (auto iter = mCustomDefinitions.Iter(); !iter.Done(); iter.Next()) {
+    RefPtr<CustomElementDefinition>& definition = iter.Data();
+    if (definition && definition->mConstructor) {
+      mozilla::TraceScriptHolder(definition->mConstructor, aTrc);
+    }
+  }
 }
 
 //-----------------------------------------------------

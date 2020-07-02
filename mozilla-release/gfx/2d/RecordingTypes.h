@@ -49,6 +49,10 @@ template <class S, class T>
 void ReadElementConstrained(S& aStream, T& aElement, const T& aMinValue,
                             const T& aMaxValue) {
   ElementStreamFormat<S, T>::Read(aStream, aElement);
+  if (!aStream.good()) {
+    return;
+  }
+
   if (aElement < aMinValue || aElement > aMaxValue) {
     gfxDevCrash(LogReason::InvalidConstrainedValueRead)
         << "Invalid constrained value read: value: " << int(aElement)
@@ -60,7 +64,7 @@ template <class S, class T>
 void ReadVector(S& aStream, std::vector<T>& aVector) {
   size_t size;
   ReadElement(aStream, size);
-  if (size) {
+  if (size && aStream.good()) {
     aVector.resize(size);
     aStream.read(reinterpret_cast<char*>(aVector.data()), sizeof(T) * size);
   } else {

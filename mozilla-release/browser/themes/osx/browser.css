@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-%include ../../../toolkit/themes/osx/global/shared.inc
-%define toolbarButtonPressed :hover:active:not([disabled="true"]):not([cui-areatype="menu-panel"])
-
 @namespace html url("http://www.w3.org/1999/xhtml");
 
 %include ../shared/browser.inc.css
@@ -240,25 +237,19 @@
   display: none;
 }
 
-/* ::::: nav-bar-inner ::::: */
+/* Address bar */
 
 %include ../shared/urlbar-searchbar.inc.css
-
-@supports not -moz-bool-pref("browser.urlbar.update1") {
-  :root {
-    --toolbar-field-focus-border-color: -moz-mac-focusring;
-  }
-
-  #searchbar:focus-within,
-  #urlbar:not(.megabar)[focused="true"] {
-    box-shadow: 0 0 0 1px var(--toolbar-field-focus-border-color) inset,
-                0 0 0 1px var(--toolbar-field-focus-border-color);
-  }
-}
 
 #urlbar,
 #searchbar {
   font-size: 1.25em;
+}
+
+@supports -moz-bool-pref("browser.urlbar.update2.expandTextOnFocus") {
+  #urlbar[breakout-extend] {
+    font-size: 1.36em;
+  }
 }
 
 /* Ensure diacritics and other edge-of-font-box glyphs do not get clipped,
@@ -268,21 +259,17 @@
 }
 
 %include ../shared/identity-block/identity-block.inc.css
+%include ../shared/notification-icons.inc.css
+%include ../shared/addon-notification.inc.css
 
 #pageAction-urlbar-shareURL,
 #pageAction-panel-shareURL {
   list-style-image: url("chrome://browser/skin/share.svg");
 }
 
-/* ----- AUTOCOMPLETE ----- */
+/* Address bar results view */
 
-%include ../shared/autocomplete.inc.css
-
-#PopupAutoComplete > richlistbox > richlistitem[originaltype~="datalist-first"] {
-  border-top: 1px solid #C7C7C7;
-}
-
-%include ../shared/urlbar-autocomplete.inc.css
+%include ../shared/urlbarView.inc.css
 
 :root {
   --urlbar-popup-url-color: hsl(210, 77%, 47%);
@@ -295,30 +282,22 @@
   --panel-disabled-color: #737373;
 }
 
-.urlbarView {
-  font-size: 14px;
-}
+/* ----- AUTOCOMPLETE ----- */
 
-@supports -moz-bool-pref("browser.urlbar.update2.expandTextOnFocus") {
-  .urlbarView {
-    font-size: inherit;
-  }
+%include ../shared/autocomplete.inc.css
 
-  #urlbar[breakout-extend] {
-    font-size: 1.36em;
-  }
+#PopupAutoComplete > richlistbox > richlistitem[originaltype~="datalist-first"] {
+  border-top: 1px solid #C7C7C7;
 }
 
 #BMB_bookmarksPopup[side="top"],
 #BMB_bookmarksPopup[side="bottom"] {
-  margin-left: -26px;
-  margin-right: -26px;
+  margin-inline: -26px;
 }
 
 #BMB_bookmarksPopup[side="left"],
 #BMB_bookmarksPopup[side="right"] {
-  margin-top: -26px;
-  margin-bottom: -26px;
+  margin-block: -26px;
 }
 
 /* Bookmarking panel */
@@ -400,7 +379,7 @@
   box-shadow: var(--focus-ring-box-shadow);
 }
 
-#editBMPanel_folderMenuList > .menulist-dropmarker {
+#editBMPanel_folderMenuList::part(dropmarker) {
   -moz-appearance: none;
   -moz-context-properties: fill, fill-opacity;
   fill: currentColor;
@@ -505,8 +484,6 @@
 /* ----- CONTENT ----- */
 
 .browserContainer > findbar {
-  background: @scopeBarBackground@;
-  border-top: @scopeBarSeparatorBorder@;
   color: -moz-DialogText;
   text-shadow: none;
 }
@@ -531,8 +508,7 @@
 %include ../shared/tabs.inc.css
 
 .tab-label {
-  margin-top: 1px;
-  margin-bottom: 0;
+  margin-block: 1px 0;
 }
 
 .tabbrowser-tab:not(:hover) > .tab-stack > .tab-content > .tab-icon-image:not([selected="true"]):not([multiselected]) {
@@ -579,7 +555,6 @@
 
 #TabsToolbar:not(:-moz-lwtheme) {
   color: #333;
-  text-shadow: @loweredShadow@;
 }
 
 :root:-moz-any([inFullscreen], [tabsintitlebar]) #TabsToolbar:not(:-moz-lwtheme) {
@@ -597,8 +572,7 @@
 
 #tabbrowser-tabs {
   -moz-box-align: stretch;
-  padding-left: 0;
-  padding-right: 0;
+  padding-inline: 0;
   margin-bottom: 0;
   position: static;
 }
@@ -610,8 +584,6 @@
   color: HighlightText !important;
 }
 
-%include ../shared/notification-icons.inc.css
-
 /* Translation */
 
 %include ../shared/translation/infobar.inc.css
@@ -622,14 +594,12 @@ notification[value="translation"] {
   background-image: none;
   border-top: none;
   border-bottom: 1px solid #c4c4c4;
-  padding-top: 1px;
-  padding-bottom: 1px;
+  padding-block: 1px;
   min-height: 35px;
 }
 
 .translate-infobar-element {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
+  margin-block: 0 !important;
 }
 
 button.translate-infobar-element {
@@ -643,13 +613,11 @@ button.translate-infobar-element {
   min-height: 22px;
   min-width: 0;
   padding: 0 0.8em;
-  margin-left: 0.25em;
-  margin-right: 0.25em;
+  margin-inline: 0.25em;
 }
 
 button.translate-infobar-element .button-text {
-  margin-left: 0;
-  margin-right: 0;
+  margin-inline: 0;
 }
 
 label.translate-infobar-element {
@@ -680,8 +648,7 @@ button.translate-infobar-element[anonid="translate"]:hover {
 }
 
 button.translate-infobar-element.options-menu-button {
-  padding-inline-start: 0.5em;
-  padding-inline-end: 0;
+  padding-inline: 0.5em 0;
 }
 
 button.translate-infobar-element.options-menu-button > .button-box > .button-menu-dropmarker {
@@ -705,7 +672,7 @@ menulist.translate-infobar-element {
   min-height: 22px !important;
 }
 
-menulist.translate-infobar-element > .menulist-label-box {
+menulist.translate-infobar-element::part(label-box) {
   padding-top: 1px;
   padding-inline-start: 0.3em;
   margin-block: 0;
@@ -721,12 +688,10 @@ menulist.translate-infobar-element[open="true"] {
                                     rgba(255,255,255,0.6));
 }
 
-menulist.translate-infobar-element > .menulist-dropmarker {
+menulist.translate-infobar-element::part(dropmarker) {
   display: -moz-box;
   list-style-image: url("chrome://global/skin/icons/arrow-dropdown-12.svg");
 }
-
-%include ../shared/addon-notification.inc.css
 
 /* Status panel */
 
@@ -794,8 +759,7 @@ menulist.translate-infobar-element > .menulist-dropmarker {
 %include ../shared/contextmenu.inc.css
 
 #context-navigation > .menuitem-iconic {
-  padding-left: 0;
-  padding-right: 0;
+  padding-inline: 0;
 }
 
 .cui-widget-panelview[id^=PanelUI-webext-] {

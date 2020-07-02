@@ -9,8 +9,9 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/ComposerCommandsUpdater.h"
 #include "mozilla/CSSEditUtils.h"
+#include "mozilla/EditorUtils.h"
 #include "mozilla/ManualNAC.h"
-#include "mozilla/StyleSheet.h"
+#include "mozilla/Result.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/dom/Element.h"
@@ -18,11 +19,9 @@
 
 #include "nsAttrName.h"
 #include "nsCOMPtr.h"
-#include "nsICSSLoaderObserver.h"
 #include "nsIDocumentObserver.h"
 #include "nsIDOMEventListener.h"
 #include "nsIEditorMailSupport.h"
-#include "nsIEditorStyleSheets.h"
 #include "nsIHTMLAbsPosEditor.h"
 #include "nsIHTMLEditor.h"
 #include "nsIHTMLInlineTableEditor.h"
@@ -36,8 +35,9 @@ class nsDocumentFragment;
 class nsHTMLDocument;
 class nsITransferable;
 class nsIClipboard;
-class nsTableWrapperFrame;
 class nsRange;
+class nsStaticAtom;
+class nsTableWrapperFrame;
 
 namespace mozilla {
 class AlignStateAtSelection;
@@ -46,11 +46,14 @@ class AutoSetTemporaryAncestorLimiter;
 class EditActionResult;
 class EditResult;
 class EmptyEditableFunctor;
+class JoinNodeTransaction;
 class ListElementSelectionState;
 class ListItemElementSelectionState;
 class MoveNodeResult;
 class ParagraphStateAtSelection;
 class ResizerSelectionListener;
+class Runnable;
+class SplitNodeTransaction;
 class SplitRangeOffFromNodeResult;
 class SplitRangeOffResult;
 class WSRunObject;
@@ -84,7 +87,6 @@ class HTMLEditor final : public TextEditor,
                          public nsIHTMLAbsPosEditor,
                          public nsITableEditor,
                          public nsIHTMLInlineTableEditor,
-                         public nsIEditorStyleSheets,
                          public nsStubMutationObserver,
                          public nsIEditorMailSupport {
  public:
@@ -117,9 +119,6 @@ class HTMLEditor final : public TextEditor,
 
   // nsIHTMLInlineTableEditor methods (implemented in HTMLInlineTableEditor.cpp)
   NS_DECL_NSIHTMLINLINETABLEEDITOR
-
-  // nsIEditorStyleSheets methods
-  NS_DECL_NSIEDITORSTYLESHEETS
 
   // nsIEditorMailSupport methods
   NS_DECL_NSIEDITORMAILSUPPORT
@@ -167,10 +166,10 @@ class HTMLEditor final : public TextEditor,
 
   MOZ_CAN_RUN_SCRIPT virtual nsresult HandleKeyPressEvent(
       WidgetKeyboardEvent* aKeyboardEvent) override;
-  virtual nsIContent* GetFocusedContent() override;
-  virtual already_AddRefed<nsIContent> GetFocusedContentForIME() override;
-  virtual bool IsActiveInDOMWindow() override;
-  virtual dom::EventTarget* GetDOMEventTarget() override;
+  virtual nsIContent* GetFocusedContent() const override;
+  virtual nsIContent* GetFocusedContentForIME() const override;
+  virtual bool IsActiveInDOMWindow() const override;
+  virtual dom::EventTarget* GetDOMEventTarget() const override;
   virtual Element* FindSelectionRoot(nsINode* aNode) const override;
   virtual bool IsAcceptableInputEvent(WidgetGUIEvent* aGUIEvent) override;
   virtual nsresult GetPreferredIMEState(widget::IMEState* aState) override;
@@ -182,7 +181,8 @@ class HTMLEditor final : public TextEditor,
    * @param aMixed      true if there is more than one font color
    * @param aOutColor   Color string. "" is returned for none.
    */
-  nsresult GetBackgroundColorState(bool* aMixed, nsAString& aOutColor);
+  MOZ_CAN_RUN_SCRIPT nsresult GetBackgroundColorState(bool* aMixed,
+                                                      nsAString& aOutColor);
 
   /**
    * PasteNoFormatting() pastes content in clipboard without any style
@@ -416,7 +416,8 @@ class HTMLEditor final : public TextEditor,
    * returns the deepest absolutely positioned container of the selection
    * if it exists or null.
    */
-  already_AddRefed<Element> GetAbsolutelyPositionedSelectionContainer() const;
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element>
+  GetAbsolutelyPositionedSelectionContainer() const;
 
   Element* GetPositionedElement() const { return mAbsolutelyPositionedObject; }
 
@@ -438,7 +439,7 @@ class HTMLEditor final : public TextEditor,
    * @return         the z-index of the element
    * @param aElement [IN] the element.
    */
-  int32_t GetZIndex(Element& aElement);
+  MOZ_CAN_RUN_SCRIPT int32_t GetZIndex(Element& aElement);
 
   /**
    * adds aChange to the z-index of the currently positioned element.
@@ -468,34 +469,33 @@ class HTMLEditor final : public TextEditor,
       nsAtom& aProperty, nsAtom* aAttribute, const nsAString& aValue,
       nsIPrincipal* aPrincipal = nullptr);
 
-  nsresult GetInlineProperty(nsAtom* aProperty, nsAtom* aAttribute,
-                             const nsAString& aValue, bool* aFirst, bool* aAny,
-                             bool* aAll) const;
-  nsresult GetInlinePropertyWithAttrValue(nsAtom* aProperty, nsAtom* aAttr,
-                                          const nsAString& aValue, bool* aFirst,
-                                          bool* aAny, bool* aAll,
-                                          nsAString& outValue);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult GetInlineProperty(
+      nsAtom* aHTMLProperty, nsAtom* aAttribute, const nsAString& aValue,
+      bool* aFirst, bool* aAny, bool* aAll) const;
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult GetInlinePropertyWithAttrValue(
+      nsAtom* aHTMLProperty, nsAtom* aAttribute, const nsAString& aValue,
+      bool* aFirst, bool* aAny, bool* aAll, nsAString& outValue);
 
   /**
    * RemoveInlinePropertyAsAction() removes a property which changes inline
    * style of text.  E.g., bold, italic, super and sub.
    *
-   * @param aProperty   Tag name whcih represents the inline style you want to
-   *                    remove.  E.g., nsGkAtoms::strong, nsGkAtoms::b, etc.
-   *                    If nsGkAtoms::href, <a> element which has href
-   *                    attribute will be removed.
-   *                    If nsGkAtoms::name, <a> element which has non-empty
-   *                    name attribute will be removed.
-   * @param aAttribute  If aProperty is nsGkAtoms::font, aAttribute should be
-   *                    nsGkAtoms::fase, nsGkAtoms::size, nsGkAtoms::color or
-   *                    nsGkAtoms::bgcolor.  Otherwise, set nullptr.
+   * @param aHTMLProperty   Tag name whcih represents the inline style you want
+   *                        to remove.  E.g., nsGkAtoms::strong, nsGkAtoms::b,
+   *                        etc.  If nsGkAtoms::href, <a> element which has
+   *                        href attribute will be removed.
+   *                        If nsGkAtoms::name, <a> element which has non-empty
+   *                        name attribute will be removed.
+   * @param aAttribute  If aHTMLProperty is nsGkAtoms::font, aAttribute should
+   *                    be nsGkAtoms::fase, nsGkAtoms::size, nsGkAtoms::color
+   *                    or nsGkAtoms::bgcolor.  Otherwise, set nullptr.
    *                    Must not use nsGkAtoms::_empty here.
    * @param aPrincipal  Set subject principal if it may be called by JS.  If
    *                    set to nullptr, will be treated as called by system.
    */
-  MOZ_CAN_RUN_SCRIPT nsresult
-  RemoveInlinePropertyAsAction(nsAtom& aProperty, nsAtom* aAttribute,
-                               nsIPrincipal* aPrincipal = nullptr);
+  MOZ_CAN_RUN_SCRIPT nsresult RemoveInlinePropertyAsAction(
+      nsStaticAtom& aHTMLProperty, nsStaticAtom* aAttribute,
+      nsIPrincipal* aPrincipal = nullptr);
 
   MOZ_CAN_RUN_SCRIPT nsresult
   RemoveAllInlinePropertiesAsAction(nsIPrincipal* aPrincipal = nullptr);
@@ -531,7 +531,8 @@ class HTMLEditor final : public TextEditor,
    *                            Selection instance has gone, first range
    *                            Selection is broken.
    */
-  nsresult GetFontColorState(bool* aIsMixed, nsAString& aColor);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  GetFontColorState(bool* aIsMixed, nsAString& aColor);
 
   /**
    * SetComposerCommandsUpdater() sets or unsets mComposerCommandsUpdater.
@@ -578,8 +579,8 @@ class HTMLEditor final : public TextEditor,
   DoInlineTableEditingAction(const Element& aUIAnonymousElement);
 
   /**
-   * GetElementOrParentByTagName() looks for an element node whose name matches
-   * aTagName from aNode or anchor node of Selection to <body> element.
+   * GetInclusiveAncestorByTagName() looks for an element node whose name
+   * matches aTagName from aNode or anchor node of Selection to <body> element.
    *
    * @param aTagName        The tag name which you want to look for.
    *                        Must not be nsGkAtoms::_empty.
@@ -590,14 +591,12 @@ class HTMLEditor final : public TextEditor,
    *                        which has "href" attribute with non-empty value.
    *                        If nsGkAtoms::anchor, the result may be <a> which
    *                        has "name" attribute with non-empty value.
-   * @param aNode           If non-nullptr, this starts to look for the result
-   *                        from it.  Otherwise, i.e., nullptr, starts from
-   *                        anchor node of Selection.
+   * @param aContent        Start node to look for the result.
    * @return                If an element which matches aTagName, returns
    *                        an Element.  Otherwise, nullptr.
    */
-  Element* GetElementOrParentByTagName(const nsAtom& aTagName,
-                                       nsINode* aNode) const;
+  Element* GetInclusiveAncestorByTagName(const nsStaticAtom& aTagName,
+                                         nsIContent& aContent) const;
 
   /**
    * Get an active editor's editing host in DOM window.  If this editor isn't
@@ -673,24 +672,13 @@ class HTMLEditor final : public TextEditor,
       const EditorDOMPoint& aPointToInsert, EDirection aSelect = eNone);
 
   /**
-   * DeleteSelectionWithTransaction() removes selected content or content
-   * around caret with transactions.
-   *
-   * @param aDirection          How much range should be removed.
-   * @param aStripWrappers      Whether the parent blocks should be removed
-   *                            when they become empty.
-   */
-  MOZ_CAN_RUN_SCRIPT virtual nsresult DeleteSelectionWithTransaction(
-      EDirection aAction, EStripWrappers aStripWrappers) override;
-
-  /**
-   * DeleteNodeWithTransaction() removes aNode from the DOM tree if it's
+   * DeleteNodeWithTransaction() removes aContent from the DOM tree if it's
    * modifiable.  Note that this is not an override of same method of
    * EditorBase.
    *
-   * @param aNode       The node to be removed from the DOM tree.
+   * @param aContent    The node to be removed from the DOM tree.
    */
-  MOZ_CAN_RUN_SCRIPT nsresult DeleteNodeWithTransaction(nsINode& aNode);
+  MOZ_CAN_RUN_SCRIPT nsresult DeleteNodeWithTransaction(nsIContent& aContent);
 
   /**
    * DeleteTextWithTransaction() removes text in the range from aTextNode if
@@ -704,6 +692,14 @@ class HTMLEditor final : public TextEditor,
   MOZ_CAN_RUN_SCRIPT nsresult DeleteTextWithTransaction(dom::Text& aTextNode,
                                                         uint32_t aOffset,
                                                         uint32_t aLength);
+
+  /**
+   * ReplaceTextWithTransaction() replaces text in the range with
+   * aStringToInsert.
+   */
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult ReplaceTextWithTransaction(
+      dom::Text& aTextNode, uint32_t aOffset, uint32_t aLength,
+      const nsAString& aStringToInsert);
 
   /**
    * DeleteParentBlocksIfEmpty() removes parent block elements if they
@@ -758,7 +754,6 @@ class HTMLEditor final : public TextEditor,
   RemoveBlockContainerWithTransaction(Element& aElement);
 
   virtual Element* GetEditorRoot() const override;
-  using EditorBase::IsEditable;
   MOZ_CAN_RUN_SCRIPT virtual nsresult RemoveAttributeOrEquivalent(
       Element* aElement, nsAtom* aAttribute,
       bool aSuppressTransaction) override;
@@ -767,21 +762,6 @@ class HTMLEditor final : public TextEditor,
       bool aSuppressTransaction) override;
   using EditorBase::RemoveAttributeOrEquivalent;
   using EditorBase::SetAttributeOrEquivalent;
-
-  /**
-   * GetBlockNodeParent() returns parent or nearest ancestor of aNode if
-   * there is a block parent.  If aAncestorLimiter is not nullptr,
-   * this stops looking for the result.
-   */
-  static Element* GetBlockNodeParent(nsINode* aNode,
-                                     nsINode* aAncestorLimiter = nullptr);
-
-  /**
-   * GetBlock() returns aNode itself, or parent or nearest ancestor of aNode
-   * if there is a block parent.  If aAncestorLimiter is not nullptr,
-   * this stops looking for the result.
-   */
-  static Element* GetBlock(nsINode& aNode, nsINode* aAncestorLimiter = nullptr);
 
   /**
    * Returns container element of ranges in Selection.  If Selection is
@@ -858,21 +838,6 @@ class HTMLEditor final : public TextEditor,
                                          int32_t* outOffset = 0);
 
   /**
-   * NodeIsBlockStatic() returns true if aElement is an element node and
-   * should be treated as a block.
-   */
-  static bool NodeIsBlockStatic(const nsINode& aElement);
-
-  /**
-   * NodeIsInlineStatic() returns true if aElement is an element node but
-   * shouldn't be treated as a block or aElement is not an element.
-   * XXX This looks odd.  For example, how about a comment node?
-   */
-  static bool NodeIsInlineStatic(const nsINode& aElement) {
-    return !NodeIsBlockStatic(aElement);
-  }
-
-  /**
    * extracts an element from the normal flow of the document and
    * positions it, and puts it back in the normal flow.
    * @param aElement [IN] the element
@@ -889,23 +854,8 @@ class HTMLEditor final : public TextEditor,
    *                      the element
    * @param aReturn  [OUT] the new z-index of the element
    */
-  MOZ_CAN_RUN_SCRIPT nsresult RelativeChangeElementZIndex(Element& aElement,
-                                                          int32_t aChange,
-                                                          int32_t* aReturn);
-
-  virtual bool IsBlockNode(nsINode* aNode) const override;
-  using EditorBase::IsBlockNode;
-
-  /**
-   * returns true if aParentTag can contain a child of type aChildTag.
-   */
-  virtual bool TagCanContainTag(nsAtom& aParentTag,
-                                nsAtom& aChildTag) const override;
-
-  /**
-   * Returns true if aNode is a container.
-   */
-  virtual bool IsContainer(nsINode* aNode) const override;
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult RelativeChangeElementZIndex(
+      Element& aElement, int32_t aChange, int32_t* aReturn);
 
   /**
    * Join together any adjacent editable text nodes in the range.
@@ -978,7 +928,7 @@ class HTMLEditor final : public TextEditor,
   /**
    * Small utility routine to test if a break node is visible to user.
    */
-  bool IsVisibleBRElement(nsINode* aNode);
+  bool IsVisibleBRElement(const nsINode* aNode);
 
   /**
    * Helper routines for font size changing.
@@ -1037,7 +987,7 @@ class HTMLEditor final : public TextEditor,
    */
   enum class SkipWhitespace { Yes, No };
   nsIContent* GetPriorHTMLSibling(nsINode* aNode,
-                                  SkipWhitespace = SkipWhitespace::No);
+                                  SkipWhitespace = SkipWhitespace::No) const;
 
   /**
    * GetNextHTMLSibling() returns the next editable sibling, if there is
@@ -1045,7 +995,7 @@ class HTMLEditor final : public TextEditor,
    * whitespace.
    */
   nsIContent* GetNextHTMLSibling(nsINode* aNode,
-                                 SkipWhitespace = SkipWhitespace::No);
+                                 SkipWhitespace = SkipWhitespace::No) const;
 
   // Helper for GetPriorHTMLSibling/GetNextHTMLSibling.
   static bool SkippableWhitespace(nsINode* aNode, SkipWhitespace aSkipWS) {
@@ -1058,20 +1008,20 @@ class HTMLEditor final : public TextEditor,
    * EditorBase::GetPreviousElementOrText*() but this won't return nodes
    * outside active editing host.
    */
-  nsIContent* GetPreviousHTMLElementOrText(nsINode& aNode) {
+  nsIContent* GetPreviousHTMLElementOrText(const nsINode& aNode) const {
     return GetPreviousHTMLElementOrTextInternal(aNode, false);
   }
-  nsIContent* GetPreviousHTMLElementOrTextInBlock(nsINode& aNode) {
+  nsIContent* GetPreviousHTMLElementOrTextInBlock(const nsINode& aNode) const {
     return GetPreviousHTMLElementOrTextInternal(aNode, true);
   }
   template <typename PT, typename CT>
   nsIContent* GetPreviousHTMLElementOrText(
-      const EditorDOMPointBase<PT, CT>& aPoint) {
+      const EditorDOMPointBase<PT, CT>& aPoint) const {
     return GetPreviousHTMLElementOrTextInternal(aPoint, false);
   }
   template <typename PT, typename CT>
   nsIContent* GetPreviousHTMLElementOrTextInBlock(
-      const EditorDOMPointBase<PT, CT>& aPoint) {
+      const EditorDOMPointBase<PT, CT>& aPoint) const {
     return GetPreviousHTMLElementOrTextInternal(aPoint, true);
   }
 
@@ -1079,31 +1029,31 @@ class HTMLEditor final : public TextEditor,
    * GetPreviousHTMLElementOrTextInternal() methods are common implementation
    * of above methods.  Please don't use this method directly.
    */
-  nsIContent* GetPreviousHTMLElementOrTextInternal(nsINode& aNode,
-                                                   bool aNoBlockCrossing);
+  nsIContent* GetPreviousHTMLElementOrTextInternal(const nsINode& aNode,
+                                                   bool aNoBlockCrossing) const;
   template <typename PT, typename CT>
   nsIContent* GetPreviousHTMLElementOrTextInternal(
-      const EditorDOMPointBase<PT, CT>& aPoint, bool aNoBlockCrossing);
+      const EditorDOMPointBase<PT, CT>& aPoint, bool aNoBlockCrossing) const;
 
   /**
    * GetPreviousEditableHTMLNode*() methods are similar to
    * EditorBase::GetPreviousEditableNode() but this won't return nodes outside
    * active editing host.
    */
-  nsIContent* GetPreviousEditableHTMLNode(nsINode& aNode) {
+  nsIContent* GetPreviousEditableHTMLNode(nsINode& aNode) const {
     return GetPreviousEditableHTMLNodeInternal(aNode, false);
   }
-  nsIContent* GetPreviousEditableHTMLNodeInBlock(nsINode& aNode) {
+  nsIContent* GetPreviousEditableHTMLNodeInBlock(nsINode& aNode) const {
     return GetPreviousEditableHTMLNodeInternal(aNode, true);
   }
   template <typename PT, typename CT>
   nsIContent* GetPreviousEditableHTMLNode(
-      const EditorDOMPointBase<PT, CT>& aPoint) {
+      const EditorDOMPointBase<PT, CT>& aPoint) const {
     return GetPreviousEditableHTMLNodeInternal(aPoint, false);
   }
   template <typename PT, typename CT>
   nsIContent* GetPreviousEditableHTMLNodeInBlock(
-      const EditorDOMPointBase<PT, CT>& aPoint) {
+      const EditorDOMPointBase<PT, CT>& aPoint) const {
     return GetPreviousEditableHTMLNodeInternal(aPoint, true);
   }
 
@@ -1112,10 +1062,10 @@ class HTMLEditor final : public TextEditor,
    * of above methods.  Please don't use this method directly.
    */
   nsIContent* GetPreviousEditableHTMLNodeInternal(nsINode& aNode,
-                                                  bool aNoBlockCrossing);
+                                                  bool aNoBlockCrossing) const;
   template <typename PT, typename CT>
   nsIContent* GetPreviousEditableHTMLNodeInternal(
-      const EditorDOMPointBase<PT, CT>& aPoint, bool aNoBlockCrossing);
+      const EditorDOMPointBase<PT, CT>& aPoint, bool aNoBlockCrossing) const;
 
   /**
    * GetNextHTMLElementOrText*() methods are similar to
@@ -1127,20 +1077,20 @@ class HTMLEditor final : public TextEditor,
    * On the other hand, methods which take |nsINode&| start to search from
    * next node of aNode.
    */
-  nsIContent* GetNextHTMLElementOrText(nsINode& aNode) {
+  nsIContent* GetNextHTMLElementOrText(const nsINode& aNode) const {
     return GetNextHTMLElementOrTextInternal(aNode, false);
   }
-  nsIContent* GetNextHTMLElementOrTextInBlock(nsINode& aNode) {
+  nsIContent* GetNextHTMLElementOrTextInBlock(const nsINode& aNode) const {
     return GetNextHTMLElementOrTextInternal(aNode, true);
   }
   template <typename PT, typename CT>
   nsIContent* GetNextHTMLElementOrText(
-      const EditorDOMPointBase<PT, CT>& aPoint) {
+      const EditorDOMPointBase<PT, CT>& aPoint) const {
     return GetNextHTMLElementOrTextInternal(aPoint, false);
   }
   template <typename PT, typename CT>
   nsIContent* GetNextHTMLElementOrTextInBlock(
-      const EditorDOMPointBase<PT, CT>& aPoint) {
+      const EditorDOMPointBase<PT, CT>& aPoint) const {
     return GetNextHTMLElementOrTextInternal(aPoint, true);
   }
 
@@ -1148,11 +1098,11 @@ class HTMLEditor final : public TextEditor,
    * GetNextHTMLNodeInternal() methods are common implementation
    * of above methods.  Please don't use this method directly.
    */
-  nsIContent* GetNextHTMLElementOrTextInternal(nsINode& aNode,
-                                               bool aNoBlockCrossing);
+  nsIContent* GetNextHTMLElementOrTextInternal(const nsINode& aNode,
+                                               bool aNoBlockCrossing) const;
   template <typename PT, typename CT>
   nsIContent* GetNextHTMLElementOrTextInternal(
-      const EditorDOMPointBase<PT, CT>& aPoint, bool aNoBlockCrossing);
+      const EditorDOMPointBase<PT, CT>& aPoint, bool aNoBlockCrossing) const;
 
   /**
    * GetNextEditableHTMLNode*() methods are similar to
@@ -1196,13 +1146,12 @@ class HTMLEditor final : public TextEditor,
   nsIContent* GetFirstEditableChild(nsINode& aNode) const;
   nsIContent* GetLastEditableChild(nsINode& aNode) const;
 
-  nsIContent* GetFirstEditableLeaf(nsINode& aNode);
-  nsIContent* GetLastEditableLeaf(nsINode& aNode);
+  nsIContent* GetFirstEditableLeaf(nsINode& aNode) const;
+  nsIContent* GetLastEditableLeaf(nsINode& aNode) const;
 
-  nsresult GetInlinePropertyBase(nsAtom& aProperty, nsAtom* aAttribute,
-                                 const nsAString* aValue, bool* aFirst,
-                                 bool* aAny, bool* aAll,
-                                 nsAString* outValue) const;
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult GetInlinePropertyBase(
+      nsAtom& aHTMLProperty, nsAtom* aAttribute, const nsAString* aValue,
+      bool* aFirst, bool* aAny, bool* aAll, nsAString* outValue) const;
 
   /**
    * ClearStyleAt() splits parent elements to remove the specified style.
@@ -1228,6 +1177,43 @@ class HTMLEditor final : public TextEditor,
    * HTMLEditor::OnModifyDocument() with AutoEditActionDataSetter instance.
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult OnModifyDocument();
+
+  /**
+   * DoSplitNode() creates a new node (left node) identical to an existing
+   * node (right node), and split the contents between the same point in both
+   * nodes.
+   *
+   * @param aStartOfRightNode   The point to split.  Its container will be
+   *                            the right node, i.e., become the new node's
+   *                            next sibling.  And the point will be start
+   *                            of the right node.
+   * @param aNewLeftNode        The new node called as left node, so, this
+   *                            becomes the container of aPointToSplit's
+   *                            previous sibling.
+   * @param aError              Must have not already failed.
+   *                            If succeed to insert aLeftNode before the
+   *                            right node and remove unnecessary contents
+   *                            (and collapse selection at end of the left
+   *                            node if necessary), returns no error.
+   *                            Otherwise, an error.
+   */
+  MOZ_CAN_RUN_SCRIPT void DoSplitNode(const EditorDOMPoint& aStartOfRightNode,
+                                      nsIContent& aNewLeftNode,
+                                      ErrorResult& aError);
+
+  /**
+   * DoJoinNodes() merges contents in aContentToJoin to aContentToKeep and
+   * remove aContentToJoin from the DOM tree.  aContentToJoin and aContentToKeep
+   * must have same parent, aParent.  Additionally, if one of aContentToJoin or
+   * aContentToKeep is a text node, the other must be a text node.
+   *
+   * @param aContentToKeep  The node that will remain after the join.
+   * @param aContentToJoin  The node that will be joined with aContentToKeep.
+   *                        There is no requirement that the two nodes be of the
+   *                        same type.
+   */
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  DoJoinNodes(nsIContent& aContentToKeep, nsIContent& aContentToJoin);
 
  protected:  // edit sub-action handler
   /**
@@ -1277,14 +1263,15 @@ class HTMLEditor final : public TextEditor,
    * values of CSS properties.
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
-  GetInlineStyles(nsINode& aNode, AutoStyleCacheArray& aStyleCacheArray);
+  GetInlineStyles(nsIContent& aContent, AutoStyleCacheArray& aStyleCacheArray);
 
   /**
-   * CacheInlineStyles() caches style of aNode into mCachedInlineStyles of
+   * CacheInlineStyles() caches style of aContent into mCachedInlineStyles of
    * TopLevelEditSubAction.  This may cause flushing layout at retrieving
    * computed value of CSS properties.
    */
-  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult CacheInlineStyles(nsINode& aNode);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  CacheInlineStyles(nsIContent& aContent);
 
   /**
    * ReapplyCachedStyles() restores some styles which are disappeared during
@@ -1302,7 +1289,7 @@ class HTMLEditor final : public TextEditor,
    *                            should be inserted.
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
-  CreateStyleForInsertText(dom::AbstractRange& aAbstractRange);
+  CreateStyleForInsertText(const dom::AbstractRange& aAbstractRange);
 
   /**
    * GetMostAncestorMailCiteElement() returns most-ancestor mail cite element.
@@ -1322,12 +1309,6 @@ class HTMLEditor final : public TextEditor,
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT EditActionResult
   SplitMailCiteElements(const EditorDOMPoint& aPointToSplit);
-
-  /**
-   * CanContainParagraph() returns true if aElement can have a <p> element as
-   * its child or its descendant.
-   */
-  bool CanContainParagraph(Element& aElement) const;
 
   /**
    * InsertBRElement() inserts a <br> element into aInsertToBreak.
@@ -1690,14 +1671,7 @@ class HTMLEditor final : public TextEditor,
    * IsEmptyInlineNode() returns true if aContent is an inline node and it does
    * not have meaningful content.
    */
-  bool IsEmptyInlineNode(nsIContent& aContent) const {
-    MOZ_ASSERT(IsEditActionDataAvailable());
-
-    if (!HTMLEditor::NodeIsInlineStatic(aContent) || !IsContainer(&aContent)) {
-      return false;
-    }
-    return IsEmptyNode(aContent);
-  }
+  bool IsEmptyInlineNode(nsIContent& aContent) const;
 
   /**
    * IsEmptyOneHardLine() returns true if aArrayOfContents does not represent
@@ -1710,8 +1684,8 @@ class HTMLEditor final : public TextEditor,
     }
 
     bool brElementHasFound = false;
-    for (auto& content : aArrayOfContents) {
-      if (!IsEditable(content)) {
+    for (OwningNonNull<nsIContent>& content : aArrayOfContents) {
+      if (!EditorUtils::IsEditableContent(content, EditorType::HTML)) {
         continue;
       }
       if (content->IsHTMLElement(nsGkAtoms::br)) {
@@ -2040,11 +2014,21 @@ class HTMLEditor final : public TextEditor,
       SelectAllOfCurrentList aSelectAllOfCurrentList);
 
   /**
-   * If aNode is a text node that contains only collapsed whitespace or empty
+   * If aContent is a text node that contains only collapsed whitespace or empty
    * and editable.
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
-  DeleteNodeIfInvisibleAndEditableTextNode(nsINode& aNode);
+  DeleteNodeIfInvisibleAndEditableTextNode(nsIContent& aContent);
+
+  /**
+   * DeleteTextAndTextNodesWithTransaction() removes text nodes which are in
+   * the given range and delete some characters in start and/or end of
+   * the range.
+   */
+  template <typename EditorDOMPointType>
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  DeleteTextAndTextNodesWithTransaction(const EditorDOMPointType& aStartPoint,
+                                        const EditorDOMPointType& aEndPoint);
 
   /**
    * If aPoint follows invisible `<br>` element, returns the invisible `<br>`
@@ -2052,6 +2036,18 @@ class HTMLEditor final : public TextEditor,
    */
   template <typename PT, typename CT>
   Element* GetInvisibleBRElementAt(const EditorDOMPointBase<PT, CT>& aPoint);
+
+  /**
+   * JoinNodesWithTransaction() joins aLeftNode and aRightNode.  Content of
+   * aLeftNode will be merged into aRightNode.  Actual implemenation of this
+   * method is JoinNodesImpl().  So, see its explanation for the detail.
+   *
+   * @param aLeftNode   Will be removed from the DOM tree.
+   * @param aRightNode  The node which will be new container of the content of
+   *                    aLeftNode.
+   */
+  MOZ_CAN_RUN_SCRIPT nsresult JoinNodesWithTransaction(nsINode& aLeftNode,
+                                                       nsINode& aRightNode);
 
   /**
    * JoinNearestEditableNodesWithTransaction() joins two editable nodes which
@@ -2080,29 +2076,210 @@ class HTMLEditor final : public TextEditor,
       EditorDOMPoint* aNewFirstChildOfRightNode);
 
   /**
-   * MoveNodeOrChildren() moves aContent to aPointToInsert.  If cannot insert
-   * aContent due to invalid relation, moves only its children recursively
-   * and removes aContent from the DOM tree.
+   * ReplaceContainerAndCloneAttributesWithTransaction() creates new element
+   * whose name is aTagName, copies all attributes from aOldContainer to the
+   * new element, moves all children in aOldContainer to the new element, then,
+   * removes aOldContainer from the DOM tree.
+   *
+   * @param aOldContainer       The element node which should be replaced
+   *                            with new element.
+   * @param aTagName            The name of new element node.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element>
+  ReplaceContainerAndCloneAttributesWithTransaction(Element& aOldContainer,
+                                                    nsAtom& aTagName) {
+    return ReplaceContainerWithTransactionInternal(
+        aOldContainer, aTagName, *nsGkAtoms::_empty, EmptyString(), true);
+  }
+
+  /**
+   * ReplaceContainerWithTransaction() creates new element whose name is
+   * aTagName, sets aAttributes of the new element to aAttributeValue, moves
+   * all children in aOldContainer to the new element, then, removes
+   * aOldContainer from the DOM tree.
+   *
+   * @param aOldContainer       The element node which should be replaced
+   *                            with new element.
+   * @param aTagName            The name of new element node.
+   * @param aAttribute          Attribute name to be set to the new element.
+   * @param aAttributeValue     Attribute value to be set to aAttribute.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> ReplaceContainerWithTransaction(
+      Element& aOldContainer, nsAtom& aTagName, nsAtom& aAttribute,
+      const nsAString& aAttributeValue) {
+    return ReplaceContainerWithTransactionInternal(
+        aOldContainer, aTagName, aAttribute, aAttributeValue, false);
+  }
+
+  /**
+   * ReplaceContainerWithTransaction() creates new element whose name is
+   * aTagName, moves all children in aOldContainer to the new element, then,
+   * removes aOldContainer from the DOM tree.
+   *
+   * @param aOldContainer       The element node which should be replaced
+   *                            with new element.
+   * @param aTagName            The name of new element node.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> ReplaceContainerWithTransaction(
+      Element& aOldContainer, nsAtom& aTagName) {
+    return ReplaceContainerWithTransactionInternal(
+        aOldContainer, aTagName, *nsGkAtoms::_empty, EmptyString(), false);
+  }
+
+  /**
+   * RemoveContainerWithTransaction() removes aElement from the DOM tree and
+   * moves all its children to the parent of aElement.
+   *
+   * @param aElement            The element to be removed.
+   */
+  MOZ_CAN_RUN_SCRIPT nsresult RemoveContainerWithTransaction(Element& aElement);
+
+  /**
+   * InsertContainerWithTransaction() creates new element whose name is
+   * aTagName, moves aContent into the new element, then, inserts the new
+   * element into where aContent was.
+   * Note that this method does not check if aContent is valid child of
+   * the new element.  So, callers need to guarantee it.
+   *
+   * @param aContent            The content which will be wrapped with new
+   *                            element.
+   * @param aTagName            Element name of new element which will wrap
+   *                            aContent and be inserted into where aContent
+   *                            was.
+   * @return                    The new element.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> InsertContainerWithTransaction(
+      nsIContent& aContent, nsAtom& aTagName) {
+    return InsertContainerWithTransactionInternal(
+        aContent, aTagName, *nsGkAtoms::_empty, EmptyString());
+  }
+
+  /**
+   * InsertContainerWithTransaction() creates new element whose name is
+   * aTagName, sets its aAttribute to aAttributeValue, moves aContent into the
+   * new element, then, inserts the new element into where aContent was.
+   * Note that this method does not check if aContent is valid child of
+   * the new element.  So, callers need to guarantee it.
+   *
+   * @param aContent            The content which will be wrapped with new
+   *                            element.
+   * @param aTagName            Element name of new element which will wrap
+   *                            aContent and be inserted into where aContent
+   *                            was.
+   * @param aAttribute          Attribute which should be set to the new
+   *                            element.
+   * @param aAttributeValue     Value to be set to aAttribute.
+   * @return                    The new element.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> InsertContainerWithTransaction(
+      nsIContent& aContent, nsAtom& aTagName, nsAtom& aAttribute,
+      const nsAString& aAttributeValue) {
+    return InsertContainerWithTransactionInternal(aContent, aTagName,
+                                                  aAttribute, aAttributeValue);
+  }
+
+  /**
+   * MoveNodeWithTransaction() moves aContent to aPointToInsert.
+   *
+   * @param aContent        The node to be moved.
+   */
+  MOZ_CAN_RUN_SCRIPT nsresult MoveNodeWithTransaction(
+      nsIContent& aContent, const EditorDOMPoint& aPointToInsert);
+
+  /**
+   * MoveNodeToEndWithTransaction() moves aContent to end of aNewContainer.
+   *
+   * @param aContent        The node to be moved.
+   * @param aNewContainer   The new container which will contain aContent as
+   *                        its last child.
+   */
+  MOZ_CAN_RUN_SCRIPT nsresult
+  MoveNodeToEndWithTransaction(nsIContent& aContent, nsINode& aNewContainer) {
+    EditorDOMPoint pointToInsert;
+    pointToInsert.SetToEndOf(&aNewContainer);
+    return MoveNodeWithTransaction(aContent, pointToInsert);
+  }
+
+  /**
+   * MoveNodeOrChildrenWithTransaction() moves aContent to aPointToInsert.  If
+   * cannot insert aContent due to invalid relation, moves only its children
+   * recursively and removes aContent from the DOM tree.
    *
    * @param aContent            Content which should be moved.
    * @param aPointToInsert      The point to be inserted aContent or its
    *                            descendants.
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT MoveNodeResult
-  MoveNodeOrChildren(nsIContent& aNode, const EditorDOMPoint& aPointToInsert);
+  MoveNodeOrChildrenWithTransaction(nsIContent& aNode,
+                                    const EditorDOMPoint& aPointToInsert);
 
   /**
-   * MoveContents() moves the children of aElement to aPointToInsert.  If
-   * cannot insert some children due to invalid relation, calls
-   * MoveNodeOrChildren() to remove the children but keep moving its children.
+   * MoveChildrenWithTransaction() moves the children of aElement to
+   * aPointToInsert.  If cannot insert some children due to invalid relation,
+   * calls MoveNodeOrChildrenWithTransaction() to remove the children but keep
+   * moving its children.
    *
    * @param aElement            Container element whose children should be
    *                            moved.
    * @param aPointToInsert      The point to be inserted children of aElement
    *                            or its descendants.
    */
-  [[nodiscard]] MOZ_CAN_RUN_SCRIPT MoveNodeResult
-  MoveChildren(Element& aElement, const EditorDOMPoint& aPointToInsert);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT MoveNodeResult MoveChildrenWithTransaction(
+      Element& aElement, const EditorDOMPoint& aPointToInsert);
+
+  /**
+   * MoveAllChildren() moves all children of aContainer to before
+   * aPointToInsert.GetChild().
+   * See explanation of MoveChildrenBetween() for the detail of the behavior.
+   *
+   * @param aContainer          The container node whose all children should
+   *                            be moved.
+   * @param aPointToInsert      The insertion point.  The container must not
+   *                            be a data node like a text node.
+   * @param aError              The result.  If this succeeds to move children,
+   *                            returns NS_OK.  Otherwise, an error.
+   */
+  void MoveAllChildren(nsINode& aContainer,
+                       const EditorRawDOMPoint& aPointToInsert,
+                       ErrorResult& aError);
+
+  /**
+   * MoveChildrenBetween() moves all children between aFirstChild and aLastChild
+   * to before aPointToInsert.GetChild(). If some children are moved to
+   * different container while this method moves other children, they are just
+   * ignored. If the child node referred by aPointToInsert is moved to different
+   * container while this method moves children, returns error.
+   *
+   * @param aFirstChild         The first child which should be moved to
+   *                            aPointToInsert.
+   * @param aLastChild          The last child which should be moved.  This
+   *                            must be a sibling of aFirstChild and it should
+   *                            be positioned after aFirstChild in the DOM tree
+   *                            order.
+   * @param aPointToInsert      The insertion point.  The container must not
+   *                            be a data node like a text node.
+   * @param aError              The result.  If this succeeds to move children,
+   *                            returns NS_OK.  Otherwise, an error.
+   */
+  void MoveChildrenBetween(nsIContent& aFirstChild, nsIContent& aLastChild,
+                           const EditorRawDOMPoint& aPointToInsert,
+                           ErrorResult& aError);
+
+  /**
+   * MovePreviousSiblings() moves all siblings before aChild (i.e., aChild
+   * won't be moved) to before aPointToInsert.GetChild().
+   * See explanation of MoveChildrenBetween() for the detail of the behavior.
+   *
+   * @param aChild              The node which is next sibling of the last
+   *                            node to be moved.
+   * @param aPointToInsert      The insertion point.  The container must not
+   *                            be a data node like a text node.
+   * @param aError              The result.  If this succeeds to move children,
+   *                            returns NS_OK.  Otherwise, an error.
+   */
+  void MovePreviousSiblings(nsIContent& aChild,
+                            const EditorRawDOMPoint& aPointToInsert,
+                            ErrorResult& aError);
 
   /**
    * MoveOneHardLineContents() moves the content in a hard line which contains
@@ -2127,6 +2304,73 @@ class HTMLEditor final : public TextEditor,
       const EditorDOMPoint& aPointInHardLine,
       const EditorDOMPoint& aPointToInsert,
       MoveToEndOfContainer aMoveToEndOfContainer = MoveToEndOfContainer::No);
+
+  /**
+   * SplitNodeWithTransaction() creates a transaction to create a new node
+   * (left node) identical to an existing node (right node), and split the
+   * contents between the same point in both nodes, then, execute the
+   * transaction.
+   *
+   * @param aStartOfRightNode   The point to split.  Its container will be
+   *                            the right node, i.e., become the new node's
+   *                            next sibling.  And the point will be start
+   *                            of the right node.
+   * @param aError              If succeed, returns no error.  Otherwise, an
+   *                            error.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<nsIContent> SplitNodeWithTransaction(
+      const EditorDOMPoint& aStartOfRightNode, ErrorResult& aResult);
+
+  enum class SplitAtEdges {
+    // SplitNodeDeepWithTransaction() won't split container element
+    // nodes at their edges.  I.e., when split point is start or end of
+    // container, it won't be split.
+    eDoNotCreateEmptyContainer,
+    // SplitNodeDeepWithTransaction() always splits containers even
+    // if the split point is at edge of a container.  E.g., if split point is
+    // start of an inline element, empty inline element is created as a new left
+    // node.
+    eAllowToCreateEmptyContainer,
+  };
+
+  /**
+   * SplitNodeDeepWithTransaction() splits aMostAncestorToSplit deeply.
+   *
+   * @param aMostAncestorToSplit        The most ancestor node which should be
+   *                                    split.
+   * @param aStartOfDeepestRightNode    The start point of deepest right node.
+   *                                    This point must be descendant of
+   *                                    aMostAncestorToSplit.
+   * @param aSplitAtEdges               Whether the caller allows this to
+   *                                    create empty container element when
+   *                                    split point is start or end of an
+   *                                    element.
+   * @return                            SplitPoint() returns split point in
+   *                                    aMostAncestorToSplit.  The point must
+   *                                    be good to insert something if the
+   *                                    caller want to do it.
+   */
+  MOZ_CAN_RUN_SCRIPT SplitNodeResult
+  SplitNodeDeepWithTransaction(nsIContent& aMostAncestorToSplit,
+                               const EditorDOMPoint& aDeepestStartOfRightNode,
+                               SplitAtEdges aSplitAtEdges);
+
+  /**
+   * JoinNodesDeepWithTransaction() joins aLeftNode and aRightNode "deeply".
+   * First, they are joined simply, then, new right node is assumed as the
+   * child at length of the left node before joined and new left node is
+   * assumed as its previous sibling.  Then, they will be joined again.
+   * And then, these steps are repeated.
+   *
+   * @param aLeftContent    The node which will be removed form the tree.
+   * @param aRightContent   The node which will be inserted the contents of
+   *                        aRightContent.
+   * @return                The point of the first child of the last right node.
+   *                        The result is always set if this succeeded.
+   */
+  MOZ_CAN_RUN_SCRIPT Result<EditorDOMPoint, nsresult>
+  JoinNodesDeepWithTransaction(nsIContent& aLeftContent,
+                               nsIContent& aRightContent);
 
   /**
    * TryToJoinBlocksWithTransaction() tries to join two block elements.  The
@@ -2163,6 +2407,15 @@ class HTMLEditor final : public TextEditor,
       nsIContent& aContent, nsIEditor::EDirection aDirectionAndAmount);
 
   /**
+   * RemoveEmptyInclusiveAncestorInlineElements() removes empty inclusive
+   * ancestor inline elements in inclusive ancestor block element of aContent.
+   *
+   * @param aContent    Must be an empty content.
+   */
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  RemoveEmptyInclusiveAncestorInlineElements(nsIContent& aContent);
+
+  /**
    * MaybeDeleteTopMostEmptyAncestor() looks for top most empty block ancestor
    * of aStartContent in aEditingHostElement.
    * If found empty ancestor is a list item element, inserts a <br> element
@@ -2189,7 +2442,7 @@ class HTMLEditor final : public TextEditor,
                                   nsIEditor::EDirection aDirectionAndAmount);
 
   /**
-   * GetExtendedRangeToIncludeInvisibleNodes() returns extended range.
+   * GetRangeExtendedToIncludeInvisibleNodes() returns extended range.
    * If there are some invisible nodes around aAbstractRange, they may
    * be included.
    *
@@ -2197,7 +2450,7 @@ class HTMLEditor final : public TextEditor,
    *                            and must be positioned.
    * @return                    Extended range.
    */
-  already_AddRefed<dom::StaticRange> GetExtendedRangeToIncludeInvisibleNodes(
+  already_AddRefed<dom::StaticRange> GetRangeExtendedToIncludeInvisibleNodes(
       const dom::AbstractRange& aAbstractRange);
 
   /**
@@ -2888,7 +3141,7 @@ class HTMLEditor final : public TextEditor,
   CollapseSelectionAfter(Element& aElement);
 
   /**
-   * GetElementOrParentByTagNameAtSelection() looks for an element node whose
+   * GetInclusiveAncestorByTagNameAtSelection() looks for an element node whose
    * name matches aTagName from anchor node of Selection to <body> element.
    *
    * @param aTagName        The tag name which you want to look for.
@@ -2903,10 +3156,11 @@ class HTMLEditor final : public TextEditor,
    * @return                If an element which matches aTagName, returns
    *                        an Element.  Otherwise, nullptr.
    */
-  Element* GetElementOrParentByTagNameAtSelection(const nsAtom& aTagName) const;
+  Element* GetInclusiveAncestorByTagNameAtSelection(
+      const nsStaticAtom& aTagName) const;
 
   /**
-   * GetElementOrParentByTagNameInternal() looks for an element node whose
+   * GetInclusiveAncestorByTagNameInternal() looks for an element node whose
    * name matches aTagName from aNode to <body> element.
    *
    * @param aTagName        The tag name which you want to look for.
@@ -2918,12 +3172,13 @@ class HTMLEditor final : public TextEditor,
    *                        which has "href" attribute with non-empty value.
    *                        If nsGkAtoms::anchor, the result may be <a> which
    *                        has "name" attribute with non-empty value.
-   * @param aNode           Start node to look for the element.
+   * @param aContent        Start node to look for the element.  This should
+   *                        not be an orphan node.
    * @return                If an element which matches aTagName, returns
    *                        an Element.  Otherwise, nullptr.
    */
-  Element* GetElementOrParentByTagNameInternal(const nsAtom& aTagName,
-                                               nsINode& aNode) const;
+  Element* GetInclusiveAncestorByTagNameInternal(const nsStaticAtom& aTagName,
+                                                 nsIContent& aContent) const;
 
   /**
    * GetSelectedElement() returns a "selected" element node.  "selected" means:
@@ -2941,8 +3196,8 @@ class HTMLEditor final : public TextEditor,
    * another method for avoiding breakage of comm-central apps.
    *
    * @param aTagName    The atom of tag name in lower case.  Set this to
-   *                    result  of GetLowerCaseNameAtom() if you have a tag
-   *                    name with nsString.
+   *                    result  of EditorUtils::GetTagNameAtom() if you have a
+   *                    tag name with nsString.
    *                    If nullptr, this returns any element node or nullptr.
    *                    If nsGkAtoms::href, this returns an <a> element which
    *                    has non-empty "href" attribute or nullptr.
@@ -3006,10 +3261,11 @@ class HTMLEditor final : public TextEditor,
      * @param aRv               Returns error if layout information is not
      *                          available or given element is not a table cell.
      */
-    CellIndexes(Element& aCellElement, ErrorResult& aRv)
+    MOZ_CAN_RUN_SCRIPT CellIndexes(Element& aCellElement, PresShell* aPresShell,
+                                   ErrorResult& aRv)
         : mRow(-1), mColumn(-1) {
       MOZ_ASSERT(!aRv.Failed());
-      Update(aCellElement, aRv);
+      Update(aCellElement, aPresShell, aRv);
     }
 
     /**
@@ -3017,7 +3273,8 @@ class HTMLEditor final : public TextEditor,
      *
      * @param                   See above.
      */
-    void Update(Element& aCellElement, ErrorResult& aRv);
+    MOZ_CAN_RUN_SCRIPT void Update(Element& aCellElement, PresShell* aPresShell,
+                                   ErrorResult& aRv);
 
     /**
      * This constructor initializes mRowIndex and mColumnIndex with indexes of
@@ -3029,8 +3286,8 @@ class HTMLEditor final : public TextEditor,
      *                          which contains anchor of Selection, or layout
      *                          information is not available.
      */
-    CellIndexes(HTMLEditor& aHTMLEditor, Selection& aSelection,
-                ErrorResult& aRv)
+    MOZ_CAN_RUN_SCRIPT CellIndexes(HTMLEditor& aHTMLEditor,
+                                   Selection& aSelection, ErrorResult& aRv)
         : mRow(-1), mColumn(-1) {
       Update(aHTMLEditor, aSelection, aRv);
     }
@@ -3041,8 +3298,8 @@ class HTMLEditor final : public TextEditor,
      *
      * @param                   See above.
      */
-    void Update(HTMLEditor& aHTMLEditor, Selection& aSelection,
-                ErrorResult& aRv);
+    MOZ_CAN_RUN_SCRIPT void Update(HTMLEditor& aHTMLEditor,
+                                   Selection& aSelection, ErrorResult& aRv);
 
     bool operator==(const CellIndexes& aOther) const {
       return mRow == aOther.mRow && mColumn == aOther.mColumn;
@@ -3068,8 +3325,8 @@ class HTMLEditor final : public TextEditor,
      * first range is in the cell element, this does not treat it as the
      * cell element is selected.
      */
-    CellAndIndexes(HTMLEditor& aHTMLEditor, Selection& aSelection,
-                   ErrorResult& aRv) {
+    MOZ_CAN_RUN_SCRIPT CellAndIndexes(HTMLEditor& aHTMLEditor,
+                                      Selection& aSelection, ErrorResult& aRv) {
       Update(aHTMLEditor, aSelection, aRv);
     }
 
@@ -3079,8 +3336,8 @@ class HTMLEditor final : public TextEditor,
      * in the cell element, this does not treat it as the cell element is
      * selected.
      */
-    void Update(HTMLEditor& aHTMLEditor, Selection& aSelection,
-                ErrorResult& aRv);
+    MOZ_CAN_RUN_SCRIPT void Update(HTMLEditor& aHTMLEditor,
+                                   Selection& aSelection, ErrorResult& aRv);
   };
 
   struct MOZ_STACK_CLASS CellData final {
@@ -3397,6 +3654,82 @@ class HTMLEditor final : public TextEditor,
   InsertTextWithQuotationsInternal(const nsAString& aStringToInsert);
 
   /**
+   * ReplaceContainerWithTransactionInternal() is implementation of
+   * ReplaceContainerWithTransaction() and
+   * ReplaceContainerAndCloneAttributesWithTransaction().
+   *
+   * @param aOldContainer       The element which will be replaced with new
+   *                            element.
+   * @param aTagName            The name of new element node.
+   * @param aAttribute          Attribute name which will be set to the new
+   *                            element.  This will be ignored if
+   *                            aCloneAllAttributes is set to true.
+   * @param aAttributeValue     Attribute value which will be set to
+   *                            aAttribute.
+   * @param aCloneAllAttributes If true, all attributes of aOldContainer will
+   *                            be copied to the new element.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element>
+  ReplaceContainerWithTransactionInternal(Element& aElement, nsAtom& aTagName,
+                                          nsAtom& aAttribute,
+                                          const nsAString& aAttributeValue,
+                                          bool aCloneAllAttributes);
+
+  /**
+   * InsertContainerWithTransactionInternal() creates new element whose name is
+   * aTagName, moves aContent into the new element, then, inserts the new
+   * element into where aContent was.  If aAttribute is not nsGkAtoms::_empty,
+   * aAttribute of the new element will be set to aAttributeValue.
+   *
+   * @param aContent            The content which will be wrapped with new
+   *                            element.
+   * @param aTagName            Element name of new element which will wrap
+   *                            aContent and be inserted into where aContent
+   *                            was.
+   * @param aAttribute          Attribute which should be set to the new
+   *                            element.  If this is nsGkAtoms::_empty,
+   *                            this does not set any attributes to the new
+   *                            element.
+   * @param aAttributeValue     Value to be set to aAttribute.
+   * @return                    The new element.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element>
+  InsertContainerWithTransactionInternal(nsIContent& aContent, nsAtom& aTagName,
+                                         nsAtom& aAttribute,
+                                         const nsAString& aAttributeValue);
+
+  /**
+   * DeleteSelectionAndCreateElement() creates a element whose name is aTag.
+   * And insert it into the DOM tree after removing the selected content.
+   *
+   * @param aTag                The element name to be created.
+   * @return                    Created new element.
+   */
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<Element> DeleteSelectionAndCreateElement(
+      nsAtom& aTag);
+
+  /**
+   * This method first deletes the selection, if it's not collapsed.  Then if
+   * the selection lies in a CharacterData node, it splits it.  If the
+   * selection is at this point collapsed in a CharacterData node, it's
+   * adjusted to be collapsed right before or after the node instead (which is
+   * always possible, since the node was split).
+   */
+  MOZ_CAN_RUN_SCRIPT nsresult DeleteSelectionAndPrepareToCreateNode();
+
+  /**
+   * PrepareToInsertBRElement() returns a point where new <br> element should
+   * be inserted.  If aPointToInsert points middle of a text node, this method
+   * splits the text node and returns the point before right node.
+   *
+   * @param aPointToInsert      Candidate point to insert new <br> element.
+   * @return                    Computed point to insert new <br> element.
+   *                            If something failed, this is unset.
+   */
+  MOZ_CAN_RUN_SCRIPT EditorDOMPoint
+  PrepareToInsertBRElement(const EditorDOMPoint& aPointToInsert);
+
+  /**
    * IndentAsSubAction() indents the content around Selection.
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT EditActionResult IndentAsSubAction();
@@ -3426,21 +3759,21 @@ class HTMLEditor final : public TextEditor,
    * RemoveInlinePropertyInternal() removes specified style from `mTypeInState`
    * if `Selection` is collapsed.  Otherwise, removing the style.
    *
-   * @param aProperty           nullptr if you want to remove all inline styles.
+   * @param aHTMLProperty       nullptr if you want to remove all inline styles.
    *                            Otherwise, one of the presentation tag names
    *                            which we support in style editor.
-   * @param aAttribute          For some aProperty values, need to be set to
+   * @param aAttribute          For some aHTMLProperty values, need to be set to
    *                            its attribute name.  Otherwise, nullptr.
    * @param aRemoveRelatedElements      If Yes, this method removes different
    *                                    name's elements in the block if
-   *                                    necessary.  For example, if aProperty
-   *                                    is nsGkAtoms::b, `<strong>` elements
-   *                                    are also removed.
+   *                                    necessary.  For example, if
+   *                                    aHTMLProperty is nsGkAtoms::b,
+   *                                    `<strong>` elements are also removed.
    */
   enum class RemoveRelatedElements { Yes, No };
-  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
-  RemoveInlinePropertyInternal(nsAtom* aProperty, nsAtom* aAttribute,
-                               RemoveRelatedElements aRemoveRelatedElements);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult RemoveInlinePropertyInternal(
+      nsStaticAtom* aHTMLProperty, nsStaticAtom* aAttribute,
+      RemoveRelatedElements aRemoveRelatedElements);
 
   /**
    * ReplaceHeadContentsWithSourceWithTransaction() replaces all children of
@@ -3452,13 +3785,11 @@ class HTMLEditor final : public TextEditor,
   MOZ_CAN_RUN_SCRIPT nsresult ReplaceHeadContentsWithSourceWithTransaction(
       const nsAString& aSourceToInsert);
 
-  nsresult GetCSSBackgroundColorState(bool* aMixed, nsAString& aOutColor,
-                                      bool aBlockLevel);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult GetCSSBackgroundColorState(
+      bool* aMixed, nsAString& aOutColor, bool aBlockLevel);
   nsresult GetHTMLBackgroundColorState(bool* aMixed, nsAString& outColor);
 
   nsresult GetLastCellInRow(nsINode* aRowNode, nsINode** aCellNode);
-
-  static nsresult GetCellFromRange(nsRange* aRange, Element** aCell);
 
   /**
    * This sets background on the appropriate container element (table, cell,)
@@ -3487,63 +3818,6 @@ class HTMLEditor final : public TextEditor,
    */
   MOZ_CAN_RUN_SCRIPT void CollapseSelectionToDeepestNonTableFirstChild(
       nsINode* aNode);
-
-  /**
-   * Returns TRUE if sheet was loaded, false if it wasn't.
-   */
-  bool EnableExistingStyleSheet(const nsAString& aURL);
-
-  /**
-   * GetStyleSheetForURL() returns a pointer to StyleSheet which was added
-   * with AddOverrideStyleSheetInternal().  If it's not found, returns nullptr.
-   *
-   * @param aURL        URL to the style sheet.
-   */
-  StyleSheet* GetStyleSheetForURL(const nsAString& aURL);
-
-  /**
-   * Add a url + known style sheet to the internal lists.
-   */
-  nsresult AddNewStyleSheetToList(const nsAString& aURL,
-                                  StyleSheet* aStyleSheet);
-
-  /**
-   * Removes style sheet from the internal lists.
-   *
-   * @param aURL        URL to the style sheet.
-   * @return            If the URL is in the internal list, returns the
-   *                    removed style sheet.  Otherwise, i.e., not found,
-   *                    nullptr.
-   */
-  already_AddRefed<StyleSheet> RemoveStyleSheetFromList(const nsAString& aURL);
-
-  /**
-   * Add and apply the style sheet synchronously.
-   *
-   * @param aURL        URL to the style sheet.
-   */
-  nsresult AddOverrideStyleSheetInternal(const nsAString& aURL);
-
-  /**
-   * Remove the style sheet from this editor synchronously.
-   *
-   * @param aURL        URL to the style sheet.
-   * @return            Even if there is no specified style sheet in the
-   *                    internal lists, this returns NS_OK.
-   */
-  nsresult RemoveOverrideStyleSheetInternal(const nsAString& aURL);
-
-  /**
-   * Enable or disable the style sheet synchronously.
-   * aURL is just a key to specify a style sheet in the internal array.
-   * I.e., the style sheet has already been registered with
-   * AddOverrideStyleSheetInternal().
-   *
-   * @param aURL        URL to the style sheet.
-   * @param aEnable     true if enable the style sheet.  false if disable it.
-   */
-  void EnableStyleSheetInternal(const nsAString& aURL, bool aEnable);
-
   /**
    * MaybeCollapseSelectionAtFirstEditableNode() may collapse selection at
    * proper position to staring to edit.  If there is a non-editable node
@@ -3602,18 +3876,18 @@ class HTMLEditor final : public TextEditor,
   virtual nsresult InstallEventListeners() override;
   virtual void RemoveEventListeners() override;
 
-  bool ShouldReplaceRootElement();
+  bool ShouldReplaceRootElement() const;
   MOZ_CAN_RUN_SCRIPT void NotifyRootChanged();
-  Element* GetBodyElement();
+  Element* GetBodyElement() const;
 
   /**
    * Get the focused node of this editor.
    * @return    If the editor has focus, this returns the focused node.
    *            Otherwise, returns null.
    */
-  already_AddRefed<nsINode> GetFocusedNode();
+  nsINode* GetFocusedNode() const;
 
-  virtual already_AddRefed<Element> GetInputEventTargetElement() override;
+  virtual already_AddRefed<Element> GetInputEventTargetElement() const override;
 
   /**
    * Return TRUE if aElement is a table-related elemet and caret was set.
@@ -3847,9 +4121,11 @@ class HTMLEditor final : public TextEditor,
    * Returns NS_EDITOR_ELEMENT_NOT_FOUND if cell is not found even if aCell is
    * null.
    */
-  nsresult GetCellContext(Element** aTable, Element** aCell,
-                          nsINode** aCellParent, int32_t* aCellOffset,
-                          int32_t* aRowIndex, int32_t* aColIndex);
+  MOZ_CAN_RUN_SCRIPT nsresult GetCellContext(Element** aTable, Element** aCell,
+                                             nsINode** aCellParent,
+                                             int32_t* aCellOffset,
+                                             int32_t* aRowIndex,
+                                             int32_t* aColIndex);
 
   nsresult GetCellSpansAt(Element* aTable, int32_t aRowIndex, int32_t aColIndex,
                           int32_t& aActualRowSpan, int32_t& aActualColSpan);
@@ -3891,8 +4167,6 @@ class HTMLEditor final : public TextEditor,
    * failed to set selection to some other content in the document.
    */
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult SetSelectionAtDocumentStart();
-
-  static Element* GetEnclosingTable(nsINode* aNode);
 
   // Methods for handling plaintext quotations
   MOZ_CAN_RUN_SCRIPT nsresult PasteAsPlaintextQuotation(int32_t aSelectionType);
@@ -4124,10 +4398,14 @@ class HTMLEditor final : public TextEditor,
    * aProperty/aAttribute of parent block can be removed from aContent with
    * creating `<span>` element.  Note that this does NOT check whether the
    * specified style comes from parent block or not.
+   * XXX This may destroy the editor, but using `Result<bool, nsresult>`
+   *     is not reasonable because code for accessing the result becomes
+   *     messy.  However, anybody must forget to check `Destroyed()` after
+   *     calling this.  Which is the way to smart to make every caller
+   *     must check the editor state?
    */
-  static bool IsRemovableParentStyleWithNewSpanElement(nsIContent& aContent,
-                                                       nsAtom* aProperty,
-                                                       nsAtom* aAttribute);
+  MOZ_CAN_RUN_SCRIPT bool IsRemovableParentStyleWithNewSpanElement(
+      nsIContent& aContent, nsAtom* aHTMLProperty, nsAtom* aAttribute) const;
 
   /**
    * XXX These methods seem odd and except the only caller,
@@ -4149,7 +4427,7 @@ class HTMLEditor final : public TextEditor,
   /**
    * Whether the outer window of the DOM event target has focus or not.
    */
-  bool OurWindowHasFocus();
+  bool OurWindowHasFocus() const;
 
   /**
    * This function is used to insert a string of HTML input optionally with some
@@ -4221,10 +4499,10 @@ class HTMLEditor final : public TextEditor,
    * Returns the offset of an element's frame to its absolute containing block.
    */
   nsresult GetElementOrigin(Element& aElement, int32_t& aX, int32_t& aY);
-  nsresult GetPositionAndDimensions(Element& aElement, int32_t& aX, int32_t& aY,
-                                    int32_t& aW, int32_t& aH,
-                                    int32_t& aBorderLeft, int32_t& aBorderTop,
-                                    int32_t& aMarginLeft, int32_t& aMarginTop);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult GetPositionAndDimensions(
+      Element& aElement, int32_t& aX, int32_t& aY, int32_t& aW, int32_t& aH,
+      int32_t& aBorderLeft, int32_t& aBorderTop, int32_t& aMarginLeft,
+      int32_t& aMarginTop);
 
   bool IsInObservedSubtree(nsIContent* aChild);
 
@@ -4236,7 +4514,7 @@ class HTMLEditor final : public TextEditor,
    * while this is running, this returns error.  So, callers shouldn't
    * keep handling the resizers if this returns error.
    */
-  MOZ_CAN_RUN_SCRIPT nsresult SetAllResizersPosition();
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult SetAllResizersPosition();
 
   /**
    * Shows active resizers around an element's frame
@@ -4271,10 +4549,9 @@ class HTMLEditor final : public TextEditor,
    * @param aElementX           Left of aElement.
    * @param aElementY           Top of aElement.
    */
-  MOZ_CAN_RUN_SCRIPT nsresult SetShadowPosition(Element& aShadowElement,
-                                                Element& aElement,
-                                                int32_t aElementLeft,
-                                                int32_t aElementTop);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  SetShadowPosition(Element& aShadowElement, Element& aElement,
+                    int32_t aElementLeft, int32_t aElementTop);
 
   ManualNACPtr CreateResizingInfo(nsIContent& aParentContent);
   MOZ_CAN_RUN_SCRIPT nsresult SetResizingInfoPosition(int32_t aX, int32_t aY,
@@ -4353,8 +4630,9 @@ class HTMLEditor final : public TextEditor,
   void SnapToGrid(int32_t& newX, int32_t& newY);
   nsresult GrabberClicked();
   MOZ_CAN_RUN_SCRIPT nsresult EndMoving();
-  nsresult GetTemporaryStyleForFocusedPositionedElement(Element& aElement,
-                                                        nsAString& aReturn);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  GetTemporaryStyleForFocusedPositionedElement(Element& aElement,
+                                               nsAString& aReturn);
 
   /**
    * Shows inline table editing UI around a <table> element which contains
@@ -4384,7 +4662,7 @@ class HTMLEditor final : public TextEditor,
    * any visible characters.
    */
   bool IsEmptyTextNode(nsINode& aNode) const {
-    return EditorBase::IsTextNode(&aNode) && IsEmptyNode(aNode);
+    return aNode.IsText() && IsEmptyNode(aNode);
   }
 
   MOZ_CAN_RUN_SCRIPT bool IsSimpleModifiableNode(nsIContent* aContent,
@@ -4477,6 +4755,9 @@ class HTMLEditor final : public TextEditor,
   // Used by TopLevelEditSubActionData::mChangedRange.
   mutable RefPtr<nsRange> mChangedRangeForTopLevelEditSubAction;
 
+  RefPtr<Runnable> mPendingRootElementUpdatedRunner;
+  RefPtr<Runnable> mPendingDocumentModifiedRunner;
+
   bool mCRInParagraphCreatesParagraph;
 
   bool mCSSAware;
@@ -4486,10 +4767,6 @@ class HTMLEditor final : public TextEditor,
   // then, it'll be referred and incremented by
   // GetNextSelectedTableCellElement().
   mutable uint32_t mSelectedCellIndex;
-
-  // Maintain a list of associated style sheets and their urls.
-  nsTArray<nsString> mStyleSheetURLs;
-  nsTArray<RefPtr<StyleSheet>> mStyleSheets;
 
   // resizing
   bool mIsObjectResizingEnabled;
@@ -4588,10 +4865,12 @@ class HTMLEditor final : public TextEditor,
   friend class CSSEditUtils;
   friend class EditorBase;
   friend class EmptyEditableFunctor;
+  friend class JoinNodeTransaction;
   friend class ListElementSelectionState;
   friend class ListItemElementSelectionState;
   friend class ParagraphStateAtSelection;
   friend class SlurpBlobEventListener;
+  friend class SplitNodeTransaction;
   friend class TextEditor;
   friend class WSRunObject;
   friend class WSRunScanner;
@@ -4653,7 +4932,8 @@ class MOZ_STACK_CLASS ListItemElementSelectionState final {
 class MOZ_STACK_CLASS AlignStateAtSelection final {
  public:
   AlignStateAtSelection() = delete;
-  AlignStateAtSelection(HTMLEditor& aHTMLEditor, ErrorResult& aRv);
+  MOZ_CAN_RUN_SCRIPT AlignStateAtSelection(HTMLEditor& aHTMLEditor,
+                                           ErrorResult& aRv);
 
   nsIHTMLEditor::EAlignment AlignmentAtSelectionStart() const {
     return mFirstAlign;
@@ -4693,6 +4973,8 @@ class MOZ_STACK_CLASS ParagraphStateAtSelection final {
   bool IsMixed() const { return mIsMixed; }
 
  private:
+  using EditorType = EditorBase::EditorType;
+
   /**
    * AppendDescendantFormatNodesAndFirstInlineNode() appends descendant
    * format blocks and first inline child node in aNonFormatBlockElement to
@@ -4726,13 +5008,13 @@ class MOZ_STACK_CLASS ParagraphStateAtSelection final {
 }  // namespace mozilla
 
 mozilla::HTMLEditor* nsIEditor::AsHTMLEditor() {
-  return static_cast<mozilla::EditorBase*>(this)->mIsHTMLEditorClass
+  return static_cast<mozilla::EditorBase*>(this)->IsHTMLEditor()
              ? static_cast<mozilla::HTMLEditor*>(this)
              : nullptr;
 }
 
 const mozilla::HTMLEditor* nsIEditor::AsHTMLEditor() const {
-  return static_cast<const mozilla::EditorBase*>(this)->mIsHTMLEditorClass
+  return static_cast<const mozilla::EditorBase*>(this)->IsHTMLEditor()
              ? static_cast<const mozilla::HTMLEditor*>(this)
              : nullptr;
 }

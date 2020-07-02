@@ -564,12 +564,6 @@ void MacroAssembler::branchTestSymbol(Condition cond, const ValueOperand& value,
   branchTestSymbol(cond, scratch2, label);
 }
 
-void MacroAssembler::branchTestBigInt(Condition cond, Register tag,
-                                      Label* label) {
-  MOZ_ASSERT(cond == Equal || cond == NotEqual);
-  ma_b(tag, ImmTag(JSVAL_TAG_BIGINT), label, cond);
-}
-
 void MacroAssembler::branchTestBigInt(Condition cond, const BaseIndex& address,
                                       Label* label) {
   SecondScratchRegisterScope scratch2(*this);
@@ -691,14 +685,6 @@ inline void MacroAssembler::cmp32Set(Assembler::Condition cond, Address lhs,
 
 void MacroAssemblerMIPS64Compat::incrementInt32Value(const Address& addr) {
   asMasm().add32(Imm32(1), addr);
-}
-
-void MacroAssemblerMIPS64Compat::computeEffectiveAddress(
-    const BaseIndex& address, Register dest) {
-  computeScaledAddress(address, dest);
-  if (address.offset) {
-    asMasm().addPtr(Imm32(address.offset), dest);
-  }
 }
 
 void MacroAssemblerMIPS64Compat::retn(Imm32 n) {

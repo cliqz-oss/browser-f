@@ -39,8 +39,6 @@ nsresult SetupExtraData(nsIFile* aAppDataDirectory,
 
 nsresult UnsetExceptionHandler() { return NS_ERROR_NOT_IMPLEMENTED; }
 
-void NotifyCrashReporterClientCreated() {}
-
 nsresult AnnotateCrashReport(Annotation key, bool data) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -190,13 +188,13 @@ void UnregisterInjectorCallback(DWORD processID) {}
 
 bool GetLastRunCrashID(nsAString& id) { return false; }
 
-#if defined(XP_LINUX)
+#if !defined(XP_WIN) && !defined(XP_MACOSX)
 
 bool CreateNotificationPipeForChild(int* childCrashFd, int* childCrashRemapFd) {
   return false;
 }
 
-#endif  // defined(XP_LINUX)
+#endif  // !defined(XP_WIN) && !defined(XP_MACOSX)
 
 bool SetRemoteExceptionHandler(const char* aCrashPipe,
                                uintptr_t aCrashTimeAnnotationFile) {

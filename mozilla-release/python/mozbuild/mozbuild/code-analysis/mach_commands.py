@@ -90,7 +90,10 @@ class StaticAnalysisMonitor(object):
         self._current = None
         self._srcdir = srcdir
 
-        self._clang_tidy_config = clang_tidy_config['clang_checkers']
+        import copy
+
+        self._clang_tidy_config = copy.deepcopy(clang_tidy_config['clang_checkers'])
+
         # Transform the configuration to support Regex
         for item in self._clang_tidy_config:
             if item['name'] == '-*':
@@ -162,6 +165,11 @@ class StaticAnalysisMonitor(object):
                 warning['reliability'] = check_config.get('reliability', 'low')
                 warning['reason'] = check_config.get('reason')
                 warning['publish'] = check_config.get('publish', True)
+            elif warning["flag"] == "clang-diagnostic-error":
+                # For a "warning" that is flagged as "clang-diagnostic-error"
+                # set it as "publish"
+                warning['publish'] = True
+
         return (warning, True)
 
 
@@ -233,7 +241,8 @@ class StaticAnalysis(MachCommandBase):
         )
 
         self._set_log_level(verbose)
-        self.log_manager.enable_all_structured_loggers()
+        self._activate_virtualenv()
+        self.log_manager.enable_unstructured()
 
         rc = self._get_clang_tools(verbose=verbose)
         if rc != 0:
@@ -339,7 +348,8 @@ class StaticAnalysis(MachCommandBase):
     def check_coverity(self, source=[], output=None, coverity_output_path=None,
                        outgoing=False, full_build=False, verbose=False):
         self._set_log_level(verbose)
-        self.log_manager.enable_all_structured_loggers()
+        self._activate_virtualenv()
+        self.log_manager.enable_unstructured()
 
         if 'MOZ_AUTOMATION' not in os.environ:
             self.log(logging.INFO, 'static-analysis', {},
@@ -574,7 +584,6 @@ class StaticAnalysis(MachCommandBase):
                 dict_issue = {
                     'line': issue['mainEventLineNumber'],
                     'flag': issue['checkerName'],
-                    'build_error': issue['checkerName'].startswith('RW.CLANG'),
                     'message': event_path['eventDescription'],
                     'reliability': self.get_reliability_index_for_cov_checker(
                         issue['checkerName']
@@ -600,6 +609,10 @@ class StaticAnalysis(MachCommandBase):
             for issue in result['issues']:
                 path = build_repo_relative_path(issue['strippedMainEventFilePathname'],
                                                 self.topsrcdir)
+                # Skip clang diagnostic messages
+                if issue['checkerName'].startswith('RW.CLANG'):
+                    continue
+
                 if path is None:
                     # Since we skip a result we should log it
                     self.log(logging.INFO, 'static-analysis', {},
@@ -627,9 +640,7 @@ class StaticAnalysis(MachCommandBase):
                  'Using symbol upload token from the secrets service: "{}"'.format(secrets_url))
 
         import requests
-        self.log_manager.enable_unstructured()
         res = requests.get(secrets_url)
-        self.log_manager.disable_unstructured()
         res.raise_for_status()
         secret = res.json()
         cov_config = secret['secret'] if 'secret' in secret else None
@@ -800,7 +811,9 @@ class StaticAnalysis(MachCommandBase):
                    task='compileWithGeckoBinariesDebugSources',
                    skip_export=False, outgoing=False, output=None):
         self._set_log_level(verbose)
-        self.log_manager.enable_all_structured_loggers()
+        self._activate_virtualenv()
+        self.log_manager.enable_unstructured()
+
         if self.substs['MOZ_BUILD_APP'] != 'mobile/android':
             self.log(logging.WARNING, 'static-analysis', {},
                      'Cannot check java source code unless you are building for android!')
@@ -1063,6 +1076,7 @@ class StaticAnalysis(MachCommandBase):
         # checker in particulat and thus 'force_download' becomes 'False' since we want to
         # do this on a local trusted clang-tidy package.
         self._set_log_level(verbose)
+        self._activate_virtualenv()
         self._dump_results = dump_results
 
         force_download = not self._dump_results
@@ -1537,14 +1551,15 @@ class StaticAnalysis(MachCommandBase):
     @CommandArgument('source', nargs='*',
                      help='Source files to be compiled checked (regex on path).')
     def check_syntax(self, source, verbose=False):
+        self._set_log_level(verbose)
+        self._activate_virtualenv()
+        self.log_manager.enable_unstructured()
+
         # Verify that we have a valid `source`
         if len(source) == 0:
             self.log(logging.ERROR, 'static-analysis', {},
                      'ERROR: Specify files that need to be syntax checked.')
             return
-
-        self._set_log_level(verbose)
-        self.log_manager.enable_all_structured_loggers()
 
         rc = self._build_compile_db(verbose=verbose)
         if rc != 0:
@@ -1621,8 +1636,8 @@ class StaticAnalysis(MachCommandBase):
     @CommandArgument('--path', '-p', nargs='+', default=None,
                      help='Specify the path(s) to reformat')
     @CommandArgument('--commit', '-c', default=None,
-                     help='Specify a commit to reformat from.'
-                          'For git you can also pass a range of commits (foo..bar)'
+                     help='Specify a commit to reformat from. '
+                          'For git you can also pass a range of commits (foo..bar) '
                           'to format all of them at the same time.')
     @CommandArgument('--output', '-o', default=None, dest='output_path',
                      help='Specify a file handle to write clang-format raw output instead of '
@@ -1632,7 +1647,7 @@ class StaticAnalysis(MachCommandBase):
                      help='Specify the output format used: diff is the raw patch provided by '
                      'clang-format, json is a list of atomic changes to process.')
     @CommandArgument('--outgoing', default=False, action='store_true',
-                     help='Run clang-format on outgoing files from mercurial repository')
+                     help='Run clang-format on outgoing files from mercurial repository.')
     def clang_format(self, assume_filename, path, commit, output_path=None, output_format='diff',
                      verbose=False, outgoing=False):
         # Run clang-format or clang-format-diff on the local changes
@@ -2186,6 +2201,40 @@ class StaticAnalysis(MachCommandBase):
             process.wait()
             return process.returncode
 
+    def _get_clang_format_cfg(self, current_dir):
+        clang_format_cfg_path = mozpath.join(current_dir, '.clang-format')
+
+        if os.path.exists(clang_format_cfg_path):
+            # Return found path for .clang-format
+            return clang_format_cfg_path
+
+        if current_dir != self.topsrcdir:
+            # Go to parent directory
+            return self._get_clang_format_cfg(os.path.split(current_dir)[0])
+        # We have reached self.topsrcdir so return None
+        return None
+
+    def _copy_clang_format_for_show_diff(self, current_dir, cached_clang_format_cfg, tmpdir):
+        # Lookup for .clang-format first in cache
+        clang_format_cfg = cached_clang_format_cfg.get(current_dir, None)
+
+        if clang_format_cfg is None:
+            # Go through top directories
+            clang_format_cfg = self._get_clang_format_cfg(current_dir)
+
+            # This is unlikely to happen since we must have .clang-format from
+            # self.topsrcdir but in any case we should handle a potential error
+            if clang_format_cfg is None:
+                print("Cannot find corresponding .clang-format.")
+                return 1
+
+            # Cache clang_format_cfg for potential later usage
+            cached_clang_format_cfg[current_dir] = clang_format_cfg
+
+        # Copy .clang-format to the tmp dir where the formatted file is copied
+        shutil.copy(clang_format_cfg, tmpdir)
+        return 0
+
     def _run_clang_format_path(self, clang_format, paths, output_file, output_format):
 
         # Run clang-format on files or directories directly
@@ -2212,6 +2261,7 @@ class StaticAnalysis(MachCommandBase):
 
         if output_file:
             patches = {}
+            cached_clang_format_cfg = {}
             for i in range(0, len(path_list)):
                 l = path_list[i: (i + 1)]
 
@@ -2220,12 +2270,19 @@ class StaticAnalysis(MachCommandBase):
                 # and show the diff
                 original_path = l[0]
                 local_path = ntpath.basename(original_path)
+                current_dir = ntpath.dirname(original_path)
                 target_file = os.path.join(tmpdir, local_path)
                 faketmpdir = os.path.dirname(target_file)
                 if not os.path.isdir(faketmpdir):
                     os.makedirs(faketmpdir)
                 shutil.copy(l[0], faketmpdir)
                 l[0] = target_file
+
+                ret = self._copy_clang_format_for_show_diff(current_dir,
+                                                            cached_clang_format_cfg,
+                                                            faketmpdir)
+                if ret != 0:
+                    return ret
 
                 # Run clang-format on the list
                 try:

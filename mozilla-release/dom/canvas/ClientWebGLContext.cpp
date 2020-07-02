@@ -362,7 +362,7 @@ inline void DefaultOrVoid<void>() {
 }
 
 template <typename MethodType, MethodType method, typename ReturnType,
-          size_t Id, typename... Args>
+          typename... Args>
 ReturnType RunOn(const ClientWebGLContext& context, Args&&... aArgs) {
   const auto notLost =
       context.mNotLost;  // Hold a strong-ref to prevent LoseContext=>UAF.
@@ -385,8 +385,7 @@ template <typename MethodType, MethodType method, typename ReturnType,
 //    typename ReturnType, size_t Id,
 //    typename... Args>
 ReturnType ClientWebGLContext::Run(Args&&... aArgs) const {
-  return RunOn<MethodType, method, ReturnType,
-               WebGLMethodDispatcher::Id<MethodType, method>(), Args...>(
+  return RunOn<MethodType, method, ReturnType, Args...>(
       *this, std::forward<Args>(aArgs)...);
 }
 
@@ -459,9 +458,17 @@ void ClientWebGLContext::Present() { Run<RPROC(Present)>(); }
 
 void ClientWebGLContext::ClearVRFrame() const { Run<RPROC(ClearVRFrame)>(); }
 
-RefPtr<layers::SharedSurfaceTextureClient> ClientWebGLContext::GetVRFrame()
-    const {
-  return Run<RPROC(GetVRFrame)>();
+RefPtr<layers::SharedSurfaceTextureClient> ClientWebGLContext::GetVRFrame(
+    const WebGLFramebufferJS* fb) const {
+  const auto notLost =
+      mNotLost;  // Hold a strong-ref to prevent LoseContext=>UAF.
+  if (!notLost) return nullptr;
+  const auto& inProcessContext = notLost->inProcess;
+  if (inProcessContext) {
+    return inProcessContext->GetVRFrame(fb ? fb->mId : 0);
+  }
+  MOZ_ASSERT_UNREACHABLE("TODO: Remote GetVRFrame");
+  return nullptr;
 }
 
 already_AddRefed<layers::Layer> ClientWebGLContext::GetCanvasLayer(
@@ -724,30 +731,53 @@ bool ClientWebGLContext::CreateHostContext(const uvec2& requestedSize) {
       return Err("!CompositorBridgeChild::Get()");
     }
 
-    // Construct the WebGL command queue, used to send commands from the client
-    // process to the host for execution.  It takes a response queue that is
-    // used to return responses to synchronous messages.
-    // TODO: Be smarter in choosing these.
-    static constexpr size_t CommandQueueSize = 256 * 1024;  // 256K
-    static constexpr size_t ResponseQueueSize = 8 * 1024;   // 8K
-    auto commandPcq = ProducerConsumerQueue::Create(cbc, CommandQueueSize);
-    auto responsePcq = ProducerConsumerQueue::Create(cbc, ResponseQueueSize);
-    if (!commandPcq || !responsePcq) {
-      return Err("Failed to create command/response PCQ");
+    outOfProcess.mWebGLChild = new WebGLChild(*this);
+    outOfProcess.mWebGLChild = static_cast<dom::WebGLChild*>(
+        cbc->SendPWebGLConstructor(outOfProcess.mWebGLChild));
+    if (!outOfProcess.mWebGLChild) {
+      return Err("SendPWebGLConstructor failed");
     }
 
-    outOfProcess.mCommandSource = MakeUnique<ClientWebGLCommandSource>(
-        std::move(commandPcq->mProducer), std::move(responsePcq->mConsumer));
-    auto sink = MakeUnique<HostWebGLCommandSink>(
-        std::move(commandPcq->mConsumer), std::move(responsePcq->mProducer));
+    UniquePtr<HostWebGLCommandSinkP> sinkP;
+    UniquePtr<HostWebGLCommandSinkI> sinkI;
+    switch (StaticPrefs::webgl_prototype_ipc_pcq()) {
+      case 0: {
+        using mozilla::webgl::ProducerConsumerQueue;
+        static constexpr size_t CommandQueueSize = 256 * 1024;  // 256K
+        static constexpr size_t ResponseQueueSize = 8 * 1024;   // 8K
+        auto command = ProducerConsumerQueue::Create(cbc, CommandQueueSize);
+        auto response = ProducerConsumerQueue::Create(cbc, ResponseQueueSize);
+        if (!command || !response) {
+          return Err("Failed to create command/response PCQ");
+        }
 
-    // Use the error/warning and command queues to construct a
-    // ClientWebGLContext in this process and a HostWebGLContext
-    // in the host process.
-    outOfProcess.mWebGLChild = new dom::WebGLChild(*this);
-    if (!cbc->SendPWebGLConstructor(outOfProcess.mWebGLChild.get(), initDesc,
-                                    &notLost.info)) {
-      return Err("SendPWebGLConstructor failed");
+        outOfProcess.mCommandSourcePcq = MakeUnique<ClientWebGLCommandSourceP>(
+            command->TakeProducer(), response->TakeConsumer());
+        sinkP = MakeUnique<HostWebGLCommandSinkP>(command->TakeConsumer(),
+                                                  response->TakeProducer());
+        break;
+      }
+      default:
+        using mozilla::IpdlWebGLCommandQueue;
+        using mozilla::IpdlWebGLResponseQueue;
+        auto command =
+            IpdlWebGLCommandQueue::Create(outOfProcess.mWebGLChild.get());
+        auto response =
+            IpdlWebGLResponseQueue::Create(outOfProcess.mWebGLChild.get());
+        if (!command || !response) {
+          return Err("Failed to create command/response IpdlQueue");
+        }
+
+        outOfProcess.mCommandSourceIpdl = MakeUnique<ClientWebGLCommandSourceI>(
+            command->TakeProducer(), response->TakeConsumer());
+        sinkI = MakeUnique<HostWebGLCommandSinkI>(command->TakeConsumer(),
+                                                  response->TakeProducer());
+        break;
+    }
+
+    if (!outOfProcess.mWebGLChild->SendInitialize(
+            initDesc, std::move(sinkP), std::move(sinkI), &notLost.info)) {
+      return Err("WebGL actor Initialize failed");
     }
 
     notLost.outOfProcess = Some(std::move(outOfProcess));
@@ -941,8 +971,16 @@ already_AddRefed<gfx::SourceSurface> ClientWebGLContext::GetSurfaceSnapshot(
 
     const auto range = Range<uint8_t>(map.GetData(), stride * size.y);
     auto view = RawBufferView(range);
-    Run<RPROC(ReadPixels)>(desc, view);
 
+    const auto notLost =
+        mNotLost;  // Hold a strong-ref to prevent LoseContext=>UAF.
+    if (!notLost) return nullptr;
+    const auto& inProcessContext = notLost->inProcess;
+    if (inProcessContext) {
+      inProcessContext->ReadPixels(desc, view);
+    } else {
+      MOZ_ASSERT_UNREACHABLE("TODO: Remote GetSurfaceSnapshot");
+    }
     // -
 
     const auto swapRowRedBlue = [&](uint8_t* const row) {
@@ -1049,6 +1087,19 @@ already_AddRefed<WebGLFramebufferJS> ClientWebGLContext::CreateFramebuffer()
 
   auto ret = AsRefPtr(new WebGLFramebufferJS(*this));
   Run<RPROC(CreateFramebuffer)>(ret->mId);
+  return ret.forget();
+}
+
+already_AddRefed<WebGLFramebufferJS>
+ClientWebGLContext::CreateOpaqueFramebuffer(
+    const webgl::OpaqueFramebufferOptions& options) const {
+  const FuncScope funcScope(*this, "createOpaqueFramebuffer");
+  if (IsContextLost()) return nullptr;
+
+  auto ret = AsRefPtr(new WebGLFramebufferJS(*this, true));
+  if (!Run<RPROC(CreateOpaqueFramebuffer)>(ret->mId, options)) {
+    return nullptr;
+  }
   return ret.forget();
 }
 
@@ -1228,10 +1279,17 @@ void ClientWebGLContext::DeleteBuffer(WebGLBufferJS* const obj) {
   Run<RPROC(DeleteBuffer)>(obj->mId);
 }
 
-void ClientWebGLContext::DeleteFramebuffer(WebGLFramebufferJS* const obj) {
+void ClientWebGLContext::DeleteFramebuffer(WebGLFramebufferJS* const obj,
+                                           bool canDeleteOpaque) {
   const FuncScope funcScope(*this, "deleteFramebuffer");
   if (IsContextLost()) return;
   if (!ValidateOrSkipForDelete(*this, obj)) return;
+  if (!canDeleteOpaque && obj->mOpaque) {
+    EnqueueError(
+        LOCAL_GL_INVALID_OPERATION,
+        "An opaque framebuffer's attachments cannot be inspected or changed.");
+    return;
+  }
   const auto& state = State();
 
   // Unbind
@@ -1280,24 +1338,22 @@ void ClientWebGLContext::DeleteQuery(WebGLQueryJS* const obj) {
   const FuncScope funcScope(*this, "deleteQuery");
   if (IsContextLost()) return;
   if (!ValidateOrSkipForDelete(*this, obj)) return;
+  const auto& state = State();
 
   // Unbind if current
 
+  if (obj->mTarget) {
+    const auto slotTarget = QuerySlotTarget(obj->mTarget);
+    const auto& curForTarget =
+        *MaybeFind(state.mCurrentQueryByTarget, slotTarget);
+
+    if (curForTarget == obj) {
+      EndQuery(obj->mTarget);
+    }
+  }
+
   obj->mDeleteRequested = true;
   Run<RPROC(DeleteQuery)>(obj->mId);
-
-  if (!obj->mTarget) return;
-  const auto& state = State();
-  const auto slotTarget = QuerySlotTarget(obj->mTarget);
-  const auto& curForTarget =
-      *MaybeFind(state.mCurrentQueryByTarget, slotTarget);
-
-  if (curForTarget == obj) {
-    EndQuery(obj->mTarget);
-  } else {
-    // Not currently active, so fully-delete immediately.
-    obj->mIsFullyDeleted = true;
-  }
 }
 
 void ClientWebGLContext::DeleteRenderbuffer(WebGLRenderbufferJS* const obj) {
@@ -1564,8 +1620,18 @@ void ClientWebGLContext::GetInternalformatParameter(
     JSContext* cx, GLenum target, GLenum internalformat, GLenum pname,
     JS::MutableHandle<JS::Value> retval, ErrorResult& rv) {
   retval.set(JS::NullValue());
-  auto maybe =
-      Run<RPROC(GetInternalformatParameter)>(target, internalformat, pname);
+  const auto notLost =
+      mNotLost;  // Hold a strong-ref to prevent LoseContext=>UAF.
+  if (!notLost) return;
+  const auto& inProcessContext = notLost->inProcess;
+  Maybe<std::vector<int>> maybe;
+  if (inProcessContext) {
+    maybe = inProcessContext->GetInternalformatParameter(target, internalformat,
+                                                         pname);
+  } else {
+    MOZ_ASSERT_UNREACHABLE("TODO: Remote GetInternalformatParameter");
+  }
+
   if (!maybe) {
     return;
   }
@@ -2033,6 +2099,12 @@ void ClientWebGLContext::GetFramebufferAttachmentParameter(
   }
 
   if (fb) {
+    if (fb->mOpaque) {
+      EnqueueError(LOCAL_GL_INVALID_OPERATION,
+                   "An opaque framebuffer's attachments cannot be inspected or "
+                   "changed.");
+      return;
+    }
     auto attachmentSlotEnum = attachment;
     if (mIsWebGL2 && attachment == LOCAL_GL_DEPTH_STENCIL_ATTACHMENT) {
       // In webgl2, DEPTH_STENCIL is valid iff the DEPTH and STENCIL images
@@ -2760,7 +2832,15 @@ void ClientWebGLContext::GetBufferSubData(GLenum target, GLintptr srcByteOffset,
   }
   auto view = RawBuffer<uint8_t>(byteLen, bytes);
 
-  Run<RPROC(GetBufferSubData)>(target, srcByteOffset, view);
+  const auto notLost =
+      mNotLost;  // Hold a strong-ref to prevent LoseContext=>UAF.
+  if (!notLost) return;
+  const auto& inProcessContext = notLost->inProcess;
+  if (inProcessContext) {
+    inProcessContext->GetBufferSubData(target, srcByteOffset, view);
+  } else {
+    MOZ_ASSERT_UNREACHABLE("TODO: Remote GetBufferSubData");
+  }
 }
 
 ////
@@ -2932,22 +3012,29 @@ Maybe<webgl::ErrorInfo> CheckFramebufferAttach(const GLenum bindImageTarget,
                                                const uint32_t zLayerBase,
                                                const uint32_t zLayerCount,
                                                const webgl::Limits& limits) {
+  if (!curTexTarget) {
+    return Some(
+        webgl::ErrorInfo{LOCAL_GL_INVALID_OPERATION,
+                         "`tex` not yet bound. Call bindTexture first."});
+  }
+
   auto texTarget = curTexTarget;
   if (bindImageTarget) {
     // FramebufferTexture2D
     const auto bindTexTarget = ImageToTexTarget(bindImageTarget);
+    if (curTexTarget != bindTexTarget) {
+      return Some(webgl::ErrorInfo{LOCAL_GL_INVALID_OPERATION,
+                                   "`tex` cannot be rebound to a new target."});
+    }
+
     switch (bindTexTarget) {
       case LOCAL_GL_TEXTURE_2D:
       case LOCAL_GL_TEXTURE_CUBE_MAP:
         break;
       default:
-        return Some(webgl::ErrorInfo{
-            LOCAL_GL_INVALID_ENUM,
-            "`tex` must have been bound to target TEXTURE_2D_ARRAY."});
-    }
-    if (curTexTarget && curTexTarget != bindTexTarget) {
-      return Some(webgl::ErrorInfo{LOCAL_GL_INVALID_OPERATION,
-                                   "`tex` cannot be rebound to a new target."});
+        return Some(webgl::ErrorInfo{LOCAL_GL_INVALID_ENUM,
+                                     "`tex` must have been bound to target "
+                                     "TEXTURE_2D or TEXTURE_CUBE_MAP."});
     }
     texTarget = bindTexTarget;
   } else {
@@ -3019,6 +3106,13 @@ void ClientWebGLContext::FramebufferAttach(
   }
   if (!fb) {
     EnqueueError(LOCAL_GL_INVALID_OPERATION, "No framebuffer bound.");
+    return;
+  }
+
+  if (fb->mOpaque) {
+    EnqueueError(
+        LOCAL_GL_INVALID_OPERATION,
+        "An opaque framebuffer's attachments cannot be inspected or changed.");
     return;
   }
 
@@ -3501,10 +3595,18 @@ void ClientWebGLContext::TexImage(uint8_t funcDims, GLenum imageTarget,
     }
   }
 
-  // TODO: Convert TexImageSource into something IPC-capable.
-  Run<RPROC(TexImage)>(imageTarget, static_cast<uint32_t>(level), respecFormat,
-                       CastUvec3(offset), CastUvec3(size), pi, src,
-                       *GetCanvas());
+  const auto notLost =
+      mNotLost;  // Hold a strong-ref to prevent LoseContext=>UAF.
+  if (!notLost) return;
+  const auto& inProcessContext = notLost->inProcess;
+  Maybe<std::vector<int>> maybe;
+  if (inProcessContext) {
+    inProcessContext->TexImage(imageTarget, static_cast<uint32_t>(level),
+                               respecFormat, CastUvec3(offset), CastUvec3(size),
+                               pi, src, *GetCanvas());
+  } else {
+    MOZ_ASSERT_UNREACHABLE("TODO: Remote GetInternalformatParameter");
+  }
 }
 
 void ClientWebGLContext::CompressedTexImage(bool sub, uint8_t funcDims,
@@ -3990,7 +4092,16 @@ void ClientWebGLContext::ReadPixels(GLint x, GLint y, GLsizei width,
                                           state.mPixelPackState};
   const auto range = Range<uint8_t>(bytes, byteLen);
   auto view = RawBufferView(range);
-  Run<RPROC(ReadPixels)>(desc, view);
+
+  const auto notLost =
+      mNotLost;  // Hold a strong-ref to prevent LoseContext=>UAF.
+  if (!notLost) return;
+  const auto& inProcessContext = notLost->inProcess;
+  if (inProcessContext) {
+    inProcessContext->ReadPixels(desc, view);
+  } else {
+    MOZ_ASSERT_UNREACHABLE("TODO: Remote ReadPixels");
+  }
 }
 
 bool ClientWebGLContext::ReadPixels_SharedPrecheck(
@@ -4137,9 +4248,6 @@ void ClientWebGLContext::EndQuery(const GLenum specificTarget) {
     EnqueueError(LOCAL_GL_INVALID_OPERATION, "No Query is active for %s.",
                  EnumString(specificTarget).c_str());
     return;
-  }
-  if (slot->mDeleteRequested) {
-    slot->mIsFullyDeleted = true;
   }
 
   slot = nullptr;
@@ -4465,6 +4573,12 @@ void ClientWebGLContext::ResumeTransformFeedback() {
 
   state.mTfActiveAndNotPaused = true;
   Run<RPROC(ResumeTransformFeedback)>();
+}
+
+void ClientWebGLContext::SetFramebufferIsInOpaqueRAF(WebGLFramebufferJS* fb,
+                                                     bool value) {
+  fb->mInOpaqueRAF = value;
+  Run<RPROC(SetFramebufferIsInOpaqueRAF)>(fb->mId, value);
 }
 
 // ---------------------------- Misc Extensions ----------------------------
@@ -5272,7 +5386,15 @@ const webgl::CompileResult& ClientWebGLContext::GetCompileResult(
 const webgl::LinkResult& ClientWebGLContext::GetLinkResult(
     const WebGLProgramJS& prog) const {
   if (prog.mResult->pending) {
-    *(prog.mResult) = Run<RPROC(GetLinkResult)>(prog.mId);
+    const auto notLost =
+        mNotLost;  // Hold a strong-ref to prevent LoseContext=>UAF.
+    if (!notLost) return *(prog.mResult);
+    const auto& inProcessContext = notLost->inProcess;
+    if (inProcessContext) {
+      *(prog.mResult) = inProcessContext->GetLinkResult(prog.mId);
+    } else {
+      MOZ_ASSERT_UNREACHABLE("TODO: Remote GetLinkResult");
+    }
     prog.mUniformBlockBindings.resize(
         prog.mResult->active.activeUniformBlocks.size());
 
@@ -5325,8 +5447,9 @@ webgl::ObjectJS::ObjectJS(const ClientWebGLContext& webgl)
 
 // -
 
-WebGLFramebufferJS::WebGLFramebufferJS(const ClientWebGLContext& webgl)
-    : webgl::ObjectJS(webgl) {
+WebGLFramebufferJS::WebGLFramebufferJS(const ClientWebGLContext& webgl,
+                                       bool opaque)
+    : webgl::ObjectJS(webgl), mOpaque(opaque) {
   (void)mAttachments[LOCAL_GL_DEPTH_ATTACHMENT];
   (void)mAttachments[LOCAL_GL_STENCIL_ATTACHMENT];
   if (!webgl.mIsWebGL2) {

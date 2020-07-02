@@ -8,7 +8,6 @@ job-defaults:
         tooltool-downloads: internal
     fetches:
         toolchain:
-            - win64-winchecksec
             - win64-dump-syms
             - win64-pdbstr
 
@@ -59,6 +58,7 @@ win32/debug:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -96,7 +96,7 @@ win32/opt:
             env:
                 LD_PRELOAD: "/builds/worker/fetches/liblowercase/liblowercase.so"
                 LOWERCASE_DIRS: "/builds/worker/checkouts/gecko/vs2017_15.8.4"
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -110,6 +110,7 @@ win32/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -161,6 +162,7 @@ win64/debug:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -192,7 +194,7 @@ win64-fuzzing/debug:
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/debug.py
         mozconfig-variant: debug-fuzzing
-    run-on-projects: ['trunk', 'try']
+    run-on-projects: ['trunk']
     fetches:
         toolchain:
             - win64-clang-cl
@@ -202,9 +204,9 @@ win64-fuzzing/debug:
             - win64-sccache
             - win64-nasm
             - win64-node
+            - win64-winchecksec
     optimization:
-        fuzzing-builds:
-            - windows
+        build-fuzzing: null
 
 win64-plain/debug:
     description: "Win64 Debug Plain"
@@ -241,6 +243,10 @@ win64-plain/debug:
             - win64-node
             - win64-nasm
             - win64-cbindgen
+            - win64-winchecksec
+    optimization:
+        push-interval-10:
+            - windows
 
 win64/opt:
     description: "Win64 Opt"
@@ -279,7 +285,7 @@ win64/opt:
                 # another.
                 LD_PRELOAD: "/builds/worker/fetches/liblowercase/liblowercase.so"
                 LOWERCASE_DIRS: "/builds/worker/checkouts/gecko/vs2017_15.8.4"
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -293,6 +299,7 @@ win64/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -324,7 +331,7 @@ win64-plain/opt:
             disable_package_metrics: true
             stage_platform: win64
         mozconfig-variant: plain-opt
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - win64-clang-cl
@@ -332,6 +339,10 @@ win64-plain/opt:
             - win64-nasm
             - win64-node
             - win64-cbindgen
+            - win64-winchecksec
+    optimization:
+        push-interval-10:
+            - windows
 
 win32-shippable/opt:
     description: "Win32 Opt Shippable"
@@ -394,6 +405,7 @@ win32-shippable/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -448,6 +460,7 @@ win64-shippable/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -496,6 +509,7 @@ win32-add-on-devel/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -544,6 +558,7 @@ win64-add-on-devel/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -578,7 +593,7 @@ win64-noopt/debug:
             env:
                 LD_PRELOAD: "/builds/worker/fetches/liblowercase/liblowercase.so"
                 LOWERCASE_DIRS: "/builds/worker/checkouts/gecko/vs2017_15.8.4"
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -592,6 +607,7 @@ win64-noopt/debug:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -626,7 +642,7 @@ win32-noopt/debug:
             env:
                 LD_PRELOAD: "/builds/worker/fetches/liblowercase/liblowercase.so"
                 LOWERCASE_DIRS: "/builds/worker/checkouts/gecko/vs2017_15.8.4"
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - linux64-binutils
@@ -640,6 +656,7 @@ win32-noopt/debug:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -673,7 +690,7 @@ win32-rusttests/opt:
             build_targets: ['pre-export', 'export', 'recurse_rusttests']
             disable_package_metrics: true
         mozconfig-variant: rusttests
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - win64-clang-cl
@@ -682,6 +699,7 @@ win32-rusttests/opt:
             - win64-sccache
             - win64-nasm
             - win64-node
+            - win64-winchecksec
 
 win32-rusttests/debug:
     description: "Win32 Rust Tests Debug"
@@ -712,7 +730,7 @@ win32-rusttests/debug:
             build_targets: ['pre-export', 'export', 'recurse_rusttests']
             disable_package_metrics: true
         mozconfig-variant: rusttests-debug
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - win64-clang-cl
@@ -721,6 +739,7 @@ win32-rusttests/debug:
             - win64-sccache
             - win64-nasm
             - win64-node
+            - win64-winchecksec
 
 win64-rusttests/opt:
     description: "Win64 Rust Tests Opt"
@@ -748,7 +767,7 @@ win64-rusttests/opt:
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/rusttests_opt.py
         mozconfig-variant: rusttests
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - win64-clang-cl
@@ -757,6 +776,7 @@ win64-rusttests/opt:
             - win64-sccache
             - win64-nasm
             - win64-node
+            - win64-winchecksec
 
 win64-rusttests/debug:
     description: "Win64 Rust Tests Debug"
@@ -784,7 +804,7 @@ win64-rusttests/debug:
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/rusttests_opt.py
         mozconfig-variant: rusttests-debug
-    run-on-projects: ['trunk', 'try']
+    run-on-projects: ['trunk']
     fetches:
         toolchain:
             - win64-clang-cl
@@ -793,6 +813,7 @@ win64-rusttests/debug:
             - win64-sccache
             - win64-nasm
             - win64-node
+            - win64-winchecksec
 
 win64-ccov/opt:
     description: "Win64 Opt Code Coverage"
@@ -826,7 +847,7 @@ win64-ccov/opt:
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/ccov_opt.py
         mozconfig-variant: code-coverage
-    run-on-projects: ['mozilla-central', 'try']
+    run-on-projects: ['mozilla-central']
     fetches:
         toolchain:
             - win64-clang-cl
@@ -837,6 +858,7 @@ win64-ccov/opt:
             - win64-sccache
             - win64-nasm
             - win64-node
+            - win64-winchecksec
 
 win64-asan/debug:
     description: "Win64 Debug ASAN"
@@ -876,6 +898,10 @@ win64-asan/debug:
             # the build step. Once bug 1614626 moves them to the xpcshell task,
             # this dependency can be removed.
             - win32-fix-stacks
+            - win64-winchecksec
+    optimization:
+        push-interval-10:
+            - windows
 
 win64-asan/opt:
     description: "Win64 Opt ASAN"
@@ -913,11 +939,12 @@ win64-asan/opt:
             - win64-sccache
             - win64-nasm
             - win64-node
+            - win64-winchecksec
 
-win64-asan-reporter-nightly/opt:
-    description: "Win64 Opt ASAN Reporter Nightly"
+win64-asan-reporter-shippable/opt:
+    description: "Win64 Opt ASAN Reporter (Shippable)"
     attributes:
-        nightly: true
+        shippable: true
     shipping-product:
         by-release-type:
             nightly: firefox
@@ -925,7 +952,7 @@ win64-asan-reporter-nightly/opt:
     index:
         product: firefox
         job-name: win64-asan-reporter-opt
-        type: nightly
+        type: shippable
     treeherder:
         platform: win64-asan-reporter/opt
         symbol: BoR
@@ -962,6 +989,7 @@ win64-asan-reporter-nightly/opt:
             - win64-cbindgen
             - win64-nasm
             - win64-node
+            - win64-winchecksec
 
 win64-asan-fuzzing/opt:
     description: "Win64 Fuzzing Opt ASAN"
@@ -997,9 +1025,9 @@ win64-asan-fuzzing/opt:
             - win64-sccache
             - win64-nasm
             - win64-node
+            - win64-winchecksec
     optimization:
-        fuzzing-builds:
-            - windows
+        build-fuzzing: null
 
 win32-devedition/opt:
     description: "Win32 Dev Edition (shippable)"
@@ -1007,9 +1035,9 @@ win32-devedition/opt:
     index:
         product: devedition
         job-name: win32-opt
-        type: nightly
+        type: shippable
     attributes:
-        nightly: true
+        shippable: true
         enable-full-crashsymbols: true
     stub-installer:
         by-release-type:
@@ -1025,7 +1053,7 @@ win32-devedition/opt:
     shipping-product: devedition
     treeherder:
         platform: windows2012-32-devedition/opt
-        symbol: N
+        symbol: B
         tier: 1
     worker-type: b-linux
     worker:
@@ -1063,6 +1091,7 @@ win32-devedition/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -1073,15 +1102,15 @@ win64-devedition/opt:
     index:
         product: devedition
         job-name: win64-opt
-        type: nightly
+        type: shippable
     attributes:
-        nightly: true
+        shippable: true
         enable-full-crashsymbols: true
     shipping-phase: build
     shipping-product: devedition
     treeherder:
         platform: windows2012-64-devedition/opt
-        symbol: N
+        symbol: B
         tier: 1
     worker-type: b-linux
     worker:
@@ -1119,6 +1148,7 @@ win64-devedition/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
@@ -1169,9 +1199,13 @@ win64-aarch64/debug:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
+    optimization:
+        push-interval-10:
+            - windows
 
 win64-aarch64/opt:
     description: "AArch64 Win64 Opt"
@@ -1224,9 +1258,13 @@ win64-aarch64/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
+    optimization:
+        push-interval-10:
+            - windows
 
 win64-aarch64-eme/opt:
     description: "AArch64 Win64 Opt w/ EME"
@@ -1268,6 +1306,9 @@ win64-aarch64-eme/opt:
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
+    optimization:
+        push-interval-10:
+            - windows
 
 win64-aarch64-shippable/opt:
     description: "AArch64 Win64 Shippable"
@@ -1365,6 +1406,9 @@ win64-aarch64-shippable/opt:
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
+    optimization:
+        push-interval-10:
+            - windows
 
 win64-aarch64-shippable-no-eme/opt:
     description: "AArch64 Win64 Shippable w/o EME"
@@ -1421,18 +1465,22 @@ win64-aarch64-shippable-no-eme/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win
+    optimization:
+        push-interval-10:
+            - windows
 
 win64-aarch64-devedition/opt:
     description: "AArch64 Win64 Dev Edition (shippable)"
     index:
         product: devedition
         job-name: win64-aarch64-opt
-        type: nightly
+        type: shippable
     attributes:
-        nightly: true
+        shippable: true
         enable-full-crashsymbols: true
         # Skip the test packaging check because we copy test packages from
         # another build task rather than generating them in this task.
@@ -1441,7 +1489,7 @@ win64-aarch64-devedition/opt:
     shipping-product: devedition
     treeherder:
         platform: windows2012-aarch64-devedition/opt
-        symbol: N
+        symbol: B
         tier: 1
     worker-type: b-linux
     worker:
@@ -1529,7 +1577,7 @@ win64-aarch64-devedition-no-eme/opt:
     index:
         product: devedition
         job-name: win64-aarch64-no-eme-opt
-        type: nightly
+        type: shippable
     attributes:
         enable-full-crashsymbols: true
         # We need to package tests in order for the actual
@@ -1579,6 +1627,7 @@ win64-aarch64-devedition-no-eme/opt:
             - linux64-dump-syms
             - linux64-wine
             - linux64-liblowercase
+            - linux64-winchecksec
         fetch:
             - nsis-3.01-win
             - upx-3.95-win

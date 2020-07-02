@@ -14,8 +14,12 @@
 #include "nsString.h"
 #include "mozilla/dom/GamepadManager.h"
 #include "mozilla/dom/Gamepad.h"
+#include "mozilla/dom/XRSession.h"
+#include "mozilla/dom/XRInputSourceArray.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Unused.h"
+#include "mozilla/Telemetry.h"
+#include "mozilla/dom/WebXRBinding.h"
 #include "nsServiceManagerUtils.h"
 
 #ifdef XP_WIN
@@ -37,7 +41,10 @@ VRDisplayClient::VRDisplayClient(const VRDisplayInfo& aDisplayInfo)
       mPresentationCount(0),
       mLastEventFrameId(0),
       mLastPresentingGeneration(0),
-      mLastEventControllerState{} {
+      mLastEventControllerState{},
+      // For now WebVR is default to prevent a VRDisplay restore bug in WebVR
+      // compatibility mode. See Bug 1630512
+      mAPIMode(VRAPIMode::WebVR) {
   MOZ_COUNT_CTOR(VRDisplayClient);
 }
 
@@ -50,13 +57,36 @@ void VRDisplayClient::UpdateDisplayInfo(const VRDisplayInfo& aDisplayInfo) {
 
 already_AddRefed<VRDisplayPresentation> VRDisplayClient::BeginPresentation(
     const nsTArray<mozilla::dom::VRLayer>& aLayers, uint32_t aGroup) {
-  ++mPresentationCount;
+  PresentationCreated();
   RefPtr<VRDisplayPresentation> presentation =
       new VRDisplayPresentation(this, aLayers, aGroup);
   return presentation.forget();
 }
 
+void VRDisplayClient::PresentationCreated() { ++mPresentationCount; }
+
 void VRDisplayClient::PresentationDestroyed() { --mPresentationCount; }
+
+void VRDisplayClient::SessionStarted(dom::XRSession* aSession) {
+  PresentationCreated();
+  MakePresentationGenerationCurrent();
+  mSessions.AppendElement(aSession);
+}
+void VRDisplayClient::SessionEnded(dom::XRSession* aSession) {
+  mSessions.RemoveElement(aSession);
+  PresentationDestroyed();
+}
+
+void VRDisplayClient::StartFrame() {
+  RefPtr<VRManagerChild> vm = VRManagerChild::Get();
+  vm->RunFrameRequestCallbacks();
+
+  nsTArray<RefPtr<dom::XRSession>> sessions;
+  sessions.AppendElements(mSessions);
+  for (auto session : sessions) {
+    session->StartFrame();
+  }
+}
 
 void VRDisplayClient::SetGroupMask(uint32_t aGroupMask) {
   VRManagerChild* vm = VRManagerChild::Get();
@@ -74,6 +104,14 @@ bool VRDisplayClient::IsPresentationGenerationCurrent() const {
 
 void VRDisplayClient::MakePresentationGenerationCurrent() {
   mLastPresentingGeneration = mDisplayInfo.mDisplayState.presentingGeneration;
+}
+
+gfx::VRAPIMode VRDisplayClient::GetXRAPIMode() const { return mAPIMode; }
+
+void VRDisplayClient::SetXRAPIMode(gfx::VRAPIMode aMode) {
+  mAPIMode = aMode;
+  Telemetry::Accumulate(Telemetry::WEBXR_API_MODE,
+                        static_cast<uint32_t>(mAPIMode));
 }
 
 void VRDisplayClient::FireEvents() {
@@ -109,14 +147,25 @@ void VRDisplayClient::FireEvents() {
     vm->NotifyPresentationGenerationChanged(mDisplayInfo.mDisplayID);
   }
 
+  // In WebXR spec, Gamepad instances returned by an XRInputSource's gamepad
+  // attribute MUST NOT be included in the array returned by
+  // navigator.getGamepads().
+  if (mAPIMode == VRAPIMode::WebVR) {
+    FireGamepadEvents();
+  }
+  // Update controller states into XRInputSourceArray.
+  for (auto& session : mSessions) {
+    dom::XRInputSourceArray* inputs = session->InputSources();
+    if (inputs) {
+      inputs->Update(session);
+    }
+  }
+
   // Check if we need to trigger VRDisplay.requestAnimationFrame
   if (mLastEventFrameId != mDisplayInfo.mFrameId) {
     mLastEventFrameId = mDisplayInfo.mFrameId;
-    vm->RunFrameRequestCallbacks();
+    StartFrame();
   }
-
-  // We only call FireGamepadEvents() in WebVR instead of WebXR
-  FireGamepadEvents();
 }
 
 void VRDisplayClient::GamepadMappingForWebVR(
@@ -188,7 +237,7 @@ void VRDisplayClient::GamepadMappingForWebVR(
       aControllerState.numButtons = 2;
       aControllerState.numAxes = 2;
       break;
-    case VRControllerType::HTCViveFocusPlus:
+    case VRControllerType::HTCViveFocusPlus: {
       aControllerState.buttonPressed = ShiftButtonBitForNewSlot(0, 2) |
                                        ShiftButtonBitForNewSlot(1, 0) |
                                        ShiftButtonBitForNewSlot(2, 1);
@@ -197,15 +246,81 @@ void VRDisplayClient::GamepadMappingForWebVR(
                                        ShiftButtonBitForNewSlot(2, 1, true);
       aControllerState.numButtons = 3;
       aControllerState.numAxes = 2;
+
+      static Matrix4x4 focusPlusTransform;
+      Matrix4x4 originalMtx;
+      if (focusPlusTransform.IsIdentity()) {
+        focusPlusTransform.RotateX(-0.70f);
+        focusPlusTransform.PostTranslate(0.0f, 0.0f, 0.01f);
+        focusPlusTransform.Inverse();
+      }
+      gfx::Quaternion quat(aControllerState.pose.orientation[0],
+                           aControllerState.pose.orientation[1],
+                           aControllerState.pose.orientation[2],
+                           aControllerState.pose.orientation[3]);
+      // We need to invert its quaternion here because we did an invertion
+      // in FxR WaveVR delegate.
+      originalMtx.SetRotationFromQuaternion(quat.Invert());
+      originalMtx._41 = aControllerState.pose.position[0];
+      originalMtx._42 = aControllerState.pose.position[1];
+      originalMtx._43 = aControllerState.pose.position[2];
+      originalMtx = focusPlusTransform * originalMtx;
+
+      gfx::Point3D pos, scale;
+      originalMtx.Decompose(pos, quat, scale);
+
+      quat.Invert();
+      aControllerState.pose.position[0] = pos.x;
+      aControllerState.pose.position[1] = pos.y;
+      aControllerState.pose.position[2] = pos.z;
+
+      aControllerState.pose.orientation[0] = quat.x;
+      aControllerState.pose.orientation[1] = quat.y;
+      aControllerState.pose.orientation[2] = quat.z;
+      aControllerState.pose.orientation[3] = quat.w;
       break;
-    case VRControllerType::OculusGo:
+    }
+    case VRControllerType::OculusGo: {
       aControllerState.buttonPressed =
           ShiftButtonBitForNewSlot(0, 2) | ShiftButtonBitForNewSlot(1, 0);
       aControllerState.buttonTouched = ShiftButtonBitForNewSlot(0, 2, true) |
                                        ShiftButtonBitForNewSlot(1, 0, true);
       aControllerState.numButtons = 2;
       aControllerState.numAxes = 2;
+
+      static Matrix4x4 goTransform;
+      Matrix4x4 originalMtx;
+
+      if (goTransform.IsIdentity()) {
+        goTransform.RotateX(-0.60f);
+        goTransform.Inverse();
+      }
+      gfx::Quaternion quat(aControllerState.pose.orientation[0],
+                           aControllerState.pose.orientation[1],
+                           aControllerState.pose.orientation[2],
+                           aControllerState.pose.orientation[3]);
+      // We need to invert its quaternion here because we did an invertion
+      // in FxR OculusVR delegate.
+      originalMtx.SetRotationFromQuaternion(quat.Invert());
+      originalMtx._41 = aControllerState.pose.position[0];
+      originalMtx._42 = aControllerState.pose.position[1];
+      originalMtx._43 = aControllerState.pose.position[2];
+      originalMtx = goTransform * originalMtx;
+
+      gfx::Point3D pos, scale;
+      originalMtx.Decompose(pos, quat, scale);
+
+      quat.Invert();
+      aControllerState.pose.position[0] = pos.x;
+      aControllerState.pose.position[1] = pos.y;
+      aControllerState.pose.position[2] = pos.z;
+
+      aControllerState.pose.orientation[0] = quat.x;
+      aControllerState.pose.orientation[1] = quat.y;
+      aControllerState.pose.orientation[2] = quat.z;
+      aControllerState.pose.orientation[3] = quat.w;
       break;
+    }
     case VRControllerType::OculusTouch:
       aControllerState.buttonPressed =
           ShiftButtonBitForNewSlot(0, 3) | ShiftButtonBitForNewSlot(1, 0) |
@@ -222,7 +337,7 @@ void VRDisplayClient::GamepadMappingForWebVR(
       aControllerState.numButtons = 6;
       aControllerState.numAxes = 2;
       break;
-    case VRControllerType::OculusTouch2:
+    case VRControllerType::OculusTouch2: {
       aControllerState.buttonPressed =
           ShiftButtonBitForNewSlot(0, 3) | ShiftButtonBitForNewSlot(1, 0) |
           ShiftButtonBitForNewSlot(2, 1) | ShiftButtonBitForNewSlot(3, 4) |
@@ -237,7 +352,41 @@ void VRDisplayClient::GamepadMappingForWebVR(
       aControllerState.axisValue[1] = aControllerState.axisValue[3];
       aControllerState.numButtons = 6;
       aControllerState.numAxes = 2;
+
+      static Matrix4x4 touch2Transform;
+      Matrix4x4 originalMtx;
+
+      if (touch2Transform.IsIdentity()) {
+        touch2Transform.RotateX(-0.77f);
+        touch2Transform.PostTranslate(0.0f, 0.0f, -0.025f);
+        touch2Transform.Inverse();
+      }
+      gfx::Quaternion quat(aControllerState.pose.orientation[0],
+                           aControllerState.pose.orientation[1],
+                           aControllerState.pose.orientation[2],
+                           aControllerState.pose.orientation[3]);
+      // We need to invert its quaternion here because we did an invertion
+      // in FxR OculusVR delegate.
+      originalMtx.SetRotationFromQuaternion(quat.Invert());
+      originalMtx._41 = aControllerState.pose.position[0];
+      originalMtx._42 = aControllerState.pose.position[1];
+      originalMtx._43 = aControllerState.pose.position[2];
+      originalMtx = touch2Transform * originalMtx;
+
+      gfx::Point3D pos, scale;
+      originalMtx.Decompose(pos, quat, scale);
+
+      quat.Invert();
+      aControllerState.pose.position[0] = pos.x;
+      aControllerState.pose.position[1] = pos.y;
+      aControllerState.pose.position[2] = pos.z;
+
+      aControllerState.pose.orientation[0] = quat.x;
+      aControllerState.pose.orientation[1] = quat.y;
+      aControllerState.pose.orientation[2] = quat.z;
+      aControllerState.pose.orientation[3] = quat.w;
       break;
+    }
     case VRControllerType::ValveIndex:
       aControllerState.buttonPressed =
           ShiftButtonBitForNewSlot(1, 0) | ShiftButtonBitForNewSlot(2, 1) |
@@ -489,4 +638,36 @@ void VRDisplayClient::StopVRNavigation(const TimeDuration& aTimeout) {
    */
   VRManagerChild* vm = VRManagerChild::Get();
   vm->SendStopVRNavigation(mDisplayInfo.mDisplayID, aTimeout);
+}
+
+bool VRDisplayClient::IsReferenceSpaceTypeSupported(
+    dom::XRReferenceSpaceType aType) const {
+  /**
+   * https://immersive-web.github.io/webxr/#reference-space-is-supported
+   *
+   * We do not yet support local or local-floor for inline sessions.
+   * This could be expanded if we later support WebXR for inline-ar
+   * sessions on Firefox Fenix.
+   *
+   * We do not yet support unbounded reference spaces.
+   */
+  switch (aType) {
+    case dom::XRReferenceSpaceType::Viewer:
+      // Viewer is always supported, for both inline and immersive sessions
+      return true;
+    case dom::XRReferenceSpaceType::Local:
+    case dom::XRReferenceSpaceType::Local_floor:
+      // Local and Local_Floor are always supported for immersive sessions
+      return bool(mDisplayInfo.GetCapabilities() &
+                  (VRDisplayCapabilityFlags::Cap_ImmersiveVR |
+                   VRDisplayCapabilityFlags::Cap_ImmersiveAR));
+    case dom::XRReferenceSpaceType::Bounded_floor:
+      return bool(mDisplayInfo.GetCapabilities() &
+                  VRDisplayCapabilityFlags::Cap_StageParameters);
+    default:
+      NS_WARNING(
+          "Unknown XRReferenceSpaceType passed to "
+          "VRDisplayClient::IsReferenceSpaceTypeSupported");
+      return false;
+  }
 }

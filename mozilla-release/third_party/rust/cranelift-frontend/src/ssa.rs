@@ -9,6 +9,7 @@
 
 use crate::Variable;
 use alloc::vec::Vec;
+use core::convert::TryInto;
 use core::mem;
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::entity::SecondaryMap;
@@ -185,10 +186,13 @@ fn emit_zero(ty: Type, mut cur: FuncCursor) -> Value {
         cur.ins().null(ty)
     } else if ty.is_vector() {
         let scalar_ty = ty.lane_type();
-        if scalar_ty.is_int() {
-            cur.ins().iconst(ty, 0)
-        } else if scalar_ty.is_bool() {
-            cur.ins().bconst(ty, false)
+        if scalar_ty.is_int() || scalar_ty.is_bool() {
+            let zero = cur.func.dfg.constants.insert(
+                core::iter::repeat(0)
+                    .take(ty.bytes().try_into().unwrap())
+                    .collect(),
+            );
+            cur.ins().vconst(ty, zero)
         } else if scalar_ty == F32 {
             let scalar = cur.ins().f32const(Ieee32::with_bits(0));
             cur.ins().splat(ty, scalar)
@@ -368,7 +372,7 @@ impl SSABuilder {
         mem::replace(&mut self.side_effects, SideEffects::new())
     }
 
-    /// Completes the global value numbering for all `Block`s in `func`.
+    /// Completes the global value numbering for all unsealed `Block`s in `func`.
     ///
     /// It's more efficient to seal `Block`s as soon as possible, during
     /// translation, but for frontends where this is impractical to do, this
@@ -379,7 +383,9 @@ impl SSABuilder {
         // and creation of new blocks, however such new blocks are sealed on
         // the fly, so we don't need to account for them here.
         for block in self.ssa_blocks.keys() {
-            self.seal_one_block(block, func);
+            if !self.is_sealed(block) {
+                self.seal_one_block(block, func);
+            }
         }
         mem::replace(&mut self.side_effects, SideEffects::new())
     }

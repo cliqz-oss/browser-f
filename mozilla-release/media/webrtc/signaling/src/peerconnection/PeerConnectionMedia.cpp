@@ -25,6 +25,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/net/NeckoChild.h"
+#include "mozilla/net/WebrtcProxyConfig.h"
 #include "MediaManager.h"
 #include "WebrtcGmpVideoCodec.h"
 
@@ -68,7 +69,7 @@ void PeerConnectionMedia::StunAddrsHandler::OnStunAddrsAvailable(
   CSFLogInfo(LOGTAG, "%s: receiving (%d) stun addrs", __FUNCTION__,
              (int)addrs.Length());
   if (pcm_) {
-    pcm_->mStunAddrs = addrs;
+    pcm_->mStunAddrs = addrs.Clone();
     pcm_->mLocalAddrsRequestState = STUN_ADDR_REQUEST_COMPLETE;
     pcm_->FlushIceCtxOperationQueueIfReady();
     // If parent process returns 0 STUN addresses, change ICE connection
@@ -165,7 +166,8 @@ nsresult PeerConnectionMedia::Init() {
 }
 
 void PeerConnectionMedia::EnsureTransports(const JsepSession& aSession) {
-  for (const auto& transceiver : aSession.GetTransceivers()) {
+  for (const auto& [id, transceiver] : aSession.GetTransceivers()) {
+    (void)id;  // Lame, but no better way to do this right now.
     if (transceiver->HasOwnTransport()) {
       mTransportHandler->EnsureProvisionalTransport(
           transceiver->mTransport.mTransportId,
@@ -181,7 +183,8 @@ void PeerConnectionMedia::EnsureTransports(const JsepSession& aSession) {
 nsresult PeerConnectionMedia::UpdateTransports(const JsepSession& aSession,
                                                const bool forceIceTcp) {
   std::set<std::string> finalTransports;
-  for (const auto& transceiver : aSession.GetTransceivers()) {
+  for (const auto& [id, transceiver] : aSession.GetTransceivers()) {
+    (void)id;  // Lame, but no better way to do this right now.
     if (transceiver->HasOwnTransport()) {
       finalTransports.insert(transceiver->mTransport.mTransportId);
       UpdateTransport(*transceiver, forceIceTcp);
@@ -470,7 +473,7 @@ void PeerConnectionMedia::AddIceCandidate(const std::string& aCandidate,
                   self->mStunAddrsRequest->SendQueryMDNSHostname(
                       nsCString(nsAutoCString(addr.c_str())));
                 }
-                NS_ReleaseOnMainThreadSystemGroup(
+                NS_ReleaseOnMainThread(
                     "PeerConnectionMedia::SendQueryMDNSHostname",
                     self.forget());
               }));

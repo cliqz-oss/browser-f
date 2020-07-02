@@ -31,9 +31,6 @@
 <!ENTITY removeCloudFileAccount.label     "Entfernen">
 <!ENTITY removeCloudFileAccount.accesskey "E">
 <!ENTITY findCloudFileProviders.label     "Weitere Anbieter finden…">
-<!ENTITY authRequired.description         "Für die Anzeige der Einstellungen dieses Speicherdienstes wird Ihre Autorisierung benötigt.">
-<!ENTITY authRequired.button.label        "Autorisieren">
-<!ENTITY authRequired.button.accesskey    "A">
 
 <!ENTITY enableCloudFileAccountOffer.label "Hochladen für Dateien größer als">
 <!ENTITY enableCloudFileAccountOffer.mb "MB anbieten">

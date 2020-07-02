@@ -11,10 +11,10 @@ loadScripts(
   { name: "states.js", dir: MOCHITESTS_DIR }
 );
 
-function getMacAccessible(id) {
+function getMacAccessible(accOrElmOrID) {
   return new Promise(resolve => {
     let intervalId = setInterval(() => {
-      let acc = getAccessible(id);
+      let acc = getAccessible(accOrElmOrID);
       if (acc) {
         clearInterval(intervalId);
         resolve(
@@ -100,31 +100,62 @@ add_task(async () => {
     "Correct title for tab"
   );
 
-  // Test multiple tab selections.
-  // First, focus on current tab.
-  evt = waitForMacEvent(
-    "AXFocusedUIElementChanged",
-    iface => iface.getAttributeValue("AXRole") == "AXRadioButton"
-  );
-  gBrowser.selectedTab.focus();
-  await evt;
-
-  // Next, move focus left to nearby tab.
-  evt = waitForMacEvent(
-    "AXFocusedUIElementChanged",
-    iface => iface.getAttributeValue("AXRole") == "AXRadioButton"
-  );
-  EventUtils.synthesizeKey("KEY_ArrowLeft", { metaKey: true });
-  await evt;
-
-  // Select focused tab.
-  evt = waitForMacEvent("AXSelectedChildrenChanged");
-  EventUtils.synthesizeKey(" ", { metaKey: true, shiftKey: true });
-  await evt;
-
-  selectedTabs = tablist.getAttributeValue("AXSelectedChildren");
-  is(selectedTabs.length, 2, "two tabs selected");
-
   // Close all open tabs
   await Promise.all(newTabs.map(t => BrowserTestUtils.removeTab(t)));
+});
+
+/**
+ * Test ignored invisible items in root
+ */
+add_task(async () => {
+  await BrowserTestUtils.withNewTab(
+    {
+      gBrowser,
+      url: "about:license",
+    },
+    async browser => {
+      let root = await getMacAccessible(document);
+      let rootChildCount = () => root.getAttributeValue("AXChildren").length;
+
+      // With no popups, the root accessible has 5 visible children:
+      // 1. Tab bar (#TabsToolbar)
+      // 2. Navigation bar (#nav-bar)
+      // 3. Content area (#tabbrowser-tabpanels)
+      // 4. Some fullscreen pointer grabber (#fullscreen-and-pointerlock-wrapper)
+      // 5. Accessibility announcements dialog (#a11y-announcement)
+      is(rootChildCount(), 5, "Root with no popups has 5 children");
+
+      // Open a context menu
+      const menu = document.getElementById("contentAreaContextMenu");
+      EventUtils.synthesizeMouseAtCenter(document.body, {
+        type: "contextmenu",
+      });
+      await BrowserTestUtils.waitForPopupEvent(menu, "shown");
+
+      // Now root has 6 children
+      is(rootChildCount(), 6, "Root has 6 children");
+
+      // Close context menu
+      EventUtils.synthesizeKey("KEY_Escape");
+      await BrowserTestUtils.waitForPopupEvent(menu, "hidden");
+
+      // We're back to 5
+      is(rootChildCount(), 5, "Root has 5 children");
+
+      // Open site identity popup
+      const identityPopup = document.getElementById("identity-popup");
+      document.getElementById("identity-box").click();
+      await BrowserTestUtils.waitForPopupEvent(identityPopup, "shown");
+
+      // Now root has 6 children
+      is(rootChildCount(), 6, "Root has 6 children");
+
+      // Close popup
+      EventUtils.synthesizeKey("KEY_Escape");
+      await BrowserTestUtils.waitForPopupEvent(identityPopup, "hidden");
+
+      // We're back to 5
+      is(rootChildCount(), 5, "Root has 5 children");
+    }
+  );
 });

@@ -12,7 +12,7 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Attributes.h"
-#include "nsIRunnable.h"
+#include "nsThreadUtils.h"
 
 #include "SQLiteMutex.h"
 #include "mozIStoragePendingStatement.h"
@@ -30,13 +30,11 @@ class StatementData;
 }  // namespace storage
 }  // namespace mozilla
 
-MOZ_DECLARE_COPY_CONSTRUCTIBLE(mozilla::storage::StatementData)
-
 namespace mozilla::storage {
-class AsyncExecuteStatements final : public nsIRunnable,
+class AsyncExecuteStatements final : public Runnable,
                                      public mozIStoragePendingStatement {
  public:
-  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIRUNNABLE
   NS_DECL_MOZISTORAGEPENDINGSTATEMENT
 

@@ -5,7 +5,7 @@
 // @flow
 
 import { prepareSourcePayload, createThread, createFrame } from "./create";
-import { updateTargets } from "./targets";
+import { updateTargets, attachTarget } from "./targets";
 import { clientEvents } from "./events";
 
 import Reps from "devtools-reps";
@@ -56,7 +56,7 @@ type Dependencies = {
   targetList: TargetList,
 };
 
-function setupCommands(dependencies: Dependencies) {
+function setupCommands(dependencies: Dependencies): void {
   devToolsClient = dependencies.devToolsClient;
   targetList = dependencies.targetList;
   targets = {};
@@ -151,20 +151,20 @@ function forEachThread(iteratee) {
   return Promise.all(promises);
 }
 
-function resume(thread: string): Promise<*> {
+function resume(thread: string, frameId: ?FrameId): Promise<*> {
   return lookupThreadFront(thread).resume();
 }
 
-function stepIn(thread: string): Promise<*> {
-  return lookupThreadFront(thread).stepIn();
+function stepIn(thread: string, frameId: ?FrameId): Promise<*> {
+  return lookupThreadFront(thread).stepIn(frameId);
 }
 
-function stepOver(thread: string): Promise<*> {
-  return lookupThreadFront(thread).stepOver();
+function stepOver(thread: string, frameId: ?FrameId): Promise<*> {
+  return lookupThreadFront(thread).stepOver(frameId);
 }
 
-function stepOut(thread: string): Promise<*> {
-  return lookupThreadFront(thread).stepOut();
+function stepOut(thread: string, frameId: ?FrameId): Promise<*> {
+  return lookupThreadFront(thread).stepOut(frameId);
 }
 
 function breakOnNext(thread: string): Promise<*> {
@@ -187,6 +187,14 @@ function setXHRBreakpoint(path: string, method: string) {
 
 function removeXHRBreakpoint(path: string, method: string) {
   return currentThreadFront().removeXHRBreakpoint(path, method);
+}
+
+export function toggleJavaScriptEnabled(enabled: Boolean) {
+  return currentTarget().reconfigure({
+    options: {
+      javascriptEnabled: enabled,
+    },
+  });
 }
 
 function addWatchpoint(
@@ -408,7 +416,7 @@ async function toggleEventLogging(logEventBreakpoints: boolean) {
   );
 }
 
-function getAllThreadFronts() {
+function getAllThreadFronts(): ThreadFront[] {
   const fronts = [currentThreadFront()];
   for (const { threadFront } of (Object.values(targets): any)) {
     fronts.push(threadFront);
@@ -468,6 +476,19 @@ async function fetchThreads() {
   return (Object.entries(targets).map: any)(([actor, target]) =>
     createThread((actor: any), (target: any))
   );
+}
+
+async function attachThread(targetFront: Target) {
+  const options = {
+    breakpoints,
+    eventBreakpoints,
+    observeAsmJS: true,
+  };
+
+  await attachTarget(targetFront, targets, options);
+  const threadFront: ThreadFront = await targetFront.getFront("thread");
+
+  return createThread(threadFront.actorID, targetFront);
 }
 
 function getMainThread() {
@@ -557,6 +578,7 @@ const clientCommands = {
   checkIfAlreadyPaused,
   registerSourceActor,
   fetchThreads,
+  attachThread,
   getMainThread,
   sendPacket,
   setSkipPausing,
@@ -565,6 +587,7 @@ const clientCommands = {
   lookupTarget,
   getFrontByID,
   fetchAncestorFramePositions,
+  toggleJavaScriptEnabled,
 };
 
 export { setupCommands, clientCommands };

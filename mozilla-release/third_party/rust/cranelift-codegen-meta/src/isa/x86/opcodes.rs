@@ -291,6 +291,14 @@ pub static OR_IMM8_SIGN_EXTEND: [u8; 1] = [0x83];
 /// Return the bitwise logical OR of packed single-precision values in xmm and x/m (SSE).
 pub static ORPS: [u8; 2] = [0x0f, 0x56];
 
+/// Converts 8 packed signed word integers from xmm1 and from xxm2/m128 into 16 packed signed byte
+/// integers in xmm1 using signed saturation (SSE2).
+pub static PACKSSWB: [u8; 3] = [0x66, 0x0f, 0x63];
+
+/// Converts 4 packed signed doubleword integers from xmm1 and from xmm2/m128 into 8 packed signed
+/// word integers in xmm1 using signed saturation (SSE2).
+pub static PACKSSDW: [u8; 3] = [0x66, 0x0f, 0x6b];
+
 /// Add packed byte integers from xmm2/m128 and xmm1 (SSE2).
 pub static PADDB: [u8; 3] = [0x66, 0x0f, 0xfc];
 
@@ -417,6 +425,30 @@ pub static PMINUD: [u8; 4] = [0x66, 0x0f, 0x38, 0x3b];
 /// xmm1 (SSE4.1).
 pub static PMINUW: [u8; 4] = [0x66, 0x0f, 0x38, 0x3a];
 
+/// Sign extend 8 packed 8-bit integers in the low 8 bytes of xmm2/m64 to 8 packed 16-bit
+/// integers in xmm1 (SSE4.1).
+pub static PMOVSXBW: [u8; 4] = [0x66, 0x0f, 0x38, 0x20];
+
+/// Sign extend 4 packed 16-bit integers in the low 8 bytes of xmm2/m64 to 4 packed 32-bit
+/// integers in xmm1 (SSE4.1).
+pub static PMOVSXWD: [u8; 4] = [0x66, 0x0f, 0x38, 0x23];
+
+/// Sign extend 2 packed 32-bit integers in the low 8 bytes of xmm2/m64 to 2 packed 64-bit
+/// integers in xmm1.
+pub static PMOVSXDQ: [u8; 4] = [0x66, 0x0f, 0x38, 0x25];
+
+/// Zero extend 8 packed 8-bit integers in the low 8 bytes of xmm2/m64 to 8 packed 16-bit
+/// integers in xmm1 (SSE4.1).
+pub static PMOVZXBW: [u8; 4] = [0x66, 0x0f, 0x38, 0x30];
+
+/// Zero extend 4 packed 16-bit integers in the low 8 bytes of xmm2/m64 to 4 packed 32-bit
+/// integers in xmm1 (SSE4.1).
+pub static PMOVZXWD: [u8; 4] = [0x66, 0x0f, 0x38, 0x33];
+
+/// Zero extend 2 packed 32-bit integers in the low 8 bytes of xmm2/m64 to 2 packed 64-bit
+/// integers in xmm1.
+pub static PMOVZXDQ: [u8; 4] = [0x66, 0x0f, 0x38, 0x35];
+
 /// Multiply the packed signed word integers in xmm1 and xmm2/m128, and store the low 16 bits of
 /// the results in xmm1 (SSE2).
 pub static PMULLW: [u8; 3] = [0x66, 0x0f, 0xd5];
@@ -512,6 +544,30 @@ pub static PSUBUSW: [u8; 3] = [0x66, 0x0f, 0xd9];
 /// Set ZF if xmm2/m128 AND xmm1 result is all 0s; set CF if xmm2/m128 AND NOT xmm1 result is all
 /// 0s (SSE4.1).
 pub static PTEST: [u8; 4] = [0x66, 0x0f, 0x38, 0x17];
+
+/// Unpack and interleave high-order bytes from xmm1 and xmm2/m128 into xmm1 (SSE2).
+pub static PUNPCKHBW: [u8; 3] = [0x66, 0x0f, 0x68];
+
+/// Unpack and interleave high-order words from xmm1 and xmm2/m128 into xmm1 (SSE2).
+pub static PUNPCKHWD: [u8; 3] = [0x66, 0x0f, 0x69];
+
+/// Unpack and interleave high-order doublewords from xmm1 and xmm2/m128 into xmm1 (SSE2).
+pub static PUNPCKHDQ: [u8; 3] = [0x66, 0x0f, 0x6A];
+
+/// Unpack and interleave high-order quadwords from xmm1 and xmm2/m128 into xmm1 (SSE2).
+pub static PUNPCKHQDQ: [u8; 3] = [0x66, 0x0f, 0x6D];
+
+/// Unpack and interleave low-order bytes from xmm1 and xmm2/m128 into xmm1 (SSE2).
+pub static PUNPCKLBW: [u8; 3] = [0x66, 0x0f, 0x60];
+
+/// Unpack and interleave low-order words from xmm1 and xmm2/m128 into xmm1 (SSE2).
+pub static PUNPCKLWD: [u8; 3] = [0x66, 0x0f, 0x61];
+
+/// Unpack and interleave low-order doublewords from xmm1 and xmm2/m128 into xmm1 (SSE2).
+pub static PUNPCKLDQ: [u8; 3] = [0x66, 0x0f, 0x62];
+
+/// Unpack and interleave low-order quadwords from xmm1 and xmm2/m128 into xmm1 (SSE2).
+pub static PUNPCKLQDQ: [u8; 3] = [0x66, 0x0f, 0x6C];
 
 /// Push r{16,32,64}.
 pub static PUSH_REG: [u8; 1] = [0x50];

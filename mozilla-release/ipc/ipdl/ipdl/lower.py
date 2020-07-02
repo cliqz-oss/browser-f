@@ -13,6 +13,7 @@ from ipdl.cxx.ast import *
 from ipdl.cxx.code import *
 from ipdl.direct_call import VIRTUAL_CALL_CLASSES, DIRECT_CALL_OVERRIDES
 from ipdl.type import ActorType, UnionType, TypeVisitor, builtinHeaderIncludes
+from ipdl.util import hash_str
 
 
 # -----------------------------------------------------------------------------
@@ -58,7 +59,7 @@ lowered form of |tu|'''
 ##
 
 def hashfunc(value):
-    h = hash(value) % 2**32
+    h = hash_str(value) % 2**32
     if h < 0:
         h += 2**32
     return h
@@ -942,6 +943,8 @@ IPDL union type."""
     def callOperatorEq(self, rhs):
         if self.ipdltype.isIPDL() and self.ipdltype.isActor():
             rhs = ExprCast(rhs, self.bareType(), const=True)
+        elif self.ipdltype.isIPDL() and self.ipdltype.isArray() and not isinstance(rhs, ExprMove):
+            rhs = ExprCall(ExprSelect(rhs, '.', 'Clone'), args=[])
         return ExprAssn(ExprDeref(self.callGetPtr()), rhs)
 
     def callCtor(self, expr=None):
@@ -951,6 +954,8 @@ IPDL union type."""
             args = None
         elif self.ipdltype.isIPDL() and self.ipdltype.isActor():
             args = [ExprCast(expr, self.bareType(), const=True)]
+        elif self.ipdltype.isIPDL() and self.ipdltype.isArray() and not isinstance(expr, ExprMove):
+            args = [ExprCall(ExprSelect(expr, '.', 'Clone'), args=[])]
         else:
             args = [expr]
 
@@ -1450,7 +1455,7 @@ with some new IPDL/C++ nodes that are tuned for C++ codegen."""
 
             # Compute a permutation of the fields for in-memory storage such
             # that the memory layout of the structure will be well-packed.
-            permutation = range(len(newfields))
+            permutation = list(range(len(newfields)))
 
             # Note that the results of `pod_size` ensure that non-POD fields
             # sort before POD ones.
@@ -1894,7 +1899,6 @@ class _ParamTraits():
     @classmethod
     def readSentinel(cls, msgvar, itervar, sentinelKey, sentinelFail):
         # Read the sentinel
-        assert sentinelKey
         read = ExprCall(ExprSelect(msgvar, '->', 'ReadSentinel'),
                         args=[itervar, ExprLiteral.Int(hashfunc(sentinelKey))])
         ifsentinel = StmtIf(ExprNot(read))
@@ -2519,10 +2523,21 @@ def _generateCxxStruct(sd):
         struct.addstmts([method])
 
     # members
-    struct.addstmts([StmtDecl(Decl(f.bareType(), f.memberVar().name))
+    struct.addstmts([StmtDecl(Decl(_effectiveMemberType(f), f.memberVar().name))
                      for f in sd.fields_member_order()])
 
     return forwarddeclstmts, fulldecltypes, struct
+
+
+def _effectiveMemberType(f):
+    effective_type = f.bareType()
+    # Structs must be copyable for backwards compatibility reasons, so we use
+    # CopyableTArray<T> as their member type for arrays. This is not exposed
+    # in the method signatures, these keep using nsTArray<T>, which is a base
+    # class of CopyableTArray<T>.
+    if effective_type.name == "nsTArray":
+        effective_type.name = "CopyableTArray"
+    return effective_type
 
 # --------------------------------------------------
 
@@ -3000,16 +3015,6 @@ def _generateCxxUnion(ud):
 
         cls.addstmts([getvalue, getconstvalue])
 
-        if not _cxxTypeCanOnlyMove(c.ipdltype):
-            readvalue = MethodDefn(MethodDecl(
-                'get', ret=Type.VOID, const=True,
-                params=[Decl(c.ptrToType(), 'aOutValue')]))
-            readvalue.addstmts([
-                StmtExpr(ExprAssn(ExprDeref(ExprVar('aOutValue')),
-                                  ExprCall(getConstValueVar)))
-            ])
-            cls.addstmt(readvalue)
-
         optype = MethodDefn(MethodDecl('', typeop=c.refType(), force_inline=True))
         optype.addstmt(StmtReturn(ExprCall(getValueVar)))
         opconsttype = MethodDefn(MethodDecl(
@@ -3270,7 +3275,6 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             #include "prenv.h"
             #endif  // DEBUG
 
-            #include "base/id_map.h"
             #include "mozilla/Tainting.h"
             #include "mozilla/ipc/MessageChannel.h"
             #include "mozilla/ipc/ProtocolUtils.h"
@@ -4855,6 +4859,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
         stmt = StmtCode(
             '''
             RefPtr<${promise}> promise__ = new ${promise}(__func__);
+            promise__->UseDirectTaskDispatch(__func__);
             ${send}($,{args});
             return promise__;
             ''',

@@ -133,8 +133,6 @@ nsIScrollableFrame* nsTextControlFrame::GetScrollTargetFrame() {
 
 void nsTextControlFrame::DestroyFrom(nsIFrame* aDestructRoot,
                                      PostDestroyData& aPostDestroyData) {
-  mScrollEvent.Revoke();
-
   RemoveProperty(TextControlInitializer());
 
   // Unbind the text editor state object from the frame.  The editor will live
@@ -156,7 +154,7 @@ void nsTextControlFrame::DestroyFrom(nsIFrame* aDestructRoot,
   if (mClass == kClassID) {
     aPostDestroyData.AddAnonymousContent(mRootNode.forget());
   } else {
-    MOZ_ASSERT(!mRootNode || !mRootNode->IsRootOfAnonymousSubtree());
+    MOZ_ASSERT(!mRootNode || !mRootNode->IsRootOfNativeAnonymousSubtree());
     mRootNode = nullptr;
   }
 
@@ -675,7 +673,7 @@ void nsTextControlFrame::ReflowTextControlChild(
 
 nsSize nsTextControlFrame::GetXULMinSize(nsBoxLayoutState& aState) {
   // XXXbz why?  Why not the nsBoxFrame sizes?
-  return nsBox::GetXULMinSize(aState);
+  return nsIFrame::GetUncachedXULMinSize(aState);
 }
 
 bool nsTextControlFrame::IsXULCollapsed() {
@@ -683,33 +681,11 @@ bool nsTextControlFrame::IsXULCollapsed() {
   return false;
 }
 
-NS_IMETHODIMP
-nsTextControlFrame::ScrollOnFocusEvent::Run() {
-  if (mFrame) {
-    TextControlElement* textControlElement =
-        TextControlElement::FromNode(mFrame->GetContent());
-    MOZ_ASSERT(textControlElement);
-    nsISelectionController* selCon =
-        textControlElement->GetSelectionController();
-    if (selCon) {
-      mFrame->mScrollEvent.Forget();
-      selCon->ScrollSelectionIntoView(
-          nsISelectionController::SELECTION_NORMAL,
-          nsISelectionController::SELECTION_FOCUS_REGION,
-          nsISelectionController::SCROLL_SYNCHRONOUS);
-    }
-  }
-  return NS_OK;
-}
-
 // IMPLEMENTING NS_IFORMCONTROLFRAME
 void nsTextControlFrame::SetFocus(bool aOn, bool aRepaint) {
   TextControlElement* textControlElement =
       TextControlElement::FromNode(GetContent());
   MOZ_ASSERT(textControlElement);
-
-  // Revoke the previous scroll event if one exists
-  mScrollEvent.Revoke();
 
   // If 'dom.placeholeder.show_on_focus' preference is 'false', focusing or
   // blurring the frame can have an impact on the placeholder visibility.
@@ -752,12 +728,8 @@ void nsTextControlFrame::SetFocus(bool aOn, bool aRepaint) {
       }
     }
     if (!(lastFocusMethod & nsIFocusManager::FLAG_BYMOUSE)) {
-      RefPtr<ScrollOnFocusEvent> event = new ScrollOnFocusEvent(this);
-      nsresult rv =
-          mContent->OwnerDoc()->Dispatch(TaskCategory::Other, do_AddRef(event));
-      if (NS_SUCCEEDED(rv)) {
-        mScrollEvent = std::move(event);
-      }
+      // NOTE(emilio): This is asynchronous, so it can't cause havoc.
+      ScrollSelectionIntoViewAsync();
     }
   }
 
@@ -871,20 +843,18 @@ nsresult nsTextControlFrame::SetSelectionInternal(
   return NS_OK;
 }
 
-nsresult nsTextControlFrame::ScrollSelectionIntoView() {
-  TextControlElement* textControlElement =
-      TextControlElement::FromNode(GetContent());
+void nsTextControlFrame::ScrollSelectionIntoViewAsync() {
+  auto* textControlElement = TextControlElement::FromNode(GetContent());
   MOZ_ASSERT(textControlElement);
   nsISelectionController* selCon = textControlElement->GetSelectionController();
-  if (selCon) {
-    // Scroll the selection into view (see bug 231389).
-    return selCon->ScrollSelectionIntoView(
-        nsISelectionController::SELECTION_NORMAL,
-        nsISelectionController::SELECTION_FOCUS_REGION,
-        nsISelectionController::SCROLL_FIRST_ANCESTOR_ONLY);
+  if (!selCon) {
+    return;
   }
-
-  return NS_ERROR_FAILURE;
+  // Scroll the selection into view (see bug 231389).
+  selCon->ScrollSelectionIntoView(
+      nsISelectionController::SELECTION_NORMAL,
+      nsISelectionController::SELECTION_FOCUS_REGION,
+      nsISelectionController::SCROLL_FIRST_ANCESTOR_ONLY);
 }
 
 nsresult nsTextControlFrame::SelectAllOrCollapseToEndOfText(bool aSelect) {
@@ -926,7 +896,8 @@ nsresult nsTextControlFrame::SelectAllOrCollapseToEndOfText(bool aSelect) {
                             numChildren);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return ScrollSelectionIntoView();
+  ScrollSelectionIntoViewAsync();
+  return NS_OK;
 }
 
 nsresult nsTextControlFrame::SetSelectionEndPoints(
@@ -1319,29 +1290,44 @@ void nsTextControlFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   nsDisplayList* content = aLists.Content();
   nsDisplayListSet set(content, content, content, content, content, content);
 
-  for (nsIFrame* kid = mFrames.FirstChild(); kid; kid = kid->GetNextSibling()) {
+  // Clip the placeholder and preview text to the root box, so that it doesn't,
+  // e.g., overlay with our <input type="number"> spin buttons.
+  //
+  // For other input types, this will be a noop since we size the root via
+  // ReflowTextControlChild, which sets the same available space for all
+  // children.
+  auto clipToRoot = [&](Maybe<DisplayListClipState::AutoSaveRestore>& aClip) {
+    if (mRootNode) {
+      if (auto* root = mRootNode->GetPrimaryFrame()) {
+        aClip.emplace(aBuilder);
+        nsRect rootBox(aBuilder->ToReferenceFrame(root), root->GetSize());
+        aClip->ClipContentDescendants(rootBox);
+      }
+    }
+  };
+
+  // We build the ::placeholder first so that it renders below mRootNode which
+  // draws the caret and we always want that on top (bug 1637476).
+  if (mPlaceholderDiv && control->GetPlaceholderVisibility() &&
+      mPlaceholderDiv->GetPrimaryFrame()) {
+    Maybe<DisplayListClipState::AutoSaveRestore> overlayTextClip;
+    clipToRoot(overlayTextClip);
+    auto* kid = mPlaceholderDiv->GetPrimaryFrame();
+    MOZ_ASSERT(kid->GetParent() == this);
+    BuildDisplayListForChild(aBuilder, kid, set, 0);
+  }
+
+  for (auto* kid : mFrames) {
     nsIContent* kidContent = kid->GetContent();
     Maybe<DisplayListClipState::AutoSaveRestore> overlayTextClip;
-    if (kidContent == mPlaceholderDiv && !control->GetPlaceholderVisibility()) {
-      continue;
+    if (kidContent == mPlaceholderDiv) {
+      continue;  // we handled mPlaceholderDiv explicitly above
     }
     if (kidContent == mPreviewDiv && !control->GetPreviewVisibility()) {
       continue;
     }
-    // Clip the preview text to the root box, so that it doesn't, e.g., overlay
-    // with our <input type="number"> spin buttons.
-    //
-    // For other input types, this will be a noop since we size the root via
-    // ReflowTextControlChild, which sets the same available space for all
-    // children.
-    if (kidContent == mPlaceholderDiv || kidContent == mPreviewDiv) {
-      if (mRootNode) {
-        if (auto* root = mRootNode->GetPrimaryFrame()) {
-          overlayTextClip.emplace(aBuilder);
-          nsRect rootBox(aBuilder->ToReferenceFrame(root), root->GetSize());
-          overlayTextClip->ClipContentDescendants(rootBox);
-        }
-      }
+    if (kidContent == mPreviewDiv) {
+      clipToRoot(overlayTextClip);
     }
     BuildDisplayListForChild(aBuilder, kid, set, 0);
   }

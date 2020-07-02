@@ -24,6 +24,7 @@
 #include "frontend/BinASTTokenReaderContext.h"
 #include "frontend/BinASTTokenReaderMultipart.h"
 #include "frontend/FullParseHandler.h"
+#include "frontend/FunctionSyntaxKind.h"  // FunctionSyntaxKind
 #include "frontend/ParseNode.h"
 #include "frontend/Parser.h"
 #include "frontend/SharedContext.h"
@@ -31,6 +32,10 @@
 #  include "irregexp/RegExpParser.h"
 #endif
 #include "js/RegExpFlags.h"  //  JS::RegExpFlag, JS::RegExpFlags
+#ifdef ENABLE_NEW_REGEXP
+#  include "new-regexp/RegExpAPI.h"
+#endif
+#include "vm/GeneratorAndAsyncKind.h"  // js::GeneratorKind, js::FunctionAsyncKind
 #include "vm/RegExpObject.h"
 
 #include "frontend/ParseContext-inl.h"
@@ -1482,7 +1487,7 @@ JS::Result<Ok> BinASTParser<Tok>::parseInterfaceAssertedBlockScope(
   if (hasDirectEval && pc_->isFunctionBox() && !pc_->sc()->strict()) {
     // In non-strict mode code, direct calls to eval can
     // add variables to the call object.
-    pc_->functionBox()->setHasExtensibleScope();
+    pc_->functionBox()->setFunHasExtensibleScope();
   }
   auto result = Ok();
   return result;
@@ -1577,7 +1582,7 @@ JS::Result<Ok> BinASTParser<Tok>::parseInterfaceAssertedBoundNamesScope(
   if (hasDirectEval && pc_->isFunctionBox() && !pc_->sc()->strict()) {
     // In non-strict mode code, direct calls to eval can
     // add variables to the call object.
-    pc_->functionBox()->setHasExtensibleScope();
+    pc_->functionBox()->setFunHasExtensibleScope();
   }
   auto result = Ok();
   return result;
@@ -1691,7 +1696,7 @@ JS::Result<Ok> BinASTParser<Tok>::parseInterfaceAssertedParameterScope(
   if (hasDirectEval && pc_->isFunctionBox() && !pc_->sc()->strict()) {
     // In non-strict mode code, direct calls to eval can
     // add variables to the call object.
-    pc_->functionBox()->setHasExtensibleScope();
+    pc_->functionBox()->setFunHasExtensibleScope();
   }
   auto result = Ok();
   return result;
@@ -1794,7 +1799,7 @@ JS::Result<Ok> BinASTParser<Tok>::parseInterfaceAssertedScriptGlobalScope(
   if (hasDirectEval && pc_->isFunctionBox() && !pc_->sc()->strict()) {
     // In non-strict mode code, direct calls to eval can
     // add variables to the call object.
-    pc_->functionBox()->setHasExtensibleScope();
+    pc_->functionBox()->setFunHasExtensibleScope();
   }
   auto result = Ok();
   return result;
@@ -1842,7 +1847,7 @@ JS::Result<Ok> BinASTParser<Tok>::parseInterfaceAssertedVarScope(
   if (hasDirectEval && pc_->isFunctionBox() && !pc_->sc()->strict()) {
     // In non-strict mode code, direct calls to eval can
     // add variables to the call object.
-    pc_->functionBox()->setHasExtensibleScope();
+    pc_->functionBox()->setFunHasExtensibleScope();
   }
   auto result = Ok();
   return result;
@@ -3566,12 +3571,12 @@ JS::Result<ParseNode*> BinASTParser<Tok>::parseInterfaceLiteralRegExpExpression(
   // Validate the RegExp pattern is valid.
   {
     JS::CompileOptions dummyOptions(cx_);
-    TokenStream dummyTokenStream(cx_, dummyOptions, nullptr, 0, nullptr);
+    DummyTokenStream dummyTokenStream(cx_, dummyOptions);
 
     LifoAllocScope allocScope(&cx_->tempLifoAlloc());
 #ifdef ENABLE_NEW_REGEXP
-    BINJS_TRY(irregexp::CheckPatternSyntax(cx_, dummyTokenStream, pattern,
-					   reflags);
+    BINJS_TRY(
+        irregexp::CheckPatternSyntax(cx_, dummyTokenStream, pattern, reflags));
 #else
     BINJS_TRY(irregexp::ParsePatternSyntax(dummyTokenStream, allocScope.alloc(),
                                            pattern, reflags.unicode()));
@@ -4004,7 +4009,7 @@ JS::Result<ParseNode*> BinASTParser<Tok>::parseInterfaceThisExpression(
 
   TokenPos pos = tokenizer_->pos(start);
   ParseNode* thisName(nullptr);
-  if (pc_->sc()->thisBinding() == ThisBinding::Function) {
+  if (pc_->sc()->hasFunctionThisBinding()) {
     HandlePropertyName dotThis = cx_->names().dotThis;
     BINJS_TRY(usedNames_.noteUse(cx_, dotThis, pc_->scriptId(),
                                  pc_->innermostScope()->id()));

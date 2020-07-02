@@ -551,7 +551,20 @@ static int8_t GetClass(uint32_t u, LineBreaker::Strictness aLevel,
       return GETCLASSFROMTABLE(gLBClass30, l);
     }
     if (0xff00 == h) {
-      if (l < 0x0060) {  // Fullwidth ASCII variant
+      if (l <= 0x0060) {  // Fullwidth ASCII variant
+        // Fullwidth comma and period are exceptions to our map-to-ASCII
+        // behavior: https://bugzilla.mozilla.org/show_bug.cgi?id=1595428
+        if (l + 0x20 == ',' || l + 0x20 == '.') {
+          return CLASS_CLOSE;
+        }
+        // Also special-case fullwidth left/right white parenthesis,
+        // which do not fit the pattern of mapping to the ASCII block
+        if (l == 0x005f) {
+          return CLASS_OPEN;
+        }
+        if (l == 0x0060) {
+          return CLASS_CLOSE;
+        }
         return GETCLASSFROMTABLE(gLBClass00, (l + 0x20));
       }
       if (l < 0x00a0) {  // Halfwidth Katakana variants
@@ -777,7 +790,7 @@ class ContextState {
             break;
           }
         } else if (!mHasCJKChar && IS_CJK_CHAR(u)) {
-          mHasCJKChar = 1;
+          mHasCJKChar = true;
           if (mHasNonbreakableSpace) {
             break;
           }
@@ -908,16 +921,18 @@ int32_t LineBreaker::WordMove(const char16_t* aText, uint32_t aLen,
 
   int32_t ret;
   AutoTArray<uint8_t, 2000> breakState;
-  if (!textNeedsJISx4051 || !breakState.AppendElements(end - begin)) {
+  if (!textNeedsJISx4051) {
     // No complex text character, do not try to do complex line break.
     // (This is required for serializers. See Bug #344816.)
-    // Also fall back to this when out of memory.
     if (aDirection < 0) {
       ret = (begin == int32_t(aPos)) ? begin - 1 : begin;
     } else {
       ret = end;
     }
   } else {
+    // XXX(Bug 1631371) Check if this should use a fallible operation as it
+    // pretended earlier.
+    breakState.AppendElements(end - begin);
     GetJISx4051Breaks(aText + begin, end - begin, WordBreak::Normal,
                       Strictness::Auto, false, breakState.Elements());
 

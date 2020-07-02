@@ -4,9 +4,10 @@
 
 <!ENTITY header.label     "Kurztitel"> 
 <!ENTITY message.label    "Beispieltext erscheint hier.">
+
 <!ENTITY editfield0.label "Benutzername:"> 
 <!ENTITY editfield1.label "Passwort:"> 
-<!ENTITY checkbox.label   "prüfen">
+<!ENTITY checkbox.label   "prüfen"> 
 <!ENTITY copyCmd.label    "Kopieren">
 <!ENTITY copyCmd.accesskey "K">
 <!ENTITY selectAllCmd.label "Alles auswählen">

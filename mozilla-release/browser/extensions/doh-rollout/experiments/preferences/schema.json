@@ -82,7 +82,7 @@
         "parameters": [
           {
             "type": "string",
-            "enum": ["doh-rollout.doorhanger-decision", "doh-rollout.heuristics.mockValues"]
+            "enum": ["doh-rollout.doorhanger-decision", "doh-rollout.heuristics.mockValues", "doh-rollout.provider-steering.provider-list"]
           },
           {
             "type": "string",
@@ -129,6 +129,13 @@
             "name": "name"
           }
         ],
+        "async": true
+      },
+      {
+        "name": "migrateNextDNSEndpoint",
+        "type": "function",
+        "description": "Migrates any occurrances of old NextDNS endpoint URL in pref values to the new endpoint.",
+        "parameters": [],
         "async": true
       }
     ]

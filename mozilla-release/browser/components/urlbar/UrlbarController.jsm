@@ -13,9 +13,11 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.jsm",
+  FormHistory: "resource://gre/modules/FormHistory.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarProvidersManager: "resource:///modules/UrlbarProvidersManager.jsm",
+  UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
   URLBAR_SELECTED_RESULT_TYPES: "resource:///modules/BrowserUsageTelemetry.jsm",
 });
@@ -285,7 +287,7 @@ class UrlbarController {
 
     if (this.view.isOpen && executeAction && this._lastQueryContextWrapper) {
       let { queryContext } = this._lastQueryContextWrapper;
-      let handled = this.view.oneOffSearchButtons.handleKeyPress(
+      let handled = this.view.oneOffSearchButtons.handleKeyDown(
         event,
         this.view.visibleElementCount,
         this.view.allowEmptySelection,
@@ -319,7 +321,6 @@ class UrlbarController {
         // When there's no search string, we want to focus the next toolbar item
         // instead, for accessibility reasons.
         let allowTabbingThroughResults =
-          !UrlbarPrefs.get("update1") ||
           this.input.focusedViaMousedown ||
           (this.input.value &&
             this.input.getAttribute("pageproxystate") != "valid");
@@ -502,11 +503,11 @@ class UrlbarController {
     //
     // * Set telemetryType appropriately below.
     // * Add the type to BrowserUsageTelemetry.URLBAR_SELECTED_RESULT_TYPES.
-    // * See n_values in Histograms.json for FX_URLBAR_SELECTED_RESULT_TYPE and
-    //   FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE.  If your new type causes the
-    //   number of types to become larger than n_values, you'll need to replace
-    //   these histograms with new ones.  See "Changing a histogram" in the
-    //   telemetry docs for more.
+    // * See n_values in Histograms.json for FX_URLBAR_SELECTED_RESULT_TYPE_2
+    //   and FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE_2.  If your new type causes
+    //   the number of types to become larger than n_values, you'll need to
+    //   replace these histograms with new ones.  See "Changing a histogram" in
+    //   the histogram telemetry doc for more.
     // * Add a test named browser_UsageTelemetry_urlbar_newType.js to
     //   browser/modules/test/browser.
     let telemetryType;
@@ -515,9 +516,13 @@ class UrlbarController {
         telemetryType = "switchtab";
         break;
       case UrlbarUtils.RESULT_TYPE.SEARCH:
-        telemetryType = result.payload.suggestion
-          ? "searchsuggestion"
-          : "searchengine";
+        if (result.source == UrlbarUtils.RESULT_SOURCE.HISTORY) {
+          telemetryType = "formhistory";
+        } else {
+          telemetryType = result.payload.suggestion
+            ? "searchsuggestion"
+            : "searchengine";
+        }
         break;
       case UrlbarUtils.RESULT_TYPE.URL:
         if (result.autofill) {
@@ -561,14 +566,14 @@ class UrlbarController {
       .add(resultIndex);
     if (telemetryType in URLBAR_SELECTED_RESULT_TYPES) {
       Services.telemetry
-        .getHistogramById("FX_URLBAR_SELECTED_RESULT_TYPE")
+        .getHistogramById("FX_URLBAR_SELECTED_RESULT_TYPE_2")
         .add(URLBAR_SELECTED_RESULT_TYPES[telemetryType]);
       Services.telemetry
-        .getKeyedHistogramById("FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE")
+        .getKeyedHistogramById("FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE_2")
         .add(telemetryType, resultIndex);
     } else {
       Cu.reportError(
-        "Unknown FX_URLBAR_SELECTED_RESULT_TYPE type: " + telemetryType
+        "Unknown FX_URLBAR_SELECTED_RESULT_TYPE_2 type: " + telemetryType
       );
     }
   }
@@ -603,6 +608,27 @@ class UrlbarController {
     queryContext.results.splice(index, 1);
     this.notify(NOTIFICATIONS.QUERY_RESULT_REMOVED, index);
 
+    // form history
+    if (selectedResult.type == UrlbarUtils.RESULT_TYPE.SEARCH) {
+      if (!queryContext.formHistoryName) {
+        return false;
+      }
+      FormHistory.update(
+        {
+          op: "remove",
+          fieldname: queryContext.formHistoryName,
+          value: selectedResult.payload.suggestion,
+        },
+        {
+          handleError(error) {
+            Cu.reportError(`Removing form history failed: ${error}`);
+          },
+        }
+      );
+      return true;
+    }
+
+    // Places history
     PlacesUtils.history
       .remove(selectedResult.payload.url)
       .catch(Cu.reportError);
@@ -723,7 +749,10 @@ class TelemetryEvent {
    * blurring the input field, an abandonment event is recorded.
    * @param {event} [event] A DOM event.
    * @param {object} details An object describing action details.
-   * @param {string} details.numChars Number of input characters.
+   * @param {string} details.searchString The user's search string. Note that
+   *        this string is not sent with telemetry data. It is only used
+   *        locally to discern other data, such as the number of characters and
+   *        words in the string.
    * @param {string} details.selIndex Index of the selected result, undefined
    *        for "blur".
    * @param {string} details.selType type of the selected element, undefined
@@ -796,9 +825,17 @@ class TelemetryEvent {
       Services.telemetry.setEventRecordingEnabled("urlbar", recordingEnabled);
     }
 
+    // numWords is not a perfect measurement, since it will return an incorrect
+    // value for languages that do not use spaces or URLs containing spaces in
+    // its query parameters, for example.
     let extra = {
       elapsed: elapsed.toString(),
-      numChars: details.numChars.toString(),
+      numChars: details.searchString.length.toString(),
+      numWords: details.searchString
+        .trim()
+        .split(UrlbarTokenizer.REGEXP_SPACES)
+        .filter(t => t)
+        .length.toString(),
     };
     if (method == "engagement") {
       extra.selIndex = details.selIndex.toString();
@@ -845,6 +882,9 @@ class TelemetryEvent {
         case UrlbarUtils.RESULT_TYPE.TAB_SWITCH:
           return "switchtab";
         case UrlbarUtils.RESULT_TYPE.SEARCH:
+          if (row.result.source == UrlbarUtils.RESULT_SOURCE.HISTORY) {
+            return "formhistory";
+          }
           return row.result.payload.suggestion ? "searchsuggestion" : "search";
         case UrlbarUtils.RESULT_TYPE.URL:
           if (row.result.autofill) {

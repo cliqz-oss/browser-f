@@ -57,7 +57,11 @@ class IssueItem extends PureComponent {
 
     e.preventDefault();
     e.stopPropagation();
-    openDocLink(url);
+
+    openDocLink(
+      url +
+        "?utm_source=devtools&utm_medium=inspector-compatibility&utm_campaign=default"
+    );
   }
 
   _getTestDataAttributes() {

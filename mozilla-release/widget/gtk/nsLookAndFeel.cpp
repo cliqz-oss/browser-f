@@ -264,10 +264,6 @@ nsresult nsLookAndFeel::InitCellHighlightColors() {
 void nsLookAndFeel::NativeInit() { EnsureInit(); }
 
 void nsLookAndFeel::RefreshImpl() {
-  if (mShouldRetainCacheForTest) {
-    return;
-  }
-
   nsXPLookAndFeel::RefreshImpl();
   moz_gtk_refresh();
 
@@ -275,9 +271,6 @@ void nsLookAndFeel::RefreshImpl() {
   mButtonFontCached = false;
   mFieldFontCached = false;
   mMenuFontCached = false;
-  if (XRE_IsParentProcess()) {
-    mPrefersReducedMotionCached = false;
-  }
 
   mInitialized = false;
 }
@@ -307,7 +300,6 @@ void nsLookAndFeel::SetIntCacheImpl(
         break;
       case eIntID_PrefersReducedMotion:
         mPrefersReducedMotion = entry.value;
-        mPrefersReducedMotionCached = true;
         break;
       case eIntID_UseAccessibilityTheme:
         mHighContrast = entry.value;
@@ -743,13 +735,6 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
       aResult = mCSDReversedPlacement;
       break;
     case eIntID_PrefersReducedMotion: {
-      if (!mPrefersReducedMotionCached && XRE_IsParentProcess()) {
-        gboolean enableAnimations;
-        GtkSettings* settings = gtk_settings_get_default();
-        g_object_get(settings, "gtk-enable-animations", &enableAnimations,
-                     nullptr);
-        mPrefersReducedMotion = enableAnimations ? 0 : 1;
-      }
       aResult = mPrefersReducedMotion;
       break;
     }
@@ -758,6 +743,15 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
       aResult = mSystemUsesDarkTheme;
       break;
     }
+    case eLookAndFeel_GTKCSDMaximizeButtonPosition:
+      aResult = mCSDMaximizeButtonPosition;
+      break;
+    case eLookAndFeel_GTKCSDMinimizeButtonPosition:
+      aResult = mCSDMinimizeButtonPosition;
+      break;
+    case eLookAndFeel_GTKCSDCloseButtonPosition:
+      aResult = mCSDCloseButtonPosition;
+      break;
     case eIntID_UseAccessibilityTheme: {
       EnsureInit();
       aResult = mHighContrast;
@@ -1031,6 +1025,10 @@ void nsLookAndFeel::EnsureInit() {
 
     mHighContrast = StaticPrefs::widget_content_gtk_high_contrast_enabled() &&
                     GetGtkTheme().Find(NS_LITERAL_CSTRING("HighContrast")) >= 0;
+
+    gboolean enableAnimations = false;
+    g_object_get(settings, "gtk-enable-animations", &enableAnimations, nullptr);
+    mPrefersReducedMotion = !enableAnimations;
   }
 
   // The label is not added to a parent widget, but shared for constructing
@@ -1279,26 +1277,44 @@ void nsLookAndFeel::EnsureInit() {
   mCSDCloseButton = false;
   mCSDMinimizeButton = false;
   mCSDMaximizeButton = false;
+  mCSDCloseButtonPosition = 0;
+  mCSDMinimizeButtonPosition = 0;
+  mCSDMaximizeButtonPosition = 0;
 
   // We need to initialize whole CSD config explicitly because it's queried
   // as -moz-gtk* media features.
-  WidgetNodeType buttonLayout[TOOLBAR_BUTTONS];
+  ButtonLayout buttonLayout[TOOLBAR_BUTTONS];
 
-  int activeButtons = GetGtkHeaderBarButtonLayout(buttonLayout, TOOLBAR_BUTTONS,
-                                                  &mCSDReversedPlacement);
-  for (int i = 0; i < activeButtons; i++) {
-    switch (buttonLayout[i]) {
+  size_t activeButtons = GetGtkHeaderBarButtonLayout(MakeSpan(buttonLayout),
+                                                     &mCSDReversedPlacement);
+  for (size_t i = 0; i < activeButtons; i++) {
+    // We check if a button is represented on the right side of the tabbar.
+    // Then we assign it a value from 3 to 5, instead of 0 to 2 when it is on
+    // the left side.
+    const ButtonLayout& layout = buttonLayout[i];
+    int32_t* pos = nullptr;
+    switch (layout.mType) {
       case MOZ_GTK_HEADER_BAR_BUTTON_MINIMIZE:
         mCSDMinimizeButton = true;
+        pos = &mCSDMinimizeButtonPosition;
         break;
       case MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE:
         mCSDMaximizeButton = true;
+        pos = &mCSDMaximizeButtonPosition;
         break;
       case MOZ_GTK_HEADER_BAR_BUTTON_CLOSE:
         mCSDCloseButton = true;
+        pos = &mCSDCloseButtonPosition;
         break;
       default:
         break;
+    }
+
+    if (pos) {
+      *pos = i;
+      if (layout.mAtRight) {
+        *pos += TOOLBAR_BUTTONS;
+      }
     }
   }
 

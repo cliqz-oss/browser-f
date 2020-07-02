@@ -4,15 +4,12 @@
 
 "use strict";
 
+const Services = require("Services");
+
 const {
   accessibility: { AUDIT_TYPE },
 } = require("devtools/shared/constants");
 const { FILTERS } = require("devtools/client/accessibility/constants");
-
-const PARENT_ACCESSIBILITY_EVENTS = [
-  "can-be-disabled-change",
-  "can-be-enabled-change",
-];
 
 /**
  * Component responsible for tracking all Accessibility fronts in parent and
@@ -24,6 +21,7 @@ class AccessibilityProxy {
 
     this.accessibilityEventsMap = new Map();
     this.accessibleWalkerEventsMap = new Map();
+    this.supports = {};
 
     this.audit = this.audit.bind(this);
     this.disableAccessibility = this.disableAccessibility.bind(this);
@@ -36,17 +34,32 @@ class AccessibilityProxy {
     this.startListeningForLifecycleEvents = this.startListeningForLifecycleEvents.bind(
       this
     );
+    this.startListeningForParentLifecycleEvents = this.startListeningForParentLifecycleEvents.bind(
+      this
+    );
     this.stopListeningForAccessibilityEvents = this.stopListeningForAccessibilityEvents.bind(
       this
     );
     this.stopListeningForLifecycleEvents = this.stopListeningForLifecycleEvents.bind(
       this
     );
+    this.stopListeningForParentLifecycleEvents = this.stopListeningForParentLifecycleEvents.bind(
+      this
+    );
+    this.highlightAccessible = this.highlightAccessible.bind(this);
+    this.unhighlightAccessible = this.unhighlightAccessible.bind(this);
     this._onTargetAvailable = this._onTargetAvailable.bind(this);
   }
 
   get enabled() {
     return this.accessibilityFront && this.accessibilityFront.enabled;
+  }
+
+  /**
+   * Indicates whether the accessibility service is enabled.
+   */
+  get canBeEnabled() {
+    return this.parentAccessibilityFront.canBeEnabled;
   }
 
   get currentTarget() {
@@ -116,14 +129,9 @@ class AccessibilityProxy {
     // That, in turn, shuts down accessibility service in all content processes.
     // We need to wait until that happens to be sure platform  accessibility is
     // fully disabled.
-    // TODO: Remove this after Firefox 75 and use parentAccessibilityFront.
-    if (this.parentAccessibilityFront) {
-      const disabled = this.accessibilityFront.once("shutdown");
-      await this.parentAccessibilityFront.disable();
-      await disabled;
-    } else {
-      await this.accessibilityFront.disable();
-    }
+    const disabled = this.accessibilityFront.once("shutdown");
+    await this.parentAccessibilityFront.disable();
+    await disabled;
   }
 
   async enableAccessibility() {
@@ -131,14 +139,9 @@ class AccessibilityProxy {
     // front. That, in turn, initializes accessibility service in all content
     // processes. We need to wait until that happens to be sure platform
     // accessibility is fully enabled.
-    // TODO: Remove this after Firefox 75 and use parentAccessibilityFront.
-    if (this.parentAccessibilityFront) {
-      const enabled = this.accessibilityFront.once("init");
-      await this.parentAccessibilityFront.enable();
-      await enabled;
-    } else {
-      await this.accessibilityFront.enable();
-    }
+    const enabled = this.accessibilityFront.once("init");
+    await this.parentAccessibilityFront.enable();
+    await enabled;
   }
 
   /**
@@ -187,26 +190,66 @@ class AccessibilityProxy {
 
   startListeningForLifecycleEvents(eventMap) {
     for (const [type, listeners] of Object.entries(eventMap)) {
-      const accessibilityFront =
-        // TODO: Remove parentAccessibilityFront check after Firefox 75.
-        this.parentAccessibilityFront &&
-        PARENT_ACCESSIBILITY_EVENTS.includes(type)
-          ? this.parentAccessibilityFront
-          : this.accessibilityFront;
-      this._on(accessibilityFront, type, listeners);
+      this._on(this.accessibilityFront, type, listeners);
     }
   }
 
   stopListeningForLifecycleEvents(eventMap) {
     for (const [type, listeners] of Object.entries(eventMap)) {
-      // TODO: Remove parentAccessibilityFront check after Firefox 75.
-      const accessibilityFront =
-        this.parentAccessibilityFront &&
-        PARENT_ACCESSIBILITY_EVENTS.includes(type)
-          ? this.parentAccessibilityFront
-          : this.accessibilityFront;
-      this._off(accessibilityFront, type, listeners);
+      this._off(this.accessibilityFront, type, listeners);
     }
+  }
+
+  startListeningForParentLifecycleEvents(eventMap) {
+    for (const [type, listener] of Object.entries(eventMap)) {
+      this.parentAccessibilityFront.on(type, listener);
+    }
+  }
+
+  stopListeningForParentLifecycleEvents(eventMap) {
+    for (const [type, listener] of Object.entries(eventMap)) {
+      this.parentAccessibilityFront.off(type, listener);
+    }
+  }
+
+  highlightAccessible(accessibleFront, options) {
+    if (!accessibleFront) {
+      return;
+    }
+
+    const accessibleWalkerFront = accessibleFront.getParent();
+    if (!accessibleWalkerFront) {
+      return;
+    }
+
+    accessibleWalkerFront
+      .highlightAccessible(accessibleFront, options)
+      .catch(error => {
+        // Only report an error where there's still a toolbox. Ignore cases
+        // where toolbox is already destroyed.
+        if (this.toolbox) {
+          console.error(error);
+        }
+      });
+  }
+
+  unhighlightAccessible(accessibleFront) {
+    if (!accessibleFront) {
+      return;
+    }
+
+    const accessibleWalkerFront = accessibleFront.getParent();
+    if (!accessibleWalkerFront) {
+      return;
+    }
+
+    accessibleWalkerFront.unhighlight().catch(error => {
+      // Only report an error where there's still a toolbox. Ignore cases
+      // where toolbox is already destroyed.
+      if (this.toolbox) {
+        console.error(error);
+      }
+    });
   }
 
   /**
@@ -217,9 +260,10 @@ class AccessibilityProxy {
   async initializeProxyForPanel(targetFront) {
     await this._updateTarget(targetFront);
 
-    const { mainRoot } = this._currentTarget.client;
-    if (await mainRoot.hasActor("parentAccessibility")) {
-      this.parentAccessibilityFront = await mainRoot.getFront(
+    // No need to retrieve parent accessibility front since root front does not
+    // change.
+    if (!this.parentAccessibilityFront) {
+      this.parentAccessibilityFront = await this._currentTarget.client.mainRoot.getFront(
         "parentaccessibility"
       );
     }
@@ -232,14 +276,8 @@ class AccessibilityProxy {
 
     // Move front listeners to new front.
     for (const [type, listeners] of this.accessibilityEventsMap.entries()) {
-      const accessibilityFront =
-        // TODO: Remove parentAccessibilityFront check after Firefox 75.
-        this.parentAccessibilityFront &&
-        PARENT_ACCESSIBILITY_EVENTS.includes(type)
-          ? this.parentAccessibilityFront
-          : this.accessibilityFront;
       for (const listener of listeners) {
-        accessibilityFront.on(type, listener);
+        this.accessibilityFront.on(type, listener);
       }
     }
 
@@ -256,6 +294,14 @@ class AccessibilityProxy {
         [this.toolbox.targetList.TYPES.FRAME],
         this._onTargetAvailable
       );
+      // Bug 1602075: auto init feature definition is used for an experiment to
+      // determine if we can automatically enable accessibility panel when it
+      // opens.
+      this.supports.autoInit = Services.prefs.getBoolPref(
+        "devtools.accessibility.auto-init.enabled",
+        false
+      );
+
       return true;
     } catch (e) {
       // toolbox may be destroyed during this step.
@@ -286,8 +332,8 @@ class AccessibilityProxy {
       : this.accessibilityEventsMap;
   }
 
-  async _onTargetAvailable({ targetFront, isTopLevel }) {
-    if (isTopLevel) {
+  async _onTargetAvailable({ targetFront }) {
+    if (targetFront.isTopLevel) {
       await this._updateTarget(targetFront);
     }
   }
@@ -342,7 +388,6 @@ class AccessibilityProxy {
       // Finalize accessibility front initialization. See accessibility front
       // bootstrap method description.
       await this.accessibilityFront.bootstrap();
-      this.supports = {};
       // To add a check for backward compatibility add something similar to the
       // example below:
       //

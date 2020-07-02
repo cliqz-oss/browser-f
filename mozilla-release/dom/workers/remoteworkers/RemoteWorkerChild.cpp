@@ -9,13 +9,13 @@
 #include <utility>
 
 #include "MainThreadUtils.h"
+#include "nsCOMPtr.h"
 #include "nsDebug.h"
 #include "nsError.h"
 #include "nsIConsoleReportCollector.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIPrincipal.h"
 #include "nsNetUtil.h"
-#include "nsPermissionManager.h"
 #include "nsProxyRelease.h"
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
@@ -25,6 +25,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/Services.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Unused.h"
@@ -46,6 +47,7 @@
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/URIUtils.h"
 #include "mozilla/net/CookieJarSettings.h"
+#include "mozilla/PermissionManager.h"
 
 namespace mozilla {
 
@@ -156,11 +158,11 @@ class MessagePortIdentifierRunnable final : public WorkerRunnable {
 // This is used to release WeakWorkerRefs which can only have their refcount
 // modified on the owning thread (worker thread in this case). It also keeps
 // alive the associated WorkerPrivate until the WeakWorkerRef is released.
-class ReleaseWorkerRunnable final : public WorkerRunnable {
+class ReleaseWorkerRunnable final : public WorkerControlRunnable {
  public:
   ReleaseWorkerRunnable(RefPtr<WorkerPrivate>&& aWorkerPrivate,
                         RefPtr<WeakWorkerRef>&& aWeakRef)
-      : WorkerRunnable(aWorkerPrivate),
+      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
         mWorkerPrivate(std::move(aWorkerPrivate)),
         mWeakRef(std::move(aWeakRef)) {
     MOZ_ASSERT(mWorkerPrivate);
@@ -189,10 +191,8 @@ class ReleaseWorkerRunnable final : public WorkerRunnable {
 
     mWeakRef = nullptr;
 
-    nsCOMPtr<nsIEventTarget> target =
-        SystemGroup::EventTargetFor(TaskCategory::Other);
-    NS_ProxyRelease("ReleaseWorkerRunnable::mWorkerPrivate", target,
-                    mWorkerPrivate.forget());
+    NS_ReleaseOnMainThread("ReleaseWorkerRunnable::mWorkerPrivate",
+                           mWorkerPrivate.forget());
   }
 
   RefPtr<WorkerPrivate> mWorkerPrivate;
@@ -300,7 +300,8 @@ void RemoteWorkerChild::ExecWorker(const RemoteWorkerData& aData) {
         }
       });
 
-  MOZ_ALWAYS_SUCCEEDS(SystemGroup::Dispatch(TaskCategory::Other, r.forget()));
+  MOZ_ALWAYS_SUCCEEDS(
+      SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
 }
 
 nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
@@ -309,26 +310,25 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
   // Ensure that the IndexedDatabaseManager is initialized
   Unused << NS_WARN_IF(!IndexedDatabaseManager::GetOrCreate());
 
-  nsresult rv = NS_OK;
-
   auto scopeExit = MakeScopeExit([&] { TransitionStateToTerminated(); });
 
-  nsCOMPtr<nsIPrincipal> principal =
-      PrincipalInfoToPrincipal(aData.principalInfo(), &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+  auto principalOrErr = PrincipalInfoToPrincipal(aData.principalInfo());
+  if (NS_WARN_IF(principalOrErr.isErr())) {
+    return principalOrErr.unwrapErr();
   }
 
-  nsCOMPtr<nsIPrincipal> loadingPrincipal =
-      PrincipalInfoToPrincipal(aData.loadingPrincipalInfo(), &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+  nsCOMPtr<nsIPrincipal> principal = principalOrErr.unwrap();
+
+  auto loadingPrincipalOrErr =
+      PrincipalInfoToPrincipal(aData.loadingPrincipalInfo());
+  if (NS_WARN_IF(loadingPrincipalOrErr.isErr())) {
+    return loadingPrincipalOrErr.unwrapErr();
   }
 
-  nsCOMPtr<nsIPrincipal> storagePrincipal =
-      PrincipalInfoToPrincipal(aData.storagePrincipalInfo(), &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+  auto storagePrincipalOrErr =
+      PrincipalInfoToPrincipal(aData.storagePrincipalInfo());
+  if (NS_WARN_IF(storagePrincipalOrErr.isErr())) {
+    return storagePrincipalOrErr.unwrapErr();
   }
 
   WorkerLoadInfo info;
@@ -342,8 +342,8 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
   info.mReferrerInfo = aData.referrerInfo();
   info.mDomain = aData.domain();
   info.mPrincipal = principal;
-  info.mStoragePrincipal = storagePrincipal;
-  info.mLoadingPrincipal = loadingPrincipal;
+  info.mStoragePrincipal = storagePrincipalOrErr.unwrap();
+  info.mLoadingPrincipal = loadingPrincipalOrErr.unwrap();
   info.mStorageAccess = aData.storageAccess();
   info.mOriginAttributes =
       BasePrincipal::Cast(principal)->OriginAttributesRef();
@@ -367,6 +367,8 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
   if (aData.clientInfo().isSome()) {
     clientInfo.emplace(ClientInfo(aData.clientInfo().ref()));
   }
+
+  nsresult rv = NS_OK;
 
   if (clientInfo.isSome()) {
     Maybe<mozilla::ipc::CSPInfo> cspInfo = clientInfo.ref().GetCspInfo();
@@ -465,8 +467,8 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
           }
         });
 
-    RefPtr<nsPermissionManager> permissionManager =
-        nsPermissionManager::GetInstance();
+    RefPtr<PermissionManager> permissionManager =
+        PermissionManager::GetInstance();
     if (!permissionManager) {
       return NS_ERROR_FAILURE;
     }
@@ -510,8 +512,17 @@ void RemoteWorkerChild::InitializeOnWorker() {
     NS_ProxyRelease(__func__, mOwningEventTarget, self.forget());
   });
 
+  // Let RemoteWorkerChild own the WorkerPrivate; RemoteWorkerChild's state
+  // transitions should guarantee the WorkerPrivate is cleaned up correctly.
+  // This also reduces some complexity around thread lifetimes guarantees that
+  // RemoteWorkerChild's state transitions rely on (e.g. the worker thread
+  // terminating unexpectedly).
+  RefPtr<StrongWorkerRef> strongRef =
+      StrongWorkerRef::Create(workerPrivate, __func__);
+
   RefPtr<WeakWorkerRef> workerRef = WeakWorkerRef::Create(
-      workerPrivate, [selfWeakRef = std::move(selfWeakRef)]() mutable {
+      workerPrivate, [selfWeakRef = std::move(selfWeakRef),
+                      strongRef = std::move(strongRef)]() mutable {
         RefPtr<RemoteWorkerChild> self(selfWeakRef);
 
         if (NS_WARN_IF(!self)) {
@@ -698,10 +709,8 @@ RemoteWorkerChild::WorkerPrivateAccessibleState::
     return;
   }
 
-  nsCOMPtr<nsIEventTarget> target =
-      SystemGroup::EventTargetFor(TaskCategory::Other);
-  NS_ProxyRelease(
-      "RemoteWorkerChild::WorkerPrivateAccessibleState::mWorkerPrivate", target,
+  NS_ReleaseOnMainThread(
+      "RemoteWorkerChild::WorkerPrivateAccessibleState::mWorkerPrivate",
       mWorkerPrivate.forget());
 }
 
@@ -726,8 +735,8 @@ RemoteWorkerChild::Running::~Running() {
   if (NS_IsMainThread()) {
     dispatchWorkerRunnableRunnable->Run();
   } else {
-    SystemGroup::Dispatch(TaskCategory::Other,
-                          dispatchWorkerRunnableRunnable.forget());
+    SchedulerGroup::Dispatch(TaskCategory::Other,
+                             dispatchWorkerRunnableRunnable.forget());
   }
 }
 
@@ -862,7 +871,8 @@ class RemoteWorkerChild::SharedWorkerOp : public RemoteWorkerChild::Op {
           self->Exec(owner);
         });
 
-    MOZ_ALWAYS_SUCCEEDS(SystemGroup::Dispatch(TaskCategory::Other, r.forget()));
+    MOZ_ALWAYS_SUCCEEDS(
+        SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
 
 #ifdef DEBUG
     mStarted = true;
@@ -917,7 +927,7 @@ class RemoteWorkerChild::SharedWorkerOp : public RemoteWorkerChild::Op {
               mOp.get_RemoteWorkerPortIdentifierOp().portIdentifier());
 
       if (NS_WARN_IF(!r->Dispatch())) {
-        aOwner->ErrorPropagation(NS_ERROR_FAILURE);
+        aOwner->ErrorPropagationDispatch(NS_ERROR_FAILURE);
       }
     } else if (mOp.type() == RemoteWorkerOp::TRemoteWorkerAddWindowIDOp) {
       aOwner->mWindowIDs.AppendElement(

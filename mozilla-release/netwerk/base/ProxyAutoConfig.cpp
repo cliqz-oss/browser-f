@@ -327,12 +327,6 @@ class PACResolver final : public nsIDNSListener,
     return NS_OK;
   }
 
-  NS_IMETHOD OnLookupByTypeComplete(nsICancelable* request,
-                                    nsIDNSByTypeRecord* res,
-                                    nsresult status) override {
-    return NS_OK;
-  }
-
   // nsITimerCallback
   NS_IMETHOD Notify(nsITimer* timer) override {
     nsCOMPtr<nsICancelable> request;
@@ -403,14 +397,13 @@ class MOZ_STACK_CLASS AutoPACErrorReporter {
     if (!JS_IsExceptionPending(mCx)) {
       return;
     }
-    JS::RootedValue exn(mCx);
-    if (!JS_GetPendingException(mCx, &exn)) {
+    JS::ExceptionStack exnStack(mCx);
+    if (!JS::StealPendingExceptionStack(mCx, &exnStack)) {
       return;
     }
-    JS_ClearPendingException(mCx);
 
-    js::ErrorReport report(mCx);
-    if (!report.init(mCx, exn, js::ErrorReport::WithSideEffects)) {
+    JS::ErrorReportBuilder report(mCx);
+    if (!report.init(mCx, exnStack, JS::ErrorReportBuilder::WithSideEffects)) {
       JS_ClearPendingException(mCx);
       return;
     }
@@ -448,11 +441,18 @@ bool ProxyAutoConfig::ResolveAddress(const nsCString& aHostName,
   RefPtr<PACResolver> helper = new PACResolver(mMainThreadEventTarget);
   OriginAttributes attrs;
 
-  if (NS_FAILED(dns->AsyncResolveNative(
-          aHostName, nsIDNSService::RESOLVE_PRIORITY_MEDIUM, helper,
-          GetCurrentThreadEventTarget(), attrs,
-          getter_AddRefs(helper->mRequest))))
+  // When the PAC script attempts to resolve a domain, we must make sure we
+  // don't use TRR, otherwise the TRR channel might also attempt to resolve
+  // a name and we'll have a deadlock.
+  uint32_t flags =
+      nsIDNSService::RESOLVE_PRIORITY_MEDIUM |
+      nsIDNSService::GetFlagsFromTRRMode(nsIRequest::TRR_DISABLED_MODE);
+
+  if (NS_FAILED(dns->AsyncResolveNative(aHostName, flags, helper,
+                                        GetCurrentThreadEventTarget(), attrs,
+                                        getter_AddRefs(helper->mRequest)))) {
     return false;
+  }
 
   if (aTimeout && helper->mRequest) {
     if (!mTimer) mTimer = NS_NewTimer();
@@ -640,6 +640,7 @@ class JSContextWrapper {
 
     JS::RealmOptions options;
     options.creationOptions().setNewCompartmentInSystemZone();
+    options.behaviors().setClampAndJitterTime(false);
     mGlobal = JS_NewGlobalObject(mContext, &sGlobalClass, nullptr,
                                  JS::DontFireOnNewGlobalHook, options);
     if (!mGlobal) {
@@ -842,7 +843,7 @@ nsresult ProxyAutoConfig::GetProxyForURI(const nsCString& aTestURI,
   JS::RootedString hostString(cx, JS_NewStringCopyZ(cx, aTestHost.get()));
 
   if (uriString && hostString) {
-    JS::AutoValueArray<2> args(cx);
+    JS::RootedValueArray<2> args(cx);
     args[0].setString(uriString);
     args[1].setString(hostString);
 

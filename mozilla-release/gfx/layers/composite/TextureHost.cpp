@@ -11,7 +11,8 @@
 #include "LayersLogging.h"   // for AppendToString
 #include "mozilla/gfx/2D.h"  // for DataSourceSurface, Factory
 #include "mozilla/gfx/gfxVars.h"
-#include "mozilla/ipc/Shmem.h"                             // for Shmem
+#include "mozilla/ipc/Shmem.h"  // for Shmem
+#include "mozilla/layers/AsyncImagePipelineManager.h"
 #include "mozilla/layers/CompositableTransactionParent.h"  // for CompositableParentManager
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/Compositor.h"         // for Compositor
@@ -393,6 +394,8 @@ TextureHost::~TextureHost() {
 }
 
 void TextureHost::Finalize() {
+  MaybeDestroyRenderTexture();
+
   if (!(GetFlags() & TextureFlags::DEALLOCATE_CLIENT)) {
     DeallocateSharedData();
     DeallocateDeviceData();
@@ -452,6 +455,39 @@ void TextureHost::CallNotifyNotUsed() {
     return;
   }
   static_cast<TextureParent*>(mActor)->NotifyNotUsed(mFwdTransactionId);
+}
+
+void TextureHost::MaybeDestroyRenderTexture() {
+  if (mExternalImageId.isNothing()) {
+    // RenderTextureHost was not created
+    return;
+  }
+  // When TextureHost created RenderTextureHost, delete it here.
+  TextureHost::DestroyRenderTexture(mExternalImageId.ref());
+}
+
+void TextureHost::DestroyRenderTexture(
+    const wr::ExternalImageId& aExternalImageId) {
+  wr::RenderThread::Get()->UnregisterExternalImage(
+      wr::AsUint64(aExternalImageId));
+}
+
+void TextureHost::EnsureRenderTexture(
+    const wr::MaybeExternalImageId& aExternalImageId) {
+  if (aExternalImageId.isNothing()) {
+    // TextureHost is wrapped by GPUVideoTextureHost.
+    if (mExternalImageId.isSome()) {
+      // RenderTextureHost was already created.
+      return;
+    }
+    mExternalImageId =
+        Some(AsyncImagePipelineManager::GetNextExternalImageId());
+  } else {
+    // TextureHost is wrapped by WebRenderTextureHost.
+    MOZ_ASSERT(mExternalImageId.isNothing());
+    mExternalImageId = aExternalImageId;
+  }
+  CreateRenderTexture(mExternalImageId.ref());
 }
 
 void TextureHost::PrintInfo(std::stringstream& aStream, const char* aPrefix) {

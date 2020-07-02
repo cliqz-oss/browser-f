@@ -253,29 +253,6 @@ const startupPhases = {
       stat: 2,
     },
     {
-      // bug 975996
-      path: "ProfD:permissions.sqlite",
-      condition: WIN || MAC,
-      fsync: 8,
-      read: 2,
-      stat: 1,
-      write: 10,
-    },
-    {
-      // bug 975996
-      path: "ProfD:permissions.sqlite-journal",
-      condition: WIN || MAC,
-      fsync: 8,
-      stat: 28,
-      write: 40,
-    },
-    {
-      // bug 975996
-      path: "ProfD:permissions.sqlite-wal",
-      condition: WIN,
-      stat: 20,
-    },
-    {
       // Seems done by OS X and outside of our control.
       path: "*.savedState/restorecount.plist",
       condition: MAC,
@@ -292,12 +269,6 @@ const startupPhases = {
     {
       // bug 1541246
       path: "ProfD:extensions",
-      condition: WIN,
-      stat: 1,
-    },
-    {
-      // bug 1541246
-      path: "XCurProcD:extensions",
       condition: WIN,
       stat: 1,
     },
@@ -355,6 +326,12 @@ const startupPhases = {
       path: "*Fonts/StaticCache.dat",
       condition: WIN,
       ignoreIfUnused: true, // Only on Win7
+      read: 1,
+    },
+    {
+      // Bug 1626738
+      path: "SysD:spool/drivers/color/*",
+      condition: WIN,
       read: 1,
     },
     {
@@ -465,11 +442,6 @@ const startupPhases = {
       ignoreIfUnused: true,
       stat: 1,
       close: 1,
-    },
-    {
-      path: "XCurProcD:extensions",
-      condition: WIN,
-      stat: 1,
     },
   ],
 

@@ -31,7 +31,7 @@ raptor_description_schema = Schema({
     Optional('raptor-test'): text_type,
     Optional('raptor-subtests'): optionally_keyed_by(
         'app',
-        [text_type]
+        list
     ),
     Optional('activity'): optionally_keyed_by(
         'app',
@@ -53,6 +53,7 @@ raptor_description_schema = Schema({
     ),
     Optional('run-on-projects'): optionally_keyed_by(
         'app',
+        'pageload',
         'test-name',
         'raptor-test',
         test_description_schema['run-on-projects']
@@ -64,6 +65,11 @@ raptor_description_schema = Schema({
     Optional('target'): optionally_keyed_by(
         'app',
         test_description_schema['target']
+    ),
+    Optional('tier'): optionally_keyed_by(
+        'app',
+        'raptor-test',
+        test_description_schema['tier']
     ),
     Optional('run-visual-metrics'): optionally_keyed_by(
         'app',
@@ -128,23 +134,34 @@ def split_apps(config, tests):
 
 
 @transforms.add
-def handle_keyed_by_app(config, tests):
+def handle_keyed_by_prereqs(config, tests):
     """
-    Only resolve keys for raptor-subtests here since the
-    `raptor-test` keyed-by option might have keyed-by fields
+    Only resolve keys for prerequisite fields here since the
+    these keyed-by options might have keyed-by fields
     as well.
     """
-    fields = ['raptor-subtests']
+    fields = ['raptor-subtests', 'pageload']
     for test in tests:
         for field in fields:
             resolve_keyed_by(test, field, item_name=test['test-name'])
+
+        # We need to make the split immediately so that we can split
+        # task configurations by pageload type, the `both` condition is
+        # the same as not having a by-pageload split.
+        if test['pageload'] == 'both':
+            test['pageload'] = 'cold'
+
+            warmtest = deepcopy(test)
+            warmtest['pageload'] = 'warm'
+            yield warmtest
+
         yield test
 
 
 @transforms.add
 def split_raptor_subtests(config, tests):
     for test in tests:
-        # for tests that have 'raptor-subtests' listed, we want to create a separate
+        # For tests that have 'raptor-subtests' listed, we want to create a separate
         # test job for every subtest (i.e. split out each page-load URL into its own job)
         subtests = test.pop('raptor-subtests', None)
         if not subtests:
@@ -156,10 +173,10 @@ def split_raptor_subtests(config, tests):
         for subtest in subtests:
             chunk_number += 1
 
-            # create new test job
+            # Create new test job
             chunked = deepcopy(test)
-            chunked['raptor-test'] = subtest
             chunked['chunk-number'] = chunk_number
+            chunked['subtest'] = subtest
 
             yield chunked
 
@@ -171,10 +188,12 @@ def handle_keyed_by(config, tests):
         'limit-platforms',
         'activity',
         'binary-path',
-        'pageload',
+        'fetches.fetch',
+        'fission-run-on-projects',
         'max-run-time',
         'run-on-projects',
         'target',
+        'tier',
         'run-visual-metrics'
     ]
     for test in tests:
@@ -185,6 +204,7 @@ def handle_keyed_by(config, tests):
 
 @transforms.add
 def split_pageload(config, tests):
+    # Split test by pageload type (cold, warm)
     for test in tests:
         pageload = test.pop('pageload', 'warm')
 
@@ -196,16 +216,10 @@ def split_pageload(config, tests):
             orig = deepcopy(test)
             yield orig
 
-        assert 'raptor-test' in test
+        assert 'subtest' in test
         test['description'] += " using cold pageload"
 
-        # for raptor-webext to run cold we just call the corresponding '-cold' test name; but
-        # for raptor browsertime we leave the raptor test name as/is and will set the '--cold'
-        # command line argument instead via settting test['cold'] to true
-        if test['test-name'].startswith('browsertime-tp6'):
-            test['cold'] = True
-        else:
-            test['raptor-test'] += '-cold'
+        test['cold'] = True
 
         test['max-run-time'] = 3000
         test['test-name'] += '-cold'
@@ -218,24 +232,47 @@ def split_pageload(config, tests):
 
 
 @transforms.add
-def split_browsertime_page_load_by_url(config, tests):
+def split_page_load_by_url(config, tests):
     for test in tests:
-        # `chunk-number` only exists when the task had a
+        # `chunk-number` and 'subtest' only exists when the task had a
         # definition for `raptor-subtests`
         chunk_number = test.pop('chunk-number', None)
-        if not chunk_number:
+        subtest = test.pop('subtest', None)
+
+        if not chunk_number or not subtest:
             yield test
             continue
 
-        # only run the subtest/single URL
-        test['test-name'] += "-{}".format(test['raptor-test'])
-        test['try-name'] += "-{}".format(test['raptor-test'])
+        if isinstance(subtest, list):
+            subtest, subtest_symbol = subtest
+        else:
+            subtest_symbol = subtest
+            subtest = subtest
 
-        # set treeherder symbol and description
+        if len(subtest_symbol) > 10:
+            raise Exception(
+                "Treeherder symbol %s is lager than 10 char! Please use a different symbol."
+                % subtest_symbol)
+
+        if test['test-name'].startswith('browsertime-tp6'):
+            test['raptor-test'] = subtest
+        else:
+            # Use full test name if running on webextension
+            test['raptor-test'] = 'raptor-tp6-' + subtest + "-{}".format(test['app'])
+
+        # Only run the subtest/single URL
+        test['test-name'] += "-{}".format(subtest)
+        test['try-name'] += "-{}".format(subtest)
+
+        # Set treeherder symbol and description
         group, symbol = split_symbol(test['treeherder-symbol'])
-        symbol += "-{}".format(chunk_number)
+
+        symbol = subtest_symbol
+        if test.get("cold"):
+            symbol += "-c"
+
         test['treeherder-symbol'] = join_symbol(group, symbol)
-        test['description'] += "-{}".format(test['raptor-test'])
+        test['description'] += " on {}".format(subtest)
 
         yield test
 
@@ -243,7 +280,11 @@ def split_browsertime_page_load_by_url(config, tests):
 @transforms.add
 def add_extra_options(config, tests):
     for test in tests:
-        extra_options = test.setdefault('mozharness', {}).setdefault('extra-options', [])
+        mozharness = test.setdefault('mozharness', {})
+        if test.get('app', '') == 'chrome-m':
+            mozharness['tooltool-downloads'] = 'internal'
+
+        extra_options = mozharness.setdefault('extra-options', [])
 
         # Adding device name if we're on android
         test_platform = test['test-platform']
@@ -259,10 +300,8 @@ def add_extra_options(config, tests):
         if 'app' in test:
             extra_options.append('--app={}'.format(test.pop('app')))
 
-        # for browsertime tp6 cold page-load jobs we need to set the '--cold' cmd line arg
-        if test['test-name'].startswith('browsertime-tp6'):
-            if test.pop('cold', False) is True:
-                extra_options.append('--cold')
+        if test.pop('cold', False) is True:
+            extra_options.append('--cold')
 
         if 'activity' in test:
             extra_options.append('--activity={}'.format(test.pop('activity')))
@@ -276,17 +315,17 @@ def add_extra_options(config, tests):
         if test['require-signed-extensions']:
             extra_options.append('--is-release-build')
 
-        # add urlparams based on platform, test names and projects
+        extra_options.append("--project={}".format(config.params.get('project')))
+
+        # Add urlparams based on platform, test names and projects
         testurlparams_by_platform_and_project = {
             "android-hw-g5": [
                 {
                     "branches": [],  # For all branches
                     "testnames": ["youtube-playback"],
                     "urlparams": [
-                        # param used for excluding youtube-playback tests from executing
-                        # it excludes the tests with videos >1080p
-                        "exclude=1,2,9,10,17,18,21,22,26,28,30,32,39,40,47,"
-                        "48,55,56,63,64,71,72,79,80,83,84,89,90,95,96",
+                        # It excludes all VP9 tests
+                        "exclude=1-34"
                     ]
                 },
             ]

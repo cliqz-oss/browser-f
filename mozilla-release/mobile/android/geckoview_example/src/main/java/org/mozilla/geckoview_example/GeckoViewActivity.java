@@ -382,11 +382,16 @@ public class GeckoViewActivity
     private GeckoView mGeckoView;
     private boolean mFullAccessibilityTree;
     private boolean mUseTrackingProtection;
+    private String mEnhancedTackingProtection;
+    private boolean mUseDynamicFirstPartyIsolation;
     private boolean mAllowAutoplay;
     private boolean mUsePrivateBrowsing;
     private boolean mEnableRemoteDebugging;
     private boolean mKillProcessOnDestroy;
     private boolean mDesktopMode;
+    private String mUserAgentOverride;
+    private boolean mAllowExtensionsInPrivateBrowsing;
+
     private TabSession mPopupSession;
     private View mPopupView;
     private int mPreferredColorScheme;
@@ -422,7 +427,7 @@ public class GeckoViewActivity
 
     @Override
     public TabSession openNewTab(WebExtension.CreateTabDetails details) {
-        final TabSession newSession = createSession();
+        final TabSession newSession = createSession(details.cookieStoreId);
         mToolbarView.updateTabCount();
         if (details.active == Boolean.TRUE) {
             setGeckoViewSession(newSession, false);
@@ -434,12 +439,21 @@ public class GeckoViewActivity
         boolean remoteDebugging = preferences.getBoolean(
                 getString(R.string.key_remote_debugging), false);
         boolean trackingProtection = preferences.getBoolean(
-                getString(R.string.key_tracking_protection), true);
+                getString(R.string.key_tracking_protection), false);
+        String enhancedTrackingProtection = preferences.getString(
+                getString(R.string.key_enhanced_tracking_protection), "standard");
+        boolean dfpi = preferences.getBoolean(
+                getString(R.string.key_dfpi), false);
         boolean autoplay = preferences.getBoolean(
                 getString(R.string.key_autoplay), false);
         int colorScheme = Integer.parseInt(preferences.getString(
                 getString(R.string.key_preferred_color_scheme),
                 Integer.toString(GeckoRuntimeSettings.COLOR_SCHEME_SYSTEM)));
+        String userAgentOverride = preferences.getString(
+                getString(R.string.key_user_agent_override), "");
+        boolean allowExtensionsInPrivateBrowsing = preferences.getBoolean(
+                getString(R.string.key_allow_extensions_in_private_browsing),
+                false);
 
         if (mEnableRemoteDebugging != remoteDebugging) {
             if (sGeckoRuntime != null) {
@@ -451,14 +465,44 @@ public class GeckoViewActivity
         final GeckoSession currentSession = mTabSessionManager.getCurrentSession();
 
         if (mUseTrackingProtection != trackingProtection) {
+            mTabSessionManager.setUseTrackingProtection(trackingProtection);
             if (sGeckoRuntime != null) {
-                sGeckoRuntime.getSettings().getContentBlocking()
-                        .setStrictSocialTrackingProtection(mUseTrackingProtection);
-            }
-            if (currentSession != null) {
-                currentSession.reload();
+                sGeckoRuntime.getSettings().getContentBlocking().setStrictSocialTrackingProtection(trackingProtection);
             }
             mUseTrackingProtection = trackingProtection;
+        }
+
+        if (mEnhancedTackingProtection != enhancedTrackingProtection) {
+            int etpLevel;
+            switch (enhancedTrackingProtection) {
+                case "disabled":
+                    etpLevel = ContentBlocking.EtpLevel.NONE;
+                    break;
+                case "standard":
+                    etpLevel = ContentBlocking.EtpLevel.DEFAULT;
+                    break;
+                case "strict":
+                    etpLevel = ContentBlocking.EtpLevel.STRICT;
+                    break;
+                default:
+                    throw new RuntimeException("Invalid ETP level: " + enhancedTrackingProtection);
+            }
+
+            if (sGeckoRuntime != null) {
+                sGeckoRuntime.getSettings().getContentBlocking().setEnhancedTrackingProtectionLevel(etpLevel);
+            }
+
+            mEnhancedTackingProtection = enhancedTrackingProtection;
+        }
+
+        if (mUseDynamicFirstPartyIsolation != dfpi) {
+            if (sGeckoRuntime != null) {
+                int cookieBehavior = dfpi ?
+                        ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS :
+                        ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS;
+                sGeckoRuntime.getSettings().getContentBlocking().setCookieBehavior(cookieBehavior);
+            }
+            mUseDynamicFirstPartyIsolation = dfpi;
         }
 
         if (mAllowAutoplay != autoplay) {
@@ -476,6 +520,26 @@ public class GeckoViewActivity
             if (currentSession != null) {
                 currentSession.reload();
             }
+        }
+
+        if (!userAgentOverride.equals(mUserAgentOverride)) {
+            mUserAgentOverride = !userAgentOverride.isEmpty() ? userAgentOverride : null;
+            for (final TabSession session : mTabSessionManager.getSessions()) {
+                session.getSettings().setUserAgentOverride(mUserAgentOverride);
+            }
+            if (currentSession != null) {
+                currentSession.reload();
+            }
+        }
+
+        if (mAllowExtensionsInPrivateBrowsing != allowExtensionsInPrivateBrowsing) {
+            if (sGeckoRuntime != null && sExtensionManager != null
+                    && sExtensionManager.extension != null) {
+                sGeckoRuntime.getWebExtensionController().setAllowedInPrivateBrowsing(
+                        sExtensionManager.extension,
+                        allowExtensionsInPrivateBrowsing);
+            }
+            mAllowExtensionsInPrivateBrowsing = allowExtensionsInPrivateBrowsing;
         }
     }
 
@@ -748,20 +812,32 @@ public class GeckoViewActivity
         }
     }
 
-    private TabSession createSession() {
-        TabSession session = mTabSessionManager.newSession(new GeckoSessionSettings.Builder()
+    private TabSession createSession(final @Nullable String cookieStoreId) {
+        GeckoSessionSettings.Builder settingsBuilder = new GeckoSessionSettings.Builder();
+        settingsBuilder
                 .usePrivateMode(mUsePrivateBrowsing)
                 .fullAccessibilityTree(mFullAccessibilityTree)
+                .userAgentOverride(mUserAgentOverride)
                 .viewportMode(mDesktopMode
                         ? GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
                         : GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
                 .userAgentMode(mDesktopMode
                         ? GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
                         : GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
-                .build());
+                .useTrackingProtection(mUseTrackingProtection);
+
+        if (cookieStoreId != null) {
+            settingsBuilder.contextId(cookieStoreId);
+        }
+
+        TabSession session = mTabSessionManager.newSession(settingsBuilder.build());
         connectSession(session);
 
         return session;
+    }
+
+    private TabSession createSession() {
+        return createSession(null);
     }
 
     private void connectSession(GeckoSession session) {
@@ -937,8 +1013,11 @@ public class GeckoViewActivity
                 final WebExtensionController controller = sGeckoRuntime.getWebExtensionController();
                 controller.setPromptDelegate(sExtensionManager);
                 return controller.install(uri);
-            }).accept(extension ->
-                    sExtensionManager.registerExtension(extension));
+            }).then(extension ->
+                sGeckoRuntime.getWebExtensionController().setAllowedInPrivateBrowsing(
+                        extension, mAllowExtensionsInPrivateBrowsing)
+            ).accept(extension ->
+                sExtensionManager.registerExtension(extension));
         });
         builder.setNegativeButton(R.string.cancel, (dialog, which) -> {
             // Nothing to do
@@ -1585,7 +1664,19 @@ public class GeckoViewActivity
             Log.d(LOGTAG, "onLoadRequest=" + request.uri +
                   " triggerUri=" + request.triggerUri +
                   " where=" + request.target +
-                  " isRedirect=" + request.isRedirect);
+                  " isRedirect=" + request.isRedirect +
+                  " isDirectNavigation=" + request.isDirectNavigation);
+
+            return GeckoResult.fromValue(AllowOrDeny.ALLOW);
+        }
+
+        @Override
+        public GeckoResult<AllowOrDeny> onSubframeLoadRequest(final GeckoSession session,
+                                                              final LoadRequest request) {
+            Log.d(LOGTAG, "onSubframeLoadRequest=" + request.uri +
+                  " triggerUri=" + request.triggerUri +
+                  " isRedirect=" + request.isRedirect +
+                  "isDirectNavigation=" + request.isDirectNavigation);
 
             return GeckoResult.fromValue(AllowOrDeny.ALLOW);
         }

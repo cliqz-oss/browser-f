@@ -376,24 +376,24 @@ class ArrayIteratorObject : public NativeObject {
   static const JSClass class_;
 };
 
-ArrayIteratorObject* NewArrayIteratorObject(
-    JSContext* cx, NewObjectKind newKind = GenericObject);
+ArrayIteratorObject* NewArrayIteratorTemplate(JSContext* cx);
+ArrayIteratorObject* NewArrayIterator(JSContext* cx);
 
 class StringIteratorObject : public NativeObject {
  public:
   static const JSClass class_;
 };
 
-StringIteratorObject* NewStringIteratorObject(
-    JSContext* cx, NewObjectKind newKind = GenericObject);
+StringIteratorObject* NewStringIteratorTemplate(JSContext* cx);
+StringIteratorObject* NewStringIterator(JSContext* cx);
 
 class RegExpStringIteratorObject : public NativeObject {
  public:
   static const JSClass class_;
 };
 
-RegExpStringIteratorObject* NewRegExpStringIteratorObject(
-    JSContext* cx, NewObjectKind newKind = GenericObject);
+RegExpStringIteratorObject* NewRegExpStringIteratorTemplate(JSContext* cx);
+RegExpStringIteratorObject* NewRegExpStringIterator(JSContext* cx);
 
 MOZ_MUST_USE bool EnumerateProperties(JSContext* cx, HandleObject obj,
                                       MutableHandleIdVector props);

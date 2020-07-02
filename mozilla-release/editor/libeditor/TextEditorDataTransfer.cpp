@@ -6,10 +6,12 @@
 #include "mozilla/TextEditor.h"
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/HTMLEditor.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/SelectionState.h"
 #include "mozilla/TextControlElement.h"
 #include "mozilla/dom/DataTransfer.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/DragEvent.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/StaticRange.h"
@@ -85,6 +87,7 @@ nsresult TextEditor::PrepareTransferable(nsITransferable** aOutTransferable) {
 
 nsresult TextEditor::PrepareToInsertContent(
     const EditorDOMPoint& aPointToInsert, bool aDoDeleteSelection) {
+  // TODO: Move this method to `EditorBase`.
   MOZ_ASSERT(IsEditActionDataAvailable());
 
   MOZ_ASSERT(aPointToInsert.IsSet());
@@ -92,10 +95,11 @@ nsresult TextEditor::PrepareToInsertContent(
   EditorDOMPoint pointToInsert(aPointToInsert);
   if (aDoDeleteSelection) {
     AutoTrackDOMPoint tracker(RangeUpdaterRef(), &pointToInsert);
-    nsresult rv = DeleteSelectionAsSubAction(eNone, eStrip);
+    nsresult rv = DeleteSelectionAsSubAction(
+        nsIEditor::eNone,
+        IsTextEditor() ? nsIEditor::eNoStrip : nsIEditor::eStrip);
     if (NS_FAILED(rv)) {
-      NS_WARNING(
-          "TextEditor::DeleteSelectionAsSubAction(eNone, eStrip) failed");
+      NS_WARNING("EditorBase::DeleteSelectionAsSubAction(eNone) failed");
       return rv;
     }
   }
@@ -253,7 +257,7 @@ nsresult TextEditor::OnDrop(DragEvent* aDropEvent) {
       sourceNode->IsEditable() && srcdoc == document) {
     uint32_t rangeCount = SelectionRefPtr()->RangeCount();
     for (uint32_t j = 0; j < rangeCount; j++) {
-      nsRange* range = SelectionRefPtr()->GetRangeAt(j);
+      const nsRange* range = SelectionRefPtr()->GetRangeAt(j);
       if (NS_WARN_IF(!range)) {
         // don't bail yet, iterate through them all
         continue;
@@ -531,6 +535,7 @@ nsresult TextEditor::OnDrop(DragEvent* aDropEvent) {
 }
 
 nsresult TextEditor::DeleteSelectionByDragAsAction(bool aDispatchInputEvent) {
+  // TODO: Move this method to `EditorBase`.
   AutoRestore<bool> saveDispatchInputEvent(mDispatchInputEvent);
   mDispatchInputEvent = aDispatchInputEvent;
   // Even if we're handling "deleteByDrag" in same editor as "insertFromDrop",
@@ -551,12 +556,11 @@ nsresult TextEditor::DeleteSelectionByDragAsAction(bool aDispatchInputEvent) {
     treatAsOneTransaction.emplace(*this);
   }
 
-  rv = DeleteSelectionAsSubAction(eNone, eStrip);
-  if (NS_WARN_IF(Destroyed())) {
-    return NS_ERROR_EDITOR_DESTROYED;
-  }
+  rv = DeleteSelectionAsSubAction(nsIEditor::eNone, IsTextEditor()
+                                                        ? nsIEditor::eNoStrip
+                                                        : nsIEditor::eStrip);
   if (NS_FAILED(rv)) {
-    NS_WARNING("TextEditor::DeleteSelectionAsSubAction() failed");
+    NS_WARNING("EditorBase::DeleteSelectionAsSubAction(eNone) failed");
     return rv;
   }
 

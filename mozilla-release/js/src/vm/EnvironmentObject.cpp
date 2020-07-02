@@ -28,6 +28,7 @@
 #include "vm/JSAtom-inl.h"
 #include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
+#include "vm/ObjectGroup-inl.h"  // JSObject::setSingleton
 #include "vm/Stack-inl.h"
 #include "vm/TypeInference-inl.h"
 
@@ -85,7 +86,7 @@ template <typename T>
 static T* CreateEnvironmentObject(JSContext* cx, HandleShape shape,
                                   HandleObjectGroup group, gc::InitialHeap heap,
                                   IsSingletonEnv isSingleton) {
-  static_assert(std::is_base_of<EnvironmentObject, T>::value,
+  static_assert(std::is_base_of_v<EnvironmentObject, T>,
                 "T must be an EnvironmentObject");
 
   // All environment objects can be background-finalized.

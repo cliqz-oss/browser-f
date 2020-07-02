@@ -50,8 +50,6 @@ static inline bool BindingKindIsLexical(BindingKind kind) {
   return kind == BindingKind::Let || kind == BindingKind::Const;
 }
 
-enum class IsFieldInitializer : bool { No, Yes };
-
 static inline bool ScopeKindIsCatch(ScopeKind kind) {
   return kind == ScopeKind::SimpleCatch || kind == ScopeKind::Catch;
 }
@@ -245,8 +243,10 @@ class Scope : public js::gc::TenuredCell {
   friend class GCMarker;
   friend class frontend::ScopeCreationData;
 
+ protected:
   // The enclosing scope or nullptr.
-  const GCPtrScope enclosing_;
+  using HeaderWithScope = gc::CellHeaderWithTenuredGCPointer<Scope>;
+  HeaderWithScope headerAndEnclosingScope_;
 
   // The kind determines data_.
   const ScopeKind kind_;
@@ -255,11 +255,10 @@ class Scope : public js::gc::TenuredCell {
   // EnvironmentObject. Otherwise nullptr.
   const GCPtrShape environmentShape_;
 
- protected:
   BaseScopeData* data_;
 
   Scope(ScopeKind kind, Scope* enclosing, Shape* environmentShape)
-      : enclosing_(enclosing),
+      : headerAndEnclosingScope_(enclosing),
         kind_(kind),
         environmentShape_(environmentShape),
         data_(nullptr) {}
@@ -288,6 +287,7 @@ class Scope : public js::gc::TenuredCell {
       MutableHandle<UniquePtr<typename ConcreteScope::Data>> data);
 
   static const JS::TraceKind TraceKind = JS::TraceKind::Scope;
+  const gc::CellHeader& cellHeader() const { return headerAndEnclosingScope_; }
 
   template <typename T>
   bool is() const {
@@ -308,7 +308,7 @@ class Scope : public js::gc::TenuredCell {
 
   ScopeKind kind() const { return kind_; }
 
-  Scope* enclosing() const { return enclosing_; }
+  Scope* enclosing() const { return headerAndEnclosingScope_.ptr(); }
 
   Shape* environmentShape() const { return environmentShape_; }
 
@@ -325,7 +325,7 @@ class Scope : public js::gc::TenuredCell {
   }
 
   bool hasEnvironment() const {
-    return hasEnvironment(kind_, environmentShape_);
+    return hasEnvironment(kind_, environmentShape());
   }
 
   uint32_t chainLength() const;
@@ -369,7 +369,7 @@ class BaseScopeData {};
 
 template <class Data>
 inline size_t SizeOfData(uint32_t numBindings) {
-  static_assert(std::is_base_of<BaseScopeData, Data>::value,
+  static_assert(std::is_base_of_v<BaseScopeData, Data>,
                 "Data must be the correct sort of data, i.e. it must "
                 "inherit from BaseScopeData");
   return sizeof(Data) +
@@ -511,9 +511,6 @@ class FunctionScope : public Scope {
     // bindings.
     bool hasParameterExprs = false;
 
-    // Yes if the corresponding function is a field initializer lambda.
-    IsFieldInitializer isFieldInitializer = IsFieldInitializer::No;
-
     // Bindings are sorted by kind in both frames and environments.
     //
     // Positional formal parameter names are those that are not
@@ -558,7 +555,6 @@ class FunctionScope : public Scope {
   static bool prepareForScopeCreation(JSContext* cx,
                                       MutableHandle<UniquePtr<Data>> data,
                                       bool hasParameterExprs,
-                                      IsFieldInitializer isFieldInitializer,
                                       bool needsEnvironment, HandleFunction fun,
                                       ShapeType envShape);
 
@@ -579,10 +575,12 @@ class FunctionScope : public Scope {
                        HandleScope enclosing, MutableHandleScope scope);
 
  private:
-  static FunctionScope* createWithData(
-      JSContext* cx, MutableHandle<UniquePtr<Data>> data,
-      bool hasParameterExprs, IsFieldInitializer isFieldInitializer,
-      bool needsEnvironment, HandleFunction fun, HandleScope enclosing);
+  static FunctionScope* createWithData(JSContext* cx,
+                                       MutableHandle<UniquePtr<Data>> data,
+                                       bool hasParameterExprs,
+                                       bool needsEnvironment,
+                                       HandleFunction fun,
+                                       HandleScope enclosing);
 
   Data& data() { return *static_cast<Data*>(data_); }
 
@@ -596,10 +594,6 @@ class FunctionScope : public Scope {
   JSScript* script() const;
 
   bool hasParameterExprs() const { return data().hasParameterExprs; }
-
-  IsFieldInitializer isFieldInitializer() const {
-    return data().isFieldInitializer;
-  }
 
   uint32_t numPositionalFormalParameters() const {
     return data().nonPositionalFormalStart;

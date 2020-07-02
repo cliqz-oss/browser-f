@@ -1,7 +1,9 @@
 #![cfg_attr(feature = "unstable", feature(test))]
 
 mod lexer;
+pub mod numeric_value;
 mod parser;
+mod queue_stack;
 mod simulator;
 
 #[cfg(test)]
@@ -9,11 +11,13 @@ mod tests;
 
 extern crate jsparagus_ast as ast;
 extern crate jsparagus_generated_parser as generated_parser;
+extern crate jsparagus_json_log as json_log;
 
 use crate::parser::Parser;
 use ast::{
     arena,
     source_atom_set::SourceAtomSet,
+    source_slice_list::SourceSliceList,
     types::{Module, Script},
 };
 use bumpalo;
@@ -21,6 +25,7 @@ use generated_parser::{
     AstBuilder, StackValue, TerminalId, START_STATE_MODULE, START_STATE_SCRIPT, TABLES,
 };
 pub use generated_parser::{ParseError, Result};
+use json_log::json_debug;
 use lexer::Lexer;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -37,8 +42,12 @@ pub fn parse_script<'alloc>(
     source: &'alloc str,
     _options: &ParseOptions,
     atoms: Rc<RefCell<SourceAtomSet<'alloc>>>,
+    slices: Rc<RefCell<SourceSliceList<'alloc>>>,
 ) -> Result<'alloc, arena::Box<'alloc, Script<'alloc>>> {
-    Ok(parse(allocator, source, START_STATE_SCRIPT, atoms)?.to_ast()?)
+    json_debug!({
+        "parse": "script",
+    });
+    Ok(parse(allocator, source, START_STATE_SCRIPT, atoms, slices)?.to_ast()?)
 }
 
 pub fn parse_module<'alloc>(
@@ -46,8 +55,12 @@ pub fn parse_module<'alloc>(
     source: &'alloc str,
     _options: &ParseOptions,
     atoms: Rc<RefCell<SourceAtomSet<'alloc>>>,
+    slices: Rc<RefCell<SourceSliceList<'alloc>>>,
 ) -> Result<'alloc, arena::Box<'alloc, Module<'alloc>>> {
-    Ok(parse(allocator, source, START_STATE_MODULE, atoms)?.to_ast()?)
+    json_debug!({
+        "parse": "module",
+    });
+    Ok(parse(allocator, source, START_STATE_MODULE, atoms, slices)?.to_ast()?)
 }
 
 fn parse<'alloc>(
@@ -55,19 +68,20 @@ fn parse<'alloc>(
     source: &'alloc str,
     start_state: usize,
     atoms: Rc<RefCell<SourceAtomSet<'alloc>>>,
+    slices: Rc<RefCell<SourceSliceList<'alloc>>>,
 ) -> Result<'alloc, StackValue<'alloc>> {
-    let mut tokens = Lexer::new(allocator, source.chars(), atoms.clone());
+    let mut tokens = Lexer::new(allocator, source.chars(), atoms.clone(), slices.clone());
 
     TABLES.check();
 
-    let mut parser = Parser::new(AstBuilder::new(allocator, atoms), start_state);
+    let mut parser = Parser::new(AstBuilder::new(allocator, atoms, slices), start_state);
 
     loop {
         let t = tokens.next(&parser)?;
         if t.terminal_id == TerminalId::End {
             break;
         }
-        parser.write_token(&t)?;
+        parser.write_token(t)?;
     }
     parser.close(tokens.offset())
 }
@@ -76,18 +90,19 @@ pub fn is_partial_script<'alloc>(
     allocator: &'alloc bumpalo::Bump,
     source: &'alloc str,
     atoms: Rc<RefCell<SourceAtomSet<'alloc>>>,
+    slices: Rc<RefCell<SourceSliceList<'alloc>>>,
 ) -> Result<'alloc, bool> {
     let mut parser = Parser::new(
-        AstBuilder::new(allocator, atoms.clone()),
+        AstBuilder::new(allocator, atoms.clone(), slices.clone()),
         START_STATE_SCRIPT,
     );
-    let mut tokens = Lexer::new(allocator, source.chars(), atoms);
+    let mut tokens = Lexer::new(allocator, source.chars(), atoms, slices);
     loop {
         let t = tokens.next(&parser)?;
         if t.terminal_id == TerminalId::End {
             break;
         }
-        parser.write_token(&t)?;
+        parser.write_token(t)?;
     }
     Ok(!parser.can_close())
 }
