@@ -2290,17 +2290,7 @@ pref("services.settings.security.onecrl.checked", 0);
 // CLIQZ-SPECIAL: we do not support abuse report feature for now
 pref("extensions.abuseReport.enabled", false);
 // Allow AMO to handoff reports to the Firefox integrated dialog.
-<<<<<<< HEAD
 pref("extensions.abuseReport.amWebAPI.enabled", false);
-// Opened as a sub-frame of the about:addons page when set to false.
-pref("extensions.abuseReport.openDialog", true);
-||||||| merged common ancestors
-pref("extensions.abuseReport.amWebAPI.enabled", true);
-// Opened as a sub-frame of the about:addons page when set to false.
-pref("extensions.abuseReport.openDialog", true);
-=======
-pref("extensions.abuseReport.amWebAPI.enabled", true);
->>>>>>> origin/upstream-releases
 pref("extensions.abuseReport.url", "https://services.addons.mozilla.org/api/v4/abuse/report/addon/");
 pref("extensions.abuseReport.amoDetailsURL", "https://services.addons.mozilla.org/api/v4/addons/addon/");
 

@@ -52,13 +52,7 @@
 // For the HTTP User-Agent header, we use a simpler set of spoofed values
 // that do not reveal the specific desktop platform.
 #if defined(MOZ_WIDGET_ANDROID)
-<<<<<<< HEAD
-#define SPOOFED_HTTP_UA_OS      "Android 6.0; Mobile"
-||||||| merged common ancestors
-#  define SPOOFED_HTTP_UA_OS "Android 6.0; Mobile"
-=======
 #  define SPOOFED_HTTP_UA_OS "Android 9; Mobile"
->>>>>>> origin/upstream-releases
 #else
 #define SPOOFED_HTTP_UA_OS      "Windows NT 10.0"
 #endif

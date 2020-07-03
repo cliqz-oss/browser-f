@@ -277,14 +277,8 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["extensions.update.url", { what: RECORD_PREF_VALUE }],
   ["extensions.update.background.url", { what: RECORD_PREF_VALUE }],
   ["extensions.screenshots.disabled", { what: RECORD_PREF_VALUE }],
-<<<<<<< HEAD
   ["extensions.https_everywhere.globalEnabled", {what: RECORD_PREF_VALUE}],
-  ["fission.autostart", { what: RECORD_PREF_VALUE }],
-||||||| merged common ancestors
-  ["fission.autostart", { what: RECORD_PREF_VALUE }],
-=======
   ["fission.autostart", { what: RECORD_DEFAULTPREF_VALUE }],
->>>>>>> origin/upstream-releases
   ["general.config.filename", { what: RECORD_DEFAULTPREF_STATE }],
   ["general.smoothScroll", { what: RECORD_PREF_VALUE }],
   ["gfx.direct2d.disabled", { what: RECORD_PREF_VALUE }],

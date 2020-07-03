@@ -1088,46 +1088,14 @@
                        data-l10n-id="urlbar-page-action-button"
                        onmousedown="BrowserPageActions.mainButtonClicked(event);"
                        onkeypress="BrowserPageActions.mainButtonClicked(event);"/>
-<<<<<<< HEAD
 #ifdef 0
-                <hbox id="pocket-button-box"
-                      hidden="true"
-                      class="urlbar-icon-wrapper urlbar-page-action"
-                      onclick="BrowserPageActions.doCommandForAction(PageActions.actionForID('pocket'), event, this);">
-                  <image id="pocket-button"
-                         class="urlbar-icon"
-                         tooltiptext="&pocketButton.tooltiptext;"
-                         role="button"/>
-                  <hbox id="pocket-button-animatable-box">
-                    <image id="pocket-button-animatable-image"
-                           tooltiptext="&pocketButton.tooltiptext;"
-                           role="presentation"/>
-                  </hbox>
-                </hbox>
-#endif
-||||||| merged common ancestors
-                <hbox id="pocket-button-box"
-                      hidden="true"
-                      class="urlbar-icon-wrapper urlbar-page-action"
-                      onclick="BrowserPageActions.doCommandForAction(PageActions.actionForID('pocket'), event, this);">
-                  <image id="pocket-button"
-                         class="urlbar-icon"
-                         tooltiptext="&pocketButton.tooltiptext;"
-                         role="button"/>
-                  <hbox id="pocket-button-animatable-box">
-                    <image id="pocket-button-animatable-image"
-                           tooltiptext="&pocketButton.tooltiptext;"
-                           role="presentation"/>
-                  </hbox>
-                </hbox>
-=======
                 <image id="pocket-button"
                        class="urlbar-icon urlbar-page-action"
                        data-l10n-id="urlbar-pocket-button"
                        role="button"
                        hidden="true"
                        onclick="BrowserPageActions.doCommandForAction(PageActions.actionForID('pocket'), event, this);"/>
->>>>>>> origin/upstream-releases
+#endif
                 <hbox id="star-button-box"
                       hidden="true"
                       class="urlbar-icon-wrapper urlbar-page-action"

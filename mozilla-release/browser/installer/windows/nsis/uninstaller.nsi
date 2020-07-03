@@ -343,16 +343,6 @@ Section "Uninstall"
     ClearErrors
   ${EndIf}
 
-<<<<<<< HEAD
-  ; setup the application model id registration value
-  ${un.InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
-
-||||||| merged common ancestors
-  ; setup the application model id registration value
-  ${un.InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
-
-=======
->>>>>>> origin/upstream-releases
   SetShellVarContext current  ; Set SHCTX to HKCU
   ${un.RegCleanMain} "Software\CLIQZ"
   ${un.RegCleanPrefs} "Software\${AppName}"
@@ -386,19 +376,11 @@ Section "Uninstall"
     ${un.SetAppLSPCategories}
   ${EndIf}
 
-<<<<<<< HEAD
   ${un.RegCleanAppHandler} "CliqzURL-$AppUserModelID"
   ${un.RegCleanAppHandler} "CliqzHTML-$AppUserModelID"
-||||||| merged common ancestors
-  ${un.RegCleanAppHandler} "FirefoxURL-$AppUserModelID"
-  ${un.RegCleanAppHandler} "FirefoxHTML-$AppUserModelID"
-=======
-  ${un.RegCleanAppHandler} "FirefoxURL-$AppUserModelID"
-  ${un.RegCleanAppHandler} "FirefoxHTML-$AppUserModelID"
 !ifndef NIGHTLY_BUILD
   ; Keep the compile-time conditional synchronized with the
   ; "network.ftp.enabled" compile-time conditional.
->>>>>>> origin/upstream-releases
   ${un.RegCleanProtocolHandler} "ftp"
 !endif ; NIGHTLY_BUILD
   ${un.RegCleanProtocolHandler} "http"

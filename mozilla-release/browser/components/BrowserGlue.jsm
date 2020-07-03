@@ -758,21 +758,7 @@ XPCOMUtils.defineLazyGetter(
 // lazy module getters
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-<<<<<<< HEAD
-  AboutPrivateBrowsingHandler:
-    "resource:///modules/aboutpages/AboutPrivateBrowsingHandler.jsm",
-#if 0
-  AboutProtectionsHandler:
-    "resource:///modules/aboutpages/AboutProtectionsHandler.jsm",
-#endif
-||||||| merged common ancestors
-  AboutPrivateBrowsingHandler:
-    "resource:///modules/aboutpages/AboutPrivateBrowsingHandler.jsm",
-  AboutProtectionsHandler:
-    "resource:///modules/aboutpages/AboutProtectionsHandler.jsm",
-=======
   AboutCertViewerHandler: "resource://gre/modules/AboutCertViewerHandler.jsm",
->>>>>>> origin/upstream-releases
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
@@ -1931,18 +1917,10 @@ BrowserGlue.prototype = {
 
     AboutCertViewerHandler.init();
 
-<<<<<<< HEAD
-#if 0
-    AboutProtectionsHandler.init();
-#endif
-||||||| merged common ancestors
-    AboutProtectionsHandler.init();
-=======
     Services.telemetry.setEventRecordingEnabled(
       "security.ui.protections",
       true
     );
->>>>>>> origin/upstream-releases
 
     PageActions.init();
 
@@ -2191,17 +2169,7 @@ BrowserGlue.prototype = {
     SearchTelemetry.uninit();
     PageThumbs.uninit();
     NewTabUtils.uninit();
-<<<<<<< HEAD
-    AboutPrivateBrowsingHandler.uninit();
-#if 0
-    AboutProtectionsHandler.uninit();
-#endif
-||||||| merged common ancestors
-    AboutPrivateBrowsingHandler.uninit();
-    AboutProtectionsHandler.uninit();
-=======
     AboutCertViewerHandler.uninit();
->>>>>>> origin/upstream-releases
 
     Normandy.uninit();
     RFPHelper.uninit();
@@ -2238,11 +2206,6 @@ BrowserGlue.prototype = {
       }
     });
   },
-<<<<<<< HEAD
-#if 0
-||||||| merged common ancestors
-
-=======
 
   _monitorHTTPSOnlyPref() {
     const PREF_ENABLED = "dom.security.https_only_mode";
@@ -2296,7 +2259,7 @@ BrowserGlue.prototype = {
     _checkPioneerPref();
   },
 
->>>>>>> origin/upstream-releases
+#if 0
   _showNewInstallModal() {
     // Allow other observers of the same topic to run while we open the dialog.
     Services.tm.dispatchToMainThread(() => {
@@ -2605,26 +2568,6 @@ BrowserGlue.prototype = {
         },
       },
 
-<<<<<<< HEAD
-#if 0
-      // Marionette needs to be initialized as very last step
-      {
-        task: () => {
-          Services.obs.notifyObservers(null, "marionette-startup-requested");
-        },
-      },
-#endif
-
-||||||| merged common ancestors
-      // Marionette needs to be initialized as very last step
-      {
-        task: () => {
-          Services.obs.notifyObservers(null, "marionette-startup-requested");
-        },
-      },
-
-=======
->>>>>>> origin/upstream-releases
       // Run TRR performance measurements for DoH.
       {
         task: () => {
@@ -2652,7 +2595,7 @@ BrowserGlue.prototype = {
           }
         },
       },
-
+#if 0
       // Marionette needs to be initialized as very last step
       {
         task: () => {
@@ -2667,6 +2610,7 @@ BrowserGlue.prototype = {
           });
         },
       },
+#endif
       // Do NOT add anything after marionette initialization.
     ];
 
@@ -5094,11 +5038,11 @@ var DefaultBrowserCheck = {
             promptCount
           );
         }
-        
+
         if (promptCount > 3) {
           willPrompt = false;
         }
-        
+
       }
       */
     }

@@ -1008,47 +1008,22 @@ Search.prototype = {
     await this._checkPreloadedSitesExpiry();
     */
 
-<<<<<<< HEAD
-    // If the query is simply "@", then the results should be a list of all the
-    // search engines with "@" aliases, without a hueristic result.
-    if (this._enableAtSearch && this._trimmedOriginalSearchString == "@") {
-      let added = await this._addSearchEngineTokenAliasMatches();
-      if (added) {
-        this._autocompleteSearch.finishSearch(true);
-        return;
-      }
-||||||| merged common ancestors
-    // If the query is simply "@", then the results should be a list of all the
-    // search engines with "@" aliases, without a hueristic result.
-    if (this._trimmedOriginalSearchString == "@") {
-      let added = await this._addSearchEngineTokenAliasMatches();
-      if (added) {
-        this._autocompleteSearch.finishSearch(true);
-        return;
-      }
-=======
     // If the query is simply "@" and we have tokenAliasEngines then return
     // early. UrlbarProviderTokenAliasEngines will add engine results.
     let tokenAliasEngines = await PlacesSearchAutocompleteProvider.tokenAliasEngines();
-    if (this._trimmedOriginalSearchString == "@" && tokenAliasEngines.length) {
+    if (this._enableAtSearch &&
+        this._trimmedOriginalSearchString == "@" &&
+        tokenAliasEngines.length) {
       this._autocompleteSearch.finishSearch(true);
       return;
->>>>>>> origin/upstream-releases
     }
 
     // Add the first heuristic result, if any.  Set _addingHeuristicResult
     // to true so that when the result is added, "heuristic" can be included in
     // its style.
-<<<<<<< HEAD
-
     let hasHeuristic = false;
     /* CLIQZ-SPECIAL: we dont support heuristic search
-    this._addingHeuristicFirstMatch = true;
-||||||| merged common ancestors
-    this._addingHeuristicFirstMatch = true;
-=======
     this._addingHeuristicResult = true;
->>>>>>> origin/upstream-releases
     let hasHeuristic = await this._matchFirstHeuristicResult(conn);
     this._addingHeuristicResult = false;
     if (!this.pending) {
@@ -1106,72 +1081,6 @@ Search.prototype = {
     }
     */
 
-<<<<<<< HEAD
-    // Start adding search suggestions, unless they aren't required or the
-    // window is private.
-    let searchSuggestionsCompletePromise = Promise.resolve();
-
-    /* CLIQZ-SPECIAL: we dont support search engine search in toolbar
-    if (
-      this._enableActions &&
-      this.hasBehavior("search") &&
-      (!this._inPrivateWindow ||
-        UrlbarPrefs.get("browser.search.suggest.enabled.private"))
-    ) {
-      let query = this._searchEngineAliasMatch
-        ? this._searchEngineAliasMatch.query
-        : substringAt(this._originalSearchString, this._searchTokens[0].value);
-      if (query) {
-        // Limit the string sent for search suggestions to a maximum length.
-        query = query.substr(
-          0,
-          UrlbarPrefs.get("maxCharsForSearchSuggestions")
-        );
-        // Don't add suggestions if the query may expose sensitive information.
-        if (!this._prohibitSearchSuggestionsFor(query)) {
-          let engine;
-          if (this._searchEngineAliasMatch) {
-            engine = this._searchEngineAliasMatch.engine;
-          } else {
-            engine = this._engineName
-              ? Services.search.getEngineByName(this._engineName)
-              : await PlacesSearchAutocompleteProvider.currentEngine(
-                  this._inPrivateWindow
-                );
-            if (!this.pending || !engine) {
-              return;
-            }
-          }
-          let alias =
-            (this._searchEngineAliasMatch &&
-              this._searchEngineAliasMatch.alias) ||
-            "";
-          searchSuggestionsCompletePromise = this._matchSearchSuggestions(
-            engine,
-            query,
-            alias
-          );
-        }
-      }
-    }
-
-    // If the user used a search engine token alias, then the only results we
-    // want to show are suggestions from that engine, so we're done.  We're also
-    // done if we're restricting results to suggestions.
-    if (
-      (this._searchEngineAliasMatch &&
-        this._searchEngineAliasMatch.isTokenAlias) ||
-      (this._enableActions &&
-        this.hasBehavior("search") &&
-        this.hasBehavior("restrict"))
-    ) {
-      // Wait for the suggestions to be added.
-      await searchSuggestionsCompletePromise;
-      this._autocompleteSearch.finishSearch(true);
-      return;
-    }
-    */
-
     if (!this._disableAdaptive) {
       // Run the adaptive query first.
       await conn.executeCached(
@@ -1182,87 +1091,6 @@ Search.prototype = {
       if (!this.pending) {
         return;
       }
-||||||| merged common ancestors
-    // Start adding search suggestions, unless they aren't required or the
-    // window is private.
-    let searchSuggestionsCompletePromise = Promise.resolve();
-    if (
-      this._enableActions &&
-      this.hasBehavior("search") &&
-      (!this._inPrivateWindow ||
-        UrlbarPrefs.get("browser.search.suggest.enabled.private"))
-    ) {
-      let query = this._searchEngineAliasMatch
-        ? this._searchEngineAliasMatch.query
-        : substringAt(this._originalSearchString, this._searchTokens[0].value);
-      if (query) {
-        // Limit the string sent for search suggestions to a maximum length.
-        query = query.substr(
-          0,
-          UrlbarPrefs.get("maxCharsForSearchSuggestions")
-        );
-        // Don't add suggestions if the query may expose sensitive information.
-        if (!this._prohibitSearchSuggestionsFor(query)) {
-          let engine;
-          if (this._searchEngineAliasMatch) {
-            engine = this._searchEngineAliasMatch.engine;
-          } else {
-            engine = this._engineName
-              ? Services.search.getEngineByName(this._engineName)
-              : await PlacesSearchAutocompleteProvider.currentEngine(
-                  this._inPrivateWindow
-                );
-            if (!this.pending || !engine) {
-              return;
-            }
-          }
-          let alias =
-            (this._searchEngineAliasMatch &&
-              this._searchEngineAliasMatch.alias) ||
-            "";
-          searchSuggestionsCompletePromise = this._matchSearchSuggestions(
-            engine,
-            query,
-            alias
-          );
-        }
-      }
-    }
-
-    // If the user used a search engine token alias, then the only results we
-    // want to show are suggestions from that engine, so we're done.  We're also
-    // done if we're restricting results to suggestions.
-    if (
-      (this._searchEngineAliasMatch &&
-        this._searchEngineAliasMatch.isTokenAlias) ||
-      (this._enableActions &&
-        this.hasBehavior("search") &&
-        this.hasBehavior("restrict"))
-    ) {
-      // Wait for the suggestions to be added.
-      await searchSuggestionsCompletePromise;
-      this._autocompleteSearch.finishSearch(true);
-      return;
-    }
-
-    // Run the adaptive query first.
-    await conn.executeCached(
-      this._adaptiveQuery[0],
-      this._adaptiveQuery[1],
-      this._onResultRow.bind(this)
-    );
-    if (!this.pending) {
-      return;
-=======
-    // Run the adaptive query first.
-    await conn.executeCached(
-      this._adaptiveQuery[0],
-      this._adaptiveQuery[1],
-      this._onResultRow.bind(this)
-    );
-    if (!this.pending) {
-      return;
->>>>>>> origin/upstream-releases
     }
 
     /* CLIQZ-SPECIAL: we dont support remote tabs

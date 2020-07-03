@@ -44,30 +44,8 @@ tabpanels {
 .updateControls {
   margin-inline-start: 10px;
 }
-<<<<<<< HEAD
 
-%ifdef MOZ_SERVICES_SYNC
-/* ----- SYNC PANE ----- */
-
-#noFxaAccount {
-  line-height: 1.2em;
+#connectPrefs {
+  margin-right: 0; /*override margin from normal preferences.css */
+  margin-left: 0;
 }
-
-#noFxaAccount > label:first-child {
-  margin-bottom: 0.6em;
-}
-
-%endif
-||||||| merged common ancestors
-
-/* ----- SYNC PANE ----- */
-
-#noFxaAccount {
-  line-height: 1.2em;
-}
-
-#noFxaAccount > label:first-child {
-  margin-bottom: 0.6em;
-}
-=======
->>>>>>> origin/upstream-releases

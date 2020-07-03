@@ -729,20 +729,6 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
     }
   }
 
-<<<<<<< HEAD
-  /* CLIQZ-SPECIAL: remove recommended status
-  if (
-    addon.type === "extension" &&
-    !aLocation.isBuiltin &&
-    !aLocation.isTemporary
-  ) {
-    addon.recommendationState = await readRecommendationStates(
-      aPackage,
-      addon.id
-    );
-  }
-  */
-
   // CLIQZ-SPECIAL: enable/disable DAT extension.
   if (addon.id === 'dat@cliqz.com') {
     const isDatEnabled = Services.prefs.getBoolPref("extension.cliqz.dat.enabled", false);
@@ -752,20 +738,6 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
     }
   }
 
-||||||| merged common ancestors
-  if (
-    addon.type === "extension" &&
-    !aLocation.isBuiltin &&
-    !aLocation.isTemporary
-  ) {
-    addon.recommendationState = await readRecommendationStates(
-      aPackage,
-      addon.id
-    );
-  }
-
-=======
->>>>>>> origin/upstream-releases
   addon.propagateDisabledState(aOldAddon);
   if (!aLocation.isSystem && !aLocation.isBuiltin) {
     if (addon.type === "extension" && !aLocation.isTemporary) {

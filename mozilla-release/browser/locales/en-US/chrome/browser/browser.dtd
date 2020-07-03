@@ -202,20 +202,6 @@ this container is a toolbar. This avoids double-speaking. -->
     secondary commands. -->
 <!ENTITY moreMenu.label "More">
 
-<<<<<<< HEAD
-<!ENTITY urlbar.placeholder2          "Search Cliqz or enter URL">
-<!-- LOCALIZATION NOTE (urlbar.extension.label): Used to indicate that a selected autocomplete entry is provided by an extension. -->
-<!ENTITY urlbar.extension.label       "Extension:">
-<!ENTITY urlbar.switchToTab.label     "Switch to tab:">
-
-||||||| merged common ancestors
-<!ENTITY urlbar.placeholder2          "Search or enter address">
-<!-- LOCALIZATION NOTE (urlbar.extension.label): Used to indicate that a selected autocomplete entry is provided by an extension. -->
-<!ENTITY urlbar.extension.label       "Extension:">
-<!ENTITY urlbar.switchToTab.label     "Switch to tab:">
-
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY contentSearchSubmit.tooltip  "Submit search">
 
 <!-- LOCALIZATION NOTE (searchInput.placeholder):

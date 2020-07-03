@@ -25,16 +25,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
   UpdatePing: "resource://gre/modules/UpdatePing.jsm",
-<<<<<<< HEAD
-#if 0
-  RemotePages:
-    "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
-#endif
-||||||| merged common ancestors
-  RemotePages:
-    "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
-=======
->>>>>>> origin/upstream-releases
 });
 XPCOMUtils.defineLazyServiceGetter(
   this,
@@ -104,33 +94,7 @@ function resolveURIInternal(aCmdLine, aArgument) {
 }
 
 let gKiosk = false;
-<<<<<<< HEAD
-#if 0
-let gRemoteInstallPage = null;
 
-function getNewInstallPage() {
-  if (!gRemoteInstallPage) {
-    gRemoteInstallPage = new RemotePages(NEWINSTALL_PAGE);
-  }
-
-  return NEWINSTALL_PAGE;
-}
-#endif
-||||||| merged common ancestors
-
-let gRemoteInstallPage = null;
-
-function getNewInstallPage() {
-  if (!gRemoteInstallPage) {
-    gRemoteInstallPage = new RemotePages(NEWINSTALL_PAGE);
-  }
-
-  return NEWINSTALL_PAGE;
-}
-
-=======
-
->>>>>>> origin/upstream-releases
 var gFirstWindow = false;
 
 const OVERRIDE_NONE = 0;

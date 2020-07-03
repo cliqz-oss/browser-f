@@ -54,14 +54,8 @@
     "en-US": {
       "default": {
         "visibleDefaultEngines": [
-<<<<<<< HEAD
           "google", "amazondotcom", "bing", "ddg", "ebay", "twitter", "wikipedia", "leo_ende_de", "qwant", "yahoo",
           "ecosia", "gimages", "gmaps", "startpage", "youtube"
-||||||| merged common ancestors
-          "google-b-d", "amazondotcom", "bing", "ddg", "ebay", "twitter", "wikipedia"
-=======
-          "google-b-d", "amazondotcom", "bing", "ddg", "ebay", "wikipedia"
->>>>>>> origin/upstream-releases
         ]
       },
       "KZ": {

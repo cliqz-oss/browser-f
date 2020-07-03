@@ -8,16 +8,10 @@
 # having to create the same entry for each locale.
 
 [localization] @AB_CD@.jar:
-<<<<<<< HEAD
+  preview/pioneer.ftl                              (../components/pioneer/content/pioneer.ftl)
 #  preview/protections.ftl                          (../components/protections/content/protections.ftl)
 # CLIQZ-AFTER-MERGE: check whether we really need this ftl file?
 # It's being used in mozilla-release/browser/components//urlbar/UrlbarProviderInterventions.js
-||||||| merged common ancestors
-  preview/protections.ftl                          (../components/protections/content/protections.ftl)
-=======
-  preview/pioneer.ftl                              (../components/pioneer/content/pioneer.ftl)
-  preview/protections.ftl                          (../components/protections/content/protections.ftl)
->>>>>>> origin/upstream-releases
   preview/interventions.ftl                        (../components/urlbar/content/interventions.ftl)
   browser                                          (%browser/**/*.ftl)
 # locale/browser/cliqzPrivateBrowsing.ftl          (%chrome/browser/cliqzPrivateBrowsing.ftl)

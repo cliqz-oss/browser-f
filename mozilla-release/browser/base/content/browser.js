@@ -1900,7 +1900,6 @@ var gBrowserInit = {
 
     BrowserWindowTracker.track(window);
 
-<<<<<<< HEAD
     // CLIQZ-SPECIAL:
     // DB-1913: set blue theme initial state.
     // Since the method is trying to get access to DOM element
@@ -1908,16 +1907,9 @@ var gBrowserInit = {
     // onDOMContentLoaded event trigger is a good place to do that.
     setThemeState(getThemeInitialState());
 
-    gNavToolbox.palette = document.getElementById("BrowserToolbarPalette");
-    gNavToolbox.palette.remove();
-||||||| merged common ancestors
-    gNavToolbox.palette = document.getElementById("BrowserToolbarPalette");
-    gNavToolbox.palette.remove();
-=======
     gNavToolbox.palette = document.getElementById(
       "BrowserToolbarPalette"
     ).content;
->>>>>>> origin/upstream-releases
     let areas = CustomizableUI.areas;
     areas.splice(areas.indexOf(CustomizableUI.AREA_FIXED_OVERFLOW_PANEL), 1);
     for (let area of areas) {

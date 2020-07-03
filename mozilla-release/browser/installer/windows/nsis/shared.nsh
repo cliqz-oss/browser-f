@@ -193,7 +193,6 @@ ExecWait '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
 ; updated, but only if we're not the instance of PostUpdate that was started
 ; by the service, because this needs to run as the actual user. Also, don't do
 ; that if the installer was told not to register the agent task at all.
-<<<<<<< HEAD
 ;!ifdef MOZ_DEFAULT_BROWSER_AGENT
 ;${If} $TmpVal == "HKCU"
 ;  ClearErrors
@@ -201,39 +200,14 @@ ExecWait '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
 ;                    "DidRegisterDefaultBrowserAgent"
 ;  ${If} $0 != 0
 ;  ${OrIf} ${Errors}
-;    Exec '"$INSTDIR\default-browser-agent.exe" update-task $AppUserModelID'
+;    Exec '"$INSTDIR\default-browser-agent.exe" register-task $AppUserModelID'
 ;  ${EndIf}
+;${ElseIf} $TmpVal == "HKLM"
+;  ; If we're the privileged PostUpdate, make sure that the unprivileged one
+;  ; will have permission to create a task by clearing out the old one first.
+;  Exec '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
 ;${EndIf}
 ;!endif
-||||||| merged common ancestors
-!ifdef MOZ_DEFAULT_BROWSER_AGENT
-${If} $TmpVal == "HKCU"
-  ClearErrors
-  ReadRegDWORD $0 HKCU "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
-                    "DidRegisterDefaultBrowserAgent"
-  ${If} $0 != 0
-  ${OrIf} ${Errors}
-    Exec '"$INSTDIR\default-browser-agent.exe" update-task $AppUserModelID'
-  ${EndIf}
-${EndIf}
-!endif
-=======
-!ifdef MOZ_DEFAULT_BROWSER_AGENT
-${If} $TmpVal == "HKCU"
-  ClearErrors
-  ReadRegDWORD $0 HKCU "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
-                    "DidRegisterDefaultBrowserAgent"
-  ${If} $0 != 0
-  ${OrIf} ${Errors}
-    Exec '"$INSTDIR\default-browser-agent.exe" register-task $AppUserModelID'
-  ${EndIf}
-${ElseIf} $TmpVal == "HKLM"
-  ; If we're the privileged PostUpdate, make sure that the unprivileged one
-  ; will have permission to create a task by clearing out the old one first.
-  Exec '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
-${EndIf}
-!endif
->>>>>>> origin/upstream-releases
 
 !macroend
 !define PostUpdate "!insertmacro PostUpdate"
@@ -612,60 +586,30 @@ ${EndIf}
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationIcon" "$8,0"
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationName" "${BrandShortName}"
 
-<<<<<<< HEAD
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "CliqzHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".pdf"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".webp"  "CliqzHTML$2"
-||||||| merged common ancestors
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".webp"  "FirefoxHTML$2"
-=======
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".pdf"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".webp"  "FirefoxHTML$2"
->>>>>>> origin/upstream-releases
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 
-<<<<<<< HEAD
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "CliqzURL$2"
-||||||| merged common ancestors
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "FirefoxURL$2"
-=======
 !ifndef NIGHTLY_BUILD
   ; Keep the compile-time conditional synchronized with the
   ; "network.ftp.enabled" compile-time conditional.
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL$2"
 !else
   ; We don't delete and re-create the entire key, so we need to remove
   ; any existing registration.
   DeleteRegValue ${RegKey} "$0\Capabilities\URLAssociations" "ftp"
 !endif ; !NIGHTLY_BUILD
 
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "FirefoxURL$2"
->>>>>>> origin/upstream-releases
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "CliqzURL$2"
 
   WriteRegStr ${RegKey} "Software\RegisteredApplications" "$1" "$0\Capabilities"
 

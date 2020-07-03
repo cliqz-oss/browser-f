@@ -22,7 +22,6 @@ async function init(aEvent) {
 
   var distroId = Services.prefs.getCharPref("distribution.about", "");
   if (distroId) {
-<<<<<<< HEAD
     var distroString = distroId;
 
     var distroVersion = Services.prefs.getCharPref("distribution.version", "");
@@ -50,20 +49,6 @@ async function init(aEvent) {
     distroIdField.value += ` (${arch})`;
 
 #if 0
-||||||| merged common ancestors
-    var distroString = distroId;
-
-    var distroVersion = Services.prefs.getCharPref("distribution.version", "");
-    if (distroVersion) {
-      distroString += " - " + distroVersion;
-    }
-
-    var distroIdField = document.getElementById("distributionId");
-    distroIdField.value = distroString;
-    distroIdField.style.display = "block";
-
-=======
->>>>>>> origin/upstream-releases
     var distroAbout = Services.prefs.getStringPref("distribution.about", "");
     // If there is about text, we always show it.
     if (distroAbout) {
@@ -71,10 +56,6 @@ async function init(aEvent) {
       distroField.value = distroAbout;
       distroField.style.display = "block";
     }
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
     // If it's not a mozilla distribution, show the rest,
     // unless about text exists, then we always show.
     if (!distroId.startsWith("mozilla-") || distroAbout) {
@@ -90,7 +71,7 @@ async function init(aEvent) {
       distroIdField.value = distroId;
       distroIdField.style.display = "block";
     }
->>>>>>> origin/upstream-releases
+#endif
   }
 
 // Cliqz. We don't use "version" element in Cliqz browser at all

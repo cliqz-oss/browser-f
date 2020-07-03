@@ -14,30 +14,3 @@ body {
 .actionButtons {
   margin: 0 3px 6px;
 }
-<<<<<<< HEAD
-
-%ifdef MOZ_SERVICES_SYNC
-/* Sync Pane */
-
-#noFxaAccount {
-  line-height: 1.2em;
-}
-
-#noFxaAccount > label:first-child {
-  margin-bottom: 0.6em;
-}
-
-%endif
-||||||| merged common ancestors
-
-/* Sync Pane */
-
-#noFxaAccount {
-  line-height: 1.2em;
-}
-
-#noFxaAccount > label:first-child {
-  margin-bottom: 0.6em;
-}
-=======
->>>>>>> origin/upstream-releases

@@ -1136,7 +1136,6 @@ var Policies = {
       // |homepages| will be a string containing a pipe-separated ('|') list of
       // URLs because that is what the "Custom URLs..." section of about:preferences
       // (and therefore what the pref |browser.startup.homepage|) accepts.
-<<<<<<< HEAD
       // Cliqz. This part totally re-worked in Cliqz browser because we have
       // different Startup options, so we can not follow FF's settings at all.
       let homepages = "about:home";
@@ -1149,78 +1148,11 @@ var Policies = {
             if (param.URLs && param.URLs.length > 0) {
               homepages = param.URLs.map(url => url.href).join("|");
             }
-||||||| merged common ancestors
-      if (param.URL) {
-        let homepages = param.URL.href;
-        if (param.Additional && param.Additional.length) {
-          homepages += "|" + param.Additional.map(url => url.href).join("|");
-        }
-        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
-        if (param.Locked) {
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.current_page",
-            true
-          );
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.bookmark_page",
-            true
-          );
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.restore_default",
-            true
-          );
-        } else {
-          // Clear out old run once modification that is no longer used.
-          clearRunOnceModification("setHomepage");
-        }
-      }
-      if (param.StartPage) {
-        let prefValue;
-        switch (param.StartPage) {
-          case "none":
-            prefValue = 0;
-            break;
-          case "homepage":
-            prefValue = 1;
-=======
-      if ("URL" in param) {
-        let homepages = param.URL.href;
-        if (param.Additional && param.Additional.length) {
-          homepages += "|" + param.Additional.map(url => url.href).join("|");
-        }
-        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
-        if (param.Locked) {
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.current_page",
-            true
-          );
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.bookmark_page",
-            true
-          );
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.restore_default",
-            true
-          );
-        } else {
-          // Clear out old run once modification that is no longer used.
-          clearRunOnceModification("setHomepage");
-        }
-      }
-      if (param.StartPage) {
-        let prefValue;
-        switch (param.StartPage) {
-          case "homepage":
-          case "homepage-locked":
-          case "none":
-            prefValue = 1;
->>>>>>> origin/upstream-releases
             break;
           case "blank":
             homepages = "about:blank";
             break;
         }
-<<<<<<< HEAD
       }
 
       setDefaultPref("browser.startup.restoreTabs", param.RestoreLastSession, param.Locked);
@@ -1242,15 +1174,6 @@ var Policies = {
       } else {
         // Clear out old run once modification that is no longer used.
         clearRunOnceModification("setHomepage");
-||||||| merged common ancestors
-        setDefaultPref("browser.startup.page", prefValue, param.Locked);
-=======
-        setDefaultPref(
-          "browser.startup.page",
-          prefValue,
-          param.StartPage == "homepage-locked"
-        );
->>>>>>> origin/upstream-releases
       }
     },
   },

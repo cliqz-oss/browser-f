@@ -34,23 +34,9 @@ const { PersistentCache } = ChromeUtils.import(
   "resource://activity-stream/lib/PersistentCache.jsm"
 );
 
-ChromeUtils.defineModuleGetter(
-  this,
-<<<<<<< HEAD
-  "perfService",
-  "resource://activity-stream/common/PerfService.jsm"
-);
 #if 0
 ChromeUtils.defineModuleGetter(
   this,
-||||||| merged common ancestors
-  "perfService",
-  "resource://activity-stream/common/PerfService.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-=======
->>>>>>> origin/upstream-releases
   "pktApi",
   "chrome://pocket/content/pktApi.jsm"
 );

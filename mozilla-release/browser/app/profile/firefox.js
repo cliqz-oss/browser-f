@@ -323,9 +323,8 @@ pref("browser.urlbar.suggest.history",              true);
 pref("browser.urlbar.suggest.openpage",             true);
 #if 0
 pref("browser.urlbar.suggest.searches",             true);
-<<<<<<< HEAD
 #endif
-pref("browser.urlbar.suggest.searches",             false);
+pref("browser.urlbar.suggest.topsites",             true);
 
 /*
 // Whether the user made a choice in the old search suggestions opt-in bar.
@@ -337,23 +336,10 @@ pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 4);
 // CLIQZ-SPECIAL
 pref("browser.urlbar.userMadeSearchSuggestionsChoice", true);
 pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 0);
-||||||| merged common ancestors
-=======
-pref("browser.urlbar.suggest.topsites",             true);
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
-// suggestions.
-pref("browser.urlbar.maxCharsForSearchSuggestions", 20);
-||||||| merged common ancestors
-// Limit the number of characters sent to the current search engine to fetch
-// suggestions.
-pref("browser.urlbar.maxCharsForSearchSuggestions", 20);
-=======
 // As a user privacy measure, don't fetch search suggestions if a pasted string
 // is longer than this.
 pref("browser.urlbar.maxCharsForSearchSuggestions", 100);
->>>>>>> origin/upstream-releases
 
 pref("browser.urlbar.formatting.enabled", true);
 pref("browser.urlbar.trimURLs", true);
@@ -377,17 +363,6 @@ pref("browser.urlbar.richSuggestions.tail", false);
 pref("browser.urlbar.usepreloadedtopurls.enabled", false);
 pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
 
-<<<<<<< HEAD
-// Whether the quantum bar displays design update 1.
-pref("browser.urlbar.update1", false);
-// CLIQZ-SPECIAL: do not use megabar
-
-||||||| merged common ancestors
-// Whether the quantum bar displays design update 1.
-pref("browser.urlbar.update1", true);
-
-=======
->>>>>>> origin/upstream-releases
 // If true, we show actionable tips in the Urlbar when the user is searching
 // for those actions.
 pref("browser.urlbar.update1.interventions", false);
@@ -1411,19 +1386,9 @@ pref("browser.newtabpage.activity-stream.feeds.section.topstories", true);
 pref("trailhead.firstrun.branches", "join-dynamic");
 
 // Separate about welcome
-<<<<<<< HEAD
 pref("browser.aboutwelcome.enabled", false); // ALWAYS FALSE
-// See Console.jsm LOG_LEVELS for all possible values
-pref("browser.aboutwelcome.log", "warn");
-||||||| merged common ancestors
-pref("browser.aboutwelcome.enabled", true);
-// See Console.jsm LOG_LEVELS for all possible values
-pref("browser.aboutwelcome.log", "warn");
-=======
-pref("browser.aboutwelcome.enabled", true);
 // Used for switching simplified 3 cards welcome to multistage welcome
 pref("browser.aboutwelcome.overrideContent", "");
->>>>>>> origin/upstream-releases
 
 // The pref that controls if the What's New panel is enabled.
 pref("browser.messaging-system.whatsNewPanel.enabled", true);
@@ -1674,18 +1639,14 @@ pref("dom.storage_access.enabled", true);
 #if 0
 pref("browser.contentblocking.cryptomining.preferences.ui.enabled", true);
 pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", true);
-<<<<<<< HEAD
 #endif
 
 pref("browser.contentblocking.cryptomining.preferences.ui.enabled", false);
 pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", false);
-||||||| merged common ancestors
-=======
 #ifdef NIGHTLY_BUILD
   // Enable cookieBehavior = BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN as an option in the custom category ui
   pref("browser.contentblocking.reject-and-isolate-cookies.preferences.ui.enabled", true);
 #endif
->>>>>>> origin/upstream-releases
 
 // Possible values for browser.contentblocking.features.strict pref:
 //   Tracking Protection:
@@ -1875,16 +1836,6 @@ pref("signon.management.page.os-auth.enabled", true);
 pref("signon.management.page.os-auth.enabled", false);
 #endif
 pref("signon.management.page.breach-alerts.enabled", true);
-/* CLIQZ-SPECIAL: force use old password
-pref("signon.management.page.vulnerable-passwords.enabled", true);
-pref("signon.management.page.sort", "name");
-<<<<<<< HEAD
-pref("signon.management.overrideURI", "about:logins?filter=%DOMAIN%");
-*/
-||||||| merged common ancestors
-pref("signon.management.overrideURI", "about:logins?filter=%DOMAIN%");
-=======
->>>>>>> origin/upstream-releases
 // The utm_creative value is appended within the code (specific to the location on
 // where it is clicked). Be sure that if these two prefs are updated, that
 // the utm_creative param be last.

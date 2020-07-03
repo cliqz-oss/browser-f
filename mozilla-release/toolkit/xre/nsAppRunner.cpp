@@ -3444,22 +3444,18 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
     return 0;
   }
 
-<<<<<<< HEAD
-  if (CheckArg("migratepwdff")) {
-    ServiceMigratePasswordsFromFF(gArgc, gArgv);
-    *aExitFlag = true;
-    return 0;
-  }
-
-||||||| merged common ancestors
-=======
   if (CheckArg("full-version")) {
     DumpFullVersion();
     *aExitFlag = true;
     return 0;
   }
 
->>>>>>> origin/upstream-releases
+  if (CheckArg("migratepwdff")) {
+    ServiceMigratePasswordsFromFF(gArgc, gArgv);
+    *aExitFlag = true;
+    return 0;
+  }
+
   rv = XRE_InitCommandLine(gArgc, gArgv);
   NS_ENSURE_SUCCESS(rv, 1);
 

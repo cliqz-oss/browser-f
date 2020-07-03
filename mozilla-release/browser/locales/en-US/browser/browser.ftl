@@ -301,7 +301,7 @@ enable-devtools-popup-description = To use the F12 shortcut, first open DevTools
 ## URL Bar
 
 urlbar-default-placeholder =
-  .defaultPlaceholder = Search or enter address
+  .defaultPlaceholder = Search Cliqz or enter URL
 urlbar-placeholder =
   .placeholder = Search or enter address
 urlbar-remote-control-notification-anchor =

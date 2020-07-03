@@ -47,14 +47,8 @@ DIRS += [
 #   'pocket',
     'preferences',
     'privatebrowsing',
-<<<<<<< HEAD
-#   'protections',
-||||||| merged common ancestors
-    'protections',
-=======
     'prompts',
-    'protections',
->>>>>>> origin/upstream-releases
+#    'protections',
     'protocolhandler',
     'resistfingerprinting',
     'search',

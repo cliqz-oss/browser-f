@@ -300,7 +300,6 @@ ContentRestoreInternal.prototype = {
           csp,
         };
         webNavigation.loadURI(loadArguments.uri, loadURIOptions);
-<<<<<<< HEAD
       } else if (
         // CLIQZ-SPECIAL: DB-2481,
         // We should never run into that block of code in Cliqz;
@@ -316,19 +315,8 @@ ContentRestoreInternal.prototype = {
         // But the tab will show a page (=tabData.userTypedValue) where we have come
         // from to Youtube.
         false &&
-        tabData.userTypedValue &&
-        tabData.userTypedClear &&
-        !isRemotenessUpdate
+        tabData.userTypedValue && tabData.userTypedClear
       ) {
-||||||| merged common ancestors
-      } else if (
-        tabData.userTypedValue &&
-        tabData.userTypedClear &&
-        !isRemotenessUpdate
-      ) {
-=======
-      } else if (tabData.userTypedValue && tabData.userTypedClear) {
->>>>>>> origin/upstream-releases
         // If the user typed a URL into the URL bar and hit enter right before
         // we crashed, we want to start loading that page again. A non-zero
         // userTypedClear value means that the load had started.
