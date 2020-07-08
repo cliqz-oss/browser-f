@@ -362,6 +362,11 @@ class WindowsDllInterceptor final
     // NB: We intentionally leak mModule
   }
 
+  constexpr static uint32_t GetWorstCaseRequiredBytesToPatch() {
+    return WindowsDllDetourPatcherPrimitive<
+        typename VMPolicy::MMPolicyT>::GetWorstCaseRequiredBytesToPatch();
+  }
+
  private:
   /**
    * Hook/detour the method aName from the DLL we set in Init so that it calls
@@ -710,6 +715,33 @@ class MOZ_ONLY_USED_TO_AVOID_STATIC_CONSTRUCTORS
   INIT_ONCE mInitOnce;
   HMODULE mFromModule;  // never freed
   FuncPtrT mOrigFunc;
+};
+
+/**
+ * This class applies an irreversible patch to jump to a target function
+ * without backing up the original function.
+ */
+class WindowsDllEntryPointInterceptor final {
+  using DllMainFn = BOOL(WINAPI*)(HINSTANCE, DWORD, LPVOID);
+  using MMPolicyT = MMPolicyInProcessEarlyStage;
+
+  MMPolicyT mMMPolicy;
+
+ public:
+  explicit WindowsDllEntryPointInterceptor(
+      const MMPolicyT::Kernel32Exports& aK32Exports)
+      : mMMPolicy(aK32Exports) {}
+
+  bool Set(const nt::PEHeaders& aHeaders, DllMainFn aDestination) {
+    if (!aHeaders) {
+      return false;
+    }
+
+    WindowsDllDetourPatcherPrimitive<MMPolicyT> patcher;
+    return patcher.AddIrreversibleHook(
+        mMMPolicy, aHeaders.GetEntryPoint(),
+        reinterpret_cast<uintptr_t>(aDestination));
+  }
 };
 
 }  // namespace interceptor

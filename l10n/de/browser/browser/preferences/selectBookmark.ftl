@@ -5,4 +5,5 @@
 select-bookmark-window =
     .title = Startseite festlegen
     .style = width: 32em;
+
 select-bookmark-desc = Bitte wähle ein Lesezeichen als deine Startseite aus. Wenn du einen Ordner wählst, werden die Lesezeichen in diesem Ordner als Tabs geöffnet.

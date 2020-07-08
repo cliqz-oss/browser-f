@@ -16,6 +16,7 @@
 #include "jit/BaselineIC.h"
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
+#include "jit/IonScript.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitRealm.h"
 #include "jit/JitSpewer.h"
@@ -111,6 +112,7 @@ static void CloseLiveIteratorIon(JSContext* cx,
   MaybeReadFallback recover(cx, cx->activation()->asJit(), &frame.frame(),
                             MaybeReadFallback::Fallback_DoNothing);
   Value v = si.maybeRead(recover);
+  MOZ_RELEASE_ASSERT(v.isObject());
   RootedObject iterObject(cx, &v.toObject());
 
   if (isDestructuring) {
@@ -984,7 +986,7 @@ static void UpdateIonJSFrameForMinorGC(JSRuntime* rt,
        iter.more(); ++iter) {
     --spill;
     if (slotsRegs.has(*iter)) {
-      nursery.forwardBufferPointer(reinterpret_cast<HeapSlot**>(spill));
+      nursery.forwardBufferPointer(spill);
     }
   }
 
@@ -1001,8 +1003,7 @@ static void UpdateIonJSFrameForMinorGC(JSRuntime* rt,
 #endif
 
   while (safepoint.getSlotsOrElementsSlot(&entry)) {
-    HeapSlot** slots = reinterpret_cast<HeapSlot**>(layout->slotRef(entry));
-    nursery.forwardBufferPointer(slots);
+    nursery.forwardBufferPointer(layout->slotRef(entry));
   }
 }
 
@@ -1026,17 +1027,16 @@ static void TraceIonICCallFrame(JSTracer* trc, const JSJitFrameIter& frame) {
 }
 
 #ifdef JS_CODEGEN_MIPS32
-uint8_t* alignDoubleSpillWithOffset(uint8_t* pointer, int32_t offset) {
-  uint32_t address = reinterpret_cast<uint32_t>(pointer);
-  address = (address - offset) & ~(ABIStackAlignment - 1);
+uint8_t* alignDoubleSpill(uint8_t* pointer) {
+  uintptr_t address = reinterpret_cast<uintptr_t>(pointer);
+  address &= ~(ABIStackAlignment - 1);
   return reinterpret_cast<uint8_t*>(address);
 }
 
 static void TraceJitExitFrameCopiedArguments(JSTracer* trc,
                                              const VMFunctionData* f,
                                              ExitFooterFrame* footer) {
-  uint8_t* doubleArgs = reinterpret_cast<uint8_t*>(footer);
-  doubleArgs = alignDoubleSpillWithOffset(doubleArgs, sizeof(intptr_t));
+  uint8_t* doubleArgs = footer->alignedForABI();
   if (f->outParam == Type_Handle) {
     doubleArgs -= sizeof(Value);
   }
@@ -2174,6 +2174,9 @@ MachineState MachineState::FromBailout(RegisterDump::GPRArray& regs,
   for (unsigned i = 0; i < FloatRegisters::TotalSingle; i++) {
     machine.setRegisterLocation(FloatRegister(i, FloatRegister::Single),
                                 (double*)&fbase[i]);
+#  ifdef ENABLE_WASM_SIMD
+#    error "More care needed here"
+#  endif
   }
 #elif defined(JS_CODEGEN_MIPS32)
   for (unsigned i = 0; i < FloatRegisters::TotalPhys; i++) {
@@ -2181,6 +2184,9 @@ MachineState MachineState::FromBailout(RegisterDump::GPRArray& regs,
         FloatRegister::FromIndex(i, FloatRegister::Double), &fpregs[i]);
     machine.setRegisterLocation(
         FloatRegister::FromIndex(i, FloatRegister::Single), &fpregs[i]);
+#  ifdef ENABLE_WASM_SIMD
+#    error "More care needed here"
+#  endif
   }
 #elif defined(JS_CODEGEN_MIPS64)
   for (unsigned i = 0; i < FloatRegisters::TotalPhys; i++) {
@@ -2188,6 +2194,9 @@ MachineState MachineState::FromBailout(RegisterDump::GPRArray& regs,
                                 &fpregs[i]);
     machine.setRegisterLocation(FloatRegister(i, FloatRegisters::Single),
                                 &fpregs[i]);
+#  ifdef ENABLE_WASM_SIMD
+#    error "More care needed here"
+#  endif
   }
 #elif defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
   for (unsigned i = 0; i < FloatRegisters::TotalPhys; i++) {
@@ -2206,6 +2215,9 @@ MachineState MachineState::FromBailout(RegisterDump::GPRArray& regs,
     machine.setRegisterLocation(
         FloatRegister(FloatRegisters::Encoding(i), FloatRegisters::Double),
         &fpregs[i]);
+#  ifdef ENABLE_WASM_SIMD
+#    error "More care needed here"
+#  endif
   }
 
 #elif defined(JS_CODEGEN_NONE)

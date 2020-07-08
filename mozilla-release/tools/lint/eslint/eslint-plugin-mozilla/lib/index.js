@@ -26,6 +26,7 @@ module.exports = {
     jsm: require("../lib/environments/jsm.js"),
     simpletest: require("../lib/environments/simpletest.js"),
     privileged: require("../lib/environments/privileged.js"),
+    xpcshell: require("../lib/environments/xpcshell.js"),
   },
   processors: {
     ".xul": require("../lib/processors/xul"),
@@ -47,6 +48,7 @@ module.exports = {
     "no-compare-against-boolean-literals": require("../lib/rules/no-compare-against-boolean-literals"),
     "no-define-cc-etc": require("../lib/rules/no-define-cc-etc"),
     "no-task": require("../lib/rules/no-task"),
+    "no-throw-cr-literal": require("../lib/rules/no-throw-cr-literal"),
     "no-useless-parameters": require("../lib/rules/no-useless-parameters"),
     "no-useless-removeEventListener": require("../lib/rules/no-useless-removeEventListener"),
     "no-useless-run-test": require("../lib/rules/no-useless-run-test"),

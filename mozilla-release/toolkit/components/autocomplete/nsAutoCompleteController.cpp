@@ -427,13 +427,9 @@ nsAutoCompleteController::HandleKeyNavigation(uint32_t aKey, bool* _retval) {
       // the cursor to home/end on some systems
       *_retval = true;
       bool reverse = aKey == dom::KeyboardEvent_Binding::DOM_VK_UP ||
-                             aKey == dom::KeyboardEvent_Binding::DOM_VK_PAGE_UP
-                         ? true
-                         : false;
+                     aKey == dom::KeyboardEvent_Binding::DOM_VK_PAGE_UP;
       bool page = aKey == dom::KeyboardEvent_Binding::DOM_VK_PAGE_UP ||
-                          aKey == dom::KeyboardEvent_Binding::DOM_VK_PAGE_DOWN
-                      ? true
-                      : false;
+                  aKey == dom::KeyboardEvent_Binding::DOM_VK_PAGE_DOWN;
 
       // Fill in the value of the textbox with whatever is selected in the popup
       // if the completeSelectedIndex attribute is set.  We check this before
@@ -461,7 +457,7 @@ nsAutoCompleteController::HandleKeyNavigation(uint32_t aKey, bool* _retval) {
             // autofilled.  Else, fill the result and move the caret to the end.
             int32_t start;
             if (value.Equals(mPlaceholderCompletionString,
-                             nsCaseInsensitiveStringComparator())) {
+                             nsCaseInsensitiveStringComparator)) {
               start = mSearchString.Length();
               value = mPlaceholderCompletionString;
               SetValueOfInputTo(
@@ -521,7 +517,7 @@ nsAutoCompleteController::HandleKeyNavigation(uint32_t aKey, bool* _retval) {
           oldResult != nsIAutoCompleteResult::RESULT_FAILURE &&
           NS_SUCCEEDED(mResults[0]->GetSearchString(oldSearchString)) &&
           oldSearchString.Equals(mSearchString,
-                                 nsCaseInsensitiveStringComparator())) {
+                                 nsCaseInsensitiveStringComparator)) {
         if (mMatchCount) {
           OpenPopup();
         }
@@ -616,8 +612,7 @@ nsAutoCompleteController::HandleKeyNavigation(uint32_t aKey, bool* _retval) {
             suggestedValue = inputValue;
           }
 
-          if (value.Equals(suggestedValue,
-                           nsCaseInsensitiveStringComparator())) {
+          if (value.Equals(suggestedValue, nsCaseInsensitiveStringComparator)) {
             SetValueOfInputTo(
                 value, nsIAutoCompleteInput::TEXTVALUE_REASON_COMPLETEDEFAULT);
             input->SelectTextRange(value.Length(), value.Length());
@@ -686,7 +681,7 @@ nsAutoCompleteController::HandleDelete(bool* _retval) {
   input->GetSearchParam(search);
 
   // Clear the match in our result and in the DB.
-  result->RemoveValueAt(matchIndex, true);
+  result->RemoveValueAt(matchIndex);
   --mMatchCount;
 
   // We removed it, so make sure we cancel the event that triggered this call.
@@ -1050,7 +1045,7 @@ void nsAutoCompleteController::MaybeCompletePlaceholder() {
       selectionEnd == selectionStart &&
       selectionEnd == (int32_t)mSearchString.Length() &&
       StringBeginsWith(mPlaceholderCompletionString, mSearchString,
-                       nsCaseInsensitiveStringComparator());
+                       nsCaseInsensitiveStringComparator);
 
   if (usePlaceholderCompletion) {
     CompleteValue(mPlaceholderCompletionString);
@@ -1189,7 +1184,7 @@ nsresult nsAutoCompleteController::EnterMatch(bool aIsPopupSelection,
         GetResultValueAt(selectedIndex, true, value);
       } else if (mDefaultIndexCompleted &&
                  inputValue.Equals(mPlaceholderCompletionString,
-                                   nsCaseInsensitiveStringComparator())) {
+                                   nsCaseInsensitiveStringComparator)) {
         // We also need to fill-in the value if the default index completion was
         // confirmed, though we cannot use the selectedIndex cause the selection
         // may have been changed by the mouse in the meanwhile.
@@ -1245,7 +1240,7 @@ nsresult nsAutoCompleteController::EnterMatch(bool aIsPopupSelection,
             nsAutoString matchValue;
             result->GetValueAt(j, matchValue);
             if (suggestedValue.Equals(matchValue,
-                                      nsCaseInsensitiveStringComparator())) {
+                                      nsCaseInsensitiveStringComparator)) {
               nsAutoString finalMatchValue;
               result->GetFinalCompleteValueAt(j, finalMatchValue);
               value = finalMatchValue;
@@ -1478,7 +1473,7 @@ nsresult nsAutoCompleteController::CompleteDefaultIndex(int32_t aResultIndex) {
       selectionEnd == (int32_t)mPlaceholderCompletionString.Length() &&
       selectionStart == (int32_t)mSearchString.Length() &&
       StringBeginsWith(mPlaceholderCompletionString, mSearchString,
-                       nsCaseInsensitiveStringComparator());
+                       nsCaseInsensitiveStringComparator);
 
   // Don't try to automatically complete to the first result if there's already
   // a selection or the cursor isn't at the end of the input. In case the
@@ -1571,9 +1566,8 @@ nsresult nsAutoCompleteController::GetDefaultCompleteValue(int32_t aResultIndex,
 
   nsAutoString resultValue;
   result->GetValueAt(defaultIndex, resultValue);
-  if (aPreserveCasing &&
-      StringBeginsWith(resultValue, mSearchString,
-                       nsCaseInsensitiveStringComparator())) {
+  if (aPreserveCasing && StringBeginsWith(resultValue, mSearchString,
+                                          nsCaseInsensitiveStringComparator)) {
     // We try to preserve user casing, otherwise we would end up changing
     // the case of what he typed, if we have a result with a different casing.
     // For example if we have result "Test", and user starts writing "tuna",
@@ -1605,7 +1599,7 @@ nsresult nsAutoCompleteController::GetFinalDefaultCompleteValue(
   result->GetValueAt(defaultIndex, _retval);
   nsAutoString inputValue;
   input->GetTextValue(inputValue);
-  if (!_retval.Equals(inputValue, nsCaseInsensitiveStringComparator())) {
+  if (!_retval.Equals(inputValue, nsCaseInsensitiveStringComparator)) {
     return NS_ERROR_FAILURE;
   }
 
@@ -1629,9 +1623,8 @@ nsresult nsAutoCompleteController::CompleteValue(nsString& aValue)
   const int32_t mSearchStringLength = mSearchString.Length();
   int32_t endSelect = aValue.Length();  // By default, select all of aValue.
 
-  if (aValue.IsEmpty() ||
-      StringBeginsWith(aValue, mSearchString,
-                       nsCaseInsensitiveStringComparator())) {
+  if (aValue.IsEmpty() || StringBeginsWith(aValue, mSearchString,
+                                           nsCaseInsensitiveStringComparator)) {
     // aValue is empty (we were asked to clear mInput), or mSearchString
     // matches the beginning of aValue.  In either case we can simply
     // autocomplete to aValue.
@@ -1654,7 +1647,7 @@ nsresult nsAutoCompleteController::CompleteValue(nsString& aValue)
       if ((endSelect < findIndex + mSearchStringLength) ||
           !scheme.EqualsLiteral("http") ||
           !Substring(aValue, findIndex, mSearchStringLength)
-               .Equals(mSearchString, nsCaseInsensitiveStringComparator())) {
+               .Equals(mSearchString, nsCaseInsensitiveStringComparator)) {
         return NS_OK;
       }
 

@@ -359,8 +359,7 @@ impl BuiltDisplayList {
         BuiltDisplayList { data, descriptor }
     }
 
-    pub fn into_data(mut self) -> (Vec<u8>, BuiltDisplayListDescriptor) {
-        self.descriptor.send_start_time = precise_time_ns();
+    pub fn into_data(self) -> (Vec<u8>, BuiltDisplayListDescriptor) {
         (self.data, self.descriptor)
     }
 
@@ -378,6 +377,10 @@ impl BuiltDisplayList {
 
     pub fn descriptor(&self) -> &BuiltDisplayListDescriptor {
         &self.descriptor
+    }
+
+    pub fn set_send_time_ns(&mut self, time: u64) {
+        self.descriptor.send_start_time = time;
     }
 
     pub fn times(&self) -> (u64, u64, u64) {
@@ -435,10 +438,7 @@ impl BuiltDisplayList {
                     v,
                     item.iter.cur_clip_chain_items.iter().collect()
                 ),
-                Real::ScrollFrame(v) => Debug::ScrollFrame(
-                    v,
-                    item.iter.cur_complex_clip.iter().collect()
-                ),
+                Real::ScrollFrame(v) => Debug::ScrollFrame(v),
                 Real::Text(v) => Debug::Text(
                     v,
                     item.iter.cur_glyphs.iter().collect()
@@ -472,6 +472,9 @@ impl BuiltDisplayList {
                 Real::SetGradientStops => Debug::SetGradientStops(
                     item.iter.cur_stops.iter().collect()
                 ),
+                Real::RectClip(v) => Debug::RectClip(v),
+                Real::RoundedRectClip(v) => Debug::RoundedRectClip(v),
+                Real::ImageMaskClip(v) => Debug::ImageMaskClip(v),
                 Real::StickyFrame(v) => Debug::StickyFrame(v),
                 Real::Rectangle(v) => Debug::Rectangle(v),
                 Real::ClearRectangle(v) => Debug::ClearRectangle(v),
@@ -682,14 +685,9 @@ impl<'a> BuiltDisplayListIter<'a> {
                 self.cur_clip_chain_items = skip_slice::<di::ClipId>(&mut self.data);
                 self.debug_stats.log_slice("clip_chain.clip_ids", &self.cur_clip_chain_items);
             }
-            Clip(_) | ScrollFrame(_) => {
+            Clip(_) => {
                 self.cur_complex_clip = skip_slice::<di::ComplexClipRegion>(&mut self.data);
-                let name = if let Clip(_) = self.cur_item {
-                    "clip.complex_clips"
-                } else {
-                    "scroll_frame.complex_clips"
-                };
-                self.debug_stats.log_slice(name, &self.cur_complex_clip);
+                self.debug_stats.log_slice("clip.complex_clips", &self.cur_complex_clip);
             }
             Text(_) => {
                 self.cur_glyphs = skip_slice::<GlyphInstance>(&mut self.data);
@@ -850,10 +848,9 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
                     DisplayListBuilder::push_iter_impl(&mut temp, clip_chain_ids);
                     Real::ClipChain(v)
                 }
-                Debug::ScrollFrame(v, complex_clips) => {
+                Debug::ScrollFrame(v) => {
                     total_spatial_nodes += 1;
                     total_clip_nodes += 1;
-                    DisplayListBuilder::push_iter_impl(&mut temp, complex_clips);
                     Real::ScrollFrame(v)
                 }
                 Debug::StickyFrame(v) => {
@@ -897,7 +894,9 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
                     DisplayListBuilder::push_iter_impl(&mut temp, stops);
                     Real::SetGradientStops
                 },
-
+                Debug::RectClip(v) => Real::RectClip(v),
+                Debug::RoundedRectClip(v) => Real::RoundedRectClip(v),
+                Debug::ImageMaskClip(v) => Real::ImageMaskClip(v),
                 Debug::Rectangle(v) => Real::Rectangle(v),
                 Debug::ClearRectangle(v) => Real::ClearRectangle(v),
                 Debug::HitTest(v) => Real::HitTest(v),
@@ -934,7 +933,7 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
             descriptor: BuiltDisplayListDescriptor {
                 builder_start_time: 0,
                 builder_finish_time: 1,
-                send_start_time: 0,
+                send_start_time: 1,
                 total_clip_nodes,
                 total_spatial_nodes,
                 extra_data_offset,
@@ -1561,8 +1560,7 @@ impl DisplayListBuilder {
         filter_datas: &[di::FilterData],
         filter_primitives: &[di::FilterPrimitive],
         raster_space: di::RasterSpace,
-        cache_tiles: bool,
-        is_backdrop_root: bool,
+        flags: di::StackingContextFlags,
     ) {
         self.push_filters(filters, filter_datas, filter_primitives);
 
@@ -1575,8 +1573,7 @@ impl DisplayListBuilder {
                 mix_blend_mode,
                 clip_id,
                 raster_space,
-                cache_tiles,
-                is_backdrop_root,
+                flags,
             },
         });
 
@@ -1621,8 +1618,7 @@ impl DisplayListBuilder {
             filter_datas,
             filter_primitives,
             di::RasterSpace::Screen,
-            /* cache_tiles = */ false,
-            /* is_backdrop_root = */ false,
+            di::StackingContextFlags::empty(),
         );
     }
 
@@ -1697,21 +1693,15 @@ impl DisplayListBuilder {
         di::ClipChainId(self.next_clip_chain_id - 1, self.pipeline_id)
     }
 
-    pub fn define_scroll_frame<I>(
+    pub fn define_scroll_frame(
         &mut self,
         parent_space_and_clip: &di::SpaceAndClipInfo,
         external_id: Option<di::ExternalScrollId>,
         content_rect: LayoutRect,
         clip_rect: LayoutRect,
-        complex_clips: I,
-        image_mask: Option<di::ImageMask>,
         scroll_sensitivity: di::ScrollSensitivity,
         external_scroll_offset: LayoutVector2D,
-    ) -> di::SpaceAndClipInfo
-    where
-        I: IntoIterator<Item = di::ComplexClipRegion>,
-        I::IntoIter: ExactSizeIterator + Clone,
-    {
+    ) -> di::SpaceAndClipInfo {
         let clip_id = self.generate_clip_index();
         let scroll_frame_id = self.generate_spatial_index();
         let item = di::DisplayItem::ScrollFrame(di::ScrollFrameDisplayItem {
@@ -1721,13 +1711,11 @@ impl DisplayListBuilder {
             clip_id,
             scroll_frame_id,
             external_id,
-            image_mask,
             scroll_sensitivity,
             external_scroll_offset,
         });
 
         self.push_item(&item);
-        self.push_iter(complex_clips);
 
         di::SpaceAndClipInfo {
             spatial_id: scroll_frame_id,
@@ -1750,12 +1738,59 @@ impl DisplayListBuilder {
         id
     }
 
+    pub fn define_clip_image_mask(
+        &mut self,
+        parent_space_and_clip: &di::SpaceAndClipInfo,
+        image_mask: di::ImageMask,
+    ) -> di::ClipId {
+        let id = self.generate_clip_index();
+        let item = di::DisplayItem::ImageMaskClip(di::ImageMaskClipDisplayItem {
+            id,
+            parent_space_and_clip: *parent_space_and_clip,
+            image_mask,
+        });
+
+        self.push_item(&item);
+        id
+    }
+
+    pub fn define_clip_rect(
+        &mut self,
+        parent_space_and_clip: &di::SpaceAndClipInfo,
+        clip_rect: LayoutRect,
+    ) -> di::ClipId {
+        let id = self.generate_clip_index();
+        let item = di::DisplayItem::RectClip(di::RectClipDisplayItem {
+            id,
+            parent_space_and_clip: *parent_space_and_clip,
+            clip_rect,
+        });
+
+        self.push_item(&item);
+        id
+    }
+
+    pub fn define_clip_rounded_rect(
+        &mut self,
+        parent_space_and_clip: &di::SpaceAndClipInfo,
+        clip: di::ComplexClipRegion,
+    ) -> di::ClipId {
+        let id = self.generate_clip_index();
+        let item = di::DisplayItem::RoundedRectClip(di::RoundedRectClipDisplayItem {
+            id,
+            parent_space_and_clip: *parent_space_and_clip,
+            clip,
+        });
+
+        self.push_item(&item);
+        id
+    }
+
     pub fn define_clip<I>(
         &mut self,
         parent_space_and_clip: &di::SpaceAndClipInfo,
         clip_rect: LayoutRect,
         complex_clips: I,
-        image_mask: Option<di::ImageMask>,
     ) -> di::ClipId
     where
         I: IntoIterator<Item = di::ComplexClipRegion>,
@@ -1766,7 +1801,6 @@ impl DisplayListBuilder {
             id,
             parent_space_and_clip: *parent_space_and_clip,
             clip_rect,
-            image_mask,
         });
 
         self.push_item(&item);
@@ -1856,21 +1890,24 @@ impl DisplayListBuilder {
         debug_assert!(self.writing_to_chunk);
         self.writing_to_chunk = false;
 
-        if self.pending_chunk.len() > 0 {
-            self.flush_pending_item_group(key);
-            true
-        } else {
-            debug_assert!(self.pending_chunk.is_empty());
-            false
+        if self.pending_chunk.is_empty() {
+            return false;
         }
+
+        self.flush_pending_item_group(key);
+        true
     }
 
-    pub fn cancel_item_group(&mut self) {
+    pub fn cancel_item_group(&mut self, discard: bool) {
         debug_assert!(self.writing_to_chunk);
         self.writing_to_chunk = false;
 
-        // Push pending chunk to data section.
-        self.data.append(&mut self.pending_chunk);
+        if discard {
+            self.pending_chunk.clear();
+        } else {
+            // Push pending chunk to data section.
+            self.data.append(&mut self.pending_chunk);
+        }
     }
 
     pub fn push_reuse_items(&mut self, key: di::ItemKey) {
@@ -1919,7 +1956,7 @@ impl DisplayListBuilder {
                 descriptor: BuiltDisplayListDescriptor {
                     builder_start_time: self.builder_start_time,
                     builder_finish_time: end_time,
-                    send_start_time: 0,
+                    send_start_time: end_time,
                     total_clip_nodes: self.next_clip_index,
                     total_spatial_nodes: self.next_spatial_index,
                     cache_size: self.cache_size,

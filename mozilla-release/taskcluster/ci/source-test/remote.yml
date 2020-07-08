@@ -7,7 +7,8 @@ job-defaults:
         files-changed:
             - "remote/**"
     platform: linux64/opt
-    require-build: true
+    require-build:
+        linux64/opt: build-linux64/opt
     fetches:
         build:
             - target.tar.bz2
@@ -16,7 +17,7 @@ job-defaults:
     treeherder:
         kind: test
         tier: 2
-    worker-type: t-linux-xlarge
+    worker-type: t-linux-xlarge-source
     worker:
         docker-image: {in-tree: desktop1604-test}
         max-run-time: 1800
@@ -33,7 +34,7 @@ job-defaults:
 
 puppeteer:
     description: Puppeteer tests against Firefox CDP-based remote protocol
-    run-on-projects: ["mozilla-central", "try"]
+    run-on-projects: ["mozilla-central"]
     treeherder:
         symbol: remote(pup)
     run:
@@ -44,7 +45,7 @@ puppeteer:
 
 puppeteer-fis:
     description: Puppeteer tests against Firefox CDP-based remote protocol with Fission (site isolation) turned on
-    run-on-projects: ["try"]
+    run-on-projects: []
     treeherder:
         symbol: remote(pup-fis)
     run:

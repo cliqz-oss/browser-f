@@ -1117,17 +1117,17 @@ JS::Result<Ok> BinASTTokenReaderContext::readTreeFooter() {
   for (size_t i = 0; i < numLazy; i++) {
     BINJS_MOZ_TRY_DECL(len, readVarU32<Compression::No>());
     // Use sourceEnd as temporary space to store length of each script.
-    lazyScripts_[i]->setPositions(0, len, 0, len);
+    lazyScripts_[i]->setEnd(len);
   }
 
   for (size_t i = 0; i < numLazy; i++) {
     uint32_t begin = offset();
-    uint32_t len = lazyScripts_[i]->sourceEnd();
+    uint32_t len = lazyScripts_[i]->extent.sourceEnd;
 
     current_ += len;
 
-    lazyScripts_[0]->setPositions(begin, begin + len, begin, begin + len);
-    lazyScripts_[0]->setColumn(begin);
+    lazyScripts_[i]->setStart(begin, 0, begin);
+    lazyScripts_[i]->setEnd(begin + len);
   }
 
   return Ok();
@@ -1463,7 +1463,7 @@ BinASTTokenReaderContext::readSkippableSubTree(const FieldContext&) {
   return SkippableSubTree(0, 0);
 }
 
-JS::Result<Ok> BinASTTokenReaderContext::registerLazyScript(BaseScript* lazy) {
+JS::Result<Ok> BinASTTokenReaderContext::registerLazyScript(FunctionBox* lazy) {
   BINJS_TRY(lazyScripts_.append(lazy));
   return Ok();
 }
@@ -2166,7 +2166,7 @@ JS::Result<Ok> SingleLookupHuffmanTable::initComplete(
   // We can end up with empty tables, if this `SingleLookupHuffmanTable`
   // is used to store suffixes in a `MultiLookupHuffmanTable` and
   // the corresponding prefix is never used.
-  if (values_.size() == 0) {
+  if (values_.empty()) {
     MOZ_ASSERT(largestBitLength_ == 0);
     return Ok();
   }
@@ -2224,7 +2224,7 @@ JS::Result<Ok> SingleLookupHuffmanTable::addSymbol(size_t index, uint32_t bits,
 }
 
 HuffmanLookupResult SingleLookupHuffmanTable::lookup(HuffmanLookup key) const {
-  if (values_.size() == 0) {
+  if (values_.empty()) {
     // If the table is empty, any lookup fails.
     return HuffmanLookupResult::notFound();
   }

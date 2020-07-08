@@ -723,6 +723,9 @@ Download.prototype = {
    * or file extension, or with a custom application if launcherPath
    * is set.
    *
+   * @param options.openWhere  Optional string indicating how to open when handling
+   *                           download by opening the target file URI.
+   *                           One of "window", "tab", "tabshifted"
    * @return {Promise}
    * @resolves When the instruction to launch the file has been
    *           successfully given to the operating system. Note that
@@ -731,14 +734,14 @@ Download.prototype = {
    * @rejects  JavaScript exception if there was an error trying to launch
    *           the file.
    */
-  launch() {
+  launch(options = {}) {
     if (!this.succeeded) {
       return Promise.reject(
         new Error("launch can only be called if the download succeeded")
       );
     }
 
-    return DownloadIntegration.launchDownload(this);
+    return DownloadIntegration.launchDownload(this, options);
   },
 
   /*
@@ -1207,6 +1210,7 @@ const kPlainSerializableDownloadProperties = [
   "launcherPath",
   "launchWhenSucceeded",
   "contentType",
+  "handleInternally",
 ];
 
 /**
@@ -1428,8 +1432,10 @@ DownloadSource.fromSerializable = function(aSerializable) {
   } else {
     // Convert String objects to primitive strings at this point.
     source.url = aSerializable.url.toString();
-    if ("isPrivate" in aSerializable) {
-      source.isPrivate = aSerializable.isPrivate;
+    for (let propName of ["isPrivate", "userContextId", "browsingContextId"]) {
+      if (propName in aSerializable) {
+        source[propName] = aSerializable[propName];
+      }
     }
     if ("referrerInfo" in aSerializable) {
       // Quick pass, pass directly nsIReferrerInfo, we don't need to serialize

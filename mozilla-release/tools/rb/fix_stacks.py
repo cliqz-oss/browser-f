@@ -9,6 +9,7 @@
 
 from __future__ import absolute_import, print_function
 from subprocess import Popen, PIPE
+import atexit
 import os
 import platform
 import re
@@ -21,7 +22,7 @@ line_re = re.compile("#\d+: .+\[.+ \+0x[0-9A-Fa-f]+\]")
 fix_stacks = None
 
 
-def fixSymbols(line, jsonMode=False, slowWarning=False, breakpadSymsDir=None):
+def fixSymbols(line, jsonMode=False, slowWarning=False, breakpadSymsDir=None, hide_errors=False):
     global fix_stacks
 
     result = line_re.search(line)
@@ -59,7 +60,18 @@ def fixSymbols(line, jsonMode=False, slowWarning=False, breakpadSymsDir=None):
             args.append('-b')
             args.append(breakpadSymsDir + "," + fileid_exe)
 
-        fix_stacks = Popen(args, stdin=PIPE, stdout=PIPE, stderr=None)
+        # Sometimes we need to prevent errors from going to stderr.
+        stderr = open(os.devnull) if hide_errors else None
+
+        fix_stacks = Popen(args, stdin=PIPE, stdout=PIPE, stderr=stderr)
+
+        # Shut down the fix_stacks process on exit. We use `terminate()`
+        # because it is more forceful than `wait()`, and the Python docs warn
+        # about possible deadlocks with `wait()`.
+        def cleanup(fix_stacks):
+            fix_stacks.stdin.close()
+            fix_stacks.terminate()
+        atexit.register(cleanup, fix_stacks)
 
         if slowWarning:
             print("Initializing stack-fixing for the first stack frame, this may take a while...")

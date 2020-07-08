@@ -12,9 +12,13 @@ let pcs = Cc["@mozilla.org/parental-controls-service;1"].getService(
   Ci.nsIParentalControlsService
 );
 
-const TELEMETRY_CATEGORY = "doh";
+const gDNSService = Cc["@mozilla.org/network/dns-service;1"].getService(
+  Ci.nsIDNSService
+);
 
-const TELEMETRY_EVENTS = {
+const HEURISTICS_TELEMETRY_CATEGORY = "doh";
+
+const HEURISTICS_TELEMETRY_EVENTS = {
   evaluate: {
     methods: ["evaluate"],
     objects: ["heuristics"],
@@ -27,6 +31,7 @@ const TELEMETRY_EVENTS = {
       "browserParent",
       "thirdPartyRoots",
       "policy",
+      "steeredProvider",
       "evaluateReason",
     ],
     record_on_release: true,
@@ -59,14 +64,14 @@ this.heuristics = class heuristics extends ExtensionAPI {
           setupTelemetry() {
             // Set up the Telemetry for the heuristics and addon state
             Services.telemetry.registerEvents(
-              TELEMETRY_CATEGORY,
-              TELEMETRY_EVENTS
+              HEURISTICS_TELEMETRY_CATEGORY,
+              HEURISTICS_TELEMETRY_EVENTS
             );
           },
 
           sendHeuristicsPing(decision, results) {
             Services.telemetry.recordEvent(
-              TELEMETRY_CATEGORY,
+              HEURISTICS_TELEMETRY_CATEGORY,
               "evaluate",
               "heuristics",
               decision,
@@ -74,9 +79,13 @@ this.heuristics = class heuristics extends ExtensionAPI {
             );
           },
 
+          setDetectedTrrURI(uri) {
+            gDNSService.setDetectedTrrURI(uri);
+          },
+
           sendStatePing(state) {
             Services.telemetry.recordEvent(
-              TELEMETRY_CATEGORY,
+              HEURISTICS_TELEMETRY_CATEGORY,
               "state",
               state,
               "null"
@@ -106,6 +115,10 @@ this.heuristics = class heuristics extends ExtensionAPI {
           },
 
           async checkParentalControls() {
+            if (Cu.isInAutomation) {
+              return "enable_doh";
+            }
+
             if (pcs.parentalControlsEnabled) {
               return "disable_doh";
             }
@@ -113,6 +126,10 @@ this.heuristics = class heuristics extends ExtensionAPI {
           },
 
           async checkThirdPartyRoots() {
+            if (Cu.isInAutomation) {
+              return "enable_doh";
+            }
+
             let certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
               Ci.nsIX509CertDB
             );

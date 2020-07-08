@@ -1,50 +1,20 @@
-/* Any copyright is dedicated to the Public Domain.
- * http://creativecommons.org/publicdomain/zero/1.0/ */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 /**
  * Tests that chrome debugging works.
  */
 
-var gClient, gThreadFront;
-var gNewChromeSource = promise.defer();
+let gClient, gThreadFront;
+let gNewChromeSource = promise.defer();
 
-var { DevToolsLoader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
-var customLoader = new DevToolsLoader({
+let { DevToolsLoader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
+let customLoader = new DevToolsLoader({
   invisibleToDebugger: true,
 });
-var { DevToolsServer } = customLoader.require("devtools/server/devtools-server");
-var { DevToolsClient } = require("devtools/client/devtools-client");
-
-function initDevToolsClient() {
-  DevToolsServer.init();
-  DevToolsServer.registerAllActors();
-  DevToolsServer.allowChromeProcess = true;
-
-  let transport = DevToolsServer.connectPipe();
-  return new DevToolsClient(transport);
-}
-
-function onNewSource(packet) {
-  if (packet.source.url == "http://foo.com") {
-    ok(true, "Received the custom script source: " + packet.source.url);
-    gThreadFront.off("newSource", onNewSource);
-    gNewChromeSource.resolve();
-  }
-}
-
-async function resumeAndCloseConnection() {
-  await gThreadFront.resume();
-  return gClient.close();
-}
-
-registerCleanupFunction(function() {
-  gClient = null;
-  gThreadFront = null;
-  gNewChromeSource = null;
-
-  customLoader = null;
-  DevToolsServer = null;
-});
+let { DevToolsServer } = customLoader.require("devtools/server/devtools-server");
+let { DevToolsClient } = require("devtools/client/devtools-client");
 
 add_task(async function() {
   gClient = initDevToolsClient();
@@ -72,4 +42,35 @@ add_task(async function() {
   await gNewChromeSource.promise;
 
   await resumeAndCloseConnection();
+});
+
+function initDevToolsClient() {
+  DevToolsServer.init();
+  DevToolsServer.registerAllActors();
+  DevToolsServer.allowChromeProcess = true;
+
+  let transport = DevToolsServer.connectPipe();
+  return new DevToolsClient(transport);
+}
+
+function onNewSource(packet) {
+  if (packet.source.url == "http://foo.com/") {
+    ok(true, "Received the custom script source: " + packet.source.url);
+    gThreadFront.off("newSource", onNewSource);
+    gNewChromeSource.resolve();
+  }
+}
+
+async function resumeAndCloseConnection() {
+  await gThreadFront.resume();
+  return gClient.close();
+}
+
+registerCleanupFunction(function() {
+  gClient = null;
+  gThreadFront = null;
+  gNewChromeSource = null;
+
+  customLoader = null;
+  DevToolsServer = null;
 });

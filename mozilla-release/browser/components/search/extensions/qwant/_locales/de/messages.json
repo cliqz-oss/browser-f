@@ -9,7 +9,7 @@
     "message": "https://www.qwant.com/?client=opensearch&q={searchTerms}&l=de&r=DE&sr=de"
   },
   "searchForm": {
-    "message": "https://www.qwant.com?client=opensearch&q={searchTerms}&l=de&r=DE&sr=de"
+    "message": "https://www.qwant.com/"
   },
   "suggestUrl": {
     "message": "https://api.qwant.com/api/suggest/"

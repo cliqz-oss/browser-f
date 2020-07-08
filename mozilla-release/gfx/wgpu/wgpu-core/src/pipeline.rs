@@ -4,11 +4,14 @@
 
 use crate::{
     device::RenderPassContext,
-    id::{PipelineLayoutId, ShaderModuleId},
-    RawString,
-    U32Array
+    id::{DeviceId, PipelineLayoutId, ShaderModuleId},
+    LifeGuard, RawString, RefCount, Stored, U32Array,
 };
-use wgt::{BufferAddress, ColorStateDescriptor, DepthStencilStateDescriptor, IndexFormat, InputStepMode, PrimitiveTopology, RasterizationStateDescriptor, VertexAttributeDescriptor};
+use std::borrow::Borrow;
+use wgt::{
+    BufferAddress, ColorStateDescriptor, DepthStencilStateDescriptor, IndexFormat, InputStepMode,
+    PrimitiveTopology, RasterizationStateDescriptor, VertexAttributeDescriptor,
+};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -33,6 +36,12 @@ pub struct ShaderModuleDescriptor {
     pub code: U32Array,
 }
 
+#[derive(Debug)]
+pub struct ShaderModule<B: hal::Backend> {
+    pub(crate) raw: B::ShaderModule,
+    pub(crate) device_id: Stored<DeviceId>,
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct ProgrammableStageDescriptor {
@@ -50,7 +59,15 @@ pub struct ComputePipelineDescriptor {
 #[derive(Debug)]
 pub struct ComputePipeline<B: hal::Backend> {
     pub(crate) raw: B::ComputePipeline,
-    pub(crate) layout_id: PipelineLayoutId,
+    pub(crate) layout_id: Stored<PipelineLayoutId>,
+    pub(crate) device_id: Stored<DeviceId>,
+    pub(crate) life_guard: LifeGuard,
+}
+
+impl<B: hal::Backend> Borrow<RefCount> for ComputePipeline<B> {
+    fn borrow(&self) -> &RefCount {
+        self.life_guard.ref_count.as_ref().unwrap()
+    }
 }
 
 #[repr(C)]
@@ -81,10 +98,18 @@ bitflags::bitflags! {
 #[derive(Debug)]
 pub struct RenderPipeline<B: hal::Backend> {
     pub(crate) raw: B::GraphicsPipeline,
-    pub(crate) layout_id: PipelineLayoutId,
+    pub(crate) layout_id: Stored<PipelineLayoutId>,
+    pub(crate) device_id: Stored<DeviceId>,
     pub(crate) pass_context: RenderPassContext,
     pub(crate) flags: PipelineFlags,
     pub(crate) index_format: IndexFormat,
     pub(crate) sample_count: u8,
     pub(crate) vertex_strides: Vec<(BufferAddress, InputStepMode)>,
+    pub(crate) life_guard: LifeGuard,
+}
+
+impl<B: hal::Backend> Borrow<RefCount> for RenderPipeline<B> {
+    fn borrow(&self) -> &RefCount {
+        self.life_guard.ref_count.as_ref().unwrap()
+    }
 }

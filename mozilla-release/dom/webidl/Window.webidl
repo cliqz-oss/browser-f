@@ -502,10 +502,7 @@ partial interface Window {
                                                optional DOMString options = "",
                                                any... extraArguments);
 
-  [
-#ifdef NIGHTLY_BUILD
-   ChromeOnly,
-#endif
+  [Func="nsGlobalWindowInner::ContentPropertyEnabled",
    NonEnumerable, Replaceable, Throws, NeedsCallerType]
   readonly attribute object? content;
 
@@ -538,9 +535,6 @@ partial interface Window {
   [Constant, Throws, ChromeOnly]
   readonly attribute nsIDOMWindowUtils windowUtils;
 
-  [ChromeOnly]
-  readonly attribute boolean hasOpenerForInitialContentBrowser;
-
   [Pure, ChromeOnly]
   readonly attribute WindowGlobalChild? windowGlobalChild;
 };
@@ -560,8 +554,9 @@ partial interface Window {
 
 #ifdef HAVE_SIDEBAR
 // Mozilla extension
+// Sidebar is deprecated and it will be removed in the next cycles. See bug 1640138.
 partial interface Window {
-  [Replaceable, Throws, UseCounter, Pref="dom.sidebar.enabled"]
+  [Replaceable, Throws, UseCounter]
   readonly attribute (External or WindowProxy) sidebar;
 };
 #endif
@@ -611,9 +606,9 @@ partial interface Window {
   [Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
   void                      restore();
   [Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
-  long                      getWorkspaceID();
+  DOMString                 getWorkspaceID();
   [Func="nsGlobalWindowInner::IsPrivilegedChromeWindow"]
-  void                      moveToWorkspace(long workspaceID);
+  void                      moveToWorkspace(DOMString workspaceID);
 
   /**
    * Notify a default button is loaded on a dialog or a wizard.

@@ -311,6 +311,8 @@ static bool EvalKernel(JSContext* cx, HandleValue v, EvalType evalType,
       options.setFileAndLine("eval", 1);
       options.setIntroductionType("eval");
     }
+    options.setNonSyntacticScope(
+        enclosing->hasOnChain(ScopeKind::NonSyntactic));
 
     AutoStableStringChars linearChars(cx);
     if (!linearChars.initTwoByte(cx, linearStr)) {
@@ -328,15 +330,17 @@ static bool EvalKernel(JSContext* cx, HandleValue v, EvalType evalType,
     }
 
     LifoAllocScope allocScope(&cx->tempLifoAlloc());
-    frontend::CompilationInfo compilationInfo(cx, allocScope, options);
+    frontend::CompilationInfo compilationInfo(cx, allocScope, options,
+                                              enclosing, env);
     if (!compilationInfo.init(cx)) {
       return false;
     }
-
-    frontend::EvalSharedContext evalsc(cx, env, compilationInfo, enclosing,
-                                       compilationInfo.directives);
+    uint32_t len = srcBuf.length();
+    SourceExtent extent = SourceExtent::makeGlobalExtent(len);
+    frontend::EvalSharedContext evalsc(cx, compilationInfo, enclosing,
+                                       compilationInfo.directives, extent);
     RootedScript compiled(
-        cx, frontend::CompileEvalScript(compilationInfo, evalsc, env, srcBuf));
+        cx, frontend::CompileEvalScript(compilationInfo, evalsc, srcBuf));
     if (!compiled) {
       return false;
     }
@@ -344,10 +348,14 @@ static bool EvalKernel(JSContext* cx, HandleValue v, EvalType evalType,
     esg.setNewScript(compiled);
   }
 
-  // Look up the newTarget from the frame iterator.
-  Value newTargetVal = NullValue();
-  return ExecuteKernel(cx, esg.script(), *env, newTargetVal,
-                       NullFramePtr() /* evalInFrame */, vp.address());
+  // If this is a direct eval we need to use the caller's newTarget.
+  RootedValue newTargetVal(cx);
+  if (esg.script()->isDirectEvalInFunction()) {
+    newTargetVal = caller.newTarget();
+  }
+
+  return ExecuteKernel(cx, esg.script(), env, newTargetVal,
+                       NullFramePtr() /* evalInFrame */, vp);
 }
 
 bool js::DirectEvalStringFromIon(JSContext* cx, HandleObject env,
@@ -410,6 +418,8 @@ bool js::DirectEvalStringFromIon(JSContext* cx, HandleObject env,
       options.setFileAndLine("eval", 1);
       options.setIntroductionType("eval");
     }
+    options.setNonSyntacticScope(
+        enclosing->hasOnChain(ScopeKind::NonSyntactic));
 
     AutoStableStringChars linearChars(cx);
     if (!linearChars.initTwoByte(cx, linearStr)) {
@@ -427,15 +437,18 @@ bool js::DirectEvalStringFromIon(JSContext* cx, HandleObject env,
     }
 
     LifoAllocScope allocScope(&cx->tempLifoAlloc());
-    frontend::CompilationInfo compilationInfo(cx, allocScope, options);
+    frontend::CompilationInfo compilationInfo(cx, allocScope, options,
+                                              enclosing, env);
     if (!compilationInfo.init(cx)) {
       return false;
     }
 
-    frontend::EvalSharedContext evalsc(cx, env, compilationInfo, enclosing,
-                                       compilationInfo.directives);
+    uint32_t len = srcBuf.length();
+    SourceExtent extent = SourceExtent::makeGlobalExtent(len);
+    frontend::EvalSharedContext evalsc(cx, compilationInfo, enclosing,
+                                       compilationInfo.directives, extent);
     JSScript* compiled =
-        frontend::CompileEvalScript(compilationInfo, evalsc, env, srcBuf);
+        frontend::CompileEvalScript(compilationInfo, evalsc, srcBuf);
     if (!compiled) {
       return false;
     }
@@ -443,8 +456,8 @@ bool js::DirectEvalStringFromIon(JSContext* cx, HandleObject env,
     esg.setNewScript(compiled);
   }
 
-  return ExecuteKernel(cx, esg.script(), *env, newTargetValue,
-                       NullFramePtr() /* evalInFrame */, vp.address());
+  return ExecuteKernel(cx, esg.script(), env, newTargetValue,
+                       NullFramePtr() /* evalInFrame */, vp);
 }
 
 bool js::IndirectEval(JSContext* cx, unsigned argc, Value* vp) {
@@ -494,8 +507,8 @@ static bool ExecuteInExtensibleLexicalEnvironment(JSContext* cx,
   }
 
   RootedValue rval(cx);
-  return ExecuteKernel(cx, script, *env, UndefinedValue(),
-                       NullFramePtr() /* evalInFrame */, rval.address());
+  return ExecuteKernel(cx, script, env, UndefinedHandleValue,
+                       NullFramePtr() /* evalInFrame */, &rval);
 }
 
 JS_FRIEND_API bool js::ExecuteInFrameScriptEnvironment(

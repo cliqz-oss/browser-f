@@ -200,8 +200,12 @@ ExecWait '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
 ;                    "DidRegisterDefaultBrowserAgent"
 ;  ${If} $0 != 0
 ;  ${OrIf} ${Errors}
-;    Exec '"$INSTDIR\default-browser-agent.exe" update-task $AppUserModelID'
+;    Exec '"$INSTDIR\default-browser-agent.exe" register-task $AppUserModelID'
 ;  ${EndIf}
+;${ElseIf} $TmpVal == "HKLM"
+;  ; If we're the privileged PostUpdate, make sure that the unprivileged one
+;  ; will have permission to create a task by clearing out the old one first.
+;  Exec '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
 ;${EndIf}
 ;!endif
 
@@ -505,7 +509,11 @@ ExecWait '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
   ; An empty string is used for the 4th & 5th params because the following
   ; protocol handlers already have a display name and the additional keys
   ; required for a protocol handler.
+!ifndef NIGHTLY_BUILD
+  ; Keep the compile-time conditional synchronized with the
+  ; "network.ftp.enabled" compile-time conditional.
   ${AddDisabledDDEHandlerValues} "ftp" "$2" "$8,1" "" ""
+!endif ; !NIGHTLY_BUILD
   ${AddDisabledDDEHandlerValues} "http" "$2" "$8,1" "" ""
   ${AddDisabledDDEHandlerValues} "https" "$2" "$8,1" "" ""
   ${AddDisabledDDEHandlerValues} "mailto" "$2" "$8,1" "" ""
@@ -580,6 +588,7 @@ ExecWait '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
 
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "CliqzHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".pdf"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML$2"
@@ -588,7 +597,16 @@ ExecWait '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 
+!ifndef NIGHTLY_BUILD
+  ; Keep the compile-time conditional synchronized with the
+  ; "network.ftp.enabled" compile-time conditional.
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL$2"
+!else
+  ; We don't delete and re-create the entire key, so we need to remove
+  ; any existing registration.
+  DeleteRegValue ${RegKey} "$0\Capabilities\URLAssociations" "ftp"
+!endif ; !NIGHTLY_BUILD
+
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL$2"
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL$2"
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "CliqzURL$2"
@@ -985,9 +1003,16 @@ ExecWait '"$INSTDIR\default-browser-agent.exe" unregister-task $AppUserModelID'
   ; An empty string is used for the 4th & 5th params because the following
   ; protocol handlers already have a display name and the additional keys
   ; required for a protocol handler.
+
   ${IsHandlerForInstallDir} "ftp" $R9
   ${If} "$R9" == "true"
+!ifndef NIGHTLY_BUILD
+    ; Keep the compile-time conditional synchronized with the
+    ; "network.ftp.enabled" compile-time conditional.
     ${AddDisabledDDEHandlerValues} "ftp" "$2" "$8,1" "" ""
+!else
+    ${AddDisabledDDEHandlerValues} "ftp" "$2" "$8,1" "" "delete"
+!endif ; !NIGHTLY_BUILD
   ${EndIf}
 
   ${IsHandlerForInstallDir} "http" $R9

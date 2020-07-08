@@ -49,10 +49,6 @@ namespace a11y {
 class DocAccessibleParent;
 }
 
-namespace jsipc {
-class CpowHolder;
-}  // namespace jsipc
-
 namespace layers {
 struct TextureFactoryIdentifier;
 }  // namespace layers
@@ -92,6 +88,7 @@ class BrowserParent final : public PBrowserParent,
                             public TabContext,
                             public LiveResizeListener {
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
+  using TapType = GeckoContentController_TapType;
 
   friend class PBrowserParent;
 
@@ -121,6 +118,8 @@ class BrowserParent final : public PBrowserParent,
    * is focused.
    */
   static BrowserParent* GetFocused();
+
+  static BrowserParent* GetLastMouseRemoteTarget();
 
   static BrowserParent* GetFrom(nsFrameLoader* aFrameLoader);
 
@@ -308,17 +307,14 @@ class BrowserParent final : public PBrowserParent,
       const RequestData& aRequestData, const nsresult aStatus,
       const nsString& aMessage);
 
-  mozilla::ipc::IPCResult RecvOnSecurityChange(
-      const Maybe<WebProgressData>& aWebProgressData,
-      const RequestData& aRequestData, const uint32_t aState,
-      const Maybe<WebProgressSecurityChangeData>& aSecurityChangeData);
-
   mozilla::ipc::IPCResult RecvNotifyContentBlockingEvent(
       const uint32_t& aEvent, const RequestData& aRequestData,
       const bool aBlocked, const nsACString& aTrackingOrigin,
       nsTArray<nsCString>&& aTrackingFullHashes,
       const Maybe<mozilla::ContentBlockingNotifier::StorageAccessGrantedReason>&
           aReason);
+
+  mozilla::ipc::IPCResult RecvReportBlockedEmbedderNodeByClassifier();
 
   mozilla::ipc::IPCResult RecvNavigationFinished();
 
@@ -343,24 +339,11 @@ class BrowserParent final : public PBrowserParent,
       const bool aNeedCollectSHistory, const uint32_t& aFlushId,
       const bool& aIsFinal, const uint32_t& aEpoch);
 
-  mozilla::ipc::IPCResult RecvBrowserFrameOpenWindow(
-      PBrowserParent* aOpener, const nsString& aURL, const nsString& aName,
-      bool aForceNoReferrer, const nsString& aFeatures,
-      BrowserFrameOpenWindowResolver&& aResolve);
-
   mozilla::ipc::IPCResult RecvSyncMessage(
       const nsString& aMessage, const ClonedMessageData& aData,
-      nsTArray<CpowEntry>&& aCpows, nsIPrincipal* aPrincipal,
-      nsTArray<ipc::StructuredCloneData>* aRetVal);
-
-  mozilla::ipc::IPCResult RecvRpcMessage(
-      const nsString& aMessage, const ClonedMessageData& aData,
-      nsTArray<CpowEntry>&& aCpows, nsIPrincipal* aPrincipal,
       nsTArray<ipc::StructuredCloneData>* aRetVal);
 
   mozilla::ipc::IPCResult RecvAsyncMessage(const nsString& aMessage,
-                                           nsTArray<CpowEntry>&& aCpows,
-                                           nsIPrincipal* aPrincipal,
                                            const ClonedMessageData& aData);
 
   mozilla::ipc::IPCResult RecvNotifyIMEFocus(
@@ -424,6 +407,8 @@ class BrowserParent final : public PBrowserParent,
 
   mozilla::ipc::IPCResult RecvRequestFocus(const bool& aCanRaise,
                                            const CallerType aCallerType);
+
+  mozilla::ipc::IPCResult RecvWheelZoomChange(bool aIncrease);
 
   mozilla::ipc::IPCResult RecvLookUpDictionary(
       const nsString& aText, nsTArray<mozilla::FontRange>&& aFontRangeArray,
@@ -500,7 +485,7 @@ class BrowserParent final : public PBrowserParent,
       const uint64_t& aOuterWindowID,
       IsWindowSupportingWebVRResolver&& aResolve);
 
-  void LoadURL(nsIURI* aURI);
+  void LoadURL(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal);
 
   void ResumeLoad(uint64_t aPendingSwitchID);
 
@@ -517,8 +502,6 @@ class BrowserParent final : public PBrowserParent,
   nsresult UpdatePosition();
 
   void SizeModeChanged(const nsSizeMode& aSizeMode);
-
-  void ThemeChanged();
 
   void HandleAccessKey(const WidgetKeyboardEvent& aEvent,
                        nsTArray<uint32_t>& aCharCodes);
@@ -575,13 +558,8 @@ class BrowserParent final : public PBrowserParent,
   mozilla::ipc::IPCResult RecvClearNativeTouchSequence(
       const uint64_t& aObserverId);
 
-  mozilla::ipc::IPCResult RecvSetPrefersReducedMotionOverrideForTest(
-      const bool& aValue);
-  mozilla::ipc::IPCResult RecvResetPrefersReducedMotionOverrideForTest();
-
   void SendMouseEvent(const nsAString& aType, float aX, float aY,
-                      int32_t aButton, int32_t aClickCount, int32_t aModifiers,
-                      bool aIgnoreRootScrollFrame);
+                      int32_t aButton, int32_t aClickCount, int32_t aModifiers);
 
   /**
    * The following Send*Event() marks aEvent as posted to remote process if
@@ -627,7 +605,7 @@ class BrowserParent final : public PBrowserParent,
 
   bool GetGlobalJSObject(JSContext* cx, JSObject** globalp);
 
-  void StartPersistence(uint64_t aOuterWindowID,
+  void StartPersistence(CanonicalBrowsingContext* aContext,
                         nsIWebBrowserPersistDocumentReceiver* aRecv,
                         ErrorResult& aRv);
 
@@ -726,6 +704,9 @@ class BrowserParent final : public PBrowserParent,
   bool GetDocShellIsActive();
   void SetDocShellIsActive(bool aDocShellIsActive);
 
+  bool GetSuspendMediaWhenInactive() const;
+  void SetSuspendMediaWhenInactive(bool aSuspendMediaWhenInactive);
+
   bool GetHasPresented();
   bool GetHasLayers();
   bool GetRenderLayers();
@@ -756,7 +737,6 @@ class BrowserParent final : public PBrowserParent,
 
   bool ReceiveMessage(
       const nsString& aMessage, bool aSync, ipc::StructuredCloneData* aData,
-      mozilla::jsipc::CpowHolder* aCpows, nsIPrincipal* aPrincipal,
       nsTArray<ipc::StructuredCloneData>* aJSONRetVal = nullptr);
 
   mozilla::ipc::IPCResult RecvAsyncAuthPrompt(const nsCString& aUri,
@@ -793,7 +773,7 @@ class BrowserParent final : public PBrowserParent,
       const nsTArray<RefPtr<nsIURI>>&& aURIs);
 
   mozilla::ipc::IPCResult RecvMaybeFireEmbedderLoadEvents(
-      bool aFireLoadAtEmbeddingElement);
+      EmbedderElementEventType aFireEventAtEmbeddingElement);
 
  private:
   void SuppressDisplayport(bool aEnabled);
@@ -859,7 +839,12 @@ class BrowserParent final : public PBrowserParent,
   // Recomputes sFocus and returns it.
   static BrowserParent* UpdateFocus();
 
-  void OnSubFrameCrashed();
+  // Keeps track of which BrowserParent the real mouse event is sent to.
+  static BrowserParent* sLastMouseRemoteTarget;
+
+  // Unsetter for LastMouseRemoteTarget; only unsets if argument matches
+  // current sLastMouseRemoteTarget.
+  static void UnsetLastMouseRemoteTarget(BrowserParent* aBrowserParent);
 
   struct APZData {
     bool operator==(const APZData& aOther) {
@@ -1013,6 +998,10 @@ class BrowserParent final : public PBrowserParent,
   // (for something that isn't the initial about:blank) and then start
   // allowing future events.
   bool mSuspendedProgressEvents : 1;
+
+  // True if the media in the remote docshell should be suspended when the
+  // remote docshell is inactive.
+  bool mSuspendMediaWhenInactive : 1;
 };
 
 struct MOZ_STACK_CLASS BrowserParent::AutoUseNewTab final {

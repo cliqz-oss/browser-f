@@ -97,7 +97,7 @@ bool StreamingCompilationAvailable(JSContext* cx);
 // optimizing compiler tier.
 bool CodeCachingAvailable(JSContext* cx);
 
-// General reference types (anyref, funcref, nullref) and operations on them.
+// General reference types (anyref, funcref) and operations on them.
 bool ReftypesAvailable(JSContext* cx);
 
 // Experimental (ref T) types and structure types.
@@ -106,11 +106,16 @@ bool GcTypesAvailable(JSContext* cx);
 // Multi-value block and function returns.
 bool MultiValuesAvailable(JSContext* cx);
 
-// I64<->BigInt interconversion at the wasm/JS boundary.
-bool I64BigIntConversionAvailable(JSContext* cx);
-
 // Shared memory and atomics.
 bool ThreadsAvailable(JSContext* cx);
+
+// SIMD data and operations.
+bool SimdAvailable(JSContext* cx);
+
+#if defined(ENABLE_WASM_SIMD)
+// Report the result of a Simd simplification to the testing infrastructure.
+void ReportSimdAnalysis(const char* data);
+#endif
 
 // Compiles the given binary wasm module given the ArrayBufferObject
 // and links the module's imports with the given import object.
@@ -197,7 +202,7 @@ class WasmModuleObject : public NativeObject {
   static bool construct(JSContext*, unsigned, Value*);
 
   static WasmModuleObject* create(JSContext* cx, const wasm::Module& module,
-                                  HandleObject proto = nullptr);
+                                  HandleObject proto);
   const wasm::Module& module() const;
 };
 
@@ -235,8 +240,9 @@ class WasmGlobalObject : public NativeObject {
     int64_t i64;
     float f32;
     double f64;
+    wasm::V128 v128;
     wasm::AnyRef ref;
-    Cell() : i64(0) {}
+    Cell() : v128() {}
     ~Cell() = default;
   };
 
@@ -249,10 +255,11 @@ class WasmGlobalObject : public NativeObject {
   static bool construct(JSContext*, unsigned, Value*);
 
   static WasmGlobalObject* create(JSContext* cx, wasm::HandleVal value,
-                                  bool isMutable);
+                                  bool isMutable, HandleObject proto);
   bool isNewborn() { return getReservedSlot(CELL_SLOT).isUndefined(); }
 
   wasm::ValType type() const;
+  void setVal(JSContext* cx, wasm::HandleVal value);
   void val(wasm::MutableHandleVal outval) const;
   bool isMutable() const;
   bool value(JSContext* cx, MutableHandleValue out);
@@ -436,7 +443,7 @@ class WasmTableObject : public NativeObject {
   // and must be initialized before use.
 
   static WasmTableObject* create(JSContext* cx, const wasm::Limits& limits,
-                                 wasm::TableKind tableKind);
+                                 wasm::TableKind tableKind, HandleObject proto);
   wasm::Table& table() const;
 };
 

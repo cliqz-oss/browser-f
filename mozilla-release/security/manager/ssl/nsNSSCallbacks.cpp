@@ -272,6 +272,9 @@ OCSPRequest::Run() {
   httpsOnlyStatus |= nsILoadInfo::HTTPS_ONLY_EXEMPT;
   loadInfo->SetHttpsOnlyStatus(httpsOnlyStatus);
 
+  // allow deprecated HTTP request from SystemPrincipal
+  loadInfo->SetAllowDeprecatedSystemRequests(true);
+
   // For OCSP requests, only the first party domain and private browsing id
   // aspects of origin attributes are used. This means that:
   // a) if first party isolation is enabled, OCSP requests will be isolated
@@ -885,10 +888,12 @@ static void AccumulateNonECCKeySize(Telemetry::HistogramID probe,
 // named curves for a given size (e.g. secp256k1 vs. secp256r1). We punt on
 // that for now. See also NSS bug 323674.
 static void AccumulateECCCurve(Telemetry::HistogramID probe, uint32_t bits) {
-  unsigned int value = bits == 256 ? 23                              // P-256
-                                   : bits == 384 ? 24                // P-384
-                                                 : bits == 521 ? 25  // P-521
-                                                               : 0;  // Unknown
+  unsigned int value =
+      bits == 255 ? 29                                            // Curve25519
+                  : bits == 256 ? 23                              // P-256
+                                : bits == 384 ? 24                // P-384
+                                              : bits == 521 ? 25  // P-521
+                                                            : 0;  // Unknown
   Telemetry::Accumulate(probe, value);
 }
 
@@ -1005,6 +1010,12 @@ static void AccumulateCipherSuite(Telemetry::HistogramID probe,
     case TLS_RSA_WITH_SEED_CBC_SHA:
       value = 67;
       break;
+    case TLS_RSA_WITH_AES_128_GCM_SHA256:
+      value = 68;
+      break;
+    case TLS_RSA_WITH_AES_256_GCM_SHA384:
+      value = 69;
+      break;
     // TLS 1.3 PSK resumption
     case TLS_AES_128_GCM_SHA256:
       value = 70;
@@ -1106,6 +1117,7 @@ static void RebuildVerifiedCertificateInformation(PRFileDesc* fd,
   CertificateTransparencyInfo certificateTransparencyInfo;
   UniqueCERTCertList builtChain;
   const bool saveIntermediates = false;
+  bool isBuiltCertChainRootBuiltInRoot = false;
   mozilla::pkix::Result rv = certVerifier->VerifySSLServerCert(
       cert, mozilla::pkix::Now(), infoObject, infoObject->GetHostName(),
       builtChain, flags, maybePeerCertsBytes, stapledOCSPResponse,
@@ -1115,7 +1127,9 @@ static void RebuildVerifiedCertificateInformation(PRFileDesc* fd,
       nullptr,  // key size telemetry
       nullptr,  // SHA-1 telemetry
       nullptr,  // pinning telemetry
-      &certificateTransparencyInfo);
+      &certificateTransparencyInfo,
+      nullptr,  // CRLite telemetry,
+      &isBuiltCertChainRootBuiltInRoot);
 
   if (rv != Success) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
@@ -1141,6 +1155,8 @@ static void RebuildVerifiedCertificateInformation(PRFileDesc* fd,
     nsTArray<nsTArray<uint8_t>> certBytesArray =
         TransportSecurityInfo::CreateCertBytesArray(builtChain);
     infoObject->SetSucceededCertChain(std::move(certBytesArray));
+    infoObject->SetIsBuiltCertChainRootBuiltInRoot(
+        isBuiltCertChainRootBuiltInRoot);
   }
 }
 
@@ -1231,6 +1247,11 @@ static void RebuildCertificateInfoFromSSLTokenCache(
   if (info.mSucceededCertChainBytes) {
     aInfoObject->SetSucceededCertChain(
         std::move(*info.mSucceededCertChainBytes));
+  }
+
+  if (info.mIsBuiltCertChainRootBuiltInRoot) {
+    aInfoObject->SetIsBuiltCertChainRootBuiltInRoot(
+        *info.mIsBuiltCertChainRootBuiltInRoot);
   }
 }
 
@@ -1371,7 +1392,7 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
             ("HandshakeCallback KEEPING existing cert\n"));
   } else {
-    if (mozilla::net::SSLTokensCache::IsEnabled()) {
+    if (StaticPrefs::network_ssl_tokens_cache_enabled()) {
       RebuildCertificateInfoFromSSLTokenCache(infoObject);
       infoObject->NoteSessionResumptionTime(true);
     } else {

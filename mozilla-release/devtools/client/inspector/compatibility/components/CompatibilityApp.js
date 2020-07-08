@@ -17,13 +17,20 @@ const Types = require("devtools/client/inspector/compatibility/types");
 const Accordion = createFactory(
   require("devtools/client/shared/components/Accordion")
 );
+const Footer = createFactory(
+  require("devtools/client/inspector/compatibility/components/Footer")
+);
 const IssuePane = createFactory(
   require("devtools/client/inspector/compatibility/components/IssuePane")
+);
+const Settings = createFactory(
+  require("devtools/client/inspector/compatibility/components/Settings")
 );
 
 class CompatibilityApp extends PureComponent {
   static get propTypes() {
     return {
+      isSettingsVisibile: PropTypes.bool.isRequired,
       isTopLevelTargetProcessing: PropTypes.bool.isRequired,
       selectedNodeIssues: PropTypes.arrayOf(PropTypes.shape(Types.issue))
         .isRequired,
@@ -37,6 +44,7 @@ class CompatibilityApp extends PureComponent {
 
   render() {
     const {
+      isSettingsVisibile,
       isTopLevelTargetProcessing,
       selectedNodeIssues,
       topLevelTargetIssues,
@@ -69,28 +77,41 @@ class CompatibilityApp extends PureComponent {
       {
         className: "compatibility-app theme-sidebar inspector-tabpanel",
       },
-      Accordion({
-        items: [
-          {
-            id: "compatibility-app--selected-element-pane",
-            header: "Selected Element",
-            component: selectedNodeIssuePane,
-            opened: true,
-          },
-          {
-            id: "compatibility-app--all-elements-pane",
-            header: "All Issues",
-            component: [topLevelTargetIssuePane, throbber],
-            opened: true,
-          },
-        ],
-      })
+      dom.div(
+        {
+          className:
+            "compatibility-app__container" +
+            (isSettingsVisibile ? " compatibility-app__container-hidden" : ""),
+        },
+        Accordion({
+          className: "compatibility-app__main",
+          items: [
+            {
+              id: "compatibility-app--selected-element-pane",
+              header: "Selected Element",
+              component: selectedNodeIssuePane,
+              opened: true,
+            },
+            {
+              id: "compatibility-app--all-elements-pane",
+              header: "All Issues",
+              component: [topLevelTargetIssuePane, throbber],
+              opened: true,
+            },
+          ],
+        }),
+        Footer({
+          className: "compatibility-app__footer",
+        })
+      ),
+      isSettingsVisibile ? Settings() : null
     );
   }
 }
 
 const mapStateToProps = state => {
   return {
+    isSettingsVisibile: state.compatibility.isSettingsVisibile,
     isTopLevelTargetProcessing: state.compatibility.isTopLevelTargetProcessing,
     selectedNodeIssues: state.compatibility.selectedNodeIssues,
     topLevelTargetIssues: state.compatibility.topLevelTargetIssues,

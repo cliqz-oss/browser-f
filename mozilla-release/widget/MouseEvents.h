@@ -24,8 +24,6 @@ class PBrowserBridgeParent;
 class WidgetPointerEvent;
 }  // namespace mozilla
 
-MOZ_DECLARE_COPY_CONSTRUCTIBLE(mozilla::WidgetPointerEvent)
-
 namespace mozilla {
 class WidgetPointerEventHolder final {
  public:
@@ -185,8 +183,12 @@ class WidgetMouseEvent : public WidgetMouseEventBase,
   typedef bool ReasonType;
   enum Reason : ReasonType { eReal, eSynthesized };
 
-  typedef bool ContextMenuTriggerType;
-  enum ContextMenuTrigger : ContextMenuTriggerType { eNormal, eContextMenuKey };
+  typedef uint8_t ContextMenuTriggerType;
+  enum ContextMenuTrigger : ContextMenuTriggerType {
+    eNormal,
+    eContextMenuKey,
+    eControlClick
+  };
 
   typedef bool ExitFromType;
   enum ExitFrom : ExitFromType { eChild, eTopLevel };
@@ -233,8 +235,10 @@ class WidgetMouseEvent : public WidgetMouseEventBase,
   virtual ~WidgetMouseEvent() {
     NS_WARNING_ASSERTION(
         mMessage != eContextMenu ||
-            mButton == ((mContextMenuTrigger == eNormal) ? MouseButton::eRight
-                                                         : MouseButton::eLeft),
+            (mButton == ((mContextMenuTrigger == eNormal)
+                             ? MouseButton::eRight
+                             : MouseButton::eLeft) &&
+             (mContextMenuTrigger != eControlClick || IsControl())),
         "Wrong button set to eContextMenu event?");
   }
 #endif

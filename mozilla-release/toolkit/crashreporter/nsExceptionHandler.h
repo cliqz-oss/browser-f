@@ -97,10 +97,6 @@ nsresult AnnotateCrashReport(Annotation key, const nsACString& data);
 nsresult RemoveCrashReportAnnotation(Annotation key);
 nsresult AppendAppNotesToCrashReport(const nsACString& data);
 
-// Called after the crash reporter client has been created in a content
-// process, allowing annotations to be processed.
-void NotifyCrashReporterClientCreated();
-
 void AnnotateOOMAllocationSize(size_t size);
 void AnnotateTexturesSize(size_t size);
 nsresult SetGarbageCollecting(bool collecting);
@@ -186,9 +182,9 @@ bool TakeMinidumpForChild(uint32_t childPid, nsIFile** dump,
  * @param aType The type of the crashed process
  * @param aDumpId A string that will be filled with the dump ID
  */
-MOZ_MUST_USE bool FinalizeOrphanedMinidump(uint32_t aChildPid,
-                                           GeckoProcessType aType,
-                                           nsString* aDumpId = nullptr);
+[[nodiscard]] bool FinalizeOrphanedMinidump(uint32_t aChildPid,
+                                            GeckoProcessType aType,
+                                            nsString* aDumpId = nullptr);
 
 #if defined(XP_WIN)
 typedef HANDLE ProcessHandle;

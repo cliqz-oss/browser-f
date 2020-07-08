@@ -66,8 +66,7 @@
 }
 
 #UITourTooltipDescription {
-  margin-inline-start: 0;
-  margin-inline-end: 0;
+  margin-inline: 0;
   font-size: 1.15rem;
   line-height: 1.8rem;
   margin-bottom: 0; /* Override global.css */
@@ -146,8 +145,7 @@
   border: none;
   box-shadow: none;
   color: var(--panel-disabled-color);
-  padding-left: 10px;
-  padding-right: 10px;
+  padding-inline: 10px;
 }
 
 /* CLIQZ-SPECIAL: DB-2385: we need this fix
@@ -168,8 +166,7 @@
 #UITourTooltipButtons > button.button-primary {
   background-color: rgb(116,191,67);
   color: white;
-  padding-left: 30px;
-  padding-right: 30px;
+  padding-inline: 30px;
 }
 
 #UITourTooltipButtons > button.button-primary:not(:active):hover {

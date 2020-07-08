@@ -112,12 +112,13 @@ class NewRenderer : public RendererEvent {
                 : nullptr,
             aRenderThread.ThreadPool().Raw(),
             aRenderThread.ThreadPoolLP().Raw(), &WebRenderMallocSizeOf,
-            &WebRenderMallocEnclosingSizeOf, (uint32_t)wr::RenderRoot::Default,
+            &WebRenderMallocEnclosingSizeOf, 0,
             compositor->ShouldUseNativeCompositor() ? compositor.get()
                                                     : nullptr,
             compositor->GetMaxUpdateRects(),
-            compositor->GetMaxPartialPresentRects(), mDocHandle, &wrRenderer,
-            mMaxTextureSize,
+            compositor->GetMaxPartialPresentRects(),
+            compositor->ShouldDrawPreviousPartialPresentRegions(), mDocHandle,
+            &wrRenderer, mMaxTextureSize,
             StaticPrefs::gfx_webrender_enable_gpu_markers_AtStartup(),
             panic_on_gl_error)) {
       // wr_window_new puts a message into gfxCriticalNote if it returns false
@@ -325,8 +326,7 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Create(
 
   return RefPtr<WebRenderAPI>(
              new WebRenderAPI(docHandle, aWindowId, maxTextureSize, useANGLE,
-                              useDComp, useTripleBuffering, syncHandle,
-                              wr::RenderRoot::Default))
+                              useDComp, useTripleBuffering, syncHandle))
       .forget();
 }
 
@@ -336,28 +336,11 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Clone() {
 
   RefPtr<WebRenderAPI> renderApi =
       new WebRenderAPI(docHandle, mId, mMaxTextureSize, mUseANGLE, mUseDComp,
-                       mUseTripleBuffering, mSyncHandle, mRenderRoot);
+                       mUseTripleBuffering, mSyncHandle);
   renderApi->mRootApi = this;  // Hold root api
   renderApi->mRootDocumentApi = this;
 
   return renderApi.forget();
-}
-
-already_AddRefed<WebRenderAPI> WebRenderAPI::CreateDocument(
-    LayoutDeviceIntSize aSize, int8_t aLayerIndex, wr::RenderRoot aRenderRoot) {
-  wr::DeviceIntSize wrSize;
-  wrSize.width = aSize.width;
-  wrSize.height = aSize.height;
-  wr::DocumentHandle* newDoc;
-
-  wr_api_create_document(mDocHandle, &newDoc, wrSize, aLayerIndex,
-                         (uint32_t)aRenderRoot);
-
-  RefPtr<WebRenderAPI> api(
-      new WebRenderAPI(newDoc, mId, mMaxTextureSize, mUseANGLE, mUseDComp,
-                       mUseTripleBuffering, mSyncHandle, aRenderRoot));
-  api->mRootApi = this;
-  return api.forget();
 }
 
 wr::WrIdNamespace WebRenderAPI::GetNamespace() {
@@ -367,16 +350,15 @@ wr::WrIdNamespace WebRenderAPI::GetNamespace() {
 WebRenderAPI::WebRenderAPI(wr::DocumentHandle* aHandle, wr::WindowId aId,
                            uint32_t aMaxTextureSize, bool aUseANGLE,
                            bool aUseDComp, bool aUseTripleBuffering,
-                           layers::SyncHandle aSyncHandle,
-                           wr::RenderRoot aRenderRoot)
+                           layers::SyncHandle aSyncHandle)
     : mDocHandle(aHandle),
       mId(aId),
       mMaxTextureSize(aMaxTextureSize),
       mUseANGLE(aUseANGLE),
       mUseDComp(aUseDComp),
       mUseTripleBuffering(aUseTripleBuffering),
-      mSyncHandle(aSyncHandle),
-      mRenderRoot(aRenderRoot) {}
+      mCaptureSequence(false),
+      mSyncHandle(aSyncHandle) {}
 
 WebRenderAPI::~WebRenderAPI() {
   if (!mRootDocumentApi) {
@@ -405,38 +387,6 @@ void WebRenderAPI::SendTransaction(TransactionBuilder& aTxn) {
   wr_api_send_transaction(mDocHandle, aTxn.Raw(), aTxn.UseSceneBuilderThread());
 }
 
-/* static */
-void WebRenderAPI::SendTransactions(
-    const RenderRootArray<RefPtr<WebRenderAPI>>& aApis,
-    RenderRootArray<TransactionBuilder*>& aTxns) {
-  if (!aApis[RenderRoot::Default]) {
-    return;
-  }
-
-  AutoTArray<DocumentHandle*, kRenderRootCount> documentHandles;
-  AutoTArray<Transaction*, kRenderRootCount> txns;
-  Maybe<bool> useSceneBuilderThread;
-  for (auto& api : aApis) {
-    if (!api) {
-      continue;
-    }
-    auto& txn = aTxns[api->GetRenderRoot()];
-    if (txn) {
-      documentHandles.AppendElement(api->mDocHandle);
-      txns.AppendElement(txn->Raw());
-      if (useSceneBuilderThread.isSome()) {
-        MOZ_ASSERT(txn->UseSceneBuilderThread() == *useSceneBuilderThread);
-      } else {
-        useSceneBuilderThread.emplace(txn->UseSceneBuilderThread());
-      }
-    }
-  }
-  if (!txns.IsEmpty()) {
-    wr_api_send_transactions(documentHandles.Elements(), txns.Elements(),
-                             txns.Length(), *useSceneBuilderThread);
-  }
-}
-
 enum SideBitsPacked {
   eSideBitsPackedTop = 0x1000,
   eSideBitsPackedRight = 0x2000,
@@ -463,24 +413,25 @@ SideBits ExtractSideBitsFromHitInfoBits(uint16_t& aHitInfoBits) {
   return sideBits;
 }
 
-bool WebRenderAPI::HitTest(const wr::WorldPoint& aPoint,
-                           wr::WrPipelineId& aOutPipelineId,
-                           layers::ScrollableLayerGuid::ViewID& aOutScrollId,
-                           gfx::CompositorHitTestInfo& aOutHitInfo,
-                           SideBits& aOutSideBits) {
+std::vector<WrHitResult> WebRenderAPI::HitTest(const wr::WorldPoint& aPoint) {
   static_assert(gfx::DoesCompositorHitTestInfoFitIntoBits<12>(),
                 "CompositorHitTestFlags MAX value has to be less than number "
                 "of bits in uint16_t minus 4 for SideBitsPacked");
 
-  uint16_t serialized = static_cast<uint16_t>(aOutHitInfo.serialize());
-  const bool result = wr_api_hit_test(mDocHandle, aPoint, &aOutPipelineId,
-                                      &aOutScrollId, &serialized);
+  nsTArray<wr::HitResult> wrResults;
+  wr_api_hit_test(mDocHandle, aPoint, &wrResults);
 
-  if (result) {
-    aOutSideBits = ExtractSideBitsFromHitInfoBits(serialized);
-    aOutHitInfo.deserialize(serialized);
+  std::vector<WrHitResult> geckoResults;
+  for (wr::HitResult wrResult : wrResults) {
+    WrHitResult geckoResult;
+    geckoResult.mLayersId = wr::AsLayersId(wrResult.pipeline_id);
+    geckoResult.mScrollId =
+        static_cast<layers::ScrollableLayerGuid::ViewID>(wrResult.scroll_id);
+    geckoResult.mSideBits = ExtractSideBitsFromHitInfoBits(wrResult.hit_info);
+    geckoResult.mHitInfo.deserialize(wrResult.hit_info);
+    geckoResults.push_back(geckoResult);
   }
-  return result;
+  return geckoResults;
 }
 
 void WebRenderAPI::Readback(const TimeStamp& aStartTime, gfx::IntSize size,
@@ -647,13 +598,20 @@ void WebRenderAPI::WaitFlushed() {
 void WebRenderAPI::Capture() {
   // see CaptureBits
   // SCENE | FRAME | TILE_CACHE
-  uint8_t bits = 7;                 // TODO: get from JavaScript
+  uint8_t bits = 15;                // TODO: get from JavaScript
   const char* path = "wr-capture";  // TODO: get from JavaScript
   wr_api_capture(mDocHandle, path, bits);
 }
 
-void WebRenderAPI::SetTransactionLogging(bool aValue) {
-  wr_api_set_transaction_logging(mDocHandle, aValue);
+void WebRenderAPI::ToggleCaptureSequence() {
+  mCaptureSequence = !mCaptureSequence;
+  if (mCaptureSequence) {
+    uint8_t bits = 9;                          // TODO: get from JavaScript
+    const char* path = "wr-capture-sequence";  // TODO: get from JavaScript
+    wr_api_start_capture_sequence(mDocHandle, path, bits);
+  } else {
+    wr_api_stop_capture_sequence(mDocHandle);
+  }
 }
 
 void WebRenderAPI::SetCompositionRecorder(
@@ -865,8 +823,8 @@ void TransactionBuilder::DeleteFontInstance(wr::FontInstanceKey aKey) {
 }
 
 void TransactionBuilder::UpdateQualitySettings(
-    bool aAllowSacrificingSubpixelAA) {
-  wr_transaction_set_quality_settings(mTxn, aAllowSacrificingSubpixelAA);
+    bool aForceSubpixelAAWherePossible) {
+  wr_transaction_set_quality_settings(mTxn, aForceSubpixelAAWherePossible);
 }
 
 class FrameStartTime : public RendererEvent {
@@ -901,13 +859,11 @@ void WebRenderAPI::RunOnRenderThread(UniquePtr<RendererEvent> aEvent) {
 DisplayListBuilder::DisplayListBuilder(PipelineId aId,
                                        const wr::LayoutSize& aContentSize,
                                        size_t aCapacity,
-                                       layers::DisplayItemCache* aCache,
-                                       RenderRoot aRenderRoot)
+                                       layers::DisplayItemCache* aCache)
     : mCurrentSpaceAndClipChain(wr::RootScrollNodeWithChain()),
       mActiveFixedPosTracker(nullptr),
       mPipelineId(aId),
       mContentSize(aContentSize),
-      mRenderRoot(aRenderRoot),
       mDisplayItemCache(aCache) {
   MOZ_COUNT_CTOR(DisplayListBuilder);
   mWrState = wr_state_new(aId, aContentSize, aCapacity);
@@ -926,17 +882,6 @@ void DisplayListBuilder::Save() { wr_dp_save(mWrState); }
 void DisplayListBuilder::Restore() { wr_dp_restore(mWrState); }
 void DisplayListBuilder::ClearSave() { wr_dp_clear_save(mWrState); }
 
-DisplayListBuilder& DisplayListBuilder::SubBuilder(RenderRoot aRenderRoot) {
-  MOZ_ASSERT(aRenderRoot == mRenderRoot);
-  return *this;
-}
-
-bool DisplayListBuilder::HasSubBuilder(RenderRoot aRenderRoot) {
-  MOZ_ASSERT(aRenderRoot == RenderRoot::Default);
-  MOZ_ASSERT(mRenderRoot == RenderRoot::Default);
-  return true;
-}
-
 usize DisplayListBuilder::Dump(usize aIndent, const Maybe<usize>& aStart,
                                const Maybe<usize>& aEnd) {
   return wr_dump_display_list(mWrState, aIndent, aStart.ptrOr(nullptr),
@@ -953,22 +898,17 @@ void DisplayListBuilder::Finalize(wr::LayoutSize& aOutContentSize,
                           &aOutDisplayList.dl.inner);
 }
 
-void DisplayListBuilder::Finalize(
-    layers::RenderRootDisplayListData& aOutTransaction) {
-  MOZ_ASSERT(mRenderRoot == wr::RenderRoot::Default);
-
+void DisplayListBuilder::Finalize(layers::DisplayListData& aOutTransaction) {
   if (mDisplayItemCache && mDisplayItemCache->IsEnabled()) {
     wr_dp_set_cache_size(mWrState, mDisplayItemCache->CurrentSize());
   }
 
   wr::VecU8 dl;
-  wr_api_finalize_builder(SubBuilder(aOutTransaction.mRenderRoot).mWrState,
-                          &aOutTransaction.mContentSize,
+  wr_api_finalize_builder(mWrState, &aOutTransaction.mContentSize,
                           &aOutTransaction.mDLDesc, &dl.inner);
   aOutTransaction.mDL.emplace(dl.inner.data, dl.inner.length,
                               dl.inner.capacity);
-  aOutTransaction.mRemotePipelineIds =
-      std::move(SubBuilder(aOutTransaction.mRenderRoot).mRemotePipelineIds);
+  aOutTransaction.mRemotePipelineIds = std::move(mRemotePipelineIds);
   dl.inner.capacity = 0;
   dl.inner.data = nullptr;
 }
@@ -1021,8 +961,7 @@ wr::WrClipChainId DisplayListBuilder::DefineClipChain(
 
 wr::WrClipId DisplayListBuilder::DefineClip(
     const Maybe<wr::WrSpaceAndClip>& aParent, const wr::LayoutRect& aClipRect,
-    const nsTArray<wr::ComplexClipRegion>* aComplex,
-    const wr::ImageMask* aMask) {
+    const nsTArray<wr::ComplexClipRegion>* aComplex) {
   CancelGroup();
 
   WrClipId clipId;
@@ -1030,19 +969,46 @@ wr::WrClipId DisplayListBuilder::DefineClip(
     clipId = wr_dp_define_clip_with_parent_clip(
         mWrState, aParent.ptr(), aClipRect,
         aComplex ? aComplex->Elements() : nullptr,
-        aComplex ? aComplex->Length() : 0, aMask);
+        aComplex ? aComplex->Length() : 0);
   } else {
     clipId = wr_dp_define_clip_with_parent_clip_chain(
         mWrState, &mCurrentSpaceAndClipChain, aClipRect,
         aComplex ? aComplex->Elements() : nullptr,
-        aComplex ? aComplex->Length() : 0, aMask);
+        aComplex ? aComplex->Length() : 0);
   }
 
-  WRDL_LOG("DefineClip id=%zu p=%s r=%s m=%p b=%s complex=%zu\n", mWrState,
-           clipId.id, aParent ? Stringify(aParent->clip.id).c_str() : "(nil)",
-           Stringify(aClipRect).c_str(), aMask,
-           aMask ? Stringify(aMask->rect).c_str() : "none",
-           aComplex ? aComplex->Length() : 0);
+  WRDL_LOG("DefineClip id=%zu p=%s r=%s complex=%zu\n", mWrState, clipId.id,
+           aParent ? Stringify(aParent->clip.id).c_str() : "(nil)",
+           Stringify(aClipRect).c_str(), aComplex ? aComplex->Length() : 0);
+
+  return clipId;
+}
+
+wr::WrClipId DisplayListBuilder::DefineImageMaskClip(
+    const wr::ImageMask& aMask) {
+  CancelGroup();
+
+  WrClipId clipId = wr_dp_define_image_mask_clip_with_parent_clip_chain(
+      mWrState, &mCurrentSpaceAndClipChain, aMask);
+
+  return clipId;
+}
+
+wr::WrClipId DisplayListBuilder::DefineRoundedRectClip(
+    const wr::ComplexClipRegion& aComplex) {
+  CancelGroup();
+
+  WrClipId clipId = wr_dp_define_rounded_rect_clip_with_parent_clip_chain(
+      mWrState, &mCurrentSpaceAndClipChain, aComplex);
+
+  return clipId;
+}
+
+wr::WrClipId DisplayListBuilder::DefineRectClip(wr::LayoutRect aClipRect) {
+  CancelGroup();
+
+  WrClipId clipId = wr_dp_define_rect_clip_with_parent_clip_chain(
+      mWrState, &mCurrentSpaceAndClipChain, aClipRect);
 
   return clipId;
 }
@@ -1136,7 +1102,7 @@ void DisplayListBuilder::PushRoundedRect(const wr::LayoutRect& aBounds,
   AutoTArray<wr::ComplexClipRegion, 1> clips;
   clips.AppendElement(wr::SimpleRadii(aBounds, aBounds.size.width / 2));
   // TODO: use `mCurrentSpaceAndClipChain.clip_chain` as a parent?
-  auto clipId = DefineClip(Nothing(), aBounds, &clips, nullptr);
+  auto clipId = DefineClip(Nothing(), aBounds, &clips);
   auto spaceAndClip = WrSpaceAndClip{mCurrentSpaceAndClipChain.space, clipId};
 
   wr_dp_push_rect_with_parent_clip(mWrState, aBounds, clip, aIsBackfaceVisible,
@@ -1180,8 +1146,16 @@ void DisplayListBuilder::PushClearRectWithComplexRegion(
   WRDL_LOG("PushClearRectWithComplexRegion b=%s c=%s\n", mWrState,
            Stringify(aBounds).c_str(), Stringify(clip).c_str());
 
+  // TODO(gw): This doesn't pass the complex region through to WR, as clear
+  //           rects with complex clips are currently broken. This is the
+  //           only place they are used, and they are used only for a single
+  //           case (close buttons on Win7 machines). We might be able to
+  //           get away with not supporting this at all in WR, using the
+  //           non-clipped clear rect is an improvement for now, at least.
+  //           See https://bugzilla.mozilla.org/show_bug.cgi?id=1636683 for
+  //           more information.
   AutoTArray<wr::ComplexClipRegion, 1> clips;
-  auto clipId = DefineClip(Nothing(), aBounds, &clips, nullptr);
+  auto clipId = DefineClip(Nothing(), aBounds, &clips);
   auto spaceAndClip = WrSpaceAndClip{mCurrentSpaceAndClipChain.space, clipId};
 
   wr_dp_push_clear_rect_with_parent_clip(mWrState, aBounds, clip,
@@ -1198,7 +1172,7 @@ void DisplayListBuilder::PushBackdropFilter(
 
   AutoTArray<wr::ComplexClipRegion, 1> clips;
   clips.AppendElement(aRegion);
-  auto clipId = DefineClip(Nothing(), aBounds, &clips, nullptr);
+  auto clipId = DefineClip(Nothing(), aBounds, &clips);
   auto spaceAndClip = WrSpaceAndClip{mCurrentSpaceAndClipChain.space, clipId};
 
   wr_dp_push_backdrop_filter_with_parent_clip(
@@ -1431,7 +1405,7 @@ void DisplayListBuilder::SuspendClipLeafMerging() {
     mSuspendedClipChainLeaf = mClipChainLeaf;
     mSuspendedSpaceAndClipChain = Some(mCurrentSpaceAndClipChain);
 
-    auto clipId = DefineClip(Nothing(), *mClipChainLeaf);
+    auto clipId = DefineRectClip(*mClipChainLeaf);
     auto clipChainId = DefineClipChain({clipId}, true);
 
     mCurrentSpaceAndClipChain.clip_chain = clipChainId.id;
@@ -1475,12 +1449,12 @@ void DisplayListBuilder::StartGroup(nsPaintedDisplayItem* aItem) {
   }
 }
 
-void DisplayListBuilder::CancelGroup() {
+void DisplayListBuilder::CancelGroup(const bool aDiscard) {
   if (!mDisplayItemCache || !mCurrentCacheSlot) {
     return;
   }
 
-  wr_dp_cancel_item_group(mWrState);
+  wr_dp_cancel_item_group(mWrState, aDiscard);
   mCurrentCacheSlot = Nothing();
 }
 

@@ -26,7 +26,6 @@ from taskgraph.taskgraph import TaskGraph
 here = os.path.abspath(os.path.dirname(__file__))
 build = MozbuildObject.from_environment(cwd=here)
 
-
 PARAMETER_MISMATCH = """
 ERROR - The parameters being used to generate tasks differ from those expected
 by your working copy:

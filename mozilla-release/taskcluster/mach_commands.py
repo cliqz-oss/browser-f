@@ -15,7 +15,6 @@ from six import text_type
 import sys
 import traceback
 import re
-from distutils.util import strtobool
 
 from mach.decorators import (
     CommandArgument,
@@ -25,6 +24,18 @@ from mach.decorators import (
 )
 
 from mozbuild.base import MachCommandBase
+
+
+def strtobool(value):
+    """Convert string to boolean.
+
+    Wraps "distutils.util.strtobool", deferring the import of the package
+    in case it's not installed. Otherwise, we have a "chicken and egg problem" where
+    |mach bootstrap| would install the required package to enable "distutils.util", but
+    it can't because mach fails to interpret this file.
+    """
+    from distutils.util import strtobool
+    return bool(strtobool(value))
 
 
 class ShowTaskGraphSubCommand(SubCommand):
@@ -162,7 +173,7 @@ class MachCommands(MachCommandBase):
     @CommandArgument('--target-tasks-method', type=text_type,
                      help='method for selecting the target tasks to generate')
     @CommandArgument('--optimize-target-tasks',
-                     type=lambda flag: bool(strtobool(flag)),
+                     type=lambda flag: strtobool(flag),
                      nargs='?', const='true',
                      help='If specified, this indicates whether the target '
                           'tasks are eligible for optimization. Otherwise, '
@@ -434,13 +445,6 @@ class MachCommands(MachCommandBase):
 
 @CommandProvider
 class TaskClusterImagesProvider(MachCommandBase):
-    def _ensure_zstd(self):
-        try:
-            import zstandard  # noqa: F401
-        except (ImportError, AttributeError):
-            self._activate_virtualenv()
-            self.virtualenv_manager.install_pip_package('zstandard==0.9.0')
-
     @Command('taskcluster-load-image', category="ci",
              description="Load a pre-built Docker image. Note that you need to "
                          "have docker installed and running for this to work.")

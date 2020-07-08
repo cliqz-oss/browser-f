@@ -16,6 +16,8 @@
 #include "mozilla/dom/DocumentFragment.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMStringList.h"
+#include "mozilla/dom/DOMStringList.h"
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/FileReader.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/WorkerRef.h"
@@ -120,16 +122,16 @@ nsresult HTMLEditor::LoadHTML(const nsAString& aInputString) {
 
   // Delete Selection, but only if it isn't collapsed, see bug #106269
   if (!SelectionRefPtr()->IsCollapsed()) {
-    rv = DeleteSelectionAsSubAction(eNone, eStrip);
+    nsresult rv = DeleteSelectionAsSubAction(eNone, eStrip);
     if (NS_FAILED(rv)) {
       NS_WARNING(
-          "TextEditor::DeleteSelectionAsSubAction(eNone, eStrip) failed");
+          "EditorBase::DeleteSelectionAsSubAction(eNone, eStrip) failed");
       return rv;
     }
   }
 
   // Get the first range in the selection, for context:
-  RefPtr<nsRange> range = SelectionRefPtr()->GetRangeAt(0);
+  RefPtr<const nsRange> range = SelectionRefPtr()->GetRangeAt(0);
   if (NS_WARN_IF(!range)) {
     return NS_ERROR_FAILURE;
   }
@@ -281,7 +283,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
       nsresult rv = DeleteSelectionAsSubAction(eNone, eStrip);
       if (NS_FAILED(rv)) {
         NS_WARNING(
-            "TextEditor::DeleteSelectionAsSubAction(eNone, eStrip) failed");
+            "EditorBase::DeleteSelectionAsSubAction(eNone, eStrip) failed");
         return rv;
       }
     }
@@ -310,7 +312,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
   if (!cellSelectionMode) {
     rv = DeleteSelectionAndPrepareToCreateNode();
     if (NS_FAILED(rv)) {
-      NS_WARNING("TextEditor::DeleteSelectionAndPrepareToCreateNode() failed");
+      NS_WARNING("HTMLEditor::DeleteSelectionAndPrepareToCreateNode() failed");
       return rv;
     }
 
@@ -418,13 +420,13 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
         MOZ_KnownLive(*pointToInsert.GetContainerAsContent()), pointToInsert,
         SplitAtEdges::eAllowToCreateEmptyContainer);
     if (splitNodeResult.Failed()) {
-      NS_WARNING("EditorBase::SplitNodeDeepWithTransaction() failed");
+      NS_WARNING("HTMLEditor::SplitNodeDeepWithTransaction() failed");
       return splitNodeResult.Rv();
     }
     pointToInsert = splitNodeResult.SplitPoint();
     if (!pointToInsert.IsSet()) {
       NS_WARNING(
-          "EditorBase::SplitNodeDeepWithTransaction() didn't return split "
+          "HTMLEditor::SplitNodeDeepWithTransaction() didn't return split "
           "point");
       return NS_ERROR_FAILURE;
     }
@@ -440,10 +442,11 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
                  pointToInsert.Offset()) == pointToInsert.GetChild());
 
   // Loop over the node list and paste the nodes:
-  nsCOMPtr<nsINode> parentBlock =
-      IsBlockNode(pointToInsert.GetContainer())
-          ? pointToInsert.GetContainer()
-          : GetBlockNodeParent(pointToInsert.GetContainer());
+  RefPtr<Element> blockElement =
+      pointToInsert.IsInContentNode()
+          ? HTMLEditUtils::GetInclusiveAncestorBlockElement(
+                *pointToInsert.ContainerAsContent())
+          : nullptr;
   EditorDOMPoint lastInsertedPoint;
   nsCOMPtr<nsIContent> insertedContextParentContent;
   for (OwningNonNull<nsIContent>& content : arrayOfTopMostChildContents) {
@@ -562,7 +565,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
     }
     // If pasting into a `<pre>` element and current node is a `<pre>` element,
     // move only its children.
-    else if (parentBlock && HTMLEditUtils::IsPre(parentBlock) &&
+    else if (blockElement && HTMLEditUtils::IsPre(blockElement) &&
              HTMLEditUtils::IsPre(content)) {
       // Check for pre's going into pre's.
       for (nsCOMPtr<nsIContent> firstChild = content->GetFirstChild();
@@ -692,8 +695,8 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
 
   // If the container is a text node or a container element except `<table>`
   // element, put caret a end of it.
-  if (EditorBase::IsTextNode(containerContent) ||
-      (IsContainer(containerContent) &&
+  if (containerContent->IsText() ||
+      (HTMLEditUtils::IsContainerNode(*containerContent) &&
        !HTMLEditUtils::IsTable(containerContent))) {
     pointToPutCaret.SetToEndOf(containerContent);
   }
@@ -757,7 +760,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
       *linkElement, pointToPutCaret, SplitAtEdges::eDoNotCreateEmptyContainer);
   NS_WARNING_ASSERTION(
       splitLinkResult.Succeeded(),
-      "EditorBase::SplitNodeDeepWithTransaction() failed, but ignored");
+      "HTMLEditor::SplitNodeDeepWithTransaction() failed, but ignored");
   if (splitLinkResult.GetPreviousNode()) {
     EditorRawDOMPoint afterLeftLink(splitLinkResult.GetPreviousNode());
     if (afterLeftLink.AdvanceOffset()) {
@@ -2093,7 +2096,7 @@ nsresult HTMLEditor::PasteAsQuotationAsAction(int32_t aClipboardType,
       DeleteSelectionAndCreateElement(*nsGkAtoms::blockquote);
   if (!newBlockquoteElement) {
     NS_WARNING(
-        "TextEditor::DeleteSelectionAndCreateElement(nsGkAtoms::blockquote) "
+        "HTMLEditor::DeleteSelectionAndCreateElement(nsGkAtoms::blockquote) "
         "failed");
     return NS_ERROR_FAILURE;
   }
@@ -2491,7 +2494,7 @@ nsresult HTMLEditor::InsertAsPlaintextQuotation(const nsAString& aQuotedText,
       DeleteSelectionAndCreateElement(*nsGkAtoms::span);
   NS_WARNING_ASSERTION(
       newSpanElement,
-      "TextEditor::DeleteSelectionAndCreateElement() failed, but ignored");
+      "HTMLEditor::DeleteSelectionAndCreateElement() failed, but ignored");
 
   // If this succeeded, then set selection inside the pre
   // so the inserted text will end up there.
@@ -2739,7 +2742,7 @@ nsresult HTMLEditor::InsertAsCitedQuotationInternal(
   }
   if (!newBlockquoteElement) {
     NS_WARNING(
-        "TextEditor::DeleteSelectionAndCreateElement(nsGkAtoms::blockquote) "
+        "HTMLEditor::DeleteSelectionAndCreateElement(nsGkAtoms::blockquote) "
         "failed");
     return NS_ERROR_FAILURE;
   }

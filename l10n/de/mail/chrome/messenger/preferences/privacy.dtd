@@ -36,3 +36,7 @@
 <!ENTITY dntTrackingNotOkay.label2 "Websites mitteilen, meine Aktivitäten nicht zu verfolgen">
 <!ENTITY dntTrackingNotOkay.accesskey "n">
 <!ENTITY doNotTrackInfo.label "Weitere Informationen über Do Not Track">
+
+<!ENTITY doNotTrackCheck.label "Websites eine &quot;Do Not Track&quot;-Mitteilung senden, dass Ihre Online-Aktivitäten nicht verfolgt werden sollen">
+<!ENTITY doNotTrackCheck.accesskey "D">
+<!ENTITY doNotTrackLearnMore.label "Weitere Informationen">

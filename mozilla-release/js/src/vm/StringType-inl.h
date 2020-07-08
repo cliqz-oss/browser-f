@@ -106,8 +106,7 @@ static MOZ_ALWAYS_INLINE JSLinearString* TryEmptyOrStaticString(JSContext* cx,
   return nullptr;
 }
 
-template <typename CharT, typename = typename std::enable_if<
-                              !std::is_const<CharT>::value>::type>
+template <typename CharT, typename = std::enable_if_t<!std::is_const_v<CharT>>>
 static MOZ_ALWAYS_INLINE JSLinearString* TryEmptyOrStaticString(JSContext* cx,
                                                                 CharT* chars,
                                                                 size_t n) {
@@ -277,7 +276,8 @@ MOZ_ALWAYS_INLINE JSLinearString* JSLinearString::new_(
     // If the following registration fails, the string is partially initialized
     // and must be made valid, or its finalizer may attempt to free
     // uninitialized memory.
-    if (!cx->runtime()->gc.nursery().registerMallocedBuffer(chars.get())) {
+    if (!cx->runtime()->gc.nursery().registerMallocedBuffer(
+            chars.get(), length * sizeof(CharT))) {
       str->init(static_cast<JS::Latin1Char*>(nullptr), 0);
       if (allowGC) {
         ReportOutOfMemory(cx);

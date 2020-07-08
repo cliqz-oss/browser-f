@@ -16,6 +16,9 @@ certificate-viewer-certificate-authority = Certificate Authority
 certificate-viewer-cipher-suite = Cipher Suite
 certificate-viewer-common-name = Common Name
 certificate-viewer-email-address = Email Address
+# Variables:
+#   $firstCertName (String) - Common Name for the displayed certificate
+certificate-viewer-tab-title = Certificate for { $firstCertName }
 # Inc. means Incorporated, e.g GitHub is incorporated in Delaware
 certificate-viewer-inc-country = Inc. Country
 certificate-viewer-country = Country
@@ -78,6 +81,7 @@ certificate-viewer-authority-info-aia = Authority Info (AIA)
 certificate-viewer-certificate-policies = Certificate Policies
 certificate-viewer-embedded-scts = Embedded SCTs
 certificate-viewer-crl-endpoints = CRL Endpoints
+
 # This message is used as a row header in the Miscellaneous section. 
 # The associated data cell contains links to download the certificate.
 certificate-viewer-download = Download
@@ -96,3 +100,17 @@ certificate-viewer-download-pem = PEM (cert)
   .download = { $fileName }.pem
 certificate-viewer-download-pem-chain = PEM (chain)
   .download = { $fileName }-chain.pem
+
+# The title attribute for Critical Extension icon
+certificate-viewer-critical-extension =
+  .title = This extension has been marked as critical, meaning that clients must reject the certificate if they do not understand it.
+certificate-viewer-export = Export
+  .download = { $fileName }.pem
+
+## Labels for tabs displayed in stand-alone about:certificate page
+
+certificate-viewer-tab-mine = Your Certificates
+certificate-viewer-tab-people = People
+certificate-viewer-tab-servers = Servers
+certificate-viewer-tab-ca = Authorities
+certificate-viewer-tab-unkonwn = Unknown

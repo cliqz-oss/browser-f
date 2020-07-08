@@ -10,7 +10,6 @@
 #define mozilla_dom_BindContext_h__
 
 #include "mozilla/Attributes.h"
-#include "mozilla/AutoRestore.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ShadowRoot.h"
@@ -19,9 +18,6 @@ namespace mozilla {
 namespace dom {
 
 struct MOZ_STACK_CLASS BindContext final {
-  struct NestingLevel;
-  friend struct NestingLevel;
-
   // The document that owns the tree we're getting bound to.
   //
   // This is mostly an optimization to avoid silly pointer-chases to get the
@@ -46,6 +42,13 @@ struct MOZ_STACK_CLASS BindContext final {
 
   // Whether our subtree root is changing as a result of this operation.
   bool SubtreeRootChanges() const { return mSubtreeRootChanges; }
+
+  // Autofocus is allowed only if the is in the same origin as the top level
+  // document.
+  // https://html.spec.whatwg.org/multipage/interaction.html#the-autofocus-attribute:same-origin
+  // In addition, the document should not be already loaded and the
+  // "browser.autofocus" preference should be 'true'.
+  bool AllowsAutoFocus() const;
 
   // This constructor should be used for regular appends to content.
   explicit BindContext(nsINode& aParent)
@@ -78,9 +81,9 @@ struct MOZ_STACK_CLASS BindContext final {
   }
 
  private:
-  static bool IsLikelyUndisplayed(const nsINode& aParent) {
-    return aParent.IsAnyOfHTMLElements(nsGkAtoms::style, nsGkAtoms::script);
-  }
+  // Returns true iff the document is in the same origin as the top level
+  // document.
+  bool IsSameOriginAsTop() const;
 
   Document& mDoc;
 

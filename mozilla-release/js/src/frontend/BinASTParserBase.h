@@ -26,17 +26,11 @@ namespace frontend {
 
 class BinASTParserBase : public ParserSharedBase {
  public:
-  BinASTParserBase(JSContext* cx, CompilationInfo& compilationInfo,
-                   HandleScriptSourceObject sourceObject);
+  BinASTParserBase(JSContext* cx, CompilationInfo& compilationInfo);
   ~BinASTParserBase() = default;
 
  public:
-  virtual void doTrace(JSTracer* trc) {}
-
-  void trace(JSTracer* trc) {
-    FunctionBox::TraceList(trc, traceListHead_);
-    doTrace(trc);
-  }
+  void trace(JSTracer* trc) override {}
 };
 
 }  // namespace frontend

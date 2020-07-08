@@ -114,6 +114,7 @@ class ProfilerCodeAddressService;
 class ProfilerMarkerPayload;
 class SpliceableJSONWriter;
 namespace mozilla {
+class ProfileBufferControlledChunkManager;
 namespace net {
 struct TimingStruct;
 enum CacheDisposition : uint8_t;
@@ -151,32 +152,34 @@ class Vector;
     /* The DevTools profiler doesn't want the native addresses. */             \
     MACRO(2, "leaf", Leaf, "Include the C++ leaf node if not stackwalking")    \
                                                                                \
-    MACRO(3, "mainthreadio", MainThreadIO,                                     \
-          "Add main thread I/O to the profile")                                \
+    MACRO(3, "mainthreadio", MainThreadIO, "Add main thread file I/O")         \
                                                                                \
-    MACRO(4, "privacy", Privacy,                                               \
-          "Do not include user-identifiable information")                      \
+    MACRO(4, "fileio", FileIO,                                                 \
+          "Add file I/O from all profiled threads, implies mainthreadio")      \
                                                                                \
-    MACRO(5, "screenshots", Screenshots,                                       \
+    MACRO(5, "fileioall", FileIOAll,                                           \
+          "Add file I/O from all threads, implies fileio")                     \
+                                                                               \
+    MACRO(6, "noiostacks", NoIOStacks,                                         \
+          "File I/O markers do not capture stacks, to reduce overhead")        \
+                                                                               \
+    MACRO(7, "screenshots", Screenshots,                                       \
           "Take a snapshot of the window on every composition")                \
                                                                                \
-    MACRO(6, "seqstyle", SequentialStyle,                                      \
+    MACRO(8, "seqstyle", SequentialStyle,                                      \
           "Disable parallel traversal in styling")                             \
                                                                                \
-    MACRO(7, "stackwalk", StackWalk,                                           \
+    MACRO(9, "stackwalk", StackWalk,                                           \
           "Walk the C++ stack, not available on all platforms")                \
                                                                                \
-    MACRO(8, "tasktracer", TaskTracer,                                         \
+    MACRO(10, "tasktracer", TaskTracer,                                        \
           "Start profiling with feature TaskTracer")                           \
                                                                                \
-    MACRO(9, "threads", Threads, "Profile the registered secondary threads")   \
+    MACRO(11, "threads", Threads, "Profile the registered secondary threads")  \
                                                                                \
-    MACRO(10, "trackopts", TrackOptimizations,                                 \
-          "Have the JavaScript engine track JIT optimizations")                \
+    MACRO(12, "jstracer", JSTracer, "Enable tracing of the JavaScript engine") \
                                                                                \
-    MACRO(11, "jstracer", JSTracer, "Enable tracing of the JavaScript engine") \
-                                                                               \
-    MACRO(12, "jsallocations", JSAllocations,                                  \
+    MACRO(13, "jsallocations", JSAllocations,                                  \
           "Have the JavaScript engine track allocations")                      \
                                                                                \
     MACRO(14, "nostacksampling", NoStackSampling,                              \
@@ -236,6 +239,22 @@ class RacyFeatures {
 
   static void SetUnpaused() { sActiveAndFeatures &= ~Paused; }
 
+  static mozilla::Maybe<uint32_t> FeaturesIfActive() {
+    if (uint32_t af = sActiveAndFeatures; af & Active) {
+      // Active, remove the Active&Paused bits to get all features.
+      return Some(af & ~(Active | Paused));
+    }
+    return Nothing();
+  }
+
+  static mozilla::Maybe<uint32_t> FeaturesIfActiveAndUnpaused() {
+    if (uint32_t af = sActiveAndFeatures; (af & (Active | Paused)) == Active) {
+      // Active but not paused, remove the Active bit to get all features.
+      return Some(af & ~Active);
+    }
+    return Nothing();
+  }
+
   static bool IsActive() { return uint32_t(sActiveAndFeatures) & Active; }
 
   static bool IsActiveWithFeature(uint32_t aFeature) {
@@ -243,14 +262,9 @@ class RacyFeatures {
     return (af & Active) && (af & aFeature);
   }
 
-  static bool IsActiveWithoutPrivacy() {
+  static bool IsActiveAndUnpaused() {
     uint32_t af = sActiveAndFeatures;  // copy it first
-    return (af & Active) && !(af & ProfilerFeature::Privacy);
-  }
-
-  static bool IsActiveAndUnpausedWithoutPrivacy() {
-    uint32_t af = sActiveAndFeatures;  // copy it first
-    return (af & Active) && !(af & (Paused | ProfilerFeature::Privacy));
+    return (af & Active) && !(af & Paused);
   }
 
  private:
@@ -273,6 +287,7 @@ class RacyFeatures {
 };
 
 bool IsThreadBeingProfiled();
+bool IsThreadRegistered();
 
 }  // namespace detail
 }  // namespace profiler
@@ -283,19 +298,19 @@ bool IsThreadBeingProfiled();
 //---------------------------------------------------------------------------
 
 static constexpr mozilla::PowerOfTwo32 PROFILER_DEFAULT_ENTRIES =
-#  if !defined(ARCH_ARMV6)
-    mozilla::MakePowerOfTwo32<1u << 20>();  // 1'048'576 entries = 8MB
+#  if !defined(GP_PLAT_arm_android)
+    mozilla::MakePowerOfTwo32<8 * 1024 * 1024>();  // 8M entries = 64MB
 #  else
-    mozilla::MakePowerOfTwo32<1u << 17>();  // 131'072 entries = 1MB
+    mozilla::MakePowerOfTwo32<2 * 1024 * 1024>();  // 2M entries = 16MB
 #  endif
 
 // Startup profiling usually need to capture more data, especially on slow
 // systems.
 static constexpr mozilla::PowerOfTwo32 PROFILER_DEFAULT_STARTUP_ENTRIES =
-#  if !defined(ARCH_ARMV6)
-    mozilla::MakePowerOfTwo32<1u << 22>();  // 4'194'304 entries = 32MB
+#  if !defined(GP_PLAT_arm_android)
+    mozilla::MakePowerOfTwo32<64 * 1024 * 1024>();  // 64M entries = 512MB
 #  else
-    mozilla::MakePowerOfTwo32<1u << 17>();  // 131'072 entries = 1MB
+    mozilla::MakePowerOfTwo32<8 * 1024 * 1024>();  // 8M entries = 64MB
 #  endif
 
 #  define PROFILER_DEFAULT_DURATION 20 /* seconds, for tests only */
@@ -438,7 +453,7 @@ using PostSamplingCallback = std::function<void(SamplingState)>;
 //   please be mindful not to block for a long time (e.g., just dispatch a
 //   runnable to another thread.) Calling profiler functions from the callback
 //   is allowed.
-MOZ_MUST_USE bool profiler_callback_after_sampling(
+[[nodiscard]] bool profiler_callback_after_sampling(
     PostSamplingCallback&& aCallback);
 
 // Pause and resume the profiler. No-ops if the profiler is inactive. While
@@ -508,8 +523,7 @@ inline bool profiler_is_active() {
 //     BASE_PROFILER_ADD_MARKER_WITH_PAYLOAD(name, OTHER, expensivePayload);
 //   }
 inline bool profiler_can_accept_markers() {
-  return mozilla::profiler::detail::RacyFeatures::
-      IsActiveAndUnpausedWithoutPrivacy();
+  return mozilla::profiler::detail::RacyFeatures::IsActiveAndUnpaused();
 }
 
 // Is the profiler active, and is the current thread being profiled?
@@ -517,6 +531,14 @@ inline bool profiler_can_accept_markers() {
 inline bool profiler_thread_is_being_profiled() {
   return profiler_is_active() &&
          mozilla::profiler::detail::IsThreadBeingProfiled();
+}
+
+// During profiling, if the current thread is registered, return true
+// (regardless of whether it is actively being profiled).
+// (Same caveats and recommented usage as profiler_is_active().)
+inline bool profiler_is_active_and_thread_is_registered() {
+  return profiler_is_active() &&
+         mozilla::profiler::detail::IsThreadRegistered();
 }
 
 // Is the profiler active and paused? Returns false if the profiler is inactive.
@@ -529,6 +551,20 @@ bool profiler_thread_is_sleeping();
 // profiler_start(). The result is the same whether the profiler is active or
 // not.
 uint32_t profiler_get_available_features();
+
+// Returns the full feature set if the profiler is active.
+// Note: the return value can become immediately out-of-date, much like the
+// return value of profiler_is_active().
+inline mozilla::Maybe<uint32_t> profiler_features_if_active() {
+  return mozilla::profiler::detail::RacyFeatures::FeaturesIfActive();
+}
+
+// Returns the full feature set if the profiler is active and unpaused.
+// Note: the return value can become immediately out-of-date, much like the
+// return value of profiler_is_active().
+inline mozilla::Maybe<uint32_t> profiler_features_if_active_and_unpaused() {
+  return mozilla::profiler::detail::RacyFeatures::FeaturesIfActiveAndUnpaused();
+}
 
 // Check if a profiler feature (specified via the ProfilerFeature type) is
 // active. Returns false if the profiler is inactive. Note: the return value
@@ -545,6 +581,10 @@ void profiler_get_start_params(
     uint32_t* aFeatures,
     mozilla::Vector<const char*, 0, mozilla::MallocAllocPolicy>* aFilters,
     uint64_t* aActiveBrowsingContextID);
+
+// Get the chunk manager used in the current profiling session, or null.
+mozilla::ProfileBufferControlledChunkManager*
+profiler_get_controlled_chunk_manager();
 
 // The number of milliseconds since the process started. Operates the same
 // whether the profiler is active or inactive.
@@ -592,7 +632,7 @@ class ProfilerStackCollector {
 // This method suspends the thread identified by aThreadId, samples its
 // profiling stack, JS stack, and (optionally) native stack, passing the
 // collected frames into aCollector. aFeatures dictates which compiler features
-// are used. |Privacy| and |Leaf| are the only relevant ones.
+// are used. |Leaf| is the only relevant one.
 void profiler_suspend_and_sample_thread(int aThreadId, uint32_t aFeatures,
                                         ProfilerStackCollector& aCollector,
                                         bool aSampleNative = true);
@@ -605,7 +645,7 @@ using UniqueProfilerBacktrace =
     mozilla::UniquePtr<ProfilerBacktrace, ProfilerBacktraceDestructor>;
 
 // Immediately capture the current thread's call stack and return it. A no-op
-// if the profiler is inactive or in privacy mode.
+// if the profiler is inactive.
 UniqueProfilerBacktrace profiler_get_backtrace();
 
 struct ProfilerStats {
@@ -784,8 +824,7 @@ mozilla::Maybe<ProfilerBufferInfo> profiler_get_buffer_info();
 // recorded in the profile buffer if a sample is collected while the label is
 // on the label stack, markers will always be recorded in the profile buffer.
 // aMarkerName is copied, so the caller does not need to ensure it lives for a
-// certain length of time. A no-op if the profiler is inactive or in privacy
-// mode.
+// certain length of time. A no-op if the profiler is inactive.
 
 #  define PROFILER_ADD_MARKER(markerName, categoryPair)                 \
     do {                                                                \
@@ -828,10 +867,17 @@ bool profiler_add_native_allocation_marker(int aMainThreadId, int64_t aSize,
 bool profiler_is_locked_on_current_thread();
 
 // Insert a marker in the profile timeline for a specified thread.
-void profiler_add_marker_for_thread(
-    int aThreadId, JS::ProfilingCategoryPair aCategoryPair,
-    const char* aMarkerName,
-    mozilla::UniquePtr<ProfilerMarkerPayload> aPayload);
+void profiler_add_marker_for_thread(int aThreadId,
+                                    JS::ProfilingCategoryPair aCategoryPair,
+                                    const char* aMarkerName,
+                                    const ProfilerMarkerPayload& aPayload);
+
+// Insert a marker in the profile timeline for the main thread.
+// This may be used to gather some markers from any thread, that should be
+// displayed in the main thread track.
+void profiler_add_marker_for_mainthread(JS::ProfilingCategoryPair aCategoryPair,
+                                        const char* aMarkerName,
+                                        const ProfilerMarkerPayload& aPayload);
 
 enum class NetworkLoadType { LOAD_START, LOAD_STOP, LOAD_REDIRECT };
 
@@ -847,7 +893,9 @@ void profiler_add_network_marker(
     mozilla::TimeStamp aStart, mozilla::TimeStamp aEnd, int64_t aCount,
     mozilla::net::CacheDisposition aCacheDisposition, uint64_t aInnerWindowID,
     const mozilla::net::TimingStruct* aTimings = nullptr,
-    nsIURI* aRedirectURI = nullptr, UniqueProfilerBacktrace aSource = nullptr);
+    nsIURI* aRedirectURI = nullptr, UniqueProfilerBacktrace aSource = nullptr,
+    const mozilla::Maybe<nsDependentCString>& aContentType =
+        mozilla::Nothing());
 
 enum TracingKind {
   TRACING_EVENT,
@@ -863,8 +911,7 @@ enum TracingKind {
 mozilla::Maybe<uint64_t> profiler_get_inner_window_id_from_docshell(
     nsIDocShell* aDocshell);
 
-// Adds a tracing marker to the profile. A no-op if the profiler is inactive or
-// in privacy mode.
+// Adds a tracing marker to the profile. A no-op if the profiler is inactive.
 
 #  define PROFILER_TRACING_MARKER(categoryString, markerName, categoryPair, \
                                   kind)                                     \

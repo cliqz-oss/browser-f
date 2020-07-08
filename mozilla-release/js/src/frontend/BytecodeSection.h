@@ -35,7 +35,7 @@
 #include "js/Vector.h"                  // Vector
 #include "vm/Opcodes.h"                 // JSOpLength_JumpTarget
 #include "vm/SharedStencil.h"           // TryNote, ScopeNote
-#include "vm/TryNoteKind.h"             // TryNoteKind
+#include "vm/StencilEnums.h"            // TryNoteKind
 
 namespace js {
 
@@ -49,15 +49,16 @@ struct MOZ_STACK_CLASS GCThingList {
   CompilationInfo& compilationInfo;
   ScriptThingsVector vector;
 
-  // Last emitted function.
-  FunctionBox* lastbox = nullptr;
-
   // Index of the first scope in the vector.
   mozilla::Maybe<uint32_t> firstScopeIndex;
 
   explicit GCThingList(JSContext* cx, CompilationInfo& compilationInfo)
       : compilationInfo(compilationInfo), vector(cx) {}
 
+  MOZ_MUST_USE bool append(JSAtom* atom, uint32_t* index) {
+    *index = vector.length();
+    return vector.append(mozilla::AsVariant(std::move(atom)));
+  }
   MOZ_MUST_USE bool append(ScopeIndex scope, uint32_t* index) {
     *index = vector.length();
     if (!vector.append(mozilla::AsVariant(scope))) {
@@ -97,8 +98,6 @@ struct MOZ_STACK_CLASS GCThingList {
   uint32_t length() const { return vector.length(); }
 
   const ScriptThingsVector& objects() { return vector; }
-
-  void finishInnerFunctions();
 
   AbstractScopePtr getScope(size_t index) const;
 

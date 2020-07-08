@@ -37,8 +37,6 @@ accessibility-text-label-issue-figure = Abbildungen mit optionaler Legende sollt
 
 accessibility-text-label-issue-fieldset = <code>fieldset</code>-Elemente müssen beschriftet werden. <a>Weitere Informationen</a>
 
-accessibility-text-label-issue-fieldset-legend = Verwenden Sie <code>legend</code>-Elemente zum Beschriften von <span>fieldset</span>-Elementen. <a>Weitere Informationen</a>
-
 accessibility-text-label-issue-fieldset-legend2 = Verwenden Sie ein <code>legend</code>-Element zum Beschriften eines <span>fieldset</span>-Elements. <a>Weitere Informationen</a>
 
 accessibility-text-label-issue-form = Formularelemente müssen beschriftet werden. <a>Weitere Informationen</a>
@@ -58,8 +56,6 @@ accessibility-text-label-issue-iframe = Verwenden Sie das <code>title</code>-Att
 accessibility-text-label-issue-image = Inhalte mit Grafiken müssen beschriftet werden. <a>Weitere Informationen</a>
 
 accessibility-text-label-issue-interactive = Interaktive Elemente müssen beschriftet werden. <a>Weitere Informationen</a>
-
-accessibility-text-label-issue-optgroup-label = Verwenden Sie das <code>label</code>-Attribut zum Beschriften von <span>optgroup</span>-Elementen. <a>Weitere Informationen</a>
 
 accessibility-text-label-issue-optgroup-label2 = Verwenden Sie das <code>label</code>-Attribut zum Beschriften eines <span>optgroup</span>-Elements. <a>Weitere Informationen</a>
 

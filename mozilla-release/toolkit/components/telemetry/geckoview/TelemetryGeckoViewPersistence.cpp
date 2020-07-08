@@ -18,16 +18,17 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPtr.h"
-#include "mozilla/SystemGroup.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsIFile.h"
 #include "nsIInputStream.h"
 #include "nsIObserverService.h"
 #include "nsIOutputStream.h"
 #include "nsISafeOutputStream.h"
+#include "nsIThread.h"
 #include "nsITimer.h"
 #include "nsLocalFile.h"
 #include "nsNetUtil.h"
+#include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
 #include "prenv.h"
 #include "prio.h"
@@ -37,7 +38,6 @@ using mozilla::GetErrorName;
 using mozilla::MakeScopeExit;
 using mozilla::Preferences;
 using mozilla::StaticRefPtr;
-using mozilla::SystemGroup;
 using mozilla::TaskCategory;
 using mozilla::dom::AutoJSAPI;
 using mozilla::dom::SimpleGlobalObject;
@@ -114,6 +114,11 @@ class StreamingJSONWriter : public mozilla::JSONWriteFunc {
   void Write(const char* aStr) override {
     uint32_t count;
     mozilla::Unused << mStream->Write(aStr, strlen(aStr), &count);
+  }
+
+  void Write(const char* aStr, size_t aLen) override {
+    uint32_t count;
+    mozilla::Unused << mStream->Write(aStr, aLen, &count);
   }
 
  private:
@@ -205,8 +210,7 @@ void MainThreadArmPersistenceTimer() {
   // We won't have a persistence timer the first time this runs, so take
   // care of that.
   if (!gPersistenceTimer) {
-    gPersistenceTimer =
-        NS_NewTimer(SystemGroup::EventTargetFor(TaskCategory::Other)).take();
+    gPersistenceTimer = NS_NewTimer().take();
     if (!gPersistenceTimer) {
       ANDROID_LOG("MainThreadArmPersistenceTimer - Timer creation failed.");
       return;

@@ -8,7 +8,6 @@
 #ifndef mozilla_ipc_ProtocolUtils_h
 #define mozilla_ipc_ProtocolUtils_h 1
 
-#include "base/id_map.h"
 #include "base/process.h"
 #include "base/process_util.h"
 #include "chrome/common/ipc_message_utils.h"
@@ -33,6 +32,9 @@
 #include "mozilla/UniquePtr.h"
 #include "MainThreadUtils.h"
 
+#include "nsDataHashtable.h"
+#include "nsHashKeys.h"
+
 #if defined(ANDROID) && defined(DEBUG)
 #  include <android/log.h>
 #endif
@@ -52,6 +54,7 @@ namespace {
 // protocol 0.  Oops!  We can get away with this until protocol 0
 // starts approaching its 65,536th message.
 enum {
+  IMPENDING_SHUTDOWN_MESSAGE_TYPE = kuint16max - 9,
   BUILD_IDS_MATCH_MESSAGE_TYPE = kuint16max - 8,
   BUILD_ID_MESSAGE_TYPE = kuint16max - 7,  // unused
   CHANNEL_OPENED_MESSAGE_TYPE = kuint16max - 6,
@@ -214,8 +217,6 @@ class IProtocol : public HasResultCodes {
   // unexpected behavior.
   void ReplaceEventTargetForActor(IProtocol* aActor,
                                   nsIEventTarget* aEventTarget);
-
-  void SetEventTargetForRoute(int32_t aRoute, nsIEventTarget* aEventTarget);
 
   nsIEventTarget* GetActorEventTarget();
   already_AddRefed<nsIEventTarget> GetActorEventTarget(IProtocol* aActor);
@@ -413,7 +414,6 @@ class IToplevelProtocol : public IProtocol {
                                       nsIEventTarget* aEventTarget);
   void ReplaceEventTargetForActor(IProtocol* aActor,
                                   nsIEventTarget* aEventTarget);
-  void SetEventTargetForRoute(int32_t aRoute, nsIEventTarget* aEventTarget);
   nsIEventTarget* GetActorEventTarget();
   already_AddRefed<nsIEventTarget> GetActorEventTarget(IProtocol* aActor);
 
@@ -443,6 +443,12 @@ class IToplevelProtocol : public IProtocol {
   // will crash.
   bool OpenOnSameThread(MessageChannel* aChannel,
                         mozilla::ipc::Side aSide = mozilla::ipc::UnknownSide);
+
+  /**
+   * This sends a special message that is processed on the IO thread, so that
+   * other actors can know that the process will soon shutdown.
+   */
+  void NotifyImpendingShutdown();
 
   void Close();
 
@@ -509,25 +515,13 @@ class IToplevelProtocol : public IProtocol {
 
   already_AddRefed<nsIEventTarget> GetMessageEventTarget(const Message& aMsg);
 
- protected:
-  // Override this method in top-level protocols to change the event target
-  // for a new actor (and its sub-actors).
-  virtual already_AddRefed<nsIEventTarget> GetConstructedEventTarget(
-      const Message& aMsg) {
-    return nullptr;
-  }
-
-  // Override this method in top-level protocols to change the event target
-  // for specific messages.
-  virtual already_AddRefed<nsIEventTarget> GetSpecificMessageEventTarget(
-      const Message& aMsg) {
-    return nullptr;
-  }
-
  private:
   base::ProcessId OtherPidMaybeInvalid() const { return mOtherPid; }
 
   int32_t NextId();
+
+  template <class T>
+  using IDMap = nsDataHashtable<nsUint32HashKey, T>;
 
   base::ProcessId mOtherPid;
 

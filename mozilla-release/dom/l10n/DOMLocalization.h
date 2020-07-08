@@ -26,9 +26,8 @@ class DOMLocalization : public intl::Localization {
   explicit DOMLocalization(nsIGlobalObject* aGlobal);
 
   static already_AddRefed<DOMLocalization> Constructor(
-      const GlobalObject& aGlobal,
-      const Optional<Sequence<nsString>>& aResourceIds,
-      const Optional<OwningNonNull<GenerateMessages>>& aGenerateMessages,
+      const GlobalObject& aGlobal, const Sequence<nsString>& aResourceIds,
+      const bool aSync, const BundleGenerator& aBundleGenerator,
       ErrorResult& aRv);
 
   virtual JSObject* WrapObject(JSContext* aCx,
@@ -49,8 +48,7 @@ class DOMLocalization : public intl::Localization {
   void SetAttributes(JSContext* aCx, Element& aElement, const nsAString& aId,
                      const Optional<JS::Handle<JSObject*>>& aArgs,
                      ErrorResult& aRv);
-  void GetAttributes(JSContext* aCx, Element& aElement, L10nKey& aResult,
-                     ErrorResult& aRv);
+  void GetAttributes(Element& aElement, L10nKey& aResult, ErrorResult& aRv);
 
   already_AddRefed<Promise> TranslateFragment(nsINode& aNode, ErrorResult& aRv);
 
@@ -85,9 +83,12 @@ class DOMLocalization : public intl::Localization {
    *
    * If `aProto` gets passed, it'll be used to cache
    * the localized elements.
+   *
+   * Result is `true` if all translations were applied
+   * successfully, and `false` otherwise.
    */
-  void ApplyTranslations(nsTArray<nsCOMPtr<Element>>& aElements,
-                         nsTArray<L10nMessage>& aTranslations,
+  bool ApplyTranslations(nsTArray<nsCOMPtr<Element>>& aElements,
+                         nsTArray<Nullable<L10nMessage>>& aTranslations,
                          nsXULPrototypeDocument* aProto, ErrorResult& aRv);
 
   bool SubtreeRootInRoots(nsINode* aSubtreeRoot) {
@@ -106,8 +107,8 @@ class DOMLocalization : public intl::Localization {
   void DisconnectMutations();
   void DisconnectRoots();
   void ReportL10nOverlaysErrors(nsTArray<L10nOverlaysError>& aErrors);
-  void ConvertStringToL10nArgs(JSContext* aCx, const nsString& aInput,
-                               intl::L10nArgs& aRetVal, ErrorResult& aRv);
+  void ConvertStringToL10nArgs(const nsString& aInput, intl::L10nArgs& aRetVal,
+                               ErrorResult& aRv);
 
   RefPtr<L10nMutations> mMutations;
   nsTHashtable<nsRefPtrHashKey<nsINode>> mRoots;

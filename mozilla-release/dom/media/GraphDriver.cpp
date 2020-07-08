@@ -7,7 +7,7 @@
 #include "mozilla/dom/AudioContext.h"
 #include "mozilla/dom/AudioDeviceInfo.h"
 #include "mozilla/dom/BaseAudioContextBinding.h"
-#include "mozilla/dom/WorkletThread.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/SharedThreadPool.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Unused.h"
@@ -90,7 +90,7 @@ ThreadedDriver::~ThreadedDriver() {
   if (mThread) {
     nsCOMPtr<nsIRunnable> event =
         new MediaTrackGraphShutdownThreadRunnable(mThread.forget());
-    SystemGroup::Dispatch(TaskCategory::Other, event.forget());
+    SchedulerGroup::Dispatch(TaskCategory::Other, event.forget());
   }
 }
 
@@ -205,7 +205,6 @@ void ThreadedDriver::RunThread() {
 
     if (result.IsStop()) {
       // Signal that we're done stopping.
-      dom::WorkletThread::DeleteCycleCollectedJSContext();
       result.Stopped();
       break;
     }
@@ -421,7 +420,9 @@ class AudioCallbackDriver::FallbackWrapper : public GraphInterface {
                "The audio driver can only enter stopping if it iterated the "
                "graph, which it can only do if there's no fallback driver");
     if (audioState != AudioStreamState::Running && result.IsStillProcessing()) {
-      mOwner->MaybeStartAudioStream();
+      if (audioState != AudioStreamState::Errored) {
+        mOwner->MaybeStartAudioStream();
+      }
       return result;
     }
 
@@ -491,7 +492,7 @@ AudioCallbackDriver::AudioCallbackDriver(
     uint32_t aInputChannelCount, CubebUtils::AudioDeviceID aOutputDeviceID,
     CubebUtils::AudioDeviceID aInputDeviceID, AudioInputType aAudioInputType)
     : GraphDriver(aGraphInterface, aPreviousDriver, aSampleRate),
-      mOutputChannels(aOutputChannelCount),
+      mOutputChannelCount(aOutputChannelCount),
       mInputChannelCount(aInputChannelCount),
       mOutputDeviceID(aOutputDeviceID),
       mInputDeviceID(aInputDeviceID),
@@ -505,8 +506,9 @@ AudioCallbackDriver::AudioCallbackDriver(
       mFallback("AudioCallbackDriver::mFallback") {
   LOG(LogLevel::Debug, ("%p: AudioCallbackDriver ctor", Graph()));
 
-  NS_WARNING_ASSERTION(mOutputChannels != 0, "Invalid output channel count");
-  MOZ_ASSERT(mOutputChannels <= 8);
+  NS_WARNING_ASSERTION(mOutputChannelCount != 0,
+                       "Invalid output channel count");
+  MOZ_ASSERT(mOutputChannelCount <= 8);
 
   const uint32_t kIdleThreadTimeoutMs = 2000;
   mInitShutdownThread->SetIdleThreadTimeout(
@@ -570,6 +572,7 @@ bool IsMacbookOrMacbookAir() {
 }
 
 void AudioCallbackDriver::Init() {
+  AUTO_PROFILER_LABEL("AudioCallbackDriver::Init", MEDIA_CUBEB);
   MOZ_ASSERT(OnCubebOperationThread());
   MOZ_ASSERT(mAudioStreamState == AudioStreamState::Pending);
   FallbackDriverState fallbackState = mFallbackDriverState;
@@ -605,7 +608,7 @@ void AudioCallbackDriver::Init() {
     output.format = CUBEB_SAMPLE_FLOAT32NE;
   }
 
-  if (!mOutputChannels) {
+  if (!mOutputChannelCount) {
     LOG(LogLevel::Warning, ("Output number of channels is 0."));
     mAudioStreamState = AudioStreamState::None;
     if (!fromFallback) {
@@ -627,18 +630,19 @@ void AudioCallbackDriver::Init() {
     }
   }
 
-  mBuffer = AudioCallbackBufferWrapper<AudioDataValue>(mOutputChannels);
+  mBuffer = AudioCallbackBufferWrapper<AudioDataValue>(mOutputChannelCount);
   mScratchBuffer =
-      SpillBuffer<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 2>(mOutputChannels);
+      SpillBuffer<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 2>(mOutputChannelCount);
 
-  output.channels = mOutputChannels;
+  output.channels = mOutputChannelCount;
   AudioConfig::ChannelLayout::ChannelMap channelMap =
-      AudioConfig::ChannelLayout(mOutputChannels).Map();
+      AudioConfig::ChannelLayout(mOutputChannelCount).Map();
 
   output.layout = static_cast<uint32_t>(channelMap);
   output.prefs = CubebUtils::GetDefaultStreamPrefs();
 #if !defined(XP_WIN)
-  if (mInputDevicePreference == CUBEB_DEVICE_PREF_VOICE) {
+  if (mInputDevicePreference == CUBEB_DEVICE_PREF_VOICE &&
+      CubebUtils::RouteOutputAsVoice()) {
     output.prefs |= static_cast<cubeb_stream_prefs>(CUBEB_STREAM_PREF_VOICE);
   }
 #endif
@@ -667,6 +671,10 @@ void AudioCallbackDriver::Init() {
   input = output;
   input.channels = mInputChannelCount;
   input.layout = CUBEB_LAYOUT_UNDEFINED;
+  input.prefs = CubebUtils::GetDefaultStreamPrefs();
+  if (mInputDevicePreference == CUBEB_DEVICE_PREF_VOICE) {
+    input.prefs |= static_cast<cubeb_stream_prefs>(CUBEB_STREAM_PREF_VOICE);
+  }
 
   cubeb_stream* stream = nullptr;
   bool inputWanted = mInputChannelCount > 0;
@@ -708,6 +716,12 @@ void AudioCallbackDriver::Init() {
 
   cubeb_stream_register_device_changed_callback(
       mAudioStream, AudioCallbackDriver::DeviceChangedCallback_s);
+
+  // No-op if MOZ_DUMP_AUDIO is not defined as an environment variable. This
+  // is intended for diagnosing issues, and only works if the content sandbox is
+  // disabled.
+  mInputStreamFile.Open("GraphDriverInput", input.channels, input.rate);
+  mOutputStreamFile.Open("GraphDriverOutput", output.channels, output.rate);
 
   if (NS_WARN_IF(!StartStream())) {
     LOG(LogLevel::Warning,
@@ -754,6 +768,7 @@ void AudioCallbackDriver::Start() {
 }
 
 bool AudioCallbackDriver::StartStream() {
+  AUTO_PROFILER_LABEL("AudioCallbackDriver::StartStream", MEDIA_CUBEB);
   MOZ_ASSERT(!IsStarted() && OnCubebOperationThread());
   // Set mStarted before cubeb_stream_start, since starting the cubeb stream can
   // result in a callback (that may read mStarted) before mStarted would
@@ -769,6 +784,7 @@ bool AudioCallbackDriver::StartStream() {
 }
 
 void AudioCallbackDriver::Stop() {
+  AUTO_PROFILER_LABEL("AudioCallbackDriver::Stop", MEDIA_CUBEB);
   MOZ_ASSERT(OnCubebOperationThread());
   if (cubeb_stream_stop(mAudioStream) != CUBEB_OK) {
     NS_WARNING("Could not stop cubeb stream for MTG.");
@@ -800,6 +816,7 @@ void AudioCallbackDriver::Shutdown() {
 
 #if defined(XP_WIN)
 void AudioCallbackDriver::ResetDefaultDevice() {
+  AUTO_PROFILER_LABEL("AudioCallbackDriver::ResetDefaultDevice", MEDIA_CUBEB);
   if (cubeb_stream_reset_default_device(mAudioStream) != CUBEB_OK) {
     NS_WARNING("Could not reset cubeb stream to default output device.");
   }
@@ -849,19 +866,19 @@ long AudioCallbackDriver::DataCallback(const AudioDataValue* aInputBuffer,
     // Wait for the fallback driver to stop. Wake it up so it can stop if it's
     // sleeping.
     EnsureNextIteration();
-    PodZero(aOutputBuffer, aFrames * mOutputChannels);
+    PodZero(aOutputBuffer, aFrames * mOutputChannelCount);
     return aFrames;
   }
 
   if (MOZ_UNLIKELY(fallbackState == FallbackDriverState::Stopped)) {
     // We're supposed to stop.
-    PodZero(aOutputBuffer, aFrames * mOutputChannels);
+    PodZero(aOutputBuffer, aFrames * mOutputChannelCount);
     return aFrames - 1;
   }
 
   MOZ_ASSERT(ThreadRunning());
   TRACE_AUDIO_CALLBACK_BUDGET(aFrames, mSampleRate);
-  TRACE_AUDIO_CALLBACK();
+  TRACE();
 
 #ifdef DEBUG
   AutoInCallback aic(this);
@@ -947,18 +964,24 @@ long AudioCallbackDriver::DataCallback(const AudioDataValue* aInputBuffer,
 
   mBuffer.BufferFilled();
 
+#ifdef MOZ_SAMPLE_TYPE_FLOAT32
+  // Prevent returning NaN to the OS mixer, and propagating NaN into the reverse
+  // stream of the AEC.
+  NaNToZeroInPlace(aOutputBuffer, aFrames * mOutputChannelCount);
+#endif
+
   // Callback any observers for the AEC speaker data.  Note that one
   // (maybe) of these will be full-duplex, the others will get their input
   // data off separate cubeb callbacks.  Take care with how stuff is
   // removed/added to this list and TSAN issues, but input and output will
   // use separate callback methods.
   Graph()->NotifyOutputData(aOutputBuffer, static_cast<size_t>(aFrames),
-                            mSampleRate, mOutputChannels);
+                            mSampleRate, mOutputChannelCount);
 
 #ifdef XP_MACOSX
   // This only happens when the output is on a macbookpro's external speaker,
   // that are stereo, but let's just be safe.
-  if (mNeedsPanning && mOutputChannels == 2) {
+  if (mNeedsPanning && mOutputChannelCount == 2) {
     // hard pan to the right
     for (uint32_t i = 0; i < aFrames * 2; i += 2) {
       aOutputBuffer[i + 1] += aOutputBuffer[i];
@@ -966,6 +989,14 @@ long AudioCallbackDriver::DataCallback(const AudioDataValue* aInputBuffer,
     }
   }
 #endif
+
+  // No-op if MOZ_DUMP_AUDIO is not defined as an environment variable
+  if (aInputBuffer) {
+    mInputStreamFile.Write(static_cast<const AudioDataValue*>(aInputBuffer),
+                           aFrames * mInputChannelCount);
+  }
+  mOutputStreamFile.Write(static_cast<const AudioDataValue*>(aOutputBuffer),
+                          aFrames * mOutputChannelCount);
 
   if (result.IsStop()) {
     // Signal that we have stopped.
@@ -1010,13 +1041,14 @@ static const char* StateToString(cubeb_state aState) {
 void AudioCallbackDriver::StateCallback(cubeb_state aState) {
   MOZ_ASSERT(!InIteration());
   LOG(LogLevel::Debug,
-      ("AudioCallbackDriver State: %s", StateToString(aState)));
+      ("AudioCallbackDriver(%p) State: %s", this, StateToString(aState)));
 
-  // Clear the flag for the not running
-  // states: stopped, drained, error.
+  // Clear the flag for the not running and error states (stopped, drained)
   AudioStreamState streamState = mAudioStreamState.exchange(
-      aState == CUBEB_STATE_STARTED ? AudioStreamState::Running
-                                    : AudioStreamState::None);
+      aState == CUBEB_STATE_STARTED
+          ? AudioStreamState::Running
+          : aState == CUBEB_STATE_ERROR ? AudioStreamState::Errored
+                                        : AudioStreamState::None);
 
   if (aState == CUBEB_STATE_ERROR) {
     // About to hand over control of the graph.  Do not start a new driver if
@@ -1055,6 +1087,7 @@ void AudioCallbackDriver::MixerCallback(AudioDataValue* aMixedBuffer,
 
 void AudioCallbackDriver::PanOutputIfNeeded(bool aMicrophoneActive) {
 #ifdef XP_MACOSX
+  AUTO_PROFILER_LABEL("AudioCallbackDriver::PanOutputIfNeeded", MEDIA_CUBEB);
   cubeb_device* out = nullptr;
   int rv;
   char name[128];
@@ -1065,7 +1098,32 @@ void AudioCallbackDriver::PanOutputIfNeeded(bool aMicrophoneActive) {
     return;
   }
 
-  if (!strncmp(name, "MacBookPro", 10)) {
+  int major, minor;
+  for (uint32_t i = 0; i < length; i++) {
+    // skip the model name
+    if (isalpha(name[i])) {
+      continue;
+    }
+    sscanf(name + i, "%d,%d", &major, &minor);
+    break;
+  }
+
+  enum MacbookModel { MacBook, MacBookPro, MacBookAir, NotAMacbook };
+
+  MacbookModel model;
+
+  if (!strncmp(name, "MacBookPro", length)) {
+    model = MacBookPro;
+  } else if (strncmp(name, "MacBookAir", length)) {
+    model = MacBookAir;
+  } else if (strncmp(name, "MacBook", length)) {
+    model = MacBook;
+  } else {
+    model = NotAMacbook;
+  }
+  // For macbook pro before 2016 model (change of chassis), hard pan the audio
+  // to the right if the speakers are in use to avoid feedback.
+  if (model == MacBookPro && major <= 12) {
     if (cubeb_stream_get_current_device(mAudioStream, &out) == CUBEB_OK) {
       MOZ_ASSERT(out);
       // Check if we are currently outputing sound on external speakers.
@@ -1163,8 +1221,20 @@ void AudioCallbackDriver::CompleteAudioContextOperations(
 }
 
 TimeDuration AudioCallbackDriver::AudioOutputLatency() {
+  AUTO_PROFILER_LABEL("AudioCallbackDriver::AudioOutputLatency", MEDIA_CUBEB);
   uint32_t latencyFrames;
   int rv = cubeb_stream_get_latency(mAudioStream, &latencyFrames);
+  if (rv || mSampleRate == 0) {
+    return TimeDuration::FromSeconds(0.0);
+  }
+
+  return TimeDuration::FromSeconds(static_cast<double>(latencyFrames) /
+                                   mSampleRate);
+}
+
+TimeDuration AudioCallbackDriver::AudioInputLatency() {
+  uint32_t latencyFrames;
+  int rv = cubeb_stream_get_input_latency(mAudioStream, &latencyFrames);
   if (rv || mSampleRate == 0) {
     return TimeDuration::FromSeconds(0.0);
   }
@@ -1176,6 +1246,7 @@ TimeDuration AudioCallbackDriver::AudioOutputLatency() {
 void AudioCallbackDriver::FallbackToSystemClockDriver() {
   MOZ_ASSERT(!ThreadRunning());
   MOZ_ASSERT(mAudioStreamState == AudioStreamState::None ||
+             mAudioStreamState == AudioStreamState::Errored ||
              mAudioStreamState == AudioStreamState::Pending);
   MOZ_ASSERT(mFallbackDriverState == FallbackDriverState::None);
   LOG(LogLevel::Debug,
@@ -1219,6 +1290,10 @@ void AudioCallbackDriver::FallbackDriverStopped(GraphTime aIterationStart,
 
 void AudioCallbackDriver::MaybeStartAudioStream() {
   AudioStreamState streamState = mAudioStreamState;
+  MOZ_ASSERT(
+      streamState != AudioStreamState::Errored,
+      "An errored stream must not attempted to be re-started, an error stream"
+      " has already beed started once");
   if (streamState != AudioStreamState::None) {
     LOG(LogLevel::Verbose,
         ("%p: AudioCallbackDriver %p Cannot re-init.", Graph(), this));

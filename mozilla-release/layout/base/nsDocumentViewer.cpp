@@ -10,6 +10,7 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/RestyleManager.h"
 #include "mozilla/ServoStyleSet.h"
+#include "mozilla/Telemetry.h"
 #include "nscore.h"
 #include "nsCOMPtr.h"
 #include "nsCRT.h"
@@ -19,6 +20,7 @@
 #include "nsIContent.h"
 #include "nsIContentViewer.h"
 #include "nsIDocumentViewerPrint.h"
+#include "nsIScreen.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/BeforeUnloadEvent.h"
 #include "mozilla/dom/PopupBlocker.h"
@@ -43,6 +45,7 @@
 #include "mozilla/ErrorResult.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_javascript.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
@@ -59,6 +62,7 @@
 #include "nsDocShell.h"
 #include "nsIBaseWindow.h"
 #include "nsILayoutHistoryState.h"
+#include "nsIScreen.h"
 #include "nsCharsetSource.h"
 #include "mozilla/ReflowInput.h"
 #include "nsIImageLoadingContent.h"
@@ -80,7 +84,8 @@
 #include "nsStyleSheetService.h"
 #include "nsILoadContext.h"
 #include "mozilla/ThrottledEventQueue.h"
-#include "nsIPrompt.h"
+#include "nsIPromptCollection.h"
+#include "nsIPromptService.h"
 #include "imgIContainer.h"  // image animation mode constants
 
 #include "nsSandboxFlags.h"
@@ -126,10 +131,6 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
-
-#define BEFOREUNLOAD_DISABLED_PREFNAME "dom.disable_beforeunload"
-#define BEFOREUNLOAD_REQUIRES_INTERACTION_PREFNAME \
-  "dom.require_user_interaction_for_beforeunload"
 
 //-----------------------------------------------------
 // LOGGING
@@ -440,10 +441,6 @@ class nsDocumentViewer final : public nsIContentViewer,
 
   nsIntRect mBounds;
 
-  // mTextZoom/mPageZoom record the textzoom/pagezoom of the first (galley)
-  // presshell only.
-  float mTextZoom;  // Text zoom, defaults to 1.0
-  float mPageZoom;
   float mOverrideDPPX;  // DPPX overrided, defaults to 0.0
 
   int16_t mNumURLStarts;
@@ -463,8 +460,6 @@ class nsDocumentViewer final : public nsIContentViewer,
   unsigned mClosingWhilePrinting : 1;
 
 #  if NS_PRINT_PREVIEW
-  unsigned mPrintPreviewZoomed : 1;
-
   // These data members support delayed printing when the document is loading
   unsigned mPrintIsPending : 1;
   unsigned mPrintDocIsFullyLoaded : 1;
@@ -472,8 +467,6 @@ class nsDocumentViewer final : public nsIContentViewer,
   nsCOMPtr<nsIWebProgressListener> mCachedPrintWebProgressListner;
 
   RefPtr<nsPrintJob> mPrintJob;
-  float mOriginalPrintPreviewScale;
-  float mPrintPreviewZoom;
   UniquePtr<AutoPrintEventDispatcher> mAutoBeforeAndAfterPrint;
 #  endif  // NS_PRINT_PREVIEW
 
@@ -582,8 +575,6 @@ void nsDocumentViewer::PrepareToStartLoad() {
 nsDocumentViewer::nsDocumentViewer()
     : mParentWidget(nullptr),
       mAttachedToParent(false),
-      mTextZoom(1.0),
-      mPageZoom(1.0),
       mOverrideDPPX(0.0),
       mNumURLStarts(0),
       mDestroyBlockedCount(0),
@@ -596,11 +587,8 @@ nsDocumentViewer::nsDocumentViewer()
 #ifdef NS_PRINTING
       mClosingWhilePrinting(false),
 #  if NS_PRINT_PREVIEW
-      mPrintPreviewZoomed(false),
       mPrintIsPending(false),
       mPrintDocIsFullyLoaded(false),
-      mOriginalPrintPreviewScale(0.0),
-      mPrintPreviewZoom(1.0),
 #  endif  // NS_PRINT_PREVIEW
 #endif    // NS_PRINTING
       mHintCharsetSource(kCharsetUninitialized),
@@ -809,8 +797,8 @@ nsresult nsDocumentViewer::InitPresentationStuff(bool aDoInitialReflow) {
 
     mViewManager->SetWindowDimensions(width, height);
     mPresContext->SetVisibleArea(nsRect(0, 0, width, height));
-    mPresContext->SetTextZoom(mTextZoom);
-    mPresContext->SetFullZoom(mPageZoom);
+    // We rely on the default zoom not being initialized until here.
+    mPresContext->RecomputeBrowsingContextDependentData();
     mPresContext->SetOverrideDPPX(mOverrideDPPX);
   }
 
@@ -1262,18 +1250,6 @@ nsresult nsDocumentViewer::PermitUnloadInternal(uint32_t* aPermitUnloadFlags,
     return NS_OK;
   }
 
-  static bool sIsBeforeUnloadDisabled;
-  static bool sBeforeUnloadRequiresInteraction;
-  static bool sBeforeUnloadPrefsCached = false;
-
-  if (!sBeforeUnloadPrefsCached) {
-    sBeforeUnloadPrefsCached = true;
-    Preferences::AddBoolVarCache(&sIsBeforeUnloadDisabled,
-                                 BEFOREUNLOAD_DISABLED_PREFNAME);
-    Preferences::AddBoolVarCache(&sBeforeUnloadRequiresInteraction,
-                                 BEFOREUNLOAD_REQUIRES_INTERACTION_PREFNAME);
-  }
-
   // First, get the script global object from the document...
   nsPIDOMWindowOuter* window = mDocument->GetWindow();
 
@@ -1330,7 +1306,7 @@ nsresult nsDocumentViewer::PermitUnloadInternal(uint32_t* aPermitUnloadFlags,
   nsAutoString text;
   event->GetReturnValue(text);
 
-  if (sIsBeforeUnloadDisabled) {
+  if (StaticPrefs::dom_disable_beforeunload()) {
     *aPermitUnloadFlags = eDontPromptAndUnload;
   }
 
@@ -1338,7 +1314,8 @@ nsresult nsDocumentViewer::PermitUnloadInternal(uint32_t* aPermitUnloadFlags,
   // the event being dispatched.
   if (*aPermitUnloadFlags != eDontPromptAndUnload && dialogsAreEnabled &&
       mDocument && !(mDocument->GetSandboxFlags() & SANDBOXED_MODALS) &&
-      (!sBeforeUnloadRequiresInteraction || mDocument->UserHasInteracted()) &&
+      (!StaticPrefs::dom_require_user_interaction_for_beforeunload() ||
+       mDocument->UserHasInteracted()) &&
       (event->WidgetEventPtr()->DefaultPrevented() || !text.IsEmpty())) {
     // If the consumer wants prompt requests to just stop unloading, we don't
     // need to prompt and can return immediately.
@@ -1349,59 +1326,16 @@ nsresult nsDocumentViewer::PermitUnloadInternal(uint32_t* aPermitUnloadFlags,
 
     // Ask the user if it's ok to unload the current page
 
-    nsCOMPtr<nsIPrompt> prompt = do_GetInterface(docShell);
+    nsCOMPtr<nsIPromptCollection> prompt =
+        do_GetService("@mozilla.org/embedcomp/prompt-collection;1");
 
     if (prompt) {
-      nsCOMPtr<nsIWritablePropertyBag2> promptBag = do_QueryInterface(prompt);
-      if (promptBag) {
-        bool isTabModalPromptAllowed;
-        GetIsTabModalPromptAllowed(&isTabModalPromptAllowed);
-        promptBag->SetPropertyAsBool(NS_LITERAL_STRING("allowTabModal"),
-                                     isTabModalPromptAllowed);
-      }
-
-      nsAutoString title, message, stayLabel, leaveLabel;
-      rv = nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
-                                              "OnBeforeUnloadTitle", title);
-      nsresult tmp = nsContentUtils::GetLocalizedString(
-          nsContentUtils::eDOM_PROPERTIES, "OnBeforeUnloadMessage", message);
-      if (NS_FAILED(tmp)) {
-        rv = tmp;
-      }
-      tmp = nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
-                                               "OnBeforeUnloadLeaveButton",
-                                               leaveLabel);
-      if (NS_FAILED(tmp)) {
-        rv = tmp;
-      }
-      tmp = nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
-                                               "OnBeforeUnloadStayButton",
-                                               stayLabel);
-      if (NS_FAILED(tmp)) {
-        rv = tmp;
-      }
-
-      if (NS_FAILED(rv)) {
-        NS_ERROR("Failed to get strings from dom.properties!");
-        return NS_OK;
-      }
-
-      // Although the exact value is ignored, we must not pass invalid
-      // bool values through XPConnect.
-      bool dummy = false;
-      int32_t buttonPressed = 0;
-      uint32_t buttonFlags =
-          (nsIPrompt::BUTTON_POS_0_DEFAULT |
-           (nsIPrompt::BUTTON_TITLE_IS_STRING * nsIPrompt::BUTTON_POS_0) |
-           (nsIPrompt::BUTTON_TITLE_IS_STRING * nsIPrompt::BUTTON_POS_1));
-
       nsAutoSyncOperation sync(mDocument);
       mInPermitUnloadPrompt = true;
       mozilla::Telemetry::Accumulate(
           mozilla::Telemetry::ONBEFOREUNLOAD_PROMPT_COUNT, 1);
-      rv = prompt->ConfirmEx(title.get(), message.get(), buttonFlags,
-                             leaveLabel.get(), stayLabel.get(), nullptr,
-                             nullptr, &dummy, &buttonPressed);
+      rv = prompt->BeforeUnloadCheck(docShell->GetBrowsingContext(),
+                                     aPermitUnload);
       mInPermitUnloadPrompt = false;
 
       // If the prompt aborted, we tell our consumer that it is not allowed
@@ -1419,8 +1353,6 @@ nsresult nsDocumentViewer::PermitUnloadInternal(uint32_t* aPermitUnloadFlags,
         return NS_OK;
       }
 
-      // Button 0 == leave, button 1 == stay
-      *aPermitUnload = (buttonPressed == 0);
       mozilla::Telemetry::Accumulate(
           mozilla::Telemetry::ONBEFOREUNLOAD_PROMPT_ACTION,
           (*aPermitUnload ? 1 : 0));
@@ -2464,10 +2396,8 @@ nsView* nsDocumentViewer::FindContainerView() {
     return nullptr;
   }
 
-  // subdocFrame might not be a subdocument frame; the frame
-  // constructor can treat a <frame> as an inline in some XBL
-  // cases. Treat that as display:none, the document is not
-  // displayed.
+  // Check subdocFrame just to be safe. If this somehow fails we treat that as
+  // display:none, the document is not displayed.
   if (!subdocFrame->IsSubDocumentFrame()) {
     NS_WARNING_ASSERTION(subdocFrame->Type() == LayoutFrameType::None,
                          "Subdocument container has non-subdocument frame");
@@ -2709,148 +2639,10 @@ void nsDocumentViewer::CallChildren(CallChildFunc aFunc) {
 }
 
 NS_IMETHODIMP
-nsDocumentViewer::SetTextZoom(float aTextZoom) {
-  // If we don't have a document, then we need to bail.
-  if (!mDocument) {
-    return NS_ERROR_FAILURE;
-  }
-
-  if (GetIsPrintPreview()) {
-    return NS_OK;
-  }
-
-  bool textZoomChange = (mTextZoom != aTextZoom);
-  mTextZoom = aTextZoom;
-
-  auto childFn = [aTextZoom](nsDocumentViewer* aChild) {
-    aChild->SetTextZoom(aTextZoom);
-  };
-  auto presContextFn = [aTextZoom](nsPresContext* aPc) {
-    aPc->SetTextZoom(aTextZoom);
-  };
-  PropagateToPresContextsHelper(childFn, presContextFn);
-
-  // Dispatch TextZoomChange event only if text zoom value has changed.
-  if (textZoomChange) {
-    nsContentUtils::DispatchChromeEvent(mDocument, ToSupports(mDocument),
-                                        NS_LITERAL_STRING("TextZoomChange"),
-                                        CanBubble::eYes, Cancelable::eYes);
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDocumentViewer::GetTextZoom(float* aTextZoom) {
-  NS_ENSURE_ARG_POINTER(aTextZoom);
-  nsPresContext* pc = GetPresContext();
-  *aTextZoom = pc ? pc->TextZoom() : 1.0f;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDocumentViewer::GetEffectiveTextZoom(float* aEffectiveTextZoom) {
-  NS_ENSURE_ARG_POINTER(aEffectiveTextZoom);
-  nsPresContext* pc = GetPresContext();
-  *aEffectiveTextZoom = pc ? pc->EffectiveTextZoom() : 1.0f;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDocumentViewer::SetFullZoom(float aFullZoom) {
-#ifdef NS_PRINT_PREVIEW
-  if (GetIsPrintPreview()) {
-    nsPresContext* pc = GetPresContext();
-    NS_ENSURE_TRUE(pc, NS_OK);
-    PresShell* presShell = pc->GetPresShell();
-    NS_ENSURE_TRUE(presShell, NS_OK);
-
-    if (!mPrintPreviewZoomed) {
-      mOriginalPrintPreviewScale = pc->GetPrintPreviewScale();
-      mPrintPreviewZoomed = true;
-    }
-
-    mPrintPreviewZoom = aFullZoom;
-    pc->SetPrintPreviewScale(aFullZoom * mOriginalPrintPreviewScale);
-    nsPageSequenceFrame* pf = presShell->GetPageSequenceFrame();
-    if (pf) {
-      nsIFrame* f = do_QueryFrame(pf);
-      presShell->FrameNeedsReflow(f, IntrinsicDirty::Resize, NS_FRAME_IS_DIRTY);
-    }
-
-    nsIFrame* rootFrame = presShell->GetRootFrame();
-    if (rootFrame) {
-      rootFrame->InvalidateFrame();
-    }
-    return NS_OK;
-  }
-#endif
-
-  // If we don't have a document, then we need to bail.
-  if (!mDocument) {
-    return NS_ERROR_FAILURE;
-  }
-
-  bool fullZoomChange = (mPageZoom != aFullZoom);
-
-  // Dispatch PreFullZoomChange event only if fullzoom value really has changed.
-  if (fullZoomChange) {
-    nsContentUtils::DispatchChromeEvent(mDocument, ToSupports(mDocument),
-                                        NS_LITERAL_STRING("PreFullZoomChange"),
-                                        CanBubble::eYes, Cancelable::eYes);
-  }
-
-  mPageZoom = aFullZoom;
-
-  auto childFn = [aFullZoom](nsDocumentViewer* aChild) {
-    aChild->SetFullZoom(aFullZoom);
-  };
-  auto presContextFn = [aFullZoom](nsPresContext* aPc) {
-    aPc->SetFullZoom(aFullZoom);
-  };
-  PropagateToPresContextsHelper(childFn, presContextFn);
-
-  // Dispatch FullZoomChange event only if fullzoom value really has changed.
-  if (fullZoomChange) {
-    nsContentUtils::DispatchChromeEvent(mDocument, ToSupports(mDocument),
-                                        NS_LITERAL_STRING("FullZoomChange"),
-                                        CanBubble::eYes, Cancelable::eYes);
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDocumentViewer::GetFullZoom(float* aFullZoom) {
-  NS_ENSURE_ARG_POINTER(aFullZoom);
-#ifdef NS_PRINT_PREVIEW
-  if (GetIsPrintPreview()) {
-    *aFullZoom = mPrintPreviewZoom;
-    return NS_OK;
-  }
-#endif
-  // Check the prescontext first because it might have a temporary
-  // setting for print-preview
-  nsPresContext* pc = GetPresContext();
-  *aFullZoom = pc ? pc->GetFullZoom() : mPageZoom;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDocumentViewer::GetDeviceFullZoom(float* aDeviceFullZoom) {
+nsDocumentViewer::GetDeviceFullZoomForTest(float* aDeviceFullZoom) {
   NS_ENSURE_ARG_POINTER(aDeviceFullZoom);
-#ifdef NS_PRINT_PREVIEW
-  if (GetIsPrintPreview()) {
-    // Print Preview overrides all zoom; if specified, we use the print preview
-    // zoom, no matter what.
-    *aDeviceFullZoom = mPrintPreviewZoom;
-    return NS_OK;
-  }
-#endif
-  // If not in print preview, ask the prescontext for the device zoom, if a
-  // prescontext is available.
   nsPresContext* pc = GetPresContext();
-  *aDeviceFullZoom = pc ? pc->GetDeviceFullZoom() : mPageZoom;
+  *aDeviceFullZoom = pc ? pc->GetDeviceFullZoom() : 1.0;
   return NS_OK;
 }
 
@@ -3147,8 +2939,10 @@ nsresult nsDocumentViewer::GetContentSizeInternal(int32_t* aWidth,
                      shellArea.height != NS_UNCONSTRAINEDSIZE,
                  NS_ERROR_FAILURE);
 
-  *aWidth = presContext->AppUnitsToDevPixels(shellArea.width);
-  *aHeight = presContext->AppUnitsToDevPixels(shellArea.height);
+  // Ceil instead of rounding here, so we can actually guarantee showing all the
+  // content.
+  *aWidth = std::ceil(presContext->AppUnitsToFloatDevPixels(shellArea.width));
+  *aHeight = std::ceil(presContext->AppUnitsToFloatDevPixels(shellArea.height));
 
   return NS_OK;
 }
@@ -3469,8 +3263,7 @@ nsDocumentViewer::Print(nsIPrintSettings* aPrintSettings,
 
     rv = printJob->Initialize(this, mContainer, mDocument,
                               float(AppUnitsPerCSSInch()) /
-                                  float(mDeviceContext->AppUnitsPerDevPixel()) /
-                                  mPageZoom);
+                                  float(mDeviceContext->AppUnitsPerDevPixel()));
     if (NS_FAILED(rv)) {
       printJob->Destroy();
       return rv;
@@ -3543,13 +3336,14 @@ nsDocumentViewer::PrintPreview(nsIPrintSettings* aPrintSettings,
 
     rv = printJob->Initialize(this, mContainer, doc,
                               float(AppUnitsPerCSSInch()) /
-                                  float(mDeviceContext->AppUnitsPerDevPixel()) /
-                                  mPageZoom);
+                                  float(mDeviceContext->AppUnitsPerDevPixel()));
     if (NS_FAILED(rv)) {
       printJob->Destroy();
       return rv;
     }
     mPrintJob = printJob;
+
+    Telemetry::ScalarAdd(Telemetry::ScalarID::PRINTING_PREVIEW_OPENED, 1);
   }
   if (autoBeforeAndAfterPrint && printJob->HasPrintCallbackCanvas()) {
     // Postpone the 'afterprint' event until after the mozPrintCallback
@@ -3557,7 +3351,6 @@ nsDocumentViewer::PrintPreview(nsIPrintSettings* aPrintSettings,
     mAutoBeforeAndAfterPrint = std::move(autoBeforeAndAfterPrint);
   }
   rv = printJob->PrintPreview(doc, aPrintSettings, aWebProgressListener);
-  mPrintPreviewZoomed = false;
   if (NS_FAILED(rv)) {
     OnDonePrinting();
   }
@@ -3731,6 +3524,10 @@ nsDocumentViewer::ExitPrintPreview() {
     return NS_OK;
   }
 
+  if (!mPrintJob->HasEverPrinted()) {
+    Telemetry::ScalarAdd(Telemetry::ScalarID::PRINTING_PREVIEW_CANCELLED, 1);
+  }
+
 #  ifdef NS_PRINT_PREVIEW
   mPrintJob->TurnScriptingOn(true);
   mPrintJob->Destroy();
@@ -3745,8 +3542,6 @@ nsDocumentViewer::ExitPrintPreview() {
   nsCOMPtr<nsIDocShell> docShell(mContainer);
   ResetFocusState(docShell);
 
-  SetTextZoom(mTextZoom);
-  SetFullZoom(mPageZoom);
   SetOverrideDPPX(mOverrideDPPX);
   Show();
 #  endif  // NS_PRINT_PREVIEW

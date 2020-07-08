@@ -9,7 +9,7 @@
 <!-- The "global.css" stylesheet is imported first to allow other stylesheets to
      override rules using selectors with the same specificity. This applies to
      both "content" and "skin" packages, which bug 1385444 will unify later. -->
-<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://global/skin/global.css" type="text/css"?>
 
 <!-- While these stylesheets are defined in Toolkit, they are only used in the
      main browser window, so we can load them here. Bug 1474241 is on file to
@@ -41,30 +41,23 @@
         xmlns:html="http://www.w3.org/1999/xhtml"
         xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns="http://www.w3.org/1999/xhtml"
-        title_normal="&mainWindow.title;"
 #ifdef XP_MACOSX
-        title_privatebrowsing="&mainWindow.title;&mainWindow.titlemodifiermenuseparator;&mainWindow.titlePrivateBrowsingSuffix;"
-        titledefault="&mainWindow.title;"
-        titlemodifier=""
-        titlemodifier_normal=""
-        titlemodifier_privatebrowsing="&mainWindow.titlePrivateBrowsingSuffix;"
+        data-l10n-id="browser-main-window-mac"
 #else
-        title_privatebrowsing="&mainWindow.titlemodifier; &mainWindow.titlePrivateBrowsingSuffix;"
-        titlemodifier="&mainWindow.titlemodifier;"
-        titlemodifier_normal="&mainWindow.titlemodifier;"
-        titlemodifier_privatebrowsing="&mainWindow.titlemodifier; &mainWindow.titlePrivateBrowsingSuffix;"
+        data-l10n-id="browser-main-window"
 #endif
+        data-l10n-args="{&quot;content-title&quot;:&quot;CONTENTTITLE&quot;}"
+        data-l10n-attrs="data-content-title-default, data-content-title-private, data-title-default, data-title-private"
 #ifdef XP_WIN
         chromemargin="0,2,2,2"
 #else
         chromemargin="0,-1,-1,-1"
 #endif
         tabsintitlebar="true"
-        titlemenuseparator="&mainWindow.titlemodifiermenuseparator;"
         windowtype="navigator:browser"
         macanimationtype="document"
+        macnativefullscreen="true"
         screenX="4" screenY="4"
-        fullscreenbutton="true"
         sizemode="normal"
         retargetdocumentfocus="urlbar-input"
         scrolling="false"
@@ -84,8 +77,10 @@
   <link rel="localization" href="browser/appmenu.ftl"/>
   <link rel="localization" href="preview/interventions.ftl"/>
   <link rel="localization" href="browser/sidebarMenu.ftl"/>
+  <link rel="localization" href="browser/allTabsMenu.ftl"/>
+  <link rel="localization" href="browser/places.ftl"/>
 
-  <title>&mainWindow.title;</title>
+  <title data-l10n-id="browser-main-window-title"></title>
 
 # All JS files which are needed by browser.xhtml and other top level windows to
 # support MacOS specific features *must* go into the global-scripts.inc file so
@@ -169,10 +164,10 @@
       <menuitem id="context_bookmarkSelectedTabs"
                 hidden="true"
                 data-lazy-l10n-id="bookmark-selected-tabs"
-                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"/>
+                oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"/>
       <menuitem id="context_bookmarkTab"
                 data-lazy-l10n-id="bookmark-tab"
-                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.getUniquePages([TabContextMenu.contextTab]));"/>
+                oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.getUniquePages([TabContextMenu.contextTab]));"/>
       <menu id="context_reopenInContainer"
             data-lazy-l10n-id="reopen-in-container"
             hidden="true">
@@ -202,12 +197,18 @@
       </menu>
 #endif
       <menuseparator/>
-      <menuitem id="context_closeTabsToTheEnd" data-lazy-l10n-id="close-tabs-to-the-end"
-                oncommand="gBrowser.removeTabsToTheEndFrom(TabContextMenu.contextTab, {animate: true});"/>
-      <menuitem id="context_closeOtherTabs" data-lazy-l10n-id="close-other-tabs"
-                oncommand="gBrowser.removeAllTabsBut(TabContextMenu.contextTab);"/>
+      <menu id="context_closeTabOptions"
+            data-lazy-l10n-id="tab-context-close-multiple-tabs">
+        <menupopup id="closeTabOptions">
+          <menuitem id="context_closeTabsToTheEnd" data-lazy-l10n-id="close-tabs-to-the-end"
+                    oncommand="gBrowser.removeTabsToTheEndFrom(TabContextMenu.contextTab, {animate: true});"/>
+          <menuitem id="context_closeOtherTabs" data-lazy-l10n-id="close-other-tabs"
+                    oncommand="gBrowser.removeAllTabsBut(TabContextMenu.contextTab);"/>
+        </menupopup>
+      </menu>
       <menuitem id="context_undoCloseTab"
-                data-lazy-l10n-id="undo-close-tab"
+                data-lazy-l10n-id="tab-context-undo-close-tabs"
+                data-l10n-args='{"tabCount": 1}'
                 observes="History:UndoCloseTab"/>
       <menuitem id="context_closeTab" data-lazy-l10n-id="close-tab"
                 oncommand="gBrowser.removeTab(TabContextMenu.contextTab, { animate: true });"/>
@@ -336,40 +337,42 @@
       </panel>
     </html:template>
 
-    <!-- UI tour experience -->
-    <panel id="UITourTooltip"
-           type="arrow"
-           hidden="true"
-           noautofocus="true"
-           noautohide="true"
-           align="start"
-           orient="vertical"
-           role="alert">
-     <vbox>
-      <hbox id="UITourTooltipBody">
-        <image id="UITourTooltipIcon"/>
-        <vbox flex="1">
-          <hbox id="UITourTooltipTitleContainer">
-            <label id="UITourTooltipTitle" flex="1"/>
-            <toolbarbutton id="UITourTooltipClose" class="close-icon"
-                           tooltiptext="&uiTour.infoPanel.close;"/>
-          </hbox>
-          <description id="UITourTooltipDescription" flex="1"/>
-        </vbox>
-      </hbox>
-      <hbox id="UITourTooltipButtons" flex="1" align="center"/>
-     </vbox>
-    </panel>
-    <!-- type="default" forces frames to be created so that the panel's size can be determined -->
-    <panel id="UITourHighlightContainer"
-           type="default"
-           hidden="true"
-           noautofocus="true"
-           noautohide="true"
-           flip="none"
-           consumeoutsideclicks="false">
-      <box id="UITourHighlight"></box>
-    </panel>
+    <html:template id="UITourTooltipTemplate">
+      <!-- UI tour experience -->
+      <panel id="UITourTooltip"
+             type="arrow"
+             noautofocus="true"
+             noautohide="true"
+             align="start"
+             orient="vertical"
+             role="alert">
+       <vbox>
+        <hbox id="UITourTooltipBody">
+          <image id="UITourTooltipIcon"/>
+          <vbox flex="1">
+            <hbox id="UITourTooltipTitleContainer">
+              <label id="UITourTooltipTitle" flex="1"/>
+              <toolbarbutton id="UITourTooltipClose" class="close-icon"
+                             tooltiptext="&uiTour.infoPanel.close;"/>
+            </hbox>
+            <description id="UITourTooltipDescription" flex="1"/>
+          </vbox>
+        </hbox>
+        <hbox id="UITourTooltipButtons" flex="1" align="center"/>
+       </vbox>
+      </panel>
+    </html:template>
+    <html:template id="UITourHighlightTemplate">
+      <!-- type="default" forces frames to be created so that the panel's size can be determined -->
+      <panel id="UITourHighlightContainer"
+             type="default"
+             noautofocus="true"
+             noautohide="true"
+             flip="none"
+             consumeoutsideclicks="false">
+        <box id="UITourHighlight"></box>
+      </panel>
+    </html:template>
 
     <panel id="sidebarMenu-popup"
            class="cui-widget-panel"
@@ -413,35 +416,29 @@
     <menupopup id="toolbar-context-menu"
                onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')); ToolbarContextMenu.updateDownloadsAutoHide(this); ToolbarContextMenu.updateExtension(this)">
       <menuitem oncommand="ToolbarContextMenu.openAboutAddonsForContextAction(this.parentElement)"
-                accesskey="&customizeMenu.manageExtension.accesskey;"
-                label="&customizeMenu.manageExtension.label;"
+                data-lazy-l10n-id="toolbar-context-menu-manage-extension"
                 contexttype="toolbaritem"
                 class="customize-context-manageExtension"/>
       <menuitem oncommand="ToolbarContextMenu.removeExtensionForContextAction(this.parentElement)"
-                accesskey="&customizeMenu.removeExtension.accesskey;"
-                label="&customizeMenu.removeExtension.label;"
+                data-lazy-l10n-id="toolbar-context-menu-remove-extension"
                 contexttype="toolbaritem"
                 class="customize-context-removeExtension"/>
       <menuitem oncommand="ToolbarContextMenu.reportExtensionForContextAction(this.parentElement, 'toolbar_context_menu')"
-                accesskey="&customizeMenu.reportExtension.accesskey;"
-                label="&customizeMenu.reportExtension.label;"
+                data-lazy-l10n-id="toolbar-context-menu-report-extension"
                 contexttype="toolbaritem"
                 class="customize-context-reportExtension"/>
       <menuseparator/>
-      <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
-                accesskey="&customizeMenu.pinToOverflowMenu.accesskey;"
-                label="&customizeMenu.pinToOverflowMenu.label;"
+      <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode, 'toolbar-context-menu')"
+                data-lazy-l10n-id="toolbar-context-menu-pin-to-overflow-menu"
                 contexttype="toolbaritem"
                 class="customize-context-moveToPanel"/>
       <menuitem id="toolbar-context-autohide-downloads-button"
                 oncommand="ToolbarContextMenu.onDownloadsAutoHideChange(event);"
                 type="checkbox"
-                accesskey="&customizeMenu.autoHideDownloadsButton.accesskey;"
-                label="&customizeMenu.autoHideDownloadsButton.label;"
+                data-lazy-l10n-id="toolbar-context-menu-auto-hide-downloads-button"
                 contexttype="toolbaritem"/>
-      <menuitem oncommand="gCustomizeMode.removeFromArea(document.popupNode)"
-                accesskey="&customizeMenu.removeFromToolbar.accesskey;"
-                label="&customizeMenu.removeFromToolbar.label;"
+      <menuitem oncommand="gCustomizeMode.removeFromArea(document.popupNode, 'toolbar-context-menu')"
+                data-lazy-l10n-id="toolbar-context-menu-remove-from-toolbar"
                 contexttype="toolbaritem"
                 class="customize-context-removeFromToolbar"/>
       <menuitem id="toolbar-context-reloadSelectedTab"
@@ -454,11 +451,11 @@
                 data-lazy-l10n-id="toolbar-context-menu-reload-selected-tabs"/>
       <menuitem id="toolbar-context-bookmarkSelectedTab"
                 contexttype="tabbar"
-                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"
+                oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"
                 data-lazy-l10n-id="toolbar-context-menu-bookmark-selected-tab"/>
       <menuitem id="toolbar-context-bookmarkSelectedTabs"
                 contexttype="tabbar"
-                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"
+                oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"
                 data-lazy-l10n-id="toolbar-context-menu-bookmark-selected-tabs"/>
       <menuitem id="toolbar-context-selectAllTabs"
                 contexttype="tabbar"
@@ -466,7 +463,7 @@
                 data-lazy-l10n-id="toolbar-context-menu-select-all-tabs"/>
       <menuitem id="toolbar-context-undoCloseTab"
                 contexttype="tabbar"
-                data-lazy-l10n-id="toolbar-context-menu-undo-close-tab"
+                data-lazy-l10n-id="toolbar-context-menu-undo-close-tabs"
                 observes="History:UndoCloseTab"/>
       <menuseparator/>
       <menuseparator id="viewToolbarsMenuSeparator"/>
@@ -479,8 +476,7 @@
       <menuitem oncommand="gCustomizeMode.enter()"
                 observes="cmd_CustomizeToolbars"
                 class="viewCustomizeToolbar"
-                label="&viewCustomizeToolbar.label;"
-                accesskey="&viewCustomizeToolbar.accesskey;"/>
+                data-lazy-l10n-id="toolbar-context-menu-view-customize-toolbar"/>
     </menupopup>
 
     <menupopup id="blockedPopupOptions"
@@ -571,22 +567,23 @@
       </panelmultiview>
     </panel>
 
-    <panel id="confirmation-hint"
-           role="alert"
-           type="arrow"
-           hidden="true"
-           flip="slide"
-           position="bottomcenter topright"
-           tabspecific="true"
-           noautofocus="true">
-      <hbox id="confirmation-hint-checkmark-animation-container">
-       <image id="confirmation-hint-checkmark-image"/>
-      </hbox>
-      <vbox id="confirmation-hint-message-container">
-       <label id="confirmation-hint-message"/>
-       <label id="confirmation-hint-description"/>
-      </vbox>
-    </panel>
+    <html:template id="confirmation-hint-wrapper">
+      <panel id="confirmation-hint"
+             role="alert"
+             type="arrow"
+             flip="slide"
+             position="bottomcenter topright"
+             tabspecific="true"
+             noautofocus="true">
+        <hbox id="confirmation-hint-checkmark-animation-container">
+         <image id="confirmation-hint-checkmark-image"/>
+        </hbox>
+        <vbox id="confirmation-hint-message-container">
+         <label id="confirmation-hint-message"/>
+         <label id="confirmation-hint-description"/>
+        </vbox>
+      </panel>
+    </html:template>
 
     <menupopup id="pageActionContextMenu"
                onpopupshowing="BrowserPageActions.onContextMenuShowing(event, this);">
@@ -606,6 +603,9 @@
       <menuitem class="pageActionContextMenuItem extensionPinned extensionUnpinned"
                 oncommand="BrowserPageActions.openAboutAddonsForContextAction();"
                 data-l10n-id="page-action-manage-extension"/>
+      <menuitem class="pageActionContextMenuItem extensionPinned extensionUnpinned removeExtensionItem"
+                oncommand="BrowserPageActions.removeExtensionForContextAction();"
+                data-l10n-id="page-action-remove-extension"/>
     </menupopup>
 
 #include ../../components/places/content/bookmarksHistoryTooltip.inc.xhtml
@@ -628,6 +628,7 @@
 #include ../../components/controlcenter/content/identityPanel.inc.xhtml
 #include ../../components/controlcenter/content/protectionsPanel.inc.xhtml
 #include ../../components/downloads/content/downloadsPanel.inc.xhtml
+#include ../../../devtools/startup/enableDevToolsPopup.inc.xhtml
 #include browser-allTabsMenu.inc.xhtml
 
     <hbox id="downloads-animation-container">
@@ -692,6 +693,40 @@
                crop="end"/>
       </hbox>
     </hbox>
+
+    <html:template id="sharing-tabs-warning-panel-template">
+      <panel id="sharing-tabs-warning-panel"
+             role="alert"
+             flip="slide"
+             type="arrow"
+             orient="vertical"
+             ignorekeys="true"
+             consumeoutsideclicks="never"
+             norolluponanchor="true"
+             onpopupshown="gSharedTabWarning.sharedTabWarningShown();">
+        <hbox type="window" align="start">
+          <image class="screen-icon popup-notification-icon"></image>
+          <vbox flex="1" pack="start">
+            <label>
+              <html:span id="sharing-warning-window-panel-header"
+                         role="heading"
+                         aria-level="1"
+                         data-l10n-id="sharing-warning-window"/>
+              <html:span id="sharing-warning-screen-panel-header"
+                         role="heading"
+                         aria-level="1"
+                         data-l10n-id="sharing-warning-screen"/>
+            </label>
+            <hbox align="center">
+              <button id="sharing-warning-proceed-to-tab" oncommand="gSharedTabWarning.allowSharedTabSwitch();" flex="1" data-l10n-id="sharing-warning-proceed-to-tab"/>
+            </hbox>
+            <hbox pack="start">
+              <checkbox id="sharing-warning-disable-for-session" data-l10n-id="sharing-warning-disable-for-session"/>
+            </hbox>
+          </vbox>
+        </hbox>
+      </panel>
+    </html:template>
   </popupset>
   <box id="appMenu-viewCache" hidden="true"/>
 
@@ -738,6 +773,7 @@
             <tabs id="tabbrowser-tabs"
                   is="tabbrowser-tabs"
                   flex="1"
+                  aria-multiselectable="true"
                   setfocus="false"
                   tooltip="tabbrowser-tab-tooltip"
                   stopwatchid="FX_TAB_CLICK_MS">
@@ -770,7 +806,7 @@
             <toolbarbutton id="alltabs-button"
                            class="toolbarbutton-1 chromeclass-toolbar-additional tabs-alltabs-button"
                            badged="true"
-                           oncommand="gTabsPanel.showAllTabsPanel();"
+                           oncommand="gTabsPanel.showAllTabsPanel(event);"
                            label="&listAllTabs.label;"
                            tooltiptext="&listAllTabs.label;"
                            removable="false"/>
@@ -868,7 +904,8 @@
           <toolbartabstop/>
           <hbox id="urlbar" flex="1"
                 context=""
-                defaultPlaceholder="&urlbar.placeholder2;"
+                data-l10n-id="urlbar-default-placeholder"
+                data-l10n-attrs="defaultPlaceholder"
                 focused="true"
                 pageproxystate="invalid">
             <hbox id="urlbar-background"/>
@@ -887,7 +924,7 @@
                    onmouseover="gProtectionsHandler.onTrackingProtectionIconHoveredOrFocused();"
                    onfocus="gProtectionsHandler.onTrackingProtectionIconHoveredOrFocused();"
                    tooltip="tracking-protection-icon-tooltip">
-                <box id="tracking-protection-icon-box" animationsenabled="true">
+                <box id="tracking-protection-icon-box">
                   <image id="tracking-protection-icon"/>
                   <box id="tracking-protection-icon-animatable-box" flex="1">
                     <image id="tracking-protection-icon-animatable-image" flex="1"/>
@@ -909,7 +946,7 @@
                        consumeanchor="identity-box"
                        onclick="PageProxyClickHandler(event);"/>
                 <image id="permissions-granted-icon"
-                       tooltiptext="&urlbar.permissionsGranted.tooltip;"/>
+                       data-l10n-id="urlbar-permissions-granted"/>
                 <box style="pointer-events: none;">
                     <image class="sharing-icon" id="webrtc-sharing-icon"/>
                     <image class="sharing-icon geo-icon" id="geo-sharing-icon"/>
@@ -994,15 +1031,12 @@
                          data-l10n-id="urlbar-storage-access-anchor"/>
                 </box>
                 <image id="remote-control-icon"
-                       tooltiptext="&urlbar.remoteControlNotificationAnchor.tooltip;"/>
-                <hbox id="identity-icon-labels">
-                  <label id="identity-icon-label" class="plain" flex="1"/>
-                  <label id="identity-icon-country-label" class="plain"/>
-                </hbox>
+                       data-l10n-id="urlbar-remote-control-notification-anchor"/>
+                <label id="identity-icon-label" class="plain" crop="center" flex="1"/>
               </box>
               <box id="urlbar-label-box" align="center">
-                <label id="urlbar-label-switchtab" class="urlbar-label" value="&urlbar.switchToTab.label;"/>
-                <label id="urlbar-label-extension" class="urlbar-label" value="&urlbar.extension.label;"/>
+                <label id="urlbar-label-switchtab" class="urlbar-label" data-l10n-id="urlbar-switch-to-tab"/>
+                <label id="urlbar-label-extension" class="urlbar-label" data-l10n-id="urlbar-extension"/>
               </box>
               <moz-input-box tooltip="aHTMLTooltip"
                              class="urlbar-input-box"
@@ -1016,15 +1050,13 @@
                             aria-controls="urlbar-results"
                             aria-autocomplete="both"
                             inputmode="mozAwesomebar"
-                            placeholder="&urlbar.placeholder2;"/>
+                            data-l10n-id="urlbar-placeholder"
+                            data-l10n-attrs="placeholder"/>
               </moz-input-box>
               <image id="urlbar-go-button"
                      class="urlbar-icon"
                      onclick="gURLBar.handleCommand(event);"
-                     tooltiptext="&goEndCap.tooltip;"/>
-              <image class="urlbar-history-dropmarker urlbar-icon chromeclass-toolbar-additional"
-                     hidden="true"
-                     tooltiptext="&urlbar.openHistoryPopup.tooltip;"/>
+                     data-l10n-id="urlbar-go-button"/>
               <hbox id="page-action-buttons" context="pageActionContextMenu">
                 <toolbartabstop/>
                 <hbox id="contextual-feature-recommendation" role="button" hidden="true">
@@ -1053,24 +1085,16 @@
                 <image id="pageActionButton"
                        class="urlbar-icon urlbar-page-action"
                        role="button"
-                       tooltiptext="&pageActionButton.tooltip;"
+                       data-l10n-id="urlbar-page-action-button"
                        onmousedown="BrowserPageActions.mainButtonClicked(event);"
                        onkeypress="BrowserPageActions.mainButtonClicked(event);"/>
 #ifdef 0
-                <hbox id="pocket-button-box"
-                      hidden="true"
-                      class="urlbar-icon-wrapper urlbar-page-action"
-                      onclick="BrowserPageActions.doCommandForAction(PageActions.actionForID('pocket'), event, this);">
-                  <image id="pocket-button"
-                         class="urlbar-icon"
-                         tooltiptext="&pocketButton.tooltiptext;"
-                         role="button"/>
-                  <hbox id="pocket-button-animatable-box">
-                    <image id="pocket-button-animatable-image"
-                           tooltiptext="&pocketButton.tooltiptext;"
-                           role="presentation"/>
-                  </hbox>
-                </hbox>
+                <image id="pocket-button"
+                       class="urlbar-icon urlbar-page-action"
+                       data-l10n-id="urlbar-pocket-button"
+                       role="button"
+                       hidden="true"
+                       onclick="BrowserPageActions.doCommandForAction(PageActions.actionForID('pocket'), event, this);"/>
 #endif
                 <hbox id="star-button-box"
                       hidden="true"
@@ -1161,6 +1185,12 @@
 
       <toolbaritem id="PanelUI-button"
                    removable="false">
+        <toolbarbutton id="pioneer-button"
+                       class="toolbarbutton-1"
+                       hidden="true"
+                       badged="true"
+                       onmousedown="switchToTabHavingURI('about:pioneer', true);"
+                       onkeypress="switchToTabHavingURI('about:pioneer', true);"/>
         <toolbarbutton id="whats-new-menu-button"
                        class="toolbarbutton-1"
                        hidden="true"
@@ -1178,20 +1208,15 @@
       <hbox id="window-controls" hidden="true" pack="end" skipintoolbarset="true"
             style="-moz-box-ordinal-group: 1000;">
         <toolbarbutton id="minimize-button"
-                       tooltiptext="&fullScreenMinimize.tooltip;"
+                       data-l10n-id="browser-window-minimize-button"
                        oncommand="window.minimize();"/>
 
         <toolbarbutton id="restore-button"
-#ifdef XP_MACOSX
-# Prior to 10.7 there wasn't a native fullscreen button so we use #restore-button
-# to exit fullscreen and want it to behave like other toolbar buttons.
-                       class="toolbarbutton-1"
-#endif
-                       tooltiptext="&fullScreenRestore.tooltip;"
+                       data-l10n-id="browser-window-restore-down-button"
                        oncommand="BrowserFullScreen();"/>
 
         <toolbarbutton id="close-button"
-                       tooltiptext="&fullScreenClose.tooltip;"
+                       data-l10n-id="browser-window-close-button"
                        oncommand="BrowserTryToCloseWindow();"/>
       </hbox>
 
@@ -1255,7 +1280,7 @@
       </toolbaritem>
     </toolbar>
 
-    <toolbarpalette id="BrowserToolbarPalette">
+    <html:template id="BrowserToolbarPalette">
 
       <toolbarbutton id="print-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
 #ifdef XP_MACOSX
@@ -1334,7 +1359,7 @@
                         class="menuitem-iconic subviewbutton"
                         label-show="&viewBookmarksToolbar.label;"
                         label-hide="&hideBookmarksToolbar.label;"
-                        oncommand="BookmarkingUI.toggleBookmarksToolbar();"/>
+                        oncommand="BookmarkingUI.toggleBookmarksToolbar('bookmarks-widget');"/>
               <menuseparator/>
               <!-- Bookmarks toolbar items -->
             </menupopup>
@@ -1387,7 +1412,7 @@
         <searchbar id="searchbar" flex="1"/>
         <toolbartabstop/>
       </toolbaritem>
-    </toolbarpalette>
+    </html:template>
   </toolbox>
   </box>
 
@@ -1426,9 +1451,11 @@
     <vbox id="browser-border-end" hidden="true" layer="true"/>
   </hbox>
 
-  <box id="customization-container" flex="1" hidden="true"><![CDATA[
+  <html:template id="customizationPanel">
+    <box id="customization-container" flex="1" hidden="true"><![CDATA[
 #include ../../components/customizableui/content/customizeMode.inc.xhtml
-  ]]></box>
+    ]]></box>
+  </html:template>
 
   <html:div id="fullscreen-and-pointerlock-wrapper">
     <html:div id="fullscreen-warning" class="pointerlockfswarning" hidden="true">

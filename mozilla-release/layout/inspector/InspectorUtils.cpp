@@ -12,7 +12,6 @@
 #include "gfxTextRun.h"
 #include "nsArray.h"
 #include "nsString.h"
-#include "nsIStyleSheetLinkingElement.h"
 #include "nsIContentInlines.h"
 #include "mozilla/dom/Document.h"
 #include "ChildIterator.h"
@@ -28,6 +27,7 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/CSSStyleRule.h"
 #include "mozilla/dom/InspectorUtilsBinding.h"
+#include "mozilla/dom/LinkStyle.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "nsCSSProps.h"
 #include "nsCSSValue.h"
@@ -71,16 +71,14 @@ void InspectorUtils::GetAllStyleSheets(GlobalObject& aGlobalObject,
       }
     }
 
-    AutoTArray<StyleSheet*, 32> xblSheetArray;
-    styleSet->AppendAllNonDocumentAuthorSheets(xblSheetArray);
+    AutoTArray<StyleSheet*, 32> nonDocumentSheets;
+    styleSet->AppendAllNonDocumentAuthorSheets(nonDocumentSheets);
 
-    // The XBL stylesheet array will quite often be full of duplicates. Cope:
-    //
-    // FIXME(emilio, bug 1454467): I think this is not true since bug 1452525.
+    // The non-document stylesheet array can't have duplicates right now, but it
+    // could once we include adopted stylesheets.
     nsTHashtable<nsPtrHashKey<StyleSheet>> sheetSet;
-    for (StyleSheet* sheet : xblSheetArray) {
-      if (!sheetSet.Contains(sheet)) {
-        sheetSet.PutEntry(sheet);
+    for (StyleSheet* sheet : nonDocumentSheets) {
+      if (sheetSet.EnsureInserted(sheet)) {
         aResult.AppendElement(sheet);
       }
     }
@@ -92,7 +90,8 @@ void InspectorUtils::GetAllStyleSheets(GlobalObject& aGlobalObject,
   }
 
   // FIXME(emilio, bug 1617948): This doesn't deal with adopted stylesheets, and
-  // it should. It should also handle duplicates correctly when it does.
+  // it should. It should also handle duplicates correctly when it does, see
+  // above.
 }
 
 bool InspectorUtils::IsIgnorableWhitespace(CharacterData& aDataNode) {
@@ -269,19 +268,14 @@ uint32_t InspectorUtils::GetRelativeRuleLine(GlobalObject& aGlobal,
   // a 0 lineNumber.
   StyleSheet* sheet = aRule.GetStyleSheet();
   if (sheet && lineNumber != 0) {
-    nsINode* owningNode = sheet->GetOwnerNode();
-    if (owningNode) {
-      nsCOMPtr<nsIStyleSheetLinkingElement> link =
-          do_QueryInterface(owningNode);
-      if (link) {
-        // Check for underflow, which is one indication that we're
-        // trying to remap an already relative lineNumber.
-        uint32_t linkLineIndex0 = link->GetLineNumber() - 1;
-        if (linkLineIndex0 > lineNumber) {
-          lineNumber = 0;
-        } else {
-          lineNumber -= linkLineIndex0;
-        }
+    if (auto* link = LinkStyle::FromNodeOrNull(sheet->GetOwnerNode())) {
+      // Check for underflow, which is one indication that we're
+      // trying to remap an already relative lineNumber.
+      uint32_t linkLineIndex0 = link->GetLineNumber() - 1;
+      if (linkLineIndex0 > lineNumber) {
+        lineNumber = 0;
+      } else {
+        lineNumber -= linkLineIndex0;
       }
     }
   }

@@ -23,6 +23,7 @@
 #include "mozilla/BlocksRingBuffer.h"
 #include "mozilla/ProfileBufferEntrySerializationGeckoExtensions.h"
 #include "mozilla/UniquePtrExtensions.h"
+#include "mozilla/net/HttpBaseChannel.h"
 #include "nsIThread.h"
 #include "nsThreadUtils.h"
 
@@ -95,7 +96,7 @@ static void InactiveFeaturesAndParamsCheck() {
 
   ASSERT_TRUE(!profiler_is_active());
   ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
-  ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
+  ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::NativeAllocations));
 
   profiler_get_start_params(&entries, &duration, &interval, &features, &filters,
                             &activeBrowsingContextID);
@@ -149,7 +150,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
 
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
+    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::IPCMessages));
 
     ActiveParamsCheck(PROFILER_DEFAULT_ENTRIES.Value(),
                       PROFILER_DEFAULT_INTERVAL, features, filters,
@@ -164,7 +165,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
   // Try some different features and filters.
   {
     uint32_t features =
-        ProfilerFeature::MainThreadIO | ProfilerFeature::Privacy;
+        ProfilerFeature::MainThreadIO | ProfilerFeature::IPCMessages;
     const char* filters[] = {"GeckoMain", "Foo", "Bar"};
 
     // Testing with some arbitrary buffer size (as could be provided by
@@ -174,7 +175,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
 
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::MainThreadIO));
-    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Privacy));
+    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::IPCMessages));
 
     // Profiler::Threads is added because filters has multiple entries.
     ActiveParamsCheck(PowerOfTwo32(999999).Value(), 3,
@@ -189,7 +190,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
   // Try with no duration
   {
     uint32_t features =
-        ProfilerFeature::MainThreadIO | ProfilerFeature::Privacy;
+        ProfilerFeature::MainThreadIO | ProfilerFeature::IPCMessages;
     const char* filters[] = {"GeckoMain", "Foo", "Bar"};
 
     profiler_start(PowerOfTwo32(999999), 3, features, filters,
@@ -197,7 +198,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
 
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::MainThreadIO));
-    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Privacy));
+    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::IPCMessages));
 
     // Profiler::Threads is added because filters has multiple entries.
     ActiveParamsCheck(PowerOfTwo32(999999).Value(), 3,
@@ -219,7 +220,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
 
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::MainThreadIO));
-    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Privacy));
+    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::IPCMessages));
 
     ActiveParamsCheck(PowerOfTwo32(88888).Value(), 10, availableFeatures,
                       filters, MOZ_ARRAY_LENGTH(filters), 0, Some(15.0));
@@ -239,7 +240,7 @@ TEST(GeckoProfiler, FeaturesAndParams)
 
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
+    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::IPCMessages));
 
     // Entries and intervals go to defaults if 0 is specified.
     ActiveParamsCheck(PROFILER_DEFAULT_ENTRIES.Value(),
@@ -366,7 +367,7 @@ TEST(GeckoProfiler, DifferentThreads)
 
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
+    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::IPCMessages));
 
     ActiveParamsCheck(PROFILER_DEFAULT_ENTRIES.Value(),
                       PROFILER_DEFAULT_INTERVAL, features, filters,
@@ -396,7 +397,8 @@ TEST(GeckoProfiler, DifferentThreads)
               ASSERT_TRUE(profiler_is_active());
               ASSERT_TRUE(
                   !profiler_feature_active(ProfilerFeature::MainThreadIO));
-              ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
+              ASSERT_TRUE(
+                  !profiler_feature_active(ProfilerFeature::IPCMessages));
 
               ActiveParamsCheck(PROFILER_DEFAULT_ENTRIES.Value(),
                                 PROFILER_DEFAULT_INTERVAL, features, filters,
@@ -442,19 +444,6 @@ TEST(GeckoProfiler, GetBacktrace)
       u[i] = profiler_get_backtrace();
       ASSERT_TRUE(u[i]);
     }
-
-    profiler_stop();
-  }
-
-  {
-    uint32_t features = ProfilerFeature::Privacy;
-    const char* filters[] = {"GeckoMain"};
-
-    profiler_start(PROFILER_DEFAULT_ENTRIES, PROFILER_DEFAULT_INTERVAL,
-                   features, filters, MOZ_ARRAY_LENGTH(filters), 0);
-
-    // No backtraces obtained when ProfilerFeature::Privacy is set.
-    ASSERT_TRUE(!profiler_get_backtrace());
 
     profiler_stop();
   }
@@ -629,20 +618,32 @@ TEST(GeckoProfiler, Markers)
   UniquePtr<char[]> okstr1 = MakeUnique<char[]>(kMax);
   UniquePtr<char[]> okstr2 = MakeUnique<char[]>(kMax);
   UniquePtr<char[]> longstr = MakeUnique<char[]>(kMax + 1);
+  UniquePtr<char[]> longstrCut = MakeUnique<char[]>(kMax + 1);
   for (size_t i = 0; i < kMax; i++) {
     okstr1[i] = 'a';
     okstr2[i] = 'b';
     longstr[i] = 'c';
+    longstrCut[i] = 'c';
   }
   okstr1[kMax - 1] = '\0';
   okstr2[kMax - 1] = '\0';
   longstr[kMax] = '\0';
+  longstrCut[kMax] = '\0';
   // Should be output as-is.
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", LAYOUT, "");
   AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", LAYOUT, okstr1.get());
   // Should be output as label + space + okstr2.
   AUTO_PROFILER_LABEL_DYNAMIC_CSTR("okstr2", LAYOUT, okstr2.get());
-  // Should be output as "(too long)".
+  // Should be output with kMax length, ending with "...\0".
   AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", LAYOUT, longstr.get());
+  ASSERT_EQ(longstrCut[kMax - 4], 'c');
+  longstrCut[kMax - 4] = '.';
+  ASSERT_EQ(longstrCut[kMax - 3], 'c');
+  longstrCut[kMax - 3] = '.';
+  ASSERT_EQ(longstrCut[kMax - 2], 'c');
+  longstrCut[kMax - 2] = '.';
+  ASSERT_EQ(longstrCut[kMax - 1], 'c');
+  longstrCut[kMax - 1] = '\0';
 
   // Used in markers below.
   TimeStamp ts1 = TimeStamp::NowUnfuzzed();
@@ -663,6 +664,10 @@ TEST(GeckoProfiler, Markers)
   PROFILER_ADD_MARKER_WITH_PAYLOAD(
       "FileIOMarkerPayload marker", OTHER, FileIOMarkerPayload,
       ("operation", "source", "filename", ts1, ts2, nullptr));
+
+  PROFILER_ADD_MARKER_WITH_PAYLOAD(
+      "FileIOMarkerPayload marker off-MT", OTHER, FileIOMarkerPayload,
+      ("operation2", "source2", "filename2", ts1, ts2, nullptr, Some(123)));
 
   // Other markers in alphabetical order of payload class names.
 
@@ -719,6 +724,22 @@ TEST(GeckoProfiler, Markers)
   PROFILER_ADD_MARKER_WITH_PAYLOAD("NativeAllocationMarkerPayload marker",
                                    OTHER, NativeAllocationMarkerPayload,
                                    (ts1, 9876543210, 1234, 5678, nullptr));
+
+  PROFILER_ADD_MARKER_WITH_PAYLOAD(
+      "NetworkMarkerPayload start marker", OTHER, NetworkMarkerPayload,
+      (1, "http://mozilla.org/", NetworkLoadType::LOAD_START, ts1, ts2, 34, 56,
+       net::kCacheHit, 78));
+
+  PROFILER_ADD_MARKER_WITH_PAYLOAD(
+      "NetworkMarkerPayload stop marker", OTHER, NetworkMarkerPayload,
+      (12, "http://mozilla.org/", NetworkLoadType::LOAD_STOP, ts1, ts2, 34, 56,
+       net::kCacheUnresolved, 78, nullptr, nullptr, nullptr,
+       Some(nsDependentCString(NS_LITERAL_CSTRING("text/html").get()))));
+
+  PROFILER_ADD_MARKER_WITH_PAYLOAD(
+      "NetworkMarkerPayload redirect marker", OTHER, NetworkMarkerPayload,
+      (123, "http://mozilla.org/", NetworkLoadType::LOAD_REDIRECT, ts1, ts2, 34,
+       56, net::kCacheUnresolved, 78, nullptr, "http://example.com/"));
 
   PROFILER_ADD_MARKER_WITH_PAYLOAD(
       "PrefMarkerPayload marker", OTHER, PrefMarkerPayload,
@@ -795,6 +816,7 @@ TEST(GeckoProfiler, Markers)
     S_M5_gtest8,
     S_M5_gtest9,
     S_FileIOMarkerPayload,
+    S_FileIOMarkerPayloadOffMT,
     S_DOMEventMarkerPayload,
     S_GCMajorMarkerPayload,
     S_GCMinorMarkerPayload,
@@ -803,6 +825,9 @@ TEST(GeckoProfiler, Markers)
     S_LogMarkerPayload,
     S_LongTaskMarkerPayload,
     S_NativeAllocationMarkerPayload,
+    S_NetworkMarkerPayload_start,
+    S_NetworkMarkerPayload_stop,
+    S_NetworkMarkerPayload_redirect,
     S_PrefMarkerPayload,
     S_ScreenshotPayload,
     S_TextMarkerPayload1,
@@ -877,6 +902,7 @@ TEST(GeckoProfiler, Markers)
       ASSERT_TRUE(stringTable.isArray());
 
       // Test the expected labels in the string table.
+      bool foundEmpty = false;
       bool foundOkstr1 = false;
       bool foundOkstr2 = false;
       const std::string okstr2Label = std::string("okstr2 ") + okstr2.get();
@@ -884,19 +910,23 @@ TEST(GeckoProfiler, Markers)
       for (const auto& s : stringTable) {
         ASSERT_TRUE(s.isString());
         std::string sString = s.asString();
-        if (sString == okstr1.get()) {
+        if (sString.empty()) {
+          EXPECT_FALSE(foundEmpty);
+          foundEmpty = true;
+        } else if (sString == okstr1.get()) {
           EXPECT_FALSE(foundOkstr1);
           foundOkstr1 = true;
         } else if (sString == okstr2Label) {
           EXPECT_FALSE(foundOkstr2);
           foundOkstr2 = true;
-        } else if (sString == "(too long)") {
+        } else if (sString == longstrCut.get()) {
           EXPECT_FALSE(foundTooLong);
           foundTooLong = true;
         } else {
           EXPECT_NE(sString, longstr.get());
         }
       }
+      EXPECT_TRUE(foundEmpty);
       EXPECT_TRUE(foundOkstr1);
       EXPECT_TRUE(foundOkstr2);
       EXPECT_TRUE(foundTooLong);
@@ -1060,6 +1090,21 @@ TEST(GeckoProfiler, Markers)
                 EXPECT_EQ_JSON(payload["operation"], String, "operation");
                 EXPECT_EQ_JSON(payload["source"], String, "source");
                 EXPECT_EQ_JSON(payload["filename"], String, "filename");
+                EXPECT_FALSE(payload.isMember("threadId"));
+
+              } else if (nameString == "FileIOMarkerPayload marker off-MT") {
+                EXPECT_EQ(state, S_FileIOMarkerPayloadOffMT);
+                state = State(S_FileIOMarkerPayloadOffMT + 1);
+                EXPECT_EQ(typeString, "FileIO");
+                EXPECT_EQ_JSON(payload["startTime"], Double, ts1Double);
+                EXPECT_EQ_JSON(payload["endTime"], Double, ts2Double);
+                // Start timestamp is also stored in marker outside of payload.
+                EXPECT_EQ_JSON(marker[1], Double, ts1Double);
+                EXPECT_TRUE(payload["stack"].isNull());
+                EXPECT_EQ_JSON(payload["operation"], String, "operation2");
+                EXPECT_EQ_JSON(payload["source"], String, "source2");
+                EXPECT_EQ_JSON(payload["filename"], String, "filename2");
+                EXPECT_EQ_JSON(payload["threadId"], Int, 123);
 
               } else if (nameString == "DOMEventMarkerPayload marker") {
                 EXPECT_EQ(state, S_DOMEventMarkerPayload);
@@ -1149,6 +1194,43 @@ TEST(GeckoProfiler, Markers)
                 EXPECT_EQ_JSON(payload["size"], Int64, 9876543210);
                 EXPECT_EQ_JSON(payload["memoryAddress"], Int64, 1234);
                 EXPECT_EQ_JSON(payload["threadId"], Int64, 5678);
+
+              } else if (nameString == "NetworkMarkerPayload start marker") {
+                EXPECT_EQ(state, S_NetworkMarkerPayload_start);
+                state = State(S_NetworkMarkerPayload_start + 1);
+                EXPECT_EQ(typeString, "Network");
+                EXPECT_EQ_JSON(payload["id"], Int64, 1);
+                EXPECT_EQ_JSON(payload["URI"], String, "http://mozilla.org/");
+                EXPECT_EQ_JSON(payload["pri"], Int64, 34);
+                EXPECT_EQ_JSON(payload["count"], Int64, 56);
+                EXPECT_EQ_JSON(payload["cache"], String, "Hit");
+                EXPECT_EQ_JSON(payload["RedirectURI"], String, "");
+                EXPECT_TRUE(payload["contentType"].isNull());
+
+              } else if (nameString == "NetworkMarkerPayload stop marker") {
+                EXPECT_EQ(state, S_NetworkMarkerPayload_stop);
+                state = State(S_NetworkMarkerPayload_stop + 1);
+                EXPECT_EQ(typeString, "Network");
+                EXPECT_EQ_JSON(payload["id"], Int64, 12);
+                EXPECT_EQ_JSON(payload["URI"], String, "http://mozilla.org/");
+                EXPECT_EQ_JSON(payload["pri"], Int64, 34);
+                EXPECT_EQ_JSON(payload["count"], Int64, 56);
+                EXPECT_EQ_JSON(payload["cache"], String, "Unresolved");
+                EXPECT_EQ_JSON(payload["RedirectURI"], String, "");
+                EXPECT_EQ_JSON(payload["contentType"], String, "text/html");
+
+              } else if (nameString == "NetworkMarkerPayload redirect marker") {
+                EXPECT_EQ(state, S_NetworkMarkerPayload_redirect);
+                state = State(S_NetworkMarkerPayload_redirect + 1);
+                EXPECT_EQ(typeString, "Network");
+                EXPECT_EQ_JSON(payload["id"], Int64, 123);
+                EXPECT_EQ_JSON(payload["URI"], String, "http://mozilla.org/");
+                EXPECT_EQ_JSON(payload["pri"], Int64, 34);
+                EXPECT_EQ_JSON(payload["count"], Int64, 56);
+                EXPECT_EQ_JSON(payload["cache"], String, "Unresolved");
+                EXPECT_EQ_JSON(payload["RedirectURI"], String,
+                               "http://example.com/");
+                EXPECT_TRUE(payload["contentType"].isNull());
 
               } else if (nameString == "PrefMarkerPayload marker") {
                 EXPECT_EQ(state, S_PrefMarkerPayload);
@@ -1320,6 +1402,8 @@ TEST(GeckoProfiler, Markers)
   EXPECT_EQ(GTestMarkerPayload::sNumDestroyed, 10 + 10 + 0 + 10);
 }
 
+// The duration limit will be removed from Firefox, see bug 1632365.
+#if 0
 TEST(GeckoProfiler, DurationLimit)
 {
   uint32_t features = ProfilerFeature::StackWalk;
@@ -1345,12 +1429,13 @@ TEST(GeckoProfiler, DurationLimit)
 
   // Both markers created, serialized, destroyed; Only the first marker should
   // have been deserialized, streamed, and destroyed again.
-  ASSERT_EQ(GTestMarkerPayload::sNumCreated, 2);
-  ASSERT_EQ(GTestMarkerPayload::sNumSerialized, 2);
-  ASSERT_EQ(GTestMarkerPayload::sNumDeserialized, 1);
-  ASSERT_EQ(GTestMarkerPayload::sNumStreamed, 1);
-  ASSERT_EQ(GTestMarkerPayload::sNumDestroyed, 3);
+  EXPECT_EQ(GTestMarkerPayload::sNumCreated, 2);
+  EXPECT_EQ(GTestMarkerPayload::sNumSerialized, 2);
+  EXPECT_EQ(GTestMarkerPayload::sNumDeserialized, 1);
+  EXPECT_EQ(GTestMarkerPayload::sNumStreamed, 1);
+  EXPECT_EQ(GTestMarkerPayload::sNumDestroyed, 3);
 }
+#endif
 
 #define COUNTER_NAME "TestCounter"
 #define COUNTER_DESCRIPTION "Test of counters in profiles"
@@ -1733,7 +1818,6 @@ TEST(GeckoProfiler, PostSamplingCallback)
       [&](SamplingState) { ASSERT_TRUE(false); }));
 }
 
-#ifdef MOZ_BASE_PROFILER
 TEST(GeckoProfiler, BaseProfilerHandOff)
 {
   const char* filters[] = {"GeckoMain"};
@@ -1780,4 +1864,3 @@ TEST(GeckoProfiler, BaseProfilerHandOff)
   profiler_stop();
   ASSERT_TRUE(!profiler_is_active());
 }
-#endif  // MOZ_BASE_PROFILER

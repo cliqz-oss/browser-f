@@ -64,7 +64,6 @@
 #  include "prerror.h"
 #  include "prlink.h"
 #endif
-#include "shellmoduleloader.out.h"
 
 #include "builtin/Array.h"
 #include "builtin/MapObject.h"
@@ -83,7 +82,15 @@
 #include "frontend/Parser.h"
 #include "frontend/SourceNotes.h"  // SrcNote, SrcNoteType, SrcNoteIterator
 #include "gc/PublicIterators.h"
-#include "jit/arm/Simulator-arm.h"
+#ifdef JS_SIMULATOR_ARM
+#  include "jit/arm/Simulator-arm.h"
+#endif
+#ifdef JS_SIMULATOR_MIPS32
+#  include "jit/mips32/Simulator-mips32.h"
+#endif
+#ifdef JS_SIMULATOR_MIPS64
+#  include "jit/mips64/Simulator-mips64.h"
+#endif
 #include "jit/InlinableNatives.h"
 #include "jit/Ion.h"
 #include "jit/JitcodeMap.h"
@@ -98,6 +105,8 @@
 #include "js/ContextOptions.h"  // JS::ContextOptions{,Ref}
 #include "js/Debug.h"
 #include "js/Equality.h"                 // JS::SameValue
+#include "js/ErrorReport.h"              // JS::PrintError
+#include "js/Exception.h"                // JS::StealPendingExceptionStack
 #include "js/experimental/SourceHook.h"  // js::{Set,Forget,}SourceHook
 #include "js/GCVector.h"
 #include "js/Initialization.h"
@@ -137,7 +146,7 @@
 #include "vm/ModuleBuilder.h"  // js::ModuleBuilder
 #include "vm/Monitor.h"
 #include "vm/MutexIDs.h"
-#include "vm/Printer.h"
+#include "vm/Printer.h"        // QuoteString
 #include "vm/PromiseObject.h"  // js::PromiseObject
 #include "vm/Shape.h"
 #include "vm/SharedArrayObject.h"
@@ -182,17 +191,6 @@ enum JSShellExitCode {
   EXITCODE_OUT_OF_MEMORY = 5,
   EXITCODE_TIMEOUT = 6
 };
-
-// Define use of application-specific slots on the shell's global object.
-enum GlobalAppSlot {
-  GlobalAppSlotModuleLoadHook,           // Shell-specific; load a module graph
-  GlobalAppSlotModuleResolveHook,        // HostResolveImportedModule
-  GlobalAppSlotModuleMetadataHook,       // HostPopulateImportMeta
-  GlobalAppSlotModuleDynamicImportHook,  // HostImportModuleDynamically
-  GlobalAppSlotCount
-};
-static_assert(GlobalAppSlotCount <= JSCLASS_GLOBAL_APPLICATION_SLOTS,
-              "Too many applications slots defined for shell global");
 
 /*
  * Note: This limit should match the stack limit set by the browser in
@@ -483,7 +481,6 @@ struct MOZ_STACK_CLASS EnvironmentPreparer
   void invoke(JS::HandleObject global, Closure& closure) override;
 };
 
-bool shell::enableDeferredMode = true;
 bool shell::enableCodeCoverage = false;
 bool shell::enableDisassemblyDumps = false;
 bool shell::offthreadCompilation = false;
@@ -493,17 +490,19 @@ bool shell::enableSharedMemory = SHARED_MEMORY_DEFAULT;
 bool shell::enableWasmBaseline = false;
 bool shell::enableWasmIon = false;
 bool shell::enableWasmCranelift = false;
+bool shell::enableWasmReftypes = true;
 #ifdef ENABLE_WASM_GC
 bool shell::enableWasmGc = false;
 #endif
 #ifdef ENABLE_WASM_MULTI_VALUE
 bool shell::enableWasmMultiValue = true;
 #endif
+#ifdef ENABLE_WASM_SIMD
+bool shell::enableWasmSimd = true;
+#endif
 bool shell::enableWasmVerbose = false;
 bool shell::enableTestWasmAwaitTier2 = false;
-#ifdef ENABLE_WASM_BIGINT
-bool shell::enableWasmBigInt = true;
-#endif
+bool shell::enableSourcePragmas = true;
 bool shell::enableAsyncStacks = false;
 bool shell::enableStreams = false;
 bool shell::enableReadableByteStreams = false;
@@ -513,6 +512,7 @@ bool shell::enableReadableStreamPipeTo = false;
 bool shell::enableWeakRefs = false;
 bool shell::enableToSource = false;
 bool shell::enablePropertyErrorMessageFix = false;
+bool shell::enableIteratorHelpers = false;
 #ifdef JS_GC_ZEAL
 uint32_t shell::gZealBits = 0;
 uint32_t shell::gZealFrequency = 0;
@@ -561,11 +561,10 @@ JSObject* NewShellWindowProxy(JSContext* cx, JS::HandleObject global) {
 
   js::WrapperOptions options;
   options.setClass(&ShellWindowProxyClass);
-  options.setSingleton(true);
 
   JSAutoRealm ar(cx, global);
   JSObject* obj =
-      js::Wrapper::New(cx, global, &js::Wrapper::singleton, options);
+      js::Wrapper::NewSingleton(cx, global, &js::Wrapper::singleton, options);
   MOZ_ASSERT_IF(obj, js::IsWindowProxy(obj));
   return obj;
 }
@@ -848,6 +847,22 @@ void EnvironmentPreparer::invoke(HandleObject global, Closure& closure) {
   }
 }
 
+JSObject* js::shell::CreateScriptPrivate(JSContext* cx, HandleString path) {
+  RootedObject info(cx, JS_NewPlainObject(cx));
+  if (!info) {
+    return nullptr;
+  }
+
+  if (path) {
+    RootedValue pathValue(cx, StringValue(path));
+    if (!JS_DefineProperty(cx, info, "path", pathValue, JSPROP_ENUMERATE)) {
+      return nullptr;
+    }
+  }
+
+  return info;
+}
+
 static bool RegisterScriptPathWithModuleLoader(JSContext* cx,
                                                HandleScript script,
                                                const char* filename) {
@@ -860,13 +875,9 @@ static bool RegisterScriptPathWithModuleLoader(JSContext* cx,
     return false;
   }
 
-  RootedObject infoObject(cx, JS_NewPlainObject(cx));
+  MOZ_ASSERT(JS::GetScriptPrivate(script).isUndefined());
+  RootedObject infoObject(cx, CreateScriptPrivate(cx, path));
   if (!infoObject) {
-    return false;
-  }
-
-  RootedValue pathValue(cx, StringValue(path));
-  if (!JS_DefineProperty(cx, infoObject, "path", pathValue, 0)) {
     return false;
   }
 
@@ -982,63 +993,9 @@ static MOZ_MUST_USE bool RunBinAST(JSContext* cx, const char* filename,
 
 #endif  // JS_BUILD_BINAST
 
-static bool InitModuleLoader(JSContext* cx) {
-  // Decompress and evaluate the embedded module loader source to initialize
-  // the module loader for the current compartment.
-
-  uint32_t srcLen = moduleloader::GetRawScriptsSize();
-  auto src = cx->make_pod_array<char>(srcLen);
-  if (!src ||
-      !DecompressString(moduleloader::compressedSources,
-                        moduleloader::GetCompressedSize(),
-                        reinterpret_cast<unsigned char*>(src.get()), srcLen)) {
-    return false;
-  }
-
-  CompileOptions options(cx);
-  options.setIntroductionType("shell module loader");
-  options.setFileAndLine("shell/ModuleLoader.js", 1);
-  options.setSelfHostingMode(false);
-  options.setForceFullParse();
-  options.setForceStrictMode();
-
-  JS::SourceText<Utf8Unit> srcBuf;
-  if (!srcBuf.init(cx, std::move(src), srcLen)) {
-    return false;
-  }
-
-  RootedValue rv(cx);
-  return JS::Evaluate(cx, options, srcBuf, &rv);
-}
-
-static bool GetModuleImportHook(JSContext* cx,
-                                MutableHandleFunction resultOut) {
-  Handle<GlobalObject*> global = cx->global();
-  RootedValue hookValue(cx,
-                        global->getReservedSlot(GlobalAppSlotModuleLoadHook));
-  if (hookValue.isUndefined()) {
-    JS_ReportErrorASCII(cx, "Module load hook not set");
-    return false;
-  }
-
-  if (!hookValue.isObject() || !hookValue.toObject().is<JSFunction>()) {
-    JS_ReportErrorASCII(cx, "Module load hook is not a function");
-    return false;
-  }
-
-  resultOut.set(&hookValue.toObject().as<JSFunction>());
-  return true;
-}
-
 static MOZ_MUST_USE bool RunModule(JSContext* cx, const char* filename,
-                                   FILE* file, bool compileOnly) {
-  // Execute a module by calling the module loader's import hook on the
-  // resolved filename.
-
-  RootedFunction importFun(cx);
-  if (!GetModuleImportHook(cx, &importFun)) {
-    return false;
-  }
+                                   bool compileOnly) {
+  ShellContext* sc = GetShellContext(cx);
 
   RootedString path(cx, JS_NewStringCopyZ(cx, filename));
   if (!path) {
@@ -1050,11 +1007,7 @@ static MOZ_MUST_USE bool RunModule(JSContext* cx, const char* filename,
     return false;
   }
 
-  JS::AutoValueArray<1> args(cx);
-  args[0].setString(path);
-
-  RootedValue value(cx);
-  return JS_CallFunction(cx, nullptr, importFun, args, &value);
+  return sc->moduleLoader->loadRootModule(cx, path);
 }
 
 static void ShellCleanupFinalizationRegistryCallback(JSObject* registry,
@@ -1378,7 +1331,7 @@ static bool AddIntlExtras(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  if (!js::AddListFormatConstructor(cx, intl)) {
+  if (!js::AddMozDisplayNamesConstructor(cx, intl)) {
     return false;
   }
 
@@ -1568,7 +1521,7 @@ static MOZ_MUST_USE bool Process(JSContext* cx, const char* filename,
         }
         break;
       case FileModule:
-        if (!RunModule(cx, filename, file, compileOnly)) {
+        if (!RunModule(cx, filename, compileOnly)) {
           return false;
         }
         break;
@@ -1915,7 +1868,15 @@ static bool ParseCompileOptions(JSContext* cx, CompileOptions& options,
     return false;
   }
   if (v.isObject()) {
-    options.setElement(&v.toObject());
+    RootedObject infoObject(cx, CreateScriptPrivate(cx));
+    RootedValue elementValue(cx, v);
+    if (!JS_WrapValue(cx, &elementValue)) {
+      return false;
+    }
+    if (!JS_DefineProperty(cx, infoObject, "element", elementValue, 0)) {
+      return false;
+    }
+    options.setPrivateValue(ObjectValue(*infoObject));
   }
 
   if (!JS_GetProperty(cx, opts, "elementAttributeName", &v)) {
@@ -3273,6 +3234,21 @@ static MOZ_MUST_USE bool GCThings(JSContext* cx, HandleScript script,
           return false;
         }
       }
+    } else if (gcThing.is<JSString>()) {
+      if (!sp->put("Atom       ")) {
+        return false;
+      }
+      RootedAtom atom(cx, &gcThing.as<JSString>().asAtom());
+      UniqueChars chars = QuoteString(cx, atom, '"');
+      if (!chars) {
+        return false;
+      }
+      if (!sp->put(chars.get())) {
+        return false;
+      }
+      if (!sp->put("\n")) {
+        return false;
+      }
     } else {
       if (!sp->put("Unknown\n")) {
         return false;
@@ -3816,8 +3792,10 @@ static bool CopyErrorReportToObject(JSContext* cx, JSErrorReport* report,
 static bool CreateErrorReport(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
-  js::ErrorReport report(cx);
-  if (!report.init(cx, args.get(0), js::ErrorReport::WithSideEffects)) {
+  // We don't have a stack here, so just initialize with null.
+  JS::ExceptionStack exnStack(cx, args.get(0), nullptr);
+  JS::ErrorReportBuilder report(cx);
+  if (!report.init(cx, exnStack, JS::ErrorReportBuilder::WithSideEffects)) {
     return false;
   }
 
@@ -3914,7 +3892,8 @@ static void SetStandardRealmOptions(JS::RealmOptions& options) {
       .setReadableStreamPipeToEnabled(enableReadableStreamPipeTo)
       .setWeakRefsEnabled(enableWeakRefs)
       .setToSourceEnabled(enableToSource)
-      .setPropertyErrorMessageFixEnabled(enablePropertyErrorMessageFix);
+      .setPropertyErrorMessageFixEnabled(enablePropertyErrorMessageFix)
+      .setIteratorHelpersEnabled(enableIteratorHelpers);
 }
 
 static MOZ_MUST_USE bool CheckRealmOptions(JSContext* cx,
@@ -4113,6 +4092,23 @@ static void DestroyShellCompartmentPrivate(JSFreeOp* fop,
 static void SetWorkerContextOptions(JSContext* cx);
 static bool ShellBuildId(JS::BuildIdCharVector* buildId);
 
+JSObject* GetElementCallback(JSContext* cx, JS::HandleValue value) {
+  RootedValue privateValue(cx, value);
+  if (!privateValue.isObject()) {
+    return nullptr;
+  }
+
+  RootedObject infoObject(cx, privateValue.toObjectOrNull());
+  AutoRealm ar(cx, infoObject);
+
+  RootedValue elementValue(cx);
+  if (!JS_GetProperty(cx, infoObject, "element", &elementValue)) {
+    return nullptr;
+  }
+
+  return elementValue.toObjectOrNull();
+}
+
 static void WorkerMain(WorkerInput* input) {
   MOZ_ASSERT(input->parentRuntime);
 
@@ -4145,6 +4141,7 @@ static void WorkerMain(WorkerInput* input) {
   js::SetPreserveWrapperCallback(cx, DummyPreserveWrapperCallback);
   JS_InitDestroyPrincipalsCallback(cx, ShellPrincipals::destroy);
   JS_SetDestroyCompartmentCallback(cx, DestroyShellCompartmentPrivate);
+  JS::SetGetElementCallback(cx, &GetElementCallback);
 
   js::SetWindowProxyClass(cx, &ShellWindowProxyClass);
 
@@ -4987,7 +4984,8 @@ class XDRBufferObject : public NativeObject {
 
 XDRBufferObject* XDRBufferObject::create(JSContext* cx,
                                          JS::TranscodeBuffer* buf) {
-  XDRBufferObject* bufObj = NewObjectWithNullTaggedProto<XDRBufferObject>(cx);
+  XDRBufferObject* bufObj =
+      NewObjectWithGivenProto<XDRBufferObject>(cx, nullptr);
   if (!bufObj) {
     return nullptr;
   }
@@ -5077,23 +5075,33 @@ static bool DecodeModule(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static bool SetModuleLoadHook(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  if (!args.requireAtLeast(cx, "setModuleLoadHook", 1)) {
-    return false;
-  }
-
-  if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
-    const char* typeName = InformalValueTypeName(args[0]);
-    JS_ReportErrorASCII(cx, "expected hook function, got %s", typeName);
-    return false;
-  }
-
+static JSObject* ShellModuleResolveHook(JSContext* cx,
+                                        HandleValue referencingPrivate,
+                                        HandleString specifier) {
   Handle<GlobalObject*> global = cx->global();
-  global->setReservedSlot(GlobalAppSlotModuleLoadHook, args[0]);
+  RootedValue hookValue(
+      cx, global->getReservedSlot(GlobalAppSlotModuleResolveHook));
+  if (hookValue.isUndefined()) {
+    JS_ReportErrorASCII(cx, "Module resolve hook not set");
+    return nullptr;
+  }
+  MOZ_ASSERT(hookValue.toObject().is<JSFunction>());
 
-  args.rval().setUndefined();
-  return true;
+  JS::RootedValueArray<2> args(cx);
+  args[0].set(referencingPrivate);
+  args[1].setString(specifier);
+
+  RootedValue result(cx);
+  if (!JS_CallFunctionValue(cx, nullptr, hookValue, args, &result)) {
+    return nullptr;
+  }
+
+  if (!result.isObject() || !result.toObject().is<ModuleObject>()) {
+    JS_ReportErrorASCII(cx, "Module resolve hook did not return Module object");
+    return nullptr;
+  }
+
+  return &result.toObject();
 }
 
 static bool SetModuleResolveHook(JSContext* cx, unsigned argc, Value* vp) {
@@ -5111,212 +5119,9 @@ static bool SetModuleResolveHook(JSContext* cx, unsigned argc, Value* vp) {
   Handle<GlobalObject*> global = cx->global();
   global->setReservedSlot(GlobalAppSlotModuleResolveHook, args[0]);
 
-  args.rval().setUndefined();
-  return true;
-}
-
-static JSObject* ShellModuleResolveHook(JSContext* cx,
-                                        HandleValue referencingPrivate,
-                                        HandleString specifier) {
-  Handle<GlobalObject*> global = cx->global();
-  RootedValue hookValue(
-      cx, global->getReservedSlot(GlobalAppSlotModuleResolveHook));
-  if (hookValue.isUndefined()) {
-    JS_ReportErrorASCII(cx, "Module resolve hook not set");
-    return nullptr;
-  }
-  MOZ_ASSERT(hookValue.toObject().is<JSFunction>());
-
-  JS::AutoValueArray<2> args(cx);
-  args[0].set(referencingPrivate);
-  args[1].setString(specifier);
-
-  RootedValue result(cx);
-  if (!JS_CallFunctionValue(cx, nullptr, hookValue, args, &result)) {
-    return nullptr;
-  }
-
-  if (!result.isObject() || !result.toObject().is<ModuleObject>()) {
-    JS_ReportErrorASCII(cx, "Module resolve hook did not return Module object");
-    return nullptr;
-  }
-
-  return &result.toObject();
-}
-
-static bool SetModuleMetadataHook(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  if (!args.requireAtLeast(cx, "setModuleMetadataHook", 1)) {
-    return false;
-  }
-
-  if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
-    const char* typeName = InformalValueTypeName(args[0]);
-    JS_ReportErrorASCII(cx, "expected hook function, got %s", typeName);
-    return false;
-  }
-
-  Handle<GlobalObject*> global = cx->global();
-  global->setReservedSlot(GlobalAppSlotModuleMetadataHook, args[0]);
+  JS::SetModuleResolveHook(cx->runtime(), ShellModuleResolveHook);
 
   args.rval().setUndefined();
-  return true;
-}
-
-static bool CallModuleMetadataHook(JSContext* cx, HandleValue modulePrivate,
-                                   HandleObject metaObject) {
-  Handle<GlobalObject*> global = cx->global();
-  RootedValue hookValue(
-      cx, global->getReservedSlot(GlobalAppSlotModuleMetadataHook));
-  if (hookValue.isUndefined()) {
-    JS_ReportErrorASCII(cx, "Module metadata hook not set");
-    return false;
-  }
-  MOZ_ASSERT(hookValue.toObject().is<JSFunction>());
-
-  JS::AutoValueArray<2> args(cx);
-  args[0].set(modulePrivate);
-  args[1].setObject(*metaObject);
-
-  RootedValue dummy(cx);
-  return JS_CallFunctionValue(cx, nullptr, hookValue, args, &dummy);
-}
-
-static bool ReportArgumentTypeError(JSContext* cx, HandleValue value,
-                                    const char* expected) {
-  const char* typeName = InformalValueTypeName(value);
-  JS_ReportErrorASCII(cx, "Expected %s, got %s", expected, typeName);
-  return false;
-}
-
-static bool ShellSetModulePrivate(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-
-  if (!args.requireAtLeast(cx, "setModulePrivate", 2)) {
-    return false;
-  }
-
-  if (!args[0].isObject() || !args[0].toObject().is<ModuleObject>()) {
-    return ReportArgumentTypeError(cx, args[0], "module object");
-  }
-
-  JS::SetModulePrivate(&args[0].toObject(), args[1]);
-  args.rval().setUndefined();
-  return true;
-}
-
-static bool ShellGetModulePrivate(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-
-  if (!args.requireAtLeast(cx, "getModulePrivate", 1)) {
-    return false;
-  }
-
-  if (!args[0].isObject() || !args[0].toObject().is<ModuleObject>()) {
-    return ReportArgumentTypeError(cx, args[0], "module object");
-  }
-
-  args.rval().set(JS::GetModulePrivate(&args[0].toObject()));
-  return true;
-}
-
-static bool SetModuleDynamicImportHook(JSContext* cx, unsigned argc,
-                                       Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  if (!args.requireAtLeast(cx, "setModuleDynamicImportHook", 1)) {
-    return false;
-  }
-
-  if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
-    const char* typeName = InformalValueTypeName(args[0]);
-    JS_ReportErrorASCII(cx, "expected hook function, got %s", typeName);
-    return false;
-  }
-
-  Handle<GlobalObject*> global = cx->global();
-  global->setReservedSlot(GlobalAppSlotModuleDynamicImportHook, args[0]);
-
-  args.rval().setUndefined();
-  return true;
-}
-
-static bool FinishDynamicModuleImport(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  if (!args.requireAtLeast(cx, "finishDynamicModuleImport", 3)) {
-    return false;
-  }
-
-  if (!args[1].isString()) {
-    return ReportArgumentTypeError(cx, args[1], "String");
-  }
-
-  if (!args[2].isObject() || !args[2].toObject().is<PromiseObject>()) {
-    return ReportArgumentTypeError(cx, args[2], "PromiseObject");
-  }
-
-  RootedString specifier(cx, args[1].toString());
-  Rooted<PromiseObject*> promise(cx, &args[2].toObject().as<PromiseObject>());
-
-  return js::FinishDynamicModuleImport(cx, args[0], specifier, promise);
-}
-
-static bool AbortDynamicModuleImport(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  if (!args.requireAtLeast(cx, "abortDynamicModuleImport", 4)) {
-    return false;
-  }
-
-  if (!args[1].isString()) {
-    return ReportArgumentTypeError(cx, args[1], "String");
-  }
-
-  if (!args[2].isObject() || !args[2].toObject().is<PromiseObject>()) {
-    return ReportArgumentTypeError(cx, args[2], "PromiseObject");
-  }
-
-  RootedString specifier(cx, args[1].toString());
-  Rooted<PromiseObject*> promise(cx, &args[2].toObject().as<PromiseObject>());
-
-  cx->setPendingExceptionAndCaptureStack(args[3]);
-  return js::FinishDynamicModuleImport(cx, args[0], specifier, promise);
-}
-
-static bool ShellModuleDynamicImportHook(JSContext* cx,
-                                         HandleValue referencingPrivate,
-                                         HandleString specifier,
-                                         HandleObject promise) {
-  Handle<GlobalObject*> global = cx->global();
-  RootedValue hookValue(
-      cx, global->getReservedSlot(GlobalAppSlotModuleDynamicImportHook));
-  if (hookValue.isUndefined()) {
-    JS_ReportErrorASCII(cx, "Module resolve hook not set");
-    return false;
-  }
-  MOZ_ASSERT(hookValue.toObject().is<JSFunction>());
-
-  JS::AutoValueArray<3> args(cx);
-  args[0].set(referencingPrivate);
-  args[1].setString(specifier);
-  args[2].setObject(*promise);
-
-  RootedValue result(cx);
-  return JS_CallFunctionValue(cx, nullptr, hookValue, args, &result);
-}
-
-static bool GetModuleLoadPath(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-
-  ShellContext* sc = GetShellContext(cx);
-  if (sc->moduleLoadPath) {
-    JSString* str = JS_NewStringCopyZ(cx, sc->moduleLoadPath.get());
-    if (!str) {
-      return false;
-    }
-
-    args.rval().setString(str);
-  } else {
-    args.rval().setNull();
-  }
   return true;
 }
 
@@ -5327,13 +5132,11 @@ static bool ParseBinASTData(JSContext* cx, uint8_t* buf_data,
                             uint32_t buf_length,
                             js::frontend::GlobalSharedContext* globalsc,
                             js::frontend::CompilationInfo& compilationInfo,
-                            const JS::ReadOnlyCompileOptions& options,
-                            HandleScriptSourceObject sourceObj) {
+                            const JS::ReadOnlyCompileOptions& options) {
   MOZ_ASSERT(globalsc);
 
   // Note: We need to keep `reader` alive as long as we can use `parsed`.
-  js::frontend::BinASTParser<Tok> reader(cx, compilationInfo, options,
-                                         sourceObj);
+  js::frontend::BinASTParser<Tok> reader(cx, compilationInfo, options);
 
   JS::Result<js::frontend::ParseNode*> parsed =
       reader.parse(globalsc, buf_data, buf_length);
@@ -5443,15 +5246,16 @@ static bool BinParse(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
+  js::SourceExtent extent = js::SourceExtent::makeGlobalExtent(0, options);
   js::frontend::Directives directives(false);
-  js::frontend::GlobalSharedContext globalsc(cx, ScopeKind::Global,
-                                             compilationInfo, directives);
+  js::frontend::GlobalSharedContext globalsc(
+      cx, ScopeKind::Global, compilationInfo, directives, extent);
 
   auto parseFunc = mode == Multipart
                        ? ParseBinASTData<frontend::BinASTTokenReaderMultipart>
                        : ParseBinASTData<frontend::BinASTTokenReaderContext>;
-  if (!parseFunc(cx, buf_data, buf_length, &globalsc, compilationInfo, options,
-                 compilationInfo.sourceObject)) {
+  if (!parseFunc(cx, buf_data, buf_length, &globalsc, compilationInfo,
+                 options)) {
     return false;
   }
 
@@ -5466,13 +5270,11 @@ static bool FullParseTest(JSContext* cx,
                           const JS::ReadOnlyCompileOptions& options,
                           const Unit* units, size_t length,
                           js::frontend::CompilationInfo& compilationInfo,
-                          ScriptSourceObject* sourceObject,
                           js::frontend::ParseGoal goal) {
   using namespace js::frontend;
   Parser<FullParseHandler, Unit> parser(cx, options, units, length,
                                         /* foldConstants = */ false,
-                                        compilationInfo, nullptr, nullptr,
-                                        sourceObject);
+                                        compilationInfo, nullptr, nullptr);
   if (!parser.checkOptions()) {
     return false;
   }
@@ -5492,7 +5294,9 @@ static bool FullParseTest(JSContext* cx,
 
     ModuleBuilder builder(cx, &parser);
 
-    ModuleSharedContext modulesc(cx, module, compilationInfo, nullptr, builder);
+    SourceExtent extent = SourceExtent::makeGlobalExtent(length);
+    ModuleSharedContext modulesc(cx, module, compilationInfo, nullptr, builder,
+                                 extent);
     pn = parser.moduleBody(&modulesc);
   }
   if (!pn) {
@@ -5618,24 +5422,18 @@ static bool Parse(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  RootedScriptSourceObject sourceObject(
-      cx, frontend::CreateScriptSourceObject(cx, options));
-  if (!sourceObject) {
-    return false;
-  }
-
   if (stableChars.isLatin1()) {
     const Latin1Char* chars_ = stableChars.latin1Range().begin().get();
     auto chars = reinterpret_cast<const mozilla::Utf8Unit*>(chars_);
-    if (!FullParseTest<mozilla::Utf8Unit>(
-            cx, options, chars, length, compilationInfo, sourceObject, goal)) {
+    if (!FullParseTest<mozilla::Utf8Unit>(cx, options, chars, length,
+                                          compilationInfo, goal)) {
       return false;
     }
   } else {
     MOZ_ASSERT(stableChars.isTwoByte());
     const char16_t* chars = stableChars.twoByteRange().begin().get();
     if (!FullParseTest<char16_t>(cx, options, chars, length, compilationInfo,
-                                 sourceObject, goal)) {
+                                 goal)) {
       return false;
     }
   }
@@ -5678,8 +5476,7 @@ static bool SyntaxParse(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   Parser<frontend::SyntaxParseHandler, char16_t> parser(
-      cx, options, chars, length, false, compilationInfo, nullptr, nullptr,
-      compilationInfo.sourceObject);
+      cx, options, chars, length, false, compilationInfo, nullptr, nullptr);
   if (!parser.checkOptions()) {
     return false;
   }
@@ -6630,6 +6427,17 @@ static bool NewGlobal(JSContext* cx, unsigned argc, Value* vp) {
     }
     if (v.isBoolean()) {
       creationOptions.setCoopAndCoepEnabled(v.toBoolean());
+    }
+
+    // On the web, the SharedArrayBuffer constructor is not installed as a
+    // global property in pages that aren't isolated in a separate process (and
+    // thus can't allow the structured cloning of shared memory).  Specify false
+    // for this option to reproduce this behavior.
+    if (!JS_GetProperty(cx, opts, "defineSharedArrayBufferConstructor", &v)) {
+      return false;
+    }
+    if (v.isBoolean()) {
+      creationOptions.setDefineSharedArrayBufferConstructor(v.toBoolean());
     }
   }
 
@@ -7842,7 +7650,7 @@ static bool EnsureGrayRoot(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   if (!priv->grayRoot) {
-    if (!(priv->grayRoot = NewDenseEmptyArray(cx, nullptr, TenuredObject))) {
+    if (!(priv->grayRoot = NewTenuredDenseEmptyArray(cx, nullptr))) {
       return false;
     }
   }
@@ -8764,7 +8572,7 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 
     JS_FN_HELP("createErrorReport", CreateErrorReport, 1, 0,
 "createErrorReport(value)",
-"  Create an js::ErrorReport object from the given value and serialize\n"
+"  Create an JS::ErrorReportBuilder object from the given value and serialize\n"
 "  to an object."),
 
 #if defined(DEBUG) || defined(JS_JITSPEW)
@@ -8876,52 +8684,11 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "decodeModule(code)",
 "   Takes a XDR bytecode representation of an uninstantiated ModuleObject and returns a ModuleObject."),
 
-    JS_FN_HELP("setModuleLoadHook", SetModuleLoadHook, 1, 0,
-"setModuleLoadHook(function(path))",
-"  Set the shell specific module load hook to |function|.\n"
-"  This hook is used to load a module graph.  It should be implemented by the\n"
-"  module loader."),
-
     JS_FN_HELP("setModuleResolveHook", SetModuleResolveHook, 1, 0,
 "setModuleResolveHook(function(referrer, specifier))",
-"  Set the HostResolveImportedModule hook to |function|.\n"
-"  This hook is used to look up a previously loaded module object.  It should\n"
-"  be implemented by the module loader."),
-
-    JS_FN_HELP("setModuleMetadataHook", SetModuleMetadataHook, 1, 0,
-"setModuleMetadataHook(function(module) {})",
-"  Set the HostPopulateImportMeta hook to |function|.\n"
-"  This hook is used to create the metadata object returned by import.meta for\n"
-"  a module.  It should be implemented by the module loader."),
-
-    JS_FN_HELP("setModuleDynamicImportHook", SetModuleDynamicImportHook, 1, 0,
-"setModuleDynamicImportHook(function(referrer, specifier, promise))",
-"  Set the HostImportModuleDynamically hook to |function|.\n"
-"  This hook is used to dynamically import a module.  It should\n"
-"  be implemented by the module loader."),
-
-    JS_FN_HELP("finishDynamicModuleImport", FinishDynamicModuleImport, 3, 0,
-"finishDynamicModuleImport(referrer, specifier, promise)",
-"  The module loader's dynamic import hook should call this when the module has"
-"  been loaded successfully."),
-
-    JS_FN_HELP("abortDynamicModuleImport", AbortDynamicModuleImport, 4, 0,
-"abortDynamicModuleImport(referrer, specifier, promise, error)",
-"  The module loader's dynamic import hook should call this when the module "
-"  import has failed."),
-
-    JS_FN_HELP("setModulePrivate", ShellSetModulePrivate, 2, 0,
-"setModulePrivate(scriptObject, privateValue)",
-"  Associate a private value with a module object.\n"),
-
-    JS_FN_HELP("getModulePrivate", ShellGetModulePrivate, 2, 0,
-"getModulePrivate(scriptObject)",
-"  Get the private value associated with a module object.\n"),
-
-    JS_FN_HELP("getModuleLoadPath", GetModuleLoadPath, 0, 0,
-"getModuleLoadPath()",
-"  Return any --module-load-path argument passed to the shell.  Used by the\n"
-"  module loader.\n"),
+"  Set the HostResolveImportedModule hook to |function|, overriding the shell\n"
+"  module loader for testing purposes. This hook is used to look up a\n"
+"  previously loaded module object."),
 
 #if defined(JS_BUILD_BINAST)
 
@@ -9673,16 +9440,18 @@ js::shell::AutoReportException::~AutoReportException() {
   }
 
   // Get exception object and stack before printing and clearing exception.
-  RootedValue exn(cx);
-  (void)JS_GetPendingException(cx, &exn);
-  RootedObject stack(cx, GetPendingExceptionStack(cx));
-
-  JS_ClearPendingException(cx);
+  JS::ExceptionStack exnStack(cx);
+  if (!JS::StealPendingExceptionStack(cx, &exnStack)) {
+    fprintf(stderr, "out of memory while stealing exception\n");
+    fflush(stderr);
+    JS_ClearPendingException(cx);
+    return;
+  }
 
   ShellContext* sc = GetShellContext(cx);
-  js::ErrorReport report(cx);
-  if (!report.init(cx, exn, js::ErrorReport::WithSideEffects, stack)) {
-    fprintf(stderr, "out of memory initializing ErrorReport\n");
+  JS::ErrorReportBuilder report(cx);
+  if (!report.init(cx, exnStack, JS::ErrorReportBuilder::WithSideEffects)) {
+    fprintf(stderr, "out of memory initializing JS::ErrorReportBuilder\n");
     fflush(stderr);
     JS_ClearPendingException(cx);
     return;
@@ -9691,10 +9460,10 @@ js::shell::AutoReportException::~AutoReportException() {
   MOZ_ASSERT(!report.report()->isWarning());
 
   FILE* fp = ErrorFilePointer();
-  PrintError(cx, fp, report.toStringResult(), report.report(), reportWarnings);
+  JS::PrintError(cx, fp, report, reportWarnings);
   JS_ClearPendingException(cx);
 
-  if (!PrintStackTrace(cx, stack)) {
+  if (!PrintStackTrace(cx, exnStack.stack())) {
     fputs("(Unable to print stack trace)\n", fp);
     JS_ClearPendingException(cx);
   }
@@ -9731,7 +9500,7 @@ void js::shell::WarningReporter(JSContext* cx, JSErrorReport* report) {
   }
 
   // Print the warning.
-  PrintError(cx, fp, JS::ConstUTF8CharsZ(), report, reportWarnings);
+  JS::PrintError(cx, fp, report, reportWarnings);
 }
 
 static bool global_enumerate(JSContext* cx, JS::HandleObject obj,
@@ -10210,6 +9979,10 @@ static JSObject* NewGlobalObject(JSContext* cx, JS::RealmOptions& options,
     /* Initialize FakeDOMObject.prototype */
     InitDOMObject(domProto);
 
+    if (!DefineToStringTag(cx, glob, cx->names().global)) {
+      return nullptr;
+    }
+
     JS_FireOnNewGlobalObject(cx, glob);
   }
 
@@ -10313,27 +10086,25 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
     return Process(cx, nullptr, forceTTY, FileScript);
   }
 
-  if (const char* path = op->getStringOption("module-load-path")) {
-    RootedString jspath(cx, JS_NewStringCopyZ(cx, path));
+  RootedString moduleLoadPath(cx);
+  if (const char* option = op->getStringOption("module-load-path")) {
+    RootedString jspath(cx, JS_NewStringCopyZ(cx, option));
     if (!jspath) {
       return false;
     }
 
-    JSString* absolutePath = js::shell::ResolvePath(cx, jspath, RootRelative);
-    if (!absolutePath) {
-      return false;
-    }
-
-    sc->moduleLoadPath = JS_EncodeStringToLatin1(cx, absolutePath);
+    moduleLoadPath = js::shell::ResolvePath(cx, jspath, RootRelative);
   } else {
-    sc->moduleLoadPath = js::shell::GetCWD();
+    UniqueChars cwd = js::shell::GetCWD();
+    moduleLoadPath = JS_NewStringCopyZ(cx, cwd.get());
   }
 
-  if (!sc->moduleLoadPath) {
+  if (!moduleLoadPath) {
     return false;
   }
 
-  if (!InitModuleLoader(cx)) {
+  sc->moduleLoader = js::MakeUnique<ModuleLoader>();
+  if (!sc->moduleLoader || !sc->moduleLoader->init(cx, moduleLoadPath)) {
     return false;
   }
 
@@ -10466,27 +10237,30 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
     }
   }
 
+  enableWasmReftypes = !op.getBoolOption("no-wasm-reftypes");
 #ifdef ENABLE_WASM_GC
   enableWasmGc = op.getBoolOption("wasm-gc");
 #endif
 #ifdef ENABLE_WASM_MULTI_VALUE
   enableWasmMultiValue = !op.getBoolOption("no-wasm-multi-value");
 #endif
+#ifdef ENABLE_WASM_SIMD
+  enableWasmSimd = !op.getBoolOption("no-wasm-simd");
+#endif
   enableWasmVerbose = op.getBoolOption("wasm-verbose");
   enableTestWasmAwaitTier2 = op.getBoolOption("test-wasm-await-tier2");
+  enableSourcePragmas = !op.getBoolOption("no-source-pragmas");
   enableAsyncStacks = !op.getBoolOption("no-async-stacks");
   enableStreams = !op.getBoolOption("no-streams");
   enableReadableByteStreams = op.getBoolOption("enable-readable-byte-streams");
   enableBYOBStreamReaders = op.getBoolOption("enable-byob-stream-readers");
   enableWritableStreams = op.getBoolOption("enable-writable-streams");
   enableReadableStreamPipeTo = op.getBoolOption("enable-readablestream-pipeto");
-#ifdef ENABLE_WASM_BIGINT
-  enableWasmBigInt = !op.getBoolOption("no-wasm-bigint");
-#endif
   enableWeakRefs = op.getBoolOption("enable-weak-refs");
   enableToSource = !op.getBoolOption("disable-tosource");
   enablePropertyErrorMessageFix =
       !op.getBoolOption("disable-property-error-message-fix");
+  enableIteratorHelpers = op.getBoolOption("enable-iterator-helpers");
 
   JS::ContextOptionsRef(cx)
       .setAsmJS(enableAsmJS)
@@ -10494,6 +10268,7 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
       .setWasmForTrustedPrinciples(enableWasm)
       .setWasmBaseline(enableWasmBaseline)
       .setWasmIon(enableWasmIon)
+      .setWasmReftypes(enableWasmReftypes)
 #ifdef ENABLE_WASM_CRANELIFT
       .setWasmCranelift(enableWasmCranelift)
 #endif
@@ -10503,11 +10278,12 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
 #ifdef ENABLE_WASM_MULTI_VALUE
       .setWasmMultiValue(enableWasmMultiValue)
 #endif
+#ifdef ENABLE_WASM_SIMD
+      .setWasmSimd(enableWasmSimd)
+#endif
       .setWasmVerbose(enableWasmVerbose)
       .setTestWasmAwaitTier2(enableTestWasmAwaitTier2)
-#ifdef ENABLE_WASM_BIGINT
-      .setWasmBigIntEnabled(enableWasmBigInt)
-#endif
+      .setSourcePragmas(enableSourcePragmas)
       .setAsyncStack(enableAsyncStacks);
 
   if (op.getBoolOption("no-ion-for-main-context")) {
@@ -10692,6 +10468,13 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
     jit::JitOptions.baselineJitWarmUpThreshold = warmUpThreshold;
   }
 
+#ifdef ENABLE_NEW_REGEXP
+  warmUpThreshold = op.getIntOption("regexp-warmup-threshold");
+  if (warmUpThreshold >= 0) {
+    jit::JitOptions.regexpWarmUpThreshold = warmUpThreshold;
+  }
+#endif
+
   if (op.getBoolOption("baseline-eager")) {
     jit::JitOptions.setEagerBaselineCompilation();
   }
@@ -10724,6 +10507,21 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
   if (op.getBoolOption("no-native-regexp")) {
     jit::JitOptions.nativeRegExp = false;
   }
+
+#ifdef ENABLE_NEW_REGEXP
+  if (op.getBoolOption("trace-regexp-parser")) {
+    jit::JitOptions.traceRegExpParser = true;
+  }
+  if (op.getBoolOption("trace-regexp-assembler")) {
+    jit::JitOptions.traceRegExpAssembler = true;
+  }
+  if (op.getBoolOption("trace-regexp-interpreter")) {
+    jit::JitOptions.traceRegExpInterpreter = true;
+  }
+  if (op.getBoolOption("trace-regexp-peephole")) {
+    jit::JitOptions.traceRegExpPeephole = true;
+  }
+#endif
 
 #ifdef NIGHTLY_BUILD
   if (op.getBoolOption("no-ti")) {
@@ -10854,11 +10652,12 @@ static void SetWorkerContextOptions(JSContext* cx) {
 #ifdef ENABLE_WASM_MULTI_VALUE
       .setWasmMultiValue(enableWasmMultiValue)
 #endif
-#ifdef ENABLE_WASM_BIGINT
-      .setWasmBigIntEnabled(enableWasmBigInt)
+#ifdef ENABLE_WASM_SIMD
+      .setWasmSimd(enableWasmSimd)
 #endif
       .setWasmVerbose(enableWasmVerbose)
-      .setTestWasmAwaitTier2(enableTestWasmAwaitTier2);
+      .setTestWasmAwaitTier2(enableTestWasmAwaitTier2)
+      .setSourcePragmas(enableSourcePragmas);
 
   cx->runtime()->setOffthreadIonCompilationEnabled(offthreadCompilation);
   cx->runtime()->profilingScripts =
@@ -11260,6 +11059,8 @@ int main(int argc, char** argv, char** envp) {
 #ifdef NIGHTLY_BUILD
       !op.addBoolOption('\0', "no-ti", "Disable Type Inference") ||
       !op.addBoolOption('\0', "warp", "Use WarpBuilder as MIR builder") ||
+#else
+      !op.addBoolOption('\0', "warp", "No-op on non-Nightly") ||
 #endif
       !op.addBoolOption('\0', "no-warp", "Disable WarpBuilder (default)") ||
       !op.addBoolOption('\0', "no-asmjs", "Disable asm.js compilation") ||
@@ -11271,15 +11072,11 @@ int main(int argc, char** argv, char** envp) {
                         "Enable WebAssembly verbose logging") ||
       !op.addBoolOption('\0', "disable-wasm-huge-memory",
                         "Disable WebAssembly huge memory") ||
-#ifdef ENABLE_WASM_BIGINT
-      !op.addBoolOption('\0', "no-wasm-bigint",
-                        "Disable WebAssembly BigInt conversions") ||
-#else
-      !op.addBoolOption('\0', "no-wasm-bigint", "No-op") ||
-#endif
       !op.addBoolOption('\0', "test-wasm-await-tier2",
                         "Forcibly activate tiering and block "
                         "instantiation on completion of tier2") ||
+      !op.addBoolOption('\0', "no-wasm-reftypes",
+                        "Disable wasm reference types features") ||
 #ifdef ENABLE_WASM_GC
       !op.addBoolOption('\0', "wasm-gc",
                         "Enable experimental wasm GC features") ||
@@ -11292,9 +11089,28 @@ int main(int argc, char** argv, char** envp) {
 #else
       !op.addBoolOption('\0', "no-wasm-multi-value", "No-op") ||
 #endif
-
+#ifdef ENABLE_WASM_SIMD
+      !op.addBoolOption('\0', "no-wasm-simd",
+                        "Disable experimental wasm SIMD features") ||
+#else
+      !op.addBoolOption('\0', "no-wasm-simd", "No-op") ||
+#endif
       !op.addBoolOption('\0', "no-native-regexp",
                         "Disable native regexp compilation") ||
+#ifdef ENABLE_NEW_REGEXP
+      !op.addIntOption(
+          '\0', "regexp-warmup-threshold", "COUNT",
+          "Wait for COUNT invocations before compiling regexps to native code "
+          "(default 10)",
+          -1) ||
+      !op.addBoolOption('\0', "trace-regexp-parser", "Trace regexp parsing") ||
+      !op.addBoolOption('\0', "trace-regexp-assembler",
+                        "Trace regexp assembler") ||
+      !op.addBoolOption('\0', "trace-regexp-interpreter",
+                        "Trace regexp interpreter") ||
+      !op.addBoolOption('\0', "trace-regexp-peephole",
+                        "Trace regexp peephole optimization") ||
+#endif
       !op.addBoolOption('\0', "no-unboxed-objects",
                         "Disable creating unboxed plain objects") ||
       !op.addBoolOption('\0', "enable-streams",
@@ -11316,6 +11132,8 @@ int main(int argc, char** argv, char** envp) {
       !op.addBoolOption('\0', "disable-property-error-message-fix",
                         "Disable fix for the error message when accessing "
                         "property of null or undefined") ||
+      !op.addBoolOption('\0', "enable-iterator-helpers",
+                        "Enable iterator helpers") ||
       !op.addStringOption('\0', "shared-memory", "on/off",
                           "SharedArrayBuffer and Atomics "
 #if SHARED_MEMORY_DEFAULT
@@ -11423,8 +11241,17 @@ int main(int argc, char** argv, char** envp) {
           "Pretend CPU does not support SSE3 instructions and above "
           "to test JIT codegen (no-op on platforms other than x86 and x64).") ||
       !op.addBoolOption(
-          '\0', "no-sse4",
-          "Pretend CPU does not support SSE4 instructions "
+          '\0', "no-ssse3",
+          "Pretend CPU does not support SSSE3 [sic] instructions and above "
+          "to test JIT codegen (no-op on platforms other than x86 and x64).") ||
+      !op.addBoolOption(
+          '\0', "no-sse41",
+          "Pretend CPU does not support SSE4.1 instructions "
+          "to test JIT codegen (no-op on platforms other than x86 and x64).") ||
+      !op.addBoolOption('\0', "no-sse4", "Alias for --no-sse41") ||
+      !op.addBoolOption(
+          '\0', "no-sse42",
+          "Pretend CPU does not support SSE4.2 instructions "
           "to test JIT codegen (no-op on platforms other than x86 and x64).") ||
       !op.addBoolOption('\0', "enable-avx",
                         "AVX is disabled by default. Enable AVX. "
@@ -11493,6 +11320,8 @@ int main(int argc, char** argv, char** envp) {
 #endif
       !op.addStringOption('\0', "module-load-path", "DIR",
                           "Set directory to load modules from") ||
+      !op.addBoolOption('\0', "no-source-pragmas",
+                        "Disable source(Mapping)URL pragma parsing") ||
       !op.addBoolOption('\0', "no-async-stacks", "Disable async stacks") ||
       !op.addMultiStringOption('\0', "dll", "LIBRARY",
                                "Dynamically load LIBRARY") ||
@@ -11555,9 +11384,21 @@ int main(int argc, char** argv, char** envp) {
       return EXIT_FAILURE;
     }
   }
-  if (op.getBoolOption("no-sse4")) {
-    js::jit::CPUInfo::SetSSE4Disabled();
-    if (!sCompilerProcessFlags.append("--no-sse4")) {
+  if (op.getBoolOption("no-ssse3")) {
+    js::jit::CPUInfo::SetSSSE3Disabled();
+    if (!sCompilerProcessFlags.append("--no-ssse3")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (op.getBoolOption("no-sse4") || op.getBoolOption("no-sse41")) {
+    js::jit::CPUInfo::SetSSE41Disabled();
+    if (!sCompilerProcessFlags.append("--no-sse41")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (op.getBoolOption("no-sse42")) {
+    js::jit::CPUInfo::SetSSE42Disabled();
+    if (!sCompilerProcessFlags.append("--no-sse42")) {
       return EXIT_FAILURE;
     }
   }
@@ -11577,9 +11418,6 @@ int main(int argc, char** argv, char** envp) {
   if (enableCodeCoverage) {
     coverage::EnableLCov();
   }
-
-  enableDeferredMode = !op.getBoolOption("disable-parser-deferred-alloc") &&
-                       getenv("DISABLE_PARSER_DEFERRED_ALLOC") == nullptr;
 
 #ifdef JS_WITHOUT_NSPR
   if (!op.getMultiStringOption("dll").empty()) {
@@ -11662,6 +11500,7 @@ int main(int argc, char** argv, char** envp) {
   JS_SetSecurityCallbacks(cx, &ShellPrincipals::securityCallbacks);
   JS_InitDestroyPrincipalsCallback(cx, ShellPrincipals::destroy);
   JS_SetDestroyCompartmentCallback(cx, DestroyShellCompartmentPrivate);
+  JS::SetGetElementCallback(cx, &GetElementCallback);
 
   js::SetWindowProxyClass(cx, &ShellWindowProxyClass);
 
@@ -11723,26 +11562,14 @@ int main(int argc, char** argv, char** envp) {
 
   EnvironmentPreparer environmentPreparer(cx);
 
-  JS_SetGCParameter(cx, JSGC_MODE, JSGC_MODE_ZONE_INCREMENTAL);
+  if (!op.getBoolOption("no-incremental-gc")) {
+    JS_SetGCParameter(cx, JSGC_MODE, JSGC_MODE_ZONE_INCREMENTAL);
+    JS_SetGCParameter(cx, JSGC_SLICE_TIME_BUDGET_MS, 10);
+  }
 
   JS::SetProcessLargeAllocationFailureCallback(my_LargeAllocFailCallback);
 
-  // Set some parameters to allow incremental GC in low memory conditions,
-  // as is done for the browser, except in more-deterministic builds or when
-  // disabled by command line options.
-#ifndef JS_MORE_DETERMINISTIC
-  if (!op.getBoolOption("no-incremental-gc")) {
-    JS_SetGCParameter(cx, JSGC_DYNAMIC_HEAP_GROWTH, 1);
-    JS_SetGCParameter(cx, JSGC_DYNAMIC_MARK_SLICE, 1);
-    JS_SetGCParameter(cx, JSGC_SLICE_TIME_BUDGET_MS, 10);
-  }
-#endif
-
   js::SetPreserveWrapperCallback(cx, DummyPreserveWrapperCallback);
-
-  JS::SetModuleResolveHook(cx->runtime(), ShellModuleResolveHook);
-  JS::SetModuleDynamicImportHook(cx->runtime(), ShellModuleDynamicImportHook);
-  JS::SetModuleMetadataHook(cx->runtime(), CallModuleMetadataHook);
 
   if (op.getBoolOption("disable-wasm-huge-memory")) {
     if (!sCompilerProcessFlags.append("--disable-wasm-huge-memory")) {

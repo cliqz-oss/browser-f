@@ -48,8 +48,6 @@ struct MovingTracer;
 enum class ShouldCheckThresholds;
 class SweepGroupsIter;
 
-enum IncrementalProgress { NotFinished = 0, Finished };
-
 // Interface to a sweep action.
 struct SweepAction {
   // The arguments passed to each action.
@@ -71,9 +69,21 @@ class ChunkPool {
 
  public:
   ChunkPool() : head_(nullptr), count_(0) {}
+  ChunkPool(const ChunkPool& other) = delete;
+  ChunkPool(ChunkPool&& other) { *this = std::move(other); }
+
   ~ChunkPool() {
-    // TODO: We should be able to assert that the chunk pool is empty but
-    // this causes XPCShell test failures on Windows 2012. See bug 1379232.
+    MOZ_ASSERT(!head_);
+    MOZ_ASSERT(count_ == 0);
+  }
+
+  ChunkPool& operator=(const ChunkPool& other) = delete;
+  ChunkPool& operator=(ChunkPool&& other) {
+    head_ = other.head_;
+    other.head_ = nullptr;
+    count_ = other.count_;
+    other.count_ = 0;
+    return *this;
   }
 
   bool empty() const { return !head_; }
@@ -304,7 +314,7 @@ class GCRuntime {
   // Check whether to trigger a zone GC after allocating GC cells. During an
   // incremental GC, optionally count |nbytes| towards the threshold for
   // performing the next slice.
-  void maybeAllocTriggerZoneGC(Zone* zone, size_t nbytes = 0);
+  void maybeAllocTriggerZoneGC(Zone* zone);
   // Check whether to trigger a zone GC after malloc memory.
   void maybeMallocTriggerZoneGC(Zone* zone);
   bool maybeMallocTriggerZoneGC(Zone* zone, const HeapSize& heap,
@@ -341,6 +351,32 @@ class GCRuntime {
   void shrinkBuffers();
   void onOutOfMallocMemory();
   void onOutOfMallocMemory(const AutoLockGC& lock);
+
+  Nursery& nursery() { return nursery_.ref(); }
+  gc::StoreBuffer& storeBuffer() { return storeBuffer_.ref(); }
+
+  void minorGC(JS::GCReason reason,
+               gcstats::PhaseKind phase = gcstats::PhaseKind::MINOR_GC)
+      JS_HAZ_GC_CALL;
+  void evictNursery(JS::GCReason reason = JS::GCReason::EVICT_NURSERY) {
+    minorGC(reason, gcstats::PhaseKind::EVICT_NURSERY);
+  }
+
+  void* addressOfNurseryPosition() {
+    return nursery_.refNoCheck().addressOfPosition();
+  }
+  const void* addressOfNurseryCurrentEnd() {
+    return nursery_.refNoCheck().addressOfCurrentEnd();
+  }
+  const void* addressOfStringNurseryCurrentEnd() {
+    return nursery_.refNoCheck().addressOfCurrentStringEnd();
+  }
+  const void* addressOfBigIntNurseryCurrentEnd() {
+    return nursery_.refNoCheck().addressOfCurrentBigIntEnd();
+  }
+  uint32_t* addressOfNurseryAllocCount() {
+    return stats().addressOfAllocsSinceMinorGCNursery();
+  }
 
 #ifdef JS_GC_ZEAL
   const uint32_t* addressOfZealModeBits() { return &zealModeBits.refNoCheck(); }
@@ -469,6 +505,7 @@ class GCRuntime {
   bool isIncrementalGc() const { return isIncremental; }
   bool isFullGc() const { return isFull; }
   bool isCompactingGc() const { return isCompacting; }
+  bool didCompactZones() const { return isCompacting && zonesCompacted; }
 
   bool areGrayBitsValid() const { return grayBitsValid; }
   void setGrayBitsInvalid() { grayBitsValid = false; }
@@ -585,9 +622,8 @@ class GCRuntime {
  private:
   enum IncrementalResult { ResetIncremental = 0, Ok };
 
-  TriggerResult checkHeapThreshold(const HeapSize& heapSize,
-                                   const HeapThreshold& heapThreshold,
-                                   bool isCollecting);
+  TriggerResult checkHeapThreshold(Zone* zone, const HeapSize& heapSize,
+                                   const HeapThreshold& heapThreshold);
 
   // Delete an empty zone after its contents have been merged.
   void deleteEmptyZone(Zone* zone);
@@ -616,6 +652,7 @@ class GCRuntime {
    * Must be called either during the GC or with the GC lock taken.
    */
   friend class BackgroundDecommitTask;
+  bool tooManyEmptyChunks(const AutoLockGC& lock);
   ChunkPool expireEmptyChunkPool(const AutoLockGC& lock);
   void freeEmptyChunks(const AutoLockGC& lock);
   void prepareToFreeChunk(ChunkInfo& info);
@@ -668,6 +705,7 @@ class GCRuntime {
                         JS::GCReason reason, AutoGCSession& session);
   MOZ_MUST_USE bool shouldCollectNurseryForSlice(bool nonincrementalByAPI,
                                                  SliceBudget& budget);
+  void collectNursery(JS::GCReason reason, gcstats::PhaseKind phase);
 
   friend class AutoCallGCCallbacks;
   void maybeCallGCCallback(JSGCStatus status, JS::GCReason reason);
@@ -697,17 +735,17 @@ class GCRuntime {
   void findDeadCompartments();
 
   friend class SweepMarkTask;
-  IncrementalProgress markUntilBudgetExhausted(SliceBudget& sliceBudget,
-                                               gcstats::PhaseKind phase);
-  IncrementalProgress markUntilBudgetExhausted(SliceBudget& sliceBudget);
+  IncrementalProgress markUntilBudgetExhausted(
+      SliceBudget& sliceBudget,
+      GCMarker::ShouldReportMarkTime reportTime = GCMarker::ReportMarkTime);
   void drainMarkStack();
   template <class ZoneIterT>
-  void markWeakReferences(gcstats::PhaseKind phase);
-  void markWeakReferencesInCurrentGroup(gcstats::PhaseKind phase);
+  IncrementalProgress markWeakReferences(SliceBudget& budget);
+  IncrementalProgress markWeakReferencesInCurrentGroup(SliceBudget& budget);
   template <class ZoneIterT>
   void markGrayRoots(gcstats::PhaseKind phase);
   void markBufferedGrayRoots(JS::Zone* zone);
-  void markAllWeakReferences(gcstats::PhaseKind phase);
+  IncrementalProgress markAllWeakReferences();
   void markAllGrayReferences(gcstats::PhaseKind phase);
 
   void beginSweepPhase(JS::GCReason reason, AutoGCSession& session);
@@ -754,7 +792,7 @@ class GCRuntime {
   void sweepFromBackgroundThread(AutoLockHelperThreadState& lock);
   void startBackgroundFree();
   void freeFromBackgroundThread(AutoLockHelperThreadState& lock);
-  void sweepBackgroundThings(ZoneList& zones, LifoAlloc& freeBlocks);
+  void sweepBackgroundThings(ZoneList& zones);
   void assertBackgroundSweepingFinished();
   bool shouldCompact();
   void beginCompactPhase();
@@ -782,6 +820,8 @@ class GCRuntime {
   void releaseRelocatedArenas(Arena* arenaList);
   void releaseRelocatedArenasWithoutUnlocking(Arena* arenaList,
                                               const AutoLockGC& lock);
+  void maybeRequestGCAfterBackgroundTask(const AutoLockHelperThreadState& lock);
+  void cancelRequestedGCAfterBackgroundTask();
   void finishCollection();
   IncrementalProgress joinSweepMarkTask();
 
@@ -921,7 +961,7 @@ class GCRuntime {
    */
   UnprotectedData<bool> grayBitsValid;
 
-  mozilla::Atomic<JS::GCReason, mozilla::Relaxed> majorGCTriggerReason;
+  mozilla::Atomic<JS::GCReason, mozilla::ReleaseAcquire> majorGCTriggerReason;
 
  private:
   /* Perform full GC if rt->keepAtoms() becomes false. */
@@ -974,11 +1014,24 @@ class GCRuntime {
   // Whether it's currently safe to yield to the mutator in an incremental GC.
   MainThreadData<bool> safeToYield;
 
+  // Whether to do any marking caused by barriers on a background thread during
+  // incremental sweeping, while also sweeping zones which have finished
+  // marking.
+  MainThreadData<bool> markOnBackgroundThreadDuringSweeping;
+
   /* Whether any sweeping will take place in the separate GC helper thread. */
   MainThreadData<bool> sweepOnBackgroundThread;
 
   /* Singly linked list of zones to be swept in the background. */
   HelperThreadLockData<ZoneList> backgroundSweepZones;
+
+  /*
+   * Whether to trigger a GC slice after a background task is complete, so that
+   * the collector can continue or finsish collecting. This is only used for the
+   * tasks that run concurrently with the mutator, which are background
+   * finalization and background decommit.
+   */
+  HelperThreadLockData<bool> requestSliceAfterBackgroundTask;
 
   /*
    * Free LIFO blocks are transferred to these allocators before being freed on
@@ -1024,6 +1077,7 @@ class GCRuntime {
   MainThreadData<bool> startedCompacting;
   MainThreadData<ZoneList> zonesToMaybeCompact;
   MainThreadData<Arena*> relocatedArenasToRelease;
+  MainThreadData<size_t> zonesCompacted;
 
 #ifdef JS_GC_ZEAL
   MainThreadData<MarkingValidator*> markingValidator;
@@ -1085,7 +1139,7 @@ class GCRuntime {
   MainThreadData<int> zealFrequency;
   MainThreadData<int> nextScheduled;
   MainThreadData<bool> deterministicOnly;
-  MainThreadData<int> incrementalLimit;
+  MainThreadData<int> zealSliceBudget;
 
   MainThreadData<PersistentRooted<GCVector<JSObject*, 0, SystemAllocPolicy>>>
       selectedForMarking;
@@ -1147,33 +1201,6 @@ class GCRuntime {
  private:
   MainThreadData<Nursery> nursery_;
   MainThreadData<gc::StoreBuffer> storeBuffer_;
-
- public:
-  Nursery& nursery() { return nursery_.ref(); }
-  gc::StoreBuffer& storeBuffer() { return storeBuffer_.ref(); }
-
-  void* addressOfNurseryPosition() {
-    return nursery_.refNoCheck().addressOfPosition();
-  }
-  const void* addressOfNurseryCurrentEnd() {
-    return nursery_.refNoCheck().addressOfCurrentEnd();
-  }
-  const void* addressOfStringNurseryCurrentEnd() {
-    return nursery_.refNoCheck().addressOfCurrentStringEnd();
-  }
-  const void* addressOfBigIntNurseryCurrentEnd() {
-    return nursery_.refNoCheck().addressOfCurrentBigIntEnd();
-  }
-  uint32_t* addressOfNurseryAllocCount() {
-    return stats().addressOfAllocsSinceMinorGCNursery();
-  }
-
-  void minorGC(JS::GCReason reason,
-               gcstats::PhaseKind phase = gcstats::PhaseKind::MINOR_GC)
-      JS_HAZ_GC_CALL;
-  void evictNursery(JS::GCReason reason = JS::GCReason::EVICT_NURSERY) {
-    minorGC(reason, gcstats::PhaseKind::EVICT_NURSERY);
-  }
 
   mozilla::TimeStamp lastLastDitchTime;
 

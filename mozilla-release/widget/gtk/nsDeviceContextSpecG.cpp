@@ -8,10 +8,13 @@
 #include "mozilla/gfx/PrintTargetPDF.h"
 #include "mozilla/gfx/PrintTargetPS.h"
 #include "mozilla/Logging.h"
+#include "mozilla/Services.h"
 
 #include "plstr.h"
 #include "prenv.h" /* for PR_GetEnv */
 
+#include "nsComponentManagerUtils.h"
+#include "nsIObserverService.h"
 #include "nsPrintfCString.h"
 #include "nsReadableUtils.h"
 #include "nsStringEnumerator.h"
@@ -129,6 +132,7 @@ already_AddRefed<PrintTarget> nsDeviceContextSpecGTK::MakePrintTarget() {
                              getter_AddRefs(mSpoolFile));
   if (NS_FAILED(rv)) {
     unlink(buf);
+    g_free(buf);
     return nullptr;
   }
 
@@ -224,12 +228,8 @@ NS_IMETHODIMP nsDeviceContextSpecGTK::Init(nsIWidget* aWidget,
   return NS_OK;
 }
 
-static void
-#ifdef MOZ_WIDGET_GTK
-print_callback(GtkPrintJob* aJob, gpointer aData, const GError* aError) {
-#else
-print_callback(GtkPrintJob* aJob, gpointer aData, GError* aError) {
-#endif
+static void print_callback(GtkPrintJob* aJob, gpointer aData,
+                           const GError* aError) {
   g_object_unref(aJob);
   ((nsIFile*)aData)->Remove(false);
 }

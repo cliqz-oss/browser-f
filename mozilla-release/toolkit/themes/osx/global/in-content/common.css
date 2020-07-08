@@ -2,7 +2,6 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this file,
    - You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-%include ../shared.inc
 %include ../../../shared/in-content/common.inc.css
 
 xul|tabs {
@@ -25,7 +24,7 @@ xul|menulist > xul|menupopup > xul|menuitem[selected="true"]::before {
   display: none;
 }
 
-xul|*.menulist-dropmarker {
+xul|menulist::part(dropmarker) {
   display: -moz-box;
   margin-block: 1px;
 }

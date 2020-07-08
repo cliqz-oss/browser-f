@@ -6,17 +6,18 @@
 
 var EXPORTED_SYMBOLS = ["Runtime"];
 
-const { ContentProcessDomain } = ChromeUtils.import(
-  "chrome://remote/content/domains/ContentProcessDomain.jsm"
-);
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const { ExecutionContext } = ChromeUtils.import(
-  "chrome://remote/content/domains/content/runtime/ExecutionContext.jsm"
-);
 const { addDebuggerToGlobal } = ChromeUtils.import(
   "resource://gre/modules/jsdebugger.jsm",
   {}
 );
+
+const { ContentProcessDomain } = ChromeUtils.import(
+  "chrome://remote/content/domains/ContentProcessDomain.jsm"
+);
+const { ExecutionContext } = ChromeUtils.import(
+  "chrome://remote/content/domains/content/runtime/ExecutionContext.jsm"
+);
+const { executeSoon } = ChromeUtils.import("chrome://remote/content/Sync.jsm");
 
 // Import the `Debugger` constructor in the current scope
 addDebuggerToGlobal(Cu.getGlobalForObject(this));
@@ -61,14 +62,20 @@ class Runtime extends ContentProcessDomain {
     this._onContextCreated = this._onContextCreated.bind(this);
     this._onContextDestroyed = this._onContextDestroyed.bind(this);
     // TODO Bug 1602083
-    this.contextObserver.on("context-created", this._onContextCreated);
-    this.contextObserver.on("context-destroyed", this._onContextDestroyed);
+    this.session.contextObserver.on("context-created", this._onContextCreated);
+    this.session.contextObserver.on(
+      "context-destroyed",
+      this._onContextDestroyed
+    );
   }
 
   destructor() {
     this.disable();
-    this.contextObserver.off("context-created", this._onContextCreated);
-    this.contextObserver.off("context-destroyed", this._onContextDestroyed);
+    this.session.contextObserver.off("context-created", this._onContextCreated);
+    this.session.contextObserver.off(
+      "context-destroyed",
+      this._onContextDestroyed
+    );
     super.destructor();
   }
 
@@ -80,7 +87,7 @@ class Runtime extends ContentProcessDomain {
 
       // Spin the event loop in order to send the `executionContextCreated` event right
       // after we replied to `enable` request.
-      Services.tm.dispatchToMainThread(() => {
+      executeSoon(() => {
         this._onContextCreated("context-created", {
           windowId: this.content.windowUtils.currentInnerWindowID,
           window: this.content,
@@ -369,9 +376,8 @@ class Runtime extends ContentProcessDomain {
       windowId,
       window,
       contextName = "",
-      isDefault = options.window == this.content,
-      contextType = options.contextType ||
-        (options.window == this.content ? "default" : ""),
+      isDefault = true,
+      contextType = "default",
     } = options;
 
     if (windowId === undefined) {
@@ -450,14 +456,18 @@ class Runtime extends ContentProcessDomain {
       ctx.destructor();
       this.contexts.delete(ctx.id);
       this.contextsByWindow.get(ctx.windowId).delete(ctx);
+
       if (this.enabled) {
         this.emit("Runtime.executionContextDestroyed", {
           executionContextId: ctx.id,
         });
       }
+
       if (this.contextsByWindow.get(ctx.windowId).size == 0) {
         this.contextsByWindow.delete(ctx.windowId);
-        this.emit("Runtime.executionContextsCleared");
+        if (this.enabled) {
+          this.emit("Runtime.executionContextsCleared");
+        }
       }
     }
   }

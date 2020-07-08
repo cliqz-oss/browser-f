@@ -1182,7 +1182,7 @@ CFR impression ping has two forms, in which the message_id could be of different
   "experiments": {},
   "release_channel": "default",
   "addon_version": "20200330194034"
-  "message_id": "SIMPLIFIED_ABOUT_WELCOME",
+  "message_id": "ABOUT_WELCOME",
   "event": "IMPRESSION",
   "browser_session_id": "e7e52665-7db3-f348-9918-e93160eb2ef3",
   "event_context": { "page": "about:welcome" }
@@ -1197,7 +1197,7 @@ CFR impression ping has two forms, in which the message_id could be of different
   "experiments": {},
   "release_channel": "default",
   "addon_version": "20200330194034"
-  "message_id": "ABOUT_WELCOME_SESSION_END",
+  "message_id": "ABOUT_WELCOME",
   "id": "ABOUT_WELCOME",
   "event": "SESSION_END",
   "browser_session_id": "e7e52665-7db3-f348-9918-e93160eb2ef3",
@@ -1431,5 +1431,33 @@ as other CFR messages.
   },
   "locale": "en-US",
   "client_id": "21dc1375-b24e-984b-83e9-c8a9660ae4ff"
+}
+```
+
+## Messaging-experiments pings
+
+As the new experiment platform, the Messaging experiment manager is now managing & operating all the experiments of Firefox Messaging System, including the first-run experience (about:welcome), CFR, Whats-new-panel, Moments Page, and Snippets.
+
+### Enrollment & Unenrollment pings
+
+Under the hood, the experiment manager makes use of Normandy API for experiment management (enrollment & unenrollment as well as the corresponding telemetry). Therefore, the enrollment & unenrollment pings are collected through the Normandy counterparts. See [`normandy` category](https://searchfox.org/mozilla-central/source/toolkit/components/telemetry/Events.yaml#441) for more details.
+
+### Experiment reach ping
+
+This records whether a branch's targeting is satisfied for Messaging System experiments. All qualified branch ID(s) will be recorded in the `extra_keys` for each active experiment, and the event `value` will be the experiment ID (i.e. slug).
+
+Unlike other Activity Stream pings, this is a Firefox Events telemetry event, and it is sent only for users enrolled in a Messaging System experiment.
+
+```js
+{
+  "category": "messaging_experiments",
+  "method": "reach",
+  // any of ["cfr", "whats_new_panel", "moments_page", "snippets", "cfr_fxa"]
+  "object": "cfr"
+  "value": "experiment_message_id",
+  "extra_keys": {
+    // A semicolon separated string with all the qualified branch IDs
+    "branches": "control;variant_1;variant_2"
+  }
 }
 ```

@@ -43,6 +43,7 @@
 #include <algorithm>
 
 using namespace mozilla;
+using dom::Element;
 
 #define NS_MENU_POPUP_LIST_INDEX 0
 
@@ -114,13 +115,6 @@ class nsMenuAttributeChangedEvent : public Runnable {
     NS_ENSURE_STATE(frame);
     if (mAttr == nsGkAtoms::checked) {
       frame->UpdateMenuSpecialState();
-    } else if (mAttr == nsGkAtoms::acceltext) {
-      // someone reset the accelText attribute,
-      // so clear the bit that says *we* set it
-      frame->RemoveStateBits(NS_STATE_ACCELTEXT_IS_DERIVED);
-      frame->BuildAcceleratorText(true);
-    } else if (mAttr == nsGkAtoms::key) {
-      frame->BuildAcceleratorText(true);
     } else if (mAttr == nsGkAtoms::type || mAttr == nsGkAtoms::name) {
       frame->UpdateMenuType();
     }
@@ -161,7 +155,6 @@ nsMenuFrame::nsMenuFrame(ComputedStyle* aStyle, nsPresContext* aPresContext)
     : nsBoxFrame(aStyle, aPresContext, kClassID),
       mIsMenu(false),
       mChecked(false),
-      mIgnoreAccelTextChange(false),
       mReflowCallbackPosted(false),
       mType(eMenuType_Normal),
       mBlinkState(0) {}
@@ -197,7 +190,6 @@ void nsMenuFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   // Set up a mediator which can be used for callbacks on this frame.
   mTimerMediator = new nsMenuTimerMediator(this);
 
-  BuildAcceleratorText(false);
   if (!mReflowCallbackPosted) {
     mReflowCallbackPosted = true;
     PresShell()->PostReflowCallback(this);
@@ -383,6 +375,11 @@ nsresult nsMenuFrame::HandleEvent(nsPresContext* aPresContext,
 #endif
   } else if (aEvent->mMessage == eMouseDown &&
              aEvent->AsMouseEvent()->mButton == MouseButton::eLeft &&
+#ifdef XP_MACOSX
+             // On mac, ctrl-click will send a context menu event from the
+             // widget, so we don't want to bring up the menu.
+             !aEvent->AsMouseEvent()->IsControl() &&
+#endif
              !IsDisabled() && IsMenu()) {
     // The menu item was selected. Bring up the menu.
     // We have children.
@@ -605,12 +602,6 @@ nsMenuFrame::SelectMenu(bool aActivateFlag) {
 
 nsresult nsMenuFrame::AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
                                        int32_t aModType) {
-  if (aAttribute == nsGkAtoms::acceltext && mIgnoreAccelTextChange) {
-    // Reset the flag so that only one change is ignored.
-    mIgnoreAccelTextChange = false;
-    return NS_OK;
-  }
-
   if (aAttribute == nsGkAtoms::checked || aAttribute == nsGkAtoms::acceltext ||
       aAttribute == nsGkAtoms::key || aAttribute == nsGkAtoms::type ||
       aAttribute == nsGkAtoms::name) {
@@ -876,160 +867,6 @@ void nsMenuFrame::UpdateMenuSpecialState() {
   }
 }
 
-void nsMenuFrame::BuildAcceleratorText(bool aNotify) {
-  nsAutoString accelText;
-
-  if ((GetStateBits() & NS_STATE_ACCELTEXT_IS_DERIVED) == 0) {
-    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::acceltext,
-                                   accelText);
-    if (!accelText.IsEmpty()) return;
-  }
-  // accelText is definitely empty here.
-
-  // Now we're going to compute the accelerator text, so remember that we did.
-  AddStateBits(NS_STATE_ACCELTEXT_IS_DERIVED);
-
-  // If anything below fails, just leave the accelerator text blank.
-  AutoWeakFrame weakFrame(this);
-  mContent->AsElement()->UnsetAttr(kNameSpaceID_None, nsGkAtoms::acceltext,
-                                   aNotify);
-  NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
-
-  // See if we have a key node and use that instead.
-  nsAutoString keyValue;
-  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::key, keyValue);
-  if (keyValue.IsEmpty()) return;
-
-  // Turn the document into a DOM document so we can use getElementById
-  Document* document = mContent->GetUncomposedDoc();
-  if (!document) return;
-
-  // XXXsmaug If mContent is in shadow dom, should we use
-  //         ShadowRoot::GetElementById()?
-  Element* keyElement = document->GetElementById(keyValue);
-  if (!keyElement) {
-#ifdef DEBUG
-    nsAutoString label;
-    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, label);
-    nsAutoString msg = NS_LITERAL_STRING("Key '") + keyValue +
-                       NS_LITERAL_STRING("' of menu item '") + label +
-                       NS_LITERAL_STRING("' could not be found");
-    NS_WARNING(NS_ConvertUTF16toUTF8(msg).get());
-#endif
-    return;
-  }
-
-  // get the string to display as accelerator text
-  // check the key element's attributes in this order:
-  // |keytext|, |key|, |keycode|
-  nsAutoString accelString;
-  keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::keytext, accelString);
-
-  if (accelString.IsEmpty()) {
-    keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::key, accelString);
-
-    if (!accelString.IsEmpty()) {
-      ToUpperCase(accelString);
-    } else {
-      nsAutoString keyCode;
-      keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::keycode, keyCode);
-      ToUpperCase(keyCode);
-
-      nsresult rv;
-      nsCOMPtr<nsIStringBundleService> bundleService =
-          mozilla::services::GetStringBundleService();
-      if (bundleService) {
-        nsCOMPtr<nsIStringBundle> bundle;
-        rv = bundleService->CreateBundle(
-            keyCode.EqualsLiteral("VK_RETURN")
-                ? "chrome://global-platform/locale/platformKeys.properties"
-                : "chrome://global/locale/keys.properties",
-            getter_AddRefs(bundle));
-        if (NS_SUCCEEDED(rv) && bundle) {
-          nsAutoString keyName;
-          rv = bundle->GetStringFromName(NS_ConvertUTF16toUTF8(keyCode).get(),
-                                         keyName);
-          if (NS_SUCCEEDED(rv)) {
-            accelString = keyName;
-          }
-        }
-      }
-
-      // nothing usable found, bail
-      if (accelString.IsEmpty()) return;
-    }
-  }
-
-  nsAutoString modifiers;
-  keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::modifiers, modifiers);
-
-  char* str = ToNewCString(modifiers);
-  char* newStr;
-  char* token = nsCRT::strtok(str, ", \t", &newStr);
-
-  nsAutoString shiftText;
-  nsAutoString altText;
-  nsAutoString metaText;
-  nsAutoString controlText;
-  nsAutoString osText;
-  nsAutoString modifierSeparator;
-
-  nsContentUtils::GetShiftText(shiftText);
-  nsContentUtils::GetAltText(altText);
-  nsContentUtils::GetMetaText(metaText);
-  nsContentUtils::GetControlText(controlText);
-  nsContentUtils::GetOSText(osText);
-  nsContentUtils::GetModifierSeparatorText(modifierSeparator);
-
-  while (token) {
-    if (PL_strcmp(token, "shift") == 0)
-      accelText += shiftText;
-    else if (PL_strcmp(token, "alt") == 0)
-      accelText += altText;
-    else if (PL_strcmp(token, "meta") == 0)
-      accelText += metaText;
-    else if (PL_strcmp(token, "os") == 0)
-      accelText += osText;
-    else if (PL_strcmp(token, "control") == 0)
-      accelText += controlText;
-    else if (PL_strcmp(token, "accel") == 0) {
-      switch (WidgetInputEvent::AccelModifier()) {
-        case MODIFIER_META:
-          accelText += metaText;
-          break;
-        case MODIFIER_OS:
-          accelText += osText;
-          break;
-        case MODIFIER_ALT:
-          accelText += altText;
-          break;
-        case MODIFIER_CONTROL:
-          accelText += controlText;
-          break;
-        default:
-          MOZ_CRASH(
-              "Handle the new result of WidgetInputEvent::AccelModifier()");
-          break;
-      }
-    }
-
-    accelText += modifierSeparator;
-
-    token = nsCRT::strtok(newStr, ", \t", &newStr);
-  }
-
-  free(str);
-
-  accelText += accelString;
-
-  mIgnoreAccelTextChange = true;
-  mContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::acceltext,
-                                 accelText, aNotify);
-  NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
-
-  mIgnoreAccelTextChange = false;
-}
-
 void nsMenuFrame::Execute(WidgetGUIEvent* aEvent) {
   // flip "checked" state if we're a checkbox menu, or an un-checked radio menu
   bool needToFlipChecked = false;
@@ -1111,7 +948,7 @@ void nsMenuFrame::CreateMenuCommandEvent(WidgetGUIEvent* aEvent,
   // Because the command event is firing asynchronously, a flag is needed to
   // indicate whether user input is being handled. This ensures that a popup
   // window won't get blocked.
-  bool userinput = UserActivation::IsHandlingUserInput();
+  bool userinput = dom::UserActivation::IsHandlingUserInput();
 
   mDelayedMenuCommandEvent =
       new nsXULMenuCommandEvent(mContent->AsElement(), isTrusted, shift,
@@ -1223,7 +1060,7 @@ nsSize nsMenuFrame::GetXULPrefSize(nsBoxLayoutState& aState) {
     // We now need to ensure that size is within the min - max range.
     nsSize minSize = nsBoxFrame::GetXULMinSize(aState);
     nsSize maxSize = GetXULMaxSize(aState);
-    size = BoundsCheck(minSize, size, maxSize);
+    size = XULBoundsCheck(minSize, size, maxSize);
   }
 
   return size;

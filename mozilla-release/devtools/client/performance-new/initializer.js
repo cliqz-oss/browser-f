@@ -11,6 +11,7 @@
  * @typedef {import("./@types/perf").PageContext} PageContext
  * @typedef {import("./@types/perf").PanelWindow} PanelWindow
  * @typedef {import("./@types/perf").Store} Store
+ * @typedef {import("./@types/perf").MinimallyTypedGeckoProfile} MinimallyTypedGeckoProfile
  */
 "use strict";
 
@@ -58,9 +59,9 @@ const {
   setRecordingPreferences,
   presets,
   getRecordingPreferences,
-} = /** @type {import("resource://devtools/client/performance-new/popup/background.jsm.js")} */ (ChromeUtils.import(
+} = ChromeUtils.import(
   "resource://devtools/client/performance-new/popup/background.jsm.js"
-));
+);
 
 /**
  * This file initializes the DevTools Panel UI. It is in charge of initializing
@@ -122,7 +123,7 @@ async function gInit(perfFront, pageContext, openAboutProfiling) {
       // Configure the getSymbolTable function for the DevTools workflow.
       // See createMultiModalGetSymbolTableFn for more information.
       getSymbolTableGetter:
-        /** @type {(profile: Object) => GetSymbolTableCallback} */
+        /** @type {(profile: MinimallyTypedGeckoProfile) => GetSymbolTableCallback} */
         profile =>
           createMultiModalGetSymbolTableFn(
             profile,

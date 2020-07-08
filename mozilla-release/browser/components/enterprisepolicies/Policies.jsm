@@ -14,6 +14,15 @@ const { AppConstants } = ChromeUtils.import(
 
 XPCOMUtils.defineLazyServiceGetters(this, {
   gCertDB: ["@mozilla.org/security/x509certdb;1", "nsIX509CertDB"],
+  gExternalProtocolService: [
+    "@mozilla.org/uriloader/external-protocol-service;1",
+    "nsIExternalProtocolService",
+  ],
+  gHandlerService: [
+    "@mozilla.org/uriloader/handler-service;1",
+    "nsIHandlerService",
+  ],
+  gMIMEService: ["@mozilla.org/mime;1", "nsIMIMEService"],
   gXulStore: ["@mozilla.org/xul/xulstore;1", "nsIXULStore"],
 });
 
@@ -153,6 +162,13 @@ var Policies = {
             locked
           );
         }
+      }
+      if ("PrivateBrowsing" in param) {
+        setDefaultPref(
+          "network.auth.private-browsing-sso",
+          param.PrivateBrowsing,
+          locked
+        );
       }
     },
   },
@@ -398,31 +414,70 @@ var Policies = {
   DisabledCiphers: {
     onBeforeAddons(manager, param) {
       if ("TLS_DHE_RSA_WITH_AES_128_CBC_SHA" in param) {
-        setAndLockPref("security.ssl3.dhe_rsa_aes_128_sha", false);
+        setAndLockPref(
+          "security.ssl3.dhe_rsa_aes_128_sha",
+          !param.TLS_DHE_RSA_WITH_AES_128_CBC_SHA
+        );
       }
       if ("TLS_DHE_RSA_WITH_AES_256_CBC_SHA" in param) {
-        setAndLockPref("security.ssl3.dhe_rsa_aes_256_sha", false);
+        setAndLockPref(
+          "security.ssl3.dhe_rsa_aes_256_sha",
+          !param.TLS_DHE_RSA_WITH_AES_256_CBC_SHA
+        );
       }
       if ("TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA" in param) {
-        setAndLockPref("security.ssl3.ecdhe_rsa_aes_128_sha", false);
+        setAndLockPref(
+          "security.ssl3.ecdhe_rsa_aes_128_sha",
+          !param.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+        );
       }
       if ("TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA" in param) {
-        setAndLockPref("security.ssl3.ecdhe_rsa_aes_256_sha", false);
+        setAndLockPref(
+          "security.ssl3.ecdhe_rsa_aes_256_sha",
+          !param.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+        );
       }
       if ("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256" in param) {
-        setAndLockPref("security.ssl3.ecdhe_rsa_aes_128_gcm_sha256", false);
+        setAndLockPref(
+          "security.ssl3.ecdhe_rsa_aes_128_gcm_sha256",
+          !param.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        );
       }
       if ("TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256" in param) {
-        setAndLockPref("security.ssl3.ecdhe_ecdsa_aes_128_gcm_sha256", false);
+        setAndLockPref(
+          "security.ssl3.ecdhe_ecdsa_aes_128_gcm_sha256",
+          !param.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        );
       }
       if ("TLS_RSA_WITH_AES_128_CBC_SHA" in param) {
-        setAndLockPref("security.ssl3.rsa_aes_128_sha", false);
+        setAndLockPref(
+          "security.ssl3.rsa_aes_128_sha",
+          !param.TLS_RSA_WITH_AES_128_CBC_SHA
+        );
       }
       if ("TLS_RSA_WITH_AES_256_CBC_SHA" in param) {
-        setAndLockPref("security.ssl3.rsa_aes_256_sha", false);
+        setAndLockPref(
+          "security.ssl3.rsa_aes_256_sha",
+          !param.TLS_RSA_WITH_AES_256_CBC_SHA
+        );
       }
       if ("TLS_RSA_WITH_3DES_EDE_CBC_SHA" in param) {
-        setAndLockPref("security.ssl3.rsa_des_ede3_sha", false);
+        setAndLockPref(
+          "security.ssl3.rsa_des_ede3_sha",
+          !param.TLS_RSA_WITH_3DES_EDE_CBC_SHA
+        );
+      }
+      if ("TLS_RSA_WITH_AES_128_GCM_SHA256" in param) {
+        setAndLockPref(
+          "security.ssl3.rsa_aes_128_gcm_sha256",
+          !param.TLS_RSA_WITH_AES_128_GCM_SHA256
+        );
+      }
+      if ("TLS_RSA_WITH_AES_256_GCM_SHA384" in param) {
+        setAndLockPref(
+          "security.ssl3.rsa_aes_256_gcm_sha384",
+          !param.TLS_RSA_WITH_AES_256_GCM_SHA384
+        );
       }
     },
   },
@@ -773,6 +828,18 @@ var Policies = {
   },
 #endif
 
+  EncryptedMediaExtensions: {
+    onBeforeAddons(manager, param) {
+      let locked = false;
+      if ("Locked" in param) {
+        locked = param.Locked;
+      }
+      if ("Enabled" in param) {
+        setDefaultPref("media.eme.enabled", param.Enabled, locked);
+      }
+    },
+  },
+
   Extensions: {
     onBeforeUIStartup(manager, param) {
       let uninstallingPromise = Promise.resolve();
@@ -858,6 +925,17 @@ var Policies = {
           // Block about:debugging
           blockAboutPage(manager, "about:debugging");
         }
+        if ("restricted_domains" in extensionSettings["*"]) {
+          let restrictedDomains = Services.prefs
+            .getCharPref("extensions.webextensions.restrictedDomains")
+            .split(",");
+          setAndLockPref(
+            "extensions.webextensions.restrictedDomains",
+            restrictedDomains
+              .concat(extensionSettings["*"].restricted_domains)
+              .join(",")
+          );
+        }
       }
       let addons = await AddonManager.getAllAddons();
       let allowedExtensions = [];
@@ -876,12 +954,11 @@ var Policies = {
             if (!extensionSettings[extensionID].install_url) {
               throw new Error(`Missing install_url for ${extensionID}`);
             }
-            if (!addons.find(addon => addon.id == extensionID)) {
-              installAddonFromURL(
-                extensionSettings[extensionID].install_url,
-                extensionID
-              );
-            }
+            installAddonFromURL(
+              extensionSettings[extensionID].install_url,
+              extensionID,
+              addons.find(addon => addon.id == extensionID)
+            );
             manager.disallowFeature(`uninstall-extension:${extensionID}`);
             if (
               extensionSettings[extensionID].installation_mode ==
@@ -1006,6 +1083,41 @@ var Policies = {
     },
   },
 
+  Handlers: {
+    onBeforeAddons(manager, param) {
+      if ("mimeTypes" in param) {
+        for (let mimeType in param.mimeTypes) {
+          let mimeInfo = param.mimeTypes[mimeType];
+          let realMIMEInfo = gMIMEService.getFromTypeAndExtension(mimeType, "");
+          processMIMEInfo(mimeInfo, realMIMEInfo);
+        }
+      }
+      if ("extensions" in param) {
+        for (let extension in param.extensions) {
+          let mimeInfo = param.extensions[extension];
+          try {
+            let realMIMEInfo = gMIMEService.getFromTypeAndExtension(
+              "",
+              extension
+            );
+            processMIMEInfo(mimeInfo, realMIMEInfo);
+          } catch (e) {
+            log.error(`Invalid file extension (${extension})`);
+          }
+        }
+      }
+      if ("schemes" in param) {
+        for (let scheme in param.schemes) {
+          let handlerInfo = param.schemes[scheme];
+          let realHandlerInfo = gExternalProtocolService.getProtocolHandlerInfo(
+            scheme
+          );
+          processMIMEInfo(handlerInfo, realHandlerInfo);
+        }
+      }
+    },
+  },
+
   HardwareAcceleration: {
     onBeforeAddons(manager, param) {
       if (!param) {
@@ -1016,6 +1128,11 @@ var Policies = {
 
   Startup: {
     onBeforeUIStartup(manager, param) {
+      if ("StartPage" in param && param.StartPage == "none") {
+        // For blank startpage, we use about:blank rather
+        // than messing with browser.startup.page
+        param.URL = new URL("about:blank");
+      }
       // |homepages| will be a string containing a pipe-separated ('|') list of
       // URLs because that is what the "Custom URLs..." section of about:preferences
       // (and therefore what the pref |browser.startup.homepage|) accepts.
@@ -1180,10 +1297,20 @@ var Policies = {
     onBeforeUIStartup(manager, param) {
       if (!param) {
         blockAboutPage(manager, "about:logins", true);
-        gBlockedChromePages.push("passwordManager.xhtml");
         setAndLockPref("pref.privacy.disable_button.view_passwords", true);
       }
       setAndLockPref("signon.rememberSignons", param);
+    },
+  },
+
+  PDFjs: {
+    onBeforeAddons(manager, param) {
+      if ("Enabled" in param) {
+        setAndLockPref("pdfjs.disabled", !param.Enabled);
+      }
+      if ("EnablePermissions" in param) {
+        setAndLockPref("pdfjs.enablePermissions", !param.Enabled);
+      }
     },
   },
 
@@ -1250,6 +1377,22 @@ var Policies = {
           param.Notifications.Block
         );
         setDefaultPermission("desktop-notification", param.Notifications);
+      }
+    },
+  },
+
+  PictureInPicture: {
+    onBeforeAddons(manager, param) {
+      if ("Enabled" in param) {
+        setDefaultPref(
+          "media.videocontrols.picture-in-picture.video-toggle.enabled",
+          param.Enabled
+        );
+      }
+      if (param.Locked) {
+        Services.prefs.lockPref(
+          "media.videocontrols.picture-in-picture.video-toggle.enabled"
+        );
       }
     },
   },
@@ -1910,7 +2053,15 @@ function replacePathVariables(path) {
  * Helper function that installs an addon from a URL
  * and verifies that the addon ID matches.
  */
-function installAddonFromURL(url, extensionID) {
+function installAddonFromURL(url, extensionID, addon) {
+  if (
+    addon &&
+    addon.sourceURI.spec == url &&
+    !addon.sourceURI.schemeIs("file")
+  ) {
+    // It's the same addon, don't reinstall.
+    return;
+  }
   AddonManager.getInstallForURL(url, {
     telemetryInfo: { source: "enterprise-policy" },
   }).then(install => {
@@ -1931,6 +2082,14 @@ function installAddonFromURL(url, extensionID) {
         }
         if (install.addon && install.addon.appDisabled) {
           log.error(`Incompatible add-on - ${url}`);
+          install.removeListener(listener);
+          install.cancel();
+        }
+        if (
+          addon &&
+          Services.vc.compare(addon.version, install.addon.version) == 0
+        ) {
+          log.debug("Installation cancelled because versions are the same");
           install.removeListener(listener);
           install.cancel();
         }
@@ -2041,4 +2200,72 @@ function pemToBase64(pem) {
     .replace(/-----BEGIN CERTIFICATE-----/, "")
     .replace(/-----END CERTIFICATE-----/, "")
     .replace(/[\r\n]/g, "");
+}
+
+function processMIMEInfo(mimeInfo, realMIMEInfo) {
+  if ("handlers" in mimeInfo) {
+    let firstHandler = true;
+    for (let handler of mimeInfo.handlers) {
+      // handler can be null which means they don't
+      // want a preferred handler.
+      if (handler) {
+        let handlerApp;
+        if ("path" in handler) {
+          try {
+            let file = new FileUtils.File(handler.path);
+            handlerApp = Cc[
+              "@mozilla.org/uriloader/local-handler-app;1"
+            ].createInstance(Ci.nsILocalHandlerApp);
+            handlerApp.executable = file;
+          } catch (ex) {
+            log.error(`Unable to create handler executable (${handler.path})`);
+            continue;
+          }
+        } else if ("uriTemplate" in handler) {
+          let templateURL = new URL(handler.uriTemplate);
+          if (templateURL.protocol != "https:") {
+            log.error(`Web handler must be https (${handler.uriTemplate})`);
+            continue;
+          }
+          if (
+            !templateURL.pathname.includes("%s") &&
+            !templateURL.search.includes("%s")
+          ) {
+            log.error(`Web handler must contain %s (${handler.uriTemplate})`);
+            continue;
+          }
+          handlerApp = Cc[
+            "@mozilla.org/uriloader/web-handler-app;1"
+          ].createInstance(Ci.nsIWebHandlerApp);
+          handlerApp.uriTemplate = handler.uriTemplate;
+        } else {
+          log.error("Invalid handler");
+          continue;
+        }
+        if ("name" in handler) {
+          handlerApp.name = handler.name;
+        }
+        realMIMEInfo.possibleApplicationHandlers.appendElement(handlerApp);
+        if (firstHandler) {
+          realMIMEInfo.preferredApplicationHandler = handlerApp;
+        }
+      }
+      firstHandler = false;
+    }
+  }
+  if ("action" in mimeInfo) {
+    let action = realMIMEInfo[mimeInfo.action];
+    if (
+      action == realMIMEInfo.useHelperApp &&
+      !realMIMEInfo.possibleApplicationHandlers.length
+    ) {
+      log.error("useHelperApp requires a handler");
+      return;
+    }
+    realMIMEInfo.preferredAction = action;
+  }
+  if ("ask" in mimeInfo) {
+    realMIMEInfo.alwaysAskBeforeHandling = mimeInfo.ask;
+  }
+  gHandlerService.store(realMIMEInfo);
 }

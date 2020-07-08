@@ -151,7 +151,7 @@ ipc::IPCResult CanvasTranslator::RecvResumeTranslation() {
 }
 
 void CanvasTranslator::StartTranslation() {
-  if (!TranslateRecording() && !GetIPCChannel()->Unsound_IsClosed()) {
+  if (!TranslateRecording() && GetIPCChannel()->CanSend()) {
     MOZ_ALWAYS_SUCCEEDS(mTranslationTaskQueue->Dispatch(
         NewRunnableMethod("CanvasTranslator::StartTranslation", this,
                           &CanvasTranslator::StartTranslation)));
@@ -159,6 +159,10 @@ void CanvasTranslator::StartTranslation() {
 }
 
 void CanvasTranslator::ActorDestroy(ActorDestroyReason why) {
+  if (!mTranslationTaskQueue) {
+    return FinishShutdown();
+  }
+
   mTranslationTaskQueue->BeginShutdown()->Then(
       MessageLoop::current()->SerialEventTarget(), __func__, this,
       &CanvasTranslator::FinishShutdown, &CanvasTranslator::FinishShutdown);
@@ -168,8 +172,20 @@ void CanvasTranslator::FinishShutdown() {
   // mTranslationTaskQueue has shutdown we can safely drop the ring buffer to
   // break the cycle caused by RingBufferReaderServices.
   mStream = nullptr;
+
+  // CanvasTranslators has a MOZ_ASSERT(CanvasThreadHolder::IsInCanvasThread())
+  // to ensure it is only called on the Canvas Thread. This takes a lock on
+  // CanvasThreadHolder::sCanvasThreadHolder, which is also locked in
+  // CanvasThreadHolder::StaticRelease on the compositor thread from
+  // ReleaseOnCompositorThread below. If that lock wins the race with the one in
+  // IsInCanvasThread and it is the last CanvasThreadHolder reference then it
+  // shuts down the canvas thread waiting for it to finish. However
+  // IsInCanvasThread is waiting for the lock on the canvas thread and we
+  // deadlock. So, we need to call CanvasTranslators before
+  // ReleaseOnCompositorThread.
+  CanvasTranslatorSet& canvasTranslators = CanvasTranslators();
   CanvasThreadHolder::ReleaseOnCompositorThread(mCanvasThreadHolder.forget());
-  CanvasTranslators().RemoveEntry(this);
+  canvasTranslators.RemoveEntry(this);
 }
 
 bool CanvasTranslator::TranslateRecording() {
@@ -182,7 +198,7 @@ bool CanvasTranslator::TranslateRecording() {
         [&](RecordedEvent* recordedEvent) -> bool {
           // Make sure that the whole event was read from the stream.
           if (!mStream->good()) {
-            if (GetIPCChannel()->Unsound_IsClosed()) {
+            if (!GetIPCChannel()->CanSend()) {
               // The other side has closed only warn about read failure.
               gfxWarning() << "Failed to read event type: "
                            << recordedEvent->GetType();
@@ -233,7 +249,7 @@ bool CanvasTranslator::TranslateRecording() {
   case _typeenum: {                                                    \
     auto e = _class(*mStream);                                         \
     if (!mStream->good()) {                                            \
-      if (GetIPCChannel()->Unsound_IsClosed()) {                       \
+      if (!GetIPCChannel()->CanSend()) {                               \
         /* The other side has closed only warn about read failure. */  \
         gfxWarning() << "Failed to read event type: " << _typeenum;    \
       } else {                                                         \
@@ -258,8 +274,12 @@ void CanvasTranslator::BeginTransaction() { mIsInTransaction = true; }
 
 void CanvasTranslator::Flush() {
 #if defined(XP_WIN)
-  gfx::AutoSerializeWithMoz2D serializeWithMoz2D(
-      GetReferenceDrawTarget()->GetBackendType());
+  // We can end up without a device, due to a reset and failure to re-create.
+  if (!mDevice) {
+    return;
+  }
+
+  gfx::AutoSerializeWithMoz2D serializeWithMoz2D(GetBackendType());
   RefPtr<ID3D11DeviceContext> deviceContext;
   mDevice->GetImmediateContext(getter_AddRefs(deviceContext));
   deviceContext->Flush();
@@ -291,6 +311,9 @@ bool CanvasTranslator::CreateReferenceTexture() {
 
   mReferenceTextureData->Lock(OpenMode::OPEN_READ_WRITE);
   mBaseDT = mReferenceTextureData->BorrowDrawTarget();
+  if (mBaseDT) {
+    mBackendType = mBaseDT->GetBackendType();
+  }
   return true;
 }
 
@@ -360,8 +383,7 @@ already_AddRefed<gfx::DrawTarget> CanvasTranslator::CreateDrawTarget(
     // It is important that AutoSerializeWithMoz2D is called within the loop
     // and doesn't hold during calls to CheckForFreshCanvasDevice, because that
     // might cause a deadlock with device reset code on the main thread.
-    gfx::AutoSerializeWithMoz2D serializeWithMoz2D(
-        GetReferenceDrawTarget()->GetBackendType());
+    gfx::AutoSerializeWithMoz2D serializeWithMoz2D(GetBackendType());
     TextureData* textureData = CreateTextureData(mTextureType, aSize, aFormat);
     if (textureData) {
       textureData->Lock(OpenMode::OPEN_READ_WRITE);
@@ -377,8 +399,7 @@ already_AddRefed<gfx::DrawTarget> CanvasTranslator::CreateDrawTarget(
 
 void CanvasTranslator::RemoveDrawTarget(gfx::ReferencePtr aDrawTarget) {
   InlineTranslator::RemoveDrawTarget(aDrawTarget);
-  gfx::AutoSerializeWithMoz2D serializeWithMoz2D(
-      GetReferenceDrawTarget()->GetBackendType());
+  gfx::AutoSerializeWithMoz2D serializeWithMoz2D(GetBackendType());
   mTextureDatas.erase(aDrawTarget);
 
   // It is possible that the texture from the content process has never been

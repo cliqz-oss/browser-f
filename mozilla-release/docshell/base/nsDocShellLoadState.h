@@ -8,11 +8,13 @@
 #define nsDocShellLoadState_h__
 
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/SessionHistoryEntry.h"
 
 // Helper Classes
 #include "nsCOMPtr.h"
 #include "nsString.h"
 #include "nsDocShellLoadTypes.h"
+#include "nsTArrayForwardDeclare.h"
 
 class nsIContentSecurityPolicy;
 class nsIInputStream;
@@ -33,18 +35,23 @@ class DocShellLoadStateInit;
  * call.
  */
 class nsDocShellLoadState final {
+  using BrowsingContext = mozilla::dom::BrowsingContext;
+  template <typename T>
+  using MaybeDiscarded = mozilla::dom::MaybeDiscarded<T>;
+
  public:
   NS_INLINE_DECL_REFCOUNTING(nsDocShellLoadState);
 
   explicit nsDocShellLoadState(nsIURI* aURI);
   explicit nsDocShellLoadState(
       const mozilla::dom::DocShellLoadStateInit& aLoadState);
+  explicit nsDocShellLoadState(const nsDocShellLoadState& aOther);
 
   static nsresult CreateFromPendingChannel(nsIChannel* aPendingChannel,
                                            nsDocShellLoadState** aResult);
 
   static nsresult CreateFromLoadURIOptions(
-      nsISupports* aConsumer, nsIURIFixup* aURIFixup, const nsAString& aURI,
+      BrowsingContext* aBrowsingContext, const nsAString& aURI,
       const mozilla::dom::LoadURIOptions& aLoadURIOptions,
       nsDocShellLoadState** aResult);
 
@@ -122,6 +129,12 @@ class nsDocShellLoadState final {
 
   void SetSHEntry(nsISHEntry* aSHEntry);
 
+  const mozilla::dom::SessionHistoryInfo& GetSessionHistoryInfo() const;
+  uint64_t GetSessionHistoryID() const;
+
+  void SetSessionHistoryInfo(
+      const mozilla::dom::SessionHistoryInfoAndId& aIdAndInfo);
+
   const nsString& Target() const;
 
   void SetTarget(const nsAString& aTarget);
@@ -140,9 +153,11 @@ class nsDocShellLoadState final {
 
   void SetSrcdocData(const nsAString& aSrcdocData);
 
-  nsIDocShell* SourceDocShell() const;
+  const MaybeDiscarded<BrowsingContext>& SourceBrowsingContext() const {
+    return mSourceBrowsingContext;
+  }
 
-  void SetSourceDocShell(nsIDocShell* aSourceDocShell);
+  void SetSourceBrowsingContext(BrowsingContext* aSourceBrowsingContext);
 
   nsIURI* BaseURI() const;
 
@@ -171,6 +186,10 @@ class nsDocShellLoadState final {
 
   void SetFirstParty(bool aFirstParty);
 
+  bool HasValidUserGestureActivation() const;
+
+  void SetHasValidUserGestureActivation(bool HasValidUserGestureActivation);
+
   const nsCString& TypeHint() const;
 
   void SetTypeHint(const nsCString& aTypeHint);
@@ -178,6 +197,10 @@ class nsDocShellLoadState final {
   const nsString& FileName() const;
 
   void SetFileName(const nsAString& aFileName);
+
+  bool IsHttpsOnlyModeUpgradeExempt() const;
+
+  void SetIsHttpsOnlyModeUpgradeExempt(bool aIsExempt);
 
   // Give the type of DocShell we're loading into (chrome/content/etc) and
   // origin attributes for the URI we're loading, figure out if we should
@@ -218,11 +241,20 @@ class nsDocShellLoadState final {
     return mCancelContentJSEpoch;
   }
 
+  void SetLoadIdentifier(uint32_t aIdent) { mLoadIdentifier = aIdent; }
+  uint32_t GetLoadIdentifier() const { return mLoadIdentifier; }
+
   // When loading a document through nsDocShell::LoadURI(), a special set of
   // flags needs to be set based on other values in nsDocShellLoadState. This
   // function calculates those flags, before the LoadState is passed to
   // nsDocShell::InternalLoad.
   void CalculateLoadURIFlags();
+
+  // Compute the load flags to be used by creating channel.  aUriModified and
+  // aIsXFOError are expected to be Nothing when called from Parent process.
+  nsLoadFlags CalculateChannelLoadFlags(
+      mozilla::dom::BrowsingContext* aBrowsingContext, Maybe<bool> aUriModified,
+      Maybe<bool> aIsXFOError);
 
   mozilla::dom::DocShellLoadStateInit Serialize();
 
@@ -322,6 +354,9 @@ class nsDocShellLoadState final {
   // Active Session History entry (if loading from SH)
   nsCOMPtr<nsISHEntry> mSHEntry;
 
+  // Session history info for the load
+  mozilla::dom::SessionHistoryInfoAndId mSessionHistoryInfo;
+
   // Target for load, like _content, _blank etc.
   nsString mTarget;
 
@@ -337,7 +372,7 @@ class nsDocShellLoadState final {
   nsString mSrcdocData;
 
   // When set, this is the Source Browsing Context for the navigation.
-  nsCOMPtr<nsIDocShell> mSourceDocShell;
+  MaybeDiscarded<BrowsingContext> mSourceBrowsingContext;
 
   // Used for srcdoc loads to give view-source knowledge of the load's base URI
   // as this information isn't embedded in the load's URI.
@@ -349,6 +384,9 @@ class nsDocShellLoadState final {
   // Is this a First Party Load?
   bool mFirstParty;
 
+  // Is this load triggered by a user gesture?
+  bool mHasValidUserGestureActivation;
+
   // A hint as to the content-type of the resulting data. If no hint, IsVoid()
   // should return true.
   nsCString mTypeHint;
@@ -358,6 +396,10 @@ class nsDocShellLoadState final {
   // specified, but link should still trigger a download. If not a download,
   // mFileName.IsVoid() should return true.
   nsString mFileName;
+
+  // If the HTTPS-Only mode is enabled, every insecure request gets upgraded to
+  // HTTPS by default. The load is exempt from that if this flag is set to true.
+  bool mIsHttpsOnlyModeUpgradeExempt;
 
   // This will be true if this load is triggered by attribute changes.
   // See nsILoadInfo.isFromProcessingFrameAttributes
@@ -375,6 +417,12 @@ class nsDocShellLoadState final {
   // An optional value to pass to nsIDocShell::setCancelJSEpoch
   // when initiating the load.
   mozilla::Maybe<int32_t> mCancelContentJSEpoch;
+
+  // An optional identifier that refers to a DocumentLoadListener
+  // created in the parent process for this loads. DocumentChannels
+  // created in the content process can use this to find and attach
+  // to the in progress load.
+  uint32_t mLoadIdentifier;
 };
 
 #endif /* nsDocShellLoadState_h__ */

@@ -26,6 +26,7 @@
 #include "vm/JSContext.h"
 #include "vm/JSObject.h"
 #include "vm/JSONParser.h"
+#include "vm/PlainObject.h"  // js::PlainObject
 
 #include "builtin/Array-inl.h"
 #include "builtin/Boolean-inl.h"
@@ -1110,7 +1111,7 @@ static JSObject* CreateJSONObject(JSContext* cx, JSProtoKey key) {
   if (!proto) {
     return nullptr;
   }
-  return NewObjectWithGivenProto(cx, &JSONClass, proto, SingletonObject);
+  return NewSingletonObjectWithGivenProto(cx, &JSONClass, proto);
 }
 
 static const ClassSpec JSONClassSpec = {

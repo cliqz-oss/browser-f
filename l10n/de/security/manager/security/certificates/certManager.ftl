@@ -6,6 +6,8 @@ certmgr-title =
     .title = Zertifikatverwaltung
 certmgr-tab-mine =
     .label = Ihre Zertifikate
+certmgr-tab-remembered =
+    .label = Authentifizierungs-Entscheidungen
 certmgr-tab-people =
     .label = Personen
 certmgr-tab-servers =
@@ -13,6 +15,7 @@ certmgr-tab-servers =
 certmgr-tab-ca =
     .label = Zertifizierungsstellen
 certmgr-mine = Sie haben Zertifikate dieser Organisationen, die Sie identifizieren:
+certmgr-remembered = Folgende Zertifikate werden verwendet, um Sie gegenüber Websites zu identifizieren:
 certmgr-people = Sie haben Zertifikate gespeichert, die diese Personen identifizieren:
 certmgr-servers = Sie haben Zertifikate gespeichert, die diese Server identifizieren:
 certmgr-ca = Sie haben Zertifikate gespeichert, die diese Zertifizierungsstellen identifizieren:
@@ -24,14 +27,6 @@ certmgr-detail-pretty-print-tab-title =
     .accesskey = D
 certmgr-pending-label =
     .value = Das Zertifikat wird derzeit verifiziert…
-certmgr-subject-info-label =
-    .value = Ausgestellt für
-certmgr-issuer-info-label =
-    .value = Ausgestellt von
-certmgr-period-of-validity-label =
-    .value = Gültigkeitsdauer
-certmgr-fingerprints-label =
-    .value = Fingerabdrücke
 certmgr-subject-label = Ausgestellt für
 certmgr-issuer-label = Ausgestellt von
 certmgr-period-of-validity = Gültigkeitsdauer
@@ -40,18 +35,6 @@ certmgr-cert-detail =
     .title = Zertifikats-Detail
     .buttonlabelaccept = Schließen
     .buttonaccesskeyaccept = c
-certmgr-cert-detail-cn =
-    .value = Allgemeiner Name (CN)
-certmgr-cert-detail-o =
-    .value = Organisation (O)
-certmgr-cert-detail-ou =
-    .value = Organisationseinheit (OU)
-certmgr-cert-detail-serialnumber =
-    .value = Seriennummer
-certmgr-cert-detail-sha256-fingerprint =
-    .value = SHA-256-Fingerabdruck
-certmgr-cert-detail-sha1-fingerprint =
-    .value = SHA1-Fingerabdruck
 certmgr-cert-detail-commonname = Allgemeiner Name (CN)
 certmgr-cert-detail-org = Organisation (O)
 certmgr-cert-detail-orgunit = Organisationseinheit (OU)
@@ -69,6 +52,8 @@ certmgr-edit-cert-trust-email =
 certmgr-delete-cert =
     .title = Zertifikat löschen
     .style = width: 48em; height: 24em;
+certmgr-cert-host =
+    .label = Host
 certmgr-cert-name =
     .label = Zertifikatsname
 certmgr-cert-server =
@@ -80,13 +65,9 @@ certmgr-token-name =
 certmgr-begins-on = Beginnt mit
 certmgr-begins-label =
     .label = Beginnt mit
-certmgr-begins-value =
-    .value = { certmgr-begins-label.label }
 certmgr-expires-on = Gültig bis
 certmgr-expires-label =
     .label = Gültig bis
-certmgr-expires-value =
-    .value = { certmgr-expires-label.label }
 certmgr-email =
     .label = E-Mail-Adresse
 certmgr-serial =
@@ -145,7 +126,7 @@ exception-mgr-permanent =
     .label = Diese Ausnahme dauerhaft speichern
     .accesskey = n
 pk11-bad-password = Das eingegebene Passwort war falsch.
-pkcs12-decode-err = Die Datei konnte nicht dekodiert werden. Entweder ist sie nicht im PKCS#12-Format, wurde fehlerhaft übertragen, oder das Passwort, das Sie eingegeben haben, war falsch.
+pkcs12-decode-err = Die Datei konnte nicht dekodiert werden. Entweder ist sie nicht im PKCS#12-Format, wurde fehlerhaft übertragen, oder das Passwort, das du eingegeben hast, war falsch.
 pkcs12-unknown-err-restore = Das Wiederherstellen der PKCS#12-Datei ist aus unbekannten Gründen fehlgeschlagen.
 pkcs12-unknown-err-backup = Das Erstellen der PKCS#12-Backupdatei ist aus unbekannten Gründen fehlgeschlagen.
 pkcs12-unknown-err = Die PKCS#12-Operation ist aus unbekannten Gründen fehlgeschlagen.
@@ -161,8 +142,8 @@ choose-p12-restore-file-dialog = Zu importierende Zertifikat-Datei
 ## Import certificate(s) file dialog
 
 file-browse-certificate-spec = Zertifikat-Dateien
-import-ca-certs-prompt = Wählen Sie die Datei mit dem oder den zu importierenden CA-Zertifikat(en)
-import-email-cert-prompt = Wählen Sie die Datei mit dem zu importierenden E-Mail-Zertifikat
+import-ca-certs-prompt = Wähle die Datei mit dem oder den zu importierenden CA-Zertifikat(en)
+import-email-cert-prompt = Wähle die Datei mit dem zu importierenden E-Mail-Zertifikat
 
 ## For editing certificates trust
 
@@ -173,21 +154,23 @@ edit-trust-ca = Das Zertifikat "{ $certName }" repräsentiert eine Zertifizierun
 ## For Deleting Certificates
 
 delete-user-cert-title =
-    .title = Ihre Zertifikate löschen
+    .title = Deine Zertifikate löschen
 delete-user-cert-confirm = Sollen diese Zertifikate wirklich gelöscht werden?
-delete-user-cert-impact = Wenn Sie eines Ihrer eigenen Zertifikate löschen, können Sie es nicht mehr verwenden, um sich zu identifizieren.
+delete-user-cert-impact = Wenn du eines deiner eigenen Zertifikate löschst, kannst du es nicht mehr verwenden, um dich zu identifizieren.
+
 delete-ssl-cert-title =
     .title = Server-Zertifikat-Ausnahmeregeln löschen
 delete-ssl-cert-confirm = Sollen diese Server-Ausnahmeregeln wirklich gelöscht werden?
-delete-ssl-cert-impact = Wenn Sie eine Server-Ausnahmeregel löschen, werden die normalen Sicherheitsüberprüfungen für diesen Server wiederhergestellt und er muss ein gültiges Zertifikat vorweisen.
+delete-ssl-cert-impact = Wenn du eine Server-Ausnahmeregel löschst, werden die normalen Sicherheitsüberprüfungen für diesen Server wiederhergestellt und er muss ein gültiges Zertifikat vorweisen.
+
 delete-ca-cert-title =
     .title = CA-Zertifikate löschen oder Vertrauen entziehen
-delete-ca-cert-confirm = Sie haben um ein Löschen dieser CA-Zertifikate angefragt. Für eingebaute Zertifikate wird alles Vertrauen entzogen, was den gleichen Effekt hat. Sollen diese CA-Zertifikate wirklich gelöscht oder ihr Vertrauen entzogen werden?
-delete-ca-cert-impact = Wenn Sie ein Zertifizierungsstellen(CA)-Zertifikat löschen oder sein Vertrauen entziehen, vertraut die Anwendung keinen Zertifikaten mehr, die von dieser CA ausgestellt wurden.
+delete-ca-cert-confirm = Du hast um ein Löschen dieser CA-Zertifikate angefragt. Für eingebaute Zertifikate wird alles Vertrauen entzogen, was den gleichen Effekt hat. Sollen diese CA-Zertifikate wirklich gelöscht oder ihr Vertrauen entzogen werden?
+delete-ca-cert-impact = Wenn du ein Zertifizierungsstellen(CA)-Zertifikat löschst oder sein Vertrauen entziehst, vertraut die Anwendung keinen Zertifikaten mehr, die von dieser CA ausgestellt wurden.
 delete-email-cert-title =
     .title = E-Mail-Zertifikate löschen
 delete-email-cert-confirm = Sollen die E-Mail-Zertifikate dieser Personen wirklich gelöscht werden?
-delete-email-cert-impact = Wenn Sie das E-Mail-Zertifikat einer Person löschen, können Sie keine verschlüsselten E-Mails mehr an diese Person senden.
+delete-email-cert-impact = Wenn du das E-Mail-Zertifikat einer Person löschst, kannst du keine verschlüsselten E-Mails mehr an diese Person senden.
 # Used for semi-uniquely representing a cert.
 #
 # Variables:
@@ -230,7 +213,7 @@ cert-not-verified-unknown = Dieses Zertifikat konnte aus unbekannten Gründen ni
 
 ## Add Security Exception dialog
 
-add-exception-branded-warning = Hiermit übergehen Sie die Identifikation dieser Website durch { -brand-short-name }.
+add-exception-branded-warning = Hiermit übergehe die Identifikation dieser Website durch { -brand-short-name }.
 add-exception-invalid-header = Diese Website versucht sich mit ungültigen Informationen zu identifizieren.
 add-exception-domain-mismatch-short = Falsche Website
 add-exception-domain-mismatch-long = Das Zertifikat gehört zu einer anderen Website, was heißen könnte, dass jemand versucht, sich als diese Website auszugeben.

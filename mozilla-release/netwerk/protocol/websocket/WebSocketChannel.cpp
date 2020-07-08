@@ -942,12 +942,19 @@ class OutboundMessage {
 
   WsMsgType GetMsgType() const { return mMsgType; }
   int32_t Length() {
-    pString& ref = mMsg.as<pString>();
-    return ref.mValue.Length();
+    if (mMsg.is<pString>()) {
+      return mMsg.as<pString>().mValue.Length();
+    }
+
+    return mMsg.as<StreamWithLength>().mLength;
   }
   int32_t OrigLength() {
-    pString& ref = mMsg.as<pString>();
-    return mDeflated ? ref.mOrigValue.Length() : ref.mValue.Length();
+    if (mMsg.is<pString>()) {
+      pString& ref = mMsg.as<pString>();
+      return mDeflated ? ref.mOrigValue.Length() : ref.mValue.Length();
+    }
+
+    return mMsg.as<StreamWithLength>().mLength;
   }
 
   uint8_t* BeginWriting() {
@@ -1164,12 +1171,9 @@ WebSocketChannel::~WebSocketChannel() {
 
   mListenerMT = nullptr;
 
-  NS_ReleaseOnMainThreadSystemGroup("WebSocketChannel::mLoadGroup",
-                                    mLoadGroup.forget());
-  NS_ReleaseOnMainThreadSystemGroup("WebSocketChannel::mLoadInfo",
-                                    mLoadInfo.forget());
-  NS_ReleaseOnMainThreadSystemGroup("WebSocketChannel::mService",
-                                    mService.forget());
+  NS_ReleaseOnMainThread("WebSocketChannel::mLoadGroup", mLoadGroup.forget());
+  NS_ReleaseOnMainThread("WebSocketChannel::mLoadInfo", mLoadInfo.forget());
+  NS_ReleaseOnMainThread("WebSocketChannel::mService", mService.forget());
 }
 
 NS_IMETHODIMP
@@ -2252,14 +2256,11 @@ void WebSocketChannel::DoStopSession(nsresult reason) {
 
   if (!mOpenedHttpChannel) {
     // The HTTP channel information will never be used in this case
-    NS_ReleaseOnMainThreadSystemGroup("WebSocketChannel::mChannel",
-                                      mChannel.forget());
-    NS_ReleaseOnMainThreadSystemGroup("WebSocketChannel::mHttpChannel",
-                                      mHttpChannel.forget());
-    NS_ReleaseOnMainThreadSystemGroup("WebSocketChannel::mLoadGroup",
-                                      mLoadGroup.forget());
-    NS_ReleaseOnMainThreadSystemGroup("WebSocketChannel::mCallbacks",
-                                      mCallbacks.forget());
+    NS_ReleaseOnMainThread("WebSocketChannel::mChannel", mChannel.forget());
+    NS_ReleaseOnMainThread("WebSocketChannel::mHttpChannel",
+                           mHttpChannel.forget());
+    NS_ReleaseOnMainThread("WebSocketChannel::mLoadGroup", mLoadGroup.forget());
+    NS_ReleaseOnMainThread("WebSocketChannel::mCallbacks", mCallbacks.forget());
   }
 
   if (mCloseTimer) {
@@ -2977,13 +2978,6 @@ WebSocketChannel::OnLookupComplete(nsICancelable* aRequest,
   return NS_OK;
 }
 
-NS_IMETHODIMP
-WebSocketChannel::OnLookupByTypeComplete(nsICancelable* aRequest,
-                                         nsIDNSByTypeRecord* aRes,
-                                         nsresult aStatus) {
-  return NS_OK;
-}
-
 // nsIProtocolProxyCallback
 NS_IMETHODIMP
 WebSocketChannel::OnProxyAvailable(nsICancelable* aRequest,
@@ -3367,7 +3361,7 @@ WebSocketChannel::AsyncOpen(nsIURI* aURI, const nsACString& aOrigin,
       nsIProtocolProxyService::RESOLVE_PREFER_SOCKS_PROXY |
           nsIProtocolProxyService::RESOLVE_PREFER_HTTPS_PROXY |
           nsIProtocolProxyService::RESOLVE_ALWAYS_TUNNEL,
-      mLoadInfo->LoadingNode(), mLoadInfo->LoadingPrincipal(),
+      mLoadInfo->LoadingNode(), mLoadInfo->GetLoadingPrincipal(),
       mLoadInfo->TriggeringPrincipal(), mLoadInfo->GetSecurityFlags(),
       mLoadInfo->InternalContentPolicyType(), getter_AddRefs(localChannel));
   NS_ENSURE_SUCCESS(rv, rv);

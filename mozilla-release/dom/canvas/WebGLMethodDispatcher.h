@@ -9,19 +9,26 @@
 #include "TexUnpackBlob.h"
 #include "WebGLCrossProcessCommandQueue.h"
 #include "HostWebGLContext.h"
-#include "WebGLPcqParamTraits.h"
+#include "WebGLQueueParamTraits.h"
 
 namespace mozilla {
 
 // The WebGLMethodDispatcher will dispatch commands read from the
 // HostWebGLCommandSink and issue them to a given HostWebGLContext.
-DECLARE_METHOD_DISPATCHER(WebGLMethodDispatcher, HostWebGLCommandSink,
-                          HostWebGLContext)
+template <size_t id = 0>
+class WebGLMethodDispatcher
+    : public EmptyMethodDispatcher<WebGLMethodDispatcher> {};
+
+#define DEFINE_METHOD_DISPATCHER(_ID, _METHOD, _SYNC)       \
+  template <>                                               \
+  class WebGLMethodDispatcher<_ID>                          \
+      : public MethodDispatcher<WebGLMethodDispatcher, _ID, \
+                                decltype(&_METHOD), &_METHOD, _SYNC> {};
 
 // Defines each method the WebGLMethodDispatcher handles.  The COUNTER value
 // is used as a cross-process ID for each of the methods.
 #define DEFINE_METHOD_HELPER(_METHOD, _SYNC) \
-  DEFINE_METHOD_DISPATCHER(WebGLMethodDispatcher, __COUNTER__, _METHOD, _SYNC)
+  DEFINE_METHOD_DISPATCHER(__COUNTER__, _METHOD, _SYNC)
 #define DEFINE_ASYNC(_METHOD) \
   DEFINE_METHOD_HELPER(_METHOD, CommandSyncType::ASYNC)
 #define DEFINE_SYNC(_METHOD) \
@@ -29,6 +36,7 @@ DECLARE_METHOD_DISPATCHER(WebGLMethodDispatcher, HostWebGLCommandSink,
 
 DEFINE_ASYNC(HostWebGLContext::CreateBuffer)
 DEFINE_ASYNC(HostWebGLContext::CreateFramebuffer)
+DEFINE_SYNC(HostWebGLContext::CreateOpaqueFramebuffer)
 DEFINE_ASYNC(HostWebGLContext::CreateProgram)
 DEFINE_ASYNC(HostWebGLContext::CreateQuery)
 DEFINE_ASYNC(HostWebGLContext::CreateRenderbuffer)
@@ -52,14 +60,14 @@ DEFINE_ASYNC(HostWebGLContext::DeleteTransformFeedback)
 DEFINE_ASYNC(HostWebGLContext::DeleteVertexArray)
 
 DEFINE_ASYNC(HostWebGLContext::ClearVRFrame)
-DEFINE_SYNC(HostWebGLContext::GetVRFrame)
+// DEFINE_SYNC(HostWebGLContext::GetVRFrame)
 
 DEFINE_ASYNC(HostWebGLContext::Disable)
 DEFINE_ASYNC(HostWebGLContext::Enable)
 DEFINE_ASYNC(HostWebGLContext::GenerateError)
 DEFINE_SYNC(HostWebGLContext::GetCompileResult)
 DEFINE_SYNC(HostWebGLContext::GetFragDataLocation)
-DEFINE_SYNC(HostWebGLContext::GetLinkResult)
+// DEFINE_SYNC(HostWebGLContext::GetLinkResult)
 DEFINE_SYNC(HostWebGLContext::InitializeCanvasRenderer)
 DEFINE_SYNC(HostWebGLContext::IsEnabled)
 DEFINE_ASYNC(HostWebGLContext::Resize)
@@ -113,21 +121,21 @@ DEFINE_ASYNC(HostWebGLContext::Viewport)
 DEFINE_ASYNC(HostWebGLContext::BindBuffer)
 DEFINE_ASYNC(HostWebGLContext::BindBufferRange)
 DEFINE_ASYNC(HostWebGLContext::CopyBufferSubData)
-DEFINE_ASYNC(HostWebGLContext::GetBufferSubData)
+// DEFINE_ASYNC(HostWebGLContext::GetBufferSubData)
 DEFINE_ASYNC(HostWebGLContext::BufferData)
 DEFINE_ASYNC(HostWebGLContext::BufferSubData)
 DEFINE_ASYNC(HostWebGLContext::BlitFramebuffer)
 DEFINE_ASYNC(HostWebGLContext::InvalidateFramebuffer)
 DEFINE_ASYNC(HostWebGLContext::InvalidateSubFramebuffer)
 DEFINE_ASYNC(HostWebGLContext::ReadBuffer)
-DEFINE_SYNC(HostWebGLContext::GetInternalformatParameter)
+// DEFINE_SYNC(HostWebGLContext::GetInternalformatParameter)
 DEFINE_ASYNC(HostWebGLContext::RenderbufferStorageMultisample)
 DEFINE_ASYNC(HostWebGLContext::ActiveTexture)
 DEFINE_ASYNC(HostWebGLContext::BindTexture)
 DEFINE_ASYNC(HostWebGLContext::GenerateMipmap)
 DEFINE_ASYNC(HostWebGLContext::CopyTexImage)
 DEFINE_ASYNC(HostWebGLContext::TexStorage)
-DEFINE_ASYNC(HostWebGLContext::TexImage)
+// DEFINE_ASYNC(HostWebGLContext::TexImage)
 DEFINE_ASYNC(HostWebGLContext::CompressedTexImage)
 DEFINE_SYNC(HostWebGLContext::GetTexParameter)
 DEFINE_ASYNC(HostWebGLContext::TexParameter_base)
@@ -144,7 +152,7 @@ DEFINE_SYNC(HostWebGLContext::GetVertexAttrib)
 DEFINE_ASYNC(HostWebGLContext::VertexAttribPointer)
 DEFINE_ASYNC(HostWebGLContext::ClearBufferTv)
 DEFINE_ASYNC(HostWebGLContext::ClearBufferfi)
-DEFINE_SYNC(HostWebGLContext::ReadPixels)
+// DEFINE_SYNC(HostWebGLContext::ReadPixels)
 DEFINE_ASYNC(HostWebGLContext::ReadPixelsPbo)
 DEFINE_ASYNC(HostWebGLContext::BindSampler)
 DEFINE_ASYNC(HostWebGLContext::SamplerParameteri)
@@ -165,10 +173,12 @@ DEFINE_ASYNC(HostWebGLContext::BeginQuery)
 DEFINE_ASYNC(HostWebGLContext::EndQuery)
 DEFINE_ASYNC(HostWebGLContext::QueryCounter)
 DEFINE_SYNC(HostWebGLContext::GetQueryParameter)
+DEFINE_ASYNC(HostWebGLContext::SetFramebufferIsInOpaqueRAF)
 
 #undef DEFINE_METHOD_HELPER
 #undef DEFINE_ASYNC
 #undef DEFINE_SYNC
+#undef DEFINE_METHOD_DISPATCHER
 
 }  // namespace mozilla
 

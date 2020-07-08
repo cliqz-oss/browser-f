@@ -1057,9 +1057,9 @@ int32_t GfxInfoBase::FindBlocklistedDeviceInList(
           (nsAString&)GfxDriverInfo::GetDeviceVendor(DeviceVendor::NVIDIA);
       const nsString nv310mDeviceId = NS_LITERAL_STRING("0x0A70");
       if (nvVendorID.Equals(adapterVendorID[1],
-                            nsCaseInsensitiveStringComparator()) &&
+                            nsCaseInsensitiveStringComparator) &&
           nv310mDeviceId.Equals(adapterDeviceID[1],
-                                nsCaseInsensitiveStringComparator())) {
+                                nsCaseInsensitiveStringComparator)) {
         status = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
         aFailureId = "FEATURE_FAILURE_D2D_NV310M_BLOCK";
       }
@@ -1089,44 +1089,44 @@ int32_t GfxInfoBase::FindBlocklistedDeviceInList(
 void GfxInfoBase::SetFeatureStatus(
     const nsTArray<dom::GfxInfoFeatureStatus>& aFS) {
   MOZ_ASSERT(!sFeatureStatus);
-  sFeatureStatus = new nsTArray<dom::GfxInfoFeatureStatus>(aFS);
+  sFeatureStatus = new nsTArray<dom::GfxInfoFeatureStatus>(aFS.Clone());
 }
 
 bool GfxInfoBase::DoesDesktopEnvironmentMatch(
     const nsAString& aBlocklistDesktop, const nsAString& aDesktopEnv) {
   return aBlocklistDesktop.Equals(aDesktopEnv,
-                                  nsCaseInsensitiveStringComparator()) ||
+                                  nsCaseInsensitiveStringComparator) ||
          aBlocklistDesktop.Equals(
              GfxDriverInfo::GetDesktopEnvironment(DesktopEnvironment::All),
-             nsCaseInsensitiveStringComparator());
+             nsCaseInsensitiveStringComparator);
 }
 
 bool GfxInfoBase::DoesWindowProtocolMatch(
     const nsAString& aBlocklistWindowProtocol,
     const nsAString& aWindowProtocol) {
   return aBlocklistWindowProtocol.Equals(aWindowProtocol,
-                                         nsCaseInsensitiveStringComparator()) ||
+                                         nsCaseInsensitiveStringComparator) ||
          aBlocklistWindowProtocol.Equals(
              GfxDriverInfo::GetWindowProtocol(WindowProtocol::All),
-             nsCaseInsensitiveStringComparator());
+             nsCaseInsensitiveStringComparator);
 }
 
 bool GfxInfoBase::DoesVendorMatch(const nsAString& aBlocklistVendor,
                                   const nsAString& aAdapterVendor) {
   return aBlocklistVendor.Equals(aAdapterVendor,
-                                 nsCaseInsensitiveStringComparator()) ||
+                                 nsCaseInsensitiveStringComparator) ||
          aBlocklistVendor.Equals(
              GfxDriverInfo::GetDeviceVendor(DeviceVendor::All),
-             nsCaseInsensitiveStringComparator());
+             nsCaseInsensitiveStringComparator);
 }
 
 bool GfxInfoBase::DoesDriverVendorMatch(const nsAString& aBlocklistVendor,
                                         const nsAString& aDriverVendor) {
   return aBlocklistVendor.Equals(aDriverVendor,
-                                 nsCaseInsensitiveStringComparator()) ||
+                                 nsCaseInsensitiveStringComparator) ||
          aBlocklistVendor.Equals(
              GfxDriverInfo::GetDriverVendor(DriverVendor::All),
-             nsCaseInsensitiveStringComparator());
+             nsCaseInsensitiveStringComparator);
 }
 
 bool GfxInfoBase::IsFeatureAllowlisted(int32_t aFeature) const {
@@ -1604,21 +1604,28 @@ bool GfxInfoBase::BuildFeatureStateLog(JSContext* aCx,
 void GfxInfoBase::DescribeFeatures(JSContext* aCx, JS::Handle<JSObject*> aObj) {
   JS::Rooted<JSObject*> obj(aCx);
 
-  gfx::FeatureStatus gpuProcess =
-      gfxConfig::GetValue(gfx::Feature::GPU_PROCESS);
+  gfx::FeatureState& hwCompositing =
+      gfxConfig::GetFeature(gfx::Feature::HW_COMPOSITING);
+  InitFeatureObject(aCx, aObj, "hwCompositing", hwCompositing, &obj);
+
+  gfx::FeatureState& gpuProcess =
+      gfxConfig::GetFeature(gfx::Feature::GPU_PROCESS);
   InitFeatureObject(aCx, aObj, "gpuProcess", gpuProcess, &obj);
 
-  gfx::FeatureStatus wrQualified =
-      gfxConfig::GetValue(gfx::Feature::WEBRENDER_QUALIFIED);
+  gfx::FeatureState& wrQualified =
+      gfxConfig::GetFeature(gfx::Feature::WEBRENDER_QUALIFIED);
   InitFeatureObject(aCx, aObj, "wrQualified", wrQualified, &obj);
 
-  gfx::FeatureStatus webrender = gfxConfig::GetValue(gfx::Feature::WEBRENDER);
+  gfx::FeatureState& webrender = gfxConfig::GetFeature(gfx::Feature::WEBRENDER);
   InitFeatureObject(aCx, aObj, "webrender", webrender, &obj);
 
+  gfx::FeatureState& wrCompositor = gfxConfig::GetFeature(gfx::Feature::WEBRENDER_COMPOSITOR);
+  InitFeatureObject(aCx, aObj, "wrCompositor", wrCompositor, &obj);
+
   // Only include AL if the platform attempted to use it.
-  gfx::FeatureStatus advancedLayers =
-      gfxConfig::GetValue(gfx::Feature::ADVANCED_LAYERS);
-  if (advancedLayers != FeatureStatus::Unused) {
+  gfx::FeatureState& advancedLayers =
+      gfxConfig::GetFeature(gfx::Feature::ADVANCED_LAYERS);
+  if (advancedLayers.GetValue() != FeatureStatus::Unused) {
     InitFeatureObject(aCx, aObj, "advancedLayers", advancedLayers, &obj);
 
     if (gfxConfig::UseFallback(Fallback::NO_CONSTANT_BUFFER_OFFSETTING)) {
@@ -1631,17 +1638,24 @@ void GfxInfoBase::DescribeFeatures(JSContext* aCx, JS::Handle<JSObject*> aObj) {
 bool GfxInfoBase::InitFeatureObject(JSContext* aCx,
                                     JS::Handle<JSObject*> aContainer,
                                     const char* aName,
-                                    mozilla::gfx::FeatureStatus& aFeatureStatus,
+                                    mozilla::gfx::FeatureState& aFeatureState,
                                     JS::MutableHandle<JSObject*> aOutObj) {
   JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
   if (!obj) {
     return false;
   }
 
-  // Set "status".
-  const char* status = FeatureStatusToString(aFeatureStatus);
+  nsCString status;
+  auto value = aFeatureState.GetValue();
+  if (value == FeatureStatus::Blacklisted ||
+      value == FeatureStatus::Unavailable || value == FeatureStatus::Blocked) {
+    status.AppendPrintf("%s:%s", FeatureStatusToString(value),
+                        aFeatureState.GetFailureId().get());
+  } else {
+    status.Append(FeatureStatusToString(value));
+  }
 
-  JS::Rooted<JSString*> str(aCx, JS_NewStringCopyZ(aCx, status));
+  JS::Rooted<JSString*> str(aCx, JS_NewStringCopyZ(aCx, status.get()));
   JS::Rooted<JS::Value> val(aCx, JS::StringValue(str));
   JS_SetProperty(aCx, obj, "status", val);
 

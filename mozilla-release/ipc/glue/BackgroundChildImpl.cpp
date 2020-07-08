@@ -45,7 +45,6 @@
 #include "mozilla/dom/ServiceWorkerActors.h"
 #include "mozilla/dom/ServiceWorkerManagerChild.h"
 #include "mozilla/dom/BrowserChild.h"
-#include "mozilla/dom/TabGroup.h"
 #include "mozilla/ipc/IPCStreamAlloc.h"
 #include "mozilla/ipc/PBackgroundTestChild.h"
 #include "mozilla/ipc/PChildToParentStreamChild.h"
@@ -168,22 +167,6 @@ bool BackgroundChildImpl::DeallocPBackgroundTestChild(
   MOZ_ASSERT(aActor);
 
   delete static_cast<TestChild*>(aActor);
-  return true;
-}
-
-BackgroundChildImpl::PBackgroundIDBFactoryChild*
-BackgroundChildImpl::AllocPBackgroundIDBFactoryChild(
-    const LoggingInfo& aLoggingInfo) {
-  MOZ_CRASH(
-      "PBackgroundIDBFactoryChild actors should be manually "
-      "constructed!");
-}
-
-bool BackgroundChildImpl::DeallocPBackgroundIDBFactoryChild(
-    PBackgroundIDBFactoryChild* aActor) {
-  MOZ_ASSERT(aActor);
-
-  delete aActor;
   return true;
 }
 

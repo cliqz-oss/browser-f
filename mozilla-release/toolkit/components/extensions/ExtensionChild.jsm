@@ -261,13 +261,6 @@ class NativeMessenger {
 
     this.onConnect = new SimpleEventAPI(context, "runtime.onConnect");
     this.onConnectEx = new SimpleEventAPI(context, "runtime.onConnectExternal");
-
-    if (context.viewType === "background" && context.childManager) {
-      context.childManager.callParentFunctionNoReturn(
-        "runtime.addMessagingListener",
-        ["onConnect"]
-      );
-    }
   }
 
   sendNativeMessage(nativeApp, json) {
@@ -437,33 +430,17 @@ class Messenger {
           },
         };
 
-        const childManager =
-          this.context.viewType == "background"
-            ? this.context.childManager
-            : null;
         MessageChannel.addListener(
           this.messageManagers,
           "Extension:Message",
           listener
         );
-        if (childManager) {
-          childManager.callParentFunctionNoReturn(
-            "runtime.addMessagingListener",
-            ["onMessage"]
-          );
-        }
         return () => {
           MessageChannel.removeListener(
             this.messageManagers,
             "Extension:Message",
             listener
           );
-          if (childManager && !this.context.unloaded) {
-            childManager.callParentFunctionNoReturn(
-              "runtime.removeMessagingListener",
-              ["onMessage"]
-            );
-          }
         };
       },
     }).api();
@@ -718,7 +695,7 @@ class ProxyAPIImplementation extends SchemaAPIInterface {
 
   revoke() {
     let map = this.childApiManager.listeners.get(this.path);
-    for (let listener of map.keys()) {
+    for (let listener of map.listeners.keys()) {
       this.removeListener(listener);
     }
 

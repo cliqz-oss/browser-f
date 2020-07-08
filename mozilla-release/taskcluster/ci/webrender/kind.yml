@@ -15,12 +15,12 @@ transforms:
 job-defaults:
     attributes:
         retrigger: true
-    run-on-projects: ['mozilla-beta', 'trunk', 'try']
+    run-on-projects: ['mozilla-beta', 'trunk']
     treeherder:
         tier: 1
         kind: other
     worker:
-        max-run-time: 1800
+        max-run-time: 3600
         env:
             RUST_BACKTRACE: 'full'
             RUSTFLAGS: '--deny warnings'
@@ -315,7 +315,7 @@ jobs:
 
     android-emulator-debug:
         description: Run debug wrench reftests on Android emulator
-        worker-type: terraform-packet/gecko-t-linux  # privileged:true doesn't work on b-linux
+        worker-type: t-linux-metal  # privileged:true doesn't work on b-linux
         worker:
             max-run-time: 5400
             docker-image: {in-tree: ubuntu1804-test}
@@ -336,6 +336,8 @@ jobs:
         fetches:
             webrender-wrench-android-debug:
                 - 'wrench-debug.apk'
+            toolchain:
+                - android-sdk-linux
         run:
             using: run-task
             tooltool-downloads: internal
@@ -355,7 +357,7 @@ jobs:
 
     android-emulator-release:
         description: Run release wrench reftests on Android emulator
-        worker-type: terraform-packet/gecko-t-linux  # privileged:true doesn't work on b-linux
+        worker-type: t-linux-metal  # privileged:true doesn't work on b-linux
         worker:
             max-run-time: 5400
             docker-image: {in-tree: ubuntu1804-test}
@@ -376,6 +378,8 @@ jobs:
         fetches:
             webrender-wrench-android-release:
                 - 'wrench-release.apk'
+            toolchain:
+                - android-sdk-linux
         run:
             using: run-task
             tooltool-downloads: internal

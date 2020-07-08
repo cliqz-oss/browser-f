@@ -209,7 +209,10 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       );
     }
 
-    this.traits = {};
+    this.traits = {
+      // Supports new cached messages structure for 77+
+      newCacheStructure: true,
+    };
   },
   /**
    * Debugger instance.
@@ -911,8 +914,14 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
 
     const messages = [];
 
-    while (messageTypes.length > 0) {
-      const type = messageTypes.shift();
+    const consoleServiceCachedMessages =
+      messageTypes.includes("PageError") || messageTypes.includes("LogMessage")
+        ? this.consoleServiceListener?.getCachedMessages(
+            !this.parentActor.isRootActor
+          )
+        : null;
+
+    for (const type of messageTypes) {
       switch (type) {
         case "ConsoleAPI": {
           if (!this.consoleAPIListener) {
@@ -938,33 +947,48 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
               return;
             }
 
-            const message = this.prepareConsoleMessageForRemote(cachedMessage);
-            message._type = type;
-            messages.push(message);
+            messages.push({
+              message: this.prepareConsoleMessageForRemote(cachedMessage),
+              type: "consoleAPICall",
+            });
           });
           break;
         }
+
         case "PageError": {
-          if (!this.consoleServiceListener) {
+          if (!consoleServiceCachedMessages) {
             break;
           }
-          const cache = this.consoleServiceListener.getCachedMessages(
-            !this.parentActor.isRootActor
-          );
-          cache.forEach(cachedMessage => {
-            let message = null;
-            if (cachedMessage instanceof Ci.nsIScriptError) {
-              message = this.preparePageErrorForRemote(cachedMessage);
-              message._type = type;
-            } else {
-              message = {
-                _type: "LogMessage",
-                message: this._createStringGrip(cachedMessage.message),
-                timeStamp: cachedMessage.timeStamp,
-              };
+
+          for (const cachedMessage of consoleServiceCachedMessages) {
+            if (!(cachedMessage instanceof Ci.nsIScriptError)) {
+              continue;
             }
-            messages.push(message);
-          });
+
+            messages.push({
+              pageError: this.preparePageErrorForRemote(cachedMessage),
+              type: "pageError",
+            });
+          }
+          break;
+        }
+
+        case "LogMessage": {
+          if (!consoleServiceCachedMessages) {
+            break;
+          }
+
+          for (const cachedMessage of consoleServiceCachedMessages) {
+            if (cachedMessage instanceof Ci.nsIScriptError) {
+              continue;
+            }
+
+            messages.push({
+              message: this._createStringGrip(cachedMessage.message),
+              timeStamp: cachedMessage.timeStamp,
+              type: "logMessage",
+            });
+          }
           break;
         }
       }
@@ -989,11 +1013,12 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
    *         `resultID` field.
    */
   evaluateJSAsync: async function(request) {
+    const startTime = Date.now();
     // Use Date instead of UUID as this code is used by workers, which
     // don't have access to the UUID XPCOM component.
     // Also use a counter in order to prevent mixing up response when calling
     // evaluateJSAsync during the same millisecond.
-    const resultID = Date.now() + "-" + this._evalCounter++;
+    const resultID = startTime + "-" + this._evalCounter++;
 
     // Execute the evaluation in the next event loop in order to immediately
     // reply with the resultID.
@@ -1003,10 +1028,14 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
         let response = this.evaluateJS(request);
         // Wait for any potential returned Promise.
         response = await this._maybeWaitForResponseResult(response);
+        // Set the timestamp only now, so any messages logged in the expression will come
+        // before the result.
+        response.timestamp = Date.now();
         // Finally, emit an unsolicited evaluationResult packet with the evaluation result.
         this.emit("evaluationResult", {
           type: "evaluationResult",
           resultID,
+          startTime,
           ...response,
         });
         return;
@@ -1069,10 +1098,6 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       delete response.awaitResult;
     }
 
-    // We need to compute the timestamp again as the one in the response was set before
-    // doing the evaluation, which is now innacurate since we waited for a bit.
-    response.timestamp = Date.now();
-
     return response;
   },
 
@@ -1088,17 +1113,18 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
   // eslint-disable-next-line complexity
   evaluateJS: function(request) {
     const input = request.text;
-    const timestamp = Date.now();
 
     const evalOptions = {
       frameActor: request.frameActor,
       url: request.url,
+      innerWindowID: request.innerWindowID,
       selectedNodeActor: request.selectedNodeActor,
       selectedObjectActor: request.selectedObjectActor,
       eager: request.eager,
       bindings: request.bindings,
       lineNumber: request.lineNumber,
     };
+
     const { mapped } = request;
 
     // Set a flag on the thread actor which indicates an evaluation is being
@@ -1268,11 +1294,11 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       input: input,
       result: resultGrip,
       awaitResult,
-      timestamp: timestamp,
       exception: errorGrip,
       exceptionMessage: this._createStringGrip(errorMessage),
       exceptionDocURL: errorDocURL,
       exceptionStack,
+      hasException: errorGrip !== null,
       errorMessageName,
       frame,
       helperResult: helperResult,
@@ -1674,7 +1700,7 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       columnNumber = stack[0].columnNumber;
     }
 
-    return {
+    const result = {
       errorMessage: this._createStringGrip(pageError.errorMessage),
       errorMessageName: pageError.errorMessageName,
       exceptionDocURL: ErrorDocs.GetURL(pageError),
@@ -1694,7 +1720,23 @@ const WebConsoleActor = ActorClassWithSpec(webconsoleSpec, {
       notes: notesArray,
       chromeContext: pageError.isFromChromeContext,
       cssSelectors: pageError.cssSelectors,
+      isPromiseRejection: pageError.isPromiseRejection,
     };
+
+    // If the pageError does have an exception object, we want to return the grip for it,
+    // but only if we do manage to get the grip, as we're checking the property on the
+    // client to render things differently.
+    if (pageError.hasException) {
+      try {
+        const obj = this.makeDebuggeeValue(pageError.exception, true);
+        if (obj?.class !== "DeadObject") {
+          result.exception = this.createValueGrip(obj);
+          result.hasException = true;
+        }
+      } catch (e) {}
+    }
+
+    return result;
   },
 
   /**

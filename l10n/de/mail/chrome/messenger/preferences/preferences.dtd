@@ -11,9 +11,6 @@
 <!ENTITY  prefWindow.titleWin     "Einstellungen">
 <!ENTITY  prefWindow.titleGNOME   "&brandShortName;-Einstellungen">
 <!ENTITY  prefWindow.titleMAC     "Einstellungen">
-<!ENTITY  prefWindow.styleWindows "width: 48em; min-height: 38.5em;">
-<!ENTITY  prefWindow.styleMac     "width: 52em;">
-<!ENTITY  prefWindow.styleGNOME   "width: 48em; min-height: 38em;">
 
 <!ENTITY paneGeneral.title        "Allgemein">
 <!ENTITY paneDisplay.title        "Ansicht">
@@ -22,6 +19,7 @@
 <!ENTITY paneAttachments.title    "Anhänge">
 <!ENTITY panePrivacy.title        "Datenschutz">
 <!ENTITY paneSecurity.title       "Sicherheit">
+<!ENTITY panePrivacySecurity.title "Datenschutz &amp; Sicherheit">
 <!ENTITY paneLightning.title      "Kalender">
 <!ENTITY paneAdvanced.title       "Erweitert">
 <!ENTITY paneAccount.title        "Konten">

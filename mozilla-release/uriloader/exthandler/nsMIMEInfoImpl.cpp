@@ -14,6 +14,7 @@
 #include "nsCURILoader.h"
 #include "nsCExternalHandlerService.h"
 #include "nsIExternalProtocolService.h"
+#include "nsMimeTypes.h"
 #include "mozilla/StaticPtr.h"
 
 static bool sInitializedOurData = false;
@@ -257,6 +258,25 @@ nsMIMEInfoBase::SetAlwaysAskBeforeHandling(bool aAlwaysAsk) {
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsMIMEInfoBase::IsPdf(bool* isPdf) {
+  if (mSchemeOrType == APPLICATION_PDF) {
+    *isPdf = true;
+    return NS_OK;
+  }
+
+  nsAutoCString fileExt;
+  nsresult rv = GetPrimaryExtension(fileExt);
+
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  *isPdf = fileExt.LowerCaseEqualsASCII("pdf") ||
+           fileExt.LowerCaseEqualsASCII(".pdf");
+  return NS_OK;
+}
+
 /* static */
 nsresult nsMIMEInfoBase::GetLocalFileFromURI(nsIURI* aURI, nsIFile** aFile) {
   nsresult rv;
@@ -307,8 +327,7 @@ nsMIMEInfoBase::LaunchWithFile(nsIFile* aFile) {
 }
 
 NS_IMETHODIMP
-nsMIMEInfoBase::LaunchWithURI(nsIURI* aURI,
-                              nsIInterfaceRequestor* aWindowContext) {
+nsMIMEInfoBase::LaunchWithURI(nsIURI* aURI, BrowsingContext* aBrowsingContext) {
   // This is only being called with protocol handlers
   NS_ASSERTION(mClass == eProtocolInfo,
                "nsMIMEInfoBase should be a protocol handler");
@@ -353,7 +372,7 @@ nsMIMEInfoBase::LaunchWithURI(nsIURI* aURI,
         return NS_ERROR_FILE_NOT_FOUND;
       }
     }
-    return mPreferredApplication->LaunchWithURI(aURI, aWindowContext);
+    return mPreferredApplication->LaunchWithURI(aURI, aBrowsingContext);
   }
 
   return NS_ERROR_INVALID_ARG;
@@ -362,7 +381,7 @@ nsMIMEInfoBase::LaunchWithURI(nsIURI* aURI,
 void nsMIMEInfoBase::CopyBasicDataTo(nsMIMEInfoBase* aOther) {
   aOther->mSchemeOrType = mSchemeOrType;
   aOther->mDefaultAppDescription = mDefaultAppDescription;
-  aOther->mExtensions = mExtensions;
+  aOther->mExtensions = mExtensions.Clone();
 }
 
 /* static */
@@ -404,6 +423,18 @@ nsresult nsMIMEInfoBase::LaunchWithIProcess(nsIFile* aApp,
   return process->Runw(false, &string, 1);
 }
 
+/* static */
+nsresult nsMIMEInfoBase::LaunchWithIProcess(nsIFile* aApp, const int aArgc,
+                                            const char16_t** aArgv) {
+  nsresult rv;
+  nsCOMPtr<nsIProcess> process = InitProcess(aApp, &rv);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  return process->Runw(false, aArgv, aArgc);
+}
+
 // nsMIMEInfoImpl implementation
 NS_IMETHODIMP
 nsMIMEInfoImpl::GetDefaultDescription(nsAString& aDefaultDescription) {
@@ -424,6 +455,22 @@ nsMIMEInfoImpl::GetHasDefaultHandler(bool* _retval) {
   if (mDefaultApplication) {
     bool exists;
     *_retval = NS_SUCCEEDED(mDefaultApplication->Exists(&exists)) && exists;
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMIMEInfoImpl::IsCurrentAppOSDefault(bool* _retval) {
+  *_retval = false;
+  if (mDefaultApplication) {
+    // Determine if the default executable is our executable.
+    EnsureAppDetailsAvailable();
+    bool isSame = false;
+    nsresult rv = mDefaultApplication->Equals(sOurAppFile, &isSame);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    *_retval = isSame;
   }
   return NS_OK;
 }

@@ -96,6 +96,7 @@ var Utils = {
    */
   async hasLocalData(client) {
     const timestamp = await client.db.getLastModified();
+    // Note: timestamp will be 0 if empty JSON dump is loaded.
     return timestamp !== null;
   },
 
@@ -165,6 +166,12 @@ var Utils = {
     let changes = [];
     // If no changes since last time, go on with empty list of changes.
     if (response.status != 304) {
+      if (response.status >= 500) {
+        throw new Error(
+          `Server error ${response.status} ${response.statusText}`
+        );
+      }
+
       const is404FromCustomServer =
         response.status == 404 &&
         Services.prefs.prefHasUserValue("services.settings.server");

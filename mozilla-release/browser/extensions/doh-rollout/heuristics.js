@@ -11,19 +11,24 @@ const GLOBAL_CANARY = "use-application-dns.net";
 
 const NXDOMAIN_ERR = "NS_ERROR_UNKNOWN_HOST";
 
-async function dnsLookup(hostname) {
+async function dnsLookup(hostname, resolveCanonicalName = false) {
   let flags = ["disable_trr", "disable_ipv6", "bypass_cache"];
-  let addresses, err;
+  if (resolveCanonicalName) {
+    flags.push("canonical_name");
+  }
+
+  let addresses, canonicalName, err;
 
   try {
     let response = await browser.dns.resolve(hostname, flags);
     addresses = response.addresses;
+    canonicalName = response.canonicalName;
   } catch (e) {
     addresses = [null];
     err = e.message;
   }
 
-  return { addresses, err };
+  return { addresses, canonicalName, err };
 }
 
 async function dnsListLookup(domainList) {
@@ -121,26 +126,76 @@ async function modifiedRoots() {
   return "enable_doh";
 }
 
+// Check if the network provides a DoH endpoint to use. Returns the name of the
+// provider if the check is successful, else null.
+async function providerSteering() {
+  if (
+    !(await browser.experiments.preferences.getBoolPref(
+      "doh-rollout.provider-steering.enabled",
+      false
+    ))
+  ) {
+    return null;
+  }
+  const TEST_DOMAIN = "doh.test";
+
+  // Array of { name, canonicalName, uri } where name is an identifier for
+  // telemetry, canonicalName is the expected CNAME when looking up doh.test,
+  // and uri is the provider's DoH endpoint.
+  let steeredProviders = await browser.experiments.preferences.getCharPref(
+    "doh-rollout.provider-steering.provider-list",
+    "[]"
+  );
+  try {
+    steeredProviders = JSON.parse(steeredProviders);
+  } catch (e) {
+    console.log("Provider list is invalid JSON, moving on.");
+    return null;
+  }
+
+  if (!steeredProviders || !steeredProviders.length) {
+    return null;
+  }
+
+  let { canonicalName, err } = await dnsLookup(TEST_DOMAIN, true);
+  if (err || !canonicalName) {
+    return null;
+  }
+
+  let provider = steeredProviders.find(p => {
+    return p && p.canonicalName == canonicalName;
+  });
+  if (!provider || !provider.uri || !provider.name) {
+    return null;
+  }
+
+  // We handle this here instead of background.js since we need to set this
+  // override every time we run heuristics.
+  browser.experiments.heuristics.setDetectedTrrURI(provider.uri);
+
+  return provider.name;
+}
+
 async function runHeuristics() {
   let safeSearchChecks = await safeSearch();
-  let zscalerCheck = await zscalerCanary();
-  let canaryCheck = await globalCanary();
-  let modifiedRootsCheck = await modifiedRoots();
-
-  // Check other heuristics through privileged code
-  let browserParentCheck = await browser.experiments.heuristics.checkParentalControls();
-  let enterpriseCheck = await browser.experiments.heuristics.checkEnterprisePolicies();
-  let thirdPartyRootsCheck = await browser.experiments.heuristics.checkThirdPartyRoots();
-
-  // Return result of each heuristic
-  return {
+  let results = {
     google: safeSearchChecks.google,
     youtube: safeSearchChecks.youtube,
-    zscalerCanary: zscalerCheck,
-    canary: canaryCheck,
-    modifiedRoots: modifiedRootsCheck,
-    browserParent: browserParentCheck,
-    thirdPartyRoots: thirdPartyRootsCheck,
-    policy: enterpriseCheck,
+    zscalerCanary: await zscalerCanary(),
+    canary: await globalCanary(),
+    modifiedRoots: await modifiedRoots(),
+    browserParent: await browser.experiments.heuristics.checkParentalControls(),
+    thirdPartyRoots: await browser.experiments.heuristics.checkThirdPartyRoots(),
+    policy: await browser.experiments.heuristics.checkEnterprisePolicies(),
+    steeredProvider: "",
   };
+
+  // If any of those were triggered, return the results immediately.
+  if (Object.values(results).includes("disable_doh")) {
+    return results;
+  }
+
+  // Check for provider steering only after the other heuristics have passed.
+  results.steeredProvider = (await providerSteering()) || "";
+  return results;
 }

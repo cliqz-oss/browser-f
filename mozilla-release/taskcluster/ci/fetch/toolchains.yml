@@ -230,9 +230,9 @@ grcov-osx-x86_64:
     description: grcov binary release
     fetch:
         type: static-url
-        url: https://github.com/mozilla/grcov/releases/download/v0.5.3/grcov-osx-x86_64.tar.bz2
-        sha256: 93db5da4118951d459200a352eb1e3610296a3ee5c51839ab8400a9d968ffb5f
-        size: 1251321
+        url: https://github.com/mozilla/grcov/releases/download/v0.5.14/grcov-osx-x86_64.tar.bz2
+        sha256: 17692a7ee09fbd49cac1194500c9c9e2bc76a23cd702f88026955f25fe7548a8
+        size: 1213868
 
 zlib-1.2.11:
     description: zlib 1.2.11 source code
@@ -269,23 +269,23 @@ upx-3.95-win:
         sha256: 5c076f87ba64d82f11513f4af0ceb07246a3540aa3c72ca3ffc2d53971fa56e3
         size: 462820
 
-wine-3.0.3:
-    description: wine-3.0.3.tar.xz
+wine-5.0:
+    description: wine-5.0.tar.xz
     fetch:
         type: static-url
-        url: http://dl.winehq.org/wine/source/3.0/wine-3.0.3.tar.xz
-        sha256: eb645999ea6f6455a5275bf267e19a32497c8f5aac818ea40afe7c8c396a4da1
-        size: 19735412
+        url: https://dl.winehq.org/wine/source/5.0/wine-5.0.tar.xz
+        sha256: 181550ba69a80b00c631f80c28ff7642264613bbecdb0c0fc04d6534866713b4
+        size: 22469428
         gpg-signature:
             sig-url: "{url}.sign"
             key-path: build/unix/build-gcc/DA23579A74D4AD9AF9D3F945CEFAC8EAAF17519D.key
 
-cbindgen-0.13.1:
+cbindgen-0.14.1:
     description: cbindgen source code
     fetch:
         type: git
         repo: https://github.com/eqrion/cbindgen
-        revision: 3b97f4ff6b0558cab300c010222caee84245dd5d
+        revision: 0761b9bbe48d01ded1bbec45bbeea5544b3b1002
 
 cctools-port:
     description: cctools-port source code
@@ -324,13 +324,6 @@ llvm-for-dsymutil:
         repo: https://github.com/llvm/llvm-project
         revision: 3b7811f6441be13c9f613f81ef93297d231b4f8e
 
-tup:
-    description: tup source code
-    fetch:
-        type: git
-        repo: https://github.com/gittup/tup
-        revision: 4371a41ba4ece660bf060b598b9eee4c2eb347d8
-
 rust-size:
     description: rust-size source code
     fetch:
@@ -349,16 +342,16 @@ grcov:
     description: grcov source code
     fetch:
         type: git
-        repo: https://github.com/marco-c/grcov
-        revision: cc1b62ceb8007af08940d535cd396ed0f95ef769
+        repo: https://github.com/mozilla/grcov
+        revision: 51300e533abc21231881259290da7692c279c0d6
 
 sccache:
     description: sccache source code
     fetch:
         type: git
         repo: https://github.com/mozilla/sccache
-        # 0.2.13 release + fix for clang-cl on Linux
-        revision: 2aadef2c5a07a59658c0cc3da4a90b153293f543
+        # 0.2.13 release + various changes
+        revision: 27bf3e61c4a82541f794275884a3fb1a3b1fc4f3
 
 fxc2:
     description: fxc2 source code
@@ -392,8 +385,8 @@ android-rs-glue:
     description: android-rs-glue source code
     fetch:
         type: git
-        repo: https://github.com/rust-windowing/android-rs-glue
-        revision: e3ac6edea5814e1faca0c31ea8fac6877cb929ea
+        repo: https://github.com/jamienicol/android-rs-glue
+        revision: 7a57ad320de79c74a57a8ce02b1dc69b1ea7332a
 
 clang-5.0:
     description: clang 5.0.2 source code
@@ -422,6 +415,13 @@ clang-9:
         type: git
         repo: https://github.com/llvm/llvm-project
         revision: c1a0a213378a458fbea1a5c77b315c7dce08fd05
+
+clang-10:
+    description: clang 10.0.0 source code
+    fetch:
+        type: git
+        repo: https://github.com/llvm/llvm-project
+        revision: d32170dbd5b0d54436537b6b75beaf44324e0c28
 
 wasi-sdk:
     description: wasi-sdk source code
@@ -456,26 +456,35 @@ lucetc-source:
     fetch:
         type: git
         repo: https://github.com/PLSysSec/lucet_sandbox_compiler/
-        revision: 5e870faf6f95d79d11efc813e56370ad124bbed5
+        revision: a0a1ce981638109f1f76cd1eecf17a0436a20055
 
 dump-syms:
     description: dump_syms source code
     fetch:
         type: git
         repo: https://github.com/mozilla/dump_syms/
-        # 0.0.4 + fix for Windows cross builds
-        revision: c75b1fb14f07650d9490b788710af2367c7e00d0
+        # 0.0.5
+        revision: 2603fb01a18e4e11d95b95fc08d9dacad9076f43
 
 fix-stacks:
     description: fix-stacks source code
     fetch:
         type: git
         repo: https://github.com/mozilla/fix-stacks/
-        revision: 22bd8d55956d5403e1e2d2c14fd07d8ab74b5807
+        revision: b8b127d27cdcd64a5e66a7fb0a06c6c818445a61
 
 winchecksec:
     description: winchecksec source code
     fetch:
         type: git
         repo: https://github.com/trailofbits/winchecksec/
-        revision: 8143f621359616f16eaa265e22d10a7962536634
+        revision: 93ffe67dbfc757bf6f440d80b8acf88e652ed60a
+
+codeql-2.0.3:
+    description: CodeQL query tools
+    fetch:
+        type: static-url
+        url: https://github.com/github/codeql-cli-binaries/releases/download/v2.0.3/codeql.zip
+        sha256: 094ff1ffc7211e8222c148e375fdd53b58bd4c0fe20875d9d7abf2a5e6c341a5
+        size: 473738719
+        artifact-name: codeql.zip

@@ -27,10 +27,8 @@ static void WrapAndRecordSourceSurfaceUserDataFunc(void* aUserData) {
   WrapAndRecordSourceSurfaceUserData* userData =
       static_cast<WrapAndRecordSourceSurfaceUserData*>(aUserData);
 
-  userData->recorder->RemoveSourceSurface((SourceSurface*)userData->refPtr);
-  userData->recorder->RemoveStoredObject(userData->refPtr);
-  userData->recorder->RecordEvent(
-      RecordedSourceSurfaceDestruction(ReferencePtr(userData->refPtr)));
+  userData->recorder->RecordSourceSurfaceDestruction(
+      static_cast<SourceSurface*>(userData->refPtr));
 
   delete userData;
 }
@@ -356,6 +354,7 @@ void DrawTargetWrapAndRecord::Fill(const Path* aPath, const Pattern& aPattern,
 
 struct WrapAndRecordFontUserData {
   void* refPtr;
+  void* unscaledFont;
   RefPtr<DrawEventRecorderPrivate> recorder;
 };
 
@@ -366,6 +365,7 @@ static void WrapAndRecordFontUserDataDestroyFunc(void* aUserData) {
   userData->recorder->RecordEvent(
       RecordedScaledFontDestruction(ReferencePtr(userData->refPtr)));
   userData->recorder->RemoveScaledFont((ScaledFont*)userData->refPtr);
+  userData->recorder->DecrementUnscaledFontRefCount(userData->unscaledFont);
   delete userData;
 }
 
@@ -378,7 +378,7 @@ void DrawTargetWrapAndRecord::FillGlyphs(ScaledFont* aFont,
   UserDataKey* userDataKey = reinterpret_cast<UserDataKey*>(mRecorder.get());
   if (!aFont->GetUserData(userDataKey)) {
     UnscaledFont* unscaledFont = aFont->GetUnscaledFont();
-    if (!mRecorder->HasStoredUnscaledFont(unscaledFont)) {
+    if (mRecorder->IncrementUnscaledFontRefCount(unscaledFont) == 0) {
       RecordedFontData fontData(unscaledFont);
       RecordedFontDetails fontDetails;
       if (fontData.GetFontDetails(fontDetails)) {
@@ -401,13 +401,13 @@ void DrawTargetWrapAndRecord::FillGlyphs(ScaledFont* aFont,
                           "serialise UnscaledFont";
         }
       }
-      mRecorder->AddStoredUnscaledFont(unscaledFont);
     }
 
     mRecorder->RecordEvent(RecordedScaledFontCreation(aFont, unscaledFont));
 
     WrapAndRecordFontUserData* userData = new WrapAndRecordFontUserData;
     userData->refPtr = aFont;
+    userData->unscaledFont = unscaledFont;
     userData->recorder = mRecorder;
     aFont->AddUserData(userDataKey, userData,
                        &WrapAndRecordFontUserDataDestroyFunc);

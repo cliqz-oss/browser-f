@@ -1,7 +1,9 @@
 //! Generated parts of a JS parser.
 
 mod ast_builder;
+mod context_stack;
 mod declaration_kind;
+mod early_error_checker;
 mod early_errors;
 mod error;
 mod parser_tables_generated;
@@ -10,6 +12,7 @@ mod token;
 pub mod traits;
 
 extern crate jsparagus_ast as ast;
+extern crate static_assertions;
 
 pub use ast_builder::{AstBuilder, AstBuilderDelegate};
 pub use declaration_kind::DeclarationKind;

@@ -17,12 +17,27 @@ namespace js {
 namespace irregexp {
 
 Isolate* CreateIsolate(JSContext* cx);
+void DestroyIsolate(Isolate* isolate);
 
 bool CheckPatternSyntax(JSContext* cx, frontend::TokenStreamAnyChars& ts,
                         const mozilla::Range<const char16_t> chars,
                         JS::RegExpFlags flags);
 bool CheckPatternSyntax(JSContext* cx, frontend::TokenStreamAnyChars& ts,
                         HandleAtom pattern, JS::RegExpFlags flags);
+
+bool CompilePattern(JSContext* cx, MutableHandleRegExpShared re,
+                    HandleLinearString input, RegExpShared::CodeKind codeKind);
+
+RegExpRunStatus Execute(JSContext* cx, MutableHandleRegExpShared re,
+                        HandleLinearString input, size_t start,
+                        VectorMatchPairs* matches);
+
+RegExpRunStatus ExecuteForFuzzing(JSContext* cx, HandleAtom pattern,
+                                  HandleLinearString input,
+                                  JS::RegExpFlags flags,
+                                  size_t startIndex,
+                                  VectorMatchPairs* matches,
+                                  RegExpShared::CodeKind codeKind);
 
 }  // namespace irregexp
 }  // namespace js

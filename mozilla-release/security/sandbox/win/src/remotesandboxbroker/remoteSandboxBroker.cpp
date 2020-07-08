@@ -34,12 +34,10 @@ void RemoteSandboxBroker::Shutdown() {
       }));
 }
 
-bool RemoteSandboxBroker::LaunchApp(const wchar_t* aPath,
-                                    const wchar_t* aArguments,
-                                    base::EnvironmentMap& aEnvironment,
-                                    GeckoProcessType aProcessType,
-                                    const bool aEnableLogging,
-                                    void** aProcessHandle) {
+bool RemoteSandboxBroker::LaunchApp(
+    const wchar_t* aPath, const wchar_t* aArguments,
+    base::EnvironmentMap& aEnvironment, GeckoProcessType aProcessType,
+    const bool aEnableLogging, const IMAGE_THUNK_DATA*, void** aProcessHandle) {
   // Note: we expect to be called on the IPC launch thread from
   // GeckoChildProcesHost while it's launching a child process. We can't
   // run a synchronous launch here as that blocks the calling thread while
@@ -135,7 +133,8 @@ void RemoteSandboxBroker::SetSecurityLevelForContentProcess(
       "RemoteSandboxBroker::SetSecurityLevelForContentProcess not Implemented");
 }
 
-void RemoteSandboxBroker::SetSecurityLevelForGPUProcess(int32_t aSandboxLevel) {
+void RemoteSandboxBroker::SetSecurityLevelForGPUProcess(
+    int32_t aSandboxLevel, const nsCOMPtr<nsIFile>& aProfileDir) {
   MOZ_CRASH(
       "RemoteSandboxBroker::SetSecurityLevelForGPUProcess not Implemented");
 }

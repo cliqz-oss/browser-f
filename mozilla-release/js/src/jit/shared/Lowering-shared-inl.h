@@ -291,23 +291,27 @@ void LIRGeneratorShared::defineReturn(LInstruction* lir, MDefinition* mir) {
       lir->setDef(0, LDefinition(vreg, LDefinition::DOUBLE,
                                  LFloatReg(ReturnDoubleReg)));
       break;
-    case MIRType::Int8x16:
-    case MIRType::Int16x8:
-    case MIRType::Int32x4:
-    case MIRType::Bool8x16:
-    case MIRType::Bool16x8:
-    case MIRType::Bool32x4:
-      lir->setDef(0, LDefinition(vreg, LDefinition::SIMD128INT,
-                                 LFloatReg(ReturnSimd128Reg)));
-      break;
-    case MIRType::Float32x4:
-      lir->setDef(0, LDefinition(vreg, LDefinition::SIMD128FLOAT,
+    case MIRType::Simd128:
+      lir->setDef(0, LDefinition(vreg, LDefinition::SIMD128,
                                  LFloatReg(ReturnSimd128Reg)));
       break;
     default:
       LDefinition::Type type = LDefinition::TypeFrom(mir->type());
-      MOZ_ASSERT(type != LDefinition::DOUBLE && type != LDefinition::FLOAT32);
-      lir->setDef(0, LDefinition(vreg, type, LGeneralReg(ReturnReg)));
+      switch (type) {
+        case LDefinition::GENERAL:
+        case LDefinition::INT32:
+        case LDefinition::OBJECT:
+        case LDefinition::SLOTS:
+        case LDefinition::STACKRESULTS:
+          lir->setDef(0, LDefinition(vreg, type, LGeneralReg(ReturnReg)));
+          break;
+        case LDefinition::DOUBLE:
+        case LDefinition::FLOAT32:
+        case LDefinition::SIMD128:
+          MOZ_CRASH("Float cases must have been handled earlier");
+        default:
+          MOZ_CRASH("Unexpected type");
+      }
       break;
   }
 
@@ -578,6 +582,12 @@ LDefinition LIRGeneratorShared::tempFloat32() {
 LDefinition LIRGeneratorShared::tempDouble() {
   return temp(LDefinition::DOUBLE);
 }
+
+#ifdef ENABLE_WASM_SIMD
+LDefinition LIRGeneratorShared::tempSimd128() {
+  return temp(LDefinition::SIMD128);
+}
+#endif
 
 LDefinition LIRGeneratorShared::tempCopy(MDefinition* input,
                                          uint32_t reusedInput) {

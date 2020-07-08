@@ -17,6 +17,7 @@ places-open-window =
 places-open-private-window =
     .label = In neuem privaten Fenster öffnen
     .accesskey = p
+
 places-new-bookmark =
     .label = Neues Lesezeichen…
     .accesskey = N
@@ -29,6 +30,7 @@ places-new-folder =
 places-new-separator =
     .label = Neue Trennlinie
     .accesskey = T
+
 places-view =
     .label = Sortieren
     .accesskey = o
@@ -47,10 +49,12 @@ places-by-last-visited =
 places-by-day-and-site =
     .label = Nach Datum und Website
     .accesskey = h
+
 places-history-search =
     .placeholder = Chronik durchsuchen
 places-bookmarks-search =
     .placeholder = Lesezeichen durchsuchen
+
 places-delete-domain-data =
     .label = Gesamte Website vergessen
     .accesskey = v

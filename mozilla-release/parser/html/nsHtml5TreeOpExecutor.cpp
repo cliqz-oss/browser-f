@@ -176,7 +176,7 @@ nsHtml5TreeOpExecutor::DidBuildModel(bool aTerminated) {
   }
 
   if (!destroying) {
-    mDocument->TriggerInitialDocumentTranslation();
+    mDocument->OnParsingCompleted();
 
     if (!mLayoutStarted) {
       // We never saw the body, and layout never got started. Force
@@ -244,7 +244,7 @@ nsHtml5TreeOpExecutor::SetParser(nsParserBase* aParser) {
   return NS_OK;
 }
 
-void nsHtml5TreeOpExecutor::InitialDocumentTranslationCompleted() {
+void nsHtml5TreeOpExecutor::InitialTranslationCompleted() {
   nsContentSink::StartLayout(false);
 }
 
@@ -1004,10 +1004,12 @@ void nsHtml5TreeOpExecutor::PreloadStyle(const nsAString& aURL,
                           aLinkPreload);
 }
 
-void nsHtml5TreeOpExecutor::PreloadImage(
-    const nsAString& aURL, const nsAString& aCrossOrigin,
-    const nsAString& aSrcset, const nsAString& aSizes,
-    const nsAString& aImageReferrerPolicy) {
+void nsHtml5TreeOpExecutor::PreloadImage(const nsAString& aURL,
+                                         const nsAString& aCrossOrigin,
+                                         const nsAString& aSrcset,
+                                         const nsAString& aSizes,
+                                         const nsAString& aImageReferrerPolicy,
+                                         bool aLinkPreload) {
   nsCOMPtr<nsIURI> baseURI = BaseURIForPreload();
   bool isImgSet = false;
   nsCOMPtr<nsIURI> uri =
@@ -1016,7 +1018,7 @@ void nsHtml5TreeOpExecutor::PreloadImage(
     // use document wide referrer policy
     mDocument->MaybePreLoadImage(uri, aCrossOrigin,
                                  GetPreloadReferrerPolicy(aImageReferrerPolicy),
-                                 isImgSet);
+                                 isImgSet, aLinkPreload);
   }
 }
 
@@ -1027,6 +1029,28 @@ void nsHtml5TreeOpExecutor::PreloadPictureSource(const nsAString& aSrcset,
                                                  const nsAString& aType,
                                                  const nsAString& aMedia) {
   mDocument->PreloadPictureImageSource(aSrcset, aSizes, aType, aMedia);
+}
+
+void nsHtml5TreeOpExecutor::PreloadFont(const nsAString& aURL,
+                                        const nsAString& aCrossOrigin,
+                                        const nsAString& aReferrerPolicy) {
+  nsCOMPtr<nsIURI> uri = ConvertIfNotPreloadedYet(aURL);
+  if (!uri) {
+    return;
+  }
+
+  mDocument->Preloads().PreloadFont(uri, aCrossOrigin, aReferrerPolicy);
+}
+
+void nsHtml5TreeOpExecutor::PreloadFetch(const nsAString& aURL,
+                                         const nsAString& aCrossOrigin,
+                                         const nsAString& aReferrerPolicy) {
+  nsCOMPtr<nsIURI> uri = ConvertIfNotPreloadedYet(aURL);
+  if (!uri) {
+    return;
+  }
+
+  mDocument->Preloads().PreloadFetch(uri, aCrossOrigin, aReferrerPolicy);
 }
 
 void nsHtml5TreeOpExecutor::PreloadOpenPicture() {
@@ -1054,6 +1078,8 @@ void nsHtml5TreeOpExecutor::SetSpeculationBase(const nsAString& aURL) {
   DebugOnly<nsresult> rv = NS_NewURI(getter_AddRefs(mSpeculationBaseURI), aURL,
                                      encoding, mDocument->GetDocumentURI());
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to create a URI");
+
+  mDocument->Preloads().SetSpeculationBase(mSpeculationBaseURI);
 }
 
 void nsHtml5TreeOpExecutor::UpdateReferrerInfoFromMeta(

@@ -20,6 +20,7 @@ namespace dom {
  * Note. keep this sync with `MediaControlKeysTestEvent` in ChromeUtils.webidl.
  */
 enum class MediaControlKeysEvent : uint32_t {
+  eFocus,
   ePlay,
   ePause,
   ePlayPause,

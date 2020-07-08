@@ -24,37 +24,13 @@ ManifestDPIAware true
 
 !addplugindir ./
 
-Var Dialog
-Var Progressbar
-Var ProgressbarMarqueeIntervalMS
 Var CheckboxSetAsDefault
 Var CheckboxShortcuts
 Var CheckboxSendPing
 Var CheckboxInstallMaintSvc
-Var DroplistArch
-Var LabelBlurb1
-Var LabelBlurb2
-Var LabelBlurb3
-Var BgBitmapImage
-Var HwndBgBitmapControl
-Var CurrentBlurbIdx
 Var CheckboxCleanupProfile
 
-Var Bitmap1
-Var Bitmap2
-Var Bitmap3
-Var Bitmap4
-Var HwndBitmap1
-Var HwndBitmap2
-Var HwndBitmap3
-Var HwndBitmap4
-
-Var FontInstalling
-Var FontBlurb1
-Var FontBlurb2
-Var FontFooter
-Var FontButton
-Var FontCheckbox
+Var FontFamilyName
 
 Var CanWriteToInstallDir
 Var HasRequiredSpaceAvailable
@@ -69,6 +45,7 @@ Var CanSetAsDefault
 Var InstallCounterStep
 Var InstallTotalSteps
 Var ProgressCompleted
+Var UsingHighContrastMode
 
 Var ExitCode
 Var FirefoxLaunchCode
@@ -89,7 +66,6 @@ Var EndDownloadPhaseTickCount
 Var EndPreInstallPhaseTickCount
 Var EndInstallPhaseTickCount
 Var EndFinishPhaseTickCount
-Var SendPingTimestamp
 
 Var InitialInstallRequirementsCode
 Var ExistingProfile
@@ -101,19 +77,14 @@ Var OpenedDownloadPage
 Var DownloadServerIP
 Var PostSigningData
 Var PreviousInstallDir
-Var PreviousInstallArch
 Var ProfileCleanupPromptType
-Var ProfileCleanupHeaderString
-Var ProfileCleanupButtonString
 Var AppLaunchWaitTickCount
+Var TimerHandle
 
-; Cliqz. Still use only two platform, x86 and x64. ARM not supported yet.
-; A lot of related code removed from script for now. After starting support
-; for ARM - uncomment this and put other related code back.
-; !define ARCH_X86 1
-; !define ARCH_AMD64 2
-; !define ARCH_AARCH64 3
-; Var ArchToInstall
+!define ARCH_X86 1
+!define ARCH_AMD64 2
+!define ARCH_AARCH64 3
+Var ArchToInstall
 
 ; Uncomment the following to prevent pinging the metrics server when testing
 ; the stub installer
@@ -165,12 +136,6 @@ Var AppLaunchWaitTickCount
 ; Maximum times to retry the download before displaying an error
 !define DownloadMaxRetries 9
 
-; Minimum size expected to download in bytes
-!define DownloadMinSizeBytes 15728640 ; 15 MB
-
-; Maximum size expected to download in bytes
-!define DownloadMaxSizeBytes 157286400 ; 150 MB
-
 ; Interval before retrying to download. 3 seconds is used along with 10
 ; attempted downloads (the first attempt along with 9 retries) to give a
 ; minimum of 30 seconds or retrying before giving up.
@@ -196,8 +161,8 @@ Var AppLaunchWaitTickCount
 !define InstallPaveOverTotalSteps 1650
 
 ; Blurb duty cycle
-!define BlurbDisplayMS 11700
-!define BlurbBlankMS 300
+!define BlurbDisplayMS 19500
+!define BlurbBlankMS 500
 
 ; Interval between checks for the application window and progress bar updates.
 !define AppLaunchWaitIntervalMS 100
@@ -207,7 +172,7 @@ Var AppLaunchWaitTickCount
 
 ; Maximum value of the download/install/launch progress bar, and the end values
 ; for each individual stage.
-!define PROGRESS_BAR_TOTAL_STEPS 500
+!define PROGRESS_BAR_TOTAL_STEPS 500 
 !define PROGRESS_BAR_DOWNLOAD_END_STEP 300
 !define PROGRESS_BAR_INSTALL_END_STEP 475
 !define PROGRESS_BAR_APP_LAUNCH_END_STEP 500
@@ -221,6 +186,7 @@ Var AppLaunchWaitTickCount
 !define NONADMIN_ELEVATE
 
 !define CONFIG_INI "config.ini"
+!define PARTNER_INI "$EXEDIR\partner.ini"
 
 !ifndef FILE_SHARE_READ
   !define FILE_SHARE_READ 1
@@ -238,7 +204,6 @@ Var AppLaunchWaitTickCount
 !define DefaultInstDir32bit "$PROGRAMFILES32\${BrandFullName}"
 !define DefaultInstDir64bit "$PROGRAMFILES64\${BrandFullName}"
 
-!include "nsDialogs.nsh"
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 !include "TextFunc.nsh"
@@ -261,33 +226,30 @@ Var AppLaunchWaitTickCount
 ; The OFFICIAL define is a workaround to support different urls for Release and
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
-; Cliqz: do not support beta version distributon with mini_installer
-;!ifdef OFFICIAL
-;!ifdef BETA_UPDATE_CHANNEL
-;!undef URLStubDownloadX86
-;!undef URLStubDownloadAMD64
-;!undef URLStubDownloadAArch64
-;!define URLStubDownloadX86 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-;!define URLStubDownloadAMD64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
-;!define URLStubDownloadAArch64 "https://download.mozilla.org/?os=win64-aarch64&lang=${AB_CD}&product=firefox-beta-latest"
-;!undef URLManualDownload
-;!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-;!undef Channel
-;!define Channel "beta"
-;!endif
-;!endif
-
-!undef INSTALL_BLURB_TEXT_COLOR
-!define INSTALL_BLURB_TEXT_COLOR 0xFFFFFF
+!ifdef OFFICIAL
+!ifdef BETA_UPDATE_CHANNEL
+!undef URLStubDownloadX86
+!undef URLStubDownloadAMD64
+!undef URLStubDownloadAArch64
+!define URLStubDownloadX86 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
+!define URLStubDownloadAMD64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
+!define URLStubDownloadAArch64 "https://download.mozilla.org/?os=win64-aarch64&lang=${AB_CD}&product=firefox-beta-latest"
+!undef URLManualDownload
+!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
+!undef Channel
+!define Channel "beta"
+!endif
+!endif
 
 !include "common.nsh"
 
+!insertmacro CopyPostSigningData
 !insertmacro ElevateUAC
 !insertmacro GetLongPath
 !insertmacro GetPathFromString
 !insertmacro GetParent
 !insertmacro GetSingleInstallPath
-!insertmacro GetTextWidthHeight
+!insertmacro InitHashAppModelId
 !insertmacro IsUserAdmin
 !insertmacro RemovePrecompleteEntries
 !insertmacro SetBrandNameVars
@@ -302,7 +264,7 @@ OutFile "setup-stub.exe"
 Icon "firefox64.ico"
 XPStyle on
 BrandingText " "
-ChangeUI all "nsisui.exe"
+ChangeUI IDD_INST "nsisui.exe"
 
 !ifdef ${AB_CD}_rtl
   LoadLanguageFile "locale-rtl.nlf"
@@ -351,12 +313,11 @@ Function .onInit
     Quit
   ${EndIf}
 
-  Call ShouldInstall64Bit
-  ${If} $0 == 1
-    StrCpy $DroplistArch "$(VERSION_64BIT)"
+  Call GetArchToInstall
+  ${If} $ArchToInstall == ${ARCH_AARCH64}
+  ${OrIf} $ArchToInstall == ${ARCH_AMD64}
     StrCpy $INSTDIR "${DefaultInstDir64bit}"
   ${Else}
-    StrCpy $DroplistArch "$(VERSION_32BIT)"
     StrCpy $INSTDIR "${DefaultInstDir32bit}"
   ${EndIf}
 
@@ -367,48 +328,32 @@ Function .onInit
   ; path for this install, even if it's not the same architecture.
   SetRegView 32
   SetShellVarContext all ; Set SHCTX to HKLM
-  ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
+  ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
 
   ${If} "$R9" == "false"
-  ${AndIf} ${RunningX64}
-    SetRegView 64
-    ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
+    ${If} ${IsNativeAMD64}
+    ${OrIf} ${IsNativeARM64}
+      SetRegView 64
+      ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+    ${EndIf}
   ${EndIf}
 
   ${If} "$R9" == "false"
     SetShellVarContext current ; Set SHCTX to HKCU
-    ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
+    ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
   ${EndIf}
 
   StrCpy $PreviousInstallDir ""
-  StrCpy $PreviousInstallArch ""
   ${If} "$R9" != "false"
-    ; Don't override the default install path with an existing installation
-    ; of a different architecture.
-    System::Call "*(i)p.r0"
-    StrCpy $1 "$R9\${FileMainEXE}"
-    System::Call "Kernel32::GetBinaryTypeW(w r1, p r0)i"
-    System::Call "*$0(i.r2)"
-    System::Free $0
-
-    ${If} $2 == "6" ; 6 == SCS_64BIT_BINARY
-    ${AndIf} ${RunningX64}
-      StrCpy $PreviousInstallDir "$R9"
-      StrCpy $PreviousInstallArch "64"
-      StrCpy $INSTDIR "$PreviousInstallDir"
-    ${ElseIf} $2 == "0" ; 0 == SCS_32BIT_BINARY
-    ${AndIfNot} ${RunningX64}
-      StrCpy $PreviousInstallDir "$R9"
-      StrCpy $PreviousInstallArch "32"
-      StrCpy $INSTDIR "$PreviousInstallDir"
-    ${EndIf}
+    StrCpy $PreviousInstallDir "$R9"
+    StrCpy $INSTDIR "$PreviousInstallDir"
   ${EndIf}
 
   ; Used to determine if the default installation directory was used.
   StrCpy $InitialInstallDir "$INSTDIR"
 
   ClearErrors
-  WriteRegStr HKLM "Software\Cliqz" "${BrandShortName}InstallerTest" \
+  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
                    "Write Test"
 
   ; Only display set as default when there is write access to HKLM and on Win7
@@ -417,13 +362,10 @@ Function .onInit
   ${OrIf} ${AtLeastWin8}
     StrCpy $CanSetAsDefault "false"
   ${Else}
-    DeleteRegValue HKLM "Software\Cliqz" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
     StrCpy $CanSetAsDefault "true"
   ${EndIf}
   StrCpy $CheckboxSetAsDefault "0"
-
-  ; The interval in MS used for the progress bars set as marquee.
-  StrCpy $ProgressbarMarqueeIntervalMS "10"
 
   ; Initialize the majority of variables except those that need to be reset
   ; when a page is displayed.
@@ -440,6 +382,7 @@ Function .onInit
   StrCpy $CheckboxShortcuts "1"
   StrCpy $CheckboxSendPing "1"
   StrCpy $CheckboxCleanupProfile "0"
+  StrCpy $ProgressCompleted "0"
 !ifdef MOZ_MAINTENANCE_SERVICE
   ; We can only install the maintenance service if the user is an admin.
   Call IsUserAdmin
@@ -453,38 +396,36 @@ Function .onInit
   StrCpy $CheckboxInstallMaintSvc "0"
 !endif
 
-  StrCpy $0 ""
+  StrCpy $FontFamilyName ""
 !ifdef FONT_FILE1
   ${If} ${FileExists} "$FONTS\${FONT_FILE1}"
-    StrCpy $0 "${FONT_NAME1}"
+    StrCpy $FontFamilyName "${FONT_NAME1}"
   ${EndIf}
 !endif
 
 !ifdef FONT_FILE2
-  ${If} $0 == ""
+  ${If} $FontFamilyName == ""
   ${AndIf} ${FileExists} "$FONTS\${FONT_FILE2}"
-    StrCpy $0 "${FONT_NAME2}"
+    StrCpy $FontFamilyName "${FONT_NAME2}"
   ${EndIf}
 !endif
 
-  ${If} $0 == ""
-    StrCpy $0 "$(^Font)"
+  ${If} $FontFamilyName == ""
+    StrCpy $FontFamilyName "$(^Font)"
   ${EndIf}
 
-  CreateFont $FontInstalling "$0" "11" "400"
-  CreateFont $FontBlurb1     "$0" "26" "600"
-  CreateFont $FontBlurb2     "$0" "14" "400"
-  CreateFont $FontButton     "$0" "14" "600"
-  CreateFont $FontFooter     "$0" "10" "600"
-  CreateFont $FontCheckbox   "$0" "12" "400"
-
   InitPluginsDir
-  File /oname=$PLUGINSDIR\cliqzlogo.gif "cliqzlogo.gif"
-  File /oname=$PLUGINSDIR\cliqzlogo_2x.gif "cliqzlogo_2x.gif"
-  File /oname=$PLUGINSDIR\artboard1.bmp "artboard1.bmp"
-  File /oname=$PLUGINSDIR\artboard2.bmp "artboard2.bmp"
-  File /oname=$PLUGINSDIR\artboard3.bmp "artboard3.bmp"
-  File /oname=$PLUGINSDIR\artboard5.bmp "artboard5.bmp"
+  File /oname=$PLUGINSDIR\bgstub.jpg "bgstub.jpg"
+
+  ; Detect whether the machine is running with a high contrast theme.
+  ; We'll hide our background images in that case, both because they don't
+  ; always render properly and also to improve the contrast.
+  System::Call '*(i 12, i 0, p 0) p . r0'
+  ; 0x42 == SPI_GETHIGHCONTRAST
+  System::Call 'user32::SystemParametersInfoW(i 0x42, i 0, p r0, i 0)'
+  System::Call '*$0(i, i . r1, p)'
+  System::Free $0
+  IntOp $UsingHighContrastMode $1 & 1
 
   SetShellVarContext all ; Set SHCTX to All Users
   ; If the user doesn't have write access to the installation directory set
@@ -539,18 +480,16 @@ Function .onInit
     Quit
   ${EndIf}
 
-  ; Save information about brand to registry for later use from full installer
-  CliqzHelper::saveTaggedParams "Software\CLIQZ" 259200
+  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+
+  File /oname=$PLUGINSDIR\stub_common.css "stub_common.css"
+  File /oname=$PLUGINSDIR\stub_common.js "stub_common.js"
 FunctionEnd
 
 ; .onGUIInit isn't needed except for RTL locales
 !ifdef ${AB_CD}_rtl
 Function .onGUIInit
-  ; Since NSIS RTL support doesn't mirror progress bars use Windows mirroring.
-  ${NSD_AddExStyle} $HWNDPARENT ${WS_EX_LAYOUTRTL}
-  ${RemoveExStyle} $HWNDPARENT ${WS_EX_RTLREADING}
-  ${RemoveExStyle} $HWNDPARENT ${WS_EX_RIGHT}
-  ${NSD_AddExStyle} $HWNDPARENT ${WS_EX_LEFT}|${WS_EX_LTRREADING}
+  ${MakeWindowRTL} $HWNDPARENT
 FunctionEnd
 !endif
 
@@ -563,13 +502,7 @@ Function .onGUIEnd
 FunctionEnd
 
 Function .onUserAbort
-  ${NSD_KillTimer} StartDownload
-  ${NSD_KillTimer} OnDownload
-  ${NSD_KillTimer} CheckInstall
-  ${NSD_KillTimer} FinishInstall
-  ${NSD_KillTimer} DisplayDownloadError
-  ${NSD_KillTimer} NextBlurb
-  ${NSD_KillTimer} ClearBlurb
+  WebBrowser::CancelTimer $TimerHandle
 
   ${If} "$IsDownloadFinished" != ""
     ; Go ahead and cancel the download so it doesn't keep running while this
@@ -599,284 +532,129 @@ Function .onUserAbort
   Abort
 FunctionEnd
 
-Function DrawBackgroundImage
-  ${NSD_CreateBitmap} 0 0 100% 100% ""
-  Pop $HwndBgBitmapControl
+!macro _RegisterAllCustomFunctions
+  GetFunctionAddress $0 getUIString
+  WebBrowser::RegisterCustomFunction $0 "getUIString"
 
-  ; If the scaling factor is 100%, use the 1x image; the 2x images scaled down
-  ; by that much don't always look good because some of them use thinner lines
-  ; and a darker background (over which aliasing is more visible).
-  System::Call 'user32::GetWindowDC(i $HWNDPARENT) i .r0'
-  System::Call 'gdi32::GetDeviceCaps(i $0, i 88) i .r1' ; 88 = LOGPIXELSX
-  System::Call 'user32::ReleaseDC(i $HWNDPARENT, i $0)'
-  ${If} $1 <= 96
-    ${SetStretchedImageOLE} $HwndBgBitmapControl $PLUGINSDIR\cliqzlogo.gif $BgBitmapImage
-  ${Else}
-    ${SetStretchedImageOLE} $HwndBgBitmapControl $PLUGINSDIR\cliqzlogo_2x.gif $BgBitmapImage
-  ${EndIf}
+  GetFunctionAddress $0 getTextDirection
+  WebBrowser::RegisterCustomFunction $0 "getTextDirection"
 
-  ; transparent bg on control prevents flicker on redraw
-  SetCtlColors $HwndBgBitmapControl ${INSTALL_BLURB_TEXT_COLOR} transparent
+  GetFunctionAddress $0 getFontName
+  WebBrowser::RegisterCustomFunction $0 "getFontName"
+
+  GetFunctionAddress $0 getIsHighContrast
+  WebBrowser::RegisterCustomFunction $0 "getIsHighContrast"
+
+  GetFunctionAddress $0 gotoInstallPage
+  WebBrowser::RegisterCustomFunction $0 "gotoInstallPage"
+
+  GetFunctionAddress $0 getProgressBarPercent
+  WebBrowser::RegisterCustomFunction $0 "getProgressBarPercent"
+!macroend
+!define RegisterAllCustomFunctions "!insertmacro _RegisterAllCustomFunctions"
+
+!macro _StartTimer _INTERVAL_MS _FUNCTION_NAME
+  Push $0
+  GetFunctionAddress $0 ${_FUNCTION_NAME}
+  WebBrowser::CreateTimer $0 ${_INTERVAL_MS}
+  Pop $TimerHandle
+  Pop $0
+!macroend
+!define StartTimer "!insertmacro _StartTimer"
+
+Function gotoInstallPage
+  Pop $0
+  StrCpy $CheckboxCleanupProfile $0
+
+  StrCpy $R9 1
+  Call RelativeGotoPage
+  Push $0
+FunctionEnd
+
+Function getProgressBarPercent
+  ; Custom functions always get one parameter, which we don't use here.
+  ; But we will use $0 as a scratch accumulator register.
+  Pop $0
+  ; This math is getting the progess bar completion fraction and converting it
+  ; to a percentage, but we implement that with the operations in the reverse
+  ; of the intuitive order so that our integer math doesn't truncate to zero.
+  IntOp $0 $ProgressCompleted * 100
+  IntOp $0 $0 / ${PROGRESS_BAR_TOTAL_STEPS}
+  Push $0
+FunctionEnd
+
+Function getTextDirection
+  Pop $0
+  !ifdef ${AB_CD}_rtl
+    Push "rtl"
+  !else
+    Push "ltr"
+  !endif
+FunctionEnd
+
+Function getFontName
+  Pop $0
+  Push $FontFamilyName
+FunctionEnd
+
+Function getIsHighContrast
+  Pop $0
+  Push $UsingHighContrastMode
+FunctionEnd
+
+Function getUIString
+  Pop $0
+  ${Select} $0
+    ${Case} "cleanup_header"
+      ${If} $ProfileCleanupPromptType == 1
+        Push "$(STUB_CLEANUP_REINSTALL_HEADER2)"
+      ${Else}
+        Push "$(STUB_CLEANUP_PAVEOVER_HEADER2)"
+      ${EndIf}
+    ${Case} "cleanup_button"
+      ${If} $ProfileCleanupPromptType == 1
+        Push "$(STUB_CLEANUP_REINSTALL_BUTTON2)"
+      ${Else}
+        Push "$(STUB_CLEANUP_PAVEOVER_BUTTON2)"
+      ${EndIf}
+    ${Case} "cleanup_checkbox"
+      Push "$(STUB_CLEANUP_CHECKBOX_LABEL2)"
+    ${Case} "installing_header"
+      Push "$(STUB_INSTALLING_HEADLINE2)"
+    ${Case} "installing_label"
+      Push "$(STUB_INSTALLING_LABEL2)"
+    ${Case} "installing_content"
+      Push "$(STUB_INSTALLING_BODY2)"
+    ${Case} "installing_blurb_0"
+      Push "$(STUB_BLURB_FIRST1)"
+    ${Case} "installing_blurb_1"
+      Push "$(STUB_BLURB_SECOND1)"
+    ${Case} "installing_blurb_2"
+      Push "$(STUB_BLURB_THIRD1)"
+    ${Case} "global_footer"
+      Push "$(STUB_BLURB_FOOTER2)"
+    ${Default}
+      Push ""
+  ${EndSelect}
 FunctionEnd
 
 Function createProfileCleanup
   Call ShouldPromptForProfileCleanup
-  ${Select} $ProfileCleanupPromptType
-  ${Case} 0
+
+  ${If} $ProfileCleanupPromptType == 0
     StrCpy $CheckboxCleanupProfile 0
     Abort ; Skip this page
-  ${Case} 1
-    StrCpy $ProfileCleanupHeaderString $(STUB_CLEANUP_REINSTALL_HEADER2)
-    StrCpy $ProfileCleanupButtonString $(STUB_CLEANUP_REINSTALL_BUTTON)
-  ${Case} 2
-    StrCpy $ProfileCleanupHeaderString $(STUB_CLEANUP_PAVEOVER_HEADER2)
-    StrCpy $ProfileCleanupButtonString $(STUB_CLEANUP_PAVEOVER_BUTTON)
-  ${EndSelect}
+  ${EndIf}
 
-  nsDialogs::Create /NOUNLOAD 1018
-  Pop $Dialog
+  ${RegisterAllCustomFunctions}
 
-  SetCtlColors $HWNDPARENT ${FOOTER_CONTROL_TEXT_COLOR_NORMAL} ${FOOTER_BKGRD_COLOR}
-
-  ; Since the text color for controls is set in this Dialog the foreground and
-  ; background colors of the Dialog must also be hardcoded.
-  SetCtlColors $Dialog ${COMMON_TEXT_COLOR_NORMAL} ${COMMON_BKGRD_COLOR}
-
-  FindWindow $7 "#32770" "" $HWNDPARENT
-  ${GetDlgItemWidthHeight} $HWNDPARENT $8 $9
-
-  ; Resize the Dialog to fill the entire window
-  System::Call 'user32::MoveWindow(i$Dialog,i0,i0,i $8,i $9,i0)'
-
-  GetDlgItem $0 $HWNDPARENT 1 ; Install button
-  ShowWindow $0 ${SW_HIDE}
-  EnableWindow $0 0
-
-  GetDlgItem $0 $HWNDPARENT 3 ; Back button
-  ShowWindow $0 ${SW_HIDE}
-  EnableWindow $0 0
-
-  GetDlgItem $0 $HWNDPARENT 2 ; Cancel button
-  ; Hide the Cancel button, but don't disable it (or else it won't be possible
-  ; to close the window)
-  ShowWindow $0 ${SW_HIDE}
-
-  GetDlgItem $0 $HWNDPARENT 10 ; Default browser checkbox
-  ; Hiding and then disabling allows Esc to still exit the installer
-  ShowWindow $0 ${SW_HIDE}
-  EnableWindow $0 0
-
-  GetDlgItem $0 $HWNDPARENT 11 ; Footer text
-  ShowWindow $0 ${SW_HIDE}
-  EnableWindow $0 0
-
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R1 $R2
-  ${GetTextWidthHeight} $ProfileCleanupHeaderString $FontBlurb1 $R1 $R1 $R2
-  ${NSD_CreateLabelCenter} 0 ${PROFILE_CLEANUP_LABEL_TOP_DU} 100% $R2 \
-    $ProfileCleanupHeaderString
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontBlurb1 0
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ${GetDlgItemBottomDU} $Dialog $0 $1
-  IntOp $1 $1 + 40 ; add a bit of padding between the header and the button
-  ${GetTextExtent} $ProfileCleanupButtonString $FontButton $R1 $R2
-  ; Add some padding to both dimensions of the button.
-  IntOp $R1 $R1 + 90
-  IntOp $R2 $R2 + 24
-  ; Now that we know the size and the Y coordinate for the button, we can find
-  ; the correct X coordinate to get it properly centered.
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  IntOp $R5 $R1 / 2
-  IntOp $R3 $R3 / 2
-  IntOp $R3 $R3 - $R5
-  ; We need a custom button because the default ones get drawn underneath the
-  ; background image we're about to insert.
-  ${NSD_CreateButton} $R3 $1 $R1 $R2 $ProfileCleanupButtonString
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontButton 0
-  ${NSD_OnClick} $0 gotoInstallPage
-  ${NSD_SetFocus} $0
-
-  ; For the checkbox, first we need to know the width of the checkbox itself,
-  ; since it can vary with the display scaling and the theme.
-  System::Call 'User32::GetSystemMetrics(i 71) i .r1' ; 71 == SM_CXMENUCHECK
-  ; Now get the width of the label test, if it were all on one line.
-  ${GetTextExtent} $(STUB_CLEANUP_CHECKBOX_LABEL) $FontCheckbox $R1 $R2
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  ; Add the checkbox width to the text width, then figure out how many lines
-  ; we're going to need in order to display that text in our dialog.
-  IntOp $R1 $R1 + $1
-  IntOp $R1 $R1 + 5
-  StrCpy $R5 $R1
-  StrCpy $R6 $R2
-  IntOp $R3 $R3 - 150 ; leave some padding on the sides of the dialog
-  ${While} $R1 > $R3
-    StrCpy $R5 $R3
-    IntOp $R2 $R2 + $R6
-    IntOp $R1 $R1 - $R3
-  ${EndWhile}
-  ${GetDlgItemBottomDU} $Dialog $0 $1
-  ; Now that we know the size for the checkbox, center it in the dialog.
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  IntOp $R6 $R5 / 2
-  IntOp $R3 $R3 / 2
-  IntOp $R3 $R3 - $R6
-  IntOp $1 $1 + 30 ; add a bit of padding between the button and the checkbox
-  ${NSD_CreateCheckbox} $R3 $1 $R5 $R2 $(STUB_CLEANUP_CHECKBOX_LABEL)
-  Pop $CheckboxCleanupProfile
-  SendMessage $CheckboxCleanupProfile ${WM_SETFONT} $FontCheckbox 0
-  ; The uxtheme must be disabled on checkboxes in order to override the system
-  ; colors and have a transparent background.
-  System::Call 'uxtheme::SetWindowTheme(i $CheckboxCleanupProfile, w " ", w " ")'
-  SetCtlColors $CheckboxCleanupProfile ${INSTALL_BLURB_TEXT_COLOR} transparent
-  ; Setting the background color to transparent isn't enough to actually make a
-  ; checkbox background transparent, you also have to set the right style.
-  ${NSD_AddExStyle} $CheckboxCleanupProfile ${WS_EX_TRANSPARENT}
-  ; For some reason, clicking on the checkbox causes its text to be redrawn
-  ; one pixel to the side of where it was, but without clearing away the
-  ; existing text first, so it looks like the weight increases when you click.
-  ; Hack around this by manually hiding and then re-showing the textbox when
-  ; it gets clicked on.
-  ${NSD_OnClick} $CheckboxCleanupProfile RedrawWindow
-  ${NSD_Check} $CheckboxCleanupProfile
-
-  ${NSD_CreateLabel} 60% ${INSTALL_FOOTER_TOP_DU} 35% 60u "$(STUB_BLURB_FOOTER2)"
-;  ${GetTextWidthHeight} "$(STUB_BLURB_FOOTER2)" $FontFooter \
-;    ${INSTALL_FOOTER_WIDTH_DU} $R1 $R2
-;  !ifdef ${AB_CD}_rtl
-;    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY} \
-;      ${WS_EX_TRANSPARENT} 30u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} \
-;       "$R2u" "$(STUB_BLURB_FOOTER2)"
-;  !else
-;    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY}|${SS_RIGHT} \
-;      ${WS_EX_TRANSPARENT} 175u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} \
-;      "$R2u" "$(STUB_BLURB_FOOTER2)"
-;  !endif
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontFooter 0
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  Call DrawBackgroundImage
-
-  LockWindow off
-  nsDialogs::Show
-
-  ${NSD_FreeImage} $BgBitmapImage
-FunctionEnd
-
-Function RedrawWindow
-  Pop $0
-  ShowWindow $0 ${SW_HIDE}
-  ShowWindow $0 ${SW_SHOW}
-FunctionEnd
-
-Function gotoInstallPage
-  ; Eat the parameter that NSD_OnClick always passes but that we don't need.
-  Pop $0
-
-  ; Save the state of the checkbox before it's destroyed.
-  ${NSD_GetState} $CheckboxCleanupProfile $CheckboxCleanupProfile
-
-  StrCpy $R9 1
-  Call RelativeGotoPage
+  File /oname=$PLUGINSDIR\profile_cleanup.html "profile_cleanup.html"
+  File /oname=$PLUGINSDIR\profile_cleanup_page.css "profile_cleanup_page.css"
+  File /oname=$PLUGINSDIR\profile_cleanup.js "profile_cleanup.js"
+  WebBrowser::ShowPage "$PLUGINSDIR\profile_cleanup.html"
 FunctionEnd
 
 Function createInstall
-  ; Begin setting up the download/install window
-
-  nsDialogs::Create /NOUNLOAD 1018
-  Pop $Dialog
-
-  SetCtlColors $HWNDPARENT ${FOOTER_CONTROL_TEXT_COLOR_NORMAL} ${FOOTER_BKGRD_COLOR}
-
-  ; Since the text color for controls is set in this Dialog the foreground and
-  ; background colors of the Dialog must also be hardcoded.
-  SetCtlColors $Dialog ${COMMON_TEXT_COLOR_NORMAL} ${COMMON_BKGRD_COLOR}
-
-  FindWindow $7 "#32770" "" $HWNDPARENT
-  ${GetDlgItemWidthHeight} $HWNDPARENT $8 $9
-
-  ; Resize the Dialog to fill the entire window
-  System::Call 'user32::MoveWindow(i$Dialog,i0,i0,i $8,i $9,i0)'
-
-  ; The header string may need more than half the width of the window, but it's
-  ; currently not close to needing multiple lines in any localization.
-  ${NSD_CreateLabelCenter} 0% ${NOW_INSTALLING_TOP_DU} 100% 47u "$(STUB_INSTALLING_LABEL2)"
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontInstalling 0
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ${NSD_CreateLabel} 60% ${INSTALL_BLURB1_TOP_DU} 37% 100u "$(STUB_BLURB1_FIRST1)"
-  Pop $LabelBlurb1
-  SendMessage $LabelBlurb1 ${WM_SETFONT} $FontBlurb1 0
-  SetCtlColors $LabelBlurb1 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-!if "${AB_CD}" == "de"
-  ${NSD_CreateLabel} 60% ${INSTALL_BLURB3_TOP_DU} 37% 100u "$(STUB_BLURB2_FIRST1)"
-!else
-  ${NSD_CreateLabel} 60% ${INSTALL_BLURB2_TOP_DU} 37% 100u "$(STUB_BLURB2_FIRST1)"
-!endif
-  Pop $LabelBlurb2
-  SendMessage $LabelBlurb2 ${WM_SETFONT} $FontBlurb2 0
-  SetCtlColors $LabelBlurb2 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ${NSD_CreateLabel} 60% ${INSTALL_BLURB3_TOP_DU} 37% 100u "$(STUB_BLURB2_FIFTH1)"
-  Pop $LabelBlurb3
-  SendMessage $LabelBlurb3 ${WM_SETFONT} $FontBlurb2 0
-  SetCtlColors $LabelBlurb3 ${INSTALL_BLURB_TEXT_COLOR} transparent
-  ShowWindow $LabelBlurb3 ${SW_HIDE}
-
-  StrCpy $CurrentBlurbIdx "0"
-
-  ${NSD_CreateLabel} 60% ${INSTALL_FOOTER_TOP_DU} 35% 60u "$(STUB_BLURB_FOOTER2)"
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontFooter 0
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ; load all images
-  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
-  Pop $Bitmap1
-  ${NSD_SetImage} $Bitmap1 $PLUGINSDIR\artboard1.bmp $HwndBitmap1
-
-  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
-  Pop $Bitmap2
-  ${NSD_SetImage} $Bitmap2 $PLUGINSDIR\artboard2.bmp $HwndBitmap2
-  ShowWindow $Bitmap2 ${SW_HIDE}
-
-  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
-  Pop $Bitmap3
-  ${NSD_SetImage} $Bitmap3 $PLUGINSDIR\artboard3.bmp $HwndBitmap3
-  ShowWindow $Bitmap3 ${SW_HIDE}
-
-  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
-  Pop $Bitmap4
-  ${NSD_SetImage} $Bitmap4 $PLUGINSDIR\artboard5.bmp $HwndBitmap4
-  ShowWindow $Bitmap4 ${SW_HIDE}
-
-;  ${GetTextWidthHeight} "$(STUB_BLURB_FOOTER2)" $FontFooter \
-;    ${INSTALL_FOOTER_WIDTH_DU} $R1 $R2
-;  !ifdef ${AB_CD}_rtl
-;    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY} \
-;      ${WS_EX_TRANSPARENT} 30u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} "$R2u" \
-;      "$(STUB_BLURB_FOOTER2)"
-;  !else
-;    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY}|${SS_RIGHT} \
-;      ${WS_EX_TRANSPARENT} 175u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} "$R2u" \
-;      "$(STUB_BLURB_FOOTER2)"
-;  !endif
-;  Pop $0
-;  SendMessage $0 ${WM_SETFONT} $FontFooter 0
-;  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ${NSD_CreateProgressBar} 19% ${PROGRESS_BAR_TOP_DU} 62% 3u ""
-  Pop $Progressbar
-  ${NSD_AddStyle} $Progressbar ${PBS_MARQUEE}
-  SendMessage $Progressbar ${PBM_SETMARQUEE} 1 \
-              $ProgressbarMarqueeIntervalMS ; start=1|stop=0 interval(ms)=+N
-
-  Call DrawBackgroundImage
-
   GetDlgItem $0 $HWNDPARENT 1 ; Install button
   EnableWindow $0 0
   ShowWindow $0 ${SW_HIDE}
@@ -886,23 +664,12 @@ Function createInstall
   ShowWindow $0 ${SW_HIDE}
 
   GetDlgItem $0 $HWNDPARENT 2 ; Cancel button
-  ; Focus the Cancel button otherwise it isn't possible to tab to it since it is
-  ; the only control that can be tabbed to.
-  ${NSD_SetFocus} $0
-  ; Kill the Cancel button's focus so pressing enter won't cancel the install.
-  SendMessage $0 ${WM_KILLFOCUS} 0 0
   ; Hide the Cancel button, but don't disable it (or else it won't be possible
   ; to close the window)
   ShowWindow $0 ${SW_HIDE}
 
-  GetDlgItem $0 $HWNDPARENT 10 ; Default browser checkbox
-  ; Hiding and then disabling allows Esc to still exit the installer
-  ShowWindow $0 ${SW_HIDE}
-  EnableWindow $0 0
-
-  GetDlgItem $0 $HWNDPARENT 11 ; Footer text
-  ShowWindow $0 ${SW_HIDE}
-  EnableWindow $0 0
+  ; Get keyboard focus on the parent
+  System::Call "user32::SetFocus(p$HWNDPARENT)"
 
   ; Set $DownloadReset to true so the first download tick count is measured.
   StrCpy $DownloadReset "true"
@@ -925,7 +692,7 @@ Function createInstall
     StrCpy $ExistingBuildID "0"
   ${EndIf}
 
-  ${If} ${FileExists} "$LOCALAPPDATA\Cliqz"
+  ${If} ${FileExists} "$LOCALAPPDATA\Mozilla\Firefox"
     StrCpy $ExistingProfile "1"
   ${Else}
     StrCpy $ExistingProfile "0"
@@ -948,104 +715,34 @@ Function createInstall
   ; Make sure the file we're about to try to download to doesn't already exist,
   ; so we don't end up trying to "resume" on top of the wrong file.
   Delete "$PLUGINSDIR\download.exe"
-  ${NSD_CreateTimer} StartDownload ${DownloadIntervalMS}
 
-  ${NSD_CreateTimer} ClearBlurb ${BlurbDisplayMS}
+  ${StartTimer} ${DownloadIntervalMS} StartDownload
 
-  LockWindow off
-  nsDialogs::Show
+  ${RegisterAllCustomFunctions}
 
-  ${NSD_FreeImage} $BgBitmapImage
-  ${NSD_FreeImage} $HwndBitmap1
-  ${NSD_FreeImage} $HwndBitmap2
-  ${NSD_FreeImage} $HwndBitmap3
-  ${NSD_FreeImage} $HwndBitmap4
+  File /oname=$PLUGINSDIR\installing.html "installing.html"
+  File /oname=$PLUGINSDIR\installing_page.css "installing_page.css"
+  File /oname=$PLUGINSDIR\installing.js "installing.js"
+  WebBrowser::ShowPage "$PLUGINSDIR\installing.html"
 FunctionEnd
 
 Function StartDownload
-  ${NSD_KillTimer} StartDownload
-  ${If} $DroplistArch == "$(VERSION_64BIT)"
-    InetBgDL::Get "${URLStubDownload64}${URLStubDownloadAppend}" \
-                  "$PLUGINSDIR\download.exe" \
-                  /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
-  ${Else}
-    InetBgDL::Get "${URLStubDownload32}${URLStubDownloadAppend}" \
-                  "$PLUGINSDIR\download.exe" \
-                  /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
-  ${EndIf}
-  StrCpy $4 ""
-  ${NSD_CreateTimer} OnDownload ${DownloadIntervalMS}
+  WebBrowser::CancelTimer $TimerHandle
+
+  Call GetDownloadURL
+  Pop $0
+  InetBgDL::Get "$0" "$PLUGINSDIR\download.exe" \
+                /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
+
+  ${StartTimer} ${DownloadIntervalMS} OnDownload
+
   ${If} ${FileExists} "$INSTDIR\${TO_BE_DELETED}"
     RmDir /r "$INSTDIR\${TO_BE_DELETED}"
   ${EndIf}
 FunctionEnd
 
 Function SetProgressBars
-  SendMessage $Progressbar ${PBM_SETPOS} $ProgressCompleted 0
   ${ITBL3SetProgressValue} "$ProgressCompleted" "${PROGRESS_BAR_TOTAL_STEPS}"
-FunctionEnd
-
-Function NextBlurb
-  ${NSD_KillTimer} NextBlurb
-
-  IntOp $CurrentBlurbIdx $CurrentBlurbIdx + 1
-  IntOp $CurrentBlurbIdx $CurrentBlurbIdx % 4
-
-  ${If} $CurrentBlurbIdx == "0"
-    StrCpy $0 "$(STUB_BLURB1_FIRST1)"
-    StrCpy $1 "$(STUB_BLURB2_FIRST1)"
-    ShowWindow $Bitmap1 ${SW_SHOW}
-  ${ElseIf} $CurrentBlurbIdx == "1"
-    StrCpy $0 "$(STUB_BLURB1_SECOND1)"
-    StrCpy $1 "$(STUB_BLURB2_SECOND1)"
-    ShowWindow $Bitmap2 ${SW_SHOW}
-  ${ElseIf} $CurrentBlurbIdx == "2"
-    StrCpy $0 "$(STUB_BLURB1_THIRD1)"
-    StrCpy $1 "$(STUB_BLURB2_THIRD1)"
-    ShowWindow $Bitmap3 ${SW_SHOW}
-  ${ElseIf} $CurrentBlurbIdx == "3"
-    StrCpy $0 "$(STUB_BLURB1_FIFTH1)"
-    StrCpy $1 "$(STUB_BLURB2_FIRST1)"
-    ShowWindow $Bitmap4 ${SW_SHOW}
-    ShowWindow $LabelBlurb3 ${SW_SHOW}
-  ${EndIf}
-
-  SendMessage $LabelBlurb1 ${WM_SETTEXT} 0 "STR:$0"
-  SendMessage $LabelBlurb2 ${WM_SETTEXT} 0 "STR:$1"
-
-  ${NSD_CreateTimer} ClearBlurb ${BlurbDisplayMS}
-FunctionEnd
-
-Function ClearBlurb
-  ${NSD_KillTimer} ClearBlurb
-
-  SendMessage $LabelBlurb1 ${WM_SETTEXT} 0 "STR:"
-  SendMessage $LabelBlurb2 ${WM_SETTEXT} 0 "STR:"
-
-  ${If} $CurrentBlurbIdx == "0"
-    ShowWindow $Bitmap1 ${SW_HIDE}
-  ${ElseIf} $CurrentBlurbIdx == "1"
-    ShowWindow $Bitmap2 ${SW_HIDE}
-  ${ElseIf} $CurrentBlurbIdx == "2"
-    ShowWindow $Bitmap3 ${SW_HIDE}
-  ${ElseIf} $CurrentBlurbIdx == "3"
-    ShowWindow $Bitmap4 ${SW_HIDE}
-    ShowWindow $LabelBlurb3 ${SW_HIDE}
-  ${EndIf}
-
-  ; force the background to repaint to clear the transparent label
-  System::Call "*(i,i,i,i) p .r0"
-  System::Call "user32::GetWindowRect(p $LabelBlurb1, p r0)"
-  System::Call "user32::MapWindowPoints(p 0, p $HwndBgBitmapControl, p r0, i 2)"
-  System::Call "user32::InvalidateRect(p $HwndBgBitmapControl, p r0, i 0)"
-  System::Free $0
-  System::Call "*(i,i,i,i) p .r0"
-  System::Call "user32::GetWindowRect(p $LabelBlurb2, p r0)"
-  System::Call "user32::MapWindowPoints(p 0, p $HwndBgBitmapControl, p r0, i 2)"
-  System::Call "user32::InvalidateRect(p $HwndBgBitmapControl, p r0, i 0)"
-  System::Free $0
-
-  ${NSD_CreateTimer} NextBlurb ${BlurbBlankMS}
 FunctionEnd
 
 Function OnDownload
@@ -1059,12 +756,12 @@ Function OnDownload
   # When status is $0 =< 299 it is handled by InetBgDL
   StrCpy $DownloadServerIP "$5"
   ${If} $0 > 299
-    ${NSD_KillTimer} OnDownload
+    WebBrowser::CancelTimer $TimerHandle
     IntOp $DownloadRetryCount $DownloadRetryCount + 1
     ${If} $DownloadRetryCount >= ${DownloadMaxRetries}
       StrCpy $ExitCode "${ERR_DOWNLOAD_TOO_MANY_RETRIES}"
       ; Use a timer so the UI has a chance to update
-      ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
+      ${StartTimer} ${InstallIntervalMS} DisplayDownloadError
       Return
     ${EndIf}
 
@@ -1075,9 +772,6 @@ Function OnDownload
     ${If} $0 != 1000
       ${If} "$DownloadReset" != "true"
         StrCpy $DownloadedBytes "0"
-        ${NSD_AddStyle} $Progressbar ${PBS_MARQUEE}
-        SendMessage $Progressbar ${PBM_SETMARQUEE} 1 \
-                    $ProgressbarMarqueeIntervalMS ; start=1|stop=0 interval(ms)=+N
         ${ITBL3SetProgressState} "${TBPF_INDETERMINATE}"
       ${EndIf}
       StrCpy $DownloadSizeBytes ""
@@ -1086,7 +780,7 @@ Function OnDownload
     ${EndIf}
 
     InetBgDL::Get /RESET /END
-    ${NSD_CreateTimer} StartDownload ${DownloadRetryIntervalMS}
+    ${StartTimer} ${DownloadRetryIntervalMS} StartDownload
     Return
   ${EndIf}
 
@@ -1106,29 +800,8 @@ Function OnDownload
 
   ${If} "$DownloadSizeBytes" == ""
   ${AndIf} "$4" != ""
-    ; Handle the case where the size of the file to be downloaded is less than
-    ; the minimum expected size or greater than the maximum expected size at the
-    ; beginning of the download.
-    ${If} $4 < ${DownloadMinSizeBytes}
-    ${OrIf} $4 > ${DownloadMaxSizeBytes}
-      ${NSD_KillTimer} OnDownload
-      InetBgDL::Get /RESET /END
-      StrCpy $DownloadReset "true"
-
-      ${If} $DownloadRetryCount >= ${DownloadMaxRetries}
-        ; Use a timer so the UI has a chance to update
-        ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
-      ${Else}
-        ${NSD_CreateTimer} StartDownload ${DownloadIntervalMS}
-      ${EndIf}
-      Return
-    ${EndIf}
-
     StrCpy $DownloadSizeBytes "$4"
-    SendMessage $Progressbar ${PBM_SETMARQUEE} 0 0 ; start=1|stop=0 interval(ms)=+N
-    ${RemoveStyle} $Progressbar ${PBS_MARQUEE}
     StrCpy $ProgressCompleted 0
-    SendMessage $Progressbar ${PBM_SETRANGE32} $ProgressCompleted ${PROGRESS_BAR_TOTAL_STEPS}
   ${EndIf}
 
   ; Don't update the status until after the download starts
@@ -1137,46 +810,25 @@ Function OnDownload
     Return
   ${EndIf}
 
-  ; Handle the case where the downloaded size is greater than the maximum
-  ; expected size during the download.
-  ${If} $DownloadedBytes > ${DownloadMaxSizeBytes}
-    InetBgDL::Get /RESET /END
-    StrCpy $DownloadReset "true"
-
-    ${If} $DownloadRetryCount >= ${DownloadMaxRetries}
-      ; Use a timer so the UI has a chance to update
-      ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
-    ${Else}
-      ${NSD_CreateTimer} StartDownload ${DownloadIntervalMS}
-    ${EndIf}
-    Return
-  ${EndIf}
-
   ${If} $IsDownloadFinished != "true"
     ${If} $2 == 0
-      ${NSD_KillTimer} OnDownload
+      WebBrowser::CancelTimer $TimerHandle
       StrCpy $IsDownloadFinished "true"
       System::Call "kernel32::GetTickCount()l .s"
       Pop $EndDownloadPhaseTickCount
 
-      StrCpy $DownloadedBytes "$DownloadSizeBytes"
-
-      ; When a download has finished handle the case where the  downloaded size
-      ; is less than the minimum expected size or greater than the maximum
-      ; expected size during the download.
-      ${If} $DownloadedBytes < ${DownloadMinSizeBytes}
-      ${OrIf} $DownloadedBytes > ${DownloadMaxSizeBytes}
-        InetBgDL::Get /RESET /END
-        StrCpy $DownloadReset "true"
-
-        ${If} $DownloadRetryCount >= ${DownloadMaxRetries}
-          ; Use a timer so the UI has a chance to update
-          ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
-        ${Else}
-          ${NSD_CreateTimer} StartDownload ${DownloadIntervalMS}
+      ${If} "$DownloadSizeBytes" == ""
+        ; It's possible for the download to finish before we were able to
+        ; get the size while it was downloading, and InetBgDL doesn't report
+        ; it afterwards. Use the size of the finished file.
+        ClearErrors
+        FileOpen $5 "$PLUGINSDIR\download.exe" r
+        ${IfNot} ${Errors}
+          FileSeek $5 0 END $DownloadSizeBytes
+          FileClose $5
         ${EndIf}
-        Return
       ${EndIf}
+      StrCpy $DownloadedBytes "$DownloadSizeBytes"
 
       ; Update the progress bars first in the UI change so they take affect
       ; before other UI changes.
@@ -1200,11 +852,11 @@ Function OnDownload
         System::Call "kernel32::GetTickCount()l .s"
         Pop $EndPreInstallPhaseTickCount
         ; Use a timer so the UI has a chance to update
-        ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
+        ${StartTimer} ${InstallIntervalMS} DisplayDownloadError
       ${Else}
         CertCheck::CheckPETrustAndInfoAsync "$PLUGINSDIR\download.exe" \
           "${CertNameDownload}" "${CertIssuerDownload}"
-        ${NSD_CreateTimer} OnCertCheck ${DownloadIntervalMS}
+        ${StartTimer} ${DownloadIntervalMS} OnCertCheck
       ${EndIf}
     ${Else}
       StrCpy $DownloadedBytes "$3"
@@ -1226,10 +878,10 @@ Function OnCertCheck
   ${If} $0 == 0
     ${GetSecondsElapsed} "$EndDownloadPhaseTickCount" "$EndPreInstallPhaseTickCount" $0
     ${If} $0 >= ${PreinstallCertCheckMaxWaitSec}
-      ${NSD_KillTimer} OnCertCheck
+      WebBrowser::CancelTimer $TimerHandle
       StrCpy $ExitCode "${ERR_PREINSTALL_CERT_TIMEOUT}"
       ; Use a timer so the UI has a chance to update
-      ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
+      ${StartTimer} ${InstallIntervalMS} DisplayDownloadError
     ${EndIf}
     Return
   ${EndIf}
@@ -1245,12 +897,12 @@ Function OnCertCheck
     StrCpy $ExitCode "${ERR_PREINSTALL_CERT_ATTRIBUTES}"
   ${EndIf}
 
-  ${NSD_KillTimer} OnCertCheck
+  WebBrowser::CancelTimer $TimerHandle
 
   ${If} $0 == 0
   ${OrIf} $1 == 0
     ; Use a timer so the UI has a chance to update
-    ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
+    ${StartTimer} ${InstallIntervalMS} DisplayDownloadError
     Return
   ${EndIf}
 
@@ -1310,12 +962,10 @@ Function LaunchFullInstaller
   Pop $EndPreInstallPhaseTickCount
 
   Exec "$\"$PLUGINSDIR\download.exe$\" /LaunchedFromStub /INI=$PLUGINSDIR\${CONFIG_INI}"
-  ${NSD_CreateTimer} CheckInstall ${InstallIntervalMS}
+  ${StartTimer} ${InstallIntervalMS} CheckInstall
 FunctionEnd
 
 Function SendPing
-  ${NSD_KillTimer} NextBlurb
-  ${NSD_KillTimer} ClearBlurb
   HideWindow
 
   ${If} $CheckboxSendPing == 1
@@ -1364,10 +1014,6 @@ Function SendPing
       StrCpy $EndInstallPhaseTickCount "$EndFinishPhaseTickCount"
     ${EndIf}
 
-    ; Get current time (UTC)
-    ${GetTime} "" "LS" $0 $1 $2 $3 $4 $5 $6
-    StrCpy $SendPingTimestamp "$2$1$0$4$5$6"
-
     ; Get the seconds elapsed from the start of the download phase to the end of
     ; the download phase.
     ${GetSecondsElapsed} "$StartDownloadPhaseTickCount" "$EndDownloadPhaseTickCount" $0
@@ -1388,13 +1034,15 @@ Function SendPing
     ; completion of all phases.
     ${GetSecondsElapsed} "$EndInstallPhaseTickCount" "$EndFinishPhaseTickCount" $4
 
-    ${If} $DroplistArch == "$(VERSION_64BIT)"
+    ${If} $ArchToInstall == ${ARCH_AMD64}
+    ${OrIf} $ArchToInstall == ${ARCH_AARCH64}
       StrCpy $R0 "1"
     ${Else}
       StrCpy $R0 "0"
     ${EndIf}
 
-    ${If} ${RunningX64}
+    ${If} ${IsNativeAMD64}
+    ${OrIf} ${IsNativeARM64}
       StrCpy $R1 "1"
     ${Else}
       StrCpy $R1 "0"
@@ -1430,12 +1078,12 @@ Function SendPing
     ${EndIf}
 
     ClearErrors
-    WriteRegStr HKLM "Software\Cliqz" "${BrandShortName}InstallerTest" \
+    WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
                      "Write Test"
     ${If} ${Errors}
       StrCpy $R8 "0"
     ${Else}
-      DeleteRegValue HKLM "Software\Cliqz" "${BrandShortName}InstallerTest"
+      DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
       StrCpy $R8 "1"
     ${EndIf}
 
@@ -1451,17 +1099,17 @@ Function SendPing
       ${GetParent} "$R2" $R3
       ${GetLongPath} "$R3" $R3
       ${If} $R3 == $INSTDIR
-        StrCpy $R2 "1" ; This Cliqz install is set as default.
+        StrCpy $R2 "1" ; This Firefox install is set as default.
       ${Else}
-        StrCpy $R2 "$R2" "" -9 # length of cliqz.exe
+        StrCpy $R2 "$R2" "" -11 # length of firefox.exe
         ${If} "$R2" == "${FileMainEXE}"
-          StrCpy $R2 "2" ; Another Cliqz install is set as default.
+          StrCpy $R2 "2" ; Another Firefox install is set as default.
         ${Else}
           StrCpy $R2 "0"
         ${EndIf}
       ${EndIf}
     ${Else}
-      StrCpy $R2 "0" ; Cliqz is not set as default.
+      StrCpy $R2 "0" ; Firefox is not set as default.
     ${EndIf}
 
     ${If} "$R2" == "0"
@@ -1472,17 +1120,17 @@ Function SendPing
         ${GetParent} "$R2" $R3
         ${GetLongPath} "$R3" $R3
         ${If} $R3 == $INSTDIR
-          StrCpy $R2 "1" ; This Cliqz install is set as default.
+          StrCpy $R2 "1" ; This Firefox install is set as default.
         ${Else}
-          StrCpy $R2 "$R2" "" -9 # length of cliqz.exe
+          StrCpy $R2 "$R2" "" -11 # length of firefox.exe
           ${If} "$R2" == "${FileMainEXE}"
-            StrCpy $R2 "2" ; Another Cliqz install is set as default.
+            StrCpy $R2 "2" ; Another Firefox install is set as default.
           ${Else}
             StrCpy $R2 "0"
           ${EndIf}
         ${EndIf}
       ${Else}
-        StrCpy $R2 "0" ; Cliqz is not set as default.
+        StrCpy $R2 "0" ; Firefox is not set as default.
       ${EndIf}
     ${EndIf}
 
@@ -1526,7 +1174,6 @@ Function SendPing
                       $\nPreinstall Phase Seconds = $2 \
                       $\nInstall Phase Seconds = $3 \
                       $\nFinish Phase Seconds = $4 \
-                      $\nSeng Ping Timestamp = $SendPingTimestamp \
                       $\nInitial Install Requirements Code = $InitialInstallRequirementsCode \
                       $\nOpened Download Page = $OpenedDownloadPage \
                       $\nExisting Profile = $ExistingProfile \
@@ -1547,8 +1194,8 @@ Function SendPing
     StrCpy $R9 "2"
     Call RelativeGotoPage
 !else
-    ${NSD_CreateTimer} OnPing ${DownloadIntervalMS}
-    InetBgDL::Get "${BaseURLStubPing}/${StubURLVersion}${StubURLVersionAppend}/${Channel}/${UpdateChannel}/${AB_CD}/$R0/$R1/$5/$6/$7/$8/$9/$ExitCode/$FirefoxLaunchCode/$DownloadRetryCount/$DownloadedBytes/$DownloadSizeBytes/$IntroPhaseSeconds/$OptionsPhaseSeconds/$0/$1/$DownloadFirstTransferSeconds/$2/$3/$4/$SendPingTimestamp/$InitialInstallRequirementsCode/$OpenedDownloadPage/$ExistingProfile/$ExistingVersion/$ExistingBuildID/$R5/$R6/$R7/$R8/$R2/$R3/$DownloadServerIP/$PostSigningData/$ProfileCleanupPromptType/$CheckboxCleanupProfile" \
+    ${StartTimer} ${DownloadIntervalMS} OnPing
+    InetBgDL::Get "${BaseURLStubPing}/${StubURLVersion}${StubURLVersionAppend}/${Channel}/${UpdateChannel}/${AB_CD}/$R0/$R1/$5/$6/$7/$8/$9/$ExitCode/$FirefoxLaunchCode/$DownloadRetryCount/$DownloadedBytes/$DownloadSizeBytes/$IntroPhaseSeconds/$OptionsPhaseSeconds/$0/$1/$DownloadFirstTransferSeconds/$2/$3/$4/$InitialInstallRequirementsCode/$OpenedDownloadPage/$ExistingProfile/$ExistingVersion/$ExistingBuildID/$R5/$R6/$R7/$R8/$R2/$R3/$DownloadServerIP/$PostSigningData/$ProfileCleanupPromptType/$CheckboxCleanupProfile" \
                   "$PLUGINSDIR\_temp" /END
 !endif
   ${Else}
@@ -1574,7 +1221,7 @@ Function OnPing
   # When status is $0 =< 299 it is handled by InetBgDL
   ${If} $2 == 0
   ${OrIf} $0 > 299
-    ${NSD_KillTimer} OnPing
+    WebBrowser::CancelTimer $TimerHandle
     ${If} $0 > 299
       InetBgDL::Get /RESET /END
     ${EndIf}
@@ -1588,12 +1235,12 @@ FunctionEnd
 Function CheckInstall
   IntOp $InstallCounterStep $InstallCounterStep + 1
   ${If} $InstallCounterStep >= $InstallTotalSteps
-    ${NSD_KillTimer} CheckInstall
+    WebBrowser::CancelTimer $TimerHandle
     ; Close the handle that prevents modification of the full installer
     System::Call 'kernel32::CloseHandle(i $HandleDownload)'
     StrCpy $ExitCode "${ERR_INSTALL_TIMEOUT}"
     ; Use a timer so the UI has a chance to update
-    ${NSD_CreateTimer} DisplayDownloadError ${InstallIntervalMS}
+    ${StartTimer} ${InstallIntervalMS} DisplayDownloadError
     Return
   ${EndIf}
 
@@ -1617,7 +1264,7 @@ Function CheckInstall
     ClearErrors
     Delete "$INSTDIR\install.log"
     ${Unless} ${Errors}
-      ${NSD_KillTimer} CheckInstall
+      WebBrowser::CancelTimer $TimerHandle
       ; Close the handle that prevents modification of the full installer
       System::Call 'kernel32::CloseHandle(i $HandleDownload)'
       Rename "$INSTDIR\install.tmp" "$INSTDIR\install.log"
@@ -1641,8 +1288,9 @@ Function FinishInstall
 
   StrCpy $ExitCode "${ERR_SUCCESS}"
 
-  ; Cliqz. Using our own way to say branding data
-  ; Call CopyPostSigningData
+  ${CopyPostSigningData}
+  Pop $PostSigningData
+
   Call LaunchApp
 FunctionEnd
 
@@ -1755,7 +1403,7 @@ Function LaunchApp
   ${EndIf}
 
   StrCpy $AppLaunchWaitTickCount 0
-  ${NSD_CreateTimer} WaitForAppLaunch ${AppLaunchWaitIntervalMS}
+  ${StartTimer} ${AppLaunchWaitIntervalMS} WaitForAppLaunch
 FunctionEnd
 
 Function LaunchAppFromElevatedProcess
@@ -1773,7 +1421,7 @@ Function WaitForAppLaunch
   FindWindow $1 "${DialogWindowClass}"
   ${If} $0 <> 0
   ${OrIf} $1 <> 0
-    ${NSD_KillTimer} WaitForAppLaunch
+    WebBrowser::CancelTimer $TimerHandle
     StrCpy $ProgressCompleted "${PROGRESS_BAR_APP_LAUNCH_END_STEP}"
     Call SetProgressBars
     Call SendPing
@@ -1784,7 +1432,7 @@ Function WaitForAppLaunch
   IntOp $0 $AppLaunchWaitTickCount * ${AppLaunchWaitIntervalMS}
   ${If} $0 >= ${AppLaunchWaitTimeoutMS}
     ; We've waited an unreasonably long time, so just exit.
-    ${NSD_KillTimer} WaitForAppLaunch
+    WebBrowser::CancelTimer $TimerHandle
     Call SendPing
     Return
   ${EndIf}
@@ -1795,21 +1443,8 @@ Function WaitForAppLaunch
   ${EndIf}
 FunctionEnd
 
-Function CopyPostSigningData
-  ${LineRead} "$EXEDIR\postSigningData" "1" $PostSigningData
-  ${If} ${Errors}
-    ClearErrors
-    StrCpy $PostSigningData "0"
-  ${Else}
-    CreateDirectory "$LOCALAPPDATA\Cliqz"
-    CopyFiles /SILENT "$EXEDIR\postSigningData" "$LOCALAPPDATA\Cliqz"
-  ${Endif}
-FunctionEnd
-
 Function DisplayDownloadError
-  ${NSD_KillTimer} DisplayDownloadError
-  ${NSD_KillTimer} NextBlurb
-  ${NSD_KillTimer} ClearBlurb
+  WebBrowser::CancelTimer $TimerHandle
   ; To better display the error state on the taskbar set the progress completed
   ; value to the total value.
   ${ITBL3SetProgressValue} "100" "100"
@@ -1834,10 +1469,12 @@ Function LaunchHelpPage
 FunctionEnd
 
 Function OpenManualDownloadURL
-  ${If} $DroplistArch == "$(VERSION_64BIT)"
-    ExecShell "open" "$(MINIINSTALLER_64_ERROR_SUPPORT_PAGE)"
+  ClearErrors
+  ReadINIStr $0 "${PARTNER_INI}" "DownloadURL" "FallbackPage"
+  ${IfNot} ${Errors}
+    ExecShell "open" "$0"
   ${Else}
-    ExecShell "open" "$(MINIINSTALLER_32_ERROR_SUPPORT_PAGE)"
+    ExecShell "open" "${URLManualDownload}${URLManualDownloadAppend}"
   ${EndIf}
 FunctionEnd
 
@@ -1846,7 +1483,8 @@ Function ShouldPromptForProfileCleanup
   StrCpy $ProfileCleanupPromptType 0
 
   ; Only consider installations of the same architecture we're installing.
-  ${If} $DroplistArch == "$(VERSION_64BIT)"
+  ${If} $ArchToInstall == ${ARCH_AMD64}
+  ${OrIf} $ArchToInstall == ${ARCH_AARCH64}
     SetRegView 64
   ${Else}
     SetRegView 32
@@ -1856,38 +1494,42 @@ Function ShouldPromptForProfileCleanup
   ; We'll set this back to all at the end of the function.
   SetShellVarContext current
 
-  ; Check each Profile section in profiles.ini until we find the default profile.
-  StrCpy $R0 ""
-  ${If} ${FileExists} "$APPDATA\Cliqz\profiles.ini"
+  ${FindInstallSpecificProfile}
+  Pop $R0
+
+  ${If} $R0 == ""
+    ; We don't have an install-specific profile, so look for an old-style
+    ; default profile instead by checking each numbered Profile section.
     StrCpy $0 0
     ${Do}
       ClearErrors
       ; Check if the section exists by reading a value that must be present.
-      ReadINIStr $1 "$APPDATA\Cliqz\profiles.ini" "Profile$0" "Path"
+      ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile$0" "Path"
       ${If} ${Errors}
         ; We've run out of profile sections.
         ${Break}
       ${EndIf}
 
       ClearErrors
-      ReadINIStr $1 "$APPDATA\Cliqz\profiles.ini" "Profile$0" "Default"
+      ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile$0" "Default"
       ${IfNot} ${Errors}
       ${AndIf} $1 == "1"
         ; We've found the default profile
-        ReadINIStr $1 "$APPDATA\Cliqz\profiles.ini" "Profile$0" "Path"
-        ReadINIStr $2 "$APPDATA\Cliqz\profiles.ini" "Profile$0" "IsRelative"
+        ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile$0" "Path"
+        ReadINIStr $2 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile$0" "IsRelative"
         ${If} $2 == "1"
-          StrCpy $R0 "$APPDATA\Cliqz\$1"
+          StrCpy $R0 "$APPDATA\Mozilla\Firefox\$1"
         ${Else}
           StrCpy $R0 "$1"
         ${EndIf}
-        GetFullPathName $R0 $R0
         ${Break}
       ${EndIf}
 
       IntOp $0 $0 + 1
     ${Loop}
   ${EndIf}
+
+  GetFullPathName $R0 $R0
 
   ${If} $R0 == ""
     ; No profile to clean up, so don't show the cleanup prompt.
@@ -1896,7 +1538,7 @@ Function ShouldPromptForProfileCleanup
 
   ; We have at least one profile present. If we don't have any installations,
   ; then we need to show the re-install prompt. We'll say there's an
-  ; installation present if HKCR\CliqzURL* exists and points to a real path.
+  ; installation present if HKCR\FirefoxURL* exists and points to a real path.
   StrCpy $0 0
   StrCpy $R9 ""
   ${Do}
@@ -1907,7 +1549,7 @@ Function ShouldPromptForProfileCleanup
       ${Break}
     ${EndIf}
     ${WordFind} "$1" "-" "+1{" $2
-    ${If} $2 == "CliqzURL"
+    ${If} $2 == "FirefoxURL"
       ClearErrors
       ReadRegStr $2 HKCR "$1\DefaultIcon" ""
       ${IfNot} ${Errors}
@@ -1927,10 +1569,10 @@ Function ShouldPromptForProfileCleanup
 
   ; Okay, there's at least one install, let's see if it's for this channel.
   SetShellVarContext all
-  ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $0
+  ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $0
   ${If} $0 == "false"
     SetShellVarContext current
-    ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $0
+    ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $0
     ${If} $0 == "false"
       ; Existing installs are not for this channel. Don't show any prompt.
       GoTo end
@@ -1949,14 +1591,12 @@ Function ShouldPromptForProfileCleanup
     ; We don't know what version we're about to install because we haven't
     ; downloaded it yet. Find out what the latest version released on this
     ; channel is and assume we'll be installing that one.
-    ; Cliqz. Use only internal version, we don't want for now to support one
-    ; more network resource
-    ; Call GetLatestReleasedVersion
-    ; ${If} ${Errors}
+    Call GetLatestReleasedVersion
+    ${If} ${Errors}
       ; Use this stub installer's version as a fallback when we can't get the
       ; real current version; this may be behind, but it's better than nothing.
-      StrCpy $1 ${GREVersion}
-    ; ${EndIf}
+      StrCpy $1 ${AppVersion}
+    ${EndIf}
 
     ${WordFind} $1 "." "+1{" $1
     IntOp $1 $1 - 2
@@ -1975,10 +1615,38 @@ FunctionEnd
 
 Function GetLatestReleasedVersion
   ClearErrors
-  nsJSON::Set /tree requestConfig /value \
-    `{"Url": "https://product-details.mozilla.org/1.0/firefox_versions.json", "Async": false}`
-  IfErrors end
-  nsJSON::Set /http requestConfig
+  Push $0 ; InetBgDl::GetStats uses $0 for the HTTP error code
+  ; $1 is our return value, so don't save it
+  Push $2 ; InetBgDl::GetStats uses $2 to tell us when the transfer is done
+  Push $3 ; $3 - $5 are also set by InetBgDl::GetStats, but we don't use them
+  Push $4
+  Push $5
+  Push $6 ; This is our response timeout counter
+
+  InetBgDL::Get /RESET /END
+  InetBgDL::Get "https://product-details.mozilla.org/1.0/firefox_versions.json" \
+                "$PLUGINSDIR\firefox_versions.json" \
+                /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
+
+  ; Wait for the response, but only give it half a second since this is on the
+  ; installer startup path (we haven't even shown a window yet).
+  StrCpy $6 0
+  ${Do}
+    Sleep 100
+    InetBgDL::GetStats
+    IntOp $6 $6 + 1
+
+    ${If} $2 == 0
+      ${Break}
+    ${ElseIf} $6 >= 5
+      InetBgDL::Get /RESET /END
+      SetErrors
+      GoTo end
+    ${EndIf}
+  ${Loop}
+
+  StrCpy $1 0
+  nsJSON::Set /file "$PLUGINSDIR\firefox_versions.json"
   IfErrors end
   ${Select} ${Channel}
   ${Case} "unofficial"
@@ -1992,23 +1660,44 @@ Function GetLatestReleasedVersion
   ${Case} "release"
     StrCpy $1 "LATEST_FIREFOX_VERSION"
   ${EndSelect}
-  nsJSON::Get "Output" $1 /end
-  IfErrors end
-  Pop $1
+  nsJSON::Get $1 /end
 
   end:
+  ${If} ${Errors}
+  ${OrIf} $1 == 0
+    SetErrors
+    StrCpy $1 0
+  ${Else}
+    Pop $1
+  ${EndIf}
+
+  Pop $6
+  Pop $5
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $0
 FunctionEnd
 
-; Returns 1 in $0 if we should install the 64-bit build, or 0 if not.
-; The requirements for selecting the 64-bit build to install are:
+; Determine which architecture build we should download and install.
+; AArch64 is always selected if it's the native architecture of the machine.
+; Otherwise, we check a few things to determine if AMD64 is appropriate:
 ; 1) Running a 64-bit OS (we've already checked the OS version).
 ; 2) An amount of RAM strictly greater than RAM_NEEDED_FOR_64BIT
 ; 3) No third-party products installed that cause issues with the 64-bit build.
 ;    Currently this includes Lenovo OneKey Theater and Lenovo Energy Management.
-Function ShouldInstall64Bit
-  StrCpy $0 0
+; We also make sure that the partner.ini file contains a download URL for the
+; selected architecture, when a partner.ini file eixsts.
+; If any of those checks fail, the 32-bit x86 build is selected.
+Function GetArchToInstall
+  StrCpy $ArchToInstall ${ARCH_X86}
 
-  ${IfNot} ${RunningX64}
+  ${If} ${IsNativeARM64}
+    StrCpy $ArchToInstall ${ARCH_AARCH64}
+    GoTo downloadUrlCheck
+  ${EndIf}
+
+  ${IfNot} ${IsNativeAMD64}
     Return
   ${EndIf}
 
@@ -2030,7 +1719,60 @@ Function ShouldInstall64Bit
     Return
   ${EndIf}
 
-  StrCpy $0 1
+  StrCpy $ArchToInstall ${ARCH_AMD64}
+
+  downloadUrlCheck:
+  ; If we've selected an architecture that doesn't have a download URL in the
+  ; partner.ini, but there is a URL there for 32-bit x86, then fall back to
+  ; 32-bit x86 on the theory that we should never use a non-partner build if
+  ; we are configured as a partner installer, even if the only build that's
+  ; provided is suboptimal for the machine. If there isn't even an x86 URL,
+  ; then we won't force x86 and GetDownloadURL will stick with the built-in URL.
+  ClearErrors
+  ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "X86"
+  ${IfNot} ${Errors}
+    ${If} $ArchToInstall == ${ARCH_AMD64}
+      ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "AMD64"
+      ${If} ${Errors}
+        StrCpy $ArchToInstall ${ARCH_X86}
+      ${EndIf}
+    ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
+      ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "AArch64"
+      ${If} ${Errors}
+        StrCpy $ArchToInstall ${ARCH_X86}
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+Function GetDownloadURL
+  Push $0
+  Push $1
+
+  ; Start with the appropriate URL from our built-in branding info.
+  ${If} $ArchToInstall == ${ARCH_AMD64}
+    StrCpy $0 "${URLStubDownloadAMD64}${URLStubDownloadAppend}"
+  ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
+    StrCpy $0 "${URLStubDownloadAArch64}${URLStubDownloadAppend}"
+  ${Else}
+    StrCpy $0 "${URLStubDownloadX86}${URLStubDownloadAppend}"
+  ${EndIf}
+
+  ; If we have a partner.ini file then use the URL from there instead.
+  ClearErrors
+  ${If} $ArchToInstall == ${ARCH_AMD64}
+    ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "AMD64"
+  ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
+    ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "AArch64"
+  ${Else}
+    ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "X86"
+  ${EndIf}
+  ${IfNot} ${Errors}
+    StrCpy $0 "$1"
+  ${EndIf}
+
+  Pop $1
+  Exch $0
 FunctionEnd
 
 Section

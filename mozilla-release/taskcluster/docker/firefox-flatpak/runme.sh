@@ -89,10 +89,17 @@ name=org.mozilla.firefox
 runtime=org.freedesktop.Platform/${ARCH}/${FREEDESKTOP_VERSION}
 sdk=org.freedesktop.Sdk/${ARCH}/${FREEDESKTOP_VERSION}
 base=app/org.mozilla.Firefox.BaseApp/${ARCH}/${FIREFOX_BASEAPP_CHANNEL}
+
 [Extension org.mozilla.firefox.Locale]
 directory=share/runtime/langpack
 autodelete=true
 locale-subset=true
+
+[Extension org.freedesktop.Platform.ffmpeg-full]
+directory=lib/ffmpeg
+add-ld-path=.
+no-autodownload=true
+version=${FREEDESKTOP_VERSION}
 EOF
 
 cat <<EOF > build/metadata.locale
@@ -111,9 +118,10 @@ install -D -m644 -t "${appdir}/share/applications" org.mozilla.firefox.desktop
 for size in 16 32 48 64 128; do
     install -D -m644 "${appdir}/lib/firefox/browser/chrome/icons/default/default${size}.png" "${appdir}/share/icons/hicolor/${size}x${size}/apps/org.mozilla.firefox.png"
 done
+mkdir -p "${appdir}/lib/ffmpeg"
 
 appstream-compose --prefix="${appdir}" --origin=flatpak --basename=org.mozilla.firefox org.mozilla.firefox
-appstream-util mirror-screenshots "${appdir}"/share/app-info/xmls/org.mozilla.firefox.xml.gz "https://dl.flathub.org/repo/screenshots/org.mozilla.firefox-${FLATPAK_BRANCH}" /tmp "build/screenshots/org.mozilla.firefox-${FLATPAK_BRANCH}"
+appstream-util mirror-screenshots "${appdir}"/share/app-info/xmls/org.mozilla.firefox.xml.gz "https://dl.flathub.org/repo/screenshots/org.mozilla.firefox-${FLATPAK_BRANCH}" build/screenshots "build/screenshots/org.mozilla.firefox-${FLATPAK_BRANCH}"
 
 # XXX: we used to `install -D` before which automatically created the components
 # of target, now we need to manually do this since we're symlinking
@@ -152,7 +160,8 @@ flatpak build-finish build                                      \
 
 flatpak build-export --disable-sandbox --no-update-summary --exclude='/share/runtime/langpack/*/*' repo build "$FLATPAK_BRANCH"
 flatpak build-export --disable-sandbox --no-update-summary --metadata=metadata.locale --files=files/share/runtime/langpack repo build "$FLATPAK_BRANCH"
-flatpak build-update-repo repo
+ostree commit --repo=repo --canonical-permissions --branch=screenshots/x86_64 build/screenshots
+flatpak build-update-repo --generate-static-deltas repo
 tar cvfJ flatpak.tar.xz repo
 
 mv -- flatpak.tar.xz "$TARGET_TAR_XZ_FULL_PATH"

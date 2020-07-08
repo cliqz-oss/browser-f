@@ -500,11 +500,20 @@ class MOZ_RAII DebuggerList {
                                            FireHookFun fireHook);
 };
 
+class DebuggerInstanceObject : public NativeObject {
+ private:
+  static const JSClassOps classOps_;
+
+ public:
+  static const JSClass class_;
+};
+
 class Debugger : private mozilla::LinkedListElement<Debugger> {
   friend class DebugAPI;
   friend class Breakpoint;
   friend class DebuggerFrame;
   friend class DebuggerMemory;
+  friend class DebuggerInstanceObject;
 
   template <typename>
   friend class DebuggerList;
@@ -728,7 +737,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
    *
    * An entry is present in this table when:
    *  - both the debuggee generator object and the Debugger.Frame object exists
-   *  - the debuggee generator object belongs to a relam that is a debuggee of
+   *  - the debuggee generator object belongs to a realm that is a debuggee of
    *    the Debugger.Frame's owner.
    *
    * regardless of whether the frame is currently suspended. (This list is
@@ -866,11 +875,6 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
 
   void traceForMovingGC(JSTracer* trc);
   void traceCrossCompartmentEdges(JSTracer* tracer);
-
-  static const JSClassOps classOps_;
-
- public:
-  static const JSClass class_;
 
  private:
   template <typename F>

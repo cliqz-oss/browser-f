@@ -44,8 +44,6 @@ var IS_VARIABLE_TOKEN = new RegExp(
   "i"
 );
 
-var cachedCssProperties = new WeakMap();
-
 /**
  * The CssProperties front provides a mechanism to have a one-time asynchronous
  * load of a CSS properties database. This is then fed into the CssProperties
@@ -58,6 +56,16 @@ class CssPropertiesFront extends FrontClassWithSpec(cssPropertiesSpec) {
 
     // Attribute name from which to retrieve the actorID out of the target actor's form
     this.formAttributeName = "cssPropertiesActor";
+  }
+
+  async initialize() {
+    const db = await super.getCSSDatabase();
+    this.cssProperties = new CssProperties(normalizeCssData(db));
+  }
+
+  destroy() {
+    this.cssProperties = null;
+    super.destroy();
   }
 }
 
@@ -209,49 +217,6 @@ function hasFeature(featureSet, feature) {
 }
 
 /**
- * Create a CssProperties object with a fully loaded CSS database. The
- * CssProperties interface can be queried synchronously, but the initialization
- * is potentially async and should be handled up-front when the tool is created.
- *
- * The front is returned only with this function so that it can be destroyed
- * once the toolbox is destroyed.
- *
- * @param {Toolbox} The current toolbox.
- * @returns {Promise} Resolves to {cssProperties, cssPropertiesFront}.
- */
-const initCssProperties = async function(toolbox) {
-  const client = toolbox.target.client;
-  if (cachedCssProperties.has(client)) {
-    return cachedCssProperties.get(client);
-  }
-
-  // Get the list dynamically if the cssProperties actor exists.
-  const front = await toolbox.target.getFront("cssProperties");
-  const db = await front.getCSSDatabase();
-
-  const cssProperties = new CssProperties(normalizeCssData(db));
-  cachedCssProperties.set(client, { cssProperties, front });
-  return { cssProperties, front };
-};
-
-/**
- * Synchronously get a cached and initialized CssProperties.
- *
- * @param {Toolbox} The current toolbox.
- * @returns {CssProperties}
- */
-function getCssProperties(toolbox) {
-  if (!cachedCssProperties.has(toolbox.target.client)) {
-    throw new Error(
-      "The CSS database has not been initialized, please make " +
-        "sure initCssDatabase was called once before for this " +
-        "toolbox."
-    );
-  }
-  return cachedCssProperties.get(toolbox.target.client).cssProperties;
-}
-
-/**
  * Get a client-side CssProperties. This is useful for dependencies in tests, or parts
  * of the codebase that don't particularly need to match every known CSS property on
  * the target.
@@ -352,10 +317,7 @@ function reattachCssColorValues(db) {
 
 module.exports = {
   CssPropertiesFront,
-  CssProperties,
-  getCssProperties,
   getClientCssProperties,
-  initCssProperties,
   isCssVariable,
 };
 registerFront(CssPropertiesFront);

@@ -72,6 +72,9 @@
         },
         "Locked": {
           "type": "boolean"
+        },
+        "PrivateBrowsing": {
+          "type": "boolean"
         }
       }
     },
@@ -224,6 +227,12 @@
         },
         "TLS_RSA_WITH_3DES_EDE_CBC_SHA": {
           "type": "boolean"
+        },
+        "TLS_RSA_WITH_AES_128_GCM_SHA256": {
+          "type": "boolean"
+        },
+        "TLS_RSA_WITH_AES_256_GCM_SHA384": {
+          "type": "boolean"
         }
       }
     },
@@ -368,6 +377,18 @@
       }
     },
 
+    "EncryptedMediaExtensions": {
+      "type": "object",
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "Locked": {
+          "type": "boolean"
+        }
+      }
+    },
+
     "Extensions": {
       "type": "object",
       "properties": {
@@ -413,6 +434,12 @@
               "type": "string"
             },
             "install_sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "restricted_domains": {
               "type": "array",
               "items": {
                 "type": "string"
@@ -469,6 +496,46 @@
 
         "Locked": {
           "type": "boolean"
+        }
+      }
+    },
+
+    "Handlers": {
+      "type": ["JSON", "object"],
+      "patternProperties": {
+        "^(mimeTypes|extensions|schemes)$": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": ["saveToDisk", "useHelperApp", "useSystemDefault"]
+                },
+                "ask": {
+                  "type": "boolean"
+                },
+                "handlers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "uriTemplate": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -567,6 +634,18 @@
 
     "PasswordManagerEnabled": {
       "type": "boolean"
+    },
+
+    "PDFjs": {
+      "type": "object",
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "EnablePermissions": {
+          "type": "boolean"
+        }
+      }
     },
 
     "Permissions": {
@@ -720,6 +799,18 @@
       }
     },
 
+    "PictureInPicture": {
+      "type": "object",
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "Locked": {
+          "type": "boolean"
+        }
+      }
+    },
+
     "PopupBlocking": {
       "type": "object",
       "properties": {
@@ -765,6 +856,10 @@
         },
         "browser.fixup.dns_first_for_single_words": {
           "type": "boolean"
+        },
+        "browser.urlbar.dnsResolveSingleWordsAfterSearch": {
+          "type": "number",
+          "enum": [0, 1, 2]
         },
         "browser.newtabpage.activity-stream.default.sites": {
           "type": "string"

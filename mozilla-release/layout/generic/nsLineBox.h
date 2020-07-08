@@ -410,17 +410,19 @@ class nsLineBox final : public nsLineLink {
                                        const nsSize& aContainerSize) {
     return mozilla::LogicalRect(aWM, GetOverflowArea(aType), aContainerSize);
   }
-  nsRect GetOverflowArea(nsOverflowType aType) {
+  nsRect GetOverflowArea(nsOverflowType aType) const {
     return mData ? mData->mOverflowAreas.Overflow(aType) : GetPhysicalBounds();
   }
-  nsOverflowAreas GetOverflowAreas() {
+  nsOverflowAreas GetOverflowAreas() const {
     if (mData) {
       return mData->mOverflowAreas;
     }
     nsRect bounds = GetPhysicalBounds();
     return nsOverflowAreas(bounds, bounds);
   }
-  nsRect GetVisualOverflowArea() { return GetOverflowArea(eVisualOverflow); }
+  nsRect GetVisualOverflowArea() const {
+    return GetOverflowArea(eVisualOverflow);
+  }
   nsRect GetScrollableOverflowArea() {
     return GetOverflowArea(eScrollableOverflow);
   }
@@ -522,9 +524,10 @@ class nsLineBox final : public nsLineLink {
   static const char* BreakTypeToString(StyleClear aBreakType);
   char* StateToString(char* aBuf, int32_t aBufSize) const;
 
-  void List(FILE* out, int32_t aIndent, uint32_t aFlags = 0) const;
+  void List(FILE* out, int32_t aIndent,
+            nsIFrame::ListFlags aFlags = nsIFrame::ListFlags()) const;
   void List(FILE* out = stderr, const char* aPrefix = "",
-            uint32_t aFlags = 0) const;
+            nsIFrame::ListFlags aFlags = nsIFrame::ListFlags()) const;
   nsIFrame* LastChild() const;
 #endif
 
@@ -1642,18 +1645,19 @@ class nsLineIterator final : public nsILineIterator {
 
   virtual void DisposeLineIterator() override;
 
-  virtual int32_t GetNumLines() override;
+  virtual int32_t GetNumLines() const override;
   virtual bool GetDirection() override;
   NS_IMETHOD GetLine(int32_t aLineNumber, nsIFrame** aFirstFrameOnLine,
-                     int32_t* aNumFramesOnLine, nsRect& aLineBounds) override;
+                     int32_t* aNumFramesOnLine,
+                     nsRect& aLineBounds) const override;
   virtual int32_t FindLineContaining(nsIFrame* aFrame,
                                      int32_t aStartLine = 0) override;
   NS_IMETHOD FindFrameAt(int32_t aLineNumber, nsPoint aPos,
                          nsIFrame** aFrameFound, bool* aPosIsBeforeFirstFrame,
-                         bool* aPosIsAfterLastFrame) override;
+                         bool* aPosIsAfterLastFrame) const override;
 
   NS_IMETHOD GetNextSiblingOnLine(nsIFrame*& aFrame,
-                                  int32_t aLineNumber) override;
+                                  int32_t aLineNumber) const override;
   NS_IMETHOD CheckLineOrder(int32_t aLine, bool* aIsReordered,
                             nsIFrame** aFirstVisual,
                             nsIFrame** aLastVisual) override;

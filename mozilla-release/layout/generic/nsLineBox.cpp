@@ -224,7 +224,8 @@ char* nsLineBox::StateToString(char* aBuf, int32_t aBufSize) const {
   return aBuf;
 }
 
-void nsLineBox::List(FILE* out, int32_t aIndent, uint32_t aFlags) const {
+void nsLineBox::List(FILE* out, int32_t aIndent,
+                     nsIFrame::ListFlags aFlags) const {
   nsCString str;
   while (aIndent-- > 0) {
     str += "  ";
@@ -232,29 +233,35 @@ void nsLineBox::List(FILE* out, int32_t aIndent, uint32_t aFlags) const {
   List(out, str.get(), aFlags);
 }
 
-void nsLineBox::List(FILE* out, const char* aPrefix, uint32_t aFlags) const {
+void nsLineBox::List(FILE* out, const char* aPrefix,
+                     nsIFrame::ListFlags aFlags) const {
   nsCString str(aPrefix);
   char cbuf[100];
   str += nsPrintfCString("line %p: count=%d state=%s ",
                          static_cast<const void*>(this), GetChildCount(),
                          StateToString(cbuf, sizeof(cbuf)));
   if (IsBlock() && !GetCarriedOutBEndMargin().IsZero()) {
-    str += nsPrintfCString("bm=%d ", GetCarriedOutBEndMargin().get());
+    const nscoord bm = GetCarriedOutBEndMargin().get();
+    str += nsPrintfCString("bm=%s ",
+                           nsIFrame::ConvertToString(bm, aFlags).c_str());
   }
   nsRect bounds = GetPhysicalBounds();
-  str += nsPrintfCString("%s ", ToString(bounds).c_str());
+  str +=
+      nsPrintfCString("%s ", nsIFrame::ConvertToString(bounds, aFlags).c_str());
   if (mWritingMode.IsVertical() || mWritingMode.IsBidiRTL()) {
     str += nsPrintfCString(
         "wm=%s cs=(%s) logical-rect=%s ", ToString(mWritingMode).c_str(),
-        ToString(mContainerSize).c_str(), ToString(mBounds).c_str());
+        nsIFrame::ConvertToString(mContainerSize, aFlags).c_str(),
+        nsIFrame::ConvertToString(mBounds, mWritingMode, aFlags).c_str());
   }
-  if (mData &&
-      (!mData->mOverflowAreas.VisualOverflow().IsEqualEdges(bounds) ||
-       !mData->mOverflowAreas.ScrollableOverflow().IsEqualEdges(bounds))) {
-    str += nsPrintfCString(
-        "vis-overflow=%s scr-overflow=%s ",
-        ToString(mData->mOverflowAreas.VisualOverflow()).c_str(),
-        ToString(mData->mOverflowAreas.ScrollableOverflow()).c_str());
+  if (mData) {
+    const nsRect vo = mData->mOverflowAreas.VisualOverflow();
+    const nsRect so = mData->mOverflowAreas.ScrollableOverflow();
+    if (!vo.IsEqualEdges(bounds) || !so.IsEqualEdges(bounds)) {
+      str += nsPrintfCString("vis-overflow=%s scr-overflow=%s ",
+                             nsIFrame::ConvertToString(vo, aFlags).c_str(),
+                             nsIFrame::ConvertToString(so, aFlags).c_str());
+    }
   }
   fprintf_stderr(out, "%s<\n", str.get());
 
@@ -596,13 +603,13 @@ nsresult nsLineIterator::Init(nsLineList& aLines, bool aRightToLeft) {
   return NS_OK;
 }
 
-int32_t nsLineIterator::GetNumLines() { return mNumLines; }
+int32_t nsLineIterator::GetNumLines() const { return mNumLines; }
 
 bool nsLineIterator::GetDirection() { return mRightToLeft; }
 
 NS_IMETHODIMP
 nsLineIterator::GetLine(int32_t aLineNumber, nsIFrame** aFirstFrameOnLine,
-                        int32_t* aNumFramesOnLine, nsRect& aLineBounds) {
+                        int32_t* aNumFramesOnLine, nsRect& aLineBounds) const {
   NS_ENSURE_ARG_POINTER(aFirstFrameOnLine);
   NS_ENSURE_ARG_POINTER(aNumFramesOnLine);
 
@@ -665,7 +672,7 @@ NS_IMETHODIMP
 nsLineIterator::FindFrameAt(int32_t aLineNumber, nsPoint aPos,
                             nsIFrame** aFrameFound,
                             bool* aPosIsBeforeFirstFrame,
-                            bool* aPosIsAfterLastFrame) {
+                            bool* aPosIsAfterLastFrame) const {
   MOZ_ASSERT(aFrameFound && aPosIsBeforeFirstFrame && aPosIsAfterLastFrame,
              "null OUT ptr");
 
@@ -746,7 +753,8 @@ nsLineIterator::FindFrameAt(int32_t aLineNumber, nsPoint aPos,
 }
 
 NS_IMETHODIMP
-nsLineIterator::GetNextSiblingOnLine(nsIFrame*& aFrame, int32_t aLineNumber) {
+nsLineIterator::GetNextSiblingOnLine(nsIFrame*& aFrame,
+                                     int32_t aLineNumber) const {
   aFrame = aFrame->GetNextSibling();
   return NS_OK;
 }

@@ -79,6 +79,7 @@
 #include "vm/Iteration.h"
 #include "vm/JSContext.h"
 #include "vm/JSObject.h"
+#include "vm/PlainObject.h"    // js::PlainObject
 #include "vm/PromiseObject.h"  // js::PromiseObject, js::PromiseSlot_*
 #include "vm/ProxyObject.h"
 #include "vm/SavedStacks.h"
@@ -469,6 +470,13 @@ static bool ReturnStringCopy(JSContext* cx, CallArgs& args,
   return true;
 }
 
+static bool MaybeGC(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  JS_MaybeGC(cx);
+  args.rval().setUndefined();
+  return true;
+}
+
 static bool GC(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -547,41 +555,41 @@ static bool MinorGC(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-#define FOR_EACH_GC_PARAM(_)                                                 \
-  _("maxBytes", JSGC_MAX_BYTES, true)                                        \
-  _("minNurseryBytes", JSGC_MIN_NURSERY_BYTES, true)                         \
-  _("maxNurseryBytes", JSGC_MAX_NURSERY_BYTES, true)                         \
-  _("gcBytes", JSGC_BYTES, false)                                            \
-  _("nurseryBytes", JSGC_NURSERY_BYTES, false)                               \
-  _("gcNumber", JSGC_NUMBER, false)                                          \
-  _("mode", JSGC_MODE, true)                                                 \
-  _("unusedChunks", JSGC_UNUSED_CHUNKS, false)                               \
-  _("totalChunks", JSGC_TOTAL_CHUNKS, false)                                 \
-  _("sliceTimeBudgetMS", JSGC_SLICE_TIME_BUDGET_MS, true)                    \
-  _("markStackLimit", JSGC_MARK_STACK_LIMIT, true)                           \
-  _("highFrequencyTimeLimit", JSGC_HIGH_FREQUENCY_TIME_LIMIT, true)          \
-  _("highFrequencyLowLimit", JSGC_HIGH_FREQUENCY_LOW_LIMIT, true)            \
-  _("highFrequencyHighLimit", JSGC_HIGH_FREQUENCY_HIGH_LIMIT, true)          \
-  _("highFrequencyHeapGrowthMax", JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MAX, true) \
-  _("highFrequencyHeapGrowthMin", JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MIN, true) \
-  _("lowFrequencyHeapGrowth", JSGC_LOW_FREQUENCY_HEAP_GROWTH, true)          \
-  _("dynamicHeapGrowth", JSGC_DYNAMIC_HEAP_GROWTH, true)                     \
-  _("dynamicMarkSlice", JSGC_DYNAMIC_MARK_SLICE, true)                       \
-  _("allocationThreshold", JSGC_ALLOCATION_THRESHOLD, true)                  \
-  _("nonIncrementalFactor", JSGC_NON_INCREMENTAL_FACTOR, true)               \
-  _("avoidInterruptFactor", JSGC_AVOID_INTERRUPT_FACTOR, true)               \
-  _("minEmptyChunkCount", JSGC_MIN_EMPTY_CHUNK_COUNT, true)                  \
-  _("maxEmptyChunkCount", JSGC_MAX_EMPTY_CHUNK_COUNT, true)                  \
-  _("compactingEnabled", JSGC_COMPACTING_ENABLED, true)                      \
-  _("minLastDitchGCPeriod", JSGC_MIN_LAST_DITCH_GC_PERIOD, true)             \
-  _("nurseryFreeThresholdForIdleCollection",                                 \
-    JSGC_NURSERY_FREE_THRESHOLD_FOR_IDLE_COLLECTION, true)                   \
-  _("nurseryFreeThresholdForIdleCollectionPercent",                          \
-    JSGC_NURSERY_FREE_THRESHOLD_FOR_IDLE_COLLECTION_PERCENT, true)           \
-  _("pretenureThreshold", JSGC_PRETENURE_THRESHOLD, true)                    \
-  _("pretenureGroupThreshold", JSGC_PRETENURE_GROUP_THRESHOLD, true)         \
-  _("zoneAllocDelayKB", JSGC_ZONE_ALLOC_DELAY_KB, true)                      \
-  _("mallocThresholdBase", JSGC_MALLOC_THRESHOLD_BASE, true)                 \
+#define FOR_EACH_GC_PARAM(_)                                               \
+  _("maxBytes", JSGC_MAX_BYTES, true)                                      \
+  _("minNurseryBytes", JSGC_MIN_NURSERY_BYTES, true)                       \
+  _("maxNurseryBytes", JSGC_MAX_NURSERY_BYTES, true)                       \
+  _("gcBytes", JSGC_BYTES, false)                                          \
+  _("nurseryBytes", JSGC_NURSERY_BYTES, false)                             \
+  _("gcNumber", JSGC_NUMBER, false)                                        \
+  _("mode", JSGC_MODE, true)                                               \
+  _("unusedChunks", JSGC_UNUSED_CHUNKS, false)                             \
+  _("totalChunks", JSGC_TOTAL_CHUNKS, false)                               \
+  _("sliceTimeBudgetMS", JSGC_SLICE_TIME_BUDGET_MS, true)                  \
+  _("markStackLimit", JSGC_MARK_STACK_LIMIT, true)                         \
+  _("highFrequencyTimeLimit", JSGC_HIGH_FREQUENCY_TIME_LIMIT, true)        \
+  _("smallHeapSizeMax", JSGC_SMALL_HEAP_SIZE_MAX, true)                    \
+  _("largeHeapSizeMin", JSGC_LARGE_HEAP_SIZE_MIN, true)                    \
+  _("highFrequencySmallHeapGrowth", JSGC_HIGH_FREQUENCY_SMALL_HEAP_GROWTH, \
+    true)                                                                  \
+  _("highFrequencyLargeHeapGrowth", JSGC_HIGH_FREQUENCY_LARGE_HEAP_GROWTH, \
+    true)                                                                  \
+  _("lowFrequencyHeapGrowth", JSGC_LOW_FREQUENCY_HEAP_GROWTH, true)        \
+  _("allocationThreshold", JSGC_ALLOCATION_THRESHOLD, true)                \
+  _("smallHeapIncrementalLimit", JSGC_SMALL_HEAP_INCREMENTAL_LIMIT, true)  \
+  _("largeHeapIncrementalLimit", JSGC_LARGE_HEAP_INCREMENTAL_LIMIT, true)  \
+  _("minEmptyChunkCount", JSGC_MIN_EMPTY_CHUNK_COUNT, true)                \
+  _("maxEmptyChunkCount", JSGC_MAX_EMPTY_CHUNK_COUNT, true)                \
+  _("compactingEnabled", JSGC_COMPACTING_ENABLED, true)                    \
+  _("minLastDitchGCPeriod", JSGC_MIN_LAST_DITCH_GC_PERIOD, true)           \
+  _("nurseryFreeThresholdForIdleCollection",                               \
+    JSGC_NURSERY_FREE_THRESHOLD_FOR_IDLE_COLLECTION, true)                 \
+  _("nurseryFreeThresholdForIdleCollectionPercent",                        \
+    JSGC_NURSERY_FREE_THRESHOLD_FOR_IDLE_COLLECTION_PERCENT, true)         \
+  _("pretenureThreshold", JSGC_PRETENURE_THRESHOLD, true)                  \
+  _("pretenureGroupThreshold", JSGC_PRETENURE_GROUP_THRESHOLD, true)       \
+  _("zoneAllocDelayKB", JSGC_ZONE_ALLOC_DELAY_KB, true)                    \
+  _("mallocThresholdBase", JSGC_MALLOC_THRESHOLD_BASE, true)               \
   _("mallocGrowthFactor", JSGC_MALLOC_GROWTH_FACTOR, true)
 
 static const struct ParamInfo {
@@ -789,9 +797,9 @@ static bool WasmMultiValueEnabled(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static bool WasmBigIntEnabled(JSContext* cx, unsigned argc, Value* vp) {
+static bool WasmSimdSupported(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  args.rval().setBoolean(wasm::I64BigIntConversionAvailable(cx));
+  args.rval().setBoolean(wasm::SimdAvailable(cx));
   return true;
 }
 
@@ -897,6 +905,38 @@ static bool WasmIonDisabledByFeatures(JSContext* cx, unsigned argc, Value* vp) {
   }
   return true;
 }
+
+#ifdef ENABLE_WASM_SIMD
+#  ifdef DEBUG
+static char lastAnalysisResult[1024];
+
+namespace js {
+namespace wasm {
+void ReportSimdAnalysis(const char* v) {
+  strncpy(lastAnalysisResult, v, sizeof(lastAnalysisResult));
+  lastAnalysisResult[sizeof(lastAnalysisResult) - 1] = 0;
+}
+}  // namespace wasm
+}  // namespace js
+
+// Unstable API for white-box testing of SIMD optimizations.
+//
+// Current API: takes no arguments, returns a string describing the last Simd
+// simplification applied.
+
+static bool WasmSimdAnalysis(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  JSString* result =
+      JS_NewStringCopyZ(cx, *lastAnalysisResult ? lastAnalysisResult : "none");
+  if (!result) {
+    return false;
+  }
+  args.rval().setString(result);
+  *lastAnalysisResult = (char)0;
+  return true;
+}
+#  endif
+#endif
 
 static bool ConvertToTier(JSContext* cx, HandleValue value,
                           const wasm::Code& code, wasm::Tier* tier) {
@@ -2942,7 +2982,14 @@ static bool testingFunc_bailAfter(JSContext* cx, unsigned argc, Value* vp) {
 
 #ifdef DEBUG
   if (auto* jitRuntime = cx->runtime()->jitRuntime()) {
-    jitRuntime->setIonBailAfter(args[0].toInt32());
+    uint32_t bailAfter = args[0].toInt32();
+    bool enableBailAfter = bailAfter > 0;
+    if (jitRuntime->ionBailAfterEnabled() != enableBailAfter) {
+      // Force JIT code to be recompiled with (or without) instrumentation.
+      ReleaseAllJITCode(cx->defaultFreeOp());
+      jitRuntime->setIonBailAfterEnabled(enableBailAfter);
+    }
+    jitRuntime->setIonBailAfterCounter(bailAfter);
   }
 #endif
 
@@ -4524,6 +4571,13 @@ static bool GetConstructorName(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
+class AllocationMarkerObject : public NativeObject {
+ public:
+  static const JSClass class_;
+};
+
+const JSClass AllocationMarkerObject::class_ = {"AllocationMarker"};
+
 static bool AllocationMarker(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -4538,10 +4592,10 @@ static bool AllocationMarker(JSContext* cx, unsigned argc, Value* vp) {
     allocateInsideNursery = ToBoolean(nurseryVal);
   }
 
-  static const JSClass cls = {"AllocationMarker"};
-
-  auto newKind = allocateInsideNursery ? GenericObject : TenuredObject;
-  RootedObject obj(cx, NewObjectWithGivenProto(cx, &cls, nullptr, newKind));
+  JSObject* obj =
+      allocateInsideNursery
+          ? NewObjectWithGivenProto<AllocationMarkerObject>(cx, nullptr)
+          : NewTenuredObjectWithGivenProto<AllocationMarkerObject>(cx, nullptr);
   if (!obj) {
     return false;
   }
@@ -5281,7 +5335,7 @@ static bool ParseRegExp(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   CompileOptions options(cx);
-  frontend::TokenStream dummyTokenStream(cx, options, nullptr, 0, nullptr);
+  frontend::DummyTokenStream dummyTokenStream(cx, options);
 
   // Data lifetime is controlled by LifoAllocScope.
   LifoAllocScope allocScope(&cx->tempLifoAlloc());
@@ -5317,31 +5371,21 @@ static bool DisRegExp(JSContext* cx, unsigned argc, Value* vp) {
 
   Rooted<RegExpObject*> reobj(cx, &args[0].toObject().as<RegExpObject>());
 
-  bool match_only = false;
-  if (!args.get(1).isUndefined()) {
-    if (!args.get(1).isBoolean()) {
-      ReportUsageErrorASCII(cx, callee,
-                            "Second argument, if present, must be a Boolean");
-      return false;
-    }
-    match_only = args[1].toBoolean();
-  }
-
   RootedLinearString input(cx, cx->runtime()->emptyString);
-  if (!args.get(2).isUndefined()) {
-    if (!args.get(2).isString()) {
+  if (!args.get(1).isUndefined()) {
+    if (!args.get(1).isString()) {
       ReportUsageErrorASCII(cx, callee,
-                            "Third argument, if present, must be a String");
+                            "Second argument, if present, must be a String");
       return false;
     }
-    RootedString inputStr(cx, args[2].toString());
+    RootedString inputStr(cx, args[1].toString());
     input = inputStr->ensureLinear(cx);
     if (!input) {
       return false;
     }
   }
 
-  if (!RegExpObject::dumpBytecode(cx, reobj, match_only, input)) {
+  if (!RegExpObject::dumpBytecode(cx, reobj, input)) {
     return false;
   }
 
@@ -6222,6 +6266,10 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  Run a minor collector on the Nursery. When aboutToOverflow is true, marks\n"
 "  the store buffer as about-to-overflow before collecting."),
 
+    JS_FN_HELP("maybegc", ::MaybeGC, 0, 0,
+"maybegc()",
+"  Hint to the engine that now is an ok time to run the garbage collector.\n"),
+
     JS_FN_HELP("gcparam", GCParameter, 2, 0,
 "gcparam(name [, value])",
 "  Wrapper for JS_[GS]etGCParameter. The name is one of:" GC_PARAMETER_ARGS_LIST),
@@ -6601,6 +6649,11 @@ gc::ZealModeHelpText),
 "  Returns a boolean indicating whether the WebAssembly bulk memory proposal is\n"
 "  supported on the current device."),
 
+    JS_FN_HELP("wasmSimdSupported", WasmSimdSupported, 0, 0,
+"wasmSimdSupported()",
+"  Returns a boolean indicating whether WebAssembly SIMD is supported by the\n"
+"  compilers and runtime."),
+
     JS_FN_HELP("wasmCompilersPresent", WasmCompilersPresent, 0, 0,
 "wasmCompilersPresent()",
 "  Returns a string indicating the present wasm compilers: a comma-separated list\n"
@@ -6662,9 +6715,11 @@ gc::ZealModeHelpText),
 "wasmMultiValueEnabled()",
 "  Returns a boolean indicating whether the WebAssembly multi-value proposal is enabled."),
 
-    JS_FN_HELP("wasmBigIntEnabled", WasmBigIntEnabled, 1, 0,
-"wasmBigIntEnabled()",
-"  Returns a boolean indicating whether the WebAssembly I64 to BigInt proposal is enabled."),
+#if defined(ENABLE_WASM_SIMD) && defined(DEBUG)
+    JS_FN_HELP("wasmSimdAnalysis", WasmSimdAnalysis, 1, 0,
+"wasmSimdAnalysis(...)",
+"  Unstable API for white-box testing.\n"),
+#endif
 
     JS_FN_HELP("isLazyFunction", IsLazyFunction, 1, 0,
 "isLazyFunction(fun)",
@@ -7067,7 +7122,7 @@ static const JSFunctionSpecWithHelp FuzzingUnsafeTestingFunctions[] = {
 "  Parses a RegExp pattern and returns a tree, potentially throwing."),
 
     JS_FN_HELP("disRegExp", DisRegExp, 3, 0,
-"disRegExp(regexp[, match_only[, input]])",
+"disRegExp(regexp[, input])",
 "  Dumps RegExp bytecode."),
 #endif
 

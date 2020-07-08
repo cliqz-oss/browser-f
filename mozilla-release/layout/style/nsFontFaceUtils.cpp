@@ -167,8 +167,8 @@ void nsFontFaceUtils::MarkDirtyForFontChange(nsIFrame* aSubtreeRoot,
           MOZ_ASSERT(f->GetContent() && f->GetContent()->IsElement(),
                      "How could we target a non-element with selectors?");
           f->PresContext()->RestyleManager()->PostRestyleEvent(
-              Element::FromNode(f->GetContent()), RestyleHint::RECASCADE_SELF,
-              nsChangeHint(0));
+              dom::Element::FromNode(f->GetContent()),
+              RestyleHint::RECASCADE_SELF, nsChangeHint(0));
         }
       }
 
@@ -182,11 +182,8 @@ void nsFontFaceUtils::MarkDirtyForFontChange(nsIFrame* aSubtreeRoot,
           }
         }
 
-        nsIFrame::ChildListIterator lists(f);
-        for (; !lists.IsDone(); lists.Next()) {
-          nsFrameList::Enumerator childFrames(lists.CurrentList());
-          for (; !childFrames.AtEnd(); childFrames.Next()) {
-            nsIFrame* kid = childFrames.get();
+        for (const auto& childList : f->ChildLists()) {
+          for (nsIFrame* kid : childList.mList) {
             stack.AppendElement(std::make_pair(kid, alreadyScheduled));
           }
         }

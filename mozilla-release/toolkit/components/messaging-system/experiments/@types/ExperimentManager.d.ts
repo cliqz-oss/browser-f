@@ -7,9 +7,18 @@ export interface Branch {
 
 export interface RecipeArgs {
   slug: string;
-  isEnrollmentPaused?: boolean;
+  isEnrollmentPaused: boolean;
   experimentType?: string;
   branches: Branch[];
+}
+
+export interface Recipe {
+  id: string;
+  // Processed by Remote Settings, Normandy
+  filter_expression?: string;
+  // Processed by RemoteSettingsExperimentLoader
+  targeting?: string;
+  arguments: RecipeArgs;
 }
 
 export interface Enrollment {

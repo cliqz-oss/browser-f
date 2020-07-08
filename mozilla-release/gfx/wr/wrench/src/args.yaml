@@ -21,6 +21,9 @@ args:
       long: shaders
       help: Override path for shaders
       takes_value: true
+  - use_unoptimized_shaders:
+      long: use-unoptimized-shaders
+      help: Use unoptimized shaders rather than the shaders optimized at build-time
   - rebuild:
       short: r
       long: rebuild
@@ -143,6 +146,16 @@ subcommands:
               long: keyframes
               takes_value: true
               help: Provide a keyframes file, that can be used to animate the yaml input file
+          - scene-id:
+              short: s
+              long: scene-id
+              takes_value: true
+              help: Select a starting scene sequence ID (YAML capture sequence only).
+          - frame-id:
+              short: f
+              long: frame-id
+              takes_value: true
+              help: Select a starting frame sequence ID (YAML capture sequence only).
           - INPUT:
               help: The input YAML, binary recording, or capture directory
               required: true

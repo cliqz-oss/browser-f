@@ -8,12 +8,14 @@ blocklist-window =
 blocklist-accept =
     .label = { -brand-short-name } neu starten
     .accesskey = n
+
 blocklist-label-summary = { -brand-short-name } hat festgestellt, dass folgende Add-ons dafür bekannt sind, Sicherheits- oder Stabilitätsprobleme zu verursachen:
-blocklist-soft-and-hard = Add-ons, die ein hohes Sicherheits- oder Stabilitätsrisiko bergen, wurden blockiert. Die anderen Add-ons haben ein geringeres Risiko, aber es wird dringend empfohlen, dass Sie sie deaktivieren und { -brand-short-name } neu starten.
-blocklist-hard-blocked = Diese Add-ons bergen ein hohes Sicherheits- oder Stabilitätsrisiko und wurden blockiert, aber ein Neustart von { -brand-short-name } ist notwendig, um sie vollständig zu deaktivieren.
-blocklist-soft-blocked = Zu Ihrer eigenen Sicherheit wird dringend empfohlen, dass Sie diese Add-ons deaktivieren und { -brand-short-name } neu starten
+blocklist-soft-and-hard = Add-ons, die ein hohes Sicherheits- oder Stabilitätsrisiko bergen, wurden blockiert. Die anderen Add-ons bergen ein geringeres Risiko, aber es wird dringend empfohlen, dass Sie diese deaktivieren und neu starten.
+blocklist-hard-blocked = Diese Add-ons bergen ein hohes Sicherheits- oder Stabilitätsrisiko und wurden blockiert, aber ein Neustart ist notwendig, um sie vollständig zu deaktivieren.
+blocklist-soft-blocked = Zu Ihrer eigenen Sicherheit wird dringend empfohlen, dass Sie diese Add-ons deaktivieren und neu starten.
 blocklist-more-information =
     .value = Weitere Informationen
+
 blocklist-blocked =
     .label = Blockiert
 blocklist-checkbox =

@@ -7,5 +7,10 @@
      will be the keyboard shortcuts effective in print preview, e.g. Ctrl+P
      -->
 
+<!-- LOCALIZATION NOTE (printCmd.key, closeCmd.key):
+     As defined in msgPrintEngine.xhtml, Ctrl plus the command keys defined here
+     will be the keyboard shortcuts effective in print preview, e.g. Ctrl+P
+     -->
+
 <!ENTITY printCmd.key "P">
 <!ENTITY closeCmd.key "W">

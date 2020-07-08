@@ -207,6 +207,31 @@ class NavigationDelegateTest : BaseSessionTest() {
                 WebRequestError.ERROR_UNKNOWN_PROTOCOL)
     }
 
+    @Test fun loadUnknownProtocolIframe() {
+        // Should match iframe URI from IFRAME_UNKNOWN_PROTOCOL
+        val iframeUri = "foo://bar"
+        sessionRule.session.loadTestPath(IFRAME_UNKNOWN_PROTOCOL)
+        sessionRule.session.waitForPageStop()
+
+        sessionRule.forCallbacksDuringWait(object : Callbacks.NavigationDelegate {
+            @AssertCalled(count = 1)
+            override fun onLoadRequest(session: GeckoSession, request: LoadRequest) : GeckoResult<AllowOrDeny>? {
+                assertThat("URI should not be null", request.uri, notNullValue())
+                assertThat("URI should match", request.uri, endsWith(IFRAME_UNKNOWN_PROTOCOL))
+                return null
+            }
+
+            @AssertCalled(count = 1)
+            override fun onSubframeLoadRequest(session: GeckoSession,
+                                               request: LoadRequest):
+                                               GeckoResult<AllowOrDeny>? {
+                assertThat("URI should not be null", request.uri, notNullValue())
+                assertThat("URI should match", request.uri, endsWith(iframeUri))
+                return null
+            }
+        })
+    }
+
     @Setting(key = Setting.Key.USE_TRACKING_PROTECTION, value = "true")
     @Ignore // TODO: Bug 1564373
     @Test fun trackingProtection() {
@@ -309,11 +334,22 @@ class NavigationDelegateTest : BaseSessionTest() {
                                        request: LoadRequest):
                     GeckoResult<AllowOrDeny>? {
                 assertThat("Session should not be null", session, notNullValue())
-                assertThat("App requested this load", request.isDirectNavigation,
-                        equalTo(true))
+                assertThat("App requested this load", request.isDirectNavigation, equalTo(true))
                 assertThat("URI should not be null", request.uri, notNullValue())
-                assertThat("URI should match", request.uri,
-                        startsWith(GeckoSessionTestRule.TEST_ENDPOINT))
+                assertThat("URI should match", request.uri, endsWith(path))
+                assertThat("isRedirect should match", request.isRedirect, equalTo(false))
+                return null
+            }
+
+            @AssertCalled(count = 2)
+            override fun onSubframeLoadRequest(session: GeckoSession,
+                                               request: LoadRequest):
+                    GeckoResult<AllowOrDeny>? {
+                assertThat("Session should not be null", session, notNullValue())
+                assertThat("App did not request this load", request.isDirectNavigation, equalTo(false))
+                assertThat("URI should not be null", request.uri, notNullValue())
+                assertThat("isRedirect should match", request.isRedirect,
+                        equalTo(forEachCall(false, true)))
                 return null
             }
         })
@@ -1113,7 +1149,7 @@ class NavigationDelegateTest : BaseSessionTest() {
         sessionRule.session.waitUntilCalled(object : Callbacks.NavigationDelegate {
             // We get two onLoadRequest calls for the link click,
             // one when loading the URL and one when opening a new window.
-            @AssertCalled(count = 2, order = [1])
+            @AssertCalled(count = 1, order = [1])
             override fun onLoadRequest(session: GeckoSession,
                                        request: LoadRequest):
                                        GeckoResult<AllowOrDeny>? {
@@ -1410,7 +1446,8 @@ class NavigationDelegateTest : BaseSessionTest() {
                 extension.metaData!!.baseUrl, startsWith("moz-extension://"))
 
         val url = extension.metaData!!.baseUrl + "page.html"
-        processSwitchingTest(url)
+        val isRemote = sessionRule.getPrefs("extensions.webextensions.remote")[0] as Boolean
+        processSwitchingTest(url, isRemote)
 
         sessionRule.waitForResult(controller.uninstall(extension))
     }
@@ -1420,7 +1457,7 @@ class NavigationDelegateTest : BaseSessionTest() {
         processSwitchingTest("about:config")
     }
 
-    fun processSwitchingTest(url: String) {
+    fun processSwitchingTest(url: String, isRemoteExtension: Boolean = false) {
         val settings = sessionRule.runtime.settings
         val aboutConfigEnabled = settings.aboutConfigEnabled
         settings.aboutConfigEnabled = true
@@ -1455,13 +1492,15 @@ class NavigationDelegateTest : BaseSessionTest() {
 
         assertThat("URL should match", currentUrl!!, equalTo(url))
 
+        // History navigation to or from the extension process does not trigger
+        // an about:blank load when browser.tabs.documentchannel == true
         sessionRule.session.goBack()
-        sessionRule.waitForPageStops(2)
+        sessionRule.waitForPageStops(if (isRemoteExtension) 1 else 2)
 
         assertThat("URL should match", currentUrl!!, endsWith(HELLO_HTML_PATH))
 
         sessionRule.session.goBack()
-        sessionRule.waitForPageStops(2)
+        sessionRule.waitForPageStops(if (isRemoteExtension) 1 else 2)
 
         assertThat("URL should match", currentUrl!!, equalTo(url))
 
@@ -1576,4 +1615,19 @@ class NavigationDelegateTest : BaseSessionTest() {
             }
         })
     }
+
+    @Test fun loadAfterLoad() {
+        sessionRule.session.delegateDuringNextWait(object : Callbacks.NavigationDelegate {
+            @AssertCalled(count = 2)
+            override fun onLoadRequest(session: GeckoSession, request: LoadRequest): GeckoResult<AllowOrDeny>? {
+                assertThat("URLs should match", request.uri, endsWith(forEachCall(HELLO_HTML_PATH, HELLO2_HTML_PATH)))
+                return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+            }
+        })
+
+        mainSession.loadUri("$TEST_ENDPOINT$HELLO_HTML_PATH")
+        mainSession.loadUri("$TEST_ENDPOINT$HELLO2_HTML_PATH")
+        mainSession.waitForPageStop()
+    }
+
 }

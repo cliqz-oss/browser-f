@@ -38,6 +38,57 @@ const mockTargets = [
   { id: "3", name: "no client record device", type: "phone" },
 ];
 
+add_task(async function openPanel() {
+  if (AppConstants.platform == "macosx") {
+    // Ignore this test on Mac.
+    return;
+  }
+
+  let url = "http://example.com/";
+  await BrowserTestUtils.withNewTab(url, async () => {
+    // Should still open the panel when Ctrl key is pressed.
+    await promisePageActionPanelOpen({ ctrlKey: true });
+
+    // Done.
+    let hiddenPromise = promisePageActionPanelHidden();
+    BrowserPageActions.panelNode.hidePopup();
+    await hiddenPromise;
+  });
+});
+
+add_task(async function starButtonCtrlClick() {
+  // On macOS, ctrl-click shouldn't open the panel because this normally opens
+  // the context menu. This happens via the `contextmenu` event which is created
+  // by widget code, so our simulated clicks do not do so, so we can't test
+  // anything on macOS.
+  if (AppConstants.platform == "macosx") {
+    return;
+  }
+
+  // Open a unique page.
+  let url = "http://example.com/browser_page_action_star_button";
+  await BrowserTestUtils.withNewTab(url, async () => {
+    StarUI._createPanelIfNeeded();
+    // The button ignores activation while the bookmarked status is being
+    // updated. So, wait for it to finish updating.
+    await TestUtils.waitForCondition(
+      () => BookmarkingUI.status != BookmarkingUI.STATUS_UPDATING
+    );
+
+    const popup = document.getElementById("editBookmarkPanel");
+    const starButtonBox = document.getElementById("star-button-box");
+
+    let shownPromise = promisePanelShown(popup);
+    EventUtils.synthesizeMouseAtCenter(starButtonBox, { ctrlKey: true });
+    await shownPromise;
+    ok(true, "Panel shown after button pressed");
+
+    let hiddenPromise = promisePanelHidden(popup);
+    document.getElementById("editBookmarkPanelRemoveButton").click();
+    await hiddenPromise;
+  });
+});
+
 add_task(async function bookmark() {
   // Open a unique page.
   let url = "http://example.com/browser_page_action_menu";
@@ -222,7 +273,7 @@ add_task(async function copyURLFromPanel() {
     EventUtils.synthesizeMouseAtCenter(copyURLButton, {});
     await hiddenPromise;
 
-    let feedbackPanel = document.getElementById("confirmation-hint");
+    let feedbackPanel = ConfirmationHint._panel;
     let feedbackShownPromise = BrowserTestUtils.waitForEvent(
       feedbackPanel,
       "popupshown"
@@ -233,7 +284,7 @@ add_task(async function copyURLFromPanel() {
       "pageActionButton",
       "Feedback menu should be anchored on the main Page Action button"
     );
-    let feedbackHiddenPromise = promisePanelHidden("confirmation-hint");
+    let feedbackHiddenPromise = promisePanelHidden(feedbackPanel);
     await feedbackHiddenPromise;
 
     action.pinnedToUrlbar = false;
@@ -251,17 +302,17 @@ add_task(async function copyURLFromURLBar() {
     registerCleanupFunction(() => (action.pinnedToUrlbar = false));
 
     let copyURLButton = document.getElementById("pageAction-urlbar-copyURL");
-    let feedbackShownPromise = promisePanelShown("confirmation-hint");
+    let panel = ConfirmationHint._panel;
+    let feedbackShownPromise = promisePanelShown(panel);
     EventUtils.synthesizeMouseAtCenter(copyURLButton, {});
 
     await feedbackShownPromise;
-    let panel = document.getElementById("confirmation-hint");
     Assert.equal(
       panel.anchorNode.id,
       "pageAction-urlbar-copyURL",
       "Feedback menu should be anchored on the main URL bar button"
     );
-    let feedbackHiddenPromise = promisePanelHidden("confirmation-hint");
+    let feedbackHiddenPromise = promisePanelHidden(panel);
     await feedbackHiddenPromise;
 
     action.pinnedToUrlbar = false;

@@ -31,6 +31,7 @@
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/SourceNotes.h"  // SrcNote, SrcNoteType, SrcNoteIterator
 #include "gc/PublicIterators.h"
+#include "jit/IonScript.h"  // IonBlockCounts
 #include "js/CharacterEncoding.h"
 #include "js/Printf.h"
 #include "js/Symbol.h"
@@ -225,10 +226,7 @@ bool js::DumpRealmPCCounts(JSContext* cx) {
 
 // Stores the information about the stack slot, where the value comes from.
 // Elements of BytecodeParser::Bytecode.{offsetStack,offsetStackAfter} arrays.
-struct OffsetAndDefIndex {
-  // To make this struct a POD type, keep these properties public.
-  // Use accessors instead of directly accessing them.
-
+class OffsetAndDefIndex {
   // The offset of the PC that pushed the value for this slot.
   uint32_t offset_;
 
@@ -248,6 +246,7 @@ struct OffsetAndDefIndex {
     Merged,
   } type_;
 
+ public:
   uint32_t offset() const {
     MOZ_ASSERT(!isSpecial());
     return offset_;
@@ -288,13 +287,6 @@ struct OffsetAndDefIndex {
     return !(*this == rhs);
   }
 };
-
-namespace mozilla {
-
-template <>
-struct IsPod<OffsetAndDefIndex> : std::true_type {};
-
-}  // namespace mozilla
 
 namespace {
 
@@ -677,7 +669,6 @@ uint32_t BytecodeParser::simulateOp(JSOp op, uint32_t offset,
 
     case JSOp::And:
     case JSOp::CheckIsObj:
-    case JSOp::CheckIsCallable:
     case JSOp::CheckObjCoercible:
     case JSOp::CheckThis:
     case JSOp::CheckThisReinit:
@@ -1747,11 +1738,11 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
     switch (CodeSpec(op).nuses) {
       case 2: {
         const SrcNote* sn = GetSrcNote(cx, script, pc);
-        if (!sn || sn->type() != SrcNoteType::AssignOp) {
-          return write("(") && decompilePCForStackOperand(pc, -2) &&
-                 write(" ") && write(token) && write(" ") &&
-                 decompilePCForStackOperand(pc, -1) && write(")");
-        }
+        const char* extra =
+            sn && sn->type() == SrcNoteType::AssignOp ? "=" : "";
+        return write("(") && decompilePCForStackOperand(pc, -2) && write(" ") &&
+               write(token) && write(extra) && write(" ") &&
+               decompilePCForStackOperand(pc, -1) && write(")");
         break;
       }
       case 1:
@@ -1890,9 +1881,11 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
     case JSOp::CallIgnoresRv:
     case JSOp::CallIter:
     case JSOp::FunCall:
-    case JSOp::FunApply:
-      return decompilePCForStackOperand(pc, -int32_t(GET_ARGC(pc) + 2)) &&
-             write("(...)");
+    case JSOp::FunApply: {
+      uint16_t argc = GET_ARGC(pc);
+      return decompilePCForStackOperand(pc, -int32_t(argc + 2)) &&
+             write(argc ? "(...)" : "()");
+    }
     case JSOp::SpreadCall:
       return decompilePCForStackOperand(pc, -3) && write("(...)");
     case JSOp::NewArray:
@@ -1940,6 +1933,10 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
              write(")");
 
     case JSOp::SuperCall:
+      if (GET_ARGC(pc) == 0) {
+        return write("super()");
+      }
+      [[fallthrough]];
     case JSOp::SpreadSuperCall:
       return write("super(...)");
     case JSOp::SuperFun:
@@ -1951,10 +1948,12 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
     case JSOp::StrictSpreadEval:
       return write("eval(...)");
 
-    case JSOp::New:
+    case JSOp::New: {
+      uint16_t argc = GET_ARGC(pc);
       return write("(new ") &&
-             decompilePCForStackOperand(pc, -int32_t(GET_ARGC(pc) + 3)) &&
-             write("(...))");
+             decompilePCForStackOperand(pc, -int32_t(argc + 3)) &&
+             write(argc ? "(...))" : "())");
+    }
 
     case JSOp::SpreadNew:
       return write("(new ") && decompilePCForStackOperand(pc, -4) &&

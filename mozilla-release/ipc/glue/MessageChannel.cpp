@@ -1150,6 +1150,10 @@ bool MessageChannel::MaybeInterceptSpecialIOMessage(const Message& aMsg) {
       IPC_LOG("Build IDs match message");
       mBuildIDsConfirmedMatch = true;
       return true;
+    } else if (IMPENDING_SHUTDOWN_MESSAGE_TYPE == aMsg.type()) {
+      IPC_LOG("Impending Shutdown received");
+      ProcessChild::NotifyImpendingShutdown();
+      return true;
     }
   }
   return false;
@@ -1453,7 +1457,6 @@ bool MessageChannel::Send(Message* aMsg, Message* aReply) {
   if (DispatchingSyncMessageNestedLevel() == IPC::Message::NOT_NESTED &&
       msg->nested_level() > IPC::Message::NOT_NESTED) {
     // Don't allow sending CPOWs while we're dispatching a sync message.
-    // If you want to do that, use sendRpcMessage instead.
     IPC_LOG("Nested level forbids send");
     mLastSendError = SyncSendError::SendingCPOWWhileDispatchingSync;
     return false;
@@ -2687,6 +2690,17 @@ void MessageChannel::CloseWithTimeout() {
   }
   SynchronouslyClose();
   mChannelState = ChannelTimeout;
+}
+
+void MessageChannel::NotifyImpendingShutdown() {
+  UniquePtr<Message> msg =
+      MakeUnique<Message>(MSG_ROUTING_NONE, IMPENDING_SHUTDOWN_MESSAGE_TYPE);
+  MonitorAutoLock lock(*mMonitor);
+  if (Connected()) {
+    MOZ_DIAGNOSTIC_ASSERT(mIsCrossProcess);
+    // SendMessage takes ownership of the message.
+    mLink->SendMessage(msg.release());
+  }
 }
 
 void MessageChannel::Close() {

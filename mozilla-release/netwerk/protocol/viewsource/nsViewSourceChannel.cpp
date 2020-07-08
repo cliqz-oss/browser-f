@@ -889,13 +889,13 @@ nsViewSourceChannel::GetResponseHeader(const nsACString& aHeader,
   if (!mHttpChannel) return NS_ERROR_NULL_POINTER;
 
   if (!aHeader.Equals(NS_LITERAL_CSTRING("Content-Type"),
-                      nsCaseInsensitiveCStringComparator()) &&
+                      nsCaseInsensitiveCStringComparator) &&
       !aHeader.Equals(NS_LITERAL_CSTRING("Content-Security-Policy"),
-                      nsCaseInsensitiveCStringComparator()) &&
+                      nsCaseInsensitiveCStringComparator) &&
       !aHeader.Equals(NS_LITERAL_CSTRING("Content-Security-Policy-Report-Only"),
-                      nsCaseInsensitiveCStringComparator()) &&
+                      nsCaseInsensitiveCStringComparator) &&
       !aHeader.Equals(NS_LITERAL_CSTRING("X-Frame-Options"),
-                      nsCaseInsensitiveCStringComparator())) {
+                      nsCaseInsensitiveCStringComparator)) {
     // We simulate the NS_ERROR_NOT_AVAILABLE error which is produced by
     // GetResponseHeader via nsHttpHeaderArray::GetHeader when the entry is
     // not present, such that it appears as though no headers except for the
@@ -1006,6 +1006,10 @@ void nsViewSourceChannel::SetAltDataForChild(bool aIsForChild) {
   mHttpChannelInternal->SetAltDataForChild(aIsForChild);
 }
 
+void nsViewSourceChannel::DisableAltDataCache() {
+  mHttpChannelInternal->DisableAltDataCache();
+}
+
 NS_IMETHODIMP
 nsViewSourceChannel::LogBlockedCORSRequest(const nsAString& aMessage,
                                            const nsACString& aCategory) {
@@ -1061,6 +1065,12 @@ void nsViewSourceChannel::SetHasNonEmptySandboxingFlag(
   if (mHttpChannelInternal) {
     mHttpChannelInternal->SetHasNonEmptySandboxingFlag(
         aHasNonEmptySandboxingFlag);
+  }
+}
+
+void nsViewSourceChannel::DoDiagnosticAssertWhenOnStopNotCalledOnDestroy() {
+  if (mHttpChannelInternal) {
+    mHttpChannelInternal->DoDiagnosticAssertWhenOnStopNotCalledOnDestroy();
   }
 }
 

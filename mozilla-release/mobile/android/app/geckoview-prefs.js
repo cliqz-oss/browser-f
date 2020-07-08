@@ -80,5 +80,14 @@ pref("media.geckoview.autoplay.request", true);
 // Enable EME permission prompts
 pref("media.eme.require-app-approval", true);
 
-// Enable the extension process
-pref("extensions.webextensions.remote", true);
+// Enable the Process Priority Manager
+pref("dom.ipc.processPriorityManager.enabled", true);
+
+pref("signon.debug", false);
+pref("signon.showAutoCompleteFooter", true);
+pref("security.insecure_field_warning.contextual.enabled", true);
+pref("toolkit.autocomplete.delegate", true);
+
+// Android doesn't support the new sync storage yet, we will have our own in
+// Bug 1625257.
+pref("webextensions.storage.sync.kinto", true);

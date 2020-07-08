@@ -59,8 +59,6 @@ nsCString MapInternalContentPolicyTypeToDest(nsContentPolicyType aType) {
       return NS_LITERAL_CSTRING("frame");
     case nsIContentPolicy::TYPE_REFRESH:
       return NS_LITERAL_CSTRING("empty");
-    case nsIContentPolicy::TYPE_XBL:
-      return NS_LITERAL_CSTRING("empty");
     case nsIContentPolicy::TYPE_PING:
       return NS_LITERAL_CSTRING("empty");
     case nsIContentPolicy::TYPE_XMLHTTPREQUEST:
@@ -75,6 +73,7 @@ nsCString MapInternalContentPolicyTypeToDest(nsContentPolicyType aType) {
     case nsIContentPolicy::TYPE_INTERNAL_FORCE_ALLOWED_DTD:
       return NS_LITERAL_CSTRING("empty");
     case nsIContentPolicy::TYPE_FONT:
+    case nsIContentPolicy::TYPE_INTERNAL_FONT_PRELOAD:
       return NS_LITERAL_CSTRING("font");
     case nsIContentPolicy::TYPE_MEDIA:
       return NS_LITERAL_CSTRING("empty");
@@ -288,12 +287,24 @@ void SecFetch::AddSecFetchSite(nsIHttpChannel* aHTTPChannel) {
 }
 
 void SecFetch::AddSecFetchUser(nsIHttpChannel* aHTTPChannel) {
-  // TODO: Bug 1621987: Implement Sec-Fetch-User
+  nsCOMPtr<nsILoadInfo> loadInfo = aHTTPChannel->LoadInfo();
+  nsContentPolicyType externalType = loadInfo->GetExternalContentPolicyType();
 
-  // nsAutoCString user("?1");
-  // nsresult rv = aHTTPChannel->SetRequestHeader(
-  //     NS_LITERAL_CSTRING("Sec-Fetch-User"), user, false);
-  // Unused << NS_WARN_IF(NS_FAILED(rv));
+  // sec-fetch-user only applies to loads of type document or subdocument
+  if (externalType != nsIContentPolicy::TYPE_DOCUMENT &&
+      externalType != nsIContentPolicy::TYPE_SUBDOCUMENT) {
+    return;
+  }
+
+  // sec-fetch-user only applies if the request is user triggered
+  if (!loadInfo->GetHasValidUserGestureActivation()) {
+    return;
+  }
+
+  nsAutoCString user("?1");
+  nsresult rv = aHTTPChannel->SetRequestHeader(
+      NS_LITERAL_CSTRING("Sec-Fetch-User"), user, false);
+  Unused << NS_WARN_IF(NS_FAILED(rv));
 }
 
 void SecFetch::AddSecFetchHeader(nsIHttpChannel* aHTTPChannel) {

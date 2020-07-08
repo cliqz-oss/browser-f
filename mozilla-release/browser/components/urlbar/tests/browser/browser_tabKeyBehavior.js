@@ -9,13 +9,6 @@
 "use strict";
 
 add_task(async function init() {
-  await SpecialPowers.pushPrefEnv({
-    set: [
-      ["browser.urlbar.update1", true],
-      ["browser.urlbar.openViewOnFocus", true],
-    ],
-  });
-
   for (let i = 0; i < UrlbarPrefs.get("maxRichResults"); i++) {
     await PlacesTestUtils.addVisits("http://example.com/" + i);
   }
@@ -143,11 +136,8 @@ add_task(async function tabRetainedResultsKeyboardFocus() {
   await expectTabThroughResults();
 });
 
-add_task(async function tabNoOpenViewOnFocus() {
-  info("Tab with a search string after mouse focus but no openViewOnFocus");
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.openViewOnFocus", false]],
-  });
+add_task(async function tabRetainedResults() {
+  info("Tab with a search string after mouse focus.");
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     waitForFocus: SimpleTest.waitForFocus,
@@ -156,7 +146,7 @@ add_task(async function tabNoOpenViewOnFocus() {
   });
   await UrlbarTestUtils.promisePopupClose(window);
   EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
-  await expectTabThroughToolbar();
+  await expectTabThroughResults();
   await SpecialPowers.popPrefEnv();
 });
 

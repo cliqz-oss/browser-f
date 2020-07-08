@@ -60,9 +60,6 @@ export interface PerfFront {
   on: (type: string, listener: () => void) => void;
   off: (type: string, listener: () => void) => void;
   destroy: () => void,
-  /**
-   * This method was was added in Firefox 72.
-   */
   getSupportedFeatures: () => MaybePromise<string[]>
 }
 
@@ -150,8 +147,13 @@ export interface Library {
   arch: string;
 }
 
-export interface GeckoProfile {
-  // Only type properties that we rely on.
+/**
+ * Only provide types for the GeckoProfile as much as we need it. There is no
+ * reason to maintain a full type definition here.
+ */
+export interface MinimallyTypedGeckoProfile {
+  libs: Array<{ debugName: string, breakpadId: string }>;
+  processes: Array<MinimallyTypedGeckoProfile>;
 }
 
 export type GetSymbolTableCallback = (
@@ -160,7 +162,7 @@ export type GetSymbolTableCallback = (
 ) => Promise<SymbolTableAsTuple>;
 
 export type ReceiveProfile = (
-  geckoProfile: GeckoProfile,
+  geckoProfile: MinimallyTypedGeckoProfile,
   getSymbolTableCallback: GetSymbolTableCallback
 ) => void;
 
@@ -189,7 +191,7 @@ export type GetActiveBrowsingContextID = () => number;
  * This interface is injected into profiler.firefox.com
  */
 interface GeckoProfilerFrameScriptInterface {
-  getProfile: () => Promise<object>;
+  getProfile: () => Promise<MinimallyTypedGeckoProfile>;
   getSymbolTable: GetSymbolTableCallback;
 }
 
@@ -221,12 +223,9 @@ export interface InitializedValues {
   // Determine the current page context.
   pageContext: PageContext;
   // The popup and devtools panel use different codepaths for getting symbol tables.
-  getSymbolTableGetter: (profile: object) => GetSymbolTableCallback;
-  // The list of profiler features that the current target supports. Note that
-  // this value is only null to support older Firefox browsers that are targeted
-  // by the actor system. This compatibility can be required when the ESR version
-  // is running at least Firefox 72.
-  supportedFeatures: string[] | null
+  getSymbolTableGetter: (profile: MinimallyTypedGeckoProfile) => GetSymbolTableCallback;
+  // The list of profiler features that the current target supports.
+  supportedFeatures: string[]
   // Allow different devtools contexts to open about:profiling with different methods.
   // e.g. via a new tab, or page navigation.
   openAboutProfiling?: () => void,
@@ -282,8 +281,8 @@ export type Action =
       openAboutProfiling?: () => void,
       openRemoteDevTools?: () => void,
       recordingSettingsFromPreferences: RecordingStateFromPreferences;
-      getSymbolTableGetter: (profile: object) => GetSymbolTableCallback;
-      supportedFeatures: string[] | null;
+      getSymbolTableGetter: (profile: MinimallyTypedGeckoProfile) => GetSymbolTableCallback;
+      supportedFeatures: string[];
     }
   | {
       type: "CHANGE_PRESET";
@@ -298,8 +297,8 @@ export interface InitializeStoreValues {
   presets: Presets;
   pageContext: PageContext;
   recordingPreferences: RecordingStateFromPreferences;
-  supportedFeatures: string[] | null;
-  getSymbolTableGetter: (profile: object) => GetSymbolTableCallback;
+  supportedFeatures: string[];
+  getSymbolTableGetter: (profile: MinimallyTypedGeckoProfile) => GetSymbolTableCallback;
   openAboutProfiling?: () => void;
   openRemoteDevTools?: () => void;
 }
@@ -477,6 +476,8 @@ export interface FeatureDescription {
   title: string,
   // This will give the user a hint that it's recommended on.
   recommended?: boolean,
+  // This will give the user a hint that it's an experimental feature.
+  experimental?: boolean,
   // This will give a reason if the feature is disabled.
   disabledReason?: string,
 }

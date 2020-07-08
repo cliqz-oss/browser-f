@@ -90,6 +90,7 @@ const TOOLKIT_ID = "toolkit@mozilla.org";
 
 const KEY_APP_SYSTEM_ADDONS = "app-system-addons";
 const KEY_APP_SYSTEM_DEFAULTS = "app-system-defaults";
+const KEY_APP_SYSTEM_PROFILE = "app-system-profile";
 const KEY_APP_BUILTINS = "app-builtin";
 const KEY_APP_SYSTEM_LOCAL = "app-system-local";
 const KEY_APP_SYSTEM_SHARE = "app-system-share";
@@ -148,6 +149,7 @@ const PROP_JSON_FIELDS = [
   "targetApplications",
   "targetPlatforms",
   "signedState",
+  "signedDate",
   "seen",
   "dependencies",
   "incognito",
@@ -410,6 +412,13 @@ class AddonInternal {
 
   get isCorrectlySigned() {
     switch (this.location.name) {
+      case KEY_APP_SYSTEM_PROFILE:
+        // Add-ons installed via Normandy must be signed by the system
+        // key or the "Mozilla Extensions" key.
+        return [
+          AddonManager.SIGNEDSTATE_SYSTEM,
+          AddonManager.SIGNEDSTATE_PRIVILEGED,
+        ].includes(this.signedState);
       case KEY_APP_SYSTEM_ADDONS:
         // System add-ons must be signed by the system key.
         return this.signedState == AddonManager.SIGNEDSTATE_SYSTEM;
@@ -571,6 +580,10 @@ class AddonInternal {
   }
 
   async updateBlocklistState(options = {}) {
+    if (this.location.isSystem || this.location.isBuiltin) {
+      return;
+    }
+
     let { applySoftBlock = true, updateDatabase = true } = options;
 
     let oldState = this.blocklistState;
@@ -1375,8 +1388,19 @@ function defineAddonWrapperProperty(name, getter) {
 
 ["installDate", "updateDate"].forEach(function(aProp) {
   defineAddonWrapperProperty(aProp, function() {
-    return new Date(addonFor(this)[aProp]);
+    let addon = addonFor(this);
+    // installDate is always set, updateDate is sometimes missing.
+    return new Date(addon[aProp] ?? addon.installDate);
   });
+});
+
+defineAddonWrapperProperty("signedDate", function() {
+  let addon = addonFor(this);
+  let { signedDate } = addon;
+  if (signedDate != null) {
+    return new Date(signedDate);
+  }
+  return null;
 });
 
 ["sourceURI", "releaseNotesURI"].forEach(function(aProp) {
@@ -1612,7 +1636,7 @@ this.XPIDatabase = {
    */
   syncLoadDB(aRebuildOnError) {
     let err = new Error("Synchronously loading the add-ons database");
-    logger.debug(err);
+    logger.debug(err.message);
     AddonManagerPrivate.recordSimpleMeasure(
       "XPIDB_sync_stack",
       Log.stackTrace(err)
@@ -3025,9 +3049,13 @@ this.XPIDatabaseReconcile = {
 
     let checkSigning =
       aOldAddon.signedState === undefined && SIGNED_TYPES.has(aOldAddon.type);
+    // signedDate must be set if signedState is set.
+    let signedDateMissing =
+      aOldAddon.signedDate === undefined &&
+      (aOldAddon.signedState || checkSigning);
 
     let manifest = null;
-    if (checkSigning || aReloadMetadata) {
+    if (checkSigning || aReloadMetadata || signedDateMissing) {
       try {
         manifest = XPIInstall.syncLoadManifest(aAddonState, aLocation);
       } catch (err) {
@@ -3042,6 +3070,10 @@ this.XPIDatabaseReconcile = {
     // then update that property now
     if (checkSigning) {
       aOldAddon.signedState = manifest.signedState;
+    }
+
+    if (signedDateMissing) {
+      aOldAddon.signedDate = manifest.signedDate;
     }
 
     // May be updating from a version of the app that didn't support all the

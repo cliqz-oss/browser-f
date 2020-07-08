@@ -27,7 +27,7 @@ class DocumentChannelChild final : public DocumentChannel,
  public:
   DocumentChannelChild(nsDocShellLoadState* aLoadState,
                        class LoadInfo* aLoadInfo, nsLoadFlags aLoadFlags,
-                       uint32_t aCacheKey);
+                       uint32_t aCacheKey, bool aUriModified, bool aIsXFOError);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIASYNCVERIFYREDIRECTCALLBACK
@@ -44,25 +44,22 @@ class DocumentChannelChild final : public DocumentChannel,
 
   mozilla::ipc::IPCResult RecvRedirectToRealChannel(
       RedirectToRealChannelArgs&& aArgs,
+      nsTArray<Endpoint<extensions::PStreamFilterParent>>&& aEndpoints,
       RedirectToRealChannelResolver&& aResolve);
 
-  mozilla::ipc::IPCResult RecvAttachStreamFilter(
-      Endpoint<extensions::PStreamFilterParent>&& aEndpoint);
-
-  mozilla::ipc::IPCResult RecvCSPViolation(
-      const CSPInfo& aCSP, bool aIsCspToInherit, nsIURI* aBlockedURI,
-      uint32_t aBlockedContentSource, nsIURI* aOriginalURI,
-      const nsAString& aViolatedDirective, uint32_t aViolatedPolicyIndex,
-      const nsAString& aObserverSubject);
-
  private:
-  void ShutdownListeners(nsresult aStatusCode);
+  void DeleteIPDL() override {
+    if (CanSend()) {
+      Send__delete__(this);
+    }
+  }
 
   ~DocumentChannelChild();
 
   nsCOMPtr<nsIChannel> mRedirectChannel;
 
   RedirectToRealChannelResolver mRedirectResolver;
+  nsTArray<Endpoint<extensions::PStreamFilterParent>> mStreamFilterEndpoints;
 };
 
 }  // namespace net

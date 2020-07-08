@@ -6,6 +6,7 @@
 
 #include "frontend/Stencil.h"
 
+#include "frontend/CompilationInfo.h"
 #include "frontend/SharedContext.h"
 #include "js/TracingAPI.h"
 #include "vm/EnvironmentObject.h"
@@ -198,6 +199,12 @@ uint32_t ScopeCreationData::nextFrameSlot() const {
 
 bool ScopeCreationData::isArrow() const { return funbox_->isArrow(); }
 
-JSFunction* ScopeCreationData::canonicalFunction() const {
-  return funbox_->function();
+void ScriptStencil::trace(JSTracer* trc) {
+  for (ScriptThingVariant& thing : gcThings) {
+    if (thing.is<ScriptAtom>()) {
+      JSAtom* atom = thing.as<ScriptAtom>();
+      TraceRoot(trc, &atom, "script-atom");
+      MOZ_ASSERT(atom == thing.as<ScriptAtom>(), "Atoms should be unmovable");
+    }
+  }
 }

@@ -97,10 +97,8 @@ nsIWidget* nsWebBrowser::EnsureWidget() {
 /* static */
 already_AddRefed<nsWebBrowser> nsWebBrowser::Create(
     nsIWebBrowserChrome* aContainerWindow, nsIWidget* aParentWidget,
-    const OriginAttributes& aOriginAttributes,
     dom::BrowsingContext* aBrowsingContext,
-    dom::WindowGlobalChild* aInitialWindowChild,
-    bool aDisableHistory /* = false */) {
+    dom::WindowGlobalChild* aInitialWindowChild) {
   MOZ_ASSERT_IF(aInitialWindowChild,
                 aInitialWindowChild->BrowsingContext() == aBrowsingContext);
 
@@ -124,7 +122,6 @@ already_AddRefed<nsWebBrowser> nsWebBrowser::Create(
   if (NS_WARN_IF(!docShell)) {
     return nullptr;
   }
-  docShell->SetOriginAttributes(aOriginAttributes);
   browser->SetDocShell(docShell);
 
   // get the system default window background colour
@@ -157,27 +154,11 @@ already_AddRefed<nsWebBrowser> nsWebBrowser::Create(
   // handler that always gets called (even for subframes) for any bubbling
   // event.
 
-  docShell->InitSessionHistory();
-
-  if (XRE_IsParentProcess() && !aDisableHistory) {
-    // Hook up global history. Do not fail if we can't - just warn.
-    DebugOnly<nsresult> rv =
-        browser->EnableGlobalHistory(browser->mShouldEnableHistory);
-    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "EnableGlobalHistory() failed");
+  if (aBrowsingContext->IsTop()) {
+    aBrowsingContext->InitSessionHistory();
   }
 
   NS_ENSURE_SUCCESS(docShellAsWin->Create(), nullptr);
-
-  // Hook into the OnSecurityChange() notification for lock/unlock icon
-  // updates
-  // this works because the implementation of nsISecureBrowserUI
-  // (nsSecureBrowserUIImpl) calls docShell->SetSecurityUI(this);
-  nsCOMPtr<nsISecureBrowserUI> securityUI =
-      do_CreateInstance(NS_SECURE_BROWSER_UI_CONTRACTID);
-  if (NS_WARN_IF(!securityUI)) {
-    return nullptr;
-  }
-  securityUI->Init(docShell);
 
   docShellTreeOwner->AddToWatcher();  // evil twin of Remove in SetDocShell(0)
   docShellTreeOwner->AddChromeListeners();
@@ -264,13 +245,6 @@ nsWebBrowser::GetInterface(const nsIID& aIID, void** aSink) {
 //*****************************************************************************
 // nsWebBrowser::nsIWebBrowser
 //*****************************************************************************
-
-NS_IMETHODIMP
-nsWebBrowser::EnableGlobalHistory(bool aEnable) {
-  NS_ENSURE_STATE(mDocShell);
-
-  return mDocShell->SetUseGlobalHistory(aEnable);
-}
 
 NS_IMETHODIMP
 nsWebBrowser::GetContainerWindow(nsIWebBrowserChrome** aTopWindow) {
@@ -525,13 +499,6 @@ nsWebBrowser::LoadURIFromScript(const nsAString& aURI,
     return NS_ERROR_INVALID_ARG;
   }
   return LoadURI(aURI, loadURIOptions);
-}
-
-NS_IMETHODIMP
-nsWebBrowser::SetOriginAttributesBeforeLoading(
-    JS::Handle<JS::Value> aOriginAttributes, JSContext* aCx) {
-  return mDocShellAsNav->SetOriginAttributesBeforeLoading(aOriginAttributes,
-                                                          aCx);
 }
 
 NS_IMETHODIMP

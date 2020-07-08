@@ -297,7 +297,7 @@ var SiteDataManager = {
           let principal = Services.scriptSecurityManager.createContentPrincipalFromOrigin(
             item.origin
           );
-          if (principal.URI.asciiHost == asciiHost) {
+          if (principal.asciiHost == asciiHost) {
             resolve(true);
             return;
           }
@@ -482,7 +482,7 @@ var SiteDataManager = {
       for (let perm of perms) {
         // Specialcase local file permissions.
         if (!host) {
-          if (perm.principal.URI.schemeIs("file")) {
+          if (perm.principal.schemeIs("file")) {
             Services.perms.removePermission(perm);
           }
         } else if (Services.eTLD.hasRootDomain(perm.principal.URI.host, host)) {
@@ -513,7 +513,7 @@ var SiteDataManager = {
       };
       let features = "centerscreen,chrome,modal,resizable=no";
       win.docShell.rootTreeItem.domWindow.openDialog(
-        "chrome://browser/content/preferences/siteDataRemoveSelected.xhtml",
+        "chrome://browser/content/preferences/dialogs/siteDataRemoveSelected.xhtml",
         "",
         features,
         args

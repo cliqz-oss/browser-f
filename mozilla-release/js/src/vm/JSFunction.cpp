@@ -44,12 +44,15 @@
 #include "util/StringBuffer.h"
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
+#include "vm/FunctionFlags.h"          // js::FunctionFlags
+#include "vm/GeneratorAndAsyncKind.h"  // js::GeneratorKind, js::FunctionAsyncKind
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
 #include "vm/JSAtom.h"
 #include "vm/JSContext.h"
 #include "vm/JSObject.h"
 #include "vm/JSScript.h"
+#include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/SelfHosting.h"
 #include "vm/Shape.h"
 #include "vm/SharedImmutableStringsCache.h"
@@ -370,7 +373,7 @@ static bool ResolveInterpretedFunctionPrototype(JSContext* cx,
   }
 
   RootedPlainObject proto(
-      cx, NewObjectWithGivenProto<PlainObject>(cx, objProto, SingletonObject));
+      cx, NewSingletonObjectWithGivenProto<PlainObject>(cx, objProto));
   if (!proto) {
     return false;
   }
@@ -1238,6 +1241,12 @@ bool JSFunction::isDerivedClassConstructor() const {
   return derived;
 }
 
+bool JSFunction::isFieldInitializer() const {
+  bool derived = hasBaseScript() && baseScript()->isFieldInitializer();
+  MOZ_ASSERT_IF(derived, isMethod());
+  return derived;
+}
+
 /* static */
 bool JSFunction::getLength(JSContext* cx, HandleFunction fun,
                            uint16_t* length) {
@@ -1721,6 +1730,7 @@ void JSFunction::maybeRelazify(JSRuntime* rt) {
   }
 
   if (isSelfHostedBuiltin()) {
+    BaseScript::writeBarrierPre(script);
     initSelfHostedLazyScript(&rt->selfHostedLazyScript.ref());
   } else {
     script->relazify(rt);
@@ -2228,17 +2238,12 @@ JSFunction* js::CloneFunctionReuseScript(JSContext* cx, HandleFunction fun,
     return nullptr;
   }
 
-  if (fun->hasBytecode()) {
-    clone->initScript(fun->nonLazyScript());
-    clone->initEnvironment(enclosingEnv);
-  } else if (fun->hasBaseScript()) {
-    MOZ_ASSERT(fun->compartment() == clone->compartment());
-    BaseScript* lazy = fun->baseScript();
-    clone->initLazyScript(lazy);
+  if (fun->hasBaseScript()) {
+    BaseScript* base = fun->baseScript();
+    clone->initScript(base);
     clone->initEnvironment(enclosingEnv);
   } else {
     MOZ_ASSERT(fun->hasSelfHostedLazyScript());
-    MOZ_ASSERT(fun->compartment() == clone->compartment());
     SelfHostedLazyScript* lazy = fun->selfHostedLazyScript();
     clone->initSelfHostedLazyScript(lazy);
     clone->initEnvironment(enclosingEnv);

@@ -59,6 +59,11 @@ ChromeUtils.defineModuleGetter(
   "UpdateUtils",
   "resource://gre/modules/UpdateUtils.jsm"
 );
+ChromeUtils.defineModuleGetter(
+  this,
+  "BrowserUsageTelemetry",
+  "resource:///modules/BrowserUsageTelemetry.jsm"
+);
 
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL = "browser.uitour.loglevel";
@@ -169,7 +174,7 @@ var UITour = {
         query: aDocument => {
           // The pocket's urlbar page action button is pre-defined in the DOM.
           // It would be hidden if toggled off from the urlbar.
-          let node = aDocument.getElementById("pocket-button-box");
+          let node = aDocument.getElementById("pocket-button");
           if (node && !node.hidden) {
             return node;
           }
@@ -1165,9 +1170,7 @@ var UITour = {
    */
   async showHighlight(aChromeWindow, aTarget, aEffect = "none", aOptions = {}) {
     let showHighlightElement = aAnchorEl => {
-      let highlighter = aChromeWindow.document.getElementById(
-        "UITourHighlight"
-      );
+      let highlighter = this.getHighlightAndMaybeCreate(aChromeWindow.document);
 
       let effect = aEffect;
       if (effect == "random") {
@@ -1254,7 +1257,7 @@ var UITour = {
   },
 
   _hideHighlightElement(aWindow) {
-    let highlighter = aWindow.document.getElementById("UITourHighlight");
+    let highlighter = this.getHighlightAndMaybeCreate(aWindow.document);
     this._removeAnnotationPanelMutationObserver(highlighter.parentElement);
     highlighter.parentElement.hidePopup();
     highlighter.removeAttribute("active");
@@ -1292,7 +1295,7 @@ var UITour = {
       aAnchorEl.focus();
 
       let document = aChromeWindow.document;
-      let tooltip = document.getElementById("UITourTooltip");
+      let tooltip = this.getTooltipAndMaybeCreate(document);
       let tooltipTitle = document.getElementById("UITourTooltipTitle");
       let tooltipDesc = document.getElementById("UITourTooltipDescription");
       let tooltipIcon = document.getElementById("UITourTooltipIcon");
@@ -1385,7 +1388,7 @@ var UITour = {
       );
 
       tooltip.setAttribute("targetName", aAnchor.targetName);
-      tooltip.hidden = false;
+
       let alignment = "bottomcenter topright";
       if (aAnchor.infoPanelPosition) {
         alignment = aAnchor.infoPanelPosition;
@@ -1415,9 +1418,42 @@ var UITour = {
     }
   },
 
+  getHighlightContainerAndMaybeCreate(document) {
+    let highlightContainer = document.getElementById(
+      "UITourHighlightContainer"
+    );
+    if (!highlightContainer) {
+      let wrapper = document.getElementById("UITourHighlightTemplate");
+      wrapper.replaceWith(wrapper.content);
+      highlightContainer = document.getElementById("UITourHighlightContainer");
+    }
+
+    return highlightContainer;
+  },
+
+  getTooltipAndMaybeCreate(document) {
+    let tooltip = document.getElementById("UITourTooltip");
+    if (!tooltip) {
+      let wrapper = document.getElementById("UITourTooltipTemplate");
+      wrapper.replaceWith(wrapper.content);
+      tooltip = document.getElementById("UITourTooltip");
+    }
+    return tooltip;
+  },
+
+  getHighlightAndMaybeCreate(document) {
+    let highlight = document.getElementById("UITourHighlight");
+    if (!highlight) {
+      let wrapper = document.getElementById("UITourHighlightTemplate");
+      wrapper.replaceWith(wrapper.content);
+      highlight = document.getElementById("UITourHighlight");
+    }
+    return highlight;
+  },
+
   isInfoOnTarget(aChromeWindow, aTargetName) {
     let document = aChromeWindow.document;
-    let tooltip = document.getElementById("UITourTooltip");
+    let tooltip = this.getTooltipAndMaybeCreate(document);
     return (
       tooltip.getAttribute("targetName") == aTargetName &&
       tooltip.state != "closed"
@@ -1426,7 +1462,7 @@ var UITour = {
 
   _hideInfoElement(aWindow) {
     let document = aWindow.document;
-    let tooltip = document.getElementById("UITourTooltip");
+    let tooltip = this.getTooltipAndMaybeCreate(document);
     this._removeAnnotationPanelMutationObserver(tooltip);
     tooltip.hidePopup();
     let tooltipButtons = document.getElementById("UITourTooltipButtons");
@@ -1577,10 +1613,10 @@ var UITour = {
     let annotationElements = new Map([
       // [annotationElement (panel), method to hide the annotation]
       [
-        win.document.getElementById("UITourHighlightContainer"),
+        this.getHighlightContainerAndMaybeCreate(win.document),
         hideHighlightMethod,
       ],
-      [win.document.getElementById("UITourTooltip"), hideInfoMethod],
+      [this.getTooltipAndMaybeCreate(win.document), hideInfoMethod],
     ]);
     annotationElements.forEach((hideMethod, annotationElement) => {
       if (annotationElement.state != "closed") {
@@ -1965,6 +2001,11 @@ var UITour = {
     CustomizableUI.addWidgetToArea(
       aTarget.widgetName,
       CustomizableUI.AREA_NAVBAR
+    );
+    BrowserUsageTelemetry.recordWidgetChange(
+      aTarget.widgetName,
+      CustomizableUI.AREA_NAVBAR,
+      "uitour"
     );
     this.sendPageCallback(aBrowser, aCallbackID);
   },

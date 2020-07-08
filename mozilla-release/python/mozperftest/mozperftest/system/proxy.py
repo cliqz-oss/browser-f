@@ -3,23 +3,34 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import os
 import mozinfo
+
 from mozproxy import get_playback
-from mozperftest.base import MachEnvironment
+from mozproxy.utils import LOG
+from mozperftest.layers import Layer
 
 
 HERE = os.path.dirname(__file__)
 
 
-class ProxyRunner(MachEnvironment):
-    def __init__(self, mach_cmd):
-        super(ProxyRunner, self).__init__(mach_cmd)
+class ProxyRunner(Layer):
+    """Use a proxy
+    """
+
+    name = "proxy"
+    activated = False
+
+    def __init__(self, env, mach_cmd):
+        super(ProxyRunner, self).__init__(env, mach_cmd)
         self.proxy = None
+        LOG.info = self.info
+        LOG.error = self.error
 
     def setup(self):
         pass
 
     def __call__(self, metadata):
         self.metadata = metadata
+
         # replace with artifacts
         config = {
             "run_local": True,
@@ -43,7 +54,7 @@ class ProxyRunner(MachEnvironment):
             prefs["network.proxy.ssl"] = "localhost"
             prefs["network.proxy.ssl_port"] = port
             prefs["network.proxy.no_proxies_on"] = "localhost"
-            metadata["browser"]["prefs"].update(prefs)
+            metadata.update_browser_prefs(prefs)
         return metadata
 
     def teardown(self):

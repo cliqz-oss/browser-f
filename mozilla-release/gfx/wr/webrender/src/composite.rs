@@ -9,7 +9,7 @@ use crate::batch::{resolve_image, get_buffer_kind};
 use crate::gpu_cache::GpuCache;
 use crate::gpu_types::{ZBufferId, ZBufferIdGenerator};
 use crate::internal_types::TextureSource;
-use crate::picture::{ImageDependency, ResolvedSurfaceTexture, TileCacheInstance, TileSurface};
+use crate::picture::{ImageDependency, ResolvedSurfaceTexture, TileCacheInstance, TileId, TileSurface};
 use crate::prim_store::DeferredResolve;
 use crate::renderer::ImageBufferKind;
 use crate::resource_cache::{ImageRequest, ResourceCache};
@@ -87,6 +87,19 @@ pub struct CompositeTile {
     pub z_id: ZBufferId,
 }
 
+pub enum ExternalSurfaceDependency {
+    Yuv {
+        image_dependencies: [ImageDependency; 3],
+        color_space: YuvColorSpace,
+        format: YuvFormat,
+        rescale: f32,
+    },
+    Rgb {
+        image_dependency: ImageDependency,
+        flip_y: bool,
+    },
+}
+
 /// Describes information about drawing a primitive as a compositor surface.
 /// For now, we support only YUV images as compositor surfaces, but in future
 /// this will also support RGBA images.
@@ -96,12 +109,9 @@ pub struct ExternalSurfaceDescriptor {
     pub device_rect: DeviceRect,
     pub local_clip_rect: PictureRect,
     pub clip_rect: DeviceRect,
-    pub image_dependencies: [ImageDependency; 3],
     pub image_rendering: ImageRendering,
-    pub yuv_color_space: YuvColorSpace,
-    pub yuv_format: YuvFormat,
-    pub yuv_rescale: f32,
     pub z_id: ZBufferId,
+    pub dependency: ExternalSurfaceDependency,
     /// If native compositing is enabled, the native compositor surface handle.
     /// Otherwise, this will be None
     pub native_surface_id: Option<NativeSurfaceId>,
@@ -110,18 +120,19 @@ pub struct ExternalSurfaceDescriptor {
     pub update_params: Option<DeviceIntSize>,
 }
 
-/// Information about a plane in a YUV surface.
+/// Information about a plane in a YUV or RGB surface.
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
-pub struct YuvPlaneDescriptor {
+#[derive(Debug, Copy, Clone)]
+pub struct ExternalPlaneDescriptor {
     pub texture: TextureSource,
     pub texture_layer: i32,
     pub uv_rect: TexelRect,
 }
 
-impl YuvPlaneDescriptor {
+impl ExternalPlaneDescriptor {
     fn invalid() -> Self {
-        YuvPlaneDescriptor {
+        ExternalPlaneDescriptor {
             texture: TextureSource::Invalid,
             texture_layer: 0,
             uv_rect: TexelRect::invalid(),
@@ -134,6 +145,24 @@ impl YuvPlaneDescriptor {
 #[derive(Debug, Copy, Clone)]
 pub struct ResolvedExternalSurfaceIndex(pub usize);
 
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+pub enum ResolvedExternalSurfaceColorData {
+    Yuv {
+        // YUV specific information
+        image_dependencies: [ImageDependency; 3],
+        planes: [ExternalPlaneDescriptor; 3],
+        color_space: YuvColorSpace,
+        format: YuvFormat,
+        rescale: f32,
+    },
+    Rgb {
+        image_dependency: ImageDependency,
+        plane: ExternalPlaneDescriptor,
+        flip_y: bool,
+    },
+}
+
 /// An ExternalSurfaceDescriptor that has had image keys
 /// resolved to texture handles. This contains all the
 /// information that the compositor step in renderer
@@ -141,14 +170,8 @@ pub struct ResolvedExternalSurfaceIndex(pub usize);
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct ResolvedExternalSurface {
-    // YUV specific information
-    pub image_dependencies: [ImageDependency; 3],
-    pub yuv_planes: [YuvPlaneDescriptor; 3],
-    pub yuv_color_space: YuvColorSpace,
-    pub yuv_format: YuvFormat,
-    pub yuv_rescale: f32,
+    pub color_data: ResolvedExternalSurfaceColorData,
     pub image_buffer_kind: ImageBufferKind,
-
     // Update information for a native surface if it's dirty
     pub update_params: Option<(NativeSurfaceId, DeviceIntSize)>,
 }
@@ -163,6 +186,10 @@ pub enum CompositorConfig {
         /// then the operating system supports a form of 'partial present' where
         /// only dirty regions of the framebuffer need to be updated.
         max_partial_present_rects: usize,
+        /// If this is true, WR would draw the previous frame's dirty region when
+        /// doing a partial present. This is used for EGL which requires the front
+        /// buffer to always be fully consistent.
+        draw_previous_partial_present_regions: bool,
     },
     /// Use a native OS compositor to draw tiles. This requires clients to implement
     /// the Compositor trait, but can be significantly more power efficient on operating
@@ -195,6 +222,7 @@ impl Default for CompositorConfig {
     fn default() -> Self {
         CompositorConfig::Draw {
             max_partial_present_rects: 0,
+            draw_previous_partial_present_regions: false,
         }
     }
 }
@@ -210,6 +238,8 @@ pub enum CompositorKind {
     Draw {
         /// Partial present support.
         max_partial_present_rects: usize,
+        /// Draw previous regions when doing partial present.
+        draw_previous_partial_present_regions: bool,
     },
     /// Native OS compositor.
     Native {
@@ -225,6 +255,7 @@ impl Default for CompositorKind {
     fn default() -> Self {
         CompositorKind::Draw {
             max_partial_present_rects: 0,
+            draw_previous_partial_present_regions: false,
         }
     }
 }
@@ -246,7 +277,40 @@ struct Occluder {
     device_rect: DeviceIntRect,
 }
 
-/// Describes the properties that identify a tile composition uniquely.
+/// The backing surface kind for a tile. Same as `TileSurface`, minus
+/// the texture cache handles, visibility masks etc.
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(PartialEq, Clone)]
+pub enum TileSurfaceKind {
+    Texture,
+    Color {
+        color: ColorF,
+    },
+    Clear,
+}
+
+impl From<&TileSurface> for TileSurfaceKind {
+    fn from(surface: &TileSurface) -> Self {
+        match surface {
+            TileSurface::Texture { .. } => TileSurfaceKind::Texture,
+            TileSurface::Color { color } => TileSurfaceKind::Color { color: *color },
+            TileSurface::Clear => TileSurfaceKind::Clear,
+        }
+    }
+}
+
+/// Describes properties that identify a tile composition uniquely.
+/// The backing surface for this tile.
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(PartialEq, Clone)]
+pub struct CompositeTileDescriptor {
+    pub tile_id: TileId,
+    pub surface_kind: TileSurfaceKind,
+}
+
+/// Describes the properties that identify a surface composition uniquely.
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 #[derive(PartialEq, Clone)]
@@ -259,6 +323,8 @@ pub struct CompositeSurfaceDescriptor {
     // thing that has changed is the generation of an compositor surface
     // image dependency.
     pub image_dependencies: [ImageDependency; 3],
+    // List of the surface information for each tile added to this virtual surface
+    pub tile_descriptors: Vec<CompositeTileDescriptor>,
 }
 
 /// Describes surface properties used to composite a frame. This
@@ -406,6 +472,8 @@ impl CompositeState {
     ) {
         let mut visible_opaque_tile_count = 0;
         let mut visible_alpha_tile_count = 0;
+        let mut opaque_tile_descriptors = Vec::new();
+        let mut alpha_tile_descriptors = Vec::new();
 
         for tile in tile_cache.tiles.values() {
             if !tile.is_visible {
@@ -415,6 +483,11 @@ impl CompositeState {
 
             let device_rect = (tile.world_tile_rect * global_device_pixel_scale).round();
             let surface = tile.surface.as_ref().expect("no tile surface set!");
+
+            let descriptor = CompositeTileDescriptor {
+                surface_kind: surface.into(),
+                tile_id: tile.id,
+            };
 
             let (surface, is_opaque) = match surface {
                 TileSurface::Color { color } => {
@@ -427,14 +500,20 @@ impl CompositeState {
                     let surface = descriptor.resolve(resource_cache, tile_cache.current_tile_size);
                     (
                         CompositeTileSurface::Texture { surface },
-                        tile.is_opaque || tile_cache.is_opaque(),
+                        // If a tile has compositor surface intersecting with it, we need to
+                        // respect the tile.is_opaque property even if the overall tile cache
+                        // is opaque. In this case, the tile.is_opaque property is required
+                        // in order to ensure correct draw order with compositor surfaces.
+                        tile.is_opaque || (!tile.has_compositor_surface && tile_cache.is_opaque()),
                     )
                 }
             };
 
             if is_opaque {
+                opaque_tile_descriptors.push(descriptor);
                 visible_opaque_tile_count += 1;
             } else {
+                alpha_tile_descriptors.push(descriptor);
                 visible_alpha_tile_count += 1;
             }
 
@@ -450,6 +529,13 @@ impl CompositeState {
             self.push_tile(tile, is_opaque);
         }
 
+        // Sort the tile descriptor lists, since iterating values in the tile_cache.tiles
+        // hashmap doesn't provide any ordering guarantees, but we want to detect the
+        // composite descriptor as equal if the tiles list is the same, regardless of
+        // ordering.
+        opaque_tile_descriptors.sort_by_key(|desc| desc.tile_id);
+        alpha_tile_descriptors.sort_by_key(|desc| desc.tile_id);
+
         // Add opaque surface before any compositor surfaces
         if visible_opaque_tile_count > 0 {
             self.descriptor.surfaces.push(
@@ -458,6 +544,7 @@ impl CompositeState {
                     offset: tile_cache.device_position,
                     clip_rect: device_clip_rect,
                     image_dependencies: [ImageDependency::INVALID; 3],
+                    tile_descriptors: opaque_tile_descriptors,
                 }
             );
         }
@@ -465,22 +552,40 @@ impl CompositeState {
         // For each compositor surface that was promoted, build the
         // information required for the compositor to draw it
         for external_surface in &tile_cache.external_surfaces {
-            let mut yuv_planes = [
-                YuvPlaneDescriptor::invalid(),
-                YuvPlaneDescriptor::invalid(),
-                YuvPlaneDescriptor::invalid(),
+
+            let mut planes = [
+                ExternalPlaneDescriptor::invalid(),
+                ExternalPlaneDescriptor::invalid(),
+                ExternalPlaneDescriptor::invalid(),
             ];
 
-            // Step through the image keys, and build a yuv plane descriptor for each
-            let required_plane_count = external_surface.yuv_format.get_plane_num();
+            // Step through the image keys, and build a plane descriptor for each
+            let required_plane_count =
+                match external_surface.dependency {
+                    ExternalSurfaceDependency::Yuv { format, .. } => {
+                        format.get_plane_num()
+                    },
+                    ExternalSurfaceDependency::Rgb { .. } => {
+                        1
+                    }
+                };
             let mut valid_plane_count = 0;
 
+            let mut image_dependencies = [ImageDependency::INVALID; 3];
+
             for i in 0 .. required_plane_count {
-                let key = external_surface.image_dependencies[i].key;
-                let plane = &mut yuv_planes[i];
+                let dependency = match external_surface.dependency {
+                    ExternalSurfaceDependency::Yuv { image_dependencies, .. } => {
+                        image_dependencies[i]
+                    },
+                    ExternalSurfaceDependency::Rgb { image_dependency, .. } => {
+                        image_dependency
+                    }
+                };
+                image_dependencies[i] = dependency;
 
                 let request = ImageRequest {
-                    key,
+                    key: dependency.key,
                     rendering: external_surface.image_rendering,
                     tile: None,
                 };
@@ -494,8 +599,8 @@ impl CompositeState {
 
                 if cache_item.texture_id != TextureSource::Invalid {
                     valid_plane_count += 1;
-
-                    *plane = YuvPlaneDescriptor {
+                    let plane = &mut planes[i];
+                    *plane = ExternalPlaneDescriptor {
                         texture: cache_item.texture_id,
                         texture_layer: cache_item.texture_layer,
                         uv_rect: cache_item.uv_rect.into(),
@@ -505,7 +610,7 @@ impl CompositeState {
 
             // Check if there are valid images added for each YUV plane
             if valid_plane_count < required_plane_count {
-                warn!("Warnings: skip a YUV compositor surface, found {}/{} valid images",
+                warn!("Warnings: skip a YUV/RGB compositor surface, found {}/{} valid images",
                     valid_plane_count,
                     required_plane_count,
                 );
@@ -534,15 +639,38 @@ impl CompositeState {
                 )
             });
 
-            self.external_surfaces.push(ResolvedExternalSurface {
-                yuv_color_space: external_surface.yuv_color_space,
-                yuv_format: external_surface.yuv_format,
-                yuv_rescale: external_surface.yuv_rescale,
-                image_buffer_kind: get_buffer_kind(yuv_planes[0].texture),
-                image_dependencies: external_surface.image_dependencies,
-                yuv_planes,
-                update_params,
-            });
+            match external_surface.dependency {
+                ExternalSurfaceDependency::Yuv{ color_space, format, rescale, .. } => {
+
+                    let image_buffer_kind = get_buffer_kind(planes[0].texture);
+
+                    self.external_surfaces.push(ResolvedExternalSurface {
+                        color_data: ResolvedExternalSurfaceColorData::Yuv {
+                            image_dependencies,
+                            planes,
+                            color_space,
+                            format,
+                            rescale,
+                        },
+                        image_buffer_kind,
+                        update_params,
+                    });
+                },
+                ExternalSurfaceDependency::Rgb{ flip_y, .. } => {
+
+                    let image_buffer_kind = get_buffer_kind(planes[0].texture);
+
+                    self.external_surfaces.push(ResolvedExternalSurface {
+                        color_data: ResolvedExternalSurfaceColorData::Rgb {
+                            image_dependency: image_dependencies[0],
+                            plane: planes[0],
+                            flip_y,
+                        },
+                        image_buffer_kind,
+                        update_params,
+                    });
+                },
+            }
 
             let tile = CompositeTile {
                 surface,
@@ -561,7 +689,8 @@ impl CompositeState {
                     surface_id: external_surface.native_surface_id,
                     offset: tile.rect.origin,
                     clip_rect: tile.clip_rect,
-                    image_dependencies: external_surface.image_dependencies,
+                    image_dependencies: image_dependencies,
+                    tile_descriptors: Vec::new(),
                 }
             );
 
@@ -576,6 +705,7 @@ impl CompositeState {
                     offset: tile_cache.device_position,
                     clip_rect: device_clip_rect,
                     image_dependencies: [ImageDependency::INVALID; 3],
+                    tile_descriptors: alpha_tile_descriptors,
                 }
             );
         }

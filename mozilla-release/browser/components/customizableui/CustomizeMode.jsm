@@ -57,6 +57,11 @@ ChromeUtils.defineModuleGetter(
 );
 ChromeUtils.defineModuleGetter(
   this,
+  "BrowserUsageTelemetry",
+  "resource:///modules/BrowserUsageTelemetry.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
   "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm"
 );
@@ -65,21 +70,11 @@ XPCOMUtils.defineLazyGetter(this, "gWidgetsBundle", function() {
     "chrome://browser/locale/customizableui/customizableWidgets.properties";
   return Services.strings.createBundle(kUrl);
 });
-XPCOMUtils.defineLazyPreferenceGetter(
-  this,
-  "gCosmeticAnimationsEnabled",
-  "toolkit.cosmeticAnimations.enabled"
-);
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "gTouchBarUpdater",
   "@mozilla.org/widget/touchbarupdater;1",
   "nsITouchBarUpdater"
-);
-XPCOMUtils.defineLazyPreferenceGetter(
-  this,
-  "gCosmeticAnimationsEnabled",
-  "toolkit.cosmeticAnimations.enabled"
 );
 
 let gDebug;
@@ -140,6 +135,8 @@ function CustomizeMode(aWindow) {
   this.document = aWindow.document;
   this.browser = aWindow.gBrowser;
   this.areas = new Set();
+
+  this._ensureCustomizationPanels();
 
   let content = this.$("customization-content-container");
   if (!content) {
@@ -621,7 +618,7 @@ CustomizeMode.prototype = {
 
   _promiseWidgetAnimationOut(aNode) {
     if (
-      !gCosmeticAnimationsEnabled ||
+      this.window.gReduceMotion ||
       aNode.getAttribute("cui-anchorid") == "nav-bar-overflow-button" ||
       (aNode.tagName != "toolbaritem" && aNode.tagName != "toolbarbutton") ||
       (aNode.id == "downloads-button" && aNode.hidden)
@@ -658,7 +655,7 @@ CustomizeMode.prototype = {
           "customizationending",
           cleanupCustomizationExit
         );
-        resolve();
+        resolve(animationNode);
       }
 
       // Wait until the next frame before setting the class to ensure
@@ -679,14 +676,15 @@ CustomizeMode.prototype = {
     });
   },
 
-  async addToToolbar(aNode) {
+  async addToToolbar(aNode, aReason) {
     aNode = this._getCustomizableChildForNode(aNode);
     if (aNode.localName == "toolbarpaletteitem" && aNode.firstElementChild) {
       aNode = aNode.firstElementChild;
     }
     let widgetAnimationPromise = this._promiseWidgetAnimationOut(aNode);
+    let animationNode;
     if (widgetAnimationPromise) {
-      await widgetAnimationPromise;
+      animationNode = await widgetAnimationPromise;
     }
 
     let widgetToAdd = aNode.id;
@@ -700,6 +698,10 @@ CustomizeMode.prototype = {
     }
 
     CustomizableUI.addWidgetToArea(widgetToAdd, CustomizableUI.AREA_NAVBAR);
+    BrowserUsageTelemetry.recordWidgetChange(
+      widgetToAdd,
+      CustomizableUI.AREA_NAVBAR
+    );
     if (!this._customizing) {
       CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
@@ -712,27 +714,25 @@ CustomizeMode.prototype = {
       }
     }
 
-    if (widgetAnimationPromise) {
-      if (aNode.parentNode && aNode.parentNode.id.startsWith("wrapper-")) {
-        aNode.parentNode.classList.remove("animate-out");
-      } else {
-        aNode.classList.remove("animate-out");
-      }
+    if (animationNode) {
+      animationNode.classList.remove("animate-out");
     }
   },
 
-  async addToPanel(aNode) {
+  async addToPanel(aNode, aReason) {
     aNode = this._getCustomizableChildForNode(aNode);
     if (aNode.localName == "toolbarpaletteitem" && aNode.firstElementChild) {
       aNode = aNode.firstElementChild;
     }
     let widgetAnimationPromise = this._promiseWidgetAnimationOut(aNode);
+    let animationNode;
     if (widgetAnimationPromise) {
-      await widgetAnimationPromise;
+      animationNode = await widgetAnimationPromise;
     }
 
     let panel = CustomizableUI.AREA_FIXED_OVERFLOW_PANEL;
     CustomizableUI.addWidgetToArea(aNode.id, panel);
+    BrowserUsageTelemetry.recordWidgetChange(aNode.id, panel, aReason);
     if (!this._customizing) {
       CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
@@ -745,14 +745,10 @@ CustomizeMode.prototype = {
       }
     }
 
-    if (widgetAnimationPromise) {
-      if (aNode.parentNode && aNode.parentNode.id.startsWith("wrapper-")) {
-        aNode.parentNode.classList.remove("animate-out");
-      } else {
-        aNode.classList.remove("animate-out");
-      }
+    if (animationNode) {
+      animationNode.classList.remove("animate-out");
     }
-    if (gCosmeticAnimationsEnabled) {
+    if (!this.window.gReduceMotion) {
       let overflowButton = this.$("nav-bar-overflow-button");
       BrowserUtils.setToolbarButtonHeightProperty(overflowButton).then(() => {
         overflowButton.setAttribute("animate", "true");
@@ -771,17 +767,19 @@ CustomizeMode.prototype = {
     }
   },
 
-  async removeFromArea(aNode) {
+  async removeFromArea(aNode, aReason) {
     aNode = this._getCustomizableChildForNode(aNode);
     if (aNode.localName == "toolbarpaletteitem" && aNode.firstElementChild) {
       aNode = aNode.firstElementChild;
     }
     let widgetAnimationPromise = this._promiseWidgetAnimationOut(aNode);
+    let animationNode;
     if (widgetAnimationPromise) {
-      await widgetAnimationPromise;
+      animationNode = await widgetAnimationPromise;
     }
 
     CustomizableUI.removeWidgetFromArea(aNode.id);
+    BrowserUsageTelemetry.recordWidgetChange(aNode.id, null, aReason);
     if (!this._customizing) {
       CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
@@ -793,12 +791,8 @@ CustomizeMode.prototype = {
         this._showDownloadsAutoHidePanel();
       }
     }
-    if (widgetAnimationPromise) {
-      if (aNode.parentNode && aNode.parentNode.id.startsWith("wrapper-")) {
-        aNode.parentNode.classList.remove("animate-out");
-      } else {
-        aNode.classList.remove("animate-out");
-      }
+    if (animationNode) {
+      animationNode.classList.remove("animate-out");
     }
   },
 
@@ -1737,6 +1731,14 @@ CustomizeMode.prototype = {
     return this.window.TabsInTitlebar.systemSupported;
   },
 
+  _ensureCustomizationPanels() {
+    let template = this.$("customizationPanel");
+    template.replaceWith(template.content);
+
+    let wrapper = this.$("customModeWrapper");
+    wrapper.replaceWith(wrapper.content);
+  },
+
   _updateTitlebarCheckbox() {
     let drawInTitlebar = Services.prefs.getBoolPref(
       kDrawInTitlebarPref,
@@ -2118,7 +2120,8 @@ CustomizeMode.prototype = {
           return;
         }
 
-        CustomizableUI.removeWidgetFromArea(aDraggedItemId);
+        CustomizableUI.removeWidgetFromArea(aDraggedItemId, "drag");
+        BrowserUsageTelemetry.recordWidgetChange(aDraggedItemId, null, "drag");
         // Special widgets are removed outright, we can return here:
         if (CustomizableUI.isSpecialWidget(aDraggedItemId)) {
           return;
@@ -2177,6 +2180,11 @@ CustomizeMode.prototype = {
     // widget to the end of the area.
     if (aTargetNode == areaCustomizationTarget) {
       CustomizableUI.addWidgetToArea(aDraggedItemId, aTargetArea.id);
+      BrowserUsageTelemetry.recordWidgetChange(
+        aDraggedItemId,
+        aTargetArea.id,
+        "drag"
+      );
       this._onDragEnd(aEvent);
       return;
     }
@@ -2225,8 +2233,18 @@ CustomizeMode.prototype = {
     // that the widget is moving within a customizable area.
     if (aTargetArea == aOriginArea) {
       CustomizableUI.moveWidgetWithinArea(aDraggedItemId, position);
+      BrowserUsageTelemetry.recordWidgetChange(
+        aDraggedItemId,
+        aTargetArea.id,
+        "drag"
+      );
     } else {
       CustomizableUI.addWidgetToArea(aDraggedItemId, aTargetArea.id, position);
+      BrowserUsageTelemetry.recordWidgetChange(
+        aDraggedItemId,
+        aTargetArea.id,
+        "drag"
+      );
     }
 
     this._onDragEnd(aEvent);
@@ -2610,6 +2628,14 @@ CustomizeMode.prototype = {
     doc.getElementById(
       "customizationPanelItemContextMenuPin"
     ).hidden = inPermanentArea;
+
+    doc.ownerGlobal.MozXULElement.insertFTLIfNeeded(
+      "browser/toolbarContextMenu.ftl"
+    );
+    event.target.querySelectorAll("[data-lazy-l10n-id]").forEach(el => {
+      el.setAttribute("data-l10n-id", el.getAttribute("data-lazy-l10n-id"));
+      el.removeAttribute("data-lazy-l10n-id");
+    });
   },
 
   _checkForDownloadsClick(event) {
@@ -2622,7 +2648,6 @@ CustomizeMode.prototype = {
   },
 
   _setupDownloadAutoHideToggle() {
-    this.$(kDownloadAutohidePanelId).removeAttribute("hidden");
     this.window.addEventListener("click", this._checkForDownloadsClick, true);
   },
 
@@ -2660,6 +2685,11 @@ CustomizeMode.prototype = {
         "downloads-button",
         "nav-bar",
         insertionPoint
+      );
+      BrowserUsageTelemetry.recordWidgetChange(
+        "downloads-button",
+        "nav-bar",
+        "move-downloads"
       );
     }
   },

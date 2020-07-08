@@ -15,8 +15,10 @@ EXTRA_JS_MODULES += [
     'UrlbarProviderInterventions.jsm',
     'UrlbarProviderOpenTabs.jsm',
     'UrlbarProviderPrivateSearch.jsm',
+    'UrlbarProviderSearchSuggestions.jsm',
     'UrlbarProviderSearchTips.jsm',
     'UrlbarProvidersManager.jsm',
+    'UrlbarProviderTokenAliasEngines.jsm',
     'UrlbarProviderTopSites.jsm',
     'UrlbarProviderUnifiedComplete.jsm',
     'UrlbarResult.jsm',
@@ -33,7 +35,6 @@ BROWSER_CHROME_MANIFESTS += [
     'tests/browser-tips/browser.ini',
     'tests/browser/browser.ini',
     'tests/ext/browser/browser.ini',
-    'tests/ext/browser/update/browser.ini',
 ]
 XPCSHELL_TESTS_MANIFESTS += ['tests/unit/xpcshell.ini']
 

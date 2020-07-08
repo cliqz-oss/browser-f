@@ -50,6 +50,12 @@ def all_configure_options():
 
 set_config('MOZ_CONFIGURE_OPTIONS', all_configure_options)
 
+@depends(target)
+def fold_libs(target):
+    return target.os in ('WINNT', 'OSX', 'Android')
+
+set_config('MOZ_FOLD_LIBS', fold_libs)
+
 # Profiling
 # ==============================================================
 # Some of the options here imply an option from js/moz.configure,
@@ -73,6 +79,8 @@ def gecko_profiler(target):
         return target.cpu in ('aarch64', 'arm', 'x86', 'x86_64')
     elif target.kernel == 'Linux':
         return target.cpu in ('aarch64', 'arm', 'x86', 'x86_64', 'mips64')
+    elif target.kernel == 'FreeBSD':
+        return target.cpu in ('aarch64', 'x86_64')
     return target.os in ('OSX', 'WINNT')
 
 @depends(gecko_profiler)
@@ -88,7 +96,7 @@ set_define('MOZ_GECKO_PROFILER', gecko_profiler_define)
 # (for symbol table dumping).
 @depends(gecko_profiler, target)
 def gecko_profiler_parse_elf(value, target):
-    # Currently we only want to build this code on Linux (including Android).
+    # Currently we only want to build this code on Linux (including Android) and BSD.
     # For Android, this is in order to dump symbols from Android system, where
     # on other platforms there exist alternatives that don't require bloating
     # up our binary size. For Linux more generally, we use this in profile
@@ -97,7 +105,7 @@ def gecko_profiler_parse_elf(value, target):
     # MozDescribeCodeAddress to call into some Rust crates that parse ELF and
     # DWARF data, but build system issues currently prevent Rust from being
     # used in mozglue.)
-    if value and target.kernel == 'Linux':
+    if value and (target.kernel == 'Linux' or target.kernel == 'FreeBSD'):
         return True
 
 set_config('MOZ_GECKO_PROFILER_PARSE_ELF', gecko_profiler_parse_elf)
@@ -159,7 +167,7 @@ set_define('MOZ_JACK', depends_if(jack)(lambda _: True))
 # ==============================================================
 @depends(target)
 def pulseaudio_default(target):
-    return target.os not in ('WINNT', 'OSX', 'iOS', 'Android', 'OpenBSD')
+    return target.os not in ('WINNT', 'OSX', 'Android', 'OpenBSD')
 
 option('--enable-pulseaudio', env='MOZ_PULSEAUDIO', default=pulseaudio_default,
        help='{Enable|Disable} PulseAudio audio backend.')
@@ -222,8 +230,6 @@ def toolkit_choices(target):
         return ('cairo-windows',)
     elif target.os == 'OSX':
         return ('cairo-cocoa',)
-    elif target.os == 'iOS':
-        return ('cairo-uikit',)
     elif target.os == 'Android':
         return ('cairo-android',)
     else:
@@ -538,7 +544,7 @@ set_define('MOZ_OMX', openmax)
 @depends(target)
 def eme_choices(target):
     if (target.kernel in ('Darwin', 'WINNT', 'Linux') and
-        target.os not in ('Android', 'iOS') and
+        target.os != 'Android' and
         target.cpu in ('x86', 'x86_64')):
         return ('widevine',)
     if target.kernel == 'WINNT' and target.cpu == 'aarch64':
@@ -736,13 +742,6 @@ set_define('MOZ_APP_SYSTEM_HEADERS', app_system_headers)
 
 # Printing
 # ==============================================================
-@depends(target)
-def ios_disable_printing(target):
-    if target.os == 'iOS':
-        return False
-
-imply_option('--enable-printing', ios_disable_printing, reason='--target')
-
 option('--disable-printing', help='Disable printing support')
 
 @depends('--disable-printing')
@@ -971,15 +970,18 @@ set_config('ENABLE_MARIONETTE', marionette)
 # Turn off geckodriver for build configs we don't handle yet,
 # but allow --enable-geckodriver to override when compile environment is available.
 # --disable-tests implies disabling geckodriver.
+# Disable building in CI
 
-@depends('--enable-tests', target, cross_compiling, hazard_analysis, asan)
-def geckodriver_default(enable_tests, target, cross_compile, hazard, asan):
+@depends('--enable-tests', target, cross_compiling, hazard_analysis, asan, 'MOZ_AUTOMATION')
+def geckodriver_default(enable_tests, target, cross_compile, hazard, asan, automation):
     if not enable_tests:
         return False
     # geckodriver depends on winapi 0.2.8, which doesn't work with AArch64.
     if target.os == 'WINNT' and target.cpu == 'aarch64':
         return False
     if hazard or target.os == 'Android' or (asan and cross_compile):
+        return False
+    if automation:
         return False
     return True
 
@@ -1040,14 +1042,6 @@ set_define('MOZ_PEERCONNECTION', webrtc)
 # opt/production builds (via MOZ_CRASH())
 set_config('MOZ_WEBRTC_ASSERT_ALWAYS', webrtc)
 set_define('MOZ_WEBRTC_ASSERT_ALWAYS', webrtc)
-
-option('--enable-hardware-aec-ns', when=webrtc,
-       help='Enable support for hardware AEC and noise suppression')
-
-set_config('MOZ_WEBRTC_HARDWARE_AEC_NS',
-           depends_if('--enable-hardware-aec-ns', when=webrtc)(lambda _: True))
-set_define('MOZ_WEBRTC_HARDWARE_AEC_NS',
-           depends_if('--enable-hardware-aec-ns', when=webrtc)(lambda _: True))
 
 # RAW media
 # ==============================================================
@@ -1152,35 +1146,41 @@ def check_for_midl(target, compile_environment):
 midl = check_prog('MIDL', midl_names, when=check_for_midl, allow_missing=True,
                   paths=sdk_bin_path)
 
+option(env='MIDL_FLAGS', nargs=1, help='Extra flags to pass to MIDL')
 
-@depends(c_compiler, target, host,
+@depends('MIDL_FLAGS', c_compiler, target, host, midl,
          when=depends(midl, target)(lambda m, t: m and t.kernel == 'WINNT'))
-@imports(_from='mozbuild.shellutil', _import='quote')
-def midl_flags(c_compiler, target, host):
-    if c_compiler and c_compiler.type == 'clang-cl':
+def midl_flags(flags , c_compiler, target, host, midl):
+    if flags:
+        flags = flags[0].split()
+    else:
+        flags = []
+
+    if not midl.endswith('widl'):
         env = {
             'x86': 'win32',
             'x86_64': 'x64',
             'aarch64': 'arm64',
         }[target.cpu]
-        flags = ['-env', env]
+        flags += ['-env', env]
 
         if host.os == 'WINNT':
             return flags + ['-cpp_cmd', c_compiler.compiler]
-        else:
-            # If cross-compiling, for now, we'll assume we can find the
-            # Windows version of clang-cl in the PATH. It is required because
-            # while Wine is able to spawn Linux processes from Windows
-            # programs(!), the calling program doesn't have access to the process
-            # output and can't wait for it to finish. Midl runs clang-cl as
-            # a preprocessor and expects to read its output...
-            clang_cl_exe = find_program('clang-cl.exe')
-            if not clang_cl_exe:
-                die("Cannot find clang-cl.exe")
-            return flags + ['-cpp_cmd', clang_cl_exe]
 
-    # mingw
-    return {
+        # If cross-compiling and using midl instead of widl, for now, we'll
+        # assume we can find the Windows version of clang-cl in the PATH.
+        # It is required because while Wine is able to spawn Linux
+        # processes from Windows programs(!), the calling program doesn't
+        # have access to the process output and can't wait for it to
+        # finish. Midl runs clang-cl as a preprocessor and expects to read
+        # its output...
+        clang_cl_exe = find_program('clang-cl.exe')
+        if not clang_cl_exe:
+            die("Cannot find clang-cl.exe")
+        return flags + ['-cpp_cmd', clang_cl_exe]
+
+    # widl
+    return flags + {
         'x86': ['--win32', '-m32'],
         'x86_64': ['--win64', '-m64'],
     }[target.cpu]
@@ -1412,7 +1412,8 @@ option('--enable-layout-debugger',
        default=layout_debugger,
        help='{Enable|Disable} layout debugger')
 
-set_config('MOZ_LAYOUT_DEBUGGER', depends_if('--enable-layout-debugger')(lambda _: True))
+set_config('MOZ_LAYOUT_DEBUGGER', True, when='--enable-layout-debugger')
+set_define('MOZ_LAYOUT_DEBUGGER', True, when='--enable-layout-debugger')
 
 
 # Shader Compiler for Windows (and MinGW Cross Compile)
@@ -1432,7 +1433,7 @@ with only_when(compile_environment):
            help='Use system libvpx (located with pkgconfig)')
 
     with only_when('--with-system-libvpx'):
-        vpx = pkg_check_modules('MOZ_LIBVPX', 'vpx >= 1.7.0')
+        vpx = pkg_check_modules('MOZ_LIBVPX', 'vpx >= 1.8.0')
 
         check_header('vpx/vpx_decoder.h', flags=vpx.cflags, onerror=lambda: die(
             "Couldn't find vpx/vpx_decoder.h, which is required to build "
@@ -1788,7 +1789,7 @@ set_define('MOZ_HAS_REMOTE', has_remote)
 # ==============================================================
 
 def wasm_sandboxing_libraries():
-    return ('graphite',)
+    return ('graphite', 'ogg',)
 
 option('--with-wasm-sandboxed-libraries',
        env='WASM_SANDBOXED_LIBRARIES',
@@ -1989,6 +1990,21 @@ def glean(milestone):
 set_config('MOZ_GLEAN', True, when=glean)
 set_define('MOZ_GLEAN', True, when=glean)
 
+
+
+# New Firefox Accounts client implemented in Rust
+# ===============================================
+
+@depends(milestone, target)
+def rust_fxa_client(milestone, target):
+    if milestone.is_nightly and target.os != 'Android':
+        return True
+
+set_config('MOZ_RUST_FXA_CLIENT', True, when=rust_fxa_client)
+set_define('MOZ_RUST_FXA_CLIENT', True, when=rust_fxa_client)
+
+
+
 # dump_syms
 # ==============================================================
 
@@ -2006,7 +2022,7 @@ def allow_missing_winchecksec(automation, c_compiler):
     if c_compiler and c_compiler.type != 'clang-cl':
         return True
 
-check_prog('WINCHECKSEC', ['winchecksec.exe'], paths=toolchain_search_path,
+check_prog('WINCHECKSEC', ['winchecksec.exe', 'winchecksec'], paths=toolchain_search_path,
            allow_missing=allow_missing_winchecksec,
            when=compile_environment & target_is_windows)
 
@@ -2066,3 +2082,26 @@ def default_agent_flag(enabled):
         return True
 
 set_config('MOZ_DEFAULT_BROWSER_AGENT', default_agent_flag)
+
+# NSS
+# ===
+option('--with-system-nss', help='Use system NSS')
+
+imply_option('--with-system-nspr', True, when='--with-system-nss')
+
+nss_pkg = pkg_check_modules('NSS', 'nss >= 3.53.1', when='--with-system-nss', config=False)
+
+set_config('MOZ_SYSTEM_NSS', True, when='--with-system-nss')
+
+@depends(nss_pkg, check_build_environment)
+def nss_config(nss_pkg, build_env):
+    cflags = ['-I%s' % os.path.join(build_env.dist, 'include', 'nss')]
+    libs = None
+    if nss_pkg:
+        cflags = list(nss_pkg.cflags) + cflags
+        libs = nss_pkg.libs
+    return namespace(cflags=cflags, libs=libs)
+
+set_config('NSS_CFLAGS', nss_config.cflags)
+set_config('NSS_LIBS', nss_config.libs)
+add_old_configure_assignment('NSS_CFLAGS', nss_config.cflags)

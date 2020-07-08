@@ -509,8 +509,8 @@ struct BlobCommand {
     /// What part of the blob should be rasterized (visible_rect's top-left corresponds to
     /// (0,0) in the blob's rasterization)
     visible_rect: DeviceIntRect,
-    /// The size of the tiles to use in rasterization, if tiling should be used.
-    tile_size: Option<TileSize>,
+    /// The size of the tiles to use in rasterization.
+    tile_size: TileSize,
 }
 
 struct Job {
@@ -519,7 +519,7 @@ struct Job {
     commands: Arc<BlobImageData>,
     dirty_rect: BlobDirtyRect,
     visible_rect: DeviceIntRect,
-    tile_size: Option<TileSize>,
+    tile_size: TileSize,
 }
 
 /// Rasterizes gecko blob images.
@@ -632,8 +632,8 @@ fn rasterize_blob(job: Job) -> (BlobImageRequest, BlobImageResult) {
             descriptor.format,
             &descriptor.rect,
             &job.visible_rect,
-            job.tile_size.as_ref(),
-            job.request.tile.as_ref(),
+            job.tile_size,
+            &job.request.tile,
             dirty_rect.as_ref(),
             MutByteSlice::new(output.as_mut_slice()),
         ) {
@@ -656,13 +656,14 @@ fn rasterize_blob(job: Job) -> (BlobImageRequest, BlobImageResult) {
 }
 
 impl BlobImageHandler for Moz2dBlobImageHandler {
-    fn add(
-        &mut self,
-        key: BlobImageKey,
-        data: Arc<BlobImageData>,
-        visible_rect: &DeviceIntRect,
-        tile_size: Option<TileSize>,
-    ) {
+    fn create_similar(&self) -> Box<dyn BlobImageHandler> {
+        Box::new(Self::new(
+            Arc::clone(&self.workers),
+            Arc::clone(&self.workers_low_priority),
+        ))
+    }
+
+    fn add(&mut self, key: BlobImageKey, data: Arc<BlobImageData>, visible_rect: &DeviceIntRect, tile_size: TileSize) {
         {
             let index = BlobReader::new(&data);
             assert!(index.reader.has_more());
@@ -850,7 +851,7 @@ impl Moz2dBlobImageHandler {
                         AddBlobFont(
                             font.font_instance_key,
                             instance.font_key,
-                            instance.size.to_f32_px(),
+                            instance.size,
                             instance.options.as_ref(),
                             instance.platform_options.as_ref(),
                             instance.variations.as_ptr(),

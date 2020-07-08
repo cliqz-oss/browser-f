@@ -54,6 +54,8 @@ policy-DontCheckDefaultBrowser = Standardbrowser-Überprüfung beim Start nicht 
 policy-DownloadDirectory = Ordner für Downloads festlegen und Änderung dieser Einstellung verbieten
 # “lock” means that the user won’t be able to change this setting
 policy-EnableTrackingProtection = Seitenelementeblockierung aktivieren oder deaktivieren und optional deren Änderung verbieten
+# “lock” means that the user won’t be able to change this setting
+policy-EncryptedMediaExtensions = Encrypted Media Extensions (Module zur Wiedergabe verschlüsselter Mediendateien) aktivieren oder deaktivieren und optional Änderung dieser Einstellung verbieten
 # A “locked” extension can’t be disabled or removed by the user. This policy
 # takes 3 keys (“Install”, ”Uninstall”, ”Locked”), you can either keep them in
 # English or translate them as verbs.
@@ -64,6 +66,7 @@ policy-ExtensionUpdate = Automatische Add-on-Updates aktivieren oder deaktiviere
 policy-FirefoxHome = Cliqz-Startseite konfigurieren
 
 policy-FlashPlugin = Flash-Plugin-Verwendung erlauben oder verbieten
+policy-Handlers = Standardanwendungen für das Öffnen von Dateien, Protokollen und MIME-Typen festlegen
 policy-HardwareAcceleration = Hardwarebeschleunigung deaktiviert, falls false
 # “lock” means that the user won’t be able to change this setting
 policy-Startup = Startseite festlegen und optional zusätzlich unveränderbar setzen
@@ -78,6 +81,7 @@ policy-LegacySameSiteCookieBehaviorEnabledForDomainList = Veraltetes Cookie-Verh
 ##
 
 policy-LocalFileLinks = Festgelegten Websites Zugriff auf lokale Dateien erlauben
+policy-MasterPassword = Benutzung eines Master-Passworts erfordern oder verhindern
 policy-NetworkPrediction = Spekulative DNS-Abfragen für noch nicht angeforderte Ressourcen ("DNS-Prefetching") aktivieren oder deaktivieren
 policy-NewTabPage = Startseite für neue Tabs aktivieren oder deaktivieren
 policy-NoDefaultBookmarks = Standardlesezeichen von { -brand-short-name } und Intelligente Lesezeichenordner ("Meistbesucht", "Kürzlich verwendete Schlagwörter") nicht erstellen. Hinweis: Diese Richtlinie findet nur Anwendung, wenn sie vor dem ersten Ausführen des Profils aktiv wurde.
@@ -87,7 +91,10 @@ policy-OverrideFirstRunPage = Einmalig geöffnete Einführungsseite beim Starten
 policy-OverridePostUpdatePage = Cliqz-Neuigkeiten-Seite - angezeigt nach Programmaktualisierung - festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
 
 policy-PasswordManagerEnabled = Speichern von Passwörtern in der Passwortverwaltung aktivieren
+# PDF.js and PDF should not be translated
+policy-PDFjs = Eingebauten PDF-Betrachter von { -brand-short-name } (PDF.js) deaktivieren oder konfigurieren
 policy-Permissions2 = Berechtigungen für Kamera, Mikrofon, Standort, Benachrichtigungen und automatische Wiedergabe festlegen
+policy-PictureInPicture = Bild-im-Bild-Modus aktivieren oder deaktivieren
 policy-PopupBlocking = Popups für festgelegte Websites standardmäßig anzeigen
 policy-Preferences = Werte von bestimmten Einstellungen festlegen und Änderungen daran verhindern
 policy-PromptForDownloadLocation = Für gestartete Downloads nach Speicherort fragen
@@ -96,7 +103,7 @@ policy-RequestedLocales = Sprachen für die Anwendungsoberfläche in bevorzugter
 policy-SanitizeOnShutdown2 = Navigationsdaten beim Beenden löschen
 policy-SearchBar = Standardposition der Suchleiste setzen. Der Benutzer darf sie weiterhin anpassen.
 policy-SearchEngines = Suchmaschineneinstellungen anpassen. Diese Richtlinie ist nur für Versionen des Extended Support Release (ESR) verfügbar.
-policy-SearchSuggestEnabled = Suchvoschläge aktivieren oder deaktivieren
+policy-SearchSuggestEnabled = Suchvorschläge aktivieren oder deaktivieren
 # For more information, see https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/PKCS11/Module_Installation
 policy-SecurityDevices = PKCS#11-Module installieren
 policy-SSLVersionMax = Höchste zu verwendende SSL-Version festlegen

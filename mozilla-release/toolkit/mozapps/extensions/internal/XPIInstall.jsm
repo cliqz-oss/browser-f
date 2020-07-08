@@ -117,11 +117,18 @@ const PREF_SELECTED_LWT = "lightweightThemes.selectedThemeID";
 
 const TOOLKIT_ID = "toolkit@mozilla.org";
 
-/* globals BOOTSTRAP_REASONS, KEY_APP_SYSTEM_ADDONS, KEY_APP_SYSTEM_DEFAULTS, PREF_BRANCH_INSTALLED_ADDON, PREF_SYSTEM_ADDON_SET, TEMPORARY_ADDON_SUFFIX, XPI_PERMISSION, XPIStates, getURIForResourceInFile, iterDirectory */
+/* globals BOOTSTRAP_REASONS, DIR_STAGE, DIR_TRASH, KEY_APP_PROFILE, KEY_APP_SYSTEM_ADDONS, KEY_APP_SYSTEM_DEFAULTS,
+   KEY_APP_SYSTEM_PROFILE, KEY_PROFILEDIR, PREF_BRANCH_INSTALLED_ADDON, PREF_SYSTEM_ADDON_SET, TEMPORARY_ADDON_SUFFIX,
+   XPI_PERMISSION, XPIStates, getURIForResourceInFile, iterDirectory */
 const XPI_INTERNAL_SYMBOLS = [
   "BOOTSTRAP_REASONS",
+  "DIR_STAGE",
+  "DIR_TRASH",
+  "KEY_APP_PROFILE",
   "KEY_APP_SYSTEM_ADDONS",
   "KEY_APP_SYSTEM_DEFAULTS",
+  "KEY_APP_SYSTEM_PROFILE",
+  "KEY_PROFILEDIR",
   "PREF_BRANCH_INSTALLED_ADDON",
   "PREF_SYSTEM_ADDON_SET",
   "TEMPORARY_ADDON_SUFFIX",
@@ -181,13 +188,7 @@ const PREF_XPI_SIGNATURES_DEV_ROOT = "xpinstall.signatures.dev-root";
 const PREF_INSTALL_REQUIREBUILTINCERTS =
   "extensions.install.requireBuiltInCerts";
 
-const KEY_PROFILEDIR = "ProfD";
 const KEY_TEMPDIR = "TmpD";
-
-const KEY_APP_PROFILE = "app-profile";
-
-const DIR_STAGE = "staged";
-const DIR_TRASH = "trash";
 
 // This is a random number array that can be used as "salt" when generating
 // an automatic ID based on the directory path of an add-on. It will prevent
@@ -711,6 +712,7 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
 
   let { signedState, cert } = await aPackage.verifySignedState(addon);
   addon.signedState = signedState;
+  addon.signedDate = cert?.validity?.notBefore / 1000 || null;
   if (!addon.isPrivileged) {
     addon.hidden = false;
   }
@@ -727,19 +729,6 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
     }
   }
 
-  /* CLIQZ-SPECIAL: remove recommended status
-  if (
-    addon.type === "extension" &&
-    !aLocation.isBuiltin &&
-    !aLocation.isTemporary
-  ) {
-    addon.recommendationState = await readRecommendationStates(
-      aPackage,
-      addon.id
-    );
-  }
-  */
-
   // CLIQZ-SPECIAL: enable/disable DAT extension.
   if (addon.id === 'dat@cliqz.com') {
     const isDatEnabled = Services.prefs.getBoolPref("extension.cliqz.dat.enabled", false);
@@ -750,8 +739,17 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
   }
 
   addon.propagateDisabledState(aOldAddon);
-  await addon.updateBlocklistState();
-  addon.appDisabled = !XPIDatabase.isUsableAddon(addon);
+  if (!aLocation.isSystem && !aLocation.isBuiltin) {
+    if (addon.type === "extension" && !aLocation.isTemporary) {
+      addon.recommendationState = await readRecommendationStates(
+        aPackage,
+        addon.id
+      );
+    }
+
+    await addon.updateBlocklistState();
+    addon.appDisabled = !XPIDatabase.isUsableAddon(addon);
+  }
 
   defineSyncGUID(addon);
 
@@ -887,17 +885,27 @@ function getSignedStatus(aRv, aCert, aAddonID) {
 }
 
 function shouldVerifySignedState(aAddon) {
-  // Updated system add-ons should always have their signature checked
-  if (aAddon.location.name == KEY_APP_SYSTEM_ADDONS) {
-    return true;
-  }
+  // TODO when KEY_APP_SYSTEM_DEFAULTS and KEY_APP_SYSTEM_ADDONS locations
+  // are removed, we need to reorganize the logic here.  At that point we
+  // should:
+  //   if builtin or MOZ_UNSIGNED_SCOPES return false
+  //   if system return true
+  //   return SIGNED_TYPES.has(type)
 
   // We don't care about signatures for default system add-ons
   if (aAddon.location.name == KEY_APP_SYSTEM_DEFAULTS) {
     return false;
   }
 
-  if (aAddon.location.scope & AppConstants.MOZ_UNSIGNED_SCOPES) {
+  // Updated system add-ons should always have their signature checked
+  if (aAddon.location.isSystem) {
+    return true;
+  }
+
+  if (
+    aAddon.location.isBuiltin ||
+    aAddon.location.scope & AppConstants.MOZ_UNSIGNED_SCOPES
+  ) {
     return false;
   }
 
@@ -1432,29 +1440,6 @@ class AddonInstall {
         this._callInstallListeners("onDownloadCancelled");
         this.removeTemporaryFile();
         break;
-      case AddonManager.STATE_INSTALLED:
-        logger.debug("Cancelling install of " + this.addon.id);
-        let xpi = getFile(
-          `${this.addon.id}.xpi`,
-          this.location.installer.getStagingDir()
-        );
-        flushJarCache(xpi);
-        this.location.installer.cleanStagingDir([`${this.addon.id}.xpi`]);
-        this.state = AddonManager.STATE_CANCELLED;
-        this._cleanup();
-
-        if (this.existingAddon) {
-          delete this.existingAddon.pendingUpgrade;
-          this.existingAddon.pendingUpgrade = null;
-        }
-
-        AddonManagerPrivate.callAddonListeners(
-          "onOperationCancelled",
-          this.addon.wrapper
-        );
-
-        this._callInstallListeners("onInstallCancelled");
-        break;
       case AddonManager.STATE_POSTPONED:
         logger.debug(`Cancelling postponed install of ${this.addon.id}`);
         this.state = AddonManager.STATE_CANCELLED;
@@ -1745,9 +1730,6 @@ class AddonInstall {
     this.install();
   }
 
-  // TODO This relies on the assumption that we are always installing into the
-  // highest priority install location so the resulting add-on will be visible
-  // overriding any existing copy in another install location (bug 557710).
   /**
    * Installs the add-on into the install location.
    */
@@ -1759,21 +1741,6 @@ class AddonInstall {
       this._cleanup();
       this._callInstallListeners("onInstallCancelled");
       return;
-    }
-
-    // Find and cancel any pending installs for the same add-on in the same
-    // install location
-    for (let install of XPIInstall.installs) {
-      if (
-        install.state == AddonManager.STATE_INSTALLED &&
-        install.location == this.location &&
-        install.addon.id == this.addon.id
-      ) {
-        logger.debug(
-          `Cancelling previous pending install of ${install.addon.id}`
-        );
-        install.cancel();
-      }
     }
 
     // Reinstall existing user-disabled addon (of the same installed version).
@@ -1790,11 +1757,15 @@ class AddonInstall {
       });
       this.state = AddonManager.STATE_INSTALLED;
       this._callInstallListeners("onInstallEnded", this.existingAddon.wrapper);
+      this._cleanup();
       return;
     }
 
-    let isUpgrade =
-      this.existingAddon && this.existingAddon.location == this.location;
+    let isSameLocation = this.existingAddon?.location == this.location;
+    let willActivate =
+      isSameLocation ||
+      !this.existingAddon ||
+      this.location.hasPrecedence(this.existingAddon.location);
 
     logger.debug(
       "Starting install of " + this.addon.id + " from " + this.sourceURI.spec
@@ -1815,12 +1786,19 @@ class AddonInstall {
 
       stagedAddon.append(`${this.addon.id}.xpi`);
 
-      await this.stageInstall(false, stagedAddon, isUpgrade);
+      await this.stageInstall(false, stagedAddon, isSameLocation);
 
       this._cleanup();
 
       let install = async () => {
-        if (this.existingAddon && this.existingAddon.active && !isUpgrade) {
+        // Mark this instance of the addon as inactive if it is being
+        // superseded by an addon in a different location.
+        if (
+          willActivate &&
+          this.existingAddon &&
+          this.existingAddon.active &&
+          !isSameLocation
+        ) {
           XPIDatabase.updateAddonActive(this.existingAddon, false);
         }
 
@@ -1834,9 +1812,10 @@ class AddonInstall {
 
         // Update the metadata in the database
         this.addon.sourceBundle = file;
-        this.addon.visible = true;
+        // If this addon will be the active addon, make it visible.
+        this.addon.visible = willActivate;
 
-        if (isUpgrade) {
+        if (isSameLocation) {
           this.addon = XPIDatabase.updateAddonMetadata(
             this.existingAddon,
             this.addon,
@@ -1881,7 +1860,9 @@ class AddonInstall {
       };
 
       this._startupPromise = (async () => {
-        if (this.existingAddon) {
+        if (!willActivate) {
+          await install();
+        } else if (this.existingAddon) {
           await XPIInternal.BootstrapScope.get(this.existingAddon).update(
             this.addon,
             !this.addon.disabled,
@@ -1931,11 +1912,11 @@ class AddonInstall {
    *        next app startup.
    * @param {AddonInternal} stagedAddon
    *        The AddonInternal object for the staged install.
-   * @param {boolean} isUpgrade
+   * @param {boolean} isSameLocation
    *        True if this installation is an upgrade for an existing
-   *        add-on.
+   *        add-on in the same location.
    */
-  async stageInstall(restartRequired, stagedAddon, isUpgrade) {
+  async stageInstall(restartRequired, stagedAddon, isSameLocation) {
     logger.debug(`Addon ${this.addon.id} will be installed as a packed xpi`);
     stagedAddon.leafName = `${this.addon.id}.xpi`;
 
@@ -1951,7 +1932,7 @@ class AddonInstall {
       logger.debug(
         `Staged install of ${this.addon.id} from ${this.sourceURI.spec} ready; waiting for restart.`
       );
-      if (isUpgrade) {
+      if (isSameLocation) {
         delete this.existingAddon.pendingUpgrade;
         this.existingAddon.pendingUpgrade = this.addon;
       }
@@ -2311,7 +2292,7 @@ var DownloadAddonInstall = class extends AddonInstall {
     try {
       let requireBuiltIn = Services.prefs.getBoolPref(
         PREF_INSTALL_REQUIREBUILTINCERTS,
-        true
+        !AppConstants.MOZ_REQUIRE_SIGNING
       );
       this.badCertHandler = new CertUtils.BadCertHandler(!requireBuiltIn);
 
@@ -2485,7 +2466,7 @@ var DownloadAddonInstall = class extends AddonInstall {
               aRequest,
               !Services.prefs.getBoolPref(
                 PREF_INSTALL_REQUIREBUILTINCERTS,
-                true
+                !AppConstants.MOZ_REQUIRE_SIGNING
               )
             );
           } catch (e) {
@@ -2807,7 +2788,7 @@ var UpdateChecker = function(
   aPlatformVersion
 ) {
   if (!aListener || !aReason) {
-    throw Cr.NS_ERROR_INVALID_ARG;
+    throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
   }
 
   ({ AddonUpdateChecker } = ChromeUtils.import(
@@ -3060,6 +3041,34 @@ function createLocalInstall(file, location, telemetryInfo) {
   } catch (e) {
     logger.error("Error creating install", e);
     return Promise.resolve(null);
+  }
+}
+
+/**
+ * Uninstall an addon from a location.  This allows removing non-visible
+ * addons, such as system addon upgrades, when a higher precedence addon
+ * is installed.
+ *
+ * @param {string} addonID
+ *        ID of the addon being removed.
+ * @param {XPIStateLocation} location
+ *        The location to remove the addon from.
+ */
+async function uninstallAddonFromLocation(addonID, location) {
+  let existing = await XPIDatabase.getAddonInLocation(addonID, location.name);
+  if (!existing) {
+    return;
+  }
+  if (existing.active) {
+    let a = await AddonManager.getAddonByID(addonID);
+    if (a) {
+      await a.uninstall();
+    }
+  } else {
+    XPIDatabase.removeAddonMetadata(existing);
+    location.removeAddon(addonID);
+    XPIStates.save();
+    AddonManagerPrivate.callAddonListeners("onUninstalled", existing);
   }
 }
 
@@ -3468,6 +3477,7 @@ class SystemAddonInstaller extends DirectoryInstaller {
     // remove everything from the pref first, if uninstall
     // fails then at least they will not be re-activated on
     // next restart.
+    let addonSet = this._addonSet;
     this._addonSet = { schema: 1, addons: {} };
     SystemAddonInstaller._saveAddonSet(this._addonSet);
 
@@ -3478,12 +3488,9 @@ class SystemAddonInstaller extends DirectoryInstaller {
     // Updates will only be explicitly uninstalled if they are
     // removed restartlessly, for instance if they are no longer
     // part of the latest update set.
-    if (this._addonSet) {
-      let ids = Object.keys(this._addonSet.addons);
-      for (let addon of await AddonManager.getAddonsByIDs(ids)) {
-        if (addon) {
-          addon.uninstall();
-        }
+    if (addonSet) {
+      for (let addonID of Object.keys(addonSet.addons)) {
+        await uninstallAddonFromLocation(addonID, this.location);
       }
     }
   }
@@ -3558,7 +3565,7 @@ class SystemAddonInstaller extends DirectoryInstaller {
     const ids = aAddons.map(a => a.id);
     for (let addonID of Object.keys(addonSet.addons)) {
       if (!ids.includes(addonID)) {
-        AddonManager.getAddonByID(addonID).then(a => a.uninstall());
+        await uninstallAddonFromLocation(addonID, this.location);
       }
     }
 
@@ -3645,7 +3652,7 @@ class SystemAddonInstaller extends DirectoryInstaller {
       }
       // Otherwise, roll back to built-in set on restart.
       // TODO try to do these restartlessly
-      this.resetAddonSet();
+      await this.resetAddonSet();
 
       try {
         await OS.File.removeDir(newDir.path, { ignorePermissions: true });
@@ -3769,6 +3776,7 @@ var XPIInstall = {
   recursiveRemove,
   syncLoadManifest,
   loadManifestFromFile,
+  uninstallAddonFromLocation,
 
   // Keep track of in-progress operations that support cancel()
   _inProgress: [],
@@ -4126,7 +4134,7 @@ var XPIInstall = {
     );
     if (setMatches(addonList, defaultAddons)) {
       logger.info("Resetting system add-ons.");
-      installer.resetAddonSet();
+      await installer.resetAddonSet();
       await installer.cleanDirectories();
       return;
     }
@@ -4333,12 +4341,24 @@ var XPIInstall = {
    * @param {Object} [aOptions.telemetryInfo]
    *        An optional object which provides details about the installation source
    *        included in the addon manager telemetry events.
-   * @param {boolean} [options.sendCookies = false]
+   * @param {boolean} [aOptions.sendCookies = false]
    *        Whether cookies should be sent when downloading the add-on.
+   * @param {string} [aOptions.useSystemLocation = false]
+   *        If true installs to the system profile location.
    * @returns {AddonInstall}
    */
   async getInstallForURL(aUrl, aOptions) {
-    let location = XPIStates.getLocation(KEY_APP_PROFILE);
+    let locationName = aOptions.useSystemLocation
+      ? KEY_APP_SYSTEM_PROFILE
+      : KEY_APP_PROFILE;
+    let location = XPIStates.getLocation(locationName);
+    if (!location) {
+      throw Components.Exception(
+        "Invalid location name",
+        Cr.NS_ERROR_INVALID_ARG
+      );
+    }
+
     let url = Services.io.newURI(aUrl);
 
     if (url instanceof Ci.nsIFileURL) {
@@ -4359,10 +4379,23 @@ var XPIInstall = {
    * @param {Object?} [aInstallTelemetryInfo]
    *        An optional object which provides details about the installation source
    *        included in the addon manager telemetry events.
+   * @param {boolean} [aUseSystemLocation = false]
+   *        If true install to the system profile location.
    * @returns {AddonInstall?}
    */
-  async getInstallForFile(aFile, aInstallTelemetryInfo) {
-    let install = await createLocalInstall(aFile, null, aInstallTelemetryInfo);
+  async getInstallForFile(
+    aFile,
+    aInstallTelemetryInfo,
+    aUseSystemLocation = false
+  ) {
+    let location = XPIStates.getLocation(
+      aUseSystemLocation ? KEY_APP_SYSTEM_PROFILE : KEY_APP_PROFILE
+    );
+    let install = await createLocalInstall(
+      aFile,
+      location,
+      aInstallTelemetryInfo
+    );
     return install ? install.wrapper : null;
   },
 
@@ -4419,8 +4452,9 @@ var XPIInstall = {
    *
    * @param  {string} base
    *         A string containing the base URL.  Must be a resource: URL.
-   * @returns {Promise}
-   *          A Promise that resolves when the addon is installed.
+   * @returns {Promise<Addon>}
+   *          A Promise that resolves to an Addon object when the addon is
+   *          installed.
    */
   async installBuiltinAddon(base) {
     if (lastLightweightTheme === null) {
@@ -4466,6 +4500,7 @@ var XPIInstall = {
       }
     }
     await this._activateAddon(addon);
+    return addon.wrapper;
   },
 
   /**
@@ -4500,15 +4535,20 @@ var XPIInstall = {
 
     let oldAddon = await XPIDatabase.getVisibleAddonForID(addon.id);
 
+    let willActivate =
+      !oldAddon ||
+      oldAddon.location == addon.location ||
+      addon.location.hasPrecedence(oldAddon.location);
+
     let install = () => {
-      addon.visible = true;
+      addon.visible = willActivate;
       // Themes are generally not enabled by default at install time,
       // unless enabled by the front-end code. If they are meant to be
       // enabled, they will already have been enabled by this point.
       if (addon.type !== "theme" || addon.location.isTemporary) {
         addon.userDisabled = false;
       }
-      addon.active = !addon.disabled;
+      addon.active = addon.visible && !addon.disabled;
 
       addon = XPIDatabase.addToDatabase(
         addon,
@@ -4521,7 +4561,11 @@ var XPIInstall = {
 
     AddonManagerPrivate.callAddonListeners("onInstalling", addon.wrapper);
 
-    if (oldAddon) {
+    if (!willActivate) {
+      addon.installDate = Date.now();
+
+      install();
+    } else if (oldAddon) {
       logger.warn(
         `Addon with ID ${oldAddon.id} already installed, ` +
           "older version will be disabled"

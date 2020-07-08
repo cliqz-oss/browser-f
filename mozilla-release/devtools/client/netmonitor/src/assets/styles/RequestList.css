@@ -78,6 +78,11 @@
   table-layout: fixed;
 }
 
+.requests-list-table {
+  /* Clip column resizers when they are higher than the table. */
+  overflow: hidden;
+}
+
 .requests-list-column,
 .ws-frames-list-column {
   white-space: nowrap;
@@ -118,6 +123,11 @@
 .ws-frames-list-headers th {
   height: calc(var(--theme-toolbar-height) + 1px);
   border-bottom: 1px solid var(--theme-splitter-color);
+}
+
+.requests-list-headers th {
+  /* Allow column-resizers to be visible beyond the headers. */
+  overflow: visible;
 }
 
 .requests-list-headers th:not(:first-child),
@@ -206,6 +216,9 @@
   min-height: 23px;
   position: absolute;
   background-color: transparent;
+  /* Extend column-resizers beyond table header to allow resizing on
+   * column borders as well.*/
+  height: 100vh;
 }
 
 /**
@@ -247,7 +260,6 @@
 
 .requests-security-state-icon {
   display: inline-block;
-  width: 16px;
   height: 16px;
   background-position: center;
   background-repeat: no-repeat;
@@ -258,12 +270,14 @@
 
 .security-state-secure {
   background-image: url(chrome://devtools/skin/images/security-state-secure.svg);
+  width: 16px;
 }
 
 .security-state-weak {
   /* Shift icon to the right (in both LTR and RTL directions) to align the
    * padlock shape with other padlock icons. */
   position: relative;
+  width: 16px;
   left: 2px;
   background-image: url(chrome://devtools/skin/images/security-state-weak.svg);
   stroke: var(--theme-icon-warning-color);
@@ -271,11 +285,13 @@
 
 .security-state-insecure {
   background-image: url(chrome://devtools/skin/images/security-state-insecure.svg);
+  width: 16px;
   stroke: var(--theme-icon-error-color);
 }
 
 .security-state-broken {
   background-image: url(chrome://devtools/skin/images/error-small.svg);
+  width: 16px;
   fill: var(--theme-icon-error-color);
 }
 
@@ -509,8 +525,12 @@
   opacity: var(--table-icon-opacity, 1);
 }
 
-.request-list-item.blocked {
-  color: var(--timing-blocked-color);
+/*
+ * Showing blocked requests in red should always have priority
+ * except when the request is selected.
+ */
+.request-list-item:not(.selected).blocked {
+  color: var(--timing-blocked-color) !important;
 }
 
 /*
@@ -536,11 +556,11 @@
   --network-initiator-color: var(--blue-40);
 }
 
-.requests-list-initiator {
+.requests-list-initiator .requests-list-initiator-lastframe {
   text-decoration: none;
 }
 
-.requests-list-initiator:hover {
+.requests-list-initiator .requests-list-initiator-lastframe:hover {
   text-decoration: underline;
 }
 
@@ -548,7 +568,8 @@
   display: unset;
 }
 
-.request-list-item .requests-list-initiator-filename {
+.request-list-item .requests-list-initiator-filename,
+.request-list-item .requests-list-initiator-line {
   cursor: pointer;
   text-decoration: inherit;
 }
@@ -557,21 +578,18 @@
   color: var(--network-initiator-color);
 }
 
-.request-list-item.selected .requests-list-initiator-filename {
-  color: inherit;
-}
-
-.request-list-item .requests-list-initiator-line {
-  cursor: pointer;
-  text-decoration: inherit;
-}
-
 .request-list-item:not(selected) .requests-list-initiator-line {
   color: var(--network-initiator-line-color);
 }
 
+.request-list-item.selected .requests-list-initiator-filename,
 .request-list-item.selected .requests-list-initiator-line {
   color: inherit;
+}
+
+.request-list-item .requests-list-initiator-cause {
+  display: unset;
+  white-space: pre;
 }
 
 /* Responsive web design support */

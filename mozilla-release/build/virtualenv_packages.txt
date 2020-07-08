@@ -21,8 +21,11 @@ mozilla.pth:third_party/python/cram
 mozilla.pth:third_party/python/diskcache
 mozilla.pth:third_party/python/distro
 mozilla.pth:third_party/python/dlmanager
+mozilla.pth:third_party/python/ecdsa/src
 mozilla.pth:third_party/python/enum34
-mozilla.pth:third_party/python/fluent
+mozilla.pth:third_party/python/esprima
+mozilla.pth:third_party/python/fluent.migrate
+mozilla.pth:third_party/python/fluent.syntax
 mozilla.pth:third_party/python/funcsigs
 python2:mozilla.pth:third_party/python/futures
 python3:mozilla.pth:third_party/python/glean_parser
@@ -60,8 +63,10 @@ mozilla.pth:third_party/python/pytest/src
 mozilla.pth:third_party/python/pytoml
 mozilla.pth:third_party/python/redo
 mozilla.pth:third_party/python/responses
+mozilla.pth:third_party/python/sentry-sdk
 mozilla.pth:third_party/python/six
 mozilla.pth:third_party/python/taskcluster-urls
+mozilla.pth:third_party/python/urllib3/src
 mozilla.pth:third_party/python/voluptuous
 mozilla.pth:third_party/python/json-e
 mozilla.pth:third_party/python/yamllint
@@ -74,7 +79,7 @@ mozilla.pth:config/mozunit
 mozilla.pth:dom/bindings
 mozilla.pth:dom/bindings/parser
 mozilla.pth:layout/tools/reftest
-mozilla.pth:other-licenses/ply/
+mozilla.pth:third_party/python/ply
 mozilla.pth:taskcluster
 mozilla.pth:testing
 mozilla.pth:testing/condprofile
@@ -107,6 +112,6 @@ mozilla.pth:third_party/python/cbor2
 mozilla.pth:third_party/python/pyasn1
 mozilla.pth:third_party/python/pyasn1-modules
 mozilla.pth:third_party/python/rsa
-mozilla.pth:third_party/python/PyECC
 mozilla.pth:toolkit/components/telemetry/tests/marionette/harness
+mozilla.pth:xpcom/idl-parser
 optional:packages.txt:comm/build/virtualenv_packages.txt

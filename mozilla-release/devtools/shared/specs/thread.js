@@ -86,6 +86,7 @@ const threadSpec = generateActorSpec({
     resume: {
       request: {
         resumeLimit: Arg(0, "nullable:json"),
+        frameActorID: Arg(1, "nullable:string"),
       },
       response: RetVal("nullable:json"),
     },
@@ -113,6 +114,10 @@ const threadSpec = generateActorSpec({
       },
     },
     dumpThread: {
+      request: {},
+      response: RetVal("json"),
+    },
+    dumpPools: {
       request: {},
       response: RetVal("json"),
     },

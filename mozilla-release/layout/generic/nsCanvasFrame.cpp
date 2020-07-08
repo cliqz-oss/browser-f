@@ -147,10 +147,9 @@ nsresult nsCanvasFrame::CreateAnonymousContent(
     mCustomContentContainer->AppendChildTo(&anonContent->ContentNode(), false);
   }
 
-  // Create a popupgroup element for chrome privileged top level non-XUL
-  // documents to support context menus and tooltips.
-  if (PresContext()->IsChrome() && PresContext()->IsRoot() &&
-      doc->AllowXULXBL()) {
+  // Create a popupgroup element for system privileged non-XUL documents to
+  // support context menus and tooltips.
+  if (XRE_IsParentProcess() && doc->NodePrincipal()->IsSystemPrincipal()) {
     nsNodeInfoManager* nodeInfoManager = doc->NodeInfoManager();
     RefPtr<NodeInfo> nodeInfo =
         nodeInfoManager->GetNodeInfo(nsGkAtoms::popupgroup, nullptr,
@@ -174,8 +173,8 @@ nsresult nsCanvasFrame::CreateAnonymousContent(
 
     mTooltipContent->SetAttr(kNameSpaceID_None, nsGkAtoms::_default,
                              NS_LITERAL_STRING("true"), false);
-    // Set the page attribute so the XBL binding will find the text for the
-    // tooltip from the currently hovered element.
+    // Set the page attribute so XULTooltipElement::PostHandleEvent will find
+    // the text for the tooltip from the currently hovered element.
     mTooltipContent->SetAttr(kNameSpaceID_None, nsGkAtoms::page,
                              NS_LITERAL_STRING("true"), false);
 
@@ -570,22 +569,22 @@ void nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
         {
           DisplayListClipState::AutoSaveRestore bgImageClip(aBuilder);
           bgImageClip.Clear();
-          bgItem = MakeDisplayItem<nsDisplayCanvasBackgroundImage>(
-              aBuilder, this, bgData);
+          bgItem = MakeDisplayItemWithIndex<nsDisplayCanvasBackgroundImage>(
+              aBuilder, this, /* aIndex = */ i, bgData);
           if (bgItem) {
             bgItem->SetDependentFrame(aBuilder, dependentFrame);
           }
         }
         if (bgItem) {
           thisItemList.AppendToTop(
-              nsDisplayFixedPosition::CreateForFixedBackground(aBuilder, this,
-                                                               bgItem, i));
+              nsDisplayFixedPosition::CreateForFixedBackground(
+                  aBuilder, this, nullptr, bgItem, i));
         }
 
       } else {
         nsDisplayCanvasBackgroundImage* bgItem =
-            MakeDisplayItem<nsDisplayCanvasBackgroundImage>(aBuilder, this,
-                                                            bgData);
+            MakeDisplayItemWithIndex<nsDisplayCanvasBackgroundImage>(
+                aBuilder, this, /* aIndex = */ i, bgData);
         if (bgItem) {
           bgItem->SetDependentFrame(aBuilder, dependentFrame);
           thisItemList.AppendToTop(bgItem);
@@ -594,9 +593,9 @@ void nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 
       if (layers.mLayers[i].mBlendMode != StyleBlend::Normal) {
         DisplayListClipState::AutoSaveRestore blendClip(aBuilder);
-        thisItemList.AppendNewToTop<nsDisplayBlendMode>(
-            aBuilder, this, &thisItemList, layers.mLayers[i].mBlendMode,
-            thisItemASR, i + 1);
+        thisItemList.AppendNewToTopWithIndex<nsDisplayBlendMode>(
+            aBuilder, this, i + 1, &thisItemList, layers.mLayers[i].mBlendMode,
+            thisItemASR, true);
       }
       aLists.BorderBackground()->AppendToTop(&thisItemList);
     }
@@ -606,7 +605,8 @@ void nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
       DisplayListClipState::AutoSaveRestore blendContainerClip(aBuilder);
       aLists.BorderBackground()->AppendToTop(
           nsDisplayBlendContainer::CreateForBackgroundBlendMode(
-              aBuilder, this, aLists.BorderBackground(), containerASR));
+              aBuilder, this, nullptr, aLists.BorderBackground(),
+              containerASR));
     }
   }
 

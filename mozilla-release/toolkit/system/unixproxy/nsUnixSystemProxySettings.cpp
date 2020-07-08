@@ -124,7 +124,7 @@ static bool IsInNoProxyList(const nsACString& aHost, int32_t aPort,
       nsDependentCSubstring hostStr(pos, colon);
       // By using StringEndsWith instead of an equality comparator, we can
       // include sub-domains
-      if (StringEndsWith(aHost, hostStr, nsCaseInsensitiveCStringComparator()))
+      if (StringEndsWith(aHost, hostStr, nsCaseInsensitiveCStringComparator))
         return true;
     }
 
@@ -136,13 +136,17 @@ static bool IsInNoProxyList(const nsACString& aHost, int32_t aPort,
 
 static void SetProxyResult(const char* aType, const nsACString& aHost,
                            int32_t aPort, nsACString& aResult) {
-  aResult.AppendASCII(aType);
+  aResult.AssignASCII(aType);
   aResult.Append(' ');
   aResult.Append(aHost);
   if (aPort > 0) {
     aResult.Append(':');
     aResult.AppendInt(aPort);
   }
+}
+
+static void SetProxyResultDirect(nsACString& aResult) {
+  aResult.AssignLiteral("DIRECT");
 }
 
 static nsresult GetProxyFromEnvironment(const nsACString& aScheme,
@@ -163,7 +167,7 @@ static nsresult GetProxyFromEnvironment(const nsACString& aScheme,
 
   const char* noProxyVal = PR_GetEnv("no_proxy");
   if (noProxyVal && IsInNoProxyList(aHost, aPort, noProxyVal)) {
-    aResult.AppendLiteral("DIRECT");
+    SetProxyResultDirect(aResult);
     return NS_OK;
   }
 
@@ -275,11 +279,11 @@ static bool ConvertToIPV6Addr(const nsACString& aName, PRIPv6Addr* aAddr,
 
 static bool HostIgnoredByProxy(const nsACString& aIgnore,
                                const nsACString& aHost) {
-  if (aIgnore.Equals(aHost, nsCaseInsensitiveCStringComparator())) return true;
+  if (aIgnore.Equals(aHost, nsCaseInsensitiveCStringComparator)) return true;
 
   if (aIgnore.First() == '*' &&
       StringEndsWith(aHost, nsDependentCSubstring(aIgnore, 1),
-                     nsCaseInsensitiveCStringComparator()))
+                     nsCaseInsensitiveCStringComparator))
     return true;
 
   int32_t mask = 128;
@@ -340,7 +344,7 @@ nsresult nsUnixSystemProxySettings::GetProxyFromGSettings(
         nsCString s;
         if (NS_SUCCEEDED(str->GetData(s)) && !s.IsEmpty()) {
           if (HostIgnoredByProxy(s, aHost)) {
-            aResult.AppendLiteral("DIRECT");
+            SetProxyResultDirect(aResult);
             return NS_OK;
           }
         }
@@ -371,7 +375,7 @@ nsresult nsUnixSystemProxySettings::GetProxyFromGSettings(
   }
 
   if (NS_FAILED(rv)) {
-    aResult.AppendLiteral("DIRECT");
+    SetProxyResultDirect(aResult);
   }
 
   return NS_OK;

@@ -32,6 +32,16 @@ from mozbuild.base import (
 from mozbuild.util import ensureParentDir
 
 
+_COULD_NOT_FIND_ARTIFACTS_TEMPLATE = (
+    'Could not find artifacts for a toolchain build named `{build}`. Local '
+    'commits, dirty/stale files, and other changes in your checkout may cause '
+    'this error. Make sure you are on a fresh, current checkout of '
+    'mozilla-central. If you are already, you may be able to avoid this error '
+    'by running `mach clobber python`. Beware that commands like `mach '
+    'bootstrap` and `mach artifact` are unlikely to work on any versions of '
+    'the code besides recent revisions of mozilla-central.')
+
+
 class SymbolsAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         # If this function is called, it means the --symbols option was given,
@@ -316,17 +326,22 @@ class PackageFrontend(MachCommandBase):
                              'Could not find a toolchain build named `{build}`')
                     return 1
 
+                artifact_name = task.attributes.get('toolchain-artifact')
+                self.log(logging.DEBUG, 'artifact',
+                         {'name': artifact_name,
+                          'index': task.optimization.get('index-search')},
+                         'Searching for {name} in {index}')
                 task_id = IndexSearch().should_replace_task(
                     task, {}, task.optimization.get('index-search', []))
-                artifact_name = task.attributes.get('toolchain-artifact')
                 if task_id in (True, False) or not artifact_name:
                     self.log(logging.ERROR, 'artifact', {'build': user_value},
-                             'Could not find artifacts for a toolchain build '
-                             'named `{build}`. Local commits and other changes '
-                             'in your checkout may cause this error. Try '
-                             'updating to a fresh checkout of mozilla-central '
-                             'to use artifact builds.')
+                             _COULD_NOT_FIND_ARTIFACTS_TEMPLATE)
                     return 1
+
+                self.log(logging.DEBUG, 'artifact',
+                         {'name': artifact_name,
+                          'task_id': task_id},
+                         'Found {name} in {task_id}')
 
                 record = ArtifactRecord(task_id, artifact_name)
                 records[record.filename] = record
@@ -368,8 +383,7 @@ class PackageFrontend(MachCommandBase):
                         level = logging.WARN
                     else:
                         level = logging.ERROR
-                    # e.message is not always a string, so convert it first.
-                    self.log(level, 'artifact', {}, str(e.message))
+                    self.log(level, 'artifact', {}, str(e))
                     if not should_retry:
                         break
                     if attempt < retry:
@@ -412,7 +426,7 @@ class PackageFrontend(MachCommandBase):
             # Keep a sha256 of each downloaded file, for the chain-of-trust
             # validation.
             if artifact_manifest is not None:
-                with open(local) as fh:
+                with open(local, 'rb') as fh:
                     h = hashlib.sha256()
                     while True:
                         data = fh.read(1024 * 1024)
@@ -423,7 +437,20 @@ class PackageFrontend(MachCommandBase):
                     'sha256': h.hexdigest(),
                 }
             if record.unpack and not no_unpack:
-                unpack_file(local)
+                # Try to unpack the file. If we get an exception importing
+                # zstandard when calling unpack_file, we can try installing
+                # zstandard locally and trying again
+                try:
+                    unpack_file(local)
+                except ImportError as e:
+                    # Need to do this branch while this code is still exercised
+                    # by Python 2.
+                    if six.PY3 and e.name != "zstandard":
+                        raise
+                    elif six.PY2 and e.message != 'No module named zstandard':
+                        raise
+                    self._ensure_zstd()
+                    unpack_file(local)
                 os.unlink(local)
 
         if not downloaded:

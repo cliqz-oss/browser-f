@@ -85,6 +85,8 @@ extern mozilla::LazyLogModule gAutoplayPermissionLog;
 #define AUTOPLAY_LOG(msg, ...) \
   MOZ_LOG(gAutoplayPermissionLog, LogLevel::Debug, (msg, ##__VA_ARGS__))
 
+using std::move;
+
 namespace mozilla {
 namespace dom {
 
@@ -142,11 +144,7 @@ static float GetSampleRateForAudioContext(bool aIsOffline, float aSampleRate) {
   if (aIsOffline || aSampleRate != 0.0) {
     return aSampleRate;
   } else {
-    float rate = static_cast<float>(CubebUtils::PreferredSampleRate());
-    if (nsRFPService::IsResistFingerprintingEnabled()) {
-      return 44100.f;
-    }
-    return rate;
+    return static_cast<float>(CubebUtils::PreferredSampleRate());
   }
 }
 
@@ -549,7 +547,7 @@ double AudioContext::OutputLatency() {
   // When reduceFingerprinting is enabled, return a latency figure that is
   // fixed, but plausible for the platform.
   double latency_s = 0.0;
-  if (nsRFPService::IsResistFingerprintingEnabled()) {
+  if (StaticPrefs::privacy_resistFingerprinting()) {
 #ifdef XP_MACOSX
     latency_s = 512. / mSampleRate;
 #elif MOZ_WIDGET_ANDROID
@@ -653,7 +651,7 @@ already_AddRefed<Promise> AudioContext::DecodeAudioData(
       new WebAudioDecodeJob(this, promise, successCallback, failureCallback));
   AsyncDecodeWebAudio(contentType.get(), data, length, *job);
   // Transfer the ownership to mDecodeJobs
-  mDecodeJobs.AppendElement(std::move(job));
+  mDecodeJobs.AppendElement(move(job));
 
   return promise.forget();
 }
@@ -680,7 +678,7 @@ void AudioContext::UnregisterActiveNode(AudioNode* aNode) {
 }
 
 uint32_t AudioContext::MaxChannelCount() const {
-  if (nsRFPService::IsResistFingerprintingEnabled()) {
+  if (StaticPrefs::privacy_resistFingerprinting()) {
     return 2;
   }
   return std::min<uint32_t>(
@@ -721,11 +719,14 @@ double AudioContext::CurrentTime() {
     return rawTime;
   }
 
+  MOZ_ASSERT(GetParentObject()->AsGlobal());
   // The value of a MediaTrack's CurrentTime will always advance forward; it
   // will never reset (even if one rewinds a video.) Therefore we can use a
   // single Random Seed initialized at the same time as the object.
-  return nsRFPService::ReduceTimePrecisionAsSecs(rawTime,
-                                                 GetRandomTimelineSeed());
+  return nsRFPService::ReduceTimePrecisionAsSecs(
+      rawTime, GetRandomTimelineSeed(),
+      /* aIsSystemPrincipal */ false,
+      GetParentObject()->AsGlobal()->CrossOriginIsolated());
 }
 
 nsISerialEventTarget* AudioContext::GetMainThread() const {
@@ -740,20 +741,6 @@ void AudioContext::DisconnectFromOwner() {
   mIsDisconnecting = true;
   Shutdown();
   DOMEventTargetHelper::DisconnectFromOwner();
-}
-
-void AudioContext::BindToOwner(nsIGlobalObject* aNew) {
-  auto scopeExit =
-      MakeScopeExit([&] { DOMEventTargetHelper::BindToOwner(aNew); });
-
-  if (GetOwner()) {
-    GetOwner()->RemoveAudioContext(this);
-  }
-
-  nsCOMPtr<nsPIDOMWindowInner> newWindow = do_QueryInterface(aNew);
-  if (newWindow) {
-    newWindow->AddAudioContext(this);
-  }
 }
 
 void AudioContext::Shutdown() {
@@ -825,7 +812,7 @@ void AudioContext::Dispatch(already_AddRefed<nsIRunnable>&& aRunnable) {
   // and the global is not valid anymore.
   if (parentObject) {
     parentObject->AbstractMainThreadFor(TaskCategory::Other)
-        ->Dispatch(std::move(aRunnable));
+        ->Dispatch(move(aRunnable));
   } else {
     RefPtr<nsIRunnable> runnable(aRunnable);
     runnable = nullptr;
@@ -1251,8 +1238,7 @@ void AudioContext::Unmute() const {
 void AudioContext::SetParamMapForWorkletName(
     const nsAString& aName, AudioParamDescriptorMap* aParamMap) {
   MOZ_ASSERT(!mWorkletParamDescriptors.GetValue(aName));
-  Unused << mWorkletParamDescriptors.Put(aName, std::move(*aParamMap),
-                                         fallible);
+  Unused << mWorkletParamDescriptors.Put(aName, move(*aParamMap), fallible);
 }
 
 size_t AudioContext::SizeOfIncludingThis(

@@ -117,12 +117,8 @@ label html|span.accesskey {
 
 /********** toolbarbutton **********/
 
-toolbarbutton:not([type="menu"]) > .toolbarbutton-menu-dropmarker,
 toolbar[mode="icons"] .toolbarbutton-text,
-toolbar[mode="icons"] .toolbarbutton-multiline-text,
 toolbar[mode="text"] .toolbarbutton-icon,
-.toolbarbutton-multiline-text:not([wrap="true"]),
-.toolbarbutton-text[wrap="true"],
 html|label.toolbarbutton-badge:empty {
   display: none;
 }
@@ -239,7 +235,10 @@ tooltip {
   margin-top: 21px;
 }
 
+% excluding Android here to work around bug 1637975:
+%ifndef ANDROID
 @supports -moz-bool-pref("xul.panel-animations.enabled") {
+@media (prefers-reduced-motion: no-preference) {
 %ifdef MOZ_WIDGET_COCOA
   /* On Mac, use the properties "-moz-window-transform" and "-moz-window-opacity"
      instead of "transform" and "opacity" for these animations.
@@ -304,6 +303,8 @@ tooltip {
   }
 %endif
 }
+}
+%endif
 
 panel[type="arrow"][animating] {
   pointer-events: none;
@@ -492,7 +493,7 @@ search-textbox {
 
 /********** menulist **********/
 
-menulist[popuponly="true"] {
+menulist[popuponly] {
   -moz-appearance: none !important;
   margin: 0 !important;
   height: 0 !important;
@@ -580,8 +581,6 @@ label, button, image {
   display: -moz-inline-box;
 }
 
-.menulist-highlightable-label:not([highlightable="true"]),
-.menulist-label[highlightable="true"],
 .menu-iconic-highlightable-text:not([highlightable="true"]),
 .menu-iconic-text[highlightable="true"] {
   display: none;

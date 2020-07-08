@@ -76,6 +76,16 @@ void MacroAssemblerX64::loadConstantSimd128Float(const SimdConstant& v,
   propagateOOM(val->uses.append(CodeOffset(j.offset())));
 }
 
+void MacroAssemblerX64::vpandSimd128(const SimdConstant& v,
+                                     FloatRegister dest) {
+  SimdData* val = getSimdData(v);
+  if (!val) {
+    return;
+  }
+  JmpSrc j = masm.vpand_ripr(dest.encoding());
+  propagateOOM(val->uses.append(CodeOffset(j.offset())));
+}
+
 void MacroAssemblerX64::bindOffsets(
     const MacroAssemblerX86Shared::UsesVector& uses) {
   for (CodeOffset use : uses) {
@@ -299,6 +309,35 @@ void MacroAssembler::subFromStackPtr(Imm32 imm32) {
   }
 }
 
+void MacroAssemblerX64::rightShiftInt64x2(Imm32 count, FloatRegister src,
+                                          FloatRegister dest) {
+  MOZ_ASSERT(count.value <= 63);
+
+  if (count.value < 32) {
+    ScratchSimd128Scope scratch(asMasm());
+    // Compute high dwords and mask low dwords
+    asMasm().moveSimd128(src, scratch);
+    vpsrad(count, scratch, scratch);
+    vpandSimd128(SimdConstant::SplatX2(int64_t(0xFFFFFFFF00000000LL)), scratch);
+    // Compute low dwords (high dwords at most have clear high bits where the
+    // result will have set low high bits)
+    if (src != dest) {
+      asMasm().moveSimd128(src, dest);
+    }
+    vpsrlq(count, dest, dest);
+    // Merge the parts
+    vpor(scratch, dest, dest);
+  } else {
+    ScratchRegisterScope scratch(asMasm());
+    vpextrq(0, src, scratch);
+    sarq(count, scratch);
+    vpinsrq(0, scratch, dest, dest);
+    vpextrq(1, src, scratch);
+    sarq(count, scratch);
+    vpinsrq(1, scratch, dest, dest);
+  }
+}
+
 //{{{ check_macroassembler_style
 // ===============================================================
 // ABI function calls.
@@ -469,50 +508,18 @@ void MacroAssembler::branchPtrInNurseryChunk(Condition cond, Register ptr,
            Imm32(int32_t(gc::ChunkLocation::Nursery)), label);
 }
 
-void MacroAssembler::branchValueIsNurseryObject(Condition cond,
-                                                ValueOperand value,
-                                                Register temp, Label* label) {
-  MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
-  MOZ_ASSERT(temp != InvalidReg);
-
-  Label done;
-  branchTestObject(Assembler::NotEqual, value,
-                   cond == Assembler::Equal ? &done : label);
-
-  unboxObject(value, temp);
-  orPtr(Imm32(gc::ChunkMask), temp);
-  branch32(cond, Address(temp, gc::ChunkLocationOffsetFromLastByte),
-           Imm32(int32_t(gc::ChunkLocation::Nursery)), label);
-
-  bind(&done);
-}
-
 template <typename T>
 void MacroAssembler::branchValueIsNurseryCellImpl(Condition cond,
                                                   const T& value, Register temp,
                                                   Label* label) {
   MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
   MOZ_ASSERT(temp != InvalidReg);
-  Label done, checkAddress, checkObjectAddress, checkStringAddress;
 
-  Register tag = temp;
-  splitTag(value, tag);
-  branchTestObject(Assembler::Equal, tag, &checkObjectAddress);
-  branchTestString(Assembler::Equal, tag, &checkStringAddress);
-  branchTestBigInt(Assembler::NotEqual, tag,
-                   cond == Assembler::Equal ? &done : label);
+  Label done;
+  branchTestGCThing(Assembler::NotEqual, value,
+                    cond == Assembler::Equal ? &done : label);
 
-  unboxBigInt(value, temp);
-  jump(&checkAddress);
-
-  bind(&checkStringAddress);
-  unboxString(value, temp);
-  jump(&checkAddress);
-
-  bind(&checkObjectAddress);
-  unboxObject(value, temp);
-
-  bind(&checkAddress);
+  unboxGCThingForGCBarrier(value, temp);
   orPtr(Imm32(gc::ChunkMask), temp);
   branch32(cond, Address(temp, gc::ChunkLocationOffsetFromLastByte),
            Imm32(int32_t(gc::ChunkLocation::Nursery)), label);
@@ -623,13 +630,16 @@ void MacroAssembler::wasmLoad(const wasm::MemoryAccessDesc& access,
     case Scalar::Float64:
       loadDouble(srcAddr, out.fpu());
       break;
+    case Scalar::Simd128:
+      MacroAssemblerX64::loadUnalignedSimd128(srcAddr, out.fpu());
+      break;
     case Scalar::Int64:
       MOZ_CRASH("int64 loads must use load64");
     case Scalar::BigInt64:
     case Scalar::BigUint64:
     case Scalar::Uint8Clamped:
     case Scalar::MaxTypedArrayViewType:
-      MOZ_CRASH("unexpected array type");
+      MOZ_CRASH("unexpected scalar type for wasmLoad");
   }
 
   memoryBarrierAfter(access.sync());
@@ -665,12 +675,13 @@ void MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access,
       break;
     case Scalar::Float32:
     case Scalar::Float64:
-      MOZ_CRASH("non-int64 loads should use load()");
+    case Scalar::Simd128:
+      MOZ_CRASH("float loads must use wasmLoad");
     case Scalar::Uint8Clamped:
     case Scalar::BigInt64:
     case Scalar::BigUint64:
     case Scalar::MaxTypedArrayViewType:
-      MOZ_CRASH("unexpected array type");
+      MOZ_CRASH("unexpected scalar type for wasmLoadI64");
   }
 
   memoryBarrierAfter(access.sync());
@@ -702,6 +713,9 @@ void MacroAssembler::wasmStore(const wasm::MemoryAccessDesc& access,
       break;
     case Scalar::Float64:
       storeUncanonicalizedDouble(value.fpu(), dstAddr);
+      break;
+    case Scalar::Simd128:
+      MacroAssemblerX64::storeUnalignedSimd128(value.fpu(), dstAddr);
       break;
     case Scalar::Uint8Clamped:
     case Scalar::BigInt64:

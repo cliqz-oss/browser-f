@@ -88,6 +88,8 @@ function getObjectInspector(
     recordTelemetryEvent: serviceContainer.recordTelemetryEvent,
     openLink: serviceContainer.openLink,
     sourceMapService: serviceContainer.sourceMapService,
+    customFormat: override.customFormat !== false,
+    urlCropLimit: 120,
     renderStacktrace: stacktrace =>
       createElement(SmartTrace, {
         key: "stacktrace",

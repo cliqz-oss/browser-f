@@ -14,20 +14,34 @@
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/BackgroundChild.h"
+#include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/FileDescriptorSetChild.h"
 #include "mozilla/ipc/IPCStreamAlloc.h"
 #include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/net/AltSvcTransactionChild.h"
+#include "mozilla/net/BackgroundDataBridgeParent.h"
 #include "mozilla/net/DNSRequestChild.h"
+#include "mozilla/net/DNSRequestParent.h"
+#include "mozilla/net/TRRServiceChild.h"
 #include "mozilla/ipc/PChildToParentStreamChild.h"
 #include "mozilla/ipc/PParentToChildStreamChild.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/Telemetry.h"
 #include "nsDebugImpl.h"
+#include "nsHttpConnectionInfo.h"
+#include "nsHttpHandler.h"
 #include "nsIDNSService.h"
 #include "nsIHttpActivityObserver.h"
+#include "nsNSSComponent.h"
 #include "nsThreadManager.h"
 #include "ProcessUtils.h"
 #include "SocketProcessBridgeParent.h"
+
+#if defined(XP_WIN)
+#  include <process.h>
+#else
+#  include <unistd.h>
+#endif
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/Sandbox.h"
@@ -48,7 +62,8 @@ using namespace ipc;
 
 SocketProcessChild* sSocketProcessChild;
 
-SocketProcessChild::SocketProcessChild() : mShuttingDown(false) {
+SocketProcessChild::SocketProcessChild()
+    : mShuttingDown(false), mMutex("SocketProcessChild::mMutex") {
   LOG(("CONSTRUCT SocketProcessChild::SocketProcessChild\n"));
   nsDebugImpl::SetMultiprocessMode("Socket");
 
@@ -152,7 +167,7 @@ mozilla::ipc::IPCResult SocketProcessChild::RecvRequestMemoryReport(
     const uint32_t& aGeneration, const bool& aAnonymize,
     const bool& aMinimizeMemoryUsage,
     const Maybe<ipc::FileDescriptor>& aDMDFile) {
-  nsPrintfCString processName("SocketProcess");
+  nsPrintfCString processName("Socket (pid %u)", (unsigned)getpid());
 
   mozilla::dom::MemoryReportRequestClient::Start(
       aGeneration, aAnonymize, aMinimizeMemoryUsage, aDMDFile, processName,
@@ -350,6 +365,66 @@ SocketProcessChild::AllocPAltSvcTransactionChild(
   RefPtr<AltSvcTransactionChild> child =
       new AltSvcTransactionChild(cinfo, aCaps);
   return child.forget();
+}
+
+already_AddRefed<PDNSRequestChild> SocketProcessChild::AllocPDNSRequestChild(
+    const nsCString& aHost, const nsCString& aTrrServer, const uint16_t& aType,
+    const OriginAttributes& aOriginAttributes, const uint32_t& aFlags) {
+  RefPtr<DNSRequestHandler> handler = new DNSRequestHandler();
+  RefPtr<DNSRequestChild> actor = new DNSRequestChild(handler);
+  return actor.forget();
+}
+
+mozilla::ipc::IPCResult SocketProcessChild::RecvPDNSRequestConstructor(
+    PDNSRequestChild* aActor, const nsCString& aHost,
+    const nsCString& aTrrServer, const uint16_t& aType,
+    const OriginAttributes& aOriginAttributes, const uint32_t& aFlags) {
+  RefPtr<DNSRequestChild> actor = static_cast<DNSRequestChild*>(aActor);
+  RefPtr<DNSRequestHandler> handler =
+      actor->GetDNSRequest()->AsDNSRequestHandler();
+  handler->DoAsyncResolve(aHost, aTrrServer, aType, aOriginAttributes, aFlags);
+  return IPC_OK();
+}
+
+void SocketProcessChild::AddDataBridgeToMap(
+    uint64_t aChannelId, BackgroundDataBridgeParent* aActor) {
+  ipc::AssertIsOnBackgroundThread();
+  MutexAutoLock lock(mMutex);
+  mBackgroundDataBridgeMap.Put(aChannelId, aActor);
+}
+
+void SocketProcessChild::RemoveDataBridgeFromMap(uint64_t aChannelId) {
+  ipc::AssertIsOnBackgroundThread();
+  MutexAutoLock lock(mMutex);
+  mBackgroundDataBridgeMap.Remove(aChannelId);
+}
+
+Maybe<RefPtr<BackgroundDataBridgeParent>>
+SocketProcessChild::GetAndRemoveDataBridge(uint64_t aChannelId) {
+  MutexAutoLock lock(mMutex);
+  return mBackgroundDataBridgeMap.GetAndRemove(aChannelId);
+}
+
+mozilla::ipc::IPCResult SocketProcessChild::RecvClearSessionCache() {
+  if (EnsureNSSInitializedChromeOrContent()) {
+    nsNSSComponent::DoClearSSLExternalAndInternalSessionCache();
+  }
+  return IPC_OK();
+}
+
+already_AddRefed<PTRRServiceChild> SocketProcessChild::AllocPTRRServiceChild(
+    const bool& aCaptiveIsPassed, const bool& aParentalControlEnabled,
+    const nsTArray<nsCString>& aDNSSuffixList) {
+  RefPtr<TRRServiceChild> actor = new TRRServiceChild();
+  return actor.forget();
+}
+
+mozilla::ipc::IPCResult SocketProcessChild::RecvPTRRServiceConstructor(
+    PTRRServiceChild* aActor, const bool& aCaptiveIsPassed,
+    const bool& aParentalControlEnabled, nsTArray<nsCString>&& aDNSSuffixList) {
+  static_cast<TRRServiceChild*>(aActor)->Init(
+      aCaptiveIsPassed, aParentalControlEnabled, std::move(aDNSSuffixList));
+  return IPC_OK();
 }
 
 }  // namespace net

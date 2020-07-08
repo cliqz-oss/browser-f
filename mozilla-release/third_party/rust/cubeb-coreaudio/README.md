@@ -1,25 +1,17 @@
 # cubeb-coreaudio-rs
 
-[![Build Status](https://travis-ci.org/ChunMinChang/cubeb-coreaudio-rs.svg?branch=trailblazer)](https://travis-ci.org/ChunMinChang/cubeb-coreaudio-rs)
+[![Build Status](https://api.travis-ci.com/ChunMinChang/cubeb-coreaudio-rs.svg?branch=trailblazer)](https://travis-ci.com/github/ChunMinChang/cubeb-coreaudio-rs)
 
 *Rust* implementation of [Cubeb][cubeb] on [the MacOS platform][cubeb-au].
 
 ## Current Goals
 
 - Keep refactoring the implementation until it looks rusty! (it's translated from C at first.)
-  - Check the [todo list][todo] first
+  - Check the [todo list][todo]
 
 ## Status
 
-The code is currently shipped within the _Firefox Nightly_ under a _perf_.
-
-- Try it:
-  - Open `about:config`
-  - Add a perf `media.cubeb.backend` with string `audiounit-rust`
-  - Restart Firefox Nightly
-  - Open `about:support`
-  - Check if the `Audio Backend` in `Media` section is `audiounit-rust` or not
-  - Retart Firefox Nightly again if it's not.
+This is now the _Firefox_'s default audio backend on *Mac OS*.
 
 ## Test
 

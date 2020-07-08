@@ -47,7 +47,23 @@ var MigrationWizard = {
     this.isInitialMigration =
       entryPointId == MigrationUtils.MIGRATION_ENTRYPOINT_FIRSTRUN;
 
-    if (args.length > 1) {
+    {
+      // Record that the uninstaller requested a profile refresh
+      let env = Cc["@mozilla.org/process/environment;1"].getService(
+        Ci.nsIEnvironment
+      );
+      if (env.get("MOZ_UNINSTALLER_PROFILE_REFRESH")) {
+        env.set("MOZ_UNINSTALLER_PROFILE_REFRESH", "");
+        Services.telemetry.scalarSet(
+          "migration.uninstaller_profile_refresh",
+          true
+        );
+      }
+    }
+
+    if (args.length == 2) {
+      this._source = args[1];
+    } else if (args.length > 2) {
       this._source = args[1];
       this._migrator = args[2] instanceof kIMig ? args[2] : null;
       this._autoMigrate = args[3].QueryInterface(kIPStartup);

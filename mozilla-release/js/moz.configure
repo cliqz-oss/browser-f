@@ -33,6 +33,8 @@ def enable_smoosh(value):
 set_config('JS_ENABLE_SMOOSH', enable_smoosh)
 set_define('JS_ENABLE_SMOOSH', enable_smoosh)
 
+include('../build/moz.configure/nspr.configure',
+        when='--enable-compile-environment')
 include('../build/moz.configure/rust.configure',
         when='--enable-compile-environment')
 include('../build/moz.configure/bindgen.configure',
@@ -110,16 +112,21 @@ set_define('NO_RUST_PANIC_HOOK', True, when='NO_RUST_PANIC_HOOK')
 # JIT support
 # =======================================================
 @depends(target)
-def ion_default(target):
+def jit_default(target):
     if target.cpu in ('x86', 'x86_64', 'arm', 'aarch64', 'mips32', 'mips64'):
         return True
     return False
 
-js_option('--enable-ion',
-          default=ion_default,
-          help='{Enable|Disable} use of the IonMonkey JIT')
+js_option('--enable-jit',
+          default=jit_default,
+          help='{Enable|Disable} use of the JITs')
 
-set_config('ENABLE_ION', depends_if('--enable-ion')(lambda x: True))
+@deprecated_option('--enable-ion')
+def report_deprecated(value):
+    if value:
+        die('--enable-ion is deprecated, use --enable-jit instead')
+    else:
+        die('--disable-ion is deprecated, use --disable-jit instead')
 
 # JIT code simulator for cross compiles
 # =======================================================
@@ -127,9 +134,9 @@ js_option('--enable-simulator', choices=('arm', 'arm64', 'mips32', 'mips64'),
           nargs=1,
           help='Enable a JIT code simulator for the specified architecture')
 
-@depends('--enable-ion', '--enable-simulator', target)
-def simulator(ion_enabled, simulator_enabled, target):
-    if not ion_enabled or not simulator_enabled:
+@depends('--enable-jit', '--enable-simulator', target)
+def simulator(jit_enabled, simulator_enabled, target):
+    if not jit_enabled or not simulator_enabled:
         return
 
     sim_cpu = simulator_enabled[0]
@@ -155,9 +162,9 @@ set_define('JS_SIMULATOR_ARM64', simulator.arm64)
 set_define('JS_SIMULATOR_MIPS32', simulator.mips32)
 set_define('JS_SIMULATOR_MIPS64', simulator.mips64)
 
-@depends('--enable-ion', simulator, target)
-def jit_codegen(ion_enabled, simulator, target):
-    if not ion_enabled:
+@depends('--enable-jit', simulator, target)
+def jit_codegen(jit_enabled, simulator, target):
+    if not jit_enabled:
         return namespace(none=True)
 
     if simulator:
@@ -258,15 +265,15 @@ set_config('MOZ_VTUNE', vtune)
 set_define('MOZ_VTUNE', vtune)
 
 
-js_option('--enable-gc-trace', env='JS_GC_TRACE',
-          help='Enable tracing of allocation and finalization')
+js_option('--enable-gc-probes', env='JS_GC_PROBES',
+          help='Turn on probes for allocation and finalization')
 
-@depends('--enable-gc-trace')
-def gc_trace(value):
+@depends('--enable-gc-probes')
+def gc_probes(value):
     if value:
         return True
 
-set_define('JS_GC_TRACE', gc_trace)
+set_define('JS_GC_PROBES', gc_probes)
 
 
 js_option('--enable-gczeal',
@@ -341,9 +348,9 @@ set_define('JS_STRUCTURED_SPEW',
 set_config('JS_STRUCTURED_SPEW',
            depends_if('--enable-jitspew')(lambda _: True))
 
-@depends('--enable-ion', '--enable-jitspew', simulator, target, moz_debug)
-def jit_disasm_arm(ion_enabled, spew, simulator, target, debug):
-    if not ion_enabled:
+@depends('--enable-jit', '--enable-jitspew', simulator, target, moz_debug)
+def jit_disasm_arm(jit_enabled, spew, simulator, target, debug):
+    if not jit_enabled:
         return
 
     if simulator and (debug or spew):
@@ -356,9 +363,9 @@ def jit_disasm_arm(ion_enabled, spew, simulator, target, debug):
 set_config('JS_DISASM_ARM', jit_disasm_arm)
 set_define('JS_DISASM_ARM', jit_disasm_arm)
 
-@depends('--enable-ion', '--enable-jitspew', simulator, target, moz_debug)
-def jit_disasm_arm64(ion_enabled, spew, simulator, target, debug):
-    if not ion_enabled:
+@depends('--enable-jit', '--enable-jitspew', simulator, target, moz_debug)
+def jit_disasm_arm64(jit_enabled, spew, simulator, target, debug):
+    if not jit_enabled:
         return
 
     if simulator and (debug or spew):
@@ -541,21 +548,6 @@ set_config('ENABLE_WASM_REFTYPES', depends_if('--enable-wasm-reftypes')(lambda x
 set_define('ENABLE_WASM_REFTYPES', depends_if('--enable-wasm-reftypes')(lambda x: True))
 
 
-# Support for WebAssembly I64/BigInt conversion
-# ===========================================================================
-
-@depends(milestone.is_nightly)
-def default_wasm_bigint(is_nightly):
-    return is_nightly
-
-js_option('--enable-wasm-bigint',
-          default=default_wasm_bigint,
-          help='{Enable|Disable} WebAssembly I64/BigInt conversion')
-
-set_config('ENABLE_WASM_BIGINT', depends_if('--enable-wasm-bigint')(lambda x: True))
-set_define('ENABLE_WASM_BIGINT', depends_if('--enable-wasm-bigint')(lambda x: True))
-
-
 # Support for WebAssembly GC.
 # ===========================
 
@@ -594,17 +586,16 @@ set_define('WASM_PRIVATE_REFTYPES', depends_if('--enable-wasm-private-reftypes')
 # Do not remove until Cranelift supports multi-value.
 # =====================================================
 
-@depends(milestone.is_nightly, building_js)
-def default_wasm_multi_value(is_nightly, building_js):
-    return is_nightly and building_js
+js_option('--disable-wasm-multi-value',
+          help='Disable WebAssembly multi-value blocks and function calls')
 
-js_option('--enable-wasm-multi-value',
-          default=default_wasm_multi_value,
-          help='{Enable|Disable} support for the experimental WebAssembly '
-               'multi-value proposal')
+@depends('--disable-wasm-multi-value')
+def enable_wasm_multi_value(value):
+    if value:
+        return True
 
-set_config('ENABLE_WASM_MULTI_VALUE', depends_if('--enable-wasm-multi-value')(lambda x: True))
-set_define('ENABLE_WASM_MULTI_VALUE', depends_if('--enable-wasm-multi-value')(lambda x: True))
+set_config('ENABLE_WASM_MULTI_VALUE', enable_wasm_multi_value)
+set_define('ENABLE_WASM_MULTI_VALUE', enable_wasm_multi_value)
 
 
 # Support for WebAssembly shared memory and atomics.
@@ -628,12 +619,165 @@ set_define('ENABLE_SHARED_MEMORY', enable_shared_memory)
 # Initial support for new regexp engine
 # ==================================================
 
-js_option('--enable-new-regexp', default=False, help='Enable new regexp engine')
+js_option('--disable-new-regexp', help='{Enable|Disable} new regexp engine')
 
-@depends('--enable-new-regexp')
+@depends('--disable-new-regexp')
 def enable_new_regexp(value):
     if value:
         return True
 
 set_config('ENABLE_NEW_REGEXP', enable_new_regexp)
 set_define('ENABLE_NEW_REGEXP', enable_new_regexp)
+
+# Support for WebAssembly SIMD
+# =====================================================
+
+@depends('--enable-jit', '--enable-simulator', target, milestone)
+def default_wasm_simd(jit_enabled, simulator, target, milestone):
+    if not jit_enabled or simulator:
+        return
+
+    # Note, not `target.cpu in ('x86_64')`, as the parens are stripped
+    # from the 1-element tuple and the operation does string matching.
+    # Good grief.
+    if milestone.is_nightly and target.cpu == 'x86_64':
+        return True
+
+js_option('--enable-wasm-simd',
+          default=default_wasm_simd,
+          help='{Enable|Disable} WebAssembly SIMD')
+
+@depends('--enable-wasm-simd', '--enable-jit', '--enable-simulator', target)
+def wasm_simd(value, jit_enabled, simulator, target):
+    if not value:
+        return
+
+    if jit_enabled and not simulator:
+        if target.cpu == 'x86_64':
+            return True
+
+    die('--enable-wasm-simd only possible when targeting the x86_64 jit')
+
+set_config('ENABLE_WASM_SIMD', wasm_simd)
+set_define('ENABLE_WASM_SIMD', wasm_simd)
+
+
+# Options for generating the shell as a script
+# ============================================
+js_option('--with-qemu-exe', nargs=1, help='Use path as an arm emulator on host platforms')
+set_config('QEMU_EXE', depends_if('--with-qemu-exe')(lambda x: x))
+
+js_option('--with-cross-lib', nargs=1, default=depends(target.alias)(lambda x: '/usr/%s' % x),
+          help='Use dir as the location for arm libraries')
+set_config('CROSS_LIB', depends_if('--with-cross-lib')(lambda x: x))
+
+# Enable static checking using sixgill
+# ====================================
+
+js_option('--with-sixgill', nargs=1, help='Enable static checking of code using sixgill')
+
+@depends_if('--with-sixgill')
+@imports('os')
+def sixgill(value):
+    for f in ('bin/xdbfind', 'gcc/xgill.so', 'scripts/wrap_gcc/g++'):
+        if not os.path.exists(os.path.join(value[0], f)):
+            die('The sixgill plugin and binaries are not at the specified path')
+    return value[0]
+
+set_config('SIXGILL_PATH', sixgill)
+
+
+# Support for readline
+# =====================================================
+@depends('--enable-js-shell', target_is_windows, compile_environment)
+def editline(js_shell, is_windows, compile_environment):
+    return js_shell and not is_windows and compile_environment
+
+js_option('--enable-readline', help='Link js shell to system readline library',
+          when=editline)
+
+has_readline = check_symbol('readline', flags=['-lreadline'], when='--enable-readline',
+                            onerror=lambda: die('No system readline library found'))
+
+set_config('EDITLINE_LIBS', ['-lreadline'], when=has_readline)
+
+@depends('--enable-readline', editline, when=editline)
+def bundled_editline(readline, editline):
+    return editline and not readline
+
+set_config('JS_BUNDLED_EDITLINE', bundled_editline)
+
+set_define('EDITLINE', True, when=editline)
+
+
+# JIT observers
+# =============
+
+js_option('--with-jitreport-granularity', default='3', choices=('0', '1', '2', '3'),
+          help='Default granularity at which to report JIT code to external tools '
+               '(0 - no info, 1 - code ranges for while functions only, '
+               '2 - per-line information, 3 - per-op information)')
+
+set_define('JS_DEFAULT_JITREPORT_GRANULARITY',
+           depends_if('--with-jitreport-granularity')(lambda value: value[0]))
+
+
+# ECMAScript Internationalization API Support (uses ICU)
+# ======================================================
+js_option('--with-system-icu', help='Use system ICU')
+
+system_icu = pkg_check_modules('MOZ_ICU', 'icu-i18n >= 67.1', when='--with-system-icu')
+
+set_config('MOZ_SYSTEM_ICU', True, when=system_icu)
+set_define('MOZ_SYSTEM_ICU', True, when=system_icu)
+
+js_option('--without-intl-api', help='Disable ECMAScript Internationalization API')
+
+@depends('--with-intl-api', building_js)
+def check_intl_api(enabled, building_js):
+    if not enabled and not building_js:
+        die('--without-intl-api is not supported')
+
+set_config('JS_HAS_INTL_API', True, when='--with-intl-api')
+set_define('JS_HAS_INTL_API', True, when='--with-intl-api')
+
+@depends(check_build_environment, when='--with-intl-api')
+@imports(_from='__builtin__', _import='open')
+@imports(_from='__builtin__', _import='ValueError')
+def icu_version(build_env):
+    path = os.path.join(build_env.topsrcdir, 'intl', 'icu', 'source', 'common',
+                        'unicode', 'uvernum.h')
+    with open(path, encoding='utf-8') as fh:
+        for line in fh:
+            if line.startswith('#define'):
+                define = line.split(None, 3)
+                if len(define) == 3 and define[1] == 'U_ICU_VERSION_MAJOR_NUM':
+                    try:
+                        return str(int(define[2]))
+                    except ValueError:
+                        pass
+    die('Cannot determine ICU version number from uvernum.h header file')
+
+set_config('MOZ_ICU_VERSION', icu_version)
+
+@depends(icu_version, target, when='--with-intl-api')
+def icu_data_file(version, target):
+    # target.endianness is always 'big' or 'little'
+    return 'icudt%s%s.dat' % (version, target.endianness[0])
+
+set_config('ICU_DATA_FILE', icu_data_file)
+
+# Source files that use ICU should have control over which parts of the ICU
+# namespace they want to use.
+set_define('U_USING_ICU_NAMESPACE', '0', when='--with-intl-api')
+
+# We build ICU as a static library.
+set_define('U_STATIC_IMPLEMENTATION', True, when=depends(system_icu)(lambda x: not x))
+
+@depends(yasm, gnu_as, target, compile_environment)
+def can_build_data_file(yasm, gnu_as, target, compile_environment):
+    if not compile_environment or (target.kernel == 'WINNT' and target.cpu == 'aarch64'):
+        return
+    if not yasm and not gnu_as:
+        die('Building ICU requires either yasm or a GNU assembler. If you do not have '
+            'either of those available for this platform you must use --without-intl-api')

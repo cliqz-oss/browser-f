@@ -498,6 +498,8 @@ function stripAnyPrefix(str) {
  *        Whether to trim the trailing slash.
  * @param {boolean} options.trimEmptyQuery
  *        Whether to trim a trailing `?`.
+ * @param {boolean} options.trimEmptyHash
+ *        Whether to trim a trailing `#`.
  * @returns {array} [modified, prefix, suffix]
  *          modified: {string} The modified spec.
  *          prefix: {string} The parts stripped from the prefix, if any.
@@ -517,13 +519,17 @@ function stripPrefixAndTrim(spec, options = {}) {
     spec = spec.slice(4);
     prefix += "www.";
   }
-  if (options.trimSlash && spec.endsWith("/")) {
+  if (options.trimEmptyHash && spec.endsWith("#")) {
     spec = spec.slice(0, -1);
-    suffix += "/";
+    suffix = "#" + suffix;
   }
   if (options.trimEmptyQuery && spec.endsWith("?")) {
     spec = spec.slice(0, -1);
-    suffix += "?";
+    suffix = "?" + suffix;
+  }
+  if (options.trimSlash && spec.endsWith("/")) {
+    spec = spec.slice(0, -1);
+    suffix = "/" + suffix;
   }
   return [spec, prefix, suffix];
 }
@@ -562,8 +568,9 @@ function makeKeyForMatch(match) {
       stripHttp: true,
       stripHttps: true,
       stripWww: true,
-      trimEmptyQuery: true,
       trimSlash: true,
+      trimEmptyQuery: true,
+      trimEmptyHash: true,
     });
     return [key, prefix, null];
   }
@@ -593,36 +600,6 @@ function makeKeyForMatch(match) {
   }
 
   return [key, prefix, action];
-}
-
-/**
- * Returns whether the passed in string looks like a url.
- */
-function looksLikeUrl(str, ignoreAlphanumericHosts = false) {
-  // Single word including special chars.
-  return (
-    !REGEXP_SPACES.test(str) &&
-    (["/", "@", ":", "["].some(c => str.includes(c)) ||
-      (ignoreAlphanumericHosts
-        ? /^([\[\]A-Z0-9-]+\.){3,}[^.]+$/i.test(str)
-        : str.includes(".")))
-  );
-}
-
-/**
- * Returns the portion of a string starting at the index where another string
- * begins.
- *
- * @param   {string} sourceStr
- *          The string to search within.
- * @param   {string} targetStr
- *          The string to search for.
- * @returns {string} The substring within sourceStr starting at targetStr, or
- *          the empty string if targetStr does not occur in sourceStr.
- */
-function substringAt(sourceStr, targetStr) {
-  let index = sourceStr.indexOf(targetStr);
-  return index < 0 ? "" : sourceStr.substr(index);
 }
 
 /**
@@ -687,8 +664,6 @@ function makeActionUrl(type, params) {
  *        An nsIAutoCompleteObserver.
  * @param autocompleteSearch
  *        An nsIAutoCompleteSearch.
- * @param prohibitSearchSuggestions
- *        Whether search suggestions are allowed for this search.
  * @param {UrlbarQueryContext} [queryContext]
  *        The query context, undefined for legacy consumers.
  */
@@ -697,7 +672,6 @@ function Search(
   searchParam,
   autocompleteListener,
   autocompleteSearch,
-  prohibitSearchSuggestions,
   queryContext
 ) {
   // We want to store the original string for case sensitive searches.
@@ -714,7 +688,7 @@ function Search(
   // Set the default behavior for this search.
   this._behavior = this._searchString
     ? UrlbarPrefs.get("defaultBehavior")
-    : UrlbarPrefs.get("emptySearchDefaultBehavior");
+    : this._emptySearchDefaultBehavior;
 
   if (queryContext) {
     this._enableActions = true;
@@ -784,12 +758,11 @@ function Search(
     this.setBehavior("restrict");
     let behavior = sourceToBehaviorMap.get(queryContext.restrictSource);
     this.setBehavior(behavior);
+
     if (behavior == "search" && queryContext.engineName) {
       this._engineName = queryContext.engineName;
     }
-    if (behavior != "search") {
-      prohibitSearchSuggestions = true;
-    }
+
     // When we are in restrict mode, all the tokens are valid for searching, so
     // there is no _heuristicToken.
     this._heuristicToken = null;
@@ -818,8 +791,6 @@ function Search(
 
   this._keywordSubstitute = null;
 
-  this._prohibitSearchSuggestions = prohibitSearchSuggestions;
-
   this._listener = autocompleteListener;
   this._autocompleteSearch = autocompleteSearch;
 
@@ -829,16 +800,6 @@ function Search(
     Ci.nsIAutoCompleteSimpleResult
   );
   result.setSearchString(searchString);
-  result.setListener({
-    onValueRemoved(result, spec, removeFromDB) {
-      if (removeFromDB) {
-        PlacesUtils.history.remove(spec).catch(Cu.reportError);
-      }
-    },
-    QueryInterface: ChromeUtils.generateQI([
-      Ci.nsIAutoCompleteSimpleResultListener,
-    ]),
-  });
   // Will be set later, if needed.
   result.setDefaultIndex(-1);
   this._result = result;
@@ -978,10 +939,6 @@ Search.prototype = {
       this._sleepResolve();
       this._sleepResolve = null;
     }
-    if (this._suggestionsFetch) {
-      this._suggestionsFetch.stop();
-      this._suggestionsFetch = null;
-    }
     if (typeof this.interrupt == "function") {
       this.interrupt();
     }
@@ -1017,7 +974,7 @@ Search.prototype = {
       // _maybeRestyleSearchMatch, because it calls the synchronous
       // parseSubmissionURL that can't wait for async initialization of
       // PlacesSearchAutocompleteProvider.
-      await PlacesSearchAutocompleteProvider.ensureInitialized();
+      await PlacesSearchAutocompleteProvider.ensureReady();
       if (!this.pending) {
         return;
       }
@@ -1051,31 +1008,30 @@ Search.prototype = {
     await this._checkPreloadedSitesExpiry();
     */
 
-    // If the query is simply "@", then the results should be a list of all the
-    // search engines with "@" aliases, without a hueristic result.
-    if (this._enableAtSearch && this._trimmedOriginalSearchString == "@") {
-      let added = await this._addSearchEngineTokenAliasMatches();
-      if (added) {
-        this._autocompleteSearch.finishSearch(true);
-        return;
-      }
+    // If the query is simply "@" and we have tokenAliasEngines then return
+    // early. UrlbarProviderTokenAliasEngines will add engine results.
+    let tokenAliasEngines = await PlacesSearchAutocompleteProvider.tokenAliasEngines();
+    if (this._enableAtSearch &&
+        this._trimmedOriginalSearchString == "@" &&
+        tokenAliasEngines.length) {
+      this._autocompleteSearch.finishSearch(true);
+      return;
     }
 
-    // Add the first heuristic result, if any.  Set _addingHeuristicFirstMatch
+    // Add the first heuristic result, if any.  Set _addingHeuristicResult
     // to true so that when the result is added, "heuristic" can be included in
     // its style.
-
     let hasHeuristic = false;
     /* CLIQZ-SPECIAL: we dont support heuristic search
-    this._addingHeuristicFirstMatch = true;
+    this._addingHeuristicResult = true;
     let hasHeuristic = await this._matchFirstHeuristicResult(conn);
-    this._addingHeuristicFirstMatch = false;
+    this._addingHeuristicResult = false;
     if (!this.pending) {
       return;
     }
     */
 
-    // We sleep a little between adding the heuristicFirstMatch and matching
+    // We sleep a little between adding the heuristic result and matching
     // any other searches so we aren't kicking off potentially expensive
     // searches on every keystroke.
     // Though, if there's no heuristic result, we start searching immediately,
@@ -1086,23 +1042,21 @@ Search.prototype = {
         return;
       }
 
-      // If the heuristic result is a search engine result with an empty query
-      // and we have either a token alias or the search restriction char, then
-      // we're done.  We want to show only that single result as a clear hint
-      // that the user can continue typing to search.
-      // For the restriction character case, also consider a single char query
-      // or just the char itself, anyway we don't return search suggestions
-      // unless at least 2 chars have been typed. Thus "?__" and "? a" should
-      // finish here, while "?aa" should continue.
-      let emptyQueryTokenAlias =
+      // If the heuristic result is an engine from a token alias, the search
+      // restriction char, or we're in search-restriction mode, then we're done.
+      // UrlbarProviderSearchSuggestions will handle suggestions, if any.
+      let tokenAliasQuery =
         this._searchEngineAliasMatch &&
-        this._searchEngineAliasMatch.isTokenAlias &&
-        !this._searchEngineAliasMatch.query;
+        this._searchEngineAliasMatch.isTokenAlias;
       let emptySearchRestriction =
         this._trimmedOriginalSearchString.length <= 3 &&
         this._leadingRestrictionToken == UrlbarTokenizer.RESTRICT.SEARCH &&
         /\s*\S?$/.test(this._trimmedOriginalSearchString);
-      if (emptySearchRestriction || emptyQueryTokenAlias) {
+      if (
+        emptySearchRestriction ||
+        tokenAliasQuery ||
+        (this.hasBehavior("search") && this.hasBehavior("restrict"))
+      ) {
         this._autocompleteSearch.finishSearch(true);
         return;
       }
@@ -1124,71 +1078,6 @@ Search.prototype = {
       extensionsCompletePromise = this._matchExtensionSuggestions();
     } else if (ExtensionSearchHandler.hasActiveInputSession()) {
       ExtensionSearchHandler.handleInputCancelled();
-    }
-    */
-
-    // Start adding search suggestions, unless they aren't required or the
-    // window is private.
-    let searchSuggestionsCompletePromise = Promise.resolve();
-
-    /* CLIQZ-SPECIAL: we dont support search engine search in toolbar
-    if (
-      this._enableActions &&
-      this.hasBehavior("search") &&
-      (!this._inPrivateWindow ||
-        UrlbarPrefs.get("browser.search.suggest.enabled.private"))
-    ) {
-      let query = this._searchEngineAliasMatch
-        ? this._searchEngineAliasMatch.query
-        : substringAt(this._originalSearchString, this._searchTokens[0].value);
-      if (query) {
-        // Limit the string sent for search suggestions to a maximum length.
-        query = query.substr(
-          0,
-          UrlbarPrefs.get("maxCharsForSearchSuggestions")
-        );
-        // Don't add suggestions if the query may expose sensitive information.
-        if (!this._prohibitSearchSuggestionsFor(query)) {
-          let engine;
-          if (this._searchEngineAliasMatch) {
-            engine = this._searchEngineAliasMatch.engine;
-          } else {
-            engine = this._engineName
-              ? Services.search.getEngineByName(this._engineName)
-              : await PlacesSearchAutocompleteProvider.currentEngine(
-                  this._inPrivateWindow
-                );
-            if (!this.pending || !engine) {
-              return;
-            }
-          }
-          let alias =
-            (this._searchEngineAliasMatch &&
-              this._searchEngineAliasMatch.alias) ||
-            "";
-          searchSuggestionsCompletePromise = this._matchSearchSuggestions(
-            engine,
-            query,
-            alias
-          );
-        }
-      }
-    }
-
-    // If the user used a search engine token alias, then the only results we
-    // want to show are suggestions from that engine, so we're done.  We're also
-    // done if we're restricting results to suggestions.
-    if (
-      (this._searchEngineAliasMatch &&
-        this._searchEngineAliasMatch.isTokenAlias) ||
-      (this._enableActions &&
-        this.hasBehavior("search") &&
-        this.hasBehavior("restrict"))
-    ) {
-      // Wait for the suggestions to be added.
-      await searchSuggestionsCompletePromise;
-      this._autocompleteSearch.finishSearch(true);
-      return;
     }
     */
 
@@ -1278,7 +1167,6 @@ Search.prototype = {
     */
 
     // Ensure to fill any remaining space.
-    await searchSuggestionsCompletePromise;
     await extensionsCompletePromise;
   },
 
@@ -1386,25 +1274,6 @@ Search.prototype = {
     value = value.substr(value.indexOf(this._searchString));
 
     this._addAutofillMatch(value, url, Infinity, ["preloaded-top-site"]);
-    return true;
-  },
-
-  /**
-   * Adds matches for all the engines with "@" aliases, if any.
-   *
-   * @returns {bool} True if any results were added, false if not.
-   */
-  async _addSearchEngineTokenAliasMatches() {
-    let engines = await PlacesSearchAutocompleteProvider.tokenAliasEngines();
-    if (!engines || !engines.length) {
-      return false;
-    }
-    for (let { engine, tokenAliases } of engines) {
-      this._addSearchEngineMatch({
-        engine,
-        alias: tokenAliases[0],
-      });
-    }
     return true;
   },
 
@@ -1542,22 +1411,24 @@ Search.prototype = {
       // but isn't in the whitelist.
       let matched = await this._matchUnknownUrl();
       if (matched) {
-        // Because we think this may be a URL, we won't be fetching search
-        // suggestions for it.
-        this._prohibitSearchSuggestions = true;
-        // Since we can't tell if this is a real URL and
-        // whether the user wants to visit or search for it,
-        // we always provide an alternative searchengine match.
+        // Since we can't tell if this is a real URL and whether the user wants
+        // to visit or search for it, we provide an alternative searchengine
+        // match if the string looks like an alphanumeric origin or an e-mail.
+        let str = this._originalSearchString;
         try {
-          new URL(this._originalSearchString);
+          new URL(str);
         } catch (ex) {
           if (
             UrlbarPrefs.get("keyword.enabled") &&
-            !looksLikeUrl(this._originalSearchString, true)
+            (UrlbarTokenizer.looksLikeOrigin(str, {
+              noIp: true,
+              noPort: true,
+            }) ||
+              UrlbarTokenizer.REGEXP_COMMON_EMAIL.test(str))
           ) {
-            this._addingHeuristicFirstMatch = false;
+            this._addingHeuristicResult = false;
             await this._matchCurrentSearchEngine();
-            this._addingHeuristicFirstMatch = true;
+            this._addingHeuristicResult = true;
           }
         }
         return true;
@@ -1576,97 +1447,6 @@ Search.prototype = {
     return false;
   },
 
-  _matchSearchSuggestions(engine, searchString, alias) {
-    this._suggestionsFetch = PlacesSearchAutocompleteProvider.newSuggestionsFetch(
-      engine,
-      searchString,
-      this._inPrivateWindow,
-      UrlbarPrefs.get("maxHistoricalSearchSuggestions"),
-      this._maxResults - UrlbarPrefs.get("maxHistoricalSearchSuggestions"),
-      this._userContextId
-    );
-    return this._suggestionsFetch.fetchCompletePromise
-      .then(() => {
-        // The fetch has been canceled already.
-        if (!this._suggestionsFetch) {
-          return;
-        }
-        if (
-          this._suggestionsFetch.resultsCount >= 0 &&
-          this._suggestionsFetch.resultsCount < 2
-        ) {
-          // The original string is used to properly compare with the next fetch.
-          this._lastLowResultsSearchSuggestion = this._originalSearchString;
-        }
-        while (this.pending) {
-          let result = this._suggestionsFetch.consume();
-          if (!result) {
-            break;
-          }
-          let { suggestion, historical } = result;
-          if (!looksLikeUrl(suggestion)) {
-            this._addSearchEngineMatch({
-              engine,
-              alias,
-              query: searchString,
-              suggestion,
-              historical,
-            });
-          }
-        }
-      })
-      .catch(Cu.reportError);
-  },
-
-  /**
-   * Prohibit search suggestions for some search strings. Note that the
-   * tokenizer also prohibits suggestions for any strings containing "/", "@",
-   * ":", or ".". See bug 1551049 for discussion and TODOs.
-   * @param {string} searchString
-   *   The search string that might recieve search suggestions.
-   * @returns {boolean}
-   *   False if no search suggestions should be fetched.
-   */
-  _prohibitSearchSuggestionsFor(searchString) {
-    if (this._prohibitSearchSuggestions) {
-      return true;
-    }
-
-    // Never prohibit suggestions when the user has used a search engine token
-    // alias.  We want "@engine query" to return suggestions from the engine.
-    if (
-      this._searchEngineAliasMatch &&
-      this._searchEngineAliasMatch.isTokenAlias
-    ) {
-      return false;
-    }
-
-    // Suggestions for a single letter are unlikely to be useful.
-    if (searchString.length < 2) {
-      return true;
-    }
-
-    // The first token may be a whitelisted host.
-    if (
-      this._searchTokens.length == 1 &&
-      this._searchTokens[0].type == UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN &&
-      Services.uriFixup.isDomainWhitelisted(this._searchTokens[0].value, -1)
-    ) {
-      return true;
-    }
-
-    // Disallow fetching search suggestions for strings looking like URLs, or
-    // non-alphanumeric origins, to avoid disclosing information about networks
-    // or passwords.
-    return this._searchTokens.some(t => {
-      return (
-        t.type == UrlbarTokenizer.TYPE.POSSIBLE_URL ||
-        (t.type == UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN &&
-          !/^[a-z0-9-]+$/i.test(t.value))
-      );
-    });
-  },
-
   async _matchKnownUrl(conn) {
     let gotResult = false;
 
@@ -1674,7 +1454,11 @@ Search.prototype = {
     // Otherwise treat it as a possible URL.  When the string has only one slash
     // at the end, we still treat it as an URL.
     let query, params;
-    if (UrlbarTokenizer.looksLikeOrigin(this._searchString)) {
+    if (
+      UrlbarTokenizer.looksLikeOrigin(this._searchString, {
+        ignoreWhitelist: true,
+      })
+    ) {
       [query, params] = this._originQuery;
     } else {
       [query, params] = this._urlQuery;
@@ -1776,7 +1560,9 @@ Search.prototype = {
       searchStr = searchStr.slice(0, -1);
     }
     // If the search string looks more like a url than a domain, bail out.
-    if (!UrlbarTokenizer.looksLikeOrigin(searchStr)) {
+    if (
+      !UrlbarTokenizer.looksLikeOrigin(searchStr, { ignoreWhitelist: true })
+    ) {
       return false;
     }
 
@@ -1893,9 +1679,6 @@ Search.prototype = {
    *        The search query string.
    * @param {string} [alias]
    *        The search engine alias associated with the match, if any.
-   * @param {string} [suggestion]
-   *        The suggestion from the search engine, if you're adding a suggestion
-   *        match.
    * @param {bool} [historical]
    *        True if you're adding a suggestion match and the suggestion is from
    *        the user's local history (and not the search engine).
@@ -1904,7 +1687,6 @@ Search.prototype = {
     engine,
     query = "",
     alias = undefined,
-    suggestion = undefined,
     historical = false,
   }) {
     let actionURLParams = {
@@ -1912,10 +1694,7 @@ Search.prototype = {
       searchQuery: query,
     };
 
-    if (suggestion) {
-      // `input` should include the alias.
-      actionURLParams.input = (alias ? `${alias} ` : "") + suggestion;
-    } else if (alias && !query) {
+    if (alias && !query) {
       // `input` should have a trailing space so that when the user selects the
       // result, they can start typing their query without first having to enter
       // a space between the alias and query.
@@ -1926,7 +1705,7 @@ Search.prototype = {
 
     let match = {
       comment: engine.name,
-      icon: engine.iconURI && !suggestion ? engine.iconURI.spec : null,
+      icon: engine.iconURI ? engine.iconURI.spec : null,
       style: "action searchengine",
       frecency: FRECENCY_DEFAULT,
     };
@@ -1934,11 +1713,6 @@ Search.prototype = {
     if (alias) {
       actionURLParams.alias = alias;
       match.style += " alias";
-    }
-    if (suggestion) {
-      actionURLParams.searchSuggestion = suggestion;
-      match.style += " suggestion";
-      match.type = UrlbarUtils.RESULT_GROUP.SUGGESTION;
     }
 
     match.value = makeActionUrl("searchengine", actionURLParams);
@@ -1974,10 +1748,13 @@ Search.prototype = {
     if (!syncUsernamePref) {
       return;
     }
+
+    let searchString = this._searchTokens.map(t => t.value).join(" ");
     let matches = await PlacesRemoteTabsAutocompleteProvider.getMatches(
-      this._originalSearchString,
+      searchString,
       this._maxResults
     );
+    let remoteTabsAdded = 0;
     for (let { url, title, icon, deviceName, lastUsed } of matches) {
       // It's rare that Sync supplies the icon for the page (but if it does, it
       // is a string URL)
@@ -2000,8 +1777,16 @@ Search.prototype = {
         frecency: FRECENCY_DEFAULT + 1,
         icon,
       };
-      if (lastUsed > Date.now() - RECENT_REMOTE_TAB_THRESHOLD_MS) {
+      // Mobile and desktop frecency scales are not compatible so we don't
+      // intermix open tabs with synced tabs. Instead, we limit the number of
+      // initial remote tabs to the floor of _maxResults / 2 so they do not
+      // overrun open tabs.
+      if (
+        remoteTabsAdded < this._maxResults / 2 &&
+        lastUsed > Date.now() - RECENT_REMOTE_TAB_THRESHOLD_MS
+      ) {
         this._addMatch(match);
+        remoteTabsAdded++;
       } else {
         this._extraRemoteTabRows.push(match);
       }
@@ -2145,10 +1930,8 @@ Search.prototype = {
       return;
     }
 
-    // Do not apply the special style if the user is doing a search from the
-    // location bar but the entered terms match an irrelevant portion of the
-    // URL. For example, "https://www.google.com/search?q=terms&client=firefox"
-    // when searching for "Firefox".
+    // Here we check that the user typed all or part of the search string in the
+    // search history result.
     let terms = parseResult.terms.toLowerCase();
     if (
       this._searchTokens.length &&
@@ -2157,15 +1940,46 @@ Search.prototype = {
       return;
     }
 
+    // The URL for the search suggestion formed by the user's typed query.
+    let [typedSuggestionUrl] = UrlbarUtils.getSearchQueryUrl(
+      parseResult.engine,
+      this._searchTokens.map(t => t.value).join(" ")
+    );
+
+    let historyParams = new URL(match.value).searchParams;
+    let typedParams = new URL(typedSuggestionUrl).searchParams;
+
+    // Checking the two URLs have the same query parameters with the same
+    // values, or a subset value in the case of the query parameter.
+    // Parameter order doesn't matter.
+    if (
+      Array.from(historyParams).length != Array.from(typedParams).length ||
+      !Array.from(historyParams.entries()).every(
+        ([key, value]) =>
+          // We want to match all non-search-string GET parameters exactly, to avoid
+          // restyling non-first pages of search results, or image results as web
+          // results.
+          // We let termsParameterName through because we already checked that the
+          // typed query is a subset of the search history query above with
+          // this._searchTokens.every(...).
+          key == parseResult.termsParameterName ||
+          value === typedParams.get(key)
+      )
+    ) {
+      return;
+    }
+
     // Turn the match into a searchengine action with a favicon.
     match.value = makeActionUrl("searchengine", {
-      engineName: parseResult.engineName,
+      engineName: parseResult.engine.name,
       input: parseResult.terms,
+      searchSuggestion: parseResult.terms,
       searchQuery: parseResult.terms,
+      isSearchHistory: true,
     });
-    match.comment = parseResult.engineName;
+    match.comment = parseResult.engine.name;
     match.icon = match.icon || match.iconUrl;
-    match.style = "action searchengine favicon";
+    match.style = "action searchengine favicon suggestion";
   },
 
   _addMatch(match) {
@@ -2173,7 +1987,7 @@ Search.prototype = {
       throw new Error("Frecency not provided");
     }
 
-    if (this._addingHeuristicFirstMatch) {
+    if (this._addingHeuristicResult) {
       match.type = UrlbarUtils.RESULT_GROUP.HEURISTIC;
     } else if (typeof match.type != "string") {
       match.type = UrlbarUtils.RESULT_GROUP.GENERAL;
@@ -2192,7 +2006,7 @@ Search.prototype = {
       this._maybeRestyleSearchMatch(match);
     }
 
-    if (this._addingHeuristicFirstMatch) {
+    if (this._addingHeuristicResult) {
       match.style += " heuristic";
     }
 
@@ -2613,6 +2427,22 @@ Search.prototype = {
       : defaultQuery();
   },
 
+  get _emptySearchDefaultBehavior() {
+    // Further restrictions to apply for "empty searches" (searching for
+    // "").  The empty behavior is typed history, if history is enabled.
+    // Otherwise, it is bookmarks, if they are enabled. If both history and
+    // bookmarks are disabled, it defaults to open pages.
+    let val = Ci.mozIPlacesAutoComplete.BEHAVIOR_RESTRICT;
+    if (UrlbarPrefs.get("suggest.history")) {
+      val |= Ci.mozIPlacesAutoComplete.BEHAVIOR_HISTORY;
+    } else if (UrlbarPrefs.get("suggest.bookmark")) {
+      val |= Ci.mozIPlacesAutoComplete.BEHAVIOR_BOOKMARK;
+    } else {
+      val |= Ci.mozIPlacesAutoComplete.BEHAVIOR_OPENPAGE;
+    }
+    return val;
+  },
+
   /**
    * Get the search string with the keyword substitution applied.
    * If the user-provided string starts with a keyword that gave a heuristic
@@ -3023,19 +2853,11 @@ UnifiedComplete.prototype = {
       this.stopSearch();
     }
 
-    // If the previous search didn't fetch enough search suggestions, it's
-    // unlikely a longer text would do.
-    let prohibitSearchSuggestions =
-      !!this._lastLowResultsSearchSuggestion &&
-      searchString.length > this._lastLowResultsSearchSuggestion.length &&
-      searchString.startsWith(this._lastLowResultsSearchSuggestion);
-
     let search = (this._currentSearch = new Search(
       searchString,
       searchParam,
       listener,
       this,
-      prohibitSearchSuggestions,
       queryContext
     ));
     this.getDatabaseHandle()

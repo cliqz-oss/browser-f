@@ -116,6 +116,12 @@ XPCOMUtils.defineLazyPreferenceGetter(
   true
 );
 
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "USE_SESSION_TOKENS_FOR_OAUTH",
+  "identity.fxaccounts.useSessionTokensForOAuth"
+);
+
 // An AccountState object holds all state related to one specific account.
 // It is considered "private" to the FxAccounts modules.
 // Only one AccountState is ever "current" in the FxAccountsInternal object -
@@ -514,7 +520,9 @@ class FxAccounts {
   }
 
   /**
-   * Get an OAuth token for the user
+   * Get an OAuth token for the user.
+   * If you need a corresponding scoped key to go along with this
+   * token, consider using the new 'getAccessToken' method instead.
    *
    * @param options
    *        {
@@ -542,7 +550,49 @@ class FxAccounts {
   }
 
   /**
-   * Remove an OAuth token from the token cache.  Callers should call this
+   * Fetches an OAuth token based on the given scope
+   * and its key in a single operation.
+   *
+   * @param scope {String} the requested OAuth scope
+   * @param ttl {Number} OAuth token TTL
+   * @returns {Promise<Object>} Object containing "scope", "token"
+   *  and "key" properties.
+   */
+  async getAccessToken(scope, ttl) {
+    log.debug("getAccessToken enter");
+    const token = await this._internal.getOAuthToken({ scope, ttl });
+    const ACCT_DATA_FIELDS = ["scopedKeys"];
+
+    return this._withCurrentAccountState(async currentState => {
+      const data = await currentState.getUserAccountData(ACCT_DATA_FIELDS);
+      const scopedKeys = data.scopedKeys || {};
+      let key;
+
+      if (!scopedKeys.hasOwnProperty(scope)) {
+        log.debug(`Fetching scopedKeys data for ${scope}`);
+        const newKeyData = await this._internal.keys.getScopedKeys(
+          scope,
+          FX_OAUTH_CLIENT_ID
+        );
+
+        scopedKeys[scope] = newKeyData[scope] || null;
+        await currentState.updateUserAccountData({ scopedKeys });
+      } else {
+        log.debug(`Using cached scopedKeys data for ${scope}`);
+      }
+
+      key = scopedKeys[scope];
+
+      return {
+        scope,
+        token,
+        key,
+      };
+    });
+  }
+
+  /**
+   * Remove an OAuth token from the token cache. Callers should call this
    * after they determine a token is invalid, so a new token will be fetched
    * on the next call to getOAuthToken().
    *
@@ -1525,10 +1575,17 @@ FxAccountsInternal.prototype = {
     delete currentState.whenVerifiedDeferred;
   },
 
-  // Does the actual fetch of an oauth token for getOAuthToken()
-  async _doTokenFetch(scopeString) {
-    // Ideally, we would auth this call directly with our `sessionToken` rather than
-    // going via a BrowserID assertion. Before we can do so we need to resolve some
+  /**
+   * Does the actual fetch of an oauth token for getOAuthToken()
+   * @param scopeString
+   * @param ttl
+   * @returns {Promise<string>}
+   * @private
+   */
+  async _doTokenFetch(scopeString, ttl) {
+    // Ideally, we would auth this call directly with our `sessionToken`
+    // using the `_doTokenFetchWithSessionToken` method rather than going
+    // via a BrowserID assertion. Before we can do so we need to resolve some
     // data-volume processing issues in the server-side FxA metrics pipeline.
     let token;
     let oAuthURL = this.fxAccountsOAuthGrantClient.serverURL.href;
@@ -1536,7 +1593,8 @@ FxAccountsInternal.prototype = {
     try {
       let result = await this.fxAccountsOAuthGrantClient.getTokenFromAssertion(
         assertion,
-        scopeString
+        scopeString,
+        ttl
       );
       token = result.access_token;
     } catch (err) {
@@ -1552,11 +1610,32 @@ FxAccountsInternal.prototype = {
       assertion = await this.getAssertion(oAuthURL);
       let result = await this.fxAccountsOAuthGrantClient.getTokenFromAssertion(
         assertion,
-        scopeString
+        scopeString,
+        ttl
       );
       token = result.access_token;
     }
     return token;
+  },
+
+  /**
+   * Does the actual fetch of an oauth token for getOAuthToken()
+   * using the account session token.
+   * @param {String} scopeString
+   * @param {Number} ttl
+   * @returns {Promise<string>}
+   * @private
+   */
+  async _doTokenFetchWithSessionToken(scopeString, ttl) {
+    return this.withSessionToken(async sessionToken => {
+      const result = await this.fxAccountsClient.accessTokenWithSessionToken(
+        sessionToken,
+        FX_OAUTH_CLIENT_ID,
+        scopeString,
+        ttl
+      );
+      return result.access_token;
+    });
   },
 
   getOAuthToken(options = {}) {
@@ -1594,10 +1673,13 @@ FxAccountsInternal.prototype = {
         log.debug("getOAuthToken has an in-flight request for this scope");
         return maybeInFlight;
       }
-
+      let fetchFunction = this._doTokenFetch.bind(this);
+      if (USE_SESSION_TOKENS_FOR_OAUTH) {
+        fetchFunction = this._doTokenFetchWithSessionToken.bind(this);
+      }
       // We need to start a new fetch and stick the promise in our in-flight map
       // and remove it when it resolves.
-      let promise = this._doTokenFetch(scopeString)
+      let promise = fetchFunction(scopeString, options.ttl)
         .then(token => {
           // As a sanity check, ensure something else hasn't raced getting a token
           // of the same scope. If something has we just make noise rather than
@@ -1624,6 +1706,17 @@ FxAccountsInternal.prototype = {
     });
   },
 
+  /**
+   * Remove an OAuth token from the token cache
+   * and makes a network request to FxA server to destroy the token.
+   *
+   * @param options
+   *        {
+   *          token: (string) A previously fetched token.
+   *        }
+   * @return Promise.<undefined> This function will always resolve, even if
+   *         an unknown token is passed.
+   */
   removeCachedOAuthToken(options) {
     if (!options.token || typeof options.token !== "string") {
       throw this._error(

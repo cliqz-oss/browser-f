@@ -6,15 +6,24 @@
 "use strict";
 
 const ALIAS = "@test";
+const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
 
 add_task(async function init() {
-  await Services.search.addEngineWithDetails("Test", {
+  // Add a default engine with suggestions, to avoid hitting the network when
+  // fetching them.
+  let defaultEngine = await SearchTestUtils.promiseNewSearchEngine(
+    getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME
+  );
+  defaultEngine.alias = "@default";
+  let oldDefaultEngine = await Services.search.getDefault();
+  Services.search.setDefault(defaultEngine);
+  let engine = await Services.search.addEngineWithDetails("Test", {
     alias: ALIAS,
     template: "http://example.com/?search={searchTerms}",
   });
   registerCleanupFunction(async function() {
-    let engine = Services.search.getEngineByName("Test");
     await Services.search.removeEngine(engine);
+    Services.search.setDefault(oldDefaultEngine);
   });
 
   // Search results aren't shown in quantumbar unless search suggestions are
@@ -144,6 +153,7 @@ add_task(async function inputDoesntMatchHeuristicResult() {
 
 // Selecting a non-heuristic (non-first) search engine result with an alias and
 // empty query should put the alias in the urlbar and highlight it.
+// Also checks that internal aliases appear with the "@" keyword.
 add_task(async function nonHeuristicAliases() {
   // Get the list of token alias engines (those with aliases that start with
   // "@").
@@ -528,8 +538,8 @@ add_task(async function hiddenEngine() {
 });
 
 /**
- * This test checks that if an engine is marked as hidden then
- * it should not appear in the popup when using the "@" token alias in the search bar.
+ * This test checks that if an engine is marked as hidden then it should not
+ * appear in the popup when using the "@" token alias in the search bar.
  */
 add_task(async function hiddenEngine() {
   await UrlbarTestUtils.promiseAutocompleteResultPopup({

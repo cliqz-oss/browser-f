@@ -8,6 +8,7 @@
 
 #include "jit/BaselineDebugModeOSR.h"
 #include "jit/BaselineIC.h"
+#include "jit/IonScript.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitFrames.h"
 #include "jit/JitScript.h"
@@ -219,8 +220,7 @@ MachineState JSJitFrameIter::machineState() const {
     machine.setRegisterLocation(*iter, --spill);
   }
 
-  uint8_t* spillAlign =
-      alignDoubleSpillWithOffset(reinterpret_cast<uint8_t*>(spill), 0);
+  uint8_t* spillAlign = alignDoubleSpill(reinterpret_cast<uint8_t*>(spill));
 
   char* floatSpill = reinterpret_cast<char*>(spillAlign);
   FloatRegisterSet fregs = reader.allFloatSpills().set();

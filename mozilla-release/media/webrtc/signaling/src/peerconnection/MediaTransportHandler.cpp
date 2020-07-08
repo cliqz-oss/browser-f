@@ -31,6 +31,7 @@
 
 #include "runnable_utils.h"
 
+#include "mozilla/Algorithm.h"
 #include "mozilla/Telemetry.h"
 
 #include "mozilla/dom/RTCStatsReportBinding.h"
@@ -519,10 +520,11 @@ void MediaTransportHandlerSTS::ActivateTransport(
     bool aPrivacyRequested) {
   mInitPromise->Then(
       mStsThread, __func__,
-      [=, self = RefPtr<MediaTransportHandlerSTS>(this)]() {
+      [=, keyDer = aKeyDer.Clone(), certDer = aCertDer.Clone(),
+       self = RefPtr<MediaTransportHandlerSTS>(this)]() {
         MOZ_ASSERT(aComponentCount);
         RefPtr<DtlsIdentity> dtlsIdentity(
-            DtlsIdentity::Deserialize(aKeyDer, aCertDer, aAuthType));
+            DtlsIdentity::Deserialize(keyDer, certDer, aAuthType));
         if (!dtlsIdentity) {
           MOZ_ASSERT(false);
           return;
@@ -610,7 +612,8 @@ void MediaTransportHandlerSTS::StartIceGathering(
     const nsTArray<NrIceStunAddr>& aStunAddrs) {
   mInitPromise->Then(
       mStsThread, __func__,
-      [=, self = RefPtr<MediaTransportHandlerSTS>(this)]() {
+      [=, stunAddrs = aStunAddrs.Clone(),
+       self = RefPtr<MediaTransportHandlerSTS>(this)]() {
         mObfuscateHostAddresses = aObfuscateHostAddresses;
 
         // Belt and suspenders - in e10s mode, the call below to SetStunAddrs
@@ -619,8 +622,8 @@ void MediaTransportHandlerSTS::StartIceGathering(
         // just set them here, and only do it here.
         mIceCtx->SetCtxFlags(aDefaultRouteOnly);
 
-        if (aStunAddrs.Length()) {
-          mIceCtx->SetStunAddrs(aStunAddrs);
+        if (stunAddrs.Length()) {
+          mIceCtx->SetStunAddrs(stunAddrs);
         }
 
         // Start gathering, but only if there are streams
@@ -672,8 +675,8 @@ void MediaTransportHandlerSTS::StartIceChecks(
       [](const std::string& aError) {});
 }
 
-static void TokenizeCandidate(const std::string& aCandidate,
-                              std::vector<std::string>& aTokens) {
+void TokenizeCandidate(const std::string& aCandidate,
+                       std::vector<std::string>& aTokens) {
   aTokens.clear();
 
   std::istringstream iss(aCandidate);
@@ -963,9 +966,15 @@ MediaTransportHandlerSTS::GetIceLog(const nsCString& aPattern) {
         if (logs) {
           logs->Filter(aPattern.get(), 0, &result);
         }
+        /// XXX(Bug 1631386) Check if we should reject the promise instead of
+        /// crashing in an OOM situation.
+        if (!converted.SetCapacity(result.size(), fallible)) {
+          mozalloc_handle_oom(sizeof(nsString) * result.size());
+        }
         for (auto& line : result) {
-          converted.AppendElement(NS_ConvertUTF8toUTF16(line.c_str()),
-                                  fallible);
+          // Cannot fail, SetCapacity was called before.
+          (void)converted.AppendElement(NS_ConvertUTF8toUTF16(line.c_str()),
+                                        fallible);
         }
         return IceLogPromise::CreateAndResolve(std::move(converted), __func__);
       });
@@ -1054,9 +1063,16 @@ static void ToRTCIceCandidateStats(
     }
     cand.mProxied.Construct(NS_ConvertASCIItoUTF16(
         candidate.is_proxied ? "proxied" : "non-proxied"));
-    stats->mIceCandidateStats.AppendElement(cand, fallible);
+    if (!stats->mIceCandidateStats.AppendElement(cand, fallible)) {
+      // XXX(Bug 1632090) Instead of extending the array 1-by-1 (which might
+      // involve multiple reallocations) and potentially crashing here,
+      // SetCapacity could be called outside the loop once.
+      mozalloc_handle_oom(0);
+    }
     if (candidate.trickled) {
-      stats->mTrickledIceCandidateStats.AppendElement(cand, fallible);
+      if (!stats->mTrickledIceCandidateStats.AppendElement(cand, fallible)) {
+        mozalloc_handle_oom(0);
+      }
     }
   }
 }
@@ -1102,7 +1118,12 @@ void MediaTransportHandlerSTS::GetIceStats(
     s.mLastPacketReceivedTimestamp.Construct(candPair.ms_since_last_recv);
     s.mState.Construct(dom::RTCStatsIceCandidatePairState(candPair.state));
     s.mComponentId.Construct(candPair.component_id);
-    aStats->mIceCandidatePairStats.AppendElement(s, fallible);
+    if (!aStats->mIceCandidatePairStats.AppendElement(s, fallible)) {
+      // XXX(Bug 1632090) Instead of extending the array 1-by-1 (which might
+      // involve multiple reallocations) and potentially crashing here,
+      // SetCapacity could be called outside the loop once.
+      mozalloc_handle_oom(0);
+    }
   }
 
   std::vector<NrIceCandidate> candidates;
@@ -1112,8 +1133,13 @@ void MediaTransportHandlerSTS::GetIceStats(
                            mSignaledAddresses);
     // add the local candidates unparsed string to a sequence
     for (const auto& candidate : candidates) {
-      aStats->mRawLocalCandidates.AppendElement(
-          NS_ConvertASCIItoUTF16(candidate.label.c_str()), fallible);
+      if (!aStats->mRawLocalCandidates.AppendElement(
+              NS_ConvertASCIItoUTF16(candidate.label.c_str()), fallible)) {
+        // XXX(Bug 1632090) Instead of extending the array 1-by-1 (which might
+        // involve multiple reallocations) and potentially crashing here,
+        // SetCapacity could be called outside the loop once.
+        mozalloc_handle_oom(0);
+      }
     }
   }
   candidates.clear();
@@ -1124,8 +1150,13 @@ void MediaTransportHandlerSTS::GetIceStats(
                            mSignaledAddresses);
     // add the remote candidates unparsed string to a sequence
     for (const auto& candidate : candidates) {
-      aStats->mRawRemoteCandidates.AppendElement(
-          NS_ConvertASCIItoUTF16(candidate.label.c_str()), fallible);
+      if (!aStats->mRawRemoteCandidates.AppendElement(
+              NS_ConvertASCIItoUTF16(candidate.label.c_str()), fallible)) {
+        // XXX(Bug 1632090) Instead of extending the array 1-by-1 (which might
+        // involve multiple reallocations) and potentially crashing here,
+        // SetCapacity could be called outside the loop once.
+        mozalloc_handle_oom(0);
+      }
     }
   }
 }
@@ -1185,9 +1216,8 @@ RefPtr<TransportFlow> MediaTransportHandlerSTS::CreateTransportFlow(
   // Always permits negotiation of the confidential mode.
   // Only allow non-confidential (which is an allowed default),
   // if we aren't confidential.
-  std::set<std::string> alpn;
-  std::string alpnDefault = "";
-  alpn.insert("c-webrtc");
+  std::set<std::string> alpn = {"c-webrtc"};
+  std::string alpnDefault;
   if (!aPrivacyRequested) {
     alpnDefault = "webrtc";
     alpn.insert(alpnDefault);

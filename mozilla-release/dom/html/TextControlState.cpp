@@ -336,10 +336,7 @@ class TextInputSelectionController final : public nsSupportsWeakReference,
   NS_IMETHOD PhysicalMove(int16_t aDirection, int16_t aAmount,
                           bool aExtend) override;
   NS_IMETHOD CharacterMove(bool aForward, bool aExtend) override;
-  NS_IMETHOD CharacterExtendForDelete() override;
-  NS_IMETHOD CharacterExtendForBackspace() override;
   NS_IMETHOD WordMove(bool aForward, bool aExtend) override;
-  NS_IMETHOD WordExtendForDelete(bool aForward) override;
   NS_IMETHOD LineMove(bool aForward, bool aExtend) override;
   NS_IMETHOD IntraLineMove(bool aForward, bool aExtend) override;
   MOZ_CAN_RUN_SCRIPT
@@ -592,39 +589,12 @@ TextInputSelectionController::CharacterMove(bool aForward, bool aExtend) {
 }
 
 NS_IMETHODIMP
-TextInputSelectionController::CharacterExtendForDelete() {
-  if (!mFrameSelection) {
-    return NS_ERROR_NULL_POINTER;
-  }
-  RefPtr<nsFrameSelection> frameSelection = mFrameSelection;
-  return frameSelection->CharacterExtendForDelete();
-}
-
-NS_IMETHODIMP
-TextInputSelectionController::CharacterExtendForBackspace() {
-  if (!mFrameSelection) {
-    return NS_ERROR_NULL_POINTER;
-  }
-  RefPtr<nsFrameSelection> frameSelection = mFrameSelection;
-  return frameSelection->CharacterExtendForBackspace();
-}
-
-NS_IMETHODIMP
 TextInputSelectionController::WordMove(bool aForward, bool aExtend) {
   if (!mFrameSelection) {
     return NS_ERROR_NULL_POINTER;
   }
   RefPtr<nsFrameSelection> frameSelection = mFrameSelection;
   return frameSelection->WordMove(aForward, aExtend);
-}
-
-NS_IMETHODIMP
-TextInputSelectionController::WordExtendForDelete(bool aForward) {
-  if (!mFrameSelection) {
-    return NS_ERROR_NULL_POINTER;
-  }
-  RefPtr<nsFrameSelection> frameSelection = mFrameSelection;
-  return frameSelection->WordExtendForDelete(aForward);
 }
 
 NS_IMETHODIMP
@@ -2111,7 +2081,7 @@ void TextControlState::SetSelectionRange(
       return;
     }
     if (mBoundFrame) {
-      rv = mBoundFrame->ScrollSelectionIntoView();
+      mBoundFrame->ScrollSelectionIntoViewAsync();
     }
     // Press on to firing the event even if that failed, like our old code did.
     // But is that really what we want?  Firing the event _and_ throwing from
@@ -2818,7 +2788,7 @@ bool TextControlState::SetValueWithTextEditor(
       // event so that passing nullptr as nsIPrincipal is safe for
       // now.
       nsresult rv = textEditor->DeleteSelectionAsAction(
-          nsIEditor::eNone, nsIEditor::eStrip, nullptr);
+          nsIEditor::eNone, nsIEditor::eNoStrip, nullptr);
       NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
                            "TextEditor::DeleteSelectionAsAction() failed");
       return rv != NS_ERROR_OUT_OF_MEMORY;

@@ -5,7 +5,8 @@
 
 #include "JoinNodeTransaction.h"
 
-#include "mozilla/EditorBase.h"  // for EditorBase
+#include "HTMLEditUtils.h"
+#include "mozilla/HTMLEditor.h"  // for HTMLEditor
 #include "mozilla/dom/Text.h"
 #include "nsAString.h"
 #include "nsDebug.h"          // for NS_ASSERTION, etc.
@@ -19,26 +20,26 @@ using namespace dom;
 
 // static
 already_AddRefed<JoinNodeTransaction> JoinNodeTransaction::MaybeCreate(
-    EditorBase& aEditorBase, nsIContent& aLeftContent,
+    HTMLEditor& aHTMLEditor, nsIContent& aLeftContent,
     nsIContent& aRightContent) {
   RefPtr<JoinNodeTransaction> transaction =
-      new JoinNodeTransaction(aEditorBase, aLeftContent, aRightContent);
+      new JoinNodeTransaction(aHTMLEditor, aLeftContent, aRightContent);
   if (NS_WARN_IF(!transaction->CanDoIt())) {
     return nullptr;
   }
   return transaction.forget();
 }
 
-JoinNodeTransaction::JoinNodeTransaction(EditorBase& aEditorBase,
+JoinNodeTransaction::JoinNodeTransaction(HTMLEditor& aHTMLEditor,
                                          nsIContent& aLeftContent,
                                          nsIContent& aRightContent)
-    : mEditorBase(&aEditorBase),
+    : mHTMLEditor(&aHTMLEditor),
       mLeftContent(&aLeftContent),
       mRightContent(&aRightContent),
       mOffset(0) {}
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(JoinNodeTransaction, EditTransactionBase,
-                                   mEditorBase, mLeftContent, mRightContent,
+                                   mHTMLEditor, mLeftContent, mRightContent,
                                    mParentNode)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(JoinNodeTransaction)
@@ -46,22 +47,22 @@ NS_INTERFACE_MAP_END_INHERITING(EditTransactionBase)
 
 bool JoinNodeTransaction::CanDoIt() const {
   if (NS_WARN_IF(!mLeftContent) || NS_WARN_IF(!mRightContent) ||
-      NS_WARN_IF(!mEditorBase) || !mLeftContent->GetParentNode()) {
+      NS_WARN_IF(!mHTMLEditor) || !mLeftContent->GetParentNode()) {
     return false;
   }
-  return mEditorBase->IsModifiableNode(*mLeftContent->GetParentNode());
+  return HTMLEditUtils::IsRemovableFromParentNode(*mLeftContent);
 }
 
 // After DoTransaction() and RedoTransaction(), the left node is removed from
 // the content tree and right node remains.
 NS_IMETHODIMP JoinNodeTransaction::DoTransaction() {
-  if (NS_WARN_IF(!mEditorBase) || NS_WARN_IF(!mLeftContent) ||
+  if (NS_WARN_IF(!mHTMLEditor) || NS_WARN_IF(!mLeftContent) ||
       NS_WARN_IF(!mRightContent)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
   // Get the parent node
-  nsCOMPtr<nsINode> leftContentParent = mLeftContent->GetParentNode();
+  nsINode* leftContentParent = mLeftContent->GetParentNode();
   if (NS_WARN_IF(!leftContentParent)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -77,11 +78,11 @@ NS_IMETHODIMP JoinNodeTransaction::DoTransaction() {
   mParentNode = leftContentParent;
   mOffset = mLeftContent->Length();
 
-  OwningNonNull<EditorBase> editorBase = *mEditorBase;
-  OwningNonNull<nsINode> leftNode = *mLeftContent;
-  OwningNonNull<nsINode> rightNode = *mRightContent;
-  nsresult rv = editorBase->DoJoinNodes(rightNode, leftNode, leftContentParent);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "EditorBase::DoJoinNodes() failed");
+  OwningNonNull<HTMLEditor> htmlEditor = *mHTMLEditor;
+  OwningNonNull<nsIContent> leftContent = *mLeftContent;
+  OwningNonNull<nsIContent> rightContent = *mRightContent;
+  nsresult rv = htmlEditor->DoJoinNodes(rightContent, leftContent);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "HTMLEditor::DoJoinNodes() failed");
   return rv;
 }
 
@@ -89,7 +90,7 @@ NS_IMETHODIMP JoinNodeTransaction::DoTransaction() {
 //     mRight and re-inserted mLeft?
 NS_IMETHODIMP JoinNodeTransaction::UndoTransaction() {
   if (NS_WARN_IF(!mParentNode) || NS_WARN_IF(!mLeftContent) ||
-      NS_WARN_IF(!mRightContent) || NS_WARN_IF(!mEditorBase)) {
+      NS_WARN_IF(!mRightContent) || NS_WARN_IF(!mHTMLEditor)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
@@ -100,8 +101,8 @@ NS_IMETHODIMP JoinNodeTransaction::UndoTransaction() {
   // First, massage the existing node so it is in its post-split state
   ErrorResult error;
   if (Text* rightTextNode = rightContent->GetAsText()) {
-    OwningNonNull<EditorBase> editorBase = *mEditorBase;
-    editorBase->DoDeleteText(MOZ_KnownLive(*rightTextNode), 0, mOffset, error);
+    OwningNonNull<HTMLEditor> htmlEditor = *mHTMLEditor;
+    htmlEditor->DoDeleteText(MOZ_KnownLive(*rightTextNode), 0, mOffset, error);
     if (error.Failed()) {
       NS_WARNING("EditorBase::DoDeleteText() failed");
       return error.StealNSResult();

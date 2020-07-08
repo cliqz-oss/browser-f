@@ -56,6 +56,7 @@ const unsigned short SVG_FECOMPONENTTRANSFER_TYPE_TABLE = 2;
 const unsigned short SVG_FECOMPONENTTRANSFER_TYPE_DISCRETE = 3;
 const unsigned short SVG_FECOMPONENTTRANSFER_TYPE_LINEAR = 4;
 const unsigned short SVG_FECOMPONENTTRANSFER_TYPE_GAMMA = 5;
+const unsigned short SVG_FECOMPONENTTRANSFER_SAME_AS_R = 6;
 
 // Blend Mode Values
 const unsigned short SVG_FEBLEND_MODE_UNKNOWN = 0;
@@ -228,7 +229,7 @@ struct ToAlphaAttributes {
 
 // Complex PrimitiveAttributes:
 
-class ImplicitlyCopyableFloatArray : public nsTArray<float> {
+class ImplicitlyCopyableFloatArray : public CopyableTArray<float> {
  public:
   ImplicitlyCopyableFloatArray() = default;
 
@@ -253,8 +254,8 @@ struct ColorMatrixAttributes {
   }
 };
 
-// If the types for G and B are SVG_FECOMPONENTTRANSFER_TYPE_UNKNOWN,
-// assume the R values are RGB - this lets us avoid copies.
+// If the types for G and B are SVG_FECOMPONENTTRANSFER_SAME_AS_R,
+// use the R channel values - this lets us avoid copies.
 const uint32_t kChannelROrRGB = 0;
 const uint32_t kChannelG = 1;
 const uint32_t kChannelB = 2;
@@ -415,10 +416,14 @@ class FilterPrimitiveDescription final {
   FilterPrimitiveDescription(FilterPrimitiveDescription&& aOther) = default;
   FilterPrimitiveDescription& operator=(FilterPrimitiveDescription&& aOther) =
       default;
-  FilterPrimitiveDescription(const FilterPrimitiveDescription& aOther) =
-      default;
-  FilterPrimitiveDescription& operator=(
-      const FilterPrimitiveDescription& aOther) = default;
+  FilterPrimitiveDescription(const FilterPrimitiveDescription& aOther)
+      : mAttributes(aOther.mAttributes),
+        mInputPrimitives(aOther.mInputPrimitives.Clone()),
+        mFilterPrimitiveSubregion(aOther.mFilterPrimitiveSubregion),
+        mFilterSpaceBounds(aOther.mFilterSpaceBounds),
+        mInputColorSpaces(aOther.mInputColorSpaces.Clone()),
+        mOutputColorSpace(aOther.mOutputColorSpace),
+        mIsTainted(aOther.mIsTainted) {}
 
   const PrimitiveAttributes& Attributes() const { return mAttributes; }
   PrimitiveAttributes& Attributes() { return mAttributes; }
@@ -498,7 +503,7 @@ struct FilterDescription final {
     return !(*this == aOther);
   }
 
-  nsTArray<FilterPrimitiveDescription> mPrimitives;
+  CopyableTArray<FilterPrimitiveDescription> mPrimitives;
 };
 
 already_AddRefed<FilterNode> FilterNodeGraphFromDescription(

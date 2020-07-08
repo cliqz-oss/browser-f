@@ -32,6 +32,19 @@ function IsCSSPropertyPrefEnabled(prefName) {
   return false;
 }
 
+// Returns true if WebRender is enabled. Otherwise, returns false
+function IsWebRenderEnabled() {
+  try {
+    return SpecialPowers.Cc["@mozilla.org/gfx/info;1"].getService(
+      SpecialPowers.Ci.nsIGfxInfo
+    ).WebRenderEnabled;
+  } catch (ex) {
+    ok(false, "Failed to check WebRender's enabled state");
+  }
+
+  return false;
+}
+
 // True longhand properties.
 const CSS_TYPE_LONGHAND = 0;
 
@@ -6741,6 +6754,8 @@ var gCSSProperties = {
     domProp: "opacity",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
+    applies_to_first_letter: true,
+    applies_to_first_line: true,
     applies_to_placeholder: true,
     applies_to_cue: true,
     initial_values: [
@@ -11818,6 +11833,29 @@ var isGridTemplateSubgridValueEnabled = IsCSSPropertyPrefEnabled(
   "layout.css.grid-template-subgrid-value.enabled"
 );
 
+var isGridTemplateMasonryValueEnabled = IsCSSPropertyPrefEnabled(
+  "layout.css.grid-template-masonry-value.enabled"
+);
+
+if (isGridTemplateMasonryValueEnabled) {
+  gCSSProperties["masonry-auto-flow"] = {
+    domProp: "masonryAutoFlow",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: ["pack"],
+    other_values: ["pack ordered", "ordered next", "next definite-first"],
+    invalid_values: ["auto", "none", "10px", "row", "dense"],
+  };
+
+  let alignTracks = { ...gCSSProperties["align-content"] };
+  alignTracks.domProp = "alignTracks";
+  gCSSProperties["align-tracks"] = alignTracks;
+
+  let justifyTracks = { ...gCSSProperties["justify-content"] };
+  justifyTracks.domProp = "justifyTracks";
+  gCSSProperties["justify-tracks"] = justifyTracks;
+}
+
 gCSSProperties["display"].other_values.push("grid", "inline-grid");
 gCSSProperties["grid-auto-flow"] = {
   domProp: "gridAutoFlow",
@@ -12055,6 +12093,20 @@ if (isGridTemplateSubgridValueEnabled) {
     "subgrid repeat(auto-fill, []) repeat(auto-fill, [])"
   );
 }
+if (isGridTemplateMasonryValueEnabled) {
+  gCSSProperties["grid-template-columns"].other_values.push("masonry");
+  gCSSProperties["grid-template-columns"].invalid_values.push(
+    "masonry []",
+    "masonry [foo] 40px",
+    "masonry 40px",
+    "[foo] masonry",
+    "0px masonry",
+    "masonry masonry",
+    "subgrid masonry",
+    "masonry subgrid",
+    "masonry repeat(1, [])"
+  );
+}
 gCSSProperties["grid-template-rows"] = {
   domProp: "gridTemplateRows",
   inherited: false,
@@ -12140,6 +12192,22 @@ if (isGridTemplateSubgridValueEnabled) {
     "subgrid []",
     "subgrid [] / 'fizz'",
     "subgrid / 'fizz'"
+  );
+}
+if (isGridTemplateMasonryValueEnabled) {
+  gCSSProperties["grid-template"].other_values.push(
+    "masonry / subgrid",
+    "subgrid / masonry",
+    "masonry / masonry" /* valid but behaves as 'masonry / none' */,
+    "masonry/40px 20px",
+    "subgrid [foo] [] [bar baz] / masonry",
+    "40px 20px/masonry",
+    "masonry/subgrid  [foo] [] repeat(3, [a] [b]) [bar baz]",
+    "subgrid [foo] [] [bar baz]/masonry"
+  );
+  gCSSProperties["grid-template"].invalid_values.push(
+    "masonry",
+    "masonry / 'fizz'"
   );
 }
 
@@ -12416,53 +12484,51 @@ gCSSProperties["grid-gap"] = {
   subproperties: ["column-gap", "row-gap"],
 };
 
-if (IsCSSPropertyPrefEnabled("layout.css.contain.enabled")) {
-  gCSSProperties["contain"] = {
-    domProp: "contain",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: ["none"],
-    other_values: [
-      "strict",
-      "layout",
-      "size",
-      "content",
-      "paint",
-      "layout paint",
-      "paint layout",
-      "size layout",
-      "paint size",
-      "layout size paint",
-      "layout paint size",
-      "size paint layout",
-      "paint size layout",
-    ],
-    invalid_values: [
-      "none strict",
-      "none size",
-      "strict layout",
-      "strict layout size",
-      "layout strict",
-      "layout content",
-      "strict content",
-      "layout size strict",
-      "layout size paint strict",
-      "paint strict",
-      "size strict",
-      "paint paint",
-      "content content",
-      "size content",
-      "content strict size",
-      "paint layout content",
-      "layout size content",
-      "size size",
-      "strict strict",
-      "auto",
-      "10px",
-      "0",
-    ],
-  };
-}
+gCSSProperties["contain"] = {
+  domProp: "contain",
+  inherited: false,
+  type: CSS_TYPE_LONGHAND,
+  initial_values: ["none"],
+  other_values: [
+    "strict",
+    "layout",
+    "size",
+    "content",
+    "paint",
+    "layout paint",
+    "paint layout",
+    "size layout",
+    "paint size",
+    "layout size paint",
+    "layout paint size",
+    "size paint layout",
+    "paint size layout",
+  ],
+  invalid_values: [
+    "none strict",
+    "none size",
+    "strict layout",
+    "strict layout size",
+    "layout strict",
+    "layout content",
+    "strict content",
+    "layout size strict",
+    "layout size paint strict",
+    "paint strict",
+    "size strict",
+    "paint paint",
+    "content content",
+    "size content",
+    "content strict size",
+    "paint layout content",
+    "layout size content",
+    "size size",
+    "strict strict",
+    "auto",
+    "10px",
+    "0",
+  ],
+};
 
 if (IsCSSPropertyPrefEnabled("layout.css.initial-letter.enabled")) {
   gCSSProperties["initial-letter"] = {
@@ -13114,7 +13180,10 @@ if (IsCSSPropertyPrefEnabled("layout.css.step-position-jump.enabled")) {
   );
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.backdrop-filter.enabled")) {
+if (
+  IsCSSPropertyPrefEnabled("layout.css.backdrop-filter.enabled") &&
+  IsWebRenderEnabled()
+) {
   gCSSProperties["backdrop-filter"] = {
     domProp: "backdropFilter",
     inherited: false,
@@ -13228,6 +13297,28 @@ if (
 ) {
   gCSSProperties["image-orientation"].initial_values = ["none"];
   gCSSProperties["image-orientation"].other_values = ["from-image"];
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.aspect-ratio.enabled")) {
+  gCSSProperties["aspect-ratio"] = {
+    domProp: "aspectRatio",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: ["auto"],
+    other_values: [
+      "1",
+      "1.0",
+      "1 / 2",
+      "1/2",
+      "16.2 / 9.5",
+      "1/0",
+      "0/1",
+      "0 / 0",
+      "auto 1",
+      "0 auto",
+    ],
+    invalid_values: ["none", "1 test", "1 / auto", "auto / 1"],
+  };
 }
 
 // Copy aliased properties' fields from their alias targets. Keep this logic

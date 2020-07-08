@@ -414,10 +414,6 @@ void AudioDestinationNode::DestroyMediaTrack() {
   Context()->ShutdownWorklet();
 
   mTrack->RemoveMainThreadListener(this);
-  MediaTrackGraph* graph = mTrack->Graph();
-  if (graph->IsNonRealtime()) {
-    MediaTrackGraph::DestroyNonRealtimeInstance(graph);
-  }
   AudioNode::DestroyMediaTrack();
 }
 
@@ -503,7 +499,7 @@ void AudioDestinationNode::OfflineShutdown() {
              "Should only be called on a valid OfflineAudioContext");
 
   if (mTrack) {
-    MediaTrackGraph::DestroyNonRealtimeInstance(mTrack->Graph());
+    mTrack->Graph()->MediaTrackGraph::ForceShutDown();
     mOfflineRenderingRef.Drop(this);
   }
 }

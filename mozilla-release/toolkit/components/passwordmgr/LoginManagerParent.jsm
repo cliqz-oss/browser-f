@@ -17,21 +17,13 @@ const LoginInfo = new Components.Constructor(
 
 XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "LoginHelper",
-  "resource://gre/modules/LoginHelper.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "PasswordGenerator",
-  "resource://gre/modules/PasswordGenerator.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm"
-);
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ChromeMigrationUtils: "resource:///modules/ChromeMigrationUtils.jsm",
+  LoginHelper: "resource://gre/modules/LoginHelper.jsm",
+  MigrationUtils: "resource:///modules/MigrationUtils.jsm",
+  PasswordGenerator: "resource://gre/modules/PasswordGenerator.jsm",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
+});
 
 XPCOMUtils.defineLazyServiceGetter(
   this,
@@ -126,6 +118,24 @@ Services.ppmm.addMessageListener("PasswordManager:findRecipes", message => {
   let formHost = new URL(message.data.formOrigin).host;
   return gRecipeManager.getRecipesForHost(formHost);
 });
+
+/**
+ * Lazily create a Map of origins to array of browsers with importable logins.
+ *
+ * @param {origin} formOrigin
+ * @returns {Object?} containing array of migration browsers and experiment state.
+ */
+async function getImportableLogins(formOrigin) {
+  // Include the experiment state for data and UI decisions; otherwise skip
+  // importing if not supported or disabled.
+  const state = LoginHelper.showAutoCompleteImport;
+  return state
+    ? {
+        browsers: await ChromeMigrationUtils.getImportableLogins(formOrigin),
+        state,
+      }
+    : null;
+}
 
 class LoginManagerParent extends JSWindowActorParent {
   // This is used by tests to listen to form submission.
@@ -258,6 +268,16 @@ class LoginManagerParent extends JSWindowActorParent {
         break;
       }
 
+      case "PasswordManager:OpenMigrationWizard": {
+        // Open the migration wizard pre-selecting the appropriate browser.
+        let window = this.getRootBrowser().ownerGlobal;
+        MigrationUtils.showMigrationWizard(window, [
+          MigrationUtils.MIGRATION_ENTRYPOINT_PASSWORDS,
+          msg.data,
+        ]);
+        break;
+      }
+
       case "PasswordManager:OpenPreferences": {
         let window = this.getRootBrowser().ownerGlobal;
         LoginHelper.openPasswordManager(window, {
@@ -292,7 +312,13 @@ class LoginManagerParent extends JSWindowActorParent {
    * Trigger a login form fill and send relevant data (e.g. logins and recipes)
    * to the child process (LoginManagerChild).
    */
-  async fillForm({ browser, loginFormOrigin, login, inputElementIdentifier }) {
+  async fillForm({
+    browser,
+    loginFormOrigin,
+    login,
+    inputElementIdentifier,
+    style,
+  }) {
     let recipes = [];
     if (loginFormOrigin) {
       let formHost;
@@ -319,6 +345,7 @@ class LoginManagerParent extends JSWindowActorParent {
       originMatches,
       logins: jsLogins,
       recipes,
+      style,
     });
   }
 
@@ -408,7 +435,11 @@ class LoginManagerParent extends JSWindowActorParent {
     // Convert the array of nsILoginInfo to vanilla JS objects since nsILoginInfo
     // doesn't support structured cloning.
     let jsLogins = LoginHelper.loginsToVanillaObjects(logins);
-    return { logins: jsLogins, recipes };
+    return {
+      importable: await getImportableLogins(formOrigin),
+      logins: jsLogins,
+      recipes,
+    };
   }
 
   async doAutocompleteSearch({
@@ -493,7 +524,7 @@ class LoginManagerParent extends JSWindowActorParent {
           Services.logins.getLoginSavingEnabled(formOrigin)))
     ) {
       generatedPassword = this.getGeneratedPassword();
-      let potentialConflictingLogins = LoginHelper.searchLoginsWithObject({
+      let potentialConflictingLogins = await Services.logins.searchLoginsAsync({
         origin: formOrigin,
         formActionOrigin: actionOrigin,
         httpRealm: null,
@@ -508,6 +539,7 @@ class LoginManagerParent extends JSWindowActorParent {
     let jsLogins = LoginHelper.loginsToVanillaObjects(matchingLogins);
     return {
       generatedPassword,
+      importable: await getImportableLogins(formOrigin),
       logins: jsLogins,
       willAutoSaveGeneratedPassword,
     };
@@ -640,11 +672,12 @@ class LoginManagerParent extends JSWindowActorParent {
     }
   ) {
     function recordLoginUse(login) {
-      if (!browser || PrivateBrowsingUtils.isBrowserPrivate(browser)) {
-        // don't record non-interactive use in private browsing
-        return;
-      }
-      Services.logins.recordPasswordUse(login);
+      Services.logins.recordPasswordUse(
+        login,
+        browser && PrivateBrowsingUtils.isBrowserPrivate(browser),
+        login.username ? "form_login" : "form_password",
+        !!autoFilledLoginGuid
+      );
     }
 
     // If password storage is disabled, bail out.
@@ -826,6 +859,25 @@ class LoginManagerParent extends JSWindowActorParent {
     );
   }
 
+  /**
+   * Performs validation of inputs against already-saved logins in order to determine whether and
+   * how these inputs can be stored. Depending on validation, will either no-op or show a 'save'
+   * or 'update' dialog to the user.
+   *
+   * This is called after any of the following:
+   *   - The user edits a password
+   *   - A generated password is filled
+   *   - The user edits a username (when a matching password field has already been filled)
+   *
+   * @param {Element} browser
+   * @param {string} options.origin
+   * @param {string} options.formActionOrigin
+   * @param {string?} options.autoFilledLoginGuid
+   * @param {Object} options.newPasswordField
+   * @param {Object?} options.usernameField
+   * @param {Element?} options.oldPasswordField
+   * @param {boolean} [options.triggeredByFillingGenerated = false]
+   */
   async _onPasswordEditedOrGenerated(
     browser,
     {

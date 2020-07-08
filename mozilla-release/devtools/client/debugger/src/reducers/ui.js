@@ -3,6 +3,7 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 // @flow
+/* eslint complexity: ["error", 35]*/
 
 /**
  * UI reducer
@@ -39,6 +40,8 @@ export type UIState = {
   conditionalPanelLocation: null | SourceLocation,
   isLogPoint: boolean,
   inlinePreviewEnabled: boolean,
+  sourceMapsEnabled: boolean,
+  javascriptEnabled: boolean,
 };
 
 export const createUIState = (): UIState => ({
@@ -55,6 +58,8 @@ export const createUIState = (): UIState => ({
   viewport: null,
   cursorPosition: null,
   inlinePreviewEnabled: features.inlinePreview,
+  sourceMapsEnabled: prefs.clientSourceMapsEnabled,
+  javascriptEnabled: true,
 });
 
 function update(state: UIState = createUIState(), action: Action): UIState {
@@ -71,6 +76,15 @@ function update(state: UIState = createUIState(), action: Action): UIState {
     case "TOGGLE_INLINE_PREVIEW": {
       features.inlinePreview = action.value;
       return { ...state, inlinePreviewEnabled: action.value };
+    }
+
+    case "TOGGLE_JAVASCRIPT_ENABLED": {
+      return { ...state, javascriptEnabled: action.value };
+    }
+
+    case "TOGGLE_SOURCE_MAPS_ENABLED": {
+      prefs.clientSourceMapsEnabled = action.value;
+      return { ...state, sourceMapsEnabled: action.value };
     }
 
     case "SET_ORIENTATION": {

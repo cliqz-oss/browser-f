@@ -34,6 +34,7 @@
 #include "nsContentUtils.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsCSSRendering.h"
+#include "nsDocShell.h"
 #include "nsIFrame.h"
 #include "nsIFrameInlines.h"
 #include "nsImageFrame.h"
@@ -89,7 +90,7 @@ void RestyleManager::ContentAppended(nsIContent* aFirstNewContent) {
 #ifdef DEBUG
   {
     for (nsIContent* cur = aFirstNewContent; cur; cur = cur->GetNextSibling()) {
-      NS_ASSERTION(!cur->IsRootOfAnonymousSubtree(),
+      NS_ASSERTION(!cur->IsRootOfNativeAnonymousSubtree(),
                    "anonymous nodes should not be in child lists");
     }
   }
@@ -264,7 +265,7 @@ void RestyleManager::CharacterDataChanged(
     return;
   }
 
-  if (MOZ_UNLIKELY(aContent->IsRootOfAnonymousSubtree())) {
+  if (MOZ_UNLIKELY(aContent->IsRootOfNativeAnonymousSubtree())) {
     // This is an anonymous node and thus isn't in child lists, so isn't taken
     // into account for selector matching the relevant selectors here.
     return;
@@ -332,7 +333,7 @@ void RestyleManager::RestyleForInsertOrChange(nsIContent* aChild) {
   }
   Element* container = parentNode->AsElement();
 
-  NS_ASSERTION(!aChild->IsRootOfAnonymousSubtree(),
+  NS_ASSERTION(!aChild->IsRootOfNativeAnonymousSubtree(),
                "anonymous nodes should not be in child lists");
   uint32_t selectorFlags = container->GetFlags() & NODE_ALL_SELECTOR_FLAGS;
   if (selectorFlags == 0) return;
@@ -382,7 +383,7 @@ void RestyleManager::ContentRemoved(nsIContent* aOldChild,
   }
   Element* container = aOldChild->GetParentNode()->AsElement();
 
-  if (aOldChild->IsRootOfAnonymousSubtree()) {
+  if (aOldChild->IsRootOfNativeAnonymousSubtree()) {
     // This should be an assert, but this is called incorrectly in
     // HTMLEditor::DeleteRefToAnonymousNode and the assertions were clogging
     // up the logs.  Make it an assert again when that's fixed.
@@ -921,9 +922,8 @@ static bool ContainingBlockChangeAffectsDescendants(
   // All fixed-pos containing blocks should also be abs-pos containing blocks.
   MOZ_ASSERT_IF(aIsFixedPosContainingBlock, aIsAbsPosContainingBlock);
 
-  for (nsIFrame::ChildListIterator lists(aFrame); !lists.IsDone();
-       lists.Next()) {
-    for (nsIFrame* f : lists.CurrentList()) {
+  for (const auto& childList : aFrame->ChildLists()) {
+    for (nsIFrame* f : childList.mList) {
       if (f->IsPlaceholderFrame()) {
         nsIFrame* outOfFlow = nsPlaceholderFrame::GetRealFrameForPlaceholder(f);
         // If SVG text frames could appear here, they could confuse us since
@@ -1102,9 +1102,8 @@ static void SyncViewsAndInvalidateDescendants(nsIFrame* aFrame,
 
   aFrame->SyncFrameViewProperties();
 
-  nsIFrame::ChildListIterator lists(aFrame);
-  for (; !lists.IsDone(); lists.Next()) {
-    for (nsIFrame* child : lists.CurrentList()) {
+  for (const auto& [list, listID] : aFrame->ChildLists()) {
+    for (nsIFrame* child : list) {
       if (!(child->GetStateBits() & NS_FRAME_OUT_OF_FLOW)) {
         // only do frames that don't have placeholders
         if (child->IsPlaceholderFrame()) {
@@ -1112,7 +1111,7 @@ static void SyncViewsAndInvalidateDescendants(nsIFrame* aFrame,
           nsIFrame* outOfFlowFrame =
               nsPlaceholderFrame::GetRealFrameForPlaceholder(child);
           DoApplyRenderingChangeToTree(outOfFlowFrame, aChange);
-        } else if (lists.CurrentID() == nsIFrame::kPopupList) {
+        } else if (listID == nsIFrame::kPopupList) {
           DoApplyRenderingChangeToTree(child, aChange);
         } else {  // regular frame
           SyncViewsAndInvalidateDescendants(child, aChange);
@@ -1173,9 +1172,8 @@ static void AddSubtreeToOverflowTracker(
     aOverflowChangedTracker.AddFrame(aFrame,
                                      OverflowChangedTracker::CHILDREN_CHANGED);
   }
-  nsIFrame::ChildListIterator lists(aFrame);
-  for (; !lists.IsDone(); lists.Next()) {
-    for (nsIFrame* child : lists.CurrentList()) {
+  for (const auto& childList : aFrame->ChildLists()) {
+    for (nsIFrame* child : childList.mList) {
       AddSubtreeToOverflowTracker(child, aOverflowChangedTracker);
     }
   }
@@ -1499,27 +1497,11 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
 
       if (!(frame->GetStateBits() & NS_FRAME_MAY_BE_TRANSFORMED)) {
         // Frame can not be transformed, and thus a change in transform will
-        // have no effect and we should not use the
-        // nsChangeHint_UpdatePostTransformOverflow hint.
-        hint &= ~nsChangeHint_UpdatePostTransformOverflow;
-      }
-
-      if ((hint & nsChangeHint_UpdateTransformLayer) &&
-          !(frame->GetStateBits() & NS_FRAME_MAY_BE_TRANSFORMED) &&
-          frame->HasAnimationOfTransform()) {
-        // If we have an nsChangeHint_UpdateTransformLayer hint but no
-        // corresponding frame bit, we most likely have a transform animation
-        // that was added or updated after this frame was created (otherwise
-        // we would have set the frame bit when we initialized the frame)
-        // and which sets the transform to 'none' (otherwise we would have set
-        // the frame bit when we got the nsChangeHint_AddOrRemoveTransform
-        // hint).
-        //
-        // In that case we should set the frame bit.
-        for (nsIFrame* cont = frame; cont;
-             cont = nsLayoutUtils::GetNextContinuationOrIBSplitSibling(cont)) {
-          cont->AddStateBits(NS_FRAME_MAY_BE_TRANSFORMED);
-        }
+        // have no effect and we should not use either
+        // nsChangeHint_UpdatePostTransformOverflow or
+        // nsChangeHint_UpdateTransformLayerhint.
+        hint &= ~(nsChangeHint_UpdatePostTransformOverflow |
+                  nsChangeHint_UpdateTransformLayer);
       }
 
       if (hint & nsChangeHint_AddOrRemoveTransform) {
@@ -1988,6 +1970,25 @@ static const nsIFrame* ExpectedOwnerForChild(const nsIFrame* aFrame) {
   return parent;
 }
 
+// FIXME(emilio, bug 1633685): We should ideally figure out how to properly
+// restyle replicated fixed pos frames... We seem to assume everywhere that they
+// can't get restyled at the moment...
+static bool IsInReplicatedFixedPosTree(const nsIFrame* aFrame) {
+  if (!aFrame->PresContext()->IsPaginated()) {
+    return false;
+  }
+
+  for (; aFrame; aFrame = aFrame->GetParent()) {
+    if (aFrame->StyleDisplay()->mPosition == StylePositionProperty::Fixed &&
+        !aFrame->FirstContinuation()->IsPrimaryFrame() &&
+        nsLayoutUtils::IsReallyFixedPos(aFrame)) {
+      return true;
+    }
+  }
+
+  return true;
+}
+
 void ServoRestyleState::AssertOwner(const ServoRestyleState& aParent) const {
   MOZ_ASSERT(mOwner);
   MOZ_ASSERT(!mOwner->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW));
@@ -1998,7 +1999,7 @@ void ServoRestyleState::AssertOwner(const ServoRestyleState& aParent) const {
   // chains of ServoRestyleStates in some cases where it's just not worth it.
   if (aParent.mOwner) {
     const nsIFrame* owner = ExpectedOwnerForChild(mOwner);
-    if (owner != aParent.mOwner) {
+    if (owner != aParent.mOwner && !IsInReplicatedFixedPosTree(mOwner)) {
       MOZ_ASSERT(IsAnonBox(owner),
                  "Should only have expected owner weirdness when anon boxes "
                  "are involved");
@@ -2021,7 +2022,8 @@ nsChangeHint ServoRestyleState::ChangesHandledFor(
     return mChangesHandled;
   }
 
-  MOZ_ASSERT(mOwner == ExpectedOwnerForChild(aFrame),
+  MOZ_ASSERT(mOwner == ExpectedOwnerForChild(aFrame) ||
+                 IsInReplicatedFixedPosTree(aFrame),
              "Missed some frame in the hierarchy?");
   return mChangesHandled;
 }
@@ -2573,7 +2575,6 @@ static ServoPostTraversalFlags SendA11yNotifications(
 }
 
 bool RestyleManager::ProcessPostTraversal(Element* aElement,
-                                          ComputedStyle* aParentContext,
                                           ServoRestyleState& aRestyleState,
                                           ServoPostTraversalFlags aFlags) {
   nsIFrame* styleFrame = nsLayoutUtils::GetStyleFrame(aElement);
@@ -2798,7 +2799,7 @@ bool RestyleManager::ProcessPostTraversal(Element* aElement,
     for (nsIContent* n = it.GetNextChild(); n; n = it.GetNextChild()) {
       if (traverseElementChildren && n->IsElement()) {
         recreatedAnyContext |= ProcessPostTraversal(
-            n->AsElement(), upToDateStyle, childrenRestyleState, childrenFlags);
+            n->AsElement(), childrenRestyleState, childrenFlags);
       } else if (traverseTextChildren && n->IsText()) {
         recreatedAnyContext |= ProcessPostTraversalForText(
             n, textState, childrenRestyleState, childrenFlags);
@@ -2967,8 +2968,10 @@ void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
   presContext->RefreshDriver()->MostRecentRefresh();
 
   // Perform the Servo traversal, and the post-traversal if required. We do this
-  // in a loop because certain rare paths in the frame constructor (like
-  // uninstalling XBL bindings) can trigger additional style validations.
+  // in a loop because certain rare paths in the frame constructor can trigger
+  // additional style invalidations.
+  //
+  // FIXME(emilio): Confirm whether that's still true now that XBL is gone.
   mInStyleRefresh = true;
   if (mHaveNonAnimationRestyles) {
     ++mAnimationGeneration;
@@ -3001,7 +3004,7 @@ void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
         ServoRestyleState state(*styleSet, currentChanges, wrappersToRestyle,
                                 anchorsToSuppress);
         ServoPostTraversalFlags flags = ServoPostTraversalFlags::Empty;
-        anyStyleChanged |= ProcessPostTraversal(root, nullptr, state, flags);
+        anyStyleChanged |= ProcessPostTraversal(root, state, flags);
       }
 
       // We want to suppress adjustments the current (before-change) scroll
@@ -3560,9 +3563,8 @@ void RestyleManager::ReparentFrameDescendants(nsIFrame* aFrame,
     // that is going to go away anyway in seconds.
     return;
   }
-  nsIFrame::ChildListIterator lists(aFrame);
-  for (; !lists.IsDone(); lists.Next()) {
-    for (nsIFrame* child : lists.CurrentList()) {
+  for (const auto& childList : aFrame->ChildLists()) {
+    for (nsIFrame* child : childList.mList) {
       // only do frames that are in flow
       if (!(child->GetStateBits() & NS_FRAME_OUT_OF_FLOW) &&
           child != aProviderChild) {

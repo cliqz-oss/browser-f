@@ -12,17 +12,20 @@ const { XPCOMUtils } = ChromeUtils.import(
 );
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  MigrationUtils: "resource:///modules/MigrationUtils.jsm",
   FxAccounts: "resource://gre/modules/FxAccounts.jsm",
+  MigrationUtils: "resource:///modules/MigrationUtils.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  SpecialMessageActions:
+    "resource://messaging-system/lib/SpecialMessageActions.jsm",
   AboutWelcomeTelemetry:
     "resource://activity-stream/aboutwelcome/lib/AboutWelcomeTelemetry.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
-  const { AboutWelcomeLog } = ChromeUtils.import(
-    "resource://activity-stream/aboutwelcome/lib/AboutWelcomeLog.jsm"
+  const { Logger } = ChromeUtils.import(
+    "resource://messaging-system/lib/Logger.jsm"
   );
-  return new AboutWelcomeLog("AboutWelcomeParent.jsm");
+  return new Logger("AboutWelcomeParent");
 });
 
 XPCOMUtils.defineLazyGetter(
@@ -39,6 +42,47 @@ const AWTerminate = {
   APP_SHUT_DOWN: "app-shut-down",
   ADDRESS_BAR_NAVIGATED: "address-bar-navigated",
 };
+
+async function getImportableSites() {
+  const sites = [];
+
+  // Just handle these chromium-based browsers for now
+  for (const browserId of ["chrome", "chromium-edge", "chromium"]) {
+    // Skip if there's no profile data.
+    const migrator = await MigrationUtils.getMigrator(browserId);
+    if (!migrator) {
+      continue;
+    }
+
+    // Check each profile for top sites
+    const dataPath = await migrator.wrappedJSObject._getChromeUserDataPathIfExists();
+    for (const profile of await migrator.getSourceProfiles()) {
+      let path = OS.Path.join(dataPath, profile.id, "Top Sites");
+      // Skip if top sites data is missing
+      if (!(await OS.File.exists(path))) {
+        Cu.reportError(`Missing file at ${path}`);
+        continue;
+      }
+
+      try {
+        for (const row of await MigrationUtils.getRowsFromDBWithoutLocks(
+          path,
+          `Importable ${browserId} top sites`,
+          `SELECT url
+           FROM top_sites
+           ORDER BY url_rank`
+        )) {
+          sites.push(row.getString(0));
+        }
+      } catch (ex) {
+        Cu.reportError(
+          `Failed to get importable top sites from ${browserId} ${ex}`
+        );
+      }
+    }
+  }
+  return sites;
+}
 
 class AboutWelcomeObserver {
   constructor() {
@@ -105,7 +149,7 @@ class AboutWelcomeParent extends JSWindowActorParent {
         reason: this.AboutWelcomeObserver.terminateReason,
         page: "about:welcome",
       },
-      message_id: "ABOUT_WELCOME_SESSION_END",
+      message_id: this.AWMessageId,
       id: "ABOUT_WELCOME",
     });
   }
@@ -122,25 +166,20 @@ class AboutWelcomeParent extends JSWindowActorParent {
     log.debug(`Received content event: ${type}`);
     switch (type) {
       case "AWPage:SET_WELCOME_MESSAGE_SEEN":
+        this.AWMessageId = data;
         try {
           Services.prefs.setBoolPref(DID_SEE_ABOUT_WELCOME_PREF, true);
         } catch (e) {
           log.debug(`Fails to set ${DID_SEE_ABOUT_WELCOME_PREF}.`);
         }
         break;
-      case "AWPage:OPEN_AWESOME_BAR":
-        window.gURLBar.search("");
-        break;
-      case "AWPage:OPEN_PRIVATE_BROWSER_WINDOW":
-        window.OpenBrowserWindow({ private: true });
-        break;
-      case "AWPage:SHOW_MIGRATION_WIZARD":
-        MigrationUtils.showMigrationWizard(window, [
-          MigrationUtils.MIGRATION_ENTRYPOINT_NEWTAB,
-        ]);
+      case "AWPage:SPECIAL_ACTION":
+        SpecialMessageActions.handleAction(data, browser);
         break;
       case "AWPage:FXA_METRICS_FLOW_URI":
         return FxAccounts.config.promiseMetricsFlowURI("aboutwelcome");
+      case "AWPage:IMPORTABLE_SITES":
+        return getImportableSites();
       case "AWPage:TELEMETRY_EVENT":
         Telemetry.sendTelemetry(data);
         break;
@@ -148,6 +187,19 @@ class AboutWelcomeParent extends JSWindowActorParent {
         this.AboutWelcomeObserver.terminateReason =
           AWTerminate.ADDRESS_BAR_NAVIGATED;
         break;
+      case "AWPage:WAIT_FOR_MIGRATION_CLOSE":
+        return new Promise(resolve =>
+          Services.ww.registerNotification(function observer(subject, topic) {
+            if (
+              topic === "domwindowclosed" &&
+              subject.document.documentURI ===
+                "chrome://browser/content/migration/migration.xhtml"
+            ) {
+              Services.ww.unregisterNotification(observer);
+              resolve();
+            }
+          })
+        );
       default:
         log.debug(`Unexpected event ${type} was not handled.`);
     }

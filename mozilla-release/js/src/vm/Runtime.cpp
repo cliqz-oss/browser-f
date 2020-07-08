@@ -71,7 +71,7 @@ Atomic<JS::LargeAllocationFailureCallback> js::OnLargeAllocationFailure;
 JS::FilenameValidationCallback js::gFilenameValidationCallback = nullptr;
 
 namespace js {
-void (*HelperThreadTaskCallback)(js::RunnableTask*);
+void (*HelperThreadTaskCallback)(js::UniquePtr<RunnableTask>);
 
 bool gCanUseExtraThreads = true;
 }  // namespace js
@@ -321,6 +321,11 @@ void JSRuntime::addTelemetry(int id, uint32_t sample, const char* key) {
 void JSRuntime::setTelemetryCallback(
     JSRuntime* rt, JSAccumulateTelemetryDataCallback callback) {
   rt->telemetryCallback = callback;
+}
+
+void JSRuntime::setElementCallback(JSRuntime* rt,
+                                   JSGetElementCallback callback) {
+  rt->getElementCallback = callback;
 }
 
 void JSRuntime::setUseCounter(JSObject* obj, JSUseCounter counter) {

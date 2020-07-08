@@ -77,6 +77,7 @@ EXPORTS.mozilla += [
     'CSSPropFlags.h',
     'DeclarationBlock.h',
     'DocumentStyleRootIterator.h',
+    'FontPreloader.h',
     'GeckoBindings.h',
     'GlobalStyleSheetCache.h',
     'ImportScanner.h',
@@ -178,6 +179,7 @@ UNIFIED_SOURCES += [
     'FontFace.cpp',
     'FontFaceSet.cpp',
     'FontFaceSetIterator.cpp',
+    'FontPreloader.cpp',
     'GeckoBindings.cpp',
     'GlobalStyleSheetCache.cpp',
     'GroupRule.cpp',
@@ -267,7 +269,6 @@ GeneratedFile('ServoCSSPropList.h',
               inputs=['!ServoCSSPropList.py'])
 GeneratedFile('ServoCSSPropList.py',
               script='GenerateServoCSSPropList.py', entry_point='generate_data',
-              py2=True,
               inputs=['ServoCSSPropList.mako.py'])
 
 if CONFIG['COMPILE_ENVIRONMENT']:

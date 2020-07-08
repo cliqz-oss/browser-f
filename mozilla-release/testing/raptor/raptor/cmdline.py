@@ -100,6 +100,8 @@ def create_parser(mach_interface=False):
             help="Use Raptor to measure memory usage.")
     add_arg('--cpu-test', dest="cpu_test", action="store_true",
             help="Use Raptor to measure CPU usage. Currently supported for Android only.")
+    add_arg('--live-sites', dest="live_sites", action="store_true", default=False,
+            help="Run tests using live sites instead of recorded sites.")
     add_arg('--is-release-build', dest="is_release_build", default=False,
             action='store_true',
             help="Whether the build is a release build which requires workarounds "
@@ -136,7 +138,9 @@ def create_parser(mach_interface=False):
             help='How long to wait (ms) after browser start-up before starting the tests')
     add_arg('--browser-cycles', dest="browser_cycles", type=int,
             help="The number of times a cold load test is repeated (for cold load tests only, "
-            "where the browser is shutdown and restarted between test iterations)")
+            "where the browser is shutdown and restarted between test iterations)"),
+    add_arg('--project', dest='project', type=str, default='mozilla-central',
+            help="Project name (try, mozilla-central, etc.)"),
     add_arg('--test-url-params', dest='test_url_params',
             help="Parameters to add to the test_url query string")
     add_arg('--print-tests', action=_PrintTests,
@@ -166,6 +170,8 @@ def create_parser(mach_interface=False):
             help="Location where Android browser APK was extracted to before installation.")
     add_arg('--disable-perf-tuning', dest='disable_perf_tuning', default=False,
             action="store_true", help="Disable performance tuning on android.")
+    add_arg('--conditioned-profile-scenario', dest='conditioned_profile_scenario',
+            default='settled', type=str, help="Name of profile scenario.")
 
     # for browsertime jobs, cold page load is determined by a '--cold' cmd line argument
     add_arg('--cold', dest="cold", action="store_true",
@@ -185,7 +191,8 @@ def create_parser(mach_interface=False):
             help="path to ffmpeg executable (for `--video=true`)")
     add_arg('--browsertime-geckodriver', dest='browsertime_geckodriver',
             help="path to geckodriver executable")
-
+    add_arg('--verbose', dest="verbose", action="store_true", default=False,
+            help="Verbose output")
     add_logging_group(parser)
     return parser
 

@@ -13,6 +13,7 @@
 #include "mozilla/dom/ServiceWorkerUtils.h"
 #include "mozilla/net/HttpChannelParent.h"
 #include "mozilla/net/RedirectChannelRegistrar.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/Unused.h"
 #include "nsIHttpHeaderVisitor.h"
 #include "nsIPrompt.h"
@@ -43,8 +44,7 @@ ParentChannelListener::ParentChannelListener(
       mShouldIntercept(false),
       mShouldSuspendIntercept(false),
       mInterceptCanceled(false),
-      mBrowsingContext(aBrowsingContext),
-      mUsePrivateBrowsing(aUsePrivateBrowsing) {
+      mBrowsingContext(aBrowsingContext) {
   LOG(("ParentChannelListener::ParentChannelListener [this=%p, next=%p]", this,
        aListener));
 
@@ -69,8 +69,8 @@ NS_INTERFACE_MAP_BEGIN(ParentChannelListener)
   NS_INTERFACE_MAP_ENTRY(nsIRequestObserver)
   NS_INTERFACE_MAP_ENTRY(nsIMultiPartChannelListener)
   NS_INTERFACE_MAP_ENTRY(nsINetworkInterceptController)
+  NS_INTERFACE_MAP_ENTRY(nsIThreadRetargetableStreamListener)
   NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIAuthPromptProvider, mBrowsingContext)
-  NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIRemoteWindowContext, mBrowsingContext)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIInterfaceRequestor)
   NS_INTERFACE_MAP_ENTRY_CONCRETE(ParentChannelListener)
 NS_INTERFACE_MAP_END
@@ -156,8 +156,7 @@ ParentChannelListener::OnAfterLastPart(nsresult aStatus) {
 
 NS_IMETHODIMP
 ParentChannelListener::GetInterface(const nsIID& aIID, void** result) {
-  if (aIID.Equals(NS_GET_IID(nsINetworkInterceptController)) ||
-      aIID.Equals(NS_GET_IID(nsIRemoteWindowContext))) {
+  if (aIID.Equals(NS_GET_IID(nsINetworkInterceptController))) {
     return QueryInterface(aIID, result);
   }
 
@@ -286,7 +285,8 @@ ParentChannelListener::ChannelIntercepted(nsIInterceptedChannel* aChannel) {
     nsCOMPtr<nsIRunnable> r = NewRunnableMethod<nsresult>(
         "ParentChannelListener::CancelInterception", aChannel,
         &nsIInterceptedChannel::CancelInterception, NS_BINDING_ABORTED);
-    MOZ_ALWAYS_SUCCEEDS(SystemGroup::Dispatch(TaskCategory::Other, r.forget()));
+    MOZ_ALWAYS_SUCCEEDS(
+        SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
     return NS_OK;
   }
 
@@ -419,29 +419,20 @@ ParentChannelListener::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
 }
 
 //-----------------------------------------------------------------------------
-// ParentChannelListener::nsIRemoteWindowContext
+// ParentChannelListener::nsIThreadRetargetableStreamListener
 //
 
 NS_IMETHODIMP
-ParentChannelListener::OpenURI(nsIURI* aURI) {
-  nsCString spec;
-  aURI->GetSpec(spec);
+ParentChannelListener::CheckListenerChain() {
+  MOZ_ASSERT(NS_IsMainThread());
 
-  dom::LoadURIOptions loadURIOptions;
-  loadURIOptions.mTriggeringPrincipal = nsContentUtils::GetSystemPrincipal();
-  loadURIOptions.mLoadFlags =
-      nsIWebNavigation::LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP |
-      nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
+  nsCOMPtr<nsIThreadRetargetableStreamListener> listener =
+      do_QueryInterface(mNextListener);
+  if (!listener) {
+    return NS_ERROR_NO_INTERFACE;
+  }
 
-  ErrorResult rv;
-  mBrowsingContext->LoadURI(NS_ConvertUTF8toUTF16(spec), loadURIOptions, rv);
-  return rv.StealNSResult();
-}
-
-NS_IMETHODIMP
-ParentChannelListener::GetUsePrivateBrowsing(bool* aUsePrivateBrowsing) {
-  *aUsePrivateBrowsing = mUsePrivateBrowsing;
-  return NS_OK;
+  return listener->CheckListenerChain();
 }
 
 }  // namespace net

@@ -24,7 +24,6 @@
 #include "jsfriendapi.h"
 #include "js/ContextOptions.h"
 #include "js/LocaleSensitive.h"
-#include "mozilla/AbstractThread.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
@@ -215,12 +214,14 @@ struct PrefTraits<int32_t> {
 
 template <typename T>
 T GetWorkerPref(const nsACString& aPref,
-                const T aDefault = PrefTraits<T>::kDefaultValue) {
+                const T aDefault = PrefTraits<T>::kDefaultValue,
+                bool* aPresent = nullptr) {
   AssertIsOnMainThread();
 
   typedef PrefTraits<T> PrefHelper;
 
   T result;
+  bool present = true;
 
   nsAutoCString prefName;
   prefName.AssignLiteral(PREF_WORKERS_OPTIONS_PREFIX);
@@ -236,9 +237,13 @@ T GetWorkerPref(const nsACString& aPref,
       result = PrefHelper::Get(prefName.get());
     } else {
       result = aDefault;
+      present = false;
     }
   }
 
+  if (aPresent) {
+    *aPresent = present;
+  }
   return result;
 }
 
@@ -284,6 +289,7 @@ void LoadContextOptions(const char* aPrefName, void* /* aClosure */) {
       .setWasmBaseline(
           GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_baselinejit")))
       .setWasmIon(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_ionjit")))
+      .setWasmReftypes(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_reftypes")))
 #ifdef ENABLE_WASM_CRANELIFT
       .setWasmCranelift(
           GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_cranelift")))
@@ -292,12 +298,17 @@ void LoadContextOptions(const char* aPrefName, void* /* aClosure */) {
       .setWasmMultiValue(
           GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_multi_value")))
 #endif
+#ifdef ENABLE_WASM_SIMD
+      .setWasmSimd(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_simd")))
+#endif
 #ifdef ENABLE_WASM_REFTYPES
       .setWasmGc(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_gc")))
 #endif
       .setWasmVerbose(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_verbose")))
       .setThrowOnAsmJSValidationFailure(GetWorkerPref<bool>(
           NS_LITERAL_CSTRING("throw_on_asmjs_validation_failure")))
+      .setSourcePragmas(
+          GetWorkerPref<bool>(NS_LITERAL_CSTRING("source_pragmas")))
       .setAsyncStack(GetWorkerPref<bool>(NS_LITERAL_CSTRING("asyncstack")));
 
   nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
@@ -352,8 +363,9 @@ void UpdateCommonJSGCMemoryOption(RuntimeService* aRuntimeService,
   NS_ASSERTION(!aPrefName.IsEmpty(), "Empty pref name!");
 
   int32_t prefValue = GetWorkerPref(aPrefName, -1);
-  uint32_t value =
-      (prefValue < 0 || prefValue >= 10000) ? 0 : uint32_t(prefValue);
+  Maybe<uint32_t> value = (prefValue < 0 || prefValue >= 10000)
+                              ? Nothing()
+                              : Some(uint32_t(prefValue));
 
   RuntimeService::SetDefaultJSGCSettings(aKey, value);
 
@@ -363,7 +375,7 @@ void UpdateCommonJSGCMemoryOption(RuntimeService* aRuntimeService,
 }
 
 void UpdateOtherJSGCMemoryOption(RuntimeService* aRuntimeService,
-                                 JSGCParamKey aKey, uint32_t aValue) {
+                                 JSGCParamKey aKey, Maybe<uint32_t> aValue) {
   AssertIsOnMainThread();
 
   RuntimeService::SetDefaultJSGCSettings(aKey, aValue);
@@ -400,143 +412,98 @@ void LoadJSGCMemoryOptions(const char* aPrefName, void* /* aClosure */) {
     return;
   }
 
+  struct WorkerGCPref {
+    nsLiteralCString name;
+    JSGCParamKey key;
+  };
+
+#define PREF(suffix_, key_) \
+  { nsLiteralCString(PREF_MEM_OPTIONS_PREFIX suffix_), key_ }
+  constexpr WorkerGCPref kWorkerPrefs[] = {
+      PREF("max", JSGC_MAX_BYTES),
+      PREF("gc_high_frequency_time_limit_ms", JSGC_HIGH_FREQUENCY_TIME_LIMIT),
+      PREF("gc_low_frequency_heap_growth", JSGC_LOW_FREQUENCY_HEAP_GROWTH),
+      PREF("gc_high_frequency_large_heap_growth",
+           JSGC_HIGH_FREQUENCY_LARGE_HEAP_GROWTH),
+      PREF("gc_high_frequency_small_heap_growth",
+           JSGC_HIGH_FREQUENCY_SMALL_HEAP_GROWTH),
+      PREF("gc_small_heap_size_max_mb", JSGC_SMALL_HEAP_SIZE_MAX),
+      PREF("gc_large_heap_size_min_mb", JSGC_LARGE_HEAP_SIZE_MIN),
+      PREF("gc_allocation_threshold_mb", JSGC_ALLOCATION_THRESHOLD),
+      PREF("gc_incremental_slice_ms", JSGC_SLICE_TIME_BUDGET_MS),
+      PREF("gc_min_empty_chunk_count", JSGC_MIN_EMPTY_CHUNK_COUNT),
+      PREF("gc_max_empty_chunk_count", JSGC_MAX_EMPTY_CHUNK_COUNT),
+      PREF("gc_compacting", JSGC_COMPACTING_ENABLED),
+  };
+#undef PREF
+
+  auto pref = kWorkerPrefs;
+  auto end = kWorkerPrefs + ArrayLength(kWorkerPrefs);
+
+  if (gRuntimeServiceDuringInit) {
+    // During init, we want to update every pref in kWorkerPrefs.
+    MOZ_ASSERT(memPrefName.EqualsLiteral(PREF_MEM_OPTIONS_PREFIX),
+               "Pref branch prefix only expected during init");
+  } else {
+    // Otherwise, find the single pref that changed.
+    while (pref != end) {
+      if (pref->name == memPrefName) {
+        end = pref + 1;
+        break;
+      }
+      ++pref;
+    }
 #ifdef DEBUG
-  // During Init() we get called back with a branch string here, so there should
-  // be no just a "mem." pref here.
-  if (!rts) {
-    NS_ASSERTION(memPrefName.EqualsLiteral(PREF_MEM_OPTIONS_PREFIX), "Huh?!");
+    if (pref == end) {
+      nsAutoCString message("Workers don't support the '");
+      message.Append(memPrefName);
+      message.AppendLiteral("' preference!");
+      NS_WARNING(message.get());
+    }
+#endif
   }
-#endif
 
-  // If we're running in Init() then do this for every pref we care about.
-  // Otherwise we just want to update the parameter that changed.
-  for (uint32_t index = !gRuntimeServiceDuringInit
-                            ? JSSettings::kGCSettingsArraySize - 1
-                            : 0;
-       index < JSSettings::kGCSettingsArraySize; index++) {
-    LiteralRebindingCString matchName;
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX "max");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 0)) {
-      int32_t prefValue = GetWorkerPref(matchName, -1);
-      uint32_t value = (prefValue <= 0 || prefValue >= 0x1000)
-                           ? uint32_t(-1)
-                           : uint32_t(prefValue) * 1024 * 1024;
-      UpdateOtherJSGCMemoryOption(rts, JSGC_MAX_BYTES, value);
-      continue;
+  while (pref != end) {
+    switch (pref->key) {
+      case JSGC_MAX_BYTES: {
+        int32_t prefValue = GetWorkerPref(pref->name, -1);
+        Maybe<uint32_t> value = (prefValue <= 0 || prefValue >= 0x1000)
+                                    ? Nothing()
+                                    : Some(uint32_t(prefValue) * 1024 * 1024);
+        UpdateOtherJSGCMemoryOption(rts, pref->key, value);
+        break;
+      }
+      case JSGC_SLICE_TIME_BUDGET_MS: {
+        int32_t prefValue = GetWorkerPref(pref->name, -1);
+        Maybe<uint32_t> value = (prefValue <= 0 || prefValue >= 100000)
+                                    ? Nothing()
+                                    : Some(uint32_t(prefValue));
+        UpdateOtherJSGCMemoryOption(rts, pref->key, value);
+        break;
+      }
+      case JSGC_COMPACTING_ENABLED: {
+        bool present;
+        bool prefValue = GetWorkerPref(pref->name, false, &present);
+        Maybe<uint32_t> value = present ? Some(prefValue ? 1 : 0) : Nothing();
+        UpdateOtherJSGCMemoryOption(rts, pref->key, value);
+        break;
+      }
+      case JSGC_HIGH_FREQUENCY_TIME_LIMIT:
+      case JSGC_LOW_FREQUENCY_HEAP_GROWTH:
+      case JSGC_HIGH_FREQUENCY_LARGE_HEAP_GROWTH:
+      case JSGC_HIGH_FREQUENCY_SMALL_HEAP_GROWTH:
+      case JSGC_SMALL_HEAP_SIZE_MAX:
+      case JSGC_LARGE_HEAP_SIZE_MIN:
+      case JSGC_ALLOCATION_THRESHOLD:
+      case JSGC_MIN_EMPTY_CHUNK_COUNT:
+      case JSGC_MAX_EMPTY_CHUNK_COUNT:
+        UpdateCommonJSGCMemoryOption(rts, pref->name, pref->key);
+        break;
+      default:
+        MOZ_ASSERT_UNREACHABLE("Unknown JSGCParamKey value");
+        break;
     }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX
-                            "gc_high_frequency_time_limit_ms");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 2)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName,
-                                   JSGC_HIGH_FREQUENCY_TIME_LIMIT);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX
-                            "gc_low_frequency_heap_growth");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 3)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName,
-                                   JSGC_LOW_FREQUENCY_HEAP_GROWTH);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX
-                            "gc_high_frequency_heap_growth_min");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 4)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName,
-                                   JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MIN);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX
-                            "gc_high_frequency_heap_growth_max");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 5)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName,
-                                   JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MAX);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX
-                            "gc_high_frequency_low_limit_mb");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 6)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName,
-                                   JSGC_HIGH_FREQUENCY_LOW_LIMIT);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX
-                            "gc_high_frequency_high_limit_mb");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 7)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName,
-                                   JSGC_HIGH_FREQUENCY_HIGH_LIMIT);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX
-                            "gc_allocation_threshold_mb");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 8)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName, JSGC_ALLOCATION_THRESHOLD);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX "gc_incremental_slice_ms");
-    if (memPrefName == matchName || (gRuntimeServiceDuringInit && index == 9)) {
-      int32_t prefValue = GetWorkerPref(matchName, -1);
-      uint32_t value =
-          (prefValue <= 0 || prefValue >= 100000) ? 0 : uint32_t(prefValue);
-      UpdateOtherJSGCMemoryOption(rts, JSGC_SLICE_TIME_BUDGET_MS, value);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX "gc_dynamic_heap_growth");
-    if (memPrefName == matchName ||
-        (gRuntimeServiceDuringInit && index == 10)) {
-      bool prefValue = GetWorkerPref(matchName, false);
-      UpdateOtherJSGCMemoryOption(rts, JSGC_DYNAMIC_HEAP_GROWTH,
-                                  prefValue ? 0 : 1);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX "gc_dynamic_mark_slice");
-    if (memPrefName == matchName ||
-        (gRuntimeServiceDuringInit && index == 11)) {
-      bool prefValue = GetWorkerPref(matchName, false);
-      UpdateOtherJSGCMemoryOption(rts, JSGC_DYNAMIC_MARK_SLICE,
-                                  prefValue ? 0 : 1);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX "gc_min_empty_chunk_count");
-    if (memPrefName == matchName ||
-        (gRuntimeServiceDuringInit && index == 12)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName, JSGC_MIN_EMPTY_CHUNK_COUNT);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX "gc_max_empty_chunk_count");
-    if (memPrefName == matchName ||
-        (gRuntimeServiceDuringInit && index == 13)) {
-      UpdateCommonJSGCMemoryOption(rts, matchName, JSGC_MAX_EMPTY_CHUNK_COUNT);
-      continue;
-    }
-
-    matchName.RebindLiteral(PREF_MEM_OPTIONS_PREFIX "gc_compacting");
-    if (memPrefName == matchName ||
-        (gRuntimeServiceDuringInit && index == 14)) {
-      bool prefValue = GetWorkerPref(matchName, false);
-      UpdateOtherJSGCMemoryOption(rts, JSGC_COMPACTING_ENABLED,
-                                  prefValue ? 0 : 1);
-      continue;
-    }
-
-#ifdef DEBUG
-    nsAutoCString message("Workers don't support the 'mem.");
-    message.Append(memPrefName);
-    message.AppendLiteral("' preference!");
-    NS_WARNING(message.get());
-#endif
+    ++pref;
   }
 }
 
@@ -750,14 +717,12 @@ bool InitJSContextForWorker(WorkerPrivate* aWorkerPrivate,
 
   JS::ContextOptionsRef(aWorkerCx) = settings.contextOptions;
 
-  JSSettings::JSGCSettingsArray& gcSettings = settings.gcSettings;
-
   // This is the real place where we set the max memory for the runtime.
-  for (uint32_t index = 0; index < ArrayLength(gcSettings); index++) {
-    const JSSettings::JSGCSetting& setting = gcSettings[index];
-    if (setting.key.isSome()) {
-      NS_ASSERTION(setting.value, "Can't handle 0 values!");
-      JS_SetGCParameter(aWorkerCx, *setting.key, setting.value);
+  for (const auto& setting : settings.gcSettings) {
+    if (setting.value) {
+      JS_SetGCParameter(aWorkerCx, setting.key, *setting.value);
+    } else {
+      JS_ResetGCParameter(aWorkerCx, setting.key);
     }
   }
 
@@ -1103,7 +1068,7 @@ void PlatformOverrideChanged(const char* /* aPrefName */,
 } /* anonymous namespace */
 
 // This is only touched on the main thread. Initialized in Init() below.
-JSSettings RuntimeService::sDefaultJSSettings;
+UniquePtr<JSSettings> RuntimeService::sDefaultJSSettings;
 
 RuntimeService::RuntimeService()
     : mMutex("RuntimeService::mMutex"),
@@ -1491,18 +1456,12 @@ nsresult RuntimeService::Init() {
   nsLayoutStatics::AddRef();
 
   // Initialize JSSettings.
-  if (sDefaultJSSettings.gcSettings[0].key.isNothing()) {
-    sDefaultJSSettings.contextOptions = JS::ContextOptions();
-    sDefaultJSSettings.chrome.maxScriptRuntime = -1;
-    sDefaultJSSettings.content.maxScriptRuntime = MAX_SCRIPT_RUN_TIME_SEC;
-#ifdef JS_GC_ZEAL
-    sDefaultJSSettings.gcZealFrequency = JS_DEFAULT_ZEAL_FREQ;
-    sDefaultJSSettings.gcZeal = 0;
-#endif
-    SetDefaultJSGCSettings(JSGC_MAX_BYTES, WORKER_DEFAULT_RUNTIME_HEAPSIZE);
-    SetDefaultJSGCSettings(JSGC_ALLOCATION_THRESHOLD,
-                           WORKER_DEFAULT_ALLOCATION_THRESHOLD);
-  }
+  sDefaultJSSettings = MakeUnique<JSSettings>();
+  sDefaultJSSettings->chrome.maxScriptRuntime = -1;
+  sDefaultJSSettings->content.maxScriptRuntime = MAX_SCRIPT_RUN_TIME_SEC;
+  SetDefaultJSGCSettings(JSGC_MAX_BYTES, Some(WORKER_DEFAULT_RUNTIME_HEAPSIZE));
+  SetDefaultJSGCSettings(JSGC_ALLOCATION_THRESHOLD,
+                         Some(WORKER_DEFAULT_ALLOCATION_THRESHOLD));
 
   // nsIStreamTransportService is thread-safe but it must be initialized on the
   // main-thread. FileReader needs it, so, let's initialize it now.
@@ -1546,6 +1505,9 @@ nsresult RuntimeService::Init() {
   MOZ_ASSERT(!gRuntimeServiceDuringInit, "This should be false!");
   gRuntimeServiceDuringInit = true;
 
+#define WORKER_PREF(name, callback) \
+  NS_FAILED(Preferences::RegisterCallbackAndCall(callback, name))
+
   if (NS_FAILED(Preferences::RegisterPrefixCallback(
           LoadJSGCMemoryOptions,
           PREF_JS_OPTIONS_PREFIX PREF_MEM_OPTIONS_PREFIX)) ||
@@ -1556,24 +1518,21 @@ nsresult RuntimeService::Init() {
       NS_FAILED(Preferences::RegisterCallback(
           LoadGCZealOptions, PREF_JS_OPTIONS_PREFIX PREF_GCZEAL)) ||
 #endif
-
-#define WORKER_PREF(name, callback) \
-  NS_FAILED(Preferences::RegisterCallbackAndCall(callback, name)) ||
-      WORKER_PREF("intl.accept_languages", PrefLanguagesChanged) WORKER_PREF(
-          "general.appname.override", AppNameOverrideChanged)
-          WORKER_PREF("general.appversion.override", AppVersionOverrideChanged)
-              WORKER_PREF("general.platform.override", PlatformOverrideChanged)
+      WORKER_PREF("intl.accept_languages", PrefLanguagesChanged) ||
+      WORKER_PREF("general.appname.override", AppNameOverrideChanged) ||
+      WORKER_PREF("general.appversion.override", AppVersionOverrideChanged) ||
+      WORKER_PREF("general.platform.override", PlatformOverrideChanged) ||
 #ifdef JS_GC_ZEAL
-                  WORKER_PREF("dom.workers.options.gcZeal", LoadGCZealOptions)
+      WORKER_PREF("dom.workers.options.gcZeal", LoadGCZealOptions) ||
 #endif
-#undef WORKER_PREF
-
-                      NS_FAILED(Preferences::RegisterPrefixCallbackAndCall(
-                          LoadContextOptions, PREF_WORKERS_OPTIONS_PREFIX)) ||
+      NS_FAILED(Preferences::RegisterPrefixCallbackAndCall(
+          LoadContextOptions, PREF_WORKERS_OPTIONS_PREFIX)) ||
       NS_FAILED(Preferences::RegisterPrefixCallback(LoadContextOptions,
                                                     PREF_JS_OPTIONS_PREFIX))) {
     NS_WARNING("Failed to register pref callbacks!");
   }
+
+#undef WORKER_PREF
 
   MOZ_ASSERT(gRuntimeServiceDuringInit, "Should be true!");
   gRuntimeServiceDuringInit = false;
@@ -1581,10 +1540,10 @@ nsresult RuntimeService::Init() {
   // We assume atomic 32bit reads/writes. If this assumption doesn't hold on
   // some wacky platform then the worst that could happen is that the close
   // handler will run for a slightly different amount of time.
-  Preferences::AddIntVarCache(&sDefaultJSSettings.content.maxScriptRuntime,
+  Preferences::AddIntVarCache(&sDefaultJSSettings->content.maxScriptRuntime,
                               PREF_MAX_SCRIPT_RUN_TIME_CONTENT,
                               MAX_SCRIPT_RUN_TIME_SEC);
-  Preferences::AddIntVarCache(&sDefaultJSSettings.chrome.maxScriptRuntime,
+  Preferences::AddIntVarCache(&sDefaultJSSettings->chrome.maxScriptRuntime,
                               PREF_MAX_SCRIPT_RUN_TIME_CHROME, -1);
 
   int32_t maxPerDomain =
@@ -1646,6 +1605,8 @@ void RuntimeService::Shutdown() {
       }
     }
   }
+
+  sDefaultJSSettings = nullptr;
 }
 
 namespace {
@@ -1673,15 +1634,17 @@ class CrashIfHangingRunnable : public WorkerControlRunnable {
     return NS_OK;
   }
 
-  void DispatchAndWait() {
+  bool DispatchAndWait() {
     MonitorAutoLock lock(mMonitor);
 
     if (!Dispatch()) {
-      mMsg.Assign("Dispatch Error");
-      return;
+      // The worker is already dead but the main thread still didn't remove it
+      // from RuntimeService's registry.
+      return false;
     }
 
     lock.Wait();
+    return true;
   }
 
   const nsCString& MsgData() const { return mMsg; }
@@ -1696,29 +1659,41 @@ class CrashIfHangingRunnable : public WorkerControlRunnable {
   nsCString mMsg;
 };
 
+struct ActiveWorkerStats {
+  template <uint32_t ActiveWorkerStats::*Category>
+  void Update(const nsTArray<WorkerPrivate*>& aWorkers) {
+    for (const auto worker : aWorkers) {
+      RefPtr<CrashIfHangingRunnable> runnable =
+          new CrashIfHangingRunnable(worker);
+      if (runnable->DispatchAndWait()) {
+        ++(this->*Category);
+
+        // BC: Busy Count
+        mMessage.AppendPrintf("-BC:%d", worker->BusyCount());
+        mMessage.Append(runnable->MsgData());
+      }
+    }
+  }
+
+  uint32_t mWorkers = 0;
+  uint32_t mServiceWorkers = 0;
+  nsCString mMessage;
+};
+
 }  // namespace
 
 void RuntimeService::CrashIfHanging() {
   MutexAutoLock lock(mMutex);
 
-  if (mDomainMap.IsEmpty()) {
-    return;
-  }
-
-  uint32_t activeWorkers = 0;
-  uint32_t activeServiceWorkers = 0;
+  ActiveWorkerStats activeStats;
   uint32_t inactiveWorkers = 0;
-
-  nsTArray<WorkerPrivate*> workers;
 
   for (auto iter = mDomainMap.Iter(); !iter.Done(); iter.Next()) {
     WorkerDomainInfo* aData = iter.UserData();
 
-    activeWorkers += aData->mActiveWorkers.Length();
-    activeServiceWorkers += aData->mActiveServiceWorkers.Length();
-
-    workers.AppendElements(aData->mActiveWorkers);
-    workers.AppendElements(aData->mActiveServiceWorkers);
+    activeStats.Update<&ActiveWorkerStats::mWorkers>(aData->mActiveWorkers);
+    activeStats.Update<&ActiveWorkerStats::mServiceWorkers>(
+        aData->mActiveServiceWorkers);
 
     // These might not be top-level workers...
     for (uint32_t index = 0; index < aData->mQueuedWorkers.Length(); index++) {
@@ -1729,28 +1704,18 @@ void RuntimeService::CrashIfHanging() {
     }
   }
 
-  // We must have something pending...
-  MOZ_DIAGNOSTIC_ASSERT(activeWorkers + activeServiceWorkers + inactiveWorkers);
+  if (activeStats.mWorkers + activeStats.mServiceWorkers + inactiveWorkers ==
+      0) {
+    return;
+  }
 
   nsCString msg;
 
   // A: active Workers | S: active ServiceWorkers | Q: queued Workers
   msg.AppendPrintf("Workers Hanging - %d|A:%d|S:%d|Q:%d", mShuttingDown ? 1 : 0,
-                   activeWorkers, activeServiceWorkers, inactiveWorkers);
-
-  // For each thread, let's print some data to know what is going wrong.
-  for (uint32_t i = 0; i < workers.Length(); ++i) {
-    WorkerPrivate* workerPrivate = workers[i];
-
-    // BC: Busy Count
-    msg.AppendPrintf("-BC:%d", workerPrivate->BusyCount());
-
-    RefPtr<CrashIfHangingRunnable> runnable =
-        new CrashIfHangingRunnable(workerPrivate);
-    runnable->DispatchAndWait();
-
-    msg.Append(runnable->MsgData());
-  }
+                   activeStats.mWorkers, activeStats.mServiceWorkers,
+                   inactiveWorkers);
+  msg.Append(activeStats.mMessage);
 
   // This string will be leaked.
   MOZ_CRASH_UNSAFE(strdup(msg.BeginReading()));
@@ -1823,27 +1788,22 @@ void RuntimeService::Cleanup() {
 
   NS_ASSERTION(!mWindowMap.Count(), "All windows should have been released!");
 
+#define WORKER_PREF(name, callback) \
+  NS_FAILED(Preferences::UnregisterCallback(callback, name))
+
   if (mObserved) {
     if (NS_FAILED(Preferences::UnregisterPrefixCallback(
             LoadContextOptions, PREF_JS_OPTIONS_PREFIX)) ||
         NS_FAILED(Preferences::UnregisterPrefixCallback(
             LoadContextOptions, PREF_WORKERS_OPTIONS_PREFIX)) ||
-#define WORKER_PREF(name, callback) \
-  NS_FAILED(Preferences::UnregisterCallback(callback, name)) ||
-        WORKER_PREF("intl.accept_languages", PrefLanguagesChanged) WORKER_PREF(
-            "general.appname.override",
-            AppNameOverrideChanged) WORKER_PREF("general.appversion.override",
-                                                AppVersionOverrideChanged)
-            WORKER_PREF("general.platform.override", PlatformOverrideChanged)
+        WORKER_PREF("intl.accept_languages", PrefLanguagesChanged) ||
+        WORKER_PREF("general.appname.override", AppNameOverrideChanged) ||
+        WORKER_PREF("general.appversion.override", AppVersionOverrideChanged) ||
+        WORKER_PREF("general.platform.override", PlatformOverrideChanged) ||
 #ifdef JS_GC_ZEAL
-                WORKER_PREF("dom.workers.options.gcZeal", LoadGCZealOptions)
-#endif
-#undef WORKER_PREF
-
-#ifdef JS_GC_ZEAL
-                    NS_FAILED(Preferences::UnregisterCallback(
-                        LoadGCZealOptions,
-                        PREF_JS_OPTIONS_PREFIX PREF_GCZEAL)) ||
+        WORKER_PREF("dom.workers.options.gcZeal", LoadGCZealOptions) ||
+        NS_FAILED(Preferences::UnregisterCallback(
+            LoadGCZealOptions, PREF_JS_OPTIONS_PREFIX PREF_GCZEAL)) ||
 #endif
         NS_FAILED(Preferences::UnregisterPrefixCallback(
             LoadJSGCMemoryOptions,
@@ -1853,6 +1813,8 @@ void RuntimeService::Cleanup() {
             PREF_WORKERS_OPTIONS_PREFIX PREF_MEM_OPTIONS_PREFIX))) {
       NS_WARNING("Failed to unregister pref callbacks!");
     }
+
+#undef WORKER_PREF
 
     if (obs) {
       if (NS_FAILED(obs->RemoveObserver(this, GC_REQUEST_OBSERVER_TOPIC))) {
@@ -2050,7 +2012,7 @@ void RuntimeService::NoteIdleThread(WorkerThread* aThread) {
 
 void RuntimeService::UpdateAllWorkerContextOptions() {
   BROADCAST_ALL_WORKERS(UpdateContextOptions,
-                        sDefaultJSSettings.contextOptions);
+                        sDefaultJSSettings->contextOptions);
 }
 
 void RuntimeService::UpdateAppNameOverridePreference(const nsAString& aValue) {
@@ -2073,19 +2035,19 @@ void RuntimeService::UpdateAllWorkerLanguages(
     const nsTArray<nsString>& aLanguages) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  mNavigatorProperties.mLanguages = aLanguages;
+  mNavigatorProperties.mLanguages = aLanguages.Clone();
   BROADCAST_ALL_WORKERS(UpdateLanguages, aLanguages);
 }
 
 void RuntimeService::UpdateAllWorkerMemoryParameter(JSGCParamKey aKey,
-                                                    uint32_t aValue) {
+                                                    Maybe<uint32_t> aValue) {
   BROADCAST_ALL_WORKERS(UpdateJSWorkerMemoryParameter, aKey, aValue);
 }
 
 #ifdef JS_GC_ZEAL
 void RuntimeService::UpdateAllWorkerGCZeal() {
-  BROADCAST_ALL_WORKERS(UpdateGCZeal, sDefaultJSSettings.gcZeal,
-                        sDefaultJSSettings.gcZealFrequency);
+  BROADCAST_ALL_WORKERS(UpdateGCZeal, sDefaultJSSettings->gcZeal,
+                        sDefaultJSSettings->gcZealFrequency);
 }
 #endif
 
@@ -2229,13 +2191,10 @@ WorkerThreadPrimaryRunnable::Run() {
   class MOZ_STACK_CLASS SetThreadHelper final {
     // Raw pointer: this class is on the stack.
     WorkerPrivate* mWorkerPrivate;
-    RefPtr<AbstractThread> mAbstractThread;
 
    public:
     SetThreadHelper(WorkerPrivate* aWorkerPrivate, WorkerThread* aThread)
-        : mWorkerPrivate(aWorkerPrivate),
-          mAbstractThread(AbstractThread::CreateXPCOMThreadWrapper(
-              NS_GetCurrentThread(), false)) {
+        : mWorkerPrivate(aWorkerPrivate) {
       MOZ_ASSERT(aWorkerPrivate);
       MOZ_ASSERT(aThread);
 
@@ -2257,6 +2216,14 @@ WorkerThreadPrimaryRunnable::Run() {
 
   SetThreadHelper threadHelper(mWorkerPrivate, mThread);
 
+  auto failureCleanup = MakeScopeExit([&]() {
+    // The creation of threadHelper above is the point at which a worker is
+    // considered to have run, because the `mPreStartRunnables` are all
+    // re-dispatched after `mThread` is set.  We need to let the WorkerPrivate
+    // know so it can clean up the various event loops and delete the worker.
+    mWorkerPrivate->RunLoopNeverRan();
+  });
+
   mWorkerPrivate->AssertIsOnWorkerThread();
 
   // These need to be initialized on the worker thread before being used on
@@ -2265,8 +2232,6 @@ WorkerThreadPrimaryRunnable::Run() {
   mWorkerPrivate->EnsurePerformanceCounter();
 
   if (NS_WARN_IF(!BackgroundChild::GetOrCreateForCurrentThread())) {
-    WorkerErrorReport::CreateAndDispatchGenericErrorRunnableToParent(
-        mWorkerPrivate);
     return NS_ERROR_FAILURE;
   }
 
@@ -2282,10 +2247,10 @@ WorkerThreadPrimaryRunnable::Run() {
     JSContext* cx = context->Context();
 
     if (!InitJSContextForWorker(mWorkerPrivate, cx)) {
-      WorkerErrorReport::CreateAndDispatchGenericErrorRunnableToParent(
-          mWorkerPrivate);
       return NS_ERROR_FAILURE;
     }
+
+    failureCleanup.release();
 
     {
       PROFILER_SET_JS_CONTEXT(cx);

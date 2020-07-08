@@ -236,6 +236,8 @@ mozilla::gfx::Config* Factory::sConfig = nullptr;
 void Factory::Init(const Config& aConfig) {
   MOZ_ASSERT(!sConfig);
   sConfig = new Config(aConfig);
+
+  NativeFontResource::RegisterMemoryReporter();
 }
 
 void Factory::ShutDown() {
@@ -933,7 +935,7 @@ RefPtr<IDWriteFontCollection> Factory::GetDWriteSystemFonts(bool aUpdate) {
   RefPtr<IDWriteFontCollection> systemFonts;
   HRESULT hr =
       mDWriteFactory->GetSystemFontCollection(getter_AddRefs(systemFonts));
-  if (FAILED(hr)) {
+  if (FAILED(hr) || !systemFonts) {
     // only crash some of the time so those experiencing this problem
     // don't stop using Firefox
     if ((rand() & 0x3f) == 0) {

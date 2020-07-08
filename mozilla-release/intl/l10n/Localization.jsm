@@ -211,20 +211,40 @@ function maybeReportErrorToGecko(error) {
  */
 class Localization {
   /**
-   * @param {Array<String>} resourceIds         - List of resource IDs
-   * @param {Function}      generateBundles     - Function that returns an async
-   *                                              generator over FluentBundles
-   * @param {Function}      generateBundlesSync - Function that returns a sync
-   *                                              generator over FluentBundles
+   * `Activate` has to be called for this object to be usable.
    *
    * @returns {Localization}
    */
-  constructor(resourceIds = [], sync = false, generateBundles = defaultGenerateBundles, generateBundlesSync = defaultGenerateBundlesSync) {
-    this.isSync = sync;
-    this.resourceIds = resourceIds;
+  constructor() {
+    this.resourceIds = [];
+    this.generateBundles = undefined;
+    this.generateBundlesSync = undefined;
+    this.isSync = undefined;
+    this.bundles = undefined;
+  }
+
+  /**
+   * Activate the instance of the `Localization` class.
+   *
+   * @param {bool}                    sync - Whether the instance should be
+   *                                         synchronous.
+   * @param {bool}                   eager - Whether the initial bundles should be
+   *                                         fetched eagerly.
+   * @param {Function}     generateBundles - Custom FluentBundle asynchronous generator.
+   * @param {Function} generateBundlesSync - Custom FluentBundle generator.
+   */
+  activate(sync, eager, generateBundles = defaultGenerateBundles, generateBundlesSync = defaultGenerateBundlesSync) {
+    if (this.bundles) {
+      throw new Error("Attempt to initialize an already initialized instance.");
+    }
     this.generateBundles = generateBundles;
     this.generateBundlesSync = generateBundlesSync;
-    this.onChange(true);
+    this.isSync = sync;
+    this.regenerateBundles(eager);
+  }
+
+  setIsSync(isSync) {
+    this.isSync = isSync;
   }
 
   cached(iterable) {
@@ -236,16 +256,35 @@ class Localization {
   }
 
   /**
-   * @param {Array<String>} resourceIds - List of resource IDs
-   * @param {bool}                eager - whether the I/O for new context should
-   *                                      begin eagerly
+   * @param {String} resourceId - Resource IDs
    */
-  addResourceIds(resourceIds, eager = false) {
-    this.resourceIds.push(...resourceIds);
-    this.onChange(eager);
+  addResourceId(resourceId) {
+    this.resourceIds.push(resourceId);
+    this.onChange();
     return this.resourceIds.length;
   }
 
+  /**
+   * @param {String} resourceId - Resource IDs
+   */
+  removeResourceId(resourceId) {
+    this.resourceIds = this.resourceIds.filter(r => r !== resourceId);
+    this.onChange();
+    return this.resourceIds.length;
+  }
+
+  /**
+   * @param {Array<String>} resourceIds - List of resource IDs
+   */
+  addResourceIds(resourceIds) {
+    this.resourceIds.push(...resourceIds);
+    this.onChange();
+    return this.resourceIds.length;
+  }
+
+  /**
+   * @param {Array<String>} resourceIds - List of resource IDs
+   */
   removeResourceIds(resourceIds) {
     this.resourceIds = this.resourceIds.filter(r => !resourceIds.includes(r));
     this.onChange();
@@ -261,11 +300,14 @@ class Localization {
    *
    * @param   {Array<Object>}         keys    - Translation keys to format.
    * @param   {Function}              method  - Formatting function.
-   * @returns {Promise<Array<string|Object>>}
+   * @returns {Promise<Array<string?|Object?>>}
    * @private
    */
   async formatWithFallback(keys, method) {
-    const translations = new Array(keys.length);
+    if (!this.bundles) {
+      throw new Error("Attempt to format on an uninitialized instance.");
+    }
+    const translations = new Array(keys.length).fill(null);
     let hasAtLeastOneBundle = false;
 
     for await (const bundle of this.bundles) {
@@ -304,7 +346,11 @@ class Localization {
     if (!this.isSync) {
       throw new Error("Can't use sync formatWithFallback when state is async.");
     }
-    const translations = new Array(keys.length);
+    if (!this.bundles) {
+      throw new Error("Attempt to format on an uninitialized instance.");
+    }
+
+    const translations = new Array(keys.length).fill(null);
     let hasAtLeastOneBundle = false;
 
     for (const bundle of this.bundles) {
@@ -351,7 +397,7 @@ class Localization {
    * Returns a Promise resolving to an array of the translation messages.
    *
    * @param   {Array<Object>} keys
-   * @returns {Promise<Array<{value: string, attributes: Object}>>}
+   * @returns {Promise<Array<{value: string, attributes: Object}?>>}
    * @private
    */
   formatMessages(keys) {
@@ -364,7 +410,7 @@ class Localization {
    * Returns an array of the translation messages.
    *
    * @param   {Array<Object>} keys
-   * @returns {Array<{value: string, attributes: Object}>}
+   * @returns {Array<{value: string, attributes: Object}?>}
    * @private
    */
   formatMessagesSync(keys) {
@@ -388,7 +434,7 @@ class Localization {
    * Returns a Promise resolving to an array of the translation strings.
    *
    * @param   {Array<Object>} keys
-   * @returns {Promise<Array<string>>}
+   * @returns {Promise<Array<string?>>}
    */
   formatValues(keys) {
     return this.formatWithFallback(keys, valueFromBundle);
@@ -400,7 +446,7 @@ class Localization {
    * Returns an array of the translation strings.
    *
    * @param   {Array<Object>} keys
-   * @returns {Array<string>}
+   * @returns {Array<string?>}
    * @private
    */
   formatValuesSync(keys) {
@@ -427,7 +473,7 @@ class Localization {
    *
    * @param   {string}  id     - Identifier of the translation to format
    * @param   {Object}  [args] - Optional external arguments
-   * @returns {Promise<string>}
+   * @returns {Promise<string?>}
    */
   async formatValue(id, args) {
     const [val] = await this.formatValues([{id, args}]);
@@ -440,7 +486,7 @@ class Localization {
    * Returns a translation string.
    *
    * @param   {Array<Object>} keys
-   * @returns {string>}
+   * @returns {string?}
    * @private
    */
   formatValueSync(id, args) {
@@ -479,13 +525,19 @@ class Localization {
     }
   }
 
+  onChange() {
+    if (this.bundles) {
+      this.regenerateBundles(false);
+    }
+  }
+
   /**
    * This method should be called when there's a reason to believe
    * that language negotiation or available resources changed.
    *
    * @param {bool} eager - whether the I/O for new context should begin eagerly
    */
-  onChange(eager = false) {
+  regenerateBundles(eager = false) {
     let generateMessages = this.isSync ? this.generateBundlesSync : this.generateBundles;
     this.bundles = this.cached(generateMessages(this.resourceIds));
     if (eager) {
@@ -499,11 +551,6 @@ class Localization {
       const prefetchCount = appLocale === lastFallback ? 1 : 2;
       this.bundles.touchNext(prefetchCount);
     }
-  }
-
-  setIsSync(isSync) {
-    this.isSync = isSync;
-    this.onChange();
   }
 }
 
@@ -523,7 +570,7 @@ Localization.prototype.QueryInterface = ChromeUtils.generateQI([
  * @param   {Array<Error>} errors
  * @param   {Object} message
  * @param   {Object} args
- * @returns {string|null}
+ * @returns {string?}
  * @private
  */
 function valueFromBundle(bundle, errors, message, args) {
@@ -609,7 +656,7 @@ function keysFromBundle(method, bundle, keys, translations) {
   const missingIds = new Set();
 
   keys.forEach(({id, args}, i) => {
-    if (translations[i] !== undefined) {
+    if (translations[i] !== null) {
       return;
     }
 
@@ -634,13 +681,9 @@ function keysFromBundle(method, bundle, keys, translations) {
  * Helper function which allows us to construct a new
  * Localization from Localization.
  */
-var getLocalization = (resourceIds, sync = false) => {
-  return new Localization(resourceIds, sync);
-};
-
-var getLocalizationWithCustomGenerateMessages = (resourceIds, generateMessages) => {
-  return new Localization(resourceIds, false, generateMessages);
+var getLocalization = () => {
+  return new Localization();
 };
 
 this.Localization = Localization;
-var EXPORTED_SYMBOLS = ["Localization", "getLocalization", "getLocalizationWithCustomGenerateMessages"];
+var EXPORTED_SYMBOLS = ["Localization", "getLocalization"];

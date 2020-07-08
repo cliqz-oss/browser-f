@@ -70,6 +70,7 @@ class RequestListContent extends Component {
       blockedUrls: PropTypes.array.isRequired,
       connector: PropTypes.object.isRequired,
       columns: PropTypes.object.isRequired,
+      networkActionOpen: PropTypes.bool,
       networkDetailsOpen: PropTypes.bool.isRequired,
       networkDetailsWidth: PropTypes.number,
       networkDetailsHeight: PropTypes.number,
@@ -80,7 +81,6 @@ class RequestListContent extends Component {
       displayedRequests: PropTypes.array.isRequired,
       firstRequestStartedMs: PropTypes.number.isRequired,
       fromCache: PropTypes.bool,
-      onCauseBadgeMouseDown: PropTypes.func.isRequired,
       onInitiatorBadgeMouseDown: PropTypes.func.isRequired,
       onItemRightMouseButtonDown: PropTypes.func.isRequired,
       onItemMouseDown: PropTypes.func.isRequired,
@@ -91,6 +91,7 @@ class RequestListContent extends Component {
       openRequestBlockingAndAddUrl: PropTypes.func.isRequired,
       openRequestBlockingAndDisableUrls: PropTypes.func.isRequired,
       removeBlockedUrl: PropTypes.func.isRequired,
+      selectedActionBarTabId: PropTypes.string,
       selectRequest: PropTypes.func.isRequired,
       selectedRequest: PropTypes.object,
       requestFilterTypes: PropTypes.object.isRequired,
@@ -105,6 +106,7 @@ class RequestListContent extends Component {
     this.onKeyDown = this.onKeyDown.bind(this);
     this.openRequestInTab = this.openRequestInTab.bind(this);
     this.onDoubleClick = this.onDoubleClick.bind(this);
+    this.onDragStart = this.onDragStart.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
     this.onMouseDown = this.onMouseDown.bind(this);
     this.hasOverflow = false;
@@ -182,7 +184,7 @@ class RequestListContent extends Component {
     let onscreenDidChange = false;
     const onscreenItems = new Set(this.state.onscreenItems);
     for (const { target, isIntersecting } of entries) {
-      const id = target.dataset.id;
+      const { id } = target.dataset;
       if (isIntersecting) {
         if (onscreenItems.add(id)) {
           onscreenDidChange = true;
@@ -323,6 +325,10 @@ class RequestListContent extends Component {
     this.openRequestInTab(id, url, requestHeaders, requestPostData);
   }
 
+  onDragStart(evt, { url }) {
+    evt.dataTransfer.setData("text/plain", url);
+  }
+
   onContextMenu(evt) {
     evt.preventDefault();
     const { clickedRequest, displayedRequests, blockedUrls } = this.props;
@@ -360,14 +366,15 @@ class RequestListContent extends Component {
       columns,
       displayedRequests,
       firstRequestStartedMs,
-      onCauseBadgeMouseDown,
       onInitiatorBadgeMouseDown,
       onSecurityIconMouseDown,
       onWaterfallMouseDown,
       requestFilterTypes,
       selectedRequest,
+      selectedActionBarTabId,
       openRequestBlockingAndAddUrl,
       openRequestBlockingAndDisableUrls,
+      networkActionOpen,
       networkDetailsOpen,
     } = this.props;
 
@@ -396,6 +403,8 @@ class RequestListContent extends Component {
                 firstRequestStartedMs,
                 fromCache: item.status === "304" || item.fromCache,
                 networkDetailsOpen,
+                networkActionOpen,
+                selectedActionBarTabId,
                 connector,
                 columns,
                 item,
@@ -406,9 +415,9 @@ class RequestListContent extends Component {
                 intersectionObserver: this.intersectionObserver,
                 onContextMenu: this.onContextMenu,
                 onDoubleClick: () => this.onDoubleClick(item),
+                onDragStart: evt => this.onDragStart(evt, item),
                 onMouseDown: evt =>
                   this.onMouseDown(evt, item.id, item.channelId),
-                onCauseBadgeMouseDown: () => onCauseBadgeMouseDown(item.cause),
                 onInitiatorBadgeMouseDown: () =>
                   onInitiatorBadgeMouseDown(item.cause),
                 onSecurityIconMouseDown: () =>
@@ -436,12 +445,14 @@ module.exports = connect(
       .map(({ enabled, url }) => (enabled ? url : null))
       .filter(Boolean),
     columns: getColumns(state),
+    networkActionOpen: state.ui.networkActionOpen,
     networkDetailsOpen: state.ui.networkDetailsOpen,
     networkDetailsWidth: state.ui.networkDetailsWidth,
     networkDetailsHeight: state.ui.networkDetailsHeight,
     clickedRequest: state.requests.clickedRequest,
     displayedRequests: getDisplayedRequests(state),
     firstRequestStartedMs: state.requests.firstStartedMs,
+    selectedActionBarTabId: state.ui.selectedActionBarTabId,
     selectedRequest: getSelectedRequest(state),
     requestFilterTypes: state.filters.requestFilterTypes,
   }),
@@ -460,11 +471,6 @@ module.exports = connect(
     /**
      * A handler that opens the stack trace tab when a stack trace is available
      */
-    onCauseBadgeMouseDown: cause => {
-      if (cause.stacktrace && cause.stacktrace.length > 0) {
-        dispatch(Actions.selectDetailsPanelTab("stack-trace"));
-      }
-    },
     onInitiatorBadgeMouseDown: cause => {
       if (cause.lastFrame) {
         dispatch(Actions.selectDetailsPanelTab("stack-trace"));

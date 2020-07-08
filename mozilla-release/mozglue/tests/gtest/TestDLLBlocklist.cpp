@@ -70,6 +70,27 @@ TEST(TestDllBlocklist, AllowDllByVersion)
   EXPECT_TRUE(!!::GetModuleHandleW(kLeafName.get()));
 }
 
+TEST(TestDllBlocklist, NoOpEntryPoint)
+{
+  // DllMain of this dll has MOZ_RELEASE_ASSERT.  This test makes sure we load
+  // the module successfully without running DllMain.
+  NS_NAMED_LITERAL_STRING(kLeafName, "TestDllBlocklist_NoOpEntryPoint.dll");
+  nsString dllPath = GetFullPath(kLeafName);
+
+  nsModuleHandle hDll(::LoadLibraryW(dllPath.get()));
+
+#if defined(MOZ_ASAN)
+  // With ASAN, the test uses mozglue's blocklist where
+  // REDIRECT_TO_NOOP_ENTRYPOINT is ignored.  So LoadLibraryW
+  // is expected to fail.
+  EXPECT_TRUE(!hDll);
+  EXPECT_TRUE(!::GetModuleHandleW(kLeafName.get()));
+#else
+  EXPECT_TRUE(!!hDll);
+  EXPECT_TRUE(!!::GetModuleHandleW(kLeafName.get()));
+#endif
+}
+
 #define DLL_BLOCKLIST_ENTRY(name, ...) {name, __VA_ARGS__},
 #define DLL_BLOCKLIST_STRING_TYPE const char*
 #include "mozilla/WindowsDllBlocklistLegacyDefs.h"

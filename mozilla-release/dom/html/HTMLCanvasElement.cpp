@@ -18,6 +18,7 @@
 #include "mozilla/CheckedInt.h"
 #include "mozilla/dom/CanvasCaptureMediaStream.h"
 #include "mozilla/dom/CanvasRenderingContext2D.h"
+#include "mozilla/dom/GeneratePlaceholderCanvasData.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/HTMLCanvasElementBinding.h"
@@ -33,6 +34,7 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/webgpu/CanvasContext.h"
 #include "nsAttrValueInlines.h"
 #include "nsContentUtils.h"
 #include "nsDisplayList.h"
@@ -99,8 +101,9 @@ class RequestedFrameRefreshObserver : public nsARefreshObserver {
     MOZ_ASSERT(data->GetFormat() == copy->GetFormat());
 
     if (aReturnPlaceholderData) {
-      // If returning placeholder data, fill the frame copy with white pixels.
-      memset(write.GetData(), 0xFF, write.GetStride() * copy->GetSize().height);
+      auto size = write.GetStride() * copy->GetSize().height;
+      auto* data = write.GetData();
+      GeneratePlaceholderCanvasData(size, data);
     } else {
       memcpy(write.GetData(), read.GetData(),
              write.GetStride() * copy->GetSize().height);
@@ -562,7 +565,7 @@ void HTMLCanvasElement::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
         return;
       }
       nsPoint ptInRoot =
-          nsLayoutUtils::GetEventCoordinatesRelativeTo(evt, frame);
+          nsLayoutUtils::GetEventCoordinatesRelativeTo(evt, RelativeTo{frame});
       nsRect paddingRect = frame->GetContentRectRelativeToSelf();
       Point hitpoint;
       hitpoint.x = (ptInRoot.x - paddingRect.x) / AppUnitsPerCSSPixel();
@@ -1012,13 +1015,19 @@ void HTMLCanvasElement::InvalidateCanvasContent(const gfx::Rect* damageRect) {
   // there isn't one). Instead, we mark the CanvasRenderer dirty and scheduling
   // an empty transaction which is effectively equivalent.
   CanvasRenderer* renderer = nullptr;
-  RefPtr<WebRenderCanvasData> data = GetWebRenderUserData<WebRenderCanvasData>(
-      frame, static_cast<uint32_t>(DisplayItemType::TYPE_CANVAS));
+  const auto key = static_cast<uint32_t>(DisplayItemType::TYPE_CANVAS);
+  RefPtr<WebRenderLocalCanvasData> localData =
+      GetWebRenderUserData<WebRenderLocalCanvasData>(frame, key);
+  RefPtr<WebRenderCanvasData> data =
+      GetWebRenderUserData<WebRenderCanvasData>(frame, key);
   if (data) {
     renderer = data->GetCanvasRenderer();
   }
 
-  if (renderer) {
+  if (localData && wr::AsUint64(localData->mImageKey)) {
+    localData->mDirty = true;
+    frame->SchedulePaint(nsIFrame::PAINT_COMPOSITE_ONLY);
+  } else if (renderer) {
     renderer->SetDirty();
     frame->SchedulePaint(nsIFrame::PAINT_COMPOSITE_ONLY);
   } else {
@@ -1036,6 +1045,12 @@ void HTMLCanvasElement::InvalidateCanvasContent(const gfx::Rect* damageRect) {
 
     if (layer) {
       static_cast<CanvasLayer*>(layer)->Updated();
+    } else {
+      // This path is taken in two situations:
+      // 1) WebRender is enabled and has not yet processed a display list.
+      // 2) WebRender is disabled and layer invalidation failed.
+      // In both cases, schedule a full paint to properly update canvas.
+      frame->SchedulePaint(nsIFrame::PAINT_DEFAULT, false);
     }
   }
 
@@ -1511,6 +1526,14 @@ ClientWebGLContext* HTMLCanvasElement::GetWebGLContext() {
   }
 
   return static_cast<ClientWebGLContext*>(GetContextAtIndex(0));
+}
+
+webgpu::CanvasContext* HTMLCanvasElement::GetWebGPUContext() {
+  if (GetCurrentContextType() != CanvasContextType::WebGPU) {
+    return nullptr;
+  }
+
+  return static_cast<webgpu::CanvasContext*>(GetContextAtIndex(0));
 }
 
 }  // namespace dom

@@ -584,8 +584,13 @@ class ErrorReport : public ErrorBase {
   uint64_t mWindowID;
   bool mIsWarning;
   bool mIsMuted;
+  bool mIsPromiseRejection;
 
-  ErrorReport() : mWindowID(0), mIsWarning(false), mIsMuted(false) {}
+  ErrorReport()
+      : mWindowID(0),
+        mIsWarning(false),
+        mIsMuted(false),
+        mIsPromiseRejection(false) {}
 
   void Init(JSErrorReport* aReport, const char* aToStringResult, bool aIsChrome,
             uint64_t aWindowID);
@@ -600,7 +605,9 @@ class ErrorReport : public ErrorBase {
   // null. If aStack is non-null, aStackGlobal must be a non-null global
   // object that's same-compartment with aStack. Note that aStack might be a
   // CCW.
-  void LogToConsoleWithStack(JS::HandleObject aStack,
+  void LogToConsoleWithStack(nsGlobalWindowInner* aWin,
+                             JS::Handle<mozilla::Maybe<JS::Value>> aException,
+                             JS::HandleObject aStack,
                              JS::HandleObject aStackGlobal);
 
   // Produce an error event message string from the given JSErrorReport.  Note

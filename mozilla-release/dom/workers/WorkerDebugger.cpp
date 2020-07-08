@@ -8,6 +8,7 @@
 
 #include "mozilla/dom/MessageEvent.h"
 #include "mozilla/dom/MessageEventBinding.h"
+#include "mozilla/AbstractThread.h"
 #include "mozilla/PerformanceUtils.h"
 #include "nsProxyRelease.h"
 #include "nsQueryObject.h"
@@ -81,10 +82,6 @@ class CompileDebuggerScriptRunnable final : public WorkerDebuggerRunnable {
         aWorkerPrivate->CreateDebuggerGlobalScope(aCx);
     if (!globalScope) {
       NS_WARNING("Failed to make global!");
-      return false;
-    }
-
-    if (NS_WARN_IF(!aWorkerPrivate->EnsureClientSource())) {
       return false;
     }
 
@@ -179,8 +176,8 @@ WorkerDebugger::~WorkerDebugger() {
 
   if (!NS_IsMainThread()) {
     for (size_t index = 0; index < mListeners.Length(); ++index) {
-      NS_ReleaseOnMainThreadSystemGroup("WorkerDebugger::mListeners",
-                                        mListeners[index].forget());
+      NS_ReleaseOnMainThread("WorkerDebugger::mListeners",
+                             mListeners[index].forget());
     }
   }
 }
@@ -398,7 +395,7 @@ void WorkerDebugger::Close() {
   MOZ_ASSERT(mWorkerPrivate);
   mWorkerPrivate = nullptr;
 
-  nsTArray<nsCOMPtr<nsIWorkerDebuggerListener>> listeners(mListeners);
+  nsTArray<nsCOMPtr<nsIWorkerDebuggerListener>> listeners(mListeners.Clone());
   for (size_t index = 0; index < listeners.Length(); ++index) {
     listeners[index]->OnClose();
   }
@@ -419,7 +416,7 @@ void WorkerDebugger::PostMessageToDebuggerOnMainThread(
     const nsAString& aMessage) {
   AssertIsOnMainThread();
 
-  nsTArray<nsCOMPtr<nsIWorkerDebuggerListener>> listeners(mListeners);
+  nsTArray<nsCOMPtr<nsIWorkerDebuggerListener>> listeners(mListeners.Clone());
   for (size_t index = 0; index < listeners.Length(); ++index) {
     listeners[index]->OnMessage(aMessage);
   }
@@ -442,7 +439,7 @@ void WorkerDebugger::ReportErrorToDebuggerOnMainThread(
     const nsAString& aFilename, uint32_t aLineno, const nsAString& aMessage) {
   AssertIsOnMainThread();
 
-  nsTArray<nsCOMPtr<nsIWorkerDebuggerListener>> listeners(mListeners);
+  nsTArray<nsCOMPtr<nsIWorkerDebuggerListener>> listeners(mListeners.Clone());
   for (size_t index = 0; index < listeners.Length(); ++index) {
     listeners[index]->OnError(aFilename, aLineno, aMessage);
   }
@@ -529,14 +526,13 @@ RefPtr<PerformanceInfoPromise> WorkerDebugger::ReportPerformanceInfo() {
   // We need to keep a ref on workerPrivate, passed to the promise,
   // to make sure it's still aloive when collecting the info.
   RefPtr<WorkerPrivate> workerRef = mWorkerPrivate;
-  RefPtr<AbstractThread> mainThread =
-      SystemGroup::AbstractMainThreadFor(TaskCategory::Performance);
+  RefPtr<AbstractThread> mainThread = AbstractThread::MainThread();
 
   return CollectMemoryInfo(top, mainThread)
       ->Then(
           mainThread, __func__,
           [workerRef, url, pid, perfId, windowID, duration, isTopLevel,
-           items](const PerformanceMemoryInfo& aMemoryInfo) {
+           items = std::move(items)](const PerformanceMemoryInfo& aMemoryInfo) {
             return PerformanceInfoPromise::CreateAndResolve(
                 PerformanceInfo(url, pid, windowID, duration, perfId, true,
                                 isTopLevel, aMemoryInfo, items),

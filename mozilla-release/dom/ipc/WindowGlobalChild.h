@@ -23,7 +23,7 @@ class BrowsingContext;
 class WindowContext;
 class WindowGlobalParent;
 class JSWindowActorChild;
-class JSWindowActorMessageMeta;
+class JSActorMessageMeta;
 class BrowserChild;
 
 /**
@@ -47,7 +47,7 @@ class WindowGlobalChild final : public WindowGlobalActor,
     return GetByInnerWindowId(aInnerWindowId);
   }
 
-  dom::BrowsingContext* BrowsingContext() override { return mBrowsingContext; }
+  dom::BrowsingContext* BrowsingContext() override;
   dom::WindowContext* WindowContext() { return mWindowContext; }
   nsGlobalWindowInner* GetWindowGlobal() { return mWindowGlobal; }
 
@@ -61,12 +61,15 @@ class WindowGlobalChild final : public WindowGlobalActor,
 
   nsIURI* GetDocumentURI() override { return mDocumentURI; }
   void SetDocumentURI(nsIURI* aDocumentURI);
+  // See the corresponding comment for `UpdateDocumentPrincipal` in
+  // PWindowGlobal on why and when this is allowed
+  void SetDocumentPrincipal(nsIPrincipal* aNewDocumentPrincipal);
 
   nsIPrincipal* DocumentPrincipal() { return mDocumentPrincipal; }
 
   // The Window ID for this WindowGlobal
-  uint64_t InnerWindowId() { return mInnerWindowId; }
-  uint64_t OuterWindowId() { return mOuterWindowId; }
+  uint64_t InnerWindowId();
+  uint64_t OuterWindowId();
 
   uint64_t ContentParentId();
 
@@ -86,24 +89,26 @@ class WindowGlobalChild final : public WindowGlobalActor,
   // |nullptr| if the actor has been torn down, or is in-process.
   already_AddRefed<BrowserChild> GetBrowserChild();
 
-  void ReceiveRawMessage(const JSWindowActorMessageMeta& aMeta,
+  void ReceiveRawMessage(const JSActorMessageMeta& aMeta,
                          ipc::StructuredCloneData&& aData,
                          ipc::StructuredCloneData&& aStack);
 
   // Get a JS actor object by name.
-  already_AddRefed<JSWindowActorChild> GetActor(const nsAString& aName,
+  already_AddRefed<JSWindowActorChild> GetActor(const nsACString& aName,
                                                 ErrorResult& aRv);
 
   // Create and initialize the WindowGlobalChild object.
   static already_AddRefed<WindowGlobalChild> Create(
       nsGlobalWindowInner* aWindow);
-
-  WindowGlobalChild(const WindowGlobalInit& aInit,
-                    nsGlobalWindowInner* aWindow);
+  static already_AddRefed<WindowGlobalChild> CreateDisconnected(
+      const WindowGlobalInit& aInit);
 
   void Init();
 
   void InitWindowGlobal(nsGlobalWindowInner* aWindow);
+
+  // Called when a new document is loaded in this WindowGlobalChild.
+  void OnNewDocument(Document* aNewDocument);
 
   nsISupports* GetParentObject();
   JSObject* WrapObject(JSContext* aCx,
@@ -111,10 +116,10 @@ class WindowGlobalChild final : public WindowGlobalActor,
 
  protected:
   const nsAString& GetRemoteType() override;
-  JSWindowActor::Type GetSide() override { return JSWindowActor::Type::Child; }
+  JSActor::Type GetSide() override { return JSActor::Type::Child; }
 
   // IPC messages
-  mozilla::ipc::IPCResult RecvRawMessage(const JSWindowActorMessageMeta& aMeta,
+  mozilla::ipc::IPCResult RecvRawMessage(const JSActorMessageMeta& aMeta,
                                          const ClonedMessageData& aData,
                                          const ClonedMessageData& aStack);
 
@@ -125,7 +130,7 @@ class WindowGlobalChild final : public WindowGlobalActor,
   mozilla::ipc::IPCResult RecvMakeFrameRemote(
       const MaybeDiscarded<dom::BrowsingContext>& aFrameContext,
       ManagedEndpoint<PBrowserBridgeChild>&& aEndpoint, const TabId& aTabId,
-      MakeFrameRemoteResolver&& aResolve);
+      const LayersId& aLayersId, MakeFrameRemoteResolver&& aResolve);
 
   mozilla::ipc::IPCResult RecvDrawSnapshot(const Maybe<IntRect>& aRect,
                                            const float& aScale,
@@ -133,23 +138,28 @@ class WindowGlobalChild final : public WindowGlobalActor,
                                            const uint32_t& aFlags,
                                            DrawSnapshotResolver&& aResolve);
 
+  mozilla::ipc::IPCResult RecvDispatchSecurityPolicyViolation(
+      const nsString& aViolationEventJSON);
+
   mozilla::ipc::IPCResult RecvGetSecurityInfo(
       GetSecurityInfoResolver&& aResolve);
+
+  mozilla::ipc::IPCResult RecvSaveStorageAccessGranted();
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
  private:
+  WindowGlobalChild(dom::WindowContext* aWindowContext,
+                    nsIPrincipal* aPrincipal, nsIURI* aURI);
+
   ~WindowGlobalChild();
 
   RefPtr<nsGlobalWindowInner> mWindowGlobal;
-  RefPtr<dom::BrowsingContext> mBrowsingContext;
   RefPtr<dom::WindowContext> mWindowContext;
-  nsRefPtrHashtable<nsStringHashKey, JSWindowActorChild> mWindowActors;
+  nsRefPtrHashtable<nsCStringHashKey, JSWindowActorChild> mWindowActors;
   nsCOMPtr<nsIPrincipal> mDocumentPrincipal;
   nsCOMPtr<nsIURI> mDocumentURI;
-  uint64_t mInnerWindowId;
-  uint64_t mOuterWindowId;
-  int64_t mBeforeUnloadListeners;
+  int64_t mBeforeUnloadListeners = 0;
 };
 
 }  // namespace dom

@@ -1,3 +1,7 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
 <!ENTITY editContactPanelDeleteContact.label "Löschen">
 <!ENTITY editContactPanelDeleteContact.accesskey "L">
 
@@ -9,9 +13,6 @@
 
 <!ENTITY editContactAddressBook.label "Adressbuch:">
 <!ENTITY editContactAddressBook.accesskey "A">
-
-<!ENTITY editContactPanelCancel.label "Abbrechen">
-<!ENTITY editContactPanelCancel.accesskey "b">
 
 <!ENTITY editContactPanelDone.label "Fertig">
 <!ENTITY editContactPanelDone.accesskey "F">

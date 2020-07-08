@@ -4,6 +4,8 @@
 from .grammar import Nt, InitNt, End
 from .lexer import UnexpectedEndError
 import collections
+from dataclasses import dataclass
+
 
 __all__ = ['ACCEPT', 'ERROR', 'Nt', 'InitNt', 'End', 'Parser', 'ErrorToken']
 
@@ -19,9 +21,15 @@ SPECIAL_CASE_TAG = -0x8000_0000_0000_0000
 ACCEPT = 0x_bfff_ffff_ffff_ffff - (1 << 64)
 ERROR = ACCEPT - 1
 
-ErrorToken = collections.namedtuple('ErrorToken', '')
-ErrorToken_default_eq = ErrorToken.__eq__
-ErrorToken.__eq__ = lambda x, y: x.__class__ == y.__class__ and ErrorToken_default_eq(x, y)
+
+@dataclass(frozen=True)
+class ErrorTokenClass:
+    def __repr__(self):
+        return 'ErrorToken'
+
+
+ErrorToken = ErrorTokenClass()
+
 
 def throw_syntax_error(actions, state, t, tokens):
     assert t is not None
@@ -34,12 +42,12 @@ def throw_syntax_error(actions, state, t, tokens):
     if End() in expected:
         expected.remove(End())
         expected.add("end of input")
-    if ErrorToken() in expected:
+    if ErrorToken in expected:
         # This is possible because we restore the stack in _try_error_handling
         # after reducing and then failing to find a recovery rule after all.
         # But don't tell people in error messages that an error is one of the
         # things we expect. It makes no sense.
-        expected.remove(ErrorToken())
+        expected.remove(ErrorToken)
 
     if len(expected) < 2:
         tokens.throw("expected {!r}, got {!r}".format(list(expected)[0], t))
@@ -47,9 +55,17 @@ def throw_syntax_error(actions, state, t, tokens):
         tokens.throw("expected one of {!r}, got {!r}"
                      .format(sorted(expected), t))
 
+
 StateTermValue = collections.namedtuple("StateTermValue", "state term value new_line")
-class ShiftError(Exception): pass
-class ShiftAccept(Exception): pass
+
+
+class ShiftError(Exception):
+    pass
+
+
+class ShiftAccept(Exception):
+    pass
+
 
 class Parser:
     """Parser using jsparagus-generated tables.
@@ -143,12 +159,15 @@ class Parser:
             state = goto
             self.stack.append(StateTermValue(state, stv.term, stv.value, stv.new_line))
             action = self.actions[state]
-            while not isinstance(action, dict):  # Action
+            if not isinstance(action, dict):  # Action
                 if self.debug:
                     self._dbg_where("(action {})".format(state))
                 action(self, lexer)
                 state = self.stack[-1].state
                 action = self.actions[state]
+                # Actions should always unwind or do an epsilon transition to a
+                # shift state.
+                assert isinstance(action, dict)
             if self.replay != []:
                 stv = self.replay.pop()
                 if self.debug:
@@ -204,7 +223,7 @@ class Parser:
     def _try_error_handling(self, lexer, stv):
         # Error recovery version of the code in write_terminal. Three differences
         # between this and write_terminal are commented below.
-        if isinstance(stv.term, ErrorToken):
+        if stv.term is ErrorToken:
             if stv.value == End():
                 lexer.throw_unexpected_end()
                 raise
@@ -216,7 +235,7 @@ class Parser:
         if error_code is not None:
             self.on_recover(error_code, lexer, stv)
             self.replay.append(stv)
-            self.replay.append(StateTermValue(0, ErrorToken(), stv.value, stv.new_line))
+            self.replay.append(StateTermValue(0, ErrorToken, stv.value, stv.new_line))
         elif stv.term == End():
             lexer.throw_unexpected_end()
             raise
@@ -242,28 +261,33 @@ class Parser:
         class BogusLexer:
             def throw_unexpected_end(self):
                 raise UnexpectedEndError("")
+
             def throw(self, message):
                 raise SyntaxError(message)
+
             def take(self):
                 return str(t)
+
             def saw_line_terminator(self):
                 return lexer.saw_line_terminator()
 
         sim = self.simulator_clone()
         try:
             sim.write_terminal(BogusLexer(), t)
-        except:
+        except Exception:
             return False
         return True
 
     def can_close(self):
         """Return True if self.close() would succeed."""
+
         # The easy case: no error, parsing just succeeds.
         # The hard case: maybe error-handling would succeed?
         # The easiest thing is simply to run the method.
         class BogusLexer:
             def throw_unexpected_end(self):
                 raise UnexpectedEndError("")
+
             def throw(self, message):
                 raise SyntaxError(message)
 
@@ -273,25 +297,3 @@ class Parser:
         except SyntaxError:
             return False
         return True
-
-    def simulate(self, t):
-        """Simulate receiving the terminal `t` without modifying parser state.
-
-        Walk the current stack to simulate the reduce actions that would occur
-        if the next token from the lexer was `t`. Return the state reached when
-        we're done reducing.
-        """
-        sim = self.simulator_clone()
-        stack = self.stack
-        sp = len(stack) - 1
-        state = stack[sp]
-        while True:
-            action = self.actions[state].get(t, ERROR)
-            if ACCEPT < action < 0:  # reduce
-                tag_name, n, _reducer = self.reductions[-action - 1]
-                sp -= 2 * n
-                state = stack[sp]
-                sp += 2
-                state = self.ctns[state][tag_name]
-            else:
-                return state

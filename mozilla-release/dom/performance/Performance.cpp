@@ -53,6 +53,7 @@ already_AddRefed<Performance> Performance::CreateForMainThread(
     nsDOMNavigationTiming* aDOMTiming, nsITimedChannel* aChannel) {
   MOZ_ASSERT(NS_IsMainThread());
 
+  MOZ_ASSERT(aWindow->AsGlobal());
   RefPtr<Performance> performance = new PerformanceMainThread(
       aWindow, aDOMTiming, aChannel, aPrincipal->IsSystemPrincipal());
   return performance.forget();
@@ -89,12 +90,16 @@ Performance::~Performance() = default;
 
 DOMHighResTimeStamp Performance::Now() {
   DOMHighResTimeStamp rawTime = NowUnclamped();
+
+  // XXX: Remove this would cause functions in pkcs11f.h to fail.
+  // Bug 1628021 will find out the root cause.
   if (mSystemPrincipal) {
     return rawTime;
   }
 
-  return nsRFPService::ReduceTimePrecisionAsMSecs(rawTime,
-                                                  GetRandomTimelineSeed());
+  return nsRFPService::ReduceTimePrecisionAsMSecs(
+      rawTime, GetRandomTimelineSeed(), mSystemPrincipal,
+      CrossOriginIsolated());
 }
 
 DOMHighResTimeStamp Performance::NowUnclamped() const {
@@ -110,12 +115,9 @@ DOMHighResTimeStamp Performance::TimeOrigin() {
   MOZ_ASSERT(mPerformanceService);
   DOMHighResTimeStamp rawTimeOrigin =
       mPerformanceService->TimeOrigin(CreationTimeStamp());
-  if (mSystemPrincipal) {
-    return rawTimeOrigin;
-  }
-
   // Time Origin is an absolute timestamp, so we supply a 0 context mix-in
-  return nsRFPService::ReduceTimePrecisionAsMSecs(rawTimeOrigin, 0);
+  return nsRFPService::ReduceTimePrecisionAsMSecs(
+      rawTimeOrigin, 0, mSystemPrincipal, CrossOriginIsolated());
 }
 
 JSObject* Performance::WrapObject(JSContext* aCx,
@@ -130,7 +132,7 @@ void Performance::GetEntries(nsTArray<RefPtr<PerformanceEntry>>& aRetval) {
     return;
   }
 
-  aRetval = mResourceEntries;
+  aRetval = mResourceEntries.Clone();
   aRetval.AppendElements(mUserEntries);
   aRetval.Sort(PerformanceEntryComparator());
 }
@@ -144,7 +146,7 @@ void Performance::GetEntriesByType(
   }
 
   if (aEntryType.EqualsLiteral("resource")) {
-    aRetval = mResourceEntries;
+    aRetval = mResourceEntries.Clone();
     return;
   }
 
@@ -574,6 +576,12 @@ class NotifyObserversTask final : public CancelableRunnable {
   RefPtr<Performance> mPerformance;
 };
 
+void Performance::QueueNotificationObserversTask() {
+  if (!mPendingNotificationObserversTask) {
+    RunNotificationObserversTask();
+  }
+}
+
 void Performance::RunNotificationObserversTask() {
   mPendingNotificationObserversTask = true;
   nsCOMPtr<nsIRunnable> task = new NotifyObserversTask(this);
@@ -610,9 +618,7 @@ void Performance::QueueEntry(PerformanceEntry* aEntry) {
   NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(
       interestedObservers, PerformanceObserver, QueueEntry, (aEntry));
 
-  if (!mPendingNotificationObserversTask) {
-    RunNotificationObserversTask();
-  }
+  QueueNotificationObserversTask();
 }
 
 void Performance::MemoryPressure() { mUserEntries.Clear(); }

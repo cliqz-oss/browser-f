@@ -14,7 +14,7 @@
 #include "mozilla/StaticPtr.h"
 
 #include "mozilla/dom/FragmentOrElement.h"
-
+#include "DOMIntersectionObserver.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/DeclarationBlock.h"
 #include "mozilla/EffectSet.h"
@@ -53,6 +53,7 @@
 #include "nsDOMTokenList.h"
 #include "nsError.h"
 #include "nsDOMString.h"
+#include "nsXULElement.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/MouseEvents.h"
 #include "nsAttrValueOrString.h"
@@ -196,7 +197,7 @@ nsIContent::IMEState nsIContent::GetDesiredIMEState() {
     // Check for the special case where we're dealing with elements which don't
     // have the editable flag set, but are readwrite (such as text controls).
     if (!IsElement() ||
-        !AsElement()->State().HasState(NS_EVENT_STATE_MOZ_READWRITE)) {
+        !AsElement()->State().HasState(NS_EVENT_STATE_READWRITE)) {
       return IMEState(IMEState::DISABLED);
     }
   }
@@ -1018,12 +1019,6 @@ bool nsIContent::IsFocusable(int32_t* aTabIndex, bool aWithMouse) {
   // Ensure that the return value and aTabIndex are consistent in the case
   // we're in userfocusignored context.
   if (focusable || (aTabIndex && *aTabIndex != -1)) {
-    if (nsContentUtils::IsUserFocusIgnored(this)) {
-      if (aTabIndex) {
-        *aTabIndex = -1;
-      }
-      return false;
-    }
     return focusable;
   }
   return false;

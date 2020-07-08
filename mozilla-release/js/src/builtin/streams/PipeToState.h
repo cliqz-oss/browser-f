@@ -72,6 +72,17 @@ class PipeToState : public NativeObject {
      */
     Slot_Writer,
 
+    /**
+     * The |PromiseObject*| of the last write performed to the destinationg
+     * |WritableStream| using the writer in |Slot_Writer|.  If no writes have
+     * yet been performed, this slot contains |undefined|.
+     *
+     * This promise is created inside a handler function in the same compartment
+     * and realm as this |PipeToState|, so it is always a |PromiseObject*| and
+     * never a wrapper around one.
+     */
+    Slot_LastWriteRequest,
+
     SlotCount,
   };
 
@@ -82,6 +93,8 @@ class PipeToState : public NativeObject {
     Flag_PreventClose = 0b0010,
     Flag_PreventAbort = 0b0100,
     Flag_PreventCancel = 0b1000,
+
+    Flag_ReadPending = 0b1'0000,
   };
 
   uint32_t flags() const { return getFixedSlot(Slot_Flags).toInt32(); }
@@ -108,6 +121,20 @@ class PipeToState : public NativeObject {
                 .as<WritableStreamDefaultWriter>();
   }
 
+  PromiseObject* lastWriteRequest() const {
+    const auto& slot = getFixedSlot(Slot_LastWriteRequest);
+    if (slot.isUndefined()) {
+      return nullptr;
+    }
+
+    return &slot.toObject().as<PromiseObject>();
+  }
+
+  void updateLastWriteRequest(PromiseObject* writeRequest) {
+    MOZ_ASSERT(writeRequest != nullptr);
+    setFixedSlot(Slot_LastWriteRequest, JS::ObjectValue(*writeRequest));
+  }
+
   bool shuttingDown() const { return flags() & Flag_ShuttingDown; }
   void setShuttingDown() {
     MOZ_ASSERT(!shuttingDown());
@@ -117,6 +144,16 @@ class PipeToState : public NativeObject {
   bool preventClose() const { return flags() & Flag_PreventClose; }
   bool preventAbort() const { return flags() & Flag_PreventAbort; }
   bool preventCancel() const { return flags() & Flag_PreventCancel; }
+
+  bool isReadPending() const { return flags() & Flag_ReadPending; }
+  void setReadPending() {
+    MOZ_ASSERT(!isReadPending());
+    setFlags(flags() | Flag_ReadPending);
+  }
+  void clearReadPending() {
+    MOZ_ASSERT(isReadPending());
+    setFlags(flags() & ~Flag_ReadPending);
+  }
 
   void initFlags(bool preventClose, bool preventAbort, bool preventCancel) {
     MOZ_ASSERT(getFixedSlot(Slot_Flags).isUndefined());

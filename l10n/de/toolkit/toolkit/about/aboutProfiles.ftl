@@ -21,6 +21,7 @@ profiles-flush-restart-button = { -brand-short-name } neu starten
 profiles-name = Profil: { $name }
 profiles-is-default = Standardprofil
 profiles-rootdir = Wurzelordner
+
 # localDir is used to show the directory corresponding to
 # the main profile directory that exists for the purpose of storing data on the
 # local filesystem, including cache files or other data files that may not
@@ -46,10 +47,12 @@ profiles-rename-profile-title = Profil umbenennen
 # Variables:
 #   $name (String) - Name of the profile
 profiles-rename-profile = Das Profil "{ $name }" umbenennen in:
+
 profiles-invalid-profile-name-title = Ungültiger Profilname
 # Variables:
 #   $name (String) - Name of the profile
 profiles-invalid-profile-name = Der Profilname "{ $name }" ist nicht erlaubt.
+
 profiles-delete-profile-title = Profil löschen
 # Variables:
 #   $dir (String) - Path to be displayed
@@ -63,8 +66,11 @@ profiles-delete-profile-confirm =
     Möchtest du die Daten des Profils löschen?
 profiles-delete-files = Dateien löschen
 profiles-dont-delete-files = Dateien nicht löschen
+
 profiles-delete-profile-failed-title = Fehler
 profiles-delete-profile-failed-message = Beim Versuch, das Profil zu löschen, trat ein Fehler auf.
+
+
 profiles-opendir =
     { PLATFORM() ->
         [macos] In Finder öffnen

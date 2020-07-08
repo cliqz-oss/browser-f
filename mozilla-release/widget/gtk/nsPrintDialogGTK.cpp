@@ -8,8 +8,9 @@
 #include <stdlib.h>
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/Services.h"
 
-#include "mozcontainer.h"
+#include "MozContainer.h"
 #include "nsIPrintSettings.h"
 #include "nsIWidget.h"
 #include "nsPrintDialogGTK.h"
@@ -1014,7 +1015,7 @@ nsPrintDialogServiceGTK::ShowPageSetup(nsPIDOMWindowOuter* aParent,
     nsString printName;
     aNSSettings->GetPrinterName(printName);
     if (printName.IsVoid()) {
-      psService->GetDefaultPrinterName(printName);
+      psService->GetLastUsedPrinterName(printName);
       aNSSettings->SetPrinterName(printName);
     }
     psService->InitPrintSettingsFromPrefs(aNSSettings, true,
@@ -1034,8 +1035,11 @@ nsPrintDialogServiceGTK::ShowPageSetup(nsPIDOMWindowOuter* aParent,
   g_object_unref(newPageSetup);
 
   if (psService)
-    psService->SavePrintSettingsToPrefs(aNSSettings, true,
-                                        nsIPrintSettings::kInitSaveAll);
+    psService->SavePrintSettingsToPrefs(
+        aNSSettings, true,
+        nsIPrintSettings::kInitSaveOrientation |
+            nsIPrintSettings::kInitSavePaperSize |
+            nsIPrintSettings::kInitSaveUnwriteableMargins);
 
   return NS_OK;
 }

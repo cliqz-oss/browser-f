@@ -13,6 +13,7 @@
 #include "jit/BaselineJIT.h"
 #include "jit/CompileInfo.h"
 #include "jit/Ion.h"
+#include "jit/IonScript.h"
 #include "jit/JitSpewer.h"
 #include "jit/mips32/Simulator-mips32.h"
 #include "jit/mips64/Simulator-mips64.h"
@@ -599,7 +600,7 @@ static bool IsPrologueBailout(const SnapshotIterator& iter,
 static bool InitFromBailout(JSContext* cx, size_t frameNo, HandleFunction fun,
                             HandleScript script, SnapshotIterator& iter,
                             bool invalidate, BaselineStackBuilder& builder,
-                            MutableHandle<GCVector<Value>> startFrameFormals,
+                            MutableHandleValueVector startFrameFormals,
                             MutableHandleFunction nextCallee,
                             const ExceptionBailoutInfo* excInfo) {
   // The Baseline frames we will reconstruct on the heap are not rooted, so GC
@@ -1571,7 +1572,7 @@ bool jit::BailoutIonToBaseline(JSContext* cx, JitActivation* activation,
 
   // Reconstruct baseline frames using the builder.
   RootedFunction fun(cx, callee);
-  Rooted<GCVector<Value>> startFrameFormals(cx, GCVector<Value>(cx));
+  RootedValueVector startFrameFormals(cx);
 
   gc::AutoSuppressGC suppress(cx);
 
@@ -1984,6 +1985,8 @@ bool jit::FinishBailoutToBaseline(BaselineBailoutInfo* bailoutInfoArg) {
     case Bailout_PrecisionLoss:
     case Bailout_TypeBarrierO:
     case Bailout_TypeBarrierV:
+    case Bailout_ValueGuard:
+    case Bailout_NullOrUndefinedGuard:
     case Bailout_MonitorTypes:
     case Bailout_Hole:
     case Bailout_NegativeIndex:
@@ -1996,6 +1999,7 @@ bool jit::FinishBailoutToBaseline(BaselineBailoutInfo* bailoutInfoArg) {
     case Bailout_NonBigIntInput:
     case Bailout_NonSharedTypedArrayInput:
     case Bailout_Debugger:
+    case Bailout_SpecificAtomGuard:
       // Do nothing.
       break;
 

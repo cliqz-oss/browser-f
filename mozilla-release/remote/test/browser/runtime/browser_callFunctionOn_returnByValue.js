@@ -3,12 +3,10 @@
 
 "use strict";
 
-const TEST_DOC = toDataURL("default-test-page");
-
 add_task(async function returnAsObjectTypes({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const expressions = [
     { expression: "({foo:true})", type: "object", subtype: null },
@@ -23,34 +21,50 @@ add_task(async function returnAsObjectTypes({ client }) {
     { expression: "[1, 2]", type: "object", subtype: "array" },
     { expression: "new Proxy({}, {})", type: "object", subtype: "proxy" },
     { expression: "new Date()", type: "object", subtype: "date" },
-    { expression: "document", type: "object", subtype: "node" },
-    { expression: "document.documentElement", type: "object", subtype: "node" },
     {
-      expression: "document.createElement('div')",
+      expression: "document",
       type: "object",
       subtype: "node",
+      className: "HTMLDocument",
+      description: "#document",
+    },
+    {
+      expression: `{{
+        const div = document.createElement('div');
+        div.id = "foo";
+        return div;
+      }}`,
+      type: "object",
+      subtype: "node",
+      className: "HTMLDivElement",
+      description: "div#foo",
     },
   ];
 
-  for (const { expression, type, subtype } of expressions) {
+  for (const entry of expressions) {
+    const { expression, type, subtype, className, description } = entry;
+
     const { result } = await Runtime.callFunctionOn({
       functionDeclaration: `() => ${expression}`,
       executionContextId,
     });
-    is(
-      result.subtype,
-      subtype,
-      `Evaluating '${expression}' has the expected subtype`
-    );
+
     is(result.type, type, "The type is correct");
+    is(result.subtype, subtype, "The subtype is correct");
     ok(!!result.objectId, "Got an object id");
+    if (className) {
+      is(result.className, className, "The className is correct");
+    }
+    if (description) {
+      is(result.description, description, "The description is correct");
+    }
   }
 });
 
 add_task(async function returnAsObjectDifferentObjectIds({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const expressions = [{}, "document"];
   for (const expression of expressions) {
@@ -73,7 +87,7 @@ add_task(async function returnAsObjectDifferentObjectIds({ client }) {
 add_task(async function returnAsObjectPrimitiveTypes({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const expressions = [42, "42", true, 4.2];
   for (const expression of expressions) {
@@ -89,7 +103,7 @@ add_task(async function returnAsObjectPrimitiveTypes({ client }) {
 add_task(async function returnAsObjectNotSerializable({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const notSerializableNumbers = {
     number: ["-0", "NaN", "Infinity", "-Infinity"],
@@ -120,7 +134,7 @@ add_task(async function returnAsObjectNotSerializable({ client }) {
 add_task(async function returnAsObjectNull({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const { result } = await Runtime.callFunctionOn({
     functionDeclaration: "() => null",
@@ -141,7 +155,7 @@ add_task(async function returnAsObjectNull({ client }) {
 add_task(async function returnAsObjectUndefined({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const { result } = await Runtime.callFunctionOn({
     functionDeclaration: "() => undefined",
@@ -159,7 +173,7 @@ add_task(async function returnAsObjectUndefined({ client }) {
 add_task(async function returnByValueInvalidTypes({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   for (const returnByValue of [null, 1, "foo", [], {}]) {
     let errorThrown = "";
@@ -179,7 +193,7 @@ add_task(async function returnByValueInvalidTypes({ client }) {
 add_task(async function returnByValue({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const values = [
     null,
@@ -216,7 +230,7 @@ add_task(async function returnByValue({ client }) {
 add_task(async function returnByValueNotSerializable({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const notSerializableNumbers = {
     number: ["-0", "NaN", "Infinity", "-Infinity"],
@@ -248,7 +262,7 @@ add_task(async function returnByValueNotSerializable({ client }) {
 add_task(async function returnByValueUndefined({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const { result } = await Runtime.callFunctionOn({
     functionDeclaration: "() => {}",
@@ -268,7 +282,7 @@ add_task(async function returnByValueUndefined({ client }) {
 add_task(async function returnByValueArguments({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const values = [
     42,
@@ -306,7 +320,7 @@ add_task(async function returnByValueArguments({ client }) {
 add_task(async function returnByValueArgumentsNotSerializable({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   const notSerializableNumbers = {
     number: ["-0", "NaN", "Infinity", "-Infinity"],
@@ -338,7 +352,7 @@ add_task(async function returnByValueArgumentsNotSerializable({ client }) {
 add_task(async function returnByValueArgumentsSymbol({ client }) {
   const { Runtime } = client;
 
-  const executionContextId = await enableRuntime(client);
+  const { id: executionContextId } = await enableRuntime(client);
 
   let errorThrown = "";
   try {

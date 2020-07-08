@@ -8,6 +8,7 @@ password-quality-meter = Passwort-Qualitätsmessung
 
 change-password-window =
     .title = Master-Passwort ändern
+
 # Variables:
 # $tokenName (String) - Security device of the change password dialog
 change-password-token = Kryptographie-Modul: { $tokenName }
@@ -34,7 +35,7 @@ download-cert-trust-ssl =
     .label = Dieser CA vertrauen, um Websites zu identifizieren.
 download-cert-trust-email =
     .label = Dieser CA vertrauen, um E-Mail-Nutzer zu identifizieren.
-download-cert-message-desc = Bevor Sie dieser CA für jeglichen Zweck vertrauen, sollten Sie das Zertifikat sowie seine Richtlinien und Prozeduren (wenn vorhanden) überprüfen.
+download-cert-message-desc = Bevor du dieser CA für jeglichen Zweck vertraust, solltest du das Zertifikat sowie seine Richtlinien und Prozeduren (wenn vorhanden) überprüfen.
 download-cert-view-cert =
     .label = Ansicht
 download-cert-view-text = CA-Zertifikat überprüfen

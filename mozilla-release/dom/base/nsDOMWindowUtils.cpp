@@ -570,8 +570,7 @@ nsDOMWindowUtils::SetResolutionAndScaleTo(float aResolution) {
     return NS_ERROR_FAILURE;
   }
 
-  presShell->SetResolutionAndScaleTo(aResolution,
-                                     ResolutionChangeOrigin::MainThreadRestore);
+  presShell->SetResolutionAndScaleTo(aResolution, ResolutionChangeOrigin::Test);
 
   return NS_OK;
 }
@@ -1155,8 +1154,8 @@ nsDOMWindowUtils::ElementFromPoint(float aX, float aY,
   nsCOMPtr<Document> doc = GetDocument();
   NS_ENSURE_STATE(doc);
 
-  RefPtr<Element> el =
-      doc->ElementFromPointHelper(aX, aY, aIgnoreRootScrollFrame, aFlushLayout);
+  RefPtr<Element> el = doc->ElementFromPointHelper(
+      aX, aY, aIgnoreRootScrollFrame, aFlushLayout, ViewportType::Layout);
   el.forget(aReturn);
   return NS_OK;
 }
@@ -1691,6 +1690,16 @@ nsDOMWindowUtils::GetFocusedActionHint(nsAString& aType) {
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::GetFocusedInputMode(nsAString& aInputMode) {
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (!widget) {
+    return NS_ERROR_FAILURE;
+  }
+  aInputMode = widget->GetInputContext().mHTMLInputInputmode;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMWindowUtils::GetViewId(Element* aElement, nsViewID* aResult) {
   if (aElement && nsLayoutUtils::FindIDFor(aElement, aResult)) {
     return NS_OK;
@@ -2209,6 +2218,50 @@ nsDOMWindowUtils::GetCurrentPreferredSampleRate(uint32_t* aRate) {
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::DefaultDevicesRoundTripLatency(Promise** aOutPromise) {
+  NS_ENSURE_ARG_POINTER(aOutPromise);
+  *aOutPromise = nullptr;
+
+  nsCOMPtr<nsPIDOMWindowOuter> outer = do_QueryReferent(mWindow);
+  NS_ENSURE_STATE(outer);
+  nsCOMPtr<nsPIDOMWindowInner> inner = outer->GetCurrentInnerWindow();
+  NS_ENSURE_STATE(inner);
+
+  ErrorResult err;
+  RefPtr<Promise> promise = Promise::Create(inner->AsGlobal(), err);
+  if (NS_WARN_IF(err.Failed())) {
+    return err.StealNSResult();
+  }
+
+  NS_ADDREF(promise.get());
+  void* p = reinterpret_cast<void*>(promise.get());
+  NS_DispatchBackgroundTask(
+      NS_NewRunnableFunction("DefaultDevicesRoundTripLatency", [p]() {
+        double mean, stddev;
+        bool success =
+            CubebUtils::EstimatedRoundTripLatencyDefaultDevices(&mean, &stddev);
+
+        NS_DispatchToMainThread(NS_NewRunnableFunction(
+            "DefaultDevicesRoundTripLatency", [p, success, mean, stddev]() {
+              Promise* promise = reinterpret_cast<Promise*>(p);
+              if (!success) {
+                promise->MaybeReject(NS_ERROR_FAILURE);
+                NS_RELEASE(promise);
+                return;
+              }
+              nsTArray<double> a;
+              a.AppendElement(mean);
+              a.AppendElement(stddev);
+              promise->MaybeResolve(a);
+              NS_RELEASE(promise);
+            }));
+      }));
+
+  promise.forget(aOutPromise);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMWindowUtils::AudioDevices(uint16_t aSide, nsIArray** aDevices) {
   NS_ENSURE_ARG_POINTER(aDevices);
   NS_ENSURE_ARG((aSide == AUDIO_INPUT) || (aSide == AUDIO_OUTPUT));
@@ -2508,11 +2561,38 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
     return NS_OK;
   }
 
-  if (!element->GetPrimaryFrame()) {
+  bool shouldSkip = [&] {
+    nsIFrame* frame = element->GetPrimaryFrame();
+    if (!frame) {
+      return true;
+    }
+
+    // Skip zooming to focused inputs in fixed subtrees, as we'd scroll to the
+    // top unnecessarily, see bug 1627734.
+    //
+    // We could try to teach apz to zoom to a rect only without panning, or
+    // maybe we could give it a rect offsetted by the root scroll position, if
+    // we wanted to do this.
+    //
+    // Note that we only do this if the frame belongs to `presShell` (that is,
+    // we still zoom in fixed elements in subdocuments, as they're not fixed to
+    // the root content document).
+    if (frame->PresShell() == presShell) {
+      for (; frame; frame = frame->GetParent()) {
+        if (frame->StyleDisplay()->mPosition == StylePositionProperty::Fixed &&
+            nsLayoutUtils::IsReallyFixedPos(frame)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }();
+
+  if (shouldSkip) {
     return NS_OK;
   }
 
-  Document* document = presShell->GetDocument();
+  RefPtr<Document> document = presShell->GetDocument();
   if (!document) {
     return NS_OK;
   }
@@ -2967,12 +3047,6 @@ nsDOMWindowUtils::FlushPendingFileDeletions() {
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::IsIncrementalGCEnabled(JSContext* cx, bool* aResult) {
-  *aResult = JS::IsIncrementalGCEnabled(cx);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsDOMWindowUtils::StartPCCountProfiling(JSContext* cx) {
   js::StartPCCountProfiling(cx);
   return NS_OK;
@@ -3194,9 +3268,10 @@ nsDOMWindowUtils::SelectAtPoint(float aX, float aY, uint32_t aSelectBehavior,
   nsCOMPtr<nsIWidget> widget = GetWidget(&offset);
   LayoutDeviceIntPoint pt =
       nsContentUtils::ToWidgetPoint(CSSPoint(aX, aY), offset, GetPresContext());
-  nsPoint ptInRoot =
-      nsLayoutUtils::GetEventCoordinatesRelativeTo(widget, pt, rootFrame);
-  nsIFrame* targetFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, ptInRoot);
+  nsPoint ptInRoot = nsLayoutUtils::GetEventCoordinatesRelativeTo(
+      widget, pt, RelativeTo{rootFrame});
+  nsIFrame* targetFrame =
+      nsLayoutUtils::GetFrameForPoint(RelativeTo{rootFrame}, ptInRoot);
   // This can happen if the page hasn't loaded yet or if the point
   // is outside the frame.
   if (!targetFrame) {
@@ -3205,8 +3280,8 @@ nsDOMWindowUtils::SelectAtPoint(float aX, float aY, uint32_t aSelectBehavior,
 
   // Convert point to coordinates relative to the target frame, which is
   // what targetFrame's SelectByTypeAtPoint expects.
-  nsPoint relPoint =
-      nsLayoutUtils::GetEventCoordinatesRelativeTo(widget, pt, targetFrame);
+  nsPoint relPoint = nsLayoutUtils::GetEventCoordinatesRelativeTo(
+      widget, pt, RelativeTo{targetFrame});
 
   nsresult rv = static_cast<nsFrame*>(targetFrame)
                     ->SelectByTypeAtPoint(GetPresContext(), relPoint, amount,
@@ -4013,26 +4088,6 @@ nsDOMWindowUtils::EnsureDirtyRootFrame() {
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsDOMWindowUtils::SetPrefersReducedMotionOverrideForTest(bool aValue) {
-  nsIWidget* widget = GetWidget();
-  if (!widget) {
-    return NS_OK;
-  }
-
-  return widget->SetPrefersReducedMotionOverrideForTest(aValue);
-}
-
-NS_IMETHODIMP
-nsDOMWindowUtils::ResetPrefersReducedMotionOverrideForTest() {
-  nsIWidget* widget = GetWidget();
-  if (!widget) {
-    return NS_OK;
-  }
-
-  return widget->ResetPrefersReducedMotionOverrideForTest();
-}
-
 NS_INTERFACE_MAP_BEGIN(nsTranslationNodeList)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
   NS_INTERFACE_MAP_ENTRY(nsITranslationNodeList)
@@ -4072,6 +4127,14 @@ NS_IMETHODIMP
 nsDOMWindowUtils::WrCapture() {
   if (WebRenderBridgeChild* wrbc = GetWebRenderBridge()) {
     wrbc->Capture();
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::WrToggleCaptureSequence() {
+  if (WebRenderBridgeChild* wrbc = GetWebRenderBridge()) {
+    wrbc->ToggleCaptureSequence();
   }
   return NS_OK;
 }
@@ -4223,14 +4286,6 @@ nsDOMWindowUtils::StopCompositionRecording(bool aWriteToDisk,
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::SetTransactionLogging(bool aValue) {
-  if (WebRenderBridgeChild* wrbc = GetWebRenderBridge()) {
-    wrbc->SetTransactionLogging(aValue);
-  }
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsDOMWindowUtils::SetSystemFont(const nsACString& aFontName) {
   nsIWidget* widget = GetWidget();
   if (!widget) {
@@ -4294,5 +4349,28 @@ NS_IMETHODIMP
 nsDOMWindowUtils::GetPaintCount(uint64_t* aPaintCount) {
   auto* presShell = GetPresShell();
   *aPaintCount = presShell ? presShell->GetPaintCount() : 0;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetWebrtcRawDeviceId(nsAString& aRawDeviceId) {
+  if (!XRE_IsParentProcess()) {
+    MOZ_CRASH(
+        "GetWebrtcRawDeviceId is only available in the parent "
+        "process");
+  }
+
+  nsIWidget* widget = GetWidget();
+  if (!widget) {
+    return NS_ERROR_FAILURE;
+  }
+
+  int64_t rawDeviceId =
+      (int64_t)(widget->GetNativeData(NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID));
+  if (!rawDeviceId) {
+    return NS_ERROR_FAILURE;
+  }
+
+  aRawDeviceId.AppendInt(rawDeviceId);
   return NS_OK;
 }

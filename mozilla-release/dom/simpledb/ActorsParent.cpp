@@ -19,6 +19,7 @@
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "nsIFileStreams.h"
 #include "nsIDirectoryEnumerator.h"
+#include "nsIPrincipal.h"
 #include "nsStringStream.h"
 #include "prio.h"
 #include "SimpleDBCommon.h"
@@ -46,6 +47,8 @@ namespace {
  ******************************************************************************/
 
 const uint32_t kCopyBufferSize = 32768;
+
+constexpr auto kSDBSuffix = NS_LITERAL_STRING(".sdb");
 
 /*******************************************************************************
  * Actor class declarations
@@ -446,8 +449,8 @@ class QuotaClient final : public mozilla::dom::quota::Client {
 
   nsresult InitOrigin(PersistenceType aPersistenceType,
                       const nsACString& aGroup, const nsACString& aOrigin,
-                      const AtomicBool& aCanceled, UsageInfo* aUsageInfo,
-                      bool aForGetUsage) override;
+                      const AtomicBool& aCanceled,
+                      UsageInfo* aUsageInfo) override;
 
   nsresult GetUsageForOrigin(PersistenceType aPersistenceType,
                              const nsACString& aGroup,
@@ -1042,15 +1045,15 @@ nsresult OpenOp::Open() {
   } else {
     MOZ_ASSERT(principalInfo.type() == PrincipalInfo::TContentPrincipalInfo);
 
-    nsresult rv;
-    nsCOMPtr<nsIPrincipal> principal =
-        PrincipalInfoToPrincipal(principalInfo, &rv);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    auto principalOrErr = PrincipalInfoToPrincipal(principalInfo);
+    if (NS_WARN_IF(principalOrErr.isErr())) {
+      return principalOrErr.unwrapErr();
     }
 
-    rv = QuotaManager::GetInfoFromPrincipal(principal, &mSuffix, &mGroup,
-                                            &mOrigin);
+    nsCOMPtr<nsIPrincipal> principal = principalOrErr.unwrap();
+
+    nsresult rv = QuotaManager::GetInfoFromPrincipal(principal, &mSuffix,
+                                                     &mGroup, &mOrigin);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -1204,7 +1207,7 @@ nsresult OpenOp::DatabaseWork() {
     return rv;
   }
 
-  rv = dbFile->Append(mParams.name());
+  rv = dbFile->Append(mParams.name() + kSDBSuffix);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -1626,7 +1629,7 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
                                  const nsACString& aGroup,
                                  const nsACString& aOrigin,
                                  const AtomicBool& aCanceled,
-                                 UsageInfo* aUsageInfo, bool aForGetUsage) {
+                                 UsageInfo* aUsageInfo) {
   AssertIsOnIOThread();
 
   if (!aUsageInfo) {
@@ -1683,15 +1686,27 @@ nsresult QuotaClient::GetUsageForOrigin(PersistenceType aPersistenceType,
     nsCOMPtr<nsIFile> file = do_QueryInterface(entry);
     MOZ_ASSERT(file);
 
-    int64_t fileSize;
-    rv = file->GetFileSize(&fileSize);
+    nsAutoString leafName;
+    rv = file->GetLeafName(leafName);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
 
-    MOZ_ASSERT(fileSize >= 0);
+    if (StringEndsWith(leafName, kSDBSuffix)) {
+      int64_t fileSize;
+      rv = file->GetFileSize(&fileSize);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
 
-    aUsageInfo->AppendToDatabaseUsage(Some(uint64_t(fileSize)));
+      MOZ_ASSERT(fileSize >= 0);
+
+      aUsageInfo->AppendToDatabaseUsage(Some(uint64_t(fileSize)));
+
+      continue;
+    }
+
+    UNKNOWN_FILE_WARNING(leafName);
   }
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;

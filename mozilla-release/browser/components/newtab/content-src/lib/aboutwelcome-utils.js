@@ -4,16 +4,42 @@
 
 export const AboutWelcomeUtils = {
   handleUserAction(action) {
-    switch (action.type) {
-      case "OPEN_AWESOME_BAR":
-      case "OPEN_PRIVATE_BROWSER_WINDOW":
-      case "SHOW_MIGRATION_WIZARD":
-        window.AWSendToParent(action.type);
-        break;
-      case "OPEN_URL":
-        window.open(action.data.args);
-        break;
+    window.AWSendToParent("SPECIAL_ACTION", action);
+  },
+  sendImpressionTelemetry(messageId, context) {
+    window.AWSendEventTelemetry({
+      event: "IMPRESSION",
+      event_context: context,
+      message_id: messageId,
+    });
+  },
+  sendActionTelemetry(messageId, elementId) {
+    const ping = {
+      event: "CLICK_BUTTON",
+      event_context: {
+        source: elementId,
+        page: "about:welcome",
+      },
+      message_id: messageId,
+    };
+    window.AWSendEventTelemetry(ping);
+  },
+  async fetchFlowParams(metricsFlowUri) {
+    let flowParams;
+    try {
+      const response = await fetch(metricsFlowUri, {
+        credentials: "omit",
+      });
+      if (response.status === 200) {
+        const { deviceId, flowId, flowBeginTime } = await response.json();
+        flowParams = { deviceId, flowId, flowBeginTime };
+      } else {
+        console.error("Non-200 response", response); // eslint-disable-line no-console
+      }
+    } catch (e) {
+      flowParams = null;
     }
+    return flowParams;
   },
   sendEvent(type, detail) {
     document.dispatchEvent(

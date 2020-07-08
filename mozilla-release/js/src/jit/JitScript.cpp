@@ -14,6 +14,7 @@
 
 #include "jit/BaselineIC.h"
 #include "jit/BytecodeAnalysis.h"
+#include "jit/IonScript.h"
 #include "util/Memory.h"
 #include "vm/BytecodeIterator.h"
 #include "vm/BytecodeLocation.h"
@@ -54,19 +55,17 @@ size_t JitScript::NumTypeSets(JSScript* script) {
   return num;
 }
 
-JitScript::JitScript(JSScript* script, uint32_t typeSetOffset,
-                     uint32_t bytecodeTypeMapOffset, uint32_t allocBytes,
+JitScript::JitScript(JSScript* script, Offset typeSetOffset,
+                     Offset bytecodeTypeMapOffset, Offset endOffset,
                      const char* profileString)
     : profileString_(profileString),
       typeSetOffset_(typeSetOffset),
       bytecodeTypeMapOffset_(bytecodeTypeMapOffset),
-      allocBytes_(allocBytes) {
+      endOffset_(endOffset) {
   setTypesGeneration(script->zone()->types.generation);
 
   if (IsTypeInferenceEnabled()) {
-    uint8_t* base = reinterpret_cast<uint8_t*>(this);
-    DefaultInitializeElements<StackTypeSet>(base + typeSetOffset,
-                                            numTypeSets());
+    initElements<StackTypeSet>(typeSetOffset, numTypeSets());
   }
 
   // Initialize the warm-up count from the count stored in the script.
@@ -164,7 +163,7 @@ bool JSScript::createJitScript(JSContext* cx) {
   warmUpData_.initJitScript(jitScript.release());
   AddCellMemory(this, allocSize.value(), MemoryUse::JitScript);
 
-  // We have a JitScript so we can set the script's jitCodeRaw_ pointer to the
+  // We have a JitScript so we can set the script's jitCodeRaw pointer to the
   // Baseline Interpreter code.
   updateJitCodeRaw(cx->runtime());
 
@@ -664,19 +663,11 @@ void JitScript::setIonScriptImpl(JSFreeOp* fop, JSScript* script,
 
 #ifdef JS_STRUCTURED_SPEW
 static bool GetStubEnteredCount(ICStub* stub, uint32_t* count) {
-  switch (stub->kind()) {
-    case ICStub::CacheIR_Regular:
-      *count = stub->toCacheIR_Regular()->enteredCount();
-      return true;
-    case ICStub::CacheIR_Updated:
-      *count = stub->toCacheIR_Updated()->enteredCount();
-      return true;
-    case ICStub::CacheIR_Monitored:
-      *count = stub->toCacheIR_Monitored()->enteredCount();
-      return true;
-    default:
-      return false;
+  if (ICStub::IsCacheIRKind(stub->kind())) {
+    *count = stub->getEnteredCount();
+    return true;
   }
+  return false;
 }
 
 static bool HasEnteredCounters(ICEntry& entry) {

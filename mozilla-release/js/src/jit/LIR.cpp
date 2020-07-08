@@ -363,10 +363,8 @@ static const char* DefTypeName(LDefinition::Type type) {
       return "f";
     case LDefinition::DOUBLE:
       return "d";
-    case LDefinition::SIMD128INT:
-      return "simd128int";
-    case LDefinition::SIMD128FLOAT:
-      return "simd128float";
+    case LDefinition::SIMD128:
+      return "simd128";
     case LDefinition::STACKRESULTS:
       return "stackresults";
 #  ifdef JS_NUNBOX32
@@ -643,7 +641,7 @@ bool LMoveGroup::add(LAllocation from, LAllocation to, LDefinition::Type type) {
   }
 
   // Check that SIMD moves are aligned according to ABI requirements.
-  if (LDefinition(type).isSimdType()) {
+  if (LDefinition(type).type() == LDefinition::SIMD128) {
     MOZ_ASSERT(from.isMemory() || from.isFloatReg());
     if (from.isMemory()) {
       if (from.isArgument()) {
@@ -707,8 +705,8 @@ void LMoveGroup::printOperands(GenericPrinter& out) {
 }
 #endif
 
-#define LIROP(x)                                   \
-  static_assert(!std::is_polymorphic<L##x>::value, \
+#define LIROP(x)                              \
+  static_assert(!std::is_polymorphic_v<L##x>, \
                 "LIR instructions should not have virtual methods");
 LIR_OPCODE_LIST(LIROP)
 #undef LIROP
