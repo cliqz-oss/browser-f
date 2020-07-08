@@ -75,13 +75,7 @@
 <!ENTITY col.url.label           "Adresse">
 <!ENTITY col.mostrecentvisit.label "Zuletzt besucht">
 <!ENTITY col.visitcount.label    "Meistbesucht">
-<<<<<<< HEAD
 <!ENTITY col.keyword.label       "Stichwort">
-<!ENTITY col.description.label   "Beschreibung">
-||||||| merged common ancestors
-<!ENTITY col.description.label   "Beschreibung">
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY col.dateadded.label     "Hinzugefügt">
 <!ENTITY col.lastmodified.label  "Zuletzt verändert">
 
@@ -98,21 +92,7 @@
 
 <!ENTITY forwardButton.tooltip  "Eine Seite vor">
 
-<<<<<<< HEAD
-<!ENTITY detailsPane.more.label  "Mehr">
-<!ENTITY detailsPane.more.accesskey "e">
-<!ENTITY detailsPane.less.label  "Weniger">
-<!ENTITY detailsPane.less.accesskey "e">
 <!ENTITY detailsPane.selectAnItemText.description "Wähle einen Eintrag, um deine Eigenschaften zu sehen und zu bearbeiten">
-||||||| merged common ancestors
-<!ENTITY detailsPane.more.label  "Mehr">
-<!ENTITY detailsPane.more.accesskey "e">
-<!ENTITY detailsPane.less.label  "Weniger">
-<!ENTITY detailsPane.less.accesskey "e">
-<!ENTITY detailsPane.selectAnItemText.description "Wählen Sie einen Eintrag, um seine Eigenschaften zu sehen und zu bearbeiten">
-=======
-<!ENTITY detailsPane.selectAnItemText.description "Wählen Sie einen Eintrag, um seine Eigenschaften zu sehen und zu bearbeiten">
->>>>>>> origin/upstream-releases
 
 <!ENTITY view.label               "Sortieren">
 <!ENTITY view.accesskey           "o">

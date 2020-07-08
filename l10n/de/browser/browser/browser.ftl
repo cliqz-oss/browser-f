@@ -9,69 +9,22 @@
 # attributes are used when the web content opened has no title:
 #
 # default - "Mozilla Firefox"
-# private - "Mozilla Firefox (Private Browsing)"
+# private - "Mozilla Firefox (Vergessen Modus)"
 #
 # The last two are for use when there *is* a content title.
 # Variables:
 #  $content-title (String): the title of the web content.
 browser-main-window =
     .data-title-default = { -brand-full-name }
-    .data-title-private = { -brand-full-name } (Privater Modus)
+    .data-title-private = { -brand-full-name } (Vergessen Modus)
     .data-content-title-default = { $content-title } - { -brand-full-name }
-    .data-content-title-private = { $content-title } - { -brand-full-name } (Privater Modus)
+    .data-content-title-private = { $content-title } - { -brand-full-name } (Vergessen Modus)
 # These are the default window titles on macOS. The first two are for use when
 # there is no content title:
 #
 # "default" - "Mozilla Firefox"
-<<<<<<< HEAD
-# "private" - "Mozilla Firefox (Forget Mode)"
-||||||| merged common ancestors
-# "private" - "Mozilla Firefox (Private Browsing)"
-=======
-# "private" - "Mozilla Firefox - (Private Browsing)"
->>>>>>> origin/upstream-releases
+# "private" - "Mozilla Firefox - (Vergessen Modus)"
 #
-<<<<<<< HEAD
-# Variables
-#   $mode (String) - "private" in case of a forget mode, "default" otherwise.
-browser-main-window-title =
-    { $mode ->
-        [private] { -brand-full-name } (Vergessen Modus)
-       *[default] { -brand-full-name }
-    }
-
-## This is the default window title in case there is content
-## title to be displayed.
-##
-## On macOS the title doesn't include the brand name, on all other
-## platforms it does.
-##
-## For example, in private mode on Windows, the title will be:
-## "Example Title - Mozilla Firefox (Private Browsing)"
-##
-## while on macOS in default mode it will be:
-## "Example Title"
-||||||| merged common ancestors
-# Variables
-#   $mode (String) - "private" in case of a private browsing mode, "default" otherwise.
-browser-main-window-title =
-    { $mode ->
-        [private] { -brand-full-name } (Privater Modus)
-       *[default] { -brand-full-name }
-    }
-
-## This is the default window title in case there is content
-## title to be displayed.
-##
-## On macOS the title doesn't include the brand name, on all other
-## platforms it does.
-##
-## For example, in private mode on Windows, the title will be:
-## "Example Title - Mozilla Firefox (Private Browsing)"
-##
-## while on macOS in default mode it will be:
-## "Example Title"
-=======
 # The last two are for use when there *is* a content title.
 # Do not use the brand name in the last two attributes, as we do on non-macOS.
 #
@@ -82,48 +35,17 @@ browser-main-window-title =
 #  $content-title (String): the title of the web content.
 browser-main-window-mac =
     .data-title-default = { -brand-full-name }
-    .data-title-private = { -brand-full-name } - (Privater Modus)
+    .data-title-private = { -brand-full-name } - (Vergessen Modus)
     .data-content-title-default = { $content-title }
-    .data-content-title-private = { $content-title } - (Privater Modus)
+    .data-content-title-private = { $content-title } - (Vergessen Modus)
 # This gets set as the initial title, and is overridden as soon as we start
 # updating the titlebar based on loaded tabs or private browsing state.
 # This should match the `data-title-default` attribute in both
 # `browser-main-window` and `browser-main-window-mac`.
 browser-main-window-title = { -brand-full-name }
 
->>>>>>> origin/upstream-releases
 ##
-<<<<<<< HEAD
-## Variables
-##   $title (String) - Content title string.
 
-browser-main-window-content-title-default =
-    { PLATFORM() ->
-        [macos] { $title }
-       *[other] { $title } - { -brand-full-name }
-    }
-browser-main-window-content-title-private =
-    { PLATFORM() ->
-        [macos] { $title } - (Vergessen Modus)
-       *[other] { $title } - { -brand-full-name } (Vergessen Modus)
-    }
-||||||| merged common ancestors
-## Variables
-##   $title (String) - Content title string.
-
-browser-main-window-content-title-default =
-    { PLATFORM() ->
-        [macos] { $title }
-       *[other] { $title } - { -brand-full-name }
-    }
-browser-main-window-content-title-private =
-    { PLATFORM() ->
-        [macos] { $title } - (Privater Modus)
-       *[other] { $title } - { -brand-full-name } (Privater Modus)
-    }
-=======
-
->>>>>>> origin/upstream-releases
 urlbar-identity-button =
     .aria-label = Seiteninformationen anzeigen
 
@@ -375,7 +297,7 @@ urlbar-placeholder =
 urlbar-remote-control-notification-anchor =
     .tooltiptext = Browser wird ferngesteuert
 urlbar-permissions-granted =
-    .tooltiptext = Sie haben dieser Website zusätzliche Berechtigungen erteilt.
+    .tooltiptext = Du hast dieser Website zusätzliche Berechtigungen erteilt.
 urlbar-switch-to-tab =
     .value = Wechseln zum Tab:
 # Used to indicate that a selected autocomplete entry is provided by an extension.

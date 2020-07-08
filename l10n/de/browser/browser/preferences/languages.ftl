@@ -8,17 +8,9 @@ webpage-languages-window =
 
 languages-close-key =
     .key = w
-<<<<<<< HEAD
 
 languages-description = Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wähle die Sprachen für die Darstellung von Webseiten in der von dir bevorzugten Reihenfolge:
 
-||||||| merged common ancestors
-languages-description = Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wählen Sie die Sprachen für die Darstellung von Webseiten in der von Ihnen bevorzugten Reihenfolge:
-=======
-
-languages-description = Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wählen Sie die Sprachen für die Darstellung von Webseiten in der von Ihnen bevorzugten Reihenfolge:
-
->>>>>>> origin/upstream-releases
 languages-customize-spoof-english =
     .label = Englischsprachige Versionen von Websites für verbesserte Privatsphäre anfordern
 
@@ -35,15 +27,8 @@ languages-customize-remove =
     .accesskey = E
 
 languages-customize-select-language =
-<<<<<<< HEAD
     .placeholder = Wähle eine Sprache zum Hinzufügen aus…
 
-||||||| merged common ancestors
-    .placeholder = Wählen Sie eine Sprache zum Hinzufügen aus…
-=======
-    .placeholder = Wählen Sie eine Sprache zum Hinzufügen aus…
-
->>>>>>> origin/upstream-releases
 languages-customize-add =
     .label = Hinzufügen
     .accesskey = z

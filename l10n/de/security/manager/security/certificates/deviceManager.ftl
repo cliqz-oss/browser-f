@@ -116,9 +116,9 @@ devinfo-label =
 devinfo-serialnum =
     .label = Seriennummer
 
-fips-nonempty-password-required = FIPS-Modus benötigt ein Master-Passwort für jedes Kryptographie-Modul. Bitte legen Sie das Passwort fest, bevor Sie versuchen, den FIPS-Modus zu aktivieren.
-unable-to-toggle-fips = Der FIPS-Modus für das Kryptographie-Modul konnte nicht geändert werden. Es wird empfohlen, dass Sie diese Anwendung benden und neu starten.
-load-pk11-module-file-picker-title = Wählen Sie einen PKCS#11-Gerätetreiber zum Laden aus
+fips-nonempty-password-required = FIPS-Modus benötigt ein Master-Passwort für jedes Kryptographie-Modul. Bitte lege das Passwort fest, bevor du versuchst, den FIPS-Modus zu aktivieren.
+unable-to-toggle-fips = Der FIPS-Modus für das Kryptographie-Modul konnte nicht geändert werden. Es wird empfohlen, dass du diese Anwendung bendest und neu startest.
+load-pk11-module-file-picker-title = Wähle einen PKCS#11-Gerätetreiber zum Laden aus
 
 # Load Module Dialog
 load-module-help-empty-module-name =

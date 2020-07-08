@@ -83,14 +83,8 @@ permissions-exceptions-tracking-protection-desc = Du hast den Schutz vor Aktivit
 permissions-exceptions-content-blocking-window =
     .title = Ausnahmen - Blockieren von Seitenelementen
     .style = { permissions-window.style }
-<<<<<<< HEAD
 permissions-exceptions-content-blocking-desc = Du hast das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
-||||||| merged common ancestors
-permissions-exceptions-content-blocking-desc = Sie haben das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
-=======
-permissions-exceptions-content-blocking-desc = Sie haben das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
 
->>>>>>> origin/upstream-releases
 permissions-exceptions-etp-window =
     .title = Ausnahmen - Verbesserter Schutz vor Aktivitätenverfolgung
     .style = { permissions-window.style }

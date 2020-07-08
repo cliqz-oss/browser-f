@@ -393,7 +393,7 @@ update-setting-write-failure-title = Fehler beim Speichern der Update-Einstellun
 # intentional so the path is easier to identify.
 update-setting-write-failure-message =
     { -brand-short-name } bemerkte einen Fehler und hat diese Änderung nicht gespeichert. Das Setzen dieser Update-Einstellung benötigt Schreibrechte für die unten genannte Datei. Du oder ein Systemadministrator können das Problem eventuell beheben, indem du der Gruppe "Benutzer" vollständige Kontrolle über die Datei gewährst.
-    
+
     Konnte folgende Datei nicht speichern: { $path }
 update-in-progress-title = Update wird durchgeführt
 update-in-progress-message = Soll { -brand-short-name } mit dem Update fortfahren?
@@ -506,34 +506,18 @@ home-prefs-search-header =
     .label = Internetsuche
 home-prefs-topsites-header =
     .label = Wichtige Seiten
-<<<<<<< HEAD
 home-prefs-topsites-description = Die von deinen am meisten besuchten Websites
+
 # Variables:
 #  $provider (String): Name of the corresponding content provider, e.g "Pocket".
-||||||| merged common ancestors
-home-prefs-topsites-description = Die von Ihnen am meisten besuchten Websites
-# Variables:
-#  $provider (String): Name of the corresponding content provider, e.g "Pocket".
-=======
-home-prefs-topsites-description = Die von Ihnen am meisten besuchten Websites
 
-## Variables:
-##  $provider (String): Name of the corresponding content provider, e.g "Pocket".
-
->>>>>>> origin/upstream-releases
 home-prefs-recommended-by-header =
     .label = Empfohlen von { $provider }
-<<<<<<< HEAD
 home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für dich personalisiert
-||||||| merged common ancestors
-home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für Sie personalisiert
-=======
-home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für Sie personalisiert
 home-prefs-recommended-by-description-update = Besondere Inhalte aus dem ganzen Internet, ausgewählt von { $provider }
 
 ##
 
->>>>>>> origin/upstream-releases
 home-prefs-recommended-by-learn-more = Wie es funktioniert
 home-prefs-recommended-by-option-sponsored-stories =
     .label = Gesponserte Inhalte
@@ -1021,19 +1005,9 @@ content-blocking-all-third-party-cookies = Alle Cookies von Drittanbietern
 content-blocking-cryptominers = Heimliche Digitalwährungsberechner (Krypto-Miner)
 content-blocking-fingerprinters = Identifizierer (Fingerprinter)
 content-blocking-warning-title = Achtung!
-<<<<<<< HEAD
 content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von deinen vertraute Seiten ist ganz einfach.
 content-blocking-learn-how = Erfahre mehr
-content-blocking-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung kann Auswirkungen auf das Funktionieren einiger Websites haben. Lade eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
-||||||| merged common ancestors
-content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
-content-blocking-learn-how = Erfahren Sie mehr
-content-blocking-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung kann Auswirkungen auf das Funktionieren einiger Websites haben. Laden Sie eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
-=======
-content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
-content-blocking-learn-how = Erfahren Sie mehr
-content-blocking-and-isolating-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung und das Isolieren von Cookies kann Auswirkungen auf das Funktionieren einiger Websites haben. Laden Sie eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
->>>>>>> origin/upstream-releases
+content-blocking-and-isolating-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung und das Isolieren von Cookies kann Auswirkungen auf das Funktionieren einiger Websites haben. Lade eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
 content-blocking-warning-learn-how = Weitere Informationen
 content-blocking-reload-description = Um die Änderungen anzuwenden, müssen alle Tabs neu geladen werden.
 content-blocking-reload-tabs-button =
@@ -1270,6 +1244,6 @@ consentric-desc = re:consent zeigt auf übersichtliche Weise welche personenbezo
 
 experiments-desc = Hier findest du Einstellungen zu den neuesten Browser-Features, die wir gerade testen. Diese Features können in Zukunft fester Bestandteil des Cliqz Browsers werden – abhängig vom Ergebnis dieser Testphase.
 
-dat-enable = 
+dat-enable =
     .label = Dat-Protokoll aktivieren
     .accessKey = D

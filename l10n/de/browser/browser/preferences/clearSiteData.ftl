@@ -5,15 +5,9 @@
 clear-site-data-window =
     .title = Daten löschen
     .style = width: 45em
-<<<<<<< HEAD
+
 clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Website-Daten meldet dich eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Deine Zugangsdaten bleiben beim Leeren des Caches erhalten.
-||||||| merged common ancestors
-clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Website-Daten meldet Sie eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Ihre Zugangsdaten bleiben beim Leeren des Caches erhalten.
-=======
 
-clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Website-Daten meldet Sie eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Ihre Zugangsdaten bleiben beim Leeren des Caches erhalten.
-
->>>>>>> origin/upstream-releases
 clear-site-data-close-key =
     .key = w
 
@@ -34,15 +28,9 @@ clear-site-data-cookies-with-data =
 clear-site-data-cookies-empty =
     .label = Cookies und Website-Daten
     .accesskey = o
-<<<<<<< HEAD
+
 clear-site-data-cookies-info = Du wirst eventuell von Websites abgemeldet und musst dich erneut mit den Zugangsdaten anmelden.
-||||||| merged common ancestors
-clear-site-data-cookies-info = Sie werden eventuell von Websites abgemeldet und müssen sich erneut mit den Zugangsdaten anmelden.
-=======
 
-clear-site-data-cookies-info = Sie werden eventuell von Websites abgemeldet und müssen sich erneut mit den Zugangsdaten anmelden.
-
->>>>>>> origin/upstream-releases
 # The parameters in parentheses in this string describe disk usage
 # in the format ($amount $unit), e.g. "Cached Web Content (24 KB)"
 # Variables:
@@ -60,15 +48,9 @@ clear-site-data-cache-with-data =
 clear-site-data-cache-empty =
     .label = Lokal zwischengespeicherte Webinhalte/Cache
     .accesskey = z
-<<<<<<< HEAD
-clear-site-data-cache-info = Webseits müssen Grafiken und Daten neu laden.
-||||||| merged common ancestors
-clear-site-data-cache-info = Webseiten müssen Grafiken und Daten neu laden.
-=======
 
 clear-site-data-cache-info = Webseiten müssen Grafiken und Daten neu laden.
 
->>>>>>> origin/upstream-releases
 clear-site-data-cancel =
     .label = Abbrechen
     .accesskey = b

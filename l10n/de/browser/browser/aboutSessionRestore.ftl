@@ -48,7 +48,6 @@ welcome-back-restore-all-label = Alle Fenster und Tabs wiederherstellen
 welcome-back-restore-some-label = Wiederherzustellende Fenster und Tabs auswählen
 
 welcome-back-page-info-link = Ihre Add-ons und Anpassungen wurden entfernt und Ihre Browser-Einstellungen auf die Standardvorgaben zurückgesetzt. Falls das Problem dadurch nicht behoben wurde, <a data-l10n-name="link-more">so gibt es weitere Möglichkeiten, was Sie tun können</a>.
-<<<<<<< HEAD
 
 welcome-back-page-info-2 = Deine Anpassungen wurden entfernt und deine Browser-Einstellungen wurden auf den Standard zurückgesetzt. Falls das dein Problem nicht behoben hat, kontaktiere bitte <a data-l10n-name="welcome-back-cliqz-contact">unser Support Team</a>.
 imported-tab-title = Erfolg!
@@ -56,7 +55,3 @@ imported-tab-page-info = { -brand-short-name } ist startklar.
 imported-tab-page-info-2 = Deine Daten wurden importiert. Nun kannst du wählen, mit welchen Fenstern oder Tabs du starten möchtest. Wenn du dabei Probleme bemerkst, kontaktiere bitte <a data-l10n-name="imported-tab-cliqz-contact">unser Support Team</a>.
 imported-tab-label-open-all = Alle Fenster und Tabs der letzten importierten Sitzung öffnen
 imported-tab-label-open-some = Auswählen, welche Fenster oder Tabs du öffnen möchtest
-||||||| merged common ancestors
-=======
-
->>>>>>> origin/upstream-releases

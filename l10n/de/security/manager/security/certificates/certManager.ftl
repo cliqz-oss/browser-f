@@ -126,7 +126,7 @@ exception-mgr-permanent =
     .label = Diese Ausnahme dauerhaft speichern
     .accesskey = n
 pk11-bad-password = Das eingegebene Passwort war falsch.
-pkcs12-decode-err = Die Datei konnte nicht dekodiert werden. Entweder ist sie nicht im PKCS#12-Format, wurde fehlerhaft übertragen, oder das Passwort, das Sie eingegeben haben, war falsch.
+pkcs12-decode-err = Die Datei konnte nicht dekodiert werden. Entweder ist sie nicht im PKCS#12-Format, wurde fehlerhaft übertragen, oder das Passwort, das du eingegeben hast, war falsch.
 pkcs12-unknown-err-restore = Das Wiederherstellen der PKCS#12-Datei ist aus unbekannten Gründen fehlgeschlagen.
 pkcs12-unknown-err-backup = Das Erstellen der PKCS#12-Backupdatei ist aus unbekannten Gründen fehlgeschlagen.
 pkcs12-unknown-err = Die PKCS#12-Operation ist aus unbekannten Gründen fehlgeschlagen.
@@ -142,8 +142,8 @@ choose-p12-restore-file-dialog = Zu importierende Zertifikat-Datei
 ## Import certificate(s) file dialog
 
 file-browse-certificate-spec = Zertifikat-Dateien
-import-ca-certs-prompt = Wählen Sie die Datei mit dem oder den zu importierenden CA-Zertifikat(en)
-import-email-cert-prompt = Wählen Sie die Datei mit dem zu importierenden E-Mail-Zertifikat
+import-ca-certs-prompt = Wähle die Datei mit dem oder den zu importierenden CA-Zertifikat(en)
+import-email-cert-prompt = Wähle die Datei mit dem zu importierenden E-Mail-Zertifikat
 
 ## For editing certificates trust
 
@@ -154,21 +154,23 @@ edit-trust-ca = Das Zertifikat "{ $certName }" repräsentiert eine Zertifizierun
 ## For Deleting Certificates
 
 delete-user-cert-title =
-    .title = Ihre Zertifikate löschen
+    .title = Deine Zertifikate löschen
 delete-user-cert-confirm = Sollen diese Zertifikate wirklich gelöscht werden?
-delete-user-cert-impact = Wenn Sie eines Ihrer eigenen Zertifikate löschen, können Sie es nicht mehr verwenden, um sich zu identifizieren.
+delete-user-cert-impact = Wenn du eines deiner eigenen Zertifikate löschst, kannst du es nicht mehr verwenden, um dich zu identifizieren.
+
 delete-ssl-cert-title =
     .title = Server-Zertifikat-Ausnahmeregeln löschen
 delete-ssl-cert-confirm = Sollen diese Server-Ausnahmeregeln wirklich gelöscht werden?
-delete-ssl-cert-impact = Wenn Sie eine Server-Ausnahmeregel löschen, werden die normalen Sicherheitsüberprüfungen für diesen Server wiederhergestellt und er muss ein gültiges Zertifikat vorweisen.
+delete-ssl-cert-impact = Wenn du eine Server-Ausnahmeregel löschst, werden die normalen Sicherheitsüberprüfungen für diesen Server wiederhergestellt und er muss ein gültiges Zertifikat vorweisen.
+
 delete-ca-cert-title =
     .title = CA-Zertifikate löschen oder Vertrauen entziehen
-delete-ca-cert-confirm = Sie haben um ein Löschen dieser CA-Zertifikate angefragt. Für eingebaute Zertifikate wird alles Vertrauen entzogen, was den gleichen Effekt hat. Sollen diese CA-Zertifikate wirklich gelöscht oder ihr Vertrauen entzogen werden?
-delete-ca-cert-impact = Wenn Sie ein Zertifizierungsstellen(CA)-Zertifikat löschen oder sein Vertrauen entziehen, vertraut die Anwendung keinen Zertifikaten mehr, die von dieser CA ausgestellt wurden.
+delete-ca-cert-confirm = Du hast um ein Löschen dieser CA-Zertifikate angefragt. Für eingebaute Zertifikate wird alles Vertrauen entzogen, was den gleichen Effekt hat. Sollen diese CA-Zertifikate wirklich gelöscht oder ihr Vertrauen entzogen werden?
+delete-ca-cert-impact = Wenn du ein Zertifizierungsstellen(CA)-Zertifikat löschst oder sein Vertrauen entziehst, vertraut die Anwendung keinen Zertifikaten mehr, die von dieser CA ausgestellt wurden.
 delete-email-cert-title =
     .title = E-Mail-Zertifikate löschen
 delete-email-cert-confirm = Sollen die E-Mail-Zertifikate dieser Personen wirklich gelöscht werden?
-delete-email-cert-impact = Wenn Sie das E-Mail-Zertifikat einer Person löschen, können Sie keine verschlüsselten E-Mails mehr an diese Person senden.
+delete-email-cert-impact = Wenn du das E-Mail-Zertifikat einer Person löschst, kannst du keine verschlüsselten E-Mails mehr an diese Person senden.
 # Used for semi-uniquely representing a cert.
 #
 # Variables:
@@ -211,7 +213,7 @@ cert-not-verified-unknown = Dieses Zertifikat konnte aus unbekannten Gründen ni
 
 ## Add Security Exception dialog
 
-add-exception-branded-warning = Hiermit übergehen Sie die Identifikation dieser Website durch { -brand-short-name }.
+add-exception-branded-warning = Hiermit übergehe die Identifikation dieser Website durch { -brand-short-name }.
 add-exception-invalid-header = Diese Website versucht sich mit ungültigen Informationen zu identifizieren.
 add-exception-domain-mismatch-short = Falsche Website
 add-exception-domain-mismatch-long = Das Zertifikat gehört zu einer anderen Website, was heißen könnte, dass jemand versucht, sich als diese Website auszugeben.

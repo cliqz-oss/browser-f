@@ -1,14 +1,8 @@
-<<<<<<< HEAD
-<!ENTITY blocklist.title             "Zusatz-Funktionen könnten Probleme verursachen">
-||||||| merged common ancestors
-<!ENTITY blocklist.title             "Add-ons könnten Probleme verursachen">
-=======
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY blocklist.title             "Add-ons könnten Probleme verursachen">
->>>>>>> origin/upstream-releases
+<!ENTITY blocklist.title             "Zusatz-Funktionen könnten Probleme verursachen">
 <!ENTITY blocklist.style             "width: 45em; height: 30em">
 <!ENTITY blocklist.summary           "Bei folgenden Zusatz-Funktionen wurden potenzielle Sicherheits- oder Stabilitätsprobleme identifiziert:">
 <!ENTITY blocklist.softblocked       "Zu deiner Sicherheit wird dringend empfohlen, dass du diese Zusatz-Funktionen deaktivierst und &brandShortName;  neu startest.">

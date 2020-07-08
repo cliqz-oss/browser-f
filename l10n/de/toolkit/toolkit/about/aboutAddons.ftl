@@ -24,14 +24,8 @@ list-empty-available-updates =
     .value = Keine Updates gefunden
 
 list-empty-recent-updates =
-<<<<<<< HEAD
     .value = Du hast in letzter Zeit keine Add-ons aktualisiert
-||||||| merged common ancestors
-    .value = Sie haben in letzter Zeit keine Add-ons aktualisiert
-=======
-    .value = Sie haben in letzter Zeit keine Add-ons aktualisiert
 
->>>>>>> origin/upstream-releases
 list-empty-find-updates =
     .label = Nach Updates suchen
 
@@ -41,14 +35,11 @@ list-empty-button =
 install-addon-from-file =
     .label = Add-on aus Datei installieren…
     .accesskey = A
-<<<<<<< HEAD
+
 recommended-addon =
     .value = Empfohlene Erweiterungen
 install-addon-disclaimer = Vorsicht beim Installieren von Add-ons. <label data-l10n-name="addon-risks">Erfahre mehr über die Risiken.</label>
-||||||| merged common ancestors
-=======
 
->>>>>>> origin/upstream-releases
 help-button = Hilfe für Add-ons
 
 sidebar-help-button-title =
@@ -133,15 +124,9 @@ detail-version =
 
 detail-last-updated =
     .label = Zuletzt aktualisiert
-<<<<<<< HEAD
+
 detail-contributions-description = Der Entwickler dieses Add-ons bittet dich, dass du die Entwicklung unterstützt, indem du einen kleinen Betrag spendest.
-||||||| merged common ancestors
-detail-contributions-description = Der Entwickler dieses Add-ons bittet Sie, dass Sie die Entwicklung unterstützen, indem Sie einen kleinen Betrag spenden.
-=======
 
-detail-contributions-description = Der Entwickler dieses Add-ons bittet Sie, dass Sie die Entwicklung unterstützen, indem Sie einen kleinen Betrag spenden.
-
->>>>>>> origin/upstream-releases
 detail-contributions-button = Unterstützen
     .title = Die Entwicklung dieses Add-ons unterstützen
     .accesskey = U
@@ -162,74 +147,31 @@ detail-update-manual =
     .tooltiptext = Updates nicht automatisch installieren
 
 # Used as a description for the option to allow or block an add-on in private windows.
-<<<<<<< HEAD
 detail-private-browsing-label = In Vergessen-Fenstern ausführen
+
 detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf deine Online-Aktivitäten im Vergessen-Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-||||||| merged common ancestors
-detail-private-browsing-label = In privaten Fenstern ausführen
-detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-=======
-detail-private-browsing-label = In privaten Fenstern ausführen
 
-detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
->>>>>>> origin/upstream-releases
 # Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
-<<<<<<< HEAD
 # cannot be overriden by the user.
 detail-private-disallowed-label = In Vergessen-Fenstern nicht erlaubt
 detail-private-disallowed-description = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+
 detail-private-disallowed-description2 = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
-||||||| merged common ancestors
-# cannot be overridden by the user.
-detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-detail-private-disallowed-description2 = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
-=======
-# cannot be overridden by the user.
-detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 
-detail-private-disallowed-description2 = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
-
->>>>>>> origin/upstream-releases
 # Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
-<<<<<<< HEAD
 detail-private-required-label = Benötigt Zugriff auf Vergessen-Fenster
 detail-private-required-description = Die Erweiterung hat Zugriff auf deine Online-Aktivitäten in Vergessen-Fenstern. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+
 detail-private-required-description2 = Die Erweiterung hat Zugriff auf deine Online-Aktivitäten in Vergessen-Fenstern. <a data-l10n-name="learn-more">Weitere Informationen</a>
-||||||| merged common ancestors
-detail-private-required-label = Benötigt Zugriff auf private Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-detail-private-required-description2 = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
-=======
-detail-private-required-label = Benötigt Zugriff auf private Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 
-detail-private-required-description2 = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
-
->>>>>>> origin/upstream-releases
 detail-private-browsing-on =
     .label = Erlauben
-<<<<<<< HEAD
     .tooltiptext = Aktivieren in Vergessen-Fenstern
-||||||| merged common ancestors
-    .tooltiptext = Aktivieren im privaten Modus
-=======
-    .tooltiptext = Aktivieren im privaten Modus
 
->>>>>>> origin/upstream-releases
 detail-private-browsing-off =
     .label = Nicht erlauben
-<<<<<<< HEAD
     .tooltiptext = Deaktivieren in Vergessen-Fenstern
 
-||||||| merged common ancestors
-    .tooltiptext = Deaktivieren im privaten Modus
-=======
-    .tooltiptext = Deaktivieren im privaten Modus
-
->>>>>>> origin/upstream-releases
 detail-home =
     .label = Homepage
 
@@ -272,19 +214,11 @@ addon-restart-now =
 
 disabled-unsigned-heading =
     .value = Einige Add-ons wurden deaktiviert
-<<<<<<< HEAD
+
 disabled-unsigned-description = Die folgenden Add-ons wurden nicht für die Verwendung in { -brand-short-name } verifiziert. Du kannst <label data-l10n-name="find-addons">nach Alternativen suchen</label> oder die Entwickler bitten, sie verifizieren zu lassen.
+
 disabled-unsigned-learn-more = Erfahre mehr über unsere Bestrebungen, dich beim Surfen im Internet zu schützen.
-||||||| merged common ancestors
-disabled-unsigned-description = Die folgenden Add-ons wurden nicht für die Verwendung in { -brand-short-name } verifiziert. Sie können <label data-l10n-name="find-addons">nach Alternativen suchen</label> oder die Entwickler bitten, sie verifizieren zu lassen.
-disabled-unsigned-learn-more = Erfahren Sie mehr über unsere Bestrebungen, Sie beim Surfen im Internet zu schützen.
-=======
 
-disabled-unsigned-description = Die folgenden Add-ons wurden nicht für die Verwendung in { -brand-short-name } verifiziert. Sie können <label data-l10n-name="find-addons">nach Alternativen suchen</label> oder die Entwickler bitten, sie verifizieren zu lassen.
-
-disabled-unsigned-learn-more = Erfahren Sie mehr über unsere Bestrebungen, Sie beim Surfen im Internet zu schützen.
-
->>>>>>> origin/upstream-releases
 disabled-unsigned-devinfo = An der Verifizierung ihrer Add-ons interessierte Entwickler können mehr dazu in unserer <label data-l10n-name="learn-more">Anleitung</label> erfahren.
 
 plugin-deprecation-description = Fehlt etwas? Einige Plugins werden nicht mehr von { -brand-short-name } unterstützt. <label data-l10n-name="learn-more">Weitere Informationen</label>
@@ -663,14 +597,10 @@ addon-permissions-empty = Diese Erweiterung benötigt keine Berechtigungen.
 
 recommended-extensions-heading = Empfohlene Erweiterungen
 recommended-themes-heading = Empfohlene Themes
-<<<<<<< HEAD
+
 install-recommended-addon = Installieren
 recommended-addon-learn-more = Weitere Informationen…
 
-||||||| merged common ancestors
-=======
-
->>>>>>> origin/upstream-releases
 # A recommendation for the Firefox Color theme shown at the bottom of the theme
 # list view. The "Firefox Color" name itself should not be translated.
 recommended-theme-1 = Fühlst du dich inspiriert? <a data-l10n-name="link">Erstelle eigene Themes mit Firefox Color.</a>

@@ -7,15 +7,9 @@
 
 site-data-settings-window =
     .title = Cookies und Website-Daten verwalten
-<<<<<<< HEAD
+
 site-data-settings-description = Die folgenden Websites speichern Cookies und Website-Daten auf dem Computer. { -brand-short-name } behält Daten von Websites mit dauerhaftem Speicher, bis du diese löschst, und löscht Daten von Websites mit nicht-dauerhaftem Speicher, wenn Speicherplatz benötigt wird.
-||||||| merged common ancestors
-site-data-settings-description = Die folgenden Websites speichern Cookies und Website-Daten auf dem Computer. { -brand-short-name } behält Daten von Websites mit dauerhaftem Speicher, bis Sie diese löschen, und löscht Daten von Websites mit nicht-dauerhaftem Speicher, wenn Speicherplatz benötigt wird.
-=======
 
-site-data-settings-description = Die folgenden Websites speichern Cookies und Website-Daten auf dem Computer. { -brand-short-name } behält Daten von Websites mit dauerhaftem Speicher, bis Sie diese löschen, und löscht Daten von Websites mit nicht-dauerhaftem Speicher, wenn Speicherplatz benötigt wird.
-
->>>>>>> origin/upstream-releases
 site-data-search-textbox =
     .placeholder = Websites suchen
     .accesskey = s
@@ -67,13 +61,7 @@ site-data-removing-dialog =
     .buttonlabelaccept = Entfernen
 
 site-data-removing-header = Cookies und Website-Daten löschen
-<<<<<<< HEAD
+
 site-data-removing-desc = Durch das Löschen von Cookies und Website-Daten wirst du eventuell von Websites abgemeldet. Sollen diese Änderungen wirklich vorgenommen werden?
-||||||| merged common ancestors
-site-data-removing-desc = Durch das Löschen von Cookies und Website-Daten werden Sie eventuell von Websites abgemeldet. Sollen diese Änderungen wirklich vorgenommen werden?
-=======
 
-site-data-removing-desc = Durch das Löschen von Cookies und Website-Daten werden Sie eventuell von Websites abgemeldet. Sollen diese Änderungen wirklich vorgenommen werden?
-
->>>>>>> origin/upstream-releases
 site-data-removing-table = Cookies und Website-Daten der folgenden Websites werden verwendet

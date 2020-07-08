@@ -65,7 +65,7 @@ protections-panel-protectionsdashboard-label = Schutzmaßnahmen-Übersicht
 ## the user is experiencing issues with any of a variety of functionality.
 
 # The header of the list
-protections-panel-site-not-working-view-header = Deaktivieren Sie die Schutzmaßnahmen, falls es Probleme gibt mit:
+protections-panel-site-not-working-view-header = Deaktiviere die Schutzmaßnahmen, falls es Probleme gibt mit:
 # The list items, shown in a <ul>
 protections-panel-site-not-working-view-issue-list-login-fields = Anmeldefeldern
 protections-panel-site-not-working-view-issue-list-forms = Formularen
@@ -76,23 +76,23 @@ protections-panel-site-not-working-view-send-report = Einen Bericht senden
 
 ##
 
-protections-panel-cross-site-tracking-cookies = Diese Cookies werden über viele Websites hinweg verwendet und sammeln Informationen über Ihre Online-Aktivitäten. Sie werden durch Drittanbieter wie Werbe- oder Analyseunternehmen gesetzt.
-protections-panel-cryptominers = Heimliche Digitalwährungsberechner (Krypto-Miner) verwenden die Rechenleistung Ihres Computers, um digitales Geld zu berechnen. Die dabei verwendeten Skripte verursachen ein schnelles Absinken des Batterieladestands, verlangsamen den Computer und können die Energierechnung in die Höhe treiben.
-protections-panel-fingerprinters = Identifizierer (Fingerprinter) sammeln Eigenschaften Ihres Browsers und Computers und erstellen daraus ein Profil. Mit diesem digitalen Fingerabdruck können diese Sie über Websites hinweg verfolgen.
+protections-panel-cross-site-tracking-cookies = Diese Cookies werden über viele Websites hinweg verwendet und sammeln Informationen über deine Online-Aktivitäten. Du wirst durch Drittanbieter wie Werbe- oder Analyseunternehmen gesetzt.
+protections-panel-cryptominers = Heimliche Digitalwährungsberechner (Krypto-Miner) verwenden die Rechenleistung deines Computers, um digitales Geld zu berechnen. Die dabei verwendeten Skripte verursachen ein schnelles Absinken des Batterieladestands, verlangsamen den Computer und können die Energierechnung in die Höhe treiben.
+protections-panel-fingerprinters = Identifizierer (Fingerprinter) sammeln Eigenschaften deines Browsers und Computers und erstellen daraus ein Profil. Mit diesem digitalen Fingerabdruck können diese dich über Websites hinweg verfolgen.
 protections-panel-tracking-content = Websites können Werbung, Videos und andere Inhalte mit Skripten zur Aktivitätenverfolgung von anderen Websites laden. Das Blockieren von Inhalten zur Aktivitätenverfolgung ermöglicht es unter Umständen, dass Websites schneller laden, aber einige Schaltflächen, Formulare und Anmeldefelder funktionieren dann eventuell nicht richtig.
-protections-panel-social-media-trackers = Auf anderen Websites eingebundene Elemente sozialer Netzwerke (z.B. zum Teilen von Inhalten) können Skripte enthalten, die verfolgen, was Sie online machen, angezeigt bekommen und sich anschauen. Dies ermöglicht den Unternehmen hinter den sozialen Netzwerken, mehr über Sie zu erfahren als allein durch die Inhalte, die Sie mit Ihrem Profil im sozialen Netzwerk teilen.
+protections-panel-social-media-trackers = Auf anderen Websites eingebundene Elemente sozialer Netzwerke (z.B. zum Teilen von Inhalten) können Skripte enthalten, die verfolgen, was du online machst, angezeigt bekommen und sich anschauen. Dies ermöglicht den Unternehmen hinter den sozialen Netzwerken, mehr über dich zu erfahren als allein durch die Inhalte, die du mit deinem Profil im sozialen Netzwerk teilst.
 protections-panel-content-blocking-manage-settings =
     .label = Schutzmaßnahmen-Einstellungen verwalten
     .accesskey = E
 protections-panel-content-blocking-breakage-report-view =
     .title = Problem mit Website melden
-protections-panel-content-blocking-breakage-report-view-description = Das Blockieren bestimmter Skripte zur Aktivitätenverfolgung kann bei einigen Websites zu Problemen führen. Wenn Sie Probleme melden, helfen Sie { -brand-short-name } für alle besser zu machen. Beim Senden des Berichts werden eine Adresse sowie Informationen über Ihre Browser-Einstellungen an Mozilla gesendet. <label data-l10n-name="learn-more">Weitere Informationen</label>
+protections-panel-content-blocking-breakage-report-view-description = Das Blockieren bestimmter Skripte zur Aktivitätenverfolgung kann bei einigen Websites zu Problemen führen. Wenn du Probleme meldest, hilfst du { -brand-short-name }; für alle besser zu machen. Beim Senden des Berichts werden eine Adresse sowie Informationen über deine Browser-Einstellungen an Mozilla gesendet. <label data-l10n-name="learn-more">Weitere Informationen</label>
 protections-panel-content-blocking-breakage-report-view-collection-url = Adresse
 protections-panel-content-blocking-breakage-report-view-collection-url-label =
     .aria-label = Adresse
-protections-panel-content-blocking-breakage-report-view-collection-comments = Freiwillig: Beschreiben Sie das Problem.
+protections-panel-content-blocking-breakage-report-view-collection-comments = Freiwillig: Beschreibe das Problem.
 protections-panel-content-blocking-breakage-report-view-collection-comments-label =
-    .aria-label = Freiwillig: Beschreiben Sie das Problem.
+    .aria-label = Freiwillig: Beschreibe das Problem.
 protections-panel-content-blocking-breakage-report-view-cancel =
     .label = Abbrechen
 protections-panel-content-blocking-breakage-report-view-send-report =
