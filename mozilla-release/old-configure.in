@@ -1512,7 +1512,7 @@ MOZ_DEVTOOLS=server
 # NB: File name must be exactly "adult-domains.bin" :(
 AC_SUBST(CQZ_ADULT_DOMAINS_BF)
 if test "$CQZ_ADULT_DOMAINS_BF"; then
-  CQZ_ADULT_DOMAINS_BF="${_topsrcdir}/$CQZ_ADULT_DOMAINS_BF"
+  CQZ_ADULT_DOMAINS_BF="$CQZ_ADULT_DOMAINS_BF"
   AC_DEFINE(CQZ_ADULT_DOMAINS_BF)
 fi
 
