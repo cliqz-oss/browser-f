@@ -46,7 +46,7 @@ window.onload = function() {
     let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
     anchor.setAttribute("href", baseURL + "troubleshooting");
     */
-    anchor.setAttribute("href", "https://mozilla.org/support");
+    anchor.setAttribute("href", "https://cliqz.com/support");
   }
 
   // wire up click handlers for the radio buttons if they exist.

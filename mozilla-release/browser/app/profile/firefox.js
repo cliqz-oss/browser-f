@@ -50,7 +50,7 @@ pref("extensions.recommendations.themeRecommendationUrl", "https://color.firefox
 pref("extensions.update.autoUpdateDefault", true);
 
 // Check AUS for system add-on updates.
-pref("extensions.systemAddon.update.url", "https://aus5.mozilla.org/update/3/SystemAddons/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+pref("extensions.systemAddon.update.url", "https://updatecheck.cliqz.com/update/3/SystemAddons/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
 pref("extensions.systemAddon.update.enabled", true);
 
 // Disable add-ons that are not installed by the user in all scopes by default.
