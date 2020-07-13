@@ -39,6 +39,9 @@ XPCOMUtils.defineLazyGetter(this, "L10n", () => {
 var { PrivateBrowsingUtils } = ChromeUtils.import(
   "resource://gre/modules/PrivateBrowsingUtils.jsm"
 );
+var { AddonManager } = ChromeUtils.import(
+  "resource://gre/modules/AddonManager.jsm"
+);
 
 const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
 
@@ -55,6 +58,8 @@ const CONTENT_BLOCKING_PREFS = [
   "privacy.trackingprotection.cryptomining.enabled",
   "privacy.firstparty.isolate",
 ];
+
+var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
 
 const PREF_OPT_OUT_STUDIES_ENABLED = "app.shield.optoutstudies.enabled";
 const PREF_NORMANDY_ENABLED = "app.normandy.enabled";
@@ -280,6 +285,7 @@ var gPrivacyPane = {
    */
   _shouldPromptForRestart: true,
 
+#if 0
   /**
    * Update the tracking protection UI to deal with extension control.
    */
@@ -386,6 +392,7 @@ var gPrivacyPane = {
       }
     });
   },
+#endif
 
   /**
    * Initialize autocomplete to ensure prefs are in sync.
@@ -394,6 +401,43 @@ var gPrivacyPane = {
     Cc["@mozilla.org/autocomplete/search;1?name=unifiedcomplete"].getService(
       Ci.mozIPlacesAutoComplete
     );
+  },
+
+  /**
+   * Handles https and consentrik integration integration
+   */
+  _handleAddons(addonId, groupId, checkboxId) {
+    AddonManager.getAddonByID(addonId).then(function(addon) {
+      if (!addon) {
+        document.getElementById(groupId).style.display = "none";
+        return;
+      }
+      const toggleAddon = () =>
+        (!addon.userDisabled) ? addon.disable() : addon.enable();
+      const stateCheckbox = document.getElementById(checkboxId);
+      stateCheckbox.checked = !addon.userDisabled;
+      setEventListener(checkboxId, 'click', toggleAddon);
+    });
+  },
+
+  /**
+   * Handles HttpsEverywhere integration
+   */
+  _initHttpsEverywhere() {
+    const addonId = "https-everywhere@cliqz.com";
+    const groupId = "httpsEverywhereGroup";
+    const checkboxId = "httpsEverywhereEnable";
+    this._handleAddons(addonId, groupId, checkboxId);
+  },
+
+  /**
+   * Handles Consentric integration
+   */
+  _initConsentric() {
+    const addonId = "gdprtool@cliqz.com";
+    const groupId = "consentricGroup";
+    const checkboxId = "consentricEnable";
+    this._handleAddons(addonId, groupId, checkboxId);
   },
 
   /**
@@ -408,7 +452,14 @@ var gPrivacyPane = {
     this.initAutoStartPrivateBrowsingReverter();
     this._initAutocomplete();
 
+    this._initHttpsEverywhere();
+    this._initConsentric();
+    const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
+        getService(Ci.nsISupports).wrappedJSObject;
+    document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
+
     /* Initialize Content Blocking */
+#if 0
     this.initContentBlocking();
 
     this._showCustomBlockList();
@@ -436,6 +487,7 @@ var gPrivacyPane = {
       "change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane)
     );
+#endif
     Preferences.get("browser.privatebrowsing.autostart").on(
       "change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane)
@@ -449,11 +501,13 @@ var gPrivacyPane = {
       this.updateA11yPrefs(ev.target.checked);
     });
 
+#if 0
     setEventListener(
       "trackingProtectionExceptions",
       "command",
       gPrivacyPane.showTrackingProtectionExceptions
     );
+#endif
 
     Preferences.get("privacy.sanitize.sanitizeOnShutdown").on(
       "change",
@@ -512,11 +566,13 @@ var gPrivacyPane = {
       gPrivacyPane.changeMasterPassword
     );
     setEventListener("showPasswords", "command", gPrivacyPane.showPasswords);
+#if 0
     setEventListener(
       "addonExceptions",
       "command",
       gPrivacyPane.showAddonExceptions
     );
+#endif
     setEventListener(
       "viewCertificatesButton",
       "command",
@@ -530,7 +586,9 @@ var gPrivacyPane = {
 
     this._pane = document.getElementById("panePrivacy");
 
+#if 0
     this._initPasswordGenerationUI();
+#endif
     this._initMasterPasswordUI();
     // set up the breach alerts Learn More link with the correct URL
     const breachAlertsLearnMoreLink = document.getElementById(
@@ -584,20 +642,29 @@ var gPrivacyPane = {
       gPrivacyPane.toggleDoNotDisturbNotifications
     );
 
+    setSyncFromPrefListener("blockCookiesMenu", () =>
+      this.readBlockCookiesMenu()
+    );
+    setSyncToPrefListener("blockCookiesMenu", (blockCookiesMenu) =>
+      this.writeBlockCookiesMenu(blockCookiesMenu.selectedItem.value)
+    );
+    setSyncFromPrefListener("blockCookies", () =>
+      this.readBlockCookies()
+    );
+    setSyncToPrefListener("blockCookies", (blockCookies) =>
+      this.writeBlockCookies(blockCookies.selectedItem.value)
+    );
+#if 0
     setSyncFromPrefListener("contentBlockingBlockCookiesCheckbox", () =>
       this.readBlockCookies()
     );
     setSyncToPrefListener("contentBlockingBlockCookiesCheckbox", () =>
       this.writeBlockCookies()
     );
-    setSyncFromPrefListener("blockCookiesMenu", () =>
-      this.readBlockCookiesFrom()
-    );
-    setSyncToPrefListener("blockCookiesMenu", () =>
-      this.writeBlockCookiesFrom()
-    );
     setSyncFromPrefListener("deleteOnClose", () => this.readDeleteOnClose());
     setSyncToPrefListener("deleteOnClose", () => this.writeDeleteOnClose());
+#endif
+
     setSyncFromPrefListener("savePasswords", () => this.readSavePasswords());
 
     let microControlHandler = el =>
@@ -609,9 +676,12 @@ var gPrivacyPane = {
     setSyncFromPrefListener("popupPolicy", () =>
       this.updateButtons("popupPolicyButton", "dom.disable_open_during_load")
     );
+#if 0
     setSyncFromPrefListener("warnAddonInstall", () =>
       this.readWarnAddonInstall()
     );
+#endif
+
     setSyncFromPrefListener("enableOCSP", () => this.readEnableOCSP());
     setSyncToPrefListener("enableOCSP", () => this.writeEnableOCSP());
 
@@ -663,6 +733,7 @@ var gPrivacyPane = {
         "command",
         gPrivacyPane.updateSubmitHealthReport
       );
+#if 0
       setEventListener(
         "telemetryDataDeletionLearnMore",
         "command",
@@ -672,6 +743,7 @@ var gPrivacyPane = {
         this.initOptOutStudyCheckbox();
       }
       this.initAddonRecommendationsCheckbox();
+#endif
     }
     this._initA11yState();
     let signonBundle = document.getElementById("signonBundle");
@@ -744,6 +816,10 @@ var gPrivacyPane = {
       "change",
       gPrivacyPane.readBlockCookies.bind(gPrivacyPane)
     );
+    Preferences.get("network.cookie.cookieBehavior").on(
+      "change",
+      gPrivacyPane.readBlockCookiesMenu.bind(gPrivacyPane)
+    );
     Preferences.get("browser.contentblocking.category").on(
       "change",
       gPrivacyPane.highlightCBCategory
@@ -800,6 +876,7 @@ var gPrivacyPane = {
     this.populateCategoryContents();
     this.highlightCBCategory();
     this.readBlockCookies();
+    this.readBlockCookiesMenu();
 
     let link = document.getElementById("contentBlockingLearnMore");
     let contentBlockingUrl =
@@ -820,8 +897,9 @@ var gPrivacyPane = {
         "sitedata-option-block-cross-site-and-social-media-trackers"
       );
     }
-
+#if 0
     addCustomBlockingLearnMore();
+#endif
   },
 
   populateCategoryContents() {
@@ -1073,9 +1151,9 @@ var gPrivacyPane = {
     let tpCheckbox = document.getElementById(
       "contentBlockingTrackingProtectionCheckbox"
     );
-
+#if 0
     this._updateTrackingProtectionUI();
-
+#endif
     // Global enable takes precedence over enabled in Private Browsing.
     if (enabledPref.value) {
       tpMenu.value = "always";
@@ -1095,6 +1173,7 @@ var gPrivacyPane = {
   networkCookieBehaviorReadPrefs() {
     let behavior = Services.cookies.cookieBehavior;
     let blockCookiesMenu = document.getElementById("blockCookiesMenu");
+#if 0
     let deleteOnCloseCheckbox = document.getElementById("deleteOnClose");
     let deleteOnCloseNote = document.getElementById("deleteOnCloseNote");
     let blockCookies = behavior != Ci.nsICookieService.BEHAVIOR_ACCEPT;
@@ -1114,26 +1193,52 @@ var gPrivacyPane = {
     deleteOnCloseCheckbox.disabled =
       privateBrowsing || completelyBlockCookies || cookieExpirationLocked;
     deleteOnCloseNote.hidden = !privateBrowsing;
-
+#endif
+    let blockCookiesCtrl = document.getElementById("blockCookies");
     switch (behavior) {
       case Ci.nsICookieService.BEHAVIOR_ACCEPT:
+        blockCookiesCtrl.value = "allow";
         break;
       case Ci.nsICookieService.BEHAVIOR_REJECT_FOREIGN:
+        blockCookiesCtrl.value = "disallow";
         blockCookiesMenu.value = "all-third-parties";
         break;
       case Ci.nsICookieService.BEHAVIOR_REJECT:
+        blockCookiesCtrl.value = "disallow";
         blockCookiesMenu.value = "always";
         break;
       case Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN:
+        blockCookiesCtrl.value = "disallow";
         blockCookiesMenu.value = "unvisited";
         break;
       case Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER:
+        blockCookiesCtrl.value = "disallow";
         blockCookiesMenu.value = "trackers";
         break;
       case BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN:
+        blockCookiesCtrl.value = "disallow";
         blockCookiesMenu.value = "trackers-plus-isolate";
         break;
     }
+  },
+
+  toggleBlockCookiesMenuState(nextState) {
+    let bcControl = document.getElementById("blockCookiesMenu");
+    if (bcControl == null) {
+      return;
+    }
+
+    bcControl.disabled = !nextState;
+  },
+
+  toggleCookieExpirationControlState(nextState) {
+    let keepUntilLabel = document.getElementById("keepUntil");
+    let keepUntilMenu = document.getElementById("keepCookiesUntil");
+    if (keepUntilLabel == null || keepUntilMenu == null) {
+      return;
+    }
+
+    keepUntilLabel.disabled = keepUntilMenu.disabled = !nextState;
   },
 
   /**
@@ -1327,7 +1432,13 @@ var gPrivacyPane = {
   updatePrivacyMicroControls() {
     // Check the "Delete cookies when Firefox is closed" checkbox and disable the setting
     // when we're in auto private mode (or reset it back otherwise).
+#if 0
     document.getElementById("deleteOnClose").checked = this.readDeleteOnClose();
+#endif
+
+    // Set "Keep cookies until..." to "I close Nightly" and disable the setting
+    // when we're in auto private mode (or reset it back otherwise).
+    document.getElementById("keepCookiesUntil").value = this.readKeepCookiesUntil();
 
     let clearDataSettings = document.getElementById("clearDataSettings");
 
@@ -1504,6 +1615,7 @@ var gPrivacyPane = {
     this._shouldPromptForRestart = true;
   },
 
+#if 0
   /**
    * Displays fine-grained, per-site preferences for tracking protection.
    */
@@ -1528,6 +1640,14 @@ var gPrivacyPane = {
       null
     );
   },
+#endif
+
+  /**
+   * Displays container panel for customising and adding containers.
+   */
+  showContainerSettings() {
+    gotoPref("containers");
+  },
 
   // COOKIES AND SITE DATA
 
@@ -1549,6 +1669,23 @@ var gPrivacyPane = {
    *     2   means keep cookies until the browser is closed
    */
 
+  readKeepCookiesUntil() {
+    let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart").value;
+    if (privateBrowsing) {
+      return Ci.nsICookieService.ACCEPT_SESSION;
+    }
+
+    let lifetimePolicy = Preferences.get("network.cookie.lifetimePolicy").value;
+    if (lifetimePolicy == Ci.nsICookieService.ACCEPT_SESSION) {
+      return Ci.nsICookieService.ACCEPT_SESSION;
+    }
+
+    // network.cookie.lifetimePolicy can be set to any value, but we just
+    // support ACCEPT_SESSION and ACCEPT_NORMALLY. Let's force ACCEPT_NORMALLY.
+    return Ci.nsICookieService.ACCEPT_NORMALLY;
+  },
+
+#if 0
   readDeleteOnClose() {
     let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart")
       .value;
@@ -1566,33 +1703,83 @@ var gPrivacyPane = {
       ? Ci.nsICookieService.ACCEPT_SESSION
       : Ci.nsICookieService.ACCEPT_NORMALLY;
   },
+#endif
 
   /**
    * Reads the network.cookie.cookieBehavior preference value and
    * enables/disables the "blockCookiesMenu" menulist accordingly.
    */
+
   readBlockCookies() {
-    let bcControl = document.getElementById("blockCookiesMenu");
-    bcControl.disabled =
-      Services.cookies.cookieBehavior == Ci.nsICookieService.BEHAVIOR_ACCEPT;
+    let pref = Services.cookies.cookieBehavior;
+
+    if (Ci.nsICookieService.BEHAVIOR_ACCEPT == pref) {
+      this.toggleBlockCookiesMenuState(false);
+      return "allow";
+    }
+
+    this.toggleBlockCookiesMenuState(true);
+    return "disallow";
+  },
+
+  writeBlockCookies(value) {
+    switch (value) {
+      case "allow":
+        return Ci.nsICookieService.BEHAVIOR_ACCEPT;
+      case "disallow":
+        let pref = Services.cookies.cookieBehavior;
+        let blockCookiesMenuValue = pref == Ci.nsICookieService.BEHAVIOR_ACCEPT ?
+          "trackers" :
+          this._getBlockCookiesMenuValueByPref(pref);
+
+        return this.writeBlockCookiesMenu(blockCookiesMenuValue);
+    }
+  },
+
+  _getBlockCookiesMenuValueByPref(pref) {
+    switch (pref) {
+      case Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER:
+        return "trackers";
+      case Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN:
+        return "unvisited";
+      case Ci.nsICookieService.BEHAVIOR_REJECT_FOREIGN:
+        return "all-third-parties";
+      case Ci.nsICookieService.BEHAVIOR_REJECT:
+        return "always";
+      case Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN:
+        return "trackers-plus-isolate";
+    }
+  },
+
+  readBlockCookiesMenu() {
+    let pref = Services.cookies.cookieBehavior;
+    this.toggleCookieExpirationControlState(
+      !(pref == Ci.nsICookieService.BEHAVIOR_REJECT));
+
+    return this._getBlockCookiesMenuValueByPref(pref);
   },
 
   /**
    * Updates the "accept third party cookies" menu based on whether the
    * "contentBlockingBlockCookiesCheckbox" checkbox is checked.
    */
-  writeBlockCookies() {
-    let block = document.getElementById("contentBlockingBlockCookiesCheckbox");
-    let blockCookiesMenu = document.getElementById("blockCookiesMenu");
-
-    if (block.checked) {
-      // Automatically select 'third-party trackers' as the default.
-      blockCookiesMenu.selectedIndex = 0;
-      return this.writeBlockCookiesFrom();
+  writeBlockCookiesMenu(value) {
+    switch (value) {
+      case "trackers":
+        return Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER;
+      case "unvisited":
+        return Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN;
+      case "all-third-parties":
+        return Ci.nsICookieService.BEHAVIOR_REJECT_FOREIGN;
+      case "always":
+        return Ci.nsICookieService.BEHAVIOR_REJECT;
+      case "trackers-plus-isolate":
+        return Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN;
     }
     return Ci.nsICookieService.BEHAVIOR_ACCEPT;
   },
 
+#if 0
   readBlockCookiesFrom() {
     switch (Services.cookies.cookieBehavior) {
       case Ci.nsICookieService.BEHAVIOR_REJECT_FOREIGN:
@@ -1628,6 +1815,7 @@ var gPrivacyPane = {
         return undefined;
     }
   },
+#endif
 
   /**
    * Discard the browsers of all tabs in all windows. Pinned tabs, as
@@ -2005,6 +2193,7 @@ var gPrivacyPane = {
     );
   },
 
+#if 0
   /**
    * Set up the initial state for the password generation UI.
    * It will be hidden unless the .available pref is true
@@ -2017,6 +2206,7 @@ var gPrivacyPane = {
     );
     document.getElementById("generatePasswordsBox").hidden = !prefValue;
   },
+#endif
 
   /**
    * Shows the sites where the user has saved passwords and the associated login
@@ -2039,18 +2229,19 @@ var gPrivacyPane = {
   readSavePasswords() {
     var pref = Preferences.get("signon.rememberSignons");
     var excepts = document.getElementById("passwordExceptions");
-    var generatePasswords = document.getElementById("generatePasswords");
+    // CLIQZ_SPECIAL: remove generatePasswords instance
+    // var generatePasswords = document.getElementById("generatePasswords");
     var autofillCheckbox = document.getElementById("passwordAutofillCheckbox");
 
     if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
       document.getElementById("savePasswords").disabled = true;
       excepts.disabled = true;
-      generatePasswords.disabled = true;
+      // generatePasswords.disabled = true;
       autofillCheckbox.disabled = true;
       return false;
     }
     excepts.disabled = !pref.value;
-    generatePasswords.disabled = !pref.value;
+    // generatePasswords.disabled = !pref.value;
     autofillCheckbox.disabled = !pref.value;
 
     // don't override pref value in UI
@@ -2176,6 +2367,7 @@ var gPrivacyPane = {
       blockUnwantedPref.value && blockUncommonPref.value;
   },
 
+#if 0
   /**
    * Displays the exceptions lists for add-on installation warnings.
    */
@@ -2188,6 +2380,7 @@ var gPrivacyPane = {
       params
     );
   },
+#endif
 
   /**
    * Parameters for the add-on install permissions dialog.
@@ -2267,17 +2460,21 @@ var gPrivacyPane = {
   },
 
   initDataCollection() {
+#if 0
     this._setupLearnMoreLink(
       "toolkit.datacollection.infoURL",
       "dataCollectionPrivacyNotice"
     );
+#endif
   },
 
   initSubmitCrashes() {
+#if 0
     this._setupLearnMoreLink(
       "toolkit.crashreporter.infoURL",
       "crashReporterLearnMore"
     );
+#endif
   },
 
   /**
@@ -2299,10 +2496,12 @@ var gPrivacyPane = {
    * Initialize the health report service reference and checkbox.
    */
   initSubmitHealthReport() {
+#if 0
     this._setupLearnMoreLink(
       "datareporting.healthreport.infoURL",
       "FHRLearnMore"
     );
+#endif
 
     let checkbox = document.getElementById("submitHealthReportBox");
 
@@ -2338,6 +2537,7 @@ var gPrivacyPane = {
     }
   },
 
+#if 0
   /**
    * Initialize the opt-out-study preference checkbox into about:preferences and
    * handles events coming from the UI for it.
@@ -2393,6 +2593,7 @@ var gPrivacyPane = {
       pref: PREF_ADDON_RECOMMENDATIONS_ENABLED,
     });
   },
+#endif
 
   observe(aSubject, aTopic, aData) {
     switch (aTopic) {
