@@ -37,7 +37,7 @@ function handleAllLogins(logins) {
 
 function handleSyncState(syncState) {
   gElements.fxAccountsButton.updateState(syncState);
-  gElements.loginFooter.hidden = syncState.hideMobileFooter;
+  gElements.loginFooter.hidden = true;  // CLIQZ-SPECIAL: DB-2303, never show mobile advs
   gElements.loginIntro.updateState(syncState);
 }
 
