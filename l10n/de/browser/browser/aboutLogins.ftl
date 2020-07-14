@@ -70,8 +70,8 @@ about-logins-list-item-vulnerable-password-icon =
     .title = Gefährdetes Passwort
 
 ## Introduction screen
-
-login-intro-heading = Suchen Sie Ihre gespeicherten Zugangsdaten? Richten Sie { -sync-brand-short-name } ein.
+## CLIQZ-SPECIAL: DB-2303, no Sync feature
+login-intro-heading = Keine Zugangsdaten gefunden.
 about-logins-login-intro-heading-logged-in = Keine synchronisierten Zugangsdaten gefunden.
 login-intro-description = Wenn Sie Ihre Zugangsdaten in { -brand-product-name } auf einem anderen Gerät gespeichert haben, können Sie diese hier abrufen:
 login-intro-instruction-fxa = Auf dem Gerät mit Ihren gespeicherten Zugangsdaten: Erstellen Sie ein { -fxaccount-brand-name } oder melden Sie sich damit an.

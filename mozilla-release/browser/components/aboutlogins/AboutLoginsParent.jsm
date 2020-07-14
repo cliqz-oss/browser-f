@@ -20,7 +20,8 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   MigrationUtils: "resource:///modules/MigrationUtils.jsm",
   OSKeyStore: "resource://gre/modules/OSKeyStore.jsm",
   Services: "resource://gre/modules/Services.jsm",
-  UIState: "resource://services-sync/UIState.jsm",
+  // CLIQZ-SPECIAL: DB-2303, no Sync feature
+  // UIState: "resource://services-sync/UIState.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
 });
 
@@ -368,16 +369,18 @@ class AboutLoginsParent extends JSWindowActorParent {
             "passwordmgr-crypto-loginCanceled"
           );
           Services.obs.addObserver(AboutLogins, "passwordmgr-storage-changed");
-          Services.obs.addObserver(AboutLogins, UIState.ON_UPDATE);
+          // CLIQZ-SPECIAL: DB-2303, no Sync feature
+          // Services.obs.addObserver(AboutLogins, UIState.ON_UPDATE);
           AboutLogins._observersAdded = true;
         }
 
         const logins = await AboutLogins.getAllLogins();
         try {
-          let syncState = AboutLogins.getSyncState();
-          if (FXA_ENABLED) {
-            AboutLogins.updatePasswordSyncNotificationState(syncState);
-          }
+          // CLIQZ-SPECIAL: DB-2303, no Sync feature
+          // let syncState = AboutLogins.getSyncState();
+          // if (FXA_ENABLED) {
+          //   AboutLogins.updatePasswordSyncNotificationState(syncState);
+          // }
 
           const playStoreBadgeLanguage = Services.locale.negotiateLanguages(
             Services.locale.appLocalesAsBCP47,
@@ -410,7 +413,7 @@ class AboutLoginsParent extends JSWindowActorParent {
           this.sendAsyncMessage("AboutLogins:Setup", {
             logins,
             selectedSort,
-            syncState,
+            syncState: {loggedIn: false},  // CLIQZ-SPECIAL: DB-2303
             selectedBadgeLanguages,
             masterPasswordEnabled: LoginHelper.isMasterPasswordSet(),
             passwordRevealVisible: Services.policies.isAllowed(
@@ -531,7 +534,8 @@ var AboutLogins = {
       Services.obs.removeObserver(this, "passwordmgr-crypto-login");
       Services.obs.removeObserver(this, "passwordmgr-crypto-loginCanceled");
       Services.obs.removeObserver(this, "passwordmgr-storage-changed");
-      Services.obs.removeObserver(this, UIState.ON_UPDATE);
+      // CLIQZ-SPECIAL: DB-2303, no Sync feature
+      // Services.obs.removeObserver(this, UIState.ON_UPDATE);
       this._observersAdded = false;
       return;
     }
@@ -549,10 +553,11 @@ var AboutLogins = {
       return;
     }
 
-    if (topic == UIState.ON_UPDATE) {
-      this.messageSubscribers("AboutLogins:SyncState", this.getSyncState());
-      return;
-    }
+    // CLIQZ-SPECIAL: DB-2303, no Sync feature
+    // if (topic == UIState.ON_UPDATE) {
+    //   this.messageSubscribers("AboutLogins:SyncState", this.getSyncState());
+    //   return;
+    // }
 
     switch (type) {
       case "addLogin": {
@@ -861,6 +866,8 @@ var AboutLogins = {
   },
 
   getSyncState() {
+    // CLIQZ-SPECIAL: DB-2303, no Sync feature
+    return;
     const state = UIState.get();
     // As long as Sync is configured, about:logins will treat it as
     // authenticated. More diagnostics and error states can be handled
@@ -882,7 +889,7 @@ var AboutLogins = {
   },
 
   updatePasswordSyncNotificationState(
-    syncState,
+    syncState = { loggedIn: false},  // CLIQZ-SPECIAL: DB-2303
     // Need to explicitly call the getter on lazy preference getters
     // to activate their observer.
     passwordSyncEnabled = PASSWORD_SYNC_ENABLED
@@ -896,7 +903,8 @@ var AboutLogins = {
 
   onPasswordSyncEnabledPreferenceChange(data, previous, latest) {
     Services.prefs.clearUserPref(SHOW_PASSWORD_SYNC_NOTIFICATION_PREF);
-    this.updatePasswordSyncNotificationState(this.getSyncState(), latest);
+    // CLIQZ-SPECIAL: DB-2303, no Sync feature
+    // this.updatePasswordSyncNotificationState(this.getSyncState(), latest);
   },
 };
 var _AboutLogins = AboutLogins;

@@ -133,6 +133,7 @@
       <img class="illustration" src="chrome://browser/content/aboutlogins/icons/intro-illustration.svg"/>
       <h1 class="heading" data-l10n-id="login-intro-heading"></h1>
       <section>
+#if 0
         <p class="description" data-l10n-id="login-intro-description"></p>
         <ul>
           <li data-l10n-id="login-intro-instruction-fxa"></li>
@@ -141,6 +142,7 @@
             <a data-l10n-name="help-link" class="intro-help-link" target="_blank" rel="noreferrer"></a>
           </li>
         </ul>
+#endif
         <p class="description intro-import-text" hidden data-l10n-id="about-logins-intro-import">
           <a data-l10n-name="import-link" href="#"></a>
         </p>
@@ -276,9 +278,11 @@
         <button role="menuitem" class="menuitem-button menuitem-preferences ghost-button" data-event-name="AboutLoginsOpenPreferences" data-l10n-id="menu-menuitem-preferences"></button>
         <hr role="separator" class="menuitem-separator"></hr>
         <button role="menuitem" class="menuitem-button menuitem-help ghost-button" data-event-name="AboutLoginsGetHelp" data-l10n-id="about-logins-menu-menuitem-help"></button>
+#if 0
         <hr role="separator" class="menuitem-separator"></hr>
         <button role="menuitem" class="menuitem-button menuitem-mobile menuitem-mobile-android ghost-button" data-event-name="AboutLoginsOpenMobileAndroid" data-l10n-id="menu-menuitem-android-app"></button>
         <button role="menuitem" class="menuitem-button menuitem-mobile menuitem-mobile-ios ghost-button" data-event-name="AboutLoginsOpenMobileIos" data-l10n-id="menu-menuitem-iphone-app"></button>
+#endif
       </ul>
     </template>
 

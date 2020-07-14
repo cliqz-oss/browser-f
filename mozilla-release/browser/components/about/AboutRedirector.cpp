@@ -57,12 +57,10 @@ static const RedirEntry kRedirMap[] = {
     {"framecrashed", "chrome://browser/content/aboutFrameCrashed.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
-/* CLIQZ-SPECIAL: remove about:logins
     {"logins", "chrome://browser/content/aboutlogins/aboutLogins.html",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
          nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT},
-*/
     {"tabcrashed", "chrome://browser/content/aboutTabCrashed.xhtml",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},

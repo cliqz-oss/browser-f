@@ -57,7 +57,7 @@ var gIdentityHandler = {
    * RegExp used to decide if an about url should be shown as being part of
    * the browser UI.
    */
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|cliqz|config|crashes|downloads|license|preferences|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
+  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|cliqz|config|crashes|downloads|license|logins|preferences|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
 
   /**
    * Whether the established HTTPS connection is considered "broken".

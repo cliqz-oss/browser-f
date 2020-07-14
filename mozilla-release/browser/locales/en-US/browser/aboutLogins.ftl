@@ -68,8 +68,8 @@ about-logins-list-item-vulnerable-password-icon =
   .title = Vulnerable password
 
 ## Introduction screen
-
-login-intro-heading = Looking for your saved logins? Set up { -sync-brand-short-name }.
+## CLIQZ-SPECIAL: DB-2303, no Sync feature
+login-intro-heading = No logins found.
 about-logins-login-intro-heading-logged-in = No synced logins found.
 login-intro-description = If you saved your logins to { -brand-product-name } on a different device, here’s how to get them here:
 login-intro-instruction-fxa = Create or sign in to your { -fxaccount-brand-name } on the device where your logins are saved
