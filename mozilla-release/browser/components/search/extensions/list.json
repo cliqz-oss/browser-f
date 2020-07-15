@@ -54,7 +54,7 @@
     "en-US": {
       "default": {
         "visibleDefaultEngines": [
-          "google", "amazondotcom", "bing", "ddg", "ebay", "twitter", "wikipedia", "leo_ende_de", "qwant", "yahoo",
+          "google-b-d", "amazondotcom", "bing", "ddg", "ebay", "twitter", "wikipedia", "leo_ende_de", "qwant", "yahoo",
           "ecosia", "gimages", "gmaps", "startpage", "youtube"
         ]
       },
@@ -259,7 +259,7 @@
       "default": {
         "visibleDefaultEngines": [
           "amazon-de", "bing", "ddg", "ebay-de", "ecosia", "leo_ende_de", "wikipedia-de",
-          "google", "amazondotcom-de", "twitter", "qwant-de", "yahoo-de",
+          "google-b-d", "amazondotcom-de", "twitter", "qwant-de", "yahoo-de",
           "gimages-de", "gmaps-de", "startpage-de", "youtube-de"
         ]
       }
