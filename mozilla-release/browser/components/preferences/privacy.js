@@ -43,7 +43,9 @@ var { AddonManager } = ChromeUtils.import(
   "resource://gre/modules/AddonManager.jsm"
 );
 
-const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
+// CLIQZ-SPECIAL: DB-2515. Replace with our own setting, default
+// firefox's telemetry always off
+const PREF_UPLOAD_ENABLED = "datareporting.cliqz.healthreport.uploadEnabled";
 
 const TRACKING_PROTECTION_KEY = "websites.trackingProtectionMode";
 const TRACKING_PROTECTION_PREFS = [
