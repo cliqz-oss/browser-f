@@ -4646,6 +4646,10 @@ pref("toolkit.legacyUserProfileCustomizations.stylesheets", false);
 
     // Health Report is enabled by default on all channels.
     pref("datareporting.healthreport.uploadEnabled", false);
+    // CLIQZ-SPECIAL DB-2515. Turn off browser telemetry,
+    // but use telemtery from extension only. Also change on Preferences page,
+    // it related to this setting
+    pref("datareporting.cliqz.healthreport.uploadEnabled", true);
   #endif
 #endif
 
