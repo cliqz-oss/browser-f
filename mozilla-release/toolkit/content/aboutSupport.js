@@ -252,15 +252,16 @@ var snapshotFormatters = {
     );
   },
 
-  extensions(data) {
+  addons(data) {
     $.append(
-      $("extensions-tbody"),
-      data.map(function(extension) {
+      $("addons-tbody"),
+      data.map(function(addon) {
         return $.new("tr", [
-          $.new("td", extension.name),
-          $.new("td", extension.version),
-          $.new("td", extension.isActive),
-          $.new("td", extension.id),
+          $.new("td", addon.name),
+          $.new("td", addon.type),
+          $.new("td", addon.version),
+          $.new("td", addon.isActive),
+          $.new("td", addon.id),
         ]);
       })
     );
@@ -324,6 +325,33 @@ var snapshotFormatters = {
     for (let remoteProcessType in data.remoteTypes) {
       await buildEntry(remoteProcessType, data.remoteTypes[remoteProcessType]);
     }
+  },
+
+  async experimentalFeatures(data) {
+    if (!data) {
+      return;
+    }
+    let titleL10nIds = data.map(([titleL10nId]) => titleL10nId);
+    let titleL10nObjects = await document.l10n.formatMessages(titleL10nIds);
+    if (titleL10nObjects.length != data.length) {
+      throw Error("Missing localized title strings in experimental features");
+    }
+    for (let i = 0; i < titleL10nObjects.length; i++) {
+      let localizedTitle = titleL10nObjects[i].attributes.find(
+        a => a.name == "label"
+      ).value;
+      data[i] = [localizedTitle, data[i][1], data[i][2]];
+    }
+
+    $.append(
+      $("experimental-features-tbody"),
+      data.map(function([title, pref, value]) {
+        return $.new("tr", [
+          $.new("td", `${title} (${pref})`, "pref-name"),
+          $.new("td", value, "pref-value"),
+        ]);
+      })
+    );
   },
 
   modifiedPreferences(data) {
@@ -1464,11 +1492,9 @@ function openProfileDirectory() {
 function populateActionBox() {
   if (ResetProfile.resetSupported()) {
     $("reset-box").style.display = "block";
-    $("action-box").style.display = "block";
   }
   if (!Services.appinfo.inSafeMode && AppConstants.platform !== "android") {
     $("safe-mode-box").style.display = "block";
-    $("action-box").style.display = "block";
 
     if (Services.policies && !Services.policies.isAllowed("safeMode")) {
       $("restart-in-safe-mode-button").setAttribute("disabled", "true");
@@ -1499,6 +1525,42 @@ function setupEventListeners() {
   if (button) {
     button.addEventListener("click", function(event) {
       ResetProfile.openConfirmationDialog(window);
+    });
+  }
+  button = $("clear-startup-cache-button");
+  if (button) {
+    button.addEventListener("click", async function(event) {
+      const [
+        promptTitle,
+        promptBody,
+        restartButtonLabel,
+      ] = await document.l10n.formatValues([
+        { id: "startup-cache-dialog-title" },
+        { id: "startup-cache-dialog-body" },
+        { id: "restart-button-label" },
+      ]);
+      const buttonFlags =
+        Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
+        Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_CANCEL +
+        Services.prompt.BUTTON_POS_0_DEFAULT;
+      const result = Services.prompt.confirmEx(
+        window,
+        promptTitle,
+        promptBody,
+        buttonFlags,
+        restartButtonLabel,
+        null,
+        null,
+        null,
+        {}
+      );
+      if (result !== 0) {
+        return;
+      }
+      Services.appinfo.invalidateCachesOnRestart();
+      Services.startup.quit(
+        Ci.nsIAppStartup.eRestart | Ci.nsIAppStartup.eAttemptQuit
+      );
     });
   }
   button = $("restart-in-safe-mode-button");
@@ -1537,7 +1599,7 @@ function setupEventListeners() {
     button = $("show-update-history-button");
     if (button) {
       button.addEventListener("click", function(event) {
-        window.docShell.rootTreeItem.domWindow.openDialog(
+        window.browsingContext.topChromeWindow.openDialog(
           "chrome://mozapps/content/update/history.xhtml",
           "Update:History",
           "centerscreen,resizable=no,titlebar,modal"

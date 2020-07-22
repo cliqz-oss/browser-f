@@ -326,7 +326,7 @@ void Module::serialize(const LinkData& linkData,
 }
 
 /* virtual */
-JSObject* Module::createObject(JSContext* cx) {
+JSObject* Module::createObject(JSContext* cx) const {
   if (!GlobalObject::ensureConstructor(cx, cx->global(), JSProto_WebAssembly)) {
     return nullptr;
   }
@@ -334,6 +334,13 @@ JSObject* Module::createObject(JSContext* cx) {
   RootedObject proto(
       cx, &cx->global()->getPrototype(JSProto_WasmModule).toObject());
   return WasmModuleObject::create(cx, *this, proto);
+}
+
+/* virtual */
+JSObject* Module::createObjectForAsmJS(JSContext* cx) const {
+  // Use nullptr to get the default object prototype. These objects are never
+  // exposed to script for asm.js.
+  return WasmModuleObject::create(cx, *this, nullptr);
 }
 
 bool wasm::GetOptimizedEncodingBuildId(JS::BuildIdCharVector* buildId) {
@@ -461,7 +468,7 @@ bool Module::extractCode(JSContext* cx, Tier tier,
         return false;
       }
 
-      value.setNumber((uint32_t)p.funcNormalEntry());
+      value.setNumber((uint32_t)p.funcUncheckedCallEntry());
       if (!JS_DefineProperty(cx, segment, "funcBodyBegin", value,
                              JSPROP_ENUMERATE)) {
         return false;
@@ -677,10 +684,11 @@ bool Module::instantiateFunctions(JSContext* cx,
   return true;
 }
 
-static bool CheckLimits(JSContext* cx, uint32_t declaredMin,
-                        const Maybe<uint32_t>& declaredMax,
-                        uint32_t actualLength, const Maybe<uint32_t>& actualMax,
-                        bool isAsmJS, const char* kind) {
+template <typename T>
+static bool CheckLimits(JSContext* cx, T declaredMin,
+                        const Maybe<T>& declaredMax, T actualLength,
+                        const Maybe<T>& actualMax, bool isAsmJS,
+                        const char* kind) {
   if (isAsmJS) {
     MOZ_ASSERT(actualLength >= declaredMin);
     MOZ_ASSERT(!declaredMax);
@@ -739,17 +747,18 @@ bool Module::instantiateMemory(JSContext* cx,
     return true;
   }
 
-  uint32_t declaredMin = metadata().minMemoryLength;
-  Maybe<uint32_t> declaredMax = metadata().maxMemoryLength;
+  uint64_t declaredMin = metadata().minMemoryLength;
+  Maybe<uint64_t> declaredMax = metadata().maxMemoryLength;
   bool declaredShared = metadata().memoryUsage == MemoryUsage::Shared;
 
   if (memory) {
     MOZ_ASSERT_IF(metadata().isAsmJS(), memory->buffer().isPreparedForAsmJS());
     MOZ_ASSERT_IF(!metadata().isAsmJS(), memory->buffer().isWasm());
 
-    if (!CheckLimits(
-            cx, declaredMin, declaredMax, memory->volatileMemoryLength(),
-            memory->buffer().wasmMaxSize(), metadata().isAsmJS(), "Memory")) {
+    if (!CheckLimits(cx, declaredMin, declaredMax,
+                     uint64_t(memory->volatileMemoryLength()),
+                     memory->buffer().wasmMaxSize(), metadata().isAsmJS(),
+                     "Memory")) {
       return false;
     }
 
@@ -758,6 +767,12 @@ bool Module::instantiateMemory(JSContext* cx,
     }
   } else {
     MOZ_ASSERT(!metadata().isAsmJS());
+
+    if (declaredMin / PageSize > MaxMemoryPages) {
+      JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
+                               JSMSG_WASM_MEM_IMP_LIMIT);
+      return false;
+    }
 
     RootedArrayBufferObjectMaybeShared buffer(cx);
     Limits l(declaredMin, declaredMax,
@@ -787,7 +802,7 @@ bool Module::instantiateImportedTable(JSContext* cx, const TableDesc& td,
   MOZ_ASSERT(!metadata().isAsmJS());
 
   Table& table = tableObj->table();
-  if (!CheckLimits(cx, td.limits.initial, td.limits.maximum, table.length(),
+  if (!CheckLimits(cx, td.initialLength, td.maximumLength, table.length(),
                    table.maximum(), metadata().isAsmJS(), "Table")) {
     return false;
   }
@@ -808,12 +823,19 @@ bool Module::instantiateImportedTable(JSContext* cx, const TableDesc& td,
 bool Module::instantiateLocalTable(JSContext* cx, const TableDesc& td,
                                    WasmTableObjectVector* tableObjs,
                                    SharedTableVector* tables) const {
+  if (td.initialLength > MaxTableLength) {
+    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
+                             JSMSG_WASM_TABLE_IMP_LIMIT);
+    return false;
+  }
+
   SharedTable table;
   Rooted<WasmTableObject*> tableObj(cx);
   if (td.importedOrExported) {
     RootedObject proto(
         cx, &cx->global()->getPrototype(JSProto_WasmTable).toObject());
-    tableObj.set(WasmTableObject::create(cx, td.limits, td.kind, proto));
+    tableObj.set(WasmTableObject::create(cx, td.initialLength, td.maximumLength,
+                                         td.kind, proto));
     if (!tableObj) {
       return false;
     }
@@ -821,6 +843,7 @@ bool Module::instantiateLocalTable(JSContext* cx, const TableDesc& td,
   } else {
     table = Table::create(cx, td, /* HandleWasmTableObject = */ nullptr);
     if (!table) {
+      ReportOutOfMemory(cx);
       return false;
     }
   }

@@ -4,16 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifdef MOZ_WIDGET_ANDROID
+#include "AndroidSurfaceTexture.h"
 
-#  include "AndroidSurfaceTexture.h"
+#include "mozilla/java/GeckoSurfaceTextureNatives.h"
 
-#  include "mozilla/java/GeckoSurfaceTextureNatives.h"
-
-#  include "AndroidNativeWindow.h"
-#  include "GLContextEGL.h"
-#  include "GLBlitHelper.h"
-#  include "GLImages.h"
+#include "AndroidNativeWindow.h"
+#include "GLContextEGL.h"
+#include "GLBlitHelper.h"
+#include "GLImages.h"
 
 using namespace mozilla;
 
@@ -102,9 +100,8 @@ class SharedGL final {
     if (!eglContext) {
       return nullptr;
     }
-    RefPtr<GLContextEGL> gl = new GLContextEGL(
-        egl, CreateContextFlags::NONE, SurfaceCaps::Any(),
-        /* offscreen? */ false, eglConfig, EGL_NO_SURFACE, eglContext);
+    RefPtr<GLContextEGL> gl =
+        new GLContextEGL(egl, {}, eglConfig, EGL_NO_SURFACE, eglContext);
     if (!gl->Init()) {
       NS_WARNING("Fail to create GL context for native blitter.");
       return nullptr;
@@ -116,7 +113,11 @@ class SharedGL final {
   }
 
   static already_AddRefed<GLContextEGL> CreateContext() {
-    RefPtr<GLContextEGL> gl = CreateContextImpl(/* aUseGles */ false);
+    RefPtr<GLContextEGL> gl;
+#if !defined(MOZ_WIDGET_ANDROID)
+    gl = CreateContextImpl(/* aUseGles */ false);
+#endif  // !defined(MOZ_WIDGET_ANDROID)
+
     if (!gl) {
       gl = CreateContextImpl(/* aUseGles */ true);
     }
@@ -195,4 +196,3 @@ void AndroidSurfaceTexture::Init() { GLBlitterSupport::Init(); }
 
 }  // namespace gl
 }  // namespace mozilla
-#endif  // MOZ_WIDGET_ANDROID

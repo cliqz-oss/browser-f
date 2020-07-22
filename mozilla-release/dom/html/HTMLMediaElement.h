@@ -21,7 +21,6 @@
 #include "mozilla/StateWatching.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/dom/HTMLMediaElementBinding.h"
-#include "mozilla/dom/MediaControlKeysEvent.h"
 #include "mozilla/dom/MediaDebugInfoBinding.h"
 #include "mozilla/dom/MediaKeys.h"
 #include "mozilla/dom/TextTrackManager.h"
@@ -765,13 +764,16 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   class MediaStreamTrackListener;
   class FirstFrameListener;
   class ShutdownObserver;
-  class MediaControlEventListener;
+  class MediaControlKeyListener;
 
   MediaDecoderOwner::NextFrameStatus NextFrameStatus();
 
   void SetDecoder(MediaDecoder* aDecoder);
 
   void PlayInternal(bool aHandlingUserInput);
+
+  // See spec, https://html.spec.whatwg.org/#internal-pause-steps
+  void PauseInternal();
 
   /** Use this method to change the mReadyState member, so required
    * events can be fired.
@@ -1341,11 +1343,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // process in order to keep its playing state correct.
   void NotifyMediaControlPlaybackStateChanged();
 
-  // After media has been paused, trigger a timer to stop listening to the media
-  // control key events.
-  void CreateStopMediaControlTimerIfNeeded();
-  static void StopMediaControlTimerCallback(nsITimer* aTimer, void* aClosure);
-
   // Clear the timer when we want to continue listening to the media control
   // key events.
   void ClearStopMediaControlTimerIfNeeded();
@@ -1571,9 +1568,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   // Timer used to simulate video-suspend.
   nsCOMPtr<nsITimer> mVideoDecodeSuspendTimer;
-
-  // Timer used to stop listening media control events.
-  nsCOMPtr<nsITimer> mStopMediaControlTimer;
 
   // Encrypted Media Extension media keys.
   RefPtr<MediaKeys> mMediaKeys;
@@ -1934,11 +1928,11 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   MozPromiseRequestHolder<ResumeDelayedPlaybackAgent::ResumePromise>
       mResumePlaybackRequest;
 
-  // We use MediaControlEventListener to listen media control keys event, which
-  // would play or pause media element according to different events.
-  void StartListeningMediaControlEventIfNeeded();
-  void StopListeningMediaControlEventIfNeeded();
-  RefPtr<MediaControlEventListener> mMediaControlEventListener;
+  // We use MediaControlKeyListener to listen media control key, by which we
+  // would play or pause media element.
+  void StartListeningMediaControlKeyIfNeeded();
+  void StopListeningMediaControlKeyIfNeeded();
+  RefPtr<MediaControlKeyListener> mMediaControlKeyListener;
 
   // Return true if the media element is being used in picture in picture mode.
   bool IsBeingUsedInPictureInPictureMode() const;

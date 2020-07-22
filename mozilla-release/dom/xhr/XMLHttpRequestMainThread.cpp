@@ -1803,11 +1803,6 @@ NS_IMETHODIMP
 XMLHttpRequestMainThread::OnStartRequest(nsIRequest* request) {
   AUTO_PROFILER_LABEL("XMLHttpRequestMainThread::OnStartRequest", NETWORK);
 
-  if (mFromPreload && !mChannel) {
-    mChannel = do_QueryInterface(request);
-    EnsureChannelContentType();
-  }
-
   nsresult rv = NS_OK;
   if (!mFirstStartRequestSeen && mRequestObserver) {
     mFirstStartRequestSeen = true;
@@ -2521,9 +2516,8 @@ nsresult XMLHttpRequestMainThread::InitiateFetch(
         // May be null when the preload has already finished, but the XHR code
         // is safe to live with it.
         mChannel = preload->Channel();
-        if (mChannel) {
-          EnsureChannelContentType();
-        }
+        MOZ_ASSERT(mChannel);
+        EnsureChannelContentType();
         return NS_OK;
       }
 
@@ -2749,9 +2743,8 @@ already_AddRefed<PreloaderBase> XMLHttpRequestMainThread::FindPreload() {
                       : CORSMode::CORS_USE_CREDENTIALS;
   nsCOMPtr<nsIReferrerInfo> referrerInfo =
       ReferrerInfo::CreateForFetch(mPrincipal, doc);
-  auto key = PreloadHashKey::CreateAsFetch(mRequestURL, cors,
-                                           referrerInfo->ReferrerPolicy());
-  RefPtr<PreloaderBase> preload = doc->Preloads().LookupPreload(&key);
+  auto key = PreloadHashKey::CreateAsFetch(mRequestURL, cors);
+  RefPtr<PreloaderBase> preload = doc->Preloads().LookupPreload(key);
   if (!preload) {
     return nullptr;
   }
@@ -3324,16 +3317,9 @@ nsresult XMLHttpRequestMainThread::OnRedirectVerifyCallback(nsresult result) {
   if (NS_SUCCEEDED(result)) {
     bool rewriteToGET = false;
     nsCOMPtr<nsIHttpChannel> oldHttpChannel = GetCurrentHttpChannel();
-    if (uint32_t responseCode = 0;
-        oldHttpChannel &&
-        NS_SUCCEEDED(oldHttpChannel->GetResponseStatus(&responseCode))) {
-      // Fetch 4.4.11
-      rewriteToGET =
-          ((responseCode == 301 || responseCode == 302) &&
-           mRequestMethod.LowerCaseEqualsASCII("post")) ||
-          (responseCode == 303 && !mRequestMethod.LowerCaseEqualsASCII("get") &&
-           !mRequestMethod.LowerCaseEqualsASCII("head"));
-    }
+    // Fetch 4.4.11
+    Unused << oldHttpChannel->ShouldStripRequestBodyHeader(mRequestMethod,
+                                                           &rewriteToGET);
 
     mChannel = mNewRedirectChannel;
 

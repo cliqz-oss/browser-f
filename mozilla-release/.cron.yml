@@ -115,8 +115,7 @@ jobs:
           include-push-tasks: true
       run-on-projects:
           - mozilla-central
-      when:
-          - {weekday: 'Sunday', hour: 5, minute: 0}
+      when: []  # temporarily disabled, Bug 1648183
 
     - name: general-perf-testing
       job:
@@ -287,4 +286,4 @@ jobs:
       run-on-projects:
           - mozilla-central
       when:
-          - {hour: 12, minute: 00}
+          - {hour: 4, minute: 00}

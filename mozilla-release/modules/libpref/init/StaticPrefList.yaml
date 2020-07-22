@@ -175,6 +175,11 @@
 # Prefs starting with "accessibility."
 #---------------------------------------------------------------------------
 
+- name: accessibility.accesskeycausesactivation
+  type: bool
+  value: true
+  mirror: always
+
 - name: accessibility.monoaudio.enable
   type: RelaxedAtomicBool
   value: false
@@ -194,6 +199,25 @@
   type: bool
   value: false
   mirror: always
+
+#---------------------------------------------------------------------------
+# Prefs starting with "alerts."
+#---------------------------------------------------------------------------
+
+# Whether to use platform-specific backends for showing desktop notifications.
+# If no such backend is available, or if the pref is false, then XUL
+# notifications are used.
+- name: alerts.useSystemBackend
+  type: bool
+#ifdef XP_WIN
+  # Linux and macOS turn on system level notification as default, but Windows is
+  # disabled due to instability (dependencies of bug 1497425).
+  value: false
+#else
+  value: true
+#endif
+  mirror: always
+
 
 #ifdef ANDROID
   #---------------------------------------------------------------------------
@@ -470,6 +494,11 @@
   value: false
   mirror: always
 
+- name: apz.mvm.force-enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 - name: apz.one_touch_pinch.enabled
   type: RelaxedAtomicBool
   value: true
@@ -579,7 +608,7 @@
 
 - name: apz.windows.force_disable_direct_manipulation
   type: RelaxedAtomicBool
-  value: @IS_NOT_NIGHTLY_BUILD@
+  value: false
   mirror: always
 
 - name: apz.windows.use_direct_manipulation
@@ -660,6 +689,19 @@
 - name: bidi.edit.delete_immediately
   type: bool
   value: true
+  mirror: always
+
+# Bidi caret movement style:
+# 0 = logical
+# 1 = visual
+# 2 = visual, but logical during selection
+- name: bidi.edit.caret_movement_style
+  type: int32_t
+#if !defined(XP_LINUX) && defined(NIGHTLY_BUILD)
+  value: 1
+#else
+  value: 2 # See Bug 1638240
+#endif
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -1048,7 +1090,7 @@
 - name: browser.tabs.remote.useCrossOriginEmbedderPolicy
   type: RelaxedAtomicBool
 #if !defined(ANDROID)
-  value: @IS_NIGHTLY_BUILD@
+  value: true
 #else
   value: false # Blocked by DocumentChannel, see Bug 1589982.
 #endif
@@ -1059,7 +1101,7 @@
 - name: browser.tabs.remote.useCrossOriginOpenerPolicy
   type: RelaxedAtomicBool
 #if !defined(ANDROID)
-  value: @IS_NIGHTLY_BUILD@
+  value: true
 #else
   value: false # Blocked by DocumentChannel, see Bug 1589982.
 #endif
@@ -1086,11 +1128,6 @@
   type: String
   value: "#551A8B"
   mirror: never
-
-- name: browser.find.anonymous_content.enabled
-  type: bool
-  value: true
-  mirror: always
 
 #---------------------------------------------------------------------------
 # Prefs starting with "canvas."
@@ -1268,6 +1305,19 @@
 - name: content.sink.enable_perf_mode
   type: int32_t
   value: 0
+  mirror: always
+
+#---------------------------------------------------------------------------
+# Prefs starting with "converter."
+#---------------------------------------------------------------------------
+
+# Whether we include ruby annotation in the text despite whether it
+# is requested. This was true because we didn't explicitly strip out
+# annotations. Set false by default to provide a better behavior, but
+# we want to be able to pref-off it if user doesn't like it.
+- name: converter.html2txt.always_include_ruby
+  type: bool
+  value: false
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -1910,13 +1960,20 @@
   value: false
   mirror: always
 
-# Process launch delay (im milliseconds).
+# Process launch delay (in milliseconds).
 - name: dom.ipc.processPrelaunch.delayMs
   type: uint32_t
 # This number is fairly arbitrary ... the intention is to put off
 # launching another app process until the last one has finished
 # loading its content, to reduce CPU/memory/IO contention.
   value: 1000
+  mirror: always
+
+# Process preallocation cache
+# Only used in fission; in e10s we use 1 always
+- name: dom.ipc.processPrelaunch.fission.number
+  type: uint32_t
+  value: 3
   mirror: always
 
 - name: dom.ipc.processPriorityManager.enabled
@@ -1939,10 +1996,35 @@
   value: 0
   mirror: always
 
+# Don't use new input types.
+- name: dom.experimental_forms
+  type: bool
+  value: false
+  mirror: always
+
+# Enable <input type=color> by default. It will be turned off for remaining
+# platforms which don't have a color picker implemented yet.
+- name: dom.forms.color
+  type: bool
+  value: true
+  mirror: always
 # Is support for input type=date and type=time enabled?
 - name: dom.forms.datetime
   type: bool
   value: true
+  mirror: always
+
+# Support for input type=month, type=week and type=datetime-local. By default,
+# disabled.
+- name: dom.forms.datetime.others
+  type: bool
+  value: @IS_ANDROID@
+  mirror: always
+
+# Is support for HTMLElement.enterKeyHint enabled?
+- name: dom.forms.enterkeyhint
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Is support for HTMLElement.inputMode enabled?
@@ -1985,7 +2067,7 @@
 - name: dom.ipc.tabs.shutdownTimeoutSecs
   type: RelaxedAtomicUint32
 #if !defined(DEBUG) && !defined(MOZ_ASAN) && !defined(MOZ_VALGRIND) && !defined(MOZ_TSAN)
-  value: 5
+  value: 20
 #else
   value: 0
 #endif
@@ -2023,12 +2105,13 @@
   value: true
   mirror: always
 
-- name: dom.largeAllocation.forceEnable
+# Whether the Large-Allocation header is enabled.
+- name: dom.largeAllocationHeader.enabled
   type: bool
-  value: false
+  value: true
   mirror: always
 
-- name: dom.largeAllocation.testing.allHttpLoads
+- name: dom.largeAllocation.forceEnable
   type: bool
   value: false
   mirror: always
@@ -2036,7 +2119,7 @@
 # Whether "W3C Web Manifest" processing is enabled
 - name: dom.manifest.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Enable mapped array buffer by default.
@@ -2102,6 +2185,12 @@
 - name: dom.netinfo.enabled
   type: RelaxedAtomicBool
   value: @IS_ANDROID@
+  mirror: always
+
+# Whether we should open noopener links in a new process.
+- name: dom.noopener.newprocess.enabled
+  type: bool
+  value: true
   mirror: always
 
 # Whether we shouldn't show an error page for unknown protocols (and should
@@ -2203,7 +2292,7 @@
 - name: dom.postMessage.sharedArrayBuffer.withCOOP_COEP
   type: bool
 #if !defined(ANDROID)
-  value: @IS_NIGHTLY_BUILD@
+  value: true
 #else
   value: false # Blocked by DocumentChannel, see Bug 1589982.
 #endif
@@ -2306,6 +2395,13 @@
     value: true
     mirror: always
     do_not_use_directly: true
+
+  # Preference that is used to enable the hack for overrriding xFullPathname in
+  # TelemetryVFS.
+-   name: dom.quotaManager.overrideXFullPathname
+    type: RelaxedAtomicBool
+    value: true
+    mirror: always
 #endif
 
 # Reporting API.
@@ -2364,18 +2460,6 @@
   value: true
   mirror: always
 
-#ifdef JS_BUILD_BINAST
--   name: dom.script_loader.binast_encoding.domain.restrict
-    type: bool
-    value: true
-    mirror: always
-
--   name: dom.script_loader.binast_encoding.enabled
-    type: RelaxedAtomicBool
-    value: false
-    mirror: always
-#endif
-
 # Whether to enable the JavaScript start-up cache. This causes one of the first
 # execution to record the bytecode of the JavaScript function used, and save it
 # in the existing cache entry. On the following loads of the same script, the
@@ -2411,6 +2495,31 @@
 - name: dom.script_loader.external_scripts.utf8_parsing.enabled
   type: bool
   value: true
+  mirror: always
+
+# Enable  speculative off main thread parsing of external scripts as
+# soon as they are fetched.
+- name: dom.script_loader.external_scripts.speculative_omt_parse.enabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Speculatively compile non parser inserted scripts
+- name: dom.script_loader.external_scripts.speculate_non_parser_inserted.enabled
+  type: bool
+  value: false
+  mirror: always
+
+# Speculatively compile async scripts
+- name: dom.script_loader.external_scripts.speculate_async.enabled
+  type: bool
+  value: false
+  mirror: always
+
+# Speculatively compile link preload scripts
+- name: dom.script_loader.external_scripts.speculate_link_preload.enabled
+  type: bool
+  value: false
   mirror: always
 
 - name: dom.securecontext.whitelist_onions
@@ -2648,7 +2757,7 @@
 # opener/noopener.
 - name: dom.targetBlankNoOpener.enabled
   type: bool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
   mirror: always
 
 # Is support for Selection.GetRangesForInterval enabled?
@@ -2904,7 +3013,7 @@
 
 # Oculus device
 - name: dom.vr.oculus.enabled
-  type: bool
+  type: RelaxedAtomicBool
 #if defined(HAVE_64BIT_BUILD) && !defined(ANDROID)
   # We are only enabling WebVR by default on 64-bit builds (Bug 1384459).
   value: true
@@ -2912,7 +3021,7 @@
   # On Android, this pref is irrelevant.
   value: false
 #endif
-  mirror: once
+  mirror: always
 
 # When enabled, Oculus sessions may be created with the ovrInit_Invisible
 # flag if a page is using tracking but not presenting.  When a page
@@ -2940,7 +3049,7 @@
 
 # OpenVR device
 - name: dom.vr.openvr.enabled
-  type: bool
+  type: RelaxedAtomicBool
 #if !defined(HAVE_64BIT_BUILD) && !defined(ANDROID)
   # We are only enabling WebVR by default on 64-bit builds (Bug 1384459).
   value: false
@@ -2951,13 +3060,13 @@
   # See Bug 1310663 (Linux).  On Android, this pref is irrelevant.
   value: false
 #endif
-  mirror: once
+  mirror: always
 
 # OSVR device
 - name: dom.vr.osvr.enabled
-  type: bool
+  type: RelaxedAtomicBool
   value: false
-  mirror: once
+  mirror: always
 
 # Pose prediction reduces latency effects by returning future predicted HMD
 # poses to callers of the WebVR API.  This currently only has an effect for
@@ -3288,12 +3397,19 @@
 # * 2: Replace newlines with spaces (default of Firefox).
 # * 3: Remove newlines from the string.
 # * 4: Replace newlines with commas (default of Thunderbird).
-# * 5: Collapse newlines and surrounding whitespace characters and
+# * 5: Collapse newlines and surrounding white space characters and
 #      remove them from the string.
 # Other values are treated as 1.
 - name: editor.singleLine.pasteNewlines
   type: int32_t
   value: 2
+  mirror: always
+
+# Whether enabling blink compatible white-space normalizer or keep using
+# Gecko's traditional white-space normalizer.
+- name: editor.white_space_normalization.blink_compatible
+  type: bool
+  value: false
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -3348,14 +3464,15 @@
 - name: fission.autostart
   type: bool
   value: false
-  mirror: always
+  mirror: once
+  do_not_use_directly: true
 
 # This pref has no effect within fission windows, it only controls the
 # behaviour within non-fission windows. If true, preserve browsing contexts
-# between process swaps. Should be set to true in bug 1550571.
+# between process swaps.
 - name: fission.preserve_browsing_contexts
   type: bool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Store the session history in the parent process, and access it over IPC
@@ -3547,6 +3664,14 @@
 - name: general.aboutConfig.enable
   type: bool
   value: true
+  mirror: always
+
+# Limits the depth of recursive conversion of data when opening
+# a content to view.  This is mostly intended to prevent infinite
+# loops with faulty converters involved.
+- name: general.document_open_conversion_depth_limit
+  type: uint32_t
+  value: 20
   mirror: always
 
 - name: general.smoothScroll
@@ -4194,7 +4319,7 @@
 
 - name: gfx.webrender.compositor
   type: bool
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_MACOSX)
   value: true
 #else
   value: false
@@ -4246,6 +4371,11 @@
 - name: gfx.webrender.use-optimized-shaders
   type: bool
   value: true
+  mirror: once
+
+- name: gfx.webrender.precache-shaders
+  type: bool
+  value: false
   mirror: once
 
 # When gl debug message is a high severity message, forwward it to gfx critical
@@ -4617,19 +4747,6 @@
 # Prefs starting with "intl."
 #---------------------------------------------------------------------------
 
-# Whether ISO-2022-JP is a permitted content-based encoding detection
-# outcome in the JapaneseDetector.
-- name: intl.charset.detector.iso2022jp.allowed
-  type: bool
-  value: true
-  mirror: always
-
-# Whether the new encoding detector is enabled (except for Japan's ccTLDs).
-- name: intl.charset.detector.ng.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Whether the new encoding detector is enabled for the .jp TLD.
 - name: intl.charset.detector.ng.jp.enabled
   type: bool
@@ -4646,12 +4763,6 @@
 - name: intl.charset.detector.ng.lk.enabled
   type: bool
   value: false
-  mirror: always
-
-# Whether the TLD is considered if the new encoding detector is disabled.
-- name: intl.charset.fallback.tld
-  type: bool
-  value: true
   mirror: always
 
 # If true, dispatch the keydown and keyup events on any web apps even during
@@ -4699,14 +4810,19 @@
   value: @IS_NIGHTLY_OR_DEV_EDITION@
   mirror: always
 
-#ifdef NIGHTLY_BUILD
-  # Experimental support for weak references in JavaScript (WeakRef and
-  # FinalizationRegistry).
-- name: javascript.options.experimental.weakrefs
+# Support for weak references in JavaScript (WeakRef and FinalizationRegistry).
+- name: javascript.options.weakrefs
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+# Whether to expose the FinalizationRegistry.prototype.cleanupSome method.
+- name: javascript.options.experimental.weakrefs.expose_cleanupSome
   type: RelaxedAtomicBool
   value: false
   mirror: always
 
+#ifdef NIGHTLY_BUILD
   # Experimental support for Iterator Helpers in JavaScript.
 - name: javascript.options.experimental.iterator_helpers
   type: RelaxedAtomicBool
@@ -5483,6 +5599,15 @@
   mirror: always
   rust: true
 
+# Whether the `no-preference` value for `prefers-color-scheme` is parsed.
+#
+# It never matches regardless.
+- name: layout.css.prefers-color-scheme-no-preference.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
 # Whether the `:focus-visible` pseudo-class is enabled.
 #
 # TODO: There are various ambiguities in the spec about this, so we shouldn't
@@ -5816,18 +5941,6 @@
 - name: layout.css.scroll-behavior.damping-ratio
   type: AtomicFloat
   value: 1.0f
-  mirror: always
-
-# Is support for scrollbar-color property enabled?
-- name: layout.css.scrollbar-color.enabled
-  type: bool
-  value: true
-  mirror: always
-
-# Is support for scrollbar-width property enabled?
-- name: layout.css.scrollbar-width.enabled
-  type: bool
-  value: true
   mirror: always
 
 - name: layout.css.supports-selector.enabled
@@ -6356,6 +6469,12 @@
   value: @IS_NIGHTLY_BUILD@
   mirror: always
 
+# Whether to disable support for stretching operators with STIXGeneral fonts.
+- name: mathml.stixgeneral_operator_stretching.disabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "media."
 #---------------------------------------------------------------------------
@@ -6400,6 +6519,12 @@
 #else
   value: false
 #endif
+
+# ClockDrift desired buffering
+- name: media.clockdrift.buffering
+  type: int32_t
+  mirror: always
+  value: 5
 
 # If a resource is known to be smaller than this size (in kilobytes), a
 # memory-backed MediaCache may be used; otherwise the (single shared global)
@@ -7340,6 +7465,37 @@
   value: -1
   mirror: always
 
+# Auto-dir is a feature which treats any single-wheel scroll as a scroll in the
+# only one scrollable direction if the target has only one scrollable
+# direction. For example, if the user scrolls a vertical wheel inside a target
+# which is horizontally scrollable but vertical unscrollable, then the vertical
+# scroll is converted to a horizontal scroll for that target.
+# Note that auto-dir only takes effect for |mousewheel.*.action|s and
+# |mousewheel.*.action.override_x|s whose values are 1.
+- name: mousewheel.autodir.enabled
+  type: bool
+  value: false
+  mirror: always
+
+# When a wheel scroll is converted due to auto-dir, which side the converted
+# scroll goes towards is decided by one thing called "honoured target". If the
+# content of the honoured target horizontally starts from right to left, then
+# an upward scroll maps to a rightward scroll and a downward scroll maps to a
+# leftward scroll; otherwise, an upward scroll maps to a leftward scroll and a
+# downward scroll maps to a rightward scroll.
+# If this pref is set to false, then consider the scrolling target as the
+# honoured target.
+# If set to true, then consider the root element in the document where the
+# scrolling target is as the honoured target. But note that there's one
+# exception: for targets in an HTML document, the real root element(I.e. the
+# <html> element) is typically not considered as a root element, but the <body>
+# element is typically considered as a root element. If there is no <body>
+# element, then consider the <html> element instead.
+- name: mousewheel.autodir.honourroot
+  type: bool
+  value: false
+  mirror: always
+
 # This affects whether events will be routed through APZ or not.
 - name: mousewheel.system_scroll_override_on_root_content.enabled
   type: RelaxedAtomicBool
@@ -7484,6 +7640,11 @@
   value: @IS_NIGHTLY_BUILD@
   mirror: always
 
+- name: network.cookie.sameSite.schemeful
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
 - name: network.cookie.thirdparty.sessionOnly
   type: bool
   value: false
@@ -7543,6 +7704,13 @@
 - name: network.http.referer.hideOnionSource
   type: bool
   value: false
+  mirror: always
+
+# Include an origin header on non-GET and non-HEAD requests regardless of CORS.
+# 0=never send, 1=send when same-origin only, 2=always send.
+- name: network.http.sendOriginHeader
+  type: uint32_t
+  value: 2
   mirror: always
 
 # Prefs allowing granular control of referers.
@@ -7763,7 +7931,7 @@
 # Whether we can send OnDataAvailable to content process directly.
 - name: network.send_ODA_to_content_directly
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # Perform all network access on the socket process.
@@ -8048,6 +8216,12 @@
 # Prefs starting with "plugin."
 #---------------------------------------------------------------------------
 
+# Whether sending WM_MOUSEWHEEL and WM_MOUSEHWHEEL to plugins on Windows.
+- name: plugin.mousewheel.enabled
+  type: bool
+  value: true
+  mirror: always
+
 - name: plugin.state.flash
   type: uint32_t
   # Flash is Click-to-Activate by default on all channels. Disabled for ARM builds.
@@ -8109,6 +8283,12 @@
 - name: print.font-variations-as-paths
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+
+# Whether we always print silently (without a print dialog).
+- name: print.always_print_silent
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -8349,7 +8529,7 @@
 # Anti-tracking user-interaction expiration.
 - name: privacy.userInteraction.expiration
   type: uint32_t
-  value: 2592000   # 30 days (in seconds)
+  value: 3888000   # 45 days (in seconds)
   mirror: always
 
 # Anti-tracking user-interaction document interval.
@@ -8421,6 +8601,13 @@
 - name: privacy.partition.network_state
   type: RelaxedAtomicBool
   value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# By default, the network state isolation is not active when there is a proxy
+# setting. This pref forces the network isolation even in these scenarios.
+- name: privacy.partition.network_state.connection_with_proxy
+  type: bool
+  value: false
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -8576,11 +8763,34 @@
     value: false
     mirror: always
 
+  # Controls whether we disable win32k for the processes.
+  # true means that win32k system calls are not permitted.
+-   name: security.sandbox.rdd.win32k-disable
+    type: RelaxedAtomicBool
+    value: true
+    mirror: always
+
+  # Note: win32k is currently _not_ disabled for GMP due to intermittent test
+  # failures, where the GMP process fails very early. See bug 1449348.
+-   name: security.sandbox.gmp.win32k-disable
+    type: RelaxedAtomicBool
+    value: false
+    mirror: always
+
   # Whether win32k is disabled for socket processes.
   # true means win32k system calls are not permitted.
 -   name: security.sandbox.socket.win32k-disable
     type: RelaxedAtomicBool
     value: true
+    mirror: always
+
+  # This controls the depth of stack trace that is logged when Windows sandbox
+  # logging is turned on. This is only currently available for the content
+  # process because the only other sandbox (for GMP) has too strict a policy to
+  # allow stack tracing. This does not require a restart to take effect.
+-   name: security.sandbox.windows.log.stackTraceDepth
+    type: RelaxedAtomicUint32
+    value: 0
     mirror: always
 #endif
 
@@ -8713,6 +8923,12 @@
   value: 300000
   mirror: always
 
+- name: telemetry.fog.test.localhost_port
+  type: RelaxedAtomicUint32
+  value: 0
+  mirror: always
+  rust: true
+
 #---------------------------------------------------------------------------
 # Prefs starting with "test."
 #---------------------------------------------------------------------------
@@ -8739,6 +8955,12 @@
 #---------------------------------------------------------------------------
 # Prefs starting with "toolkit."
 #---------------------------------------------------------------------------
+
+# Returns true if BHR is disabled.
+- name: toolkit.content-background-hang-monitor.disabled
+  type: bool
+  value: false
+  mirror: always
 
 - name: toolkit.scrollbox.horizontalScrollDistance
   type: RelaxedAtomicInt32
@@ -8772,7 +8994,7 @@
 # for this pref means we call _exit(0) earlier during shutdown.
 - name: toolkit.shutdown.fastShutdownStage
   type: int32_t
-#if defined(NIGHTLY_BUILD) && !defined(DEBUG) && !defined(MOZ_CODE_COVERAGE) && !defined(MOZ_VALGRIND) && !defined(MOZ_PROFILE_GENERATE)
+#if !defined(DEBUG) && !defined(MOZ_CODE_COVERAGE) && !defined(MOZ_VALGRIND) && !defined(MOZ_PROFILE_GENERATE)
   value: 1
 #else
   value: 0
@@ -8786,11 +9008,6 @@
 - name: toolkit.telemetry.ipcBatchTimeout
   type: uint32_t
   value: 2000
-  mirror: always
-
-- name: toolkit.telemetry.isGeckoViewMode
-  type: RelaxedAtomicBool
-  value: false
   mirror: always
 
 - name: toolkit.telemetry.geckoview.batchDurationMS
@@ -8920,9 +9137,147 @@
   value: false
   mirror: always
 
+# Whether click-hold context menus are enabled.
+- name: ui.click_hold_context_menus
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# How long to wait for a drag gesture before displaying click-hold context menu,
+# in milliseconds.
 - name: ui.click_hold_context_menus.delay
   type: RelaxedAtomicInt32
   value: 500
+  mirror: always
+
+# When enabled, the touch.radius and mouse.radius prefs allow events to be
+# dispatched to nearby elements that are sensitive to the event. See
+# PositionedEventTargeting.cpp. The 'mm' prefs define a rectangle around the
+# nominal event target point within which we will search for suitable elements.
+# 'visitedWeight' is a percentage weight; a value > 100 makes a visited link be
+# treated as further away from the event target than it really is, while a
+# value < 100 makes a visited link be treated as closer to the event target
+# than it really is.
+
+- name: ui.touch.radius.enabled
+  type: bool
+  value: false
+  mirror: always
+
+- name: ui.touch.radius.topmm
+  type: uint32_t
+#ifdef ANDROID
+  value: 5
+#else
+  value: 12
+#endif
+  mirror: always
+
+- name: ui.touch.radius.rightmm
+  type: uint32_t
+#ifdef ANDROID
+  value: 3
+#else
+  value: 8
+#endif
+  mirror: always
+
+- name: ui.touch.radius.bottommm
+  type: uint32_t
+#ifdef ANDROID
+  value: 2
+#else
+  value: 4
+#endif
+  mirror: always
+
+- name: ui.touch.radius.leftmm
+  type: uint32_t
+#ifdef ANDROID
+  value: 3
+#else
+  value: 8
+#endif
+  mirror: always
+
+- name: ui.touch.radius.visitedWeight
+  type: uint32_t
+  value: 120
+  mirror: always
+
+- name: ui.mouse.radius.enabled
+  type: bool
+  value: @IS_ANDROID@
+  mirror: always
+
+- name: ui.mouse.radius.topmm
+  type: uint32_t
+#ifdef ANDROID
+  value: 5
+#else
+  value: 12
+#endif
+  mirror: always
+
+- name: ui.mouse.radius.rightmm
+  type: uint32_t
+#ifdef ANDROID
+  value: 3
+#else
+  value: 8
+#endif
+  mirror: always
+
+- name: ui.mouse.radius.bottommm
+  type: uint32_t
+#ifdef ANDROID
+  value: 2
+#else
+  value: 4
+#endif
+  mirror: always
+
+- name: ui.mouse.radius.leftmm
+  type: uint32_t
+#ifdef ANDROID
+  value: 3
+#else
+  value: 8
+#endif
+  mirror: always
+
+- name: ui.mouse.radius.visitedWeight
+  type: uint32_t
+  value: 120
+  mirror: always
+
+- name: ui.mouse.radius.reposition
+  type: bool
+  value: @IS_ANDROID@
+  mirror: always
+
+# When true, the ui.mouse.radius.* prefs will only affect simulated mouse
+# events generated by touch input. When false, the prefs will be used for all
+# mouse events.
+- name: ui.mouse.radius.inputSource.touchOnly
+  type: bool
+  value: true
+  mirror: always
+
+#---------------------------------------------------------------------------
+# Prefs starting with "urlclassifier."
+#---------------------------------------------------------------------------
+
+# Update server response timeout for Safe Browsing.
+- name: urlclassifier.update.response_timeout_ms
+  type: uint32_t
+  value: 30000
+  mirror: always
+
+# Download update timeout for Safe Browsing.
+- name: urlclassifier.update.timeout_ms
+  type: uint32_t
+  value: 90000
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -9223,11 +9578,17 @@
 # Use DMABuf backend for WebGL on Wayland.
 - name: widget.wayland-dmabuf-webgl.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # Use VA-API for video playback on Wayland.
 - name: widget.wayland-dmabuf-vaapi.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# Use DMABuf for video textures.
+- name: widget.wayland-dmabuf-video-textures.enabled
   type: RelaxedAtomicBool
   value: false
   mirror: always

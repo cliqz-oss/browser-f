@@ -595,11 +595,25 @@ class WindowsGPOPoliciesProvider {
   }
 
   _readData(wrk, root) {
+<<<<<<< HEAD
     wrk.open(root, "SOFTWARE\\Policies", wrk.ACCESS_READ);
     if (wrk.hasChild("Cliqz")) {
       this._policies = WindowsGPOParser.readPolicies(wrk, this._policies);
+||||||| merged common ancestors
+    wrk.open(root, "SOFTWARE\\Policies", wrk.ACCESS_READ);
+    if (wrk.hasChild("Mozilla\\" + Services.appinfo.name)) {
+      this._policies = WindowsGPOParser.readPolicies(wrk, this._policies);
+=======
+    try {
+      wrk.open(root, "SOFTWARE\\Policies", wrk.ACCESS_READ);
+      if (wrk.hasChild("Mozilla\\" + Services.appinfo.name)) {
+        this._policies = WindowsGPOParser.readPolicies(wrk, this._policies);
+      }
+      wrk.close();
+    } catch (e) {
+      log.error("Unable to access registry - ", e);
+>>>>>>> origin/upstream-releases
     }
-    wrk.close();
   }
 }
 

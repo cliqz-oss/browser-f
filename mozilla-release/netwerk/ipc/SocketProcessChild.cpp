@@ -11,6 +11,7 @@
 #include "HttpTransactionChild.h"
 #include "HttpConnectionMgrChild.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/dom/IPCBlobInputStreamChild.h"
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/BackgroundChild.h"
@@ -22,6 +23,7 @@
 #include "mozilla/net/BackgroundDataBridgeParent.h"
 #include "mozilla/net/DNSRequestChild.h"
 #include "mozilla/net/DNSRequestParent.h"
+#include "mozilla/net/NativeDNSResolverOverrideChild.h"
 #include "mozilla/net/TRRServiceChild.h"
 #include "mozilla/ipc/PChildToParentStreamChild.h"
 #include "mozilla/ipc/PParentToChildStreamChild.h"
@@ -122,6 +124,26 @@ bool SocketProcessChild::Init(base::ProcessId aParentPid,
   // because it's not running a native event loop. See bug 1384336.
   CGSShutdownServerConnections();
 #endif  // XP_MACOSX
+
+  nsresult rv;
+  nsCOMPtr<nsIIOService> ios = do_GetIOService(&rv);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  nsCOMPtr<nsIProtocolHandler> handler;
+  rv = ios->GetProtocolHandler("http", getter_AddRefs(handler));
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  // Initialize DNS Service here, since it needs to be done in main thread.
+  nsCOMPtr<nsIDNSService> dns =
+      do_GetService("@mozilla.org/network/dns-service;1", &rv);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -154,6 +176,11 @@ void SocketProcessChild::CleanUp() {
     if (!iter.Data()->Closed()) {
       iter.Data()->Close();
     }
+  }
+
+  {
+    MutexAutoLock lock(mMutex);
+    mBackgroundDataBridgeMap.Clear();
   }
   NS_ShutdownXPCOM(nullptr);
 }
@@ -310,40 +337,28 @@ PFileDescriptorSetChild* SocketProcessChild::SendPFileDescriptorSetConstructor(
 }
 
 already_AddRefed<PHttpConnectionMgrChild>
-SocketProcessChild::AllocPHttpConnectionMgrChild() {
+SocketProcessChild::AllocPHttpConnectionMgrChild(
+    const HttpHandlerInitArgs& aArgs) {
   LOG(("SocketProcessChild::AllocPHttpConnectionMgrChild \n"));
-  if (!gHttpHandler) {
-    nsresult rv;
-    nsCOMPtr<nsIIOService> ios = do_GetIOService(&rv);
-    if (NS_FAILED(rv)) {
-      return nullptr;
-    }
+  MOZ_ASSERT(gHttpHandler);
+  gHttpHandler->SetHttpHandlerInitArgs(aArgs);
 
-    nsCOMPtr<nsIProtocolHandler> handler;
-    rv = ios->GetProtocolHandler("http", getter_AddRefs(handler));
-    if (NS_FAILED(rv)) {
-      return nullptr;
-    }
+  RefPtr<HttpConnectionMgrChild> actor = new HttpConnectionMgrChild();
+  return actor.forget();
+}
 
-    // Initialize DNS Service here, since it needs to be done in main thread.
-    nsCOMPtr<nsIDNSService> dns =
-        do_GetService("@mozilla.org/network/dns-service;1", &rv);
-    if (NS_FAILED(rv)) {
-      return nullptr;
-    }
-
-    RefPtr<HttpConnectionMgrChild> actor = new HttpConnectionMgrChild();
-    return actor.forget();
-  }
-
-  return nullptr;
+mozilla::ipc::IPCResult SocketProcessChild::RecvUpdateDeviceModelId(
+    const nsCString& aModelId) {
+  MOZ_ASSERT(gHttpHandler);
+  gHttpHandler->SetDeviceModelId(aModelId);
+  return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 SocketProcessChild::RecvOnHttpActivityDistributorActivated(
     const bool& aIsActivated) {
   if (nsCOMPtr<nsIHttpActivityObserver> distributor =
-          services::GetActivityDistributor()) {
+          services::GetHttpActivityDistributor()) {
     distributor->SetIsActive(aIsActivated);
   }
   return IPC_OK();
@@ -425,6 +440,36 @@ mozilla::ipc::IPCResult SocketProcessChild::RecvPTRRServiceConstructor(
   static_cast<TRRServiceChild*>(aActor)->Init(
       aCaptiveIsPassed, aParentalControlEnabled, std::move(aDNSSuffixList));
   return IPC_OK();
+}
+
+already_AddRefed<PNativeDNSResolverOverrideChild>
+SocketProcessChild::AllocPNativeDNSResolverOverrideChild() {
+  RefPtr<NativeDNSResolverOverrideChild> actor =
+      new NativeDNSResolverOverrideChild();
+  return actor.forget();
+}
+
+mozilla::ipc::IPCResult
+SocketProcessChild::RecvPNativeDNSResolverOverrideConstructor(
+    PNativeDNSResolverOverrideChild* aActor) {
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult SocketProcessChild::RecvNotifyObserver(
+    const nsCString& aTopic, const nsString& aData) {
+  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+  if (obs) {
+    obs->NotifyObservers(nullptr, aTopic.get(), aData.get());
+  }
+  return IPC_OK();
+}
+
+already_AddRefed<dom::PIPCBlobInputStreamChild>
+SocketProcessChild::AllocPIPCBlobInputStreamChild(const nsID& aID,
+                                                  const uint64_t& aSize) {
+  RefPtr<dom::IPCBlobInputStreamChild> actor =
+      new dom::IPCBlobInputStreamChild(aID, aSize);
+  return actor.forget();
 }
 
 }  // namespace net

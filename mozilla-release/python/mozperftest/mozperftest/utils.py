@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import logging
 import contextlib
+from datetime import date, timedelta
 import sys
 import os
 import random
@@ -15,6 +16,7 @@ import tempfile
 
 
 RETRY_SLEEP = 10
+MULTI_TASK_ROOT = "https://firefox-ci-tc.services.mozilla.com/api/index/v1/tasks/"
 
 
 @contextlib.contextmanager
@@ -40,6 +42,8 @@ def silence(layer=None):
     oldout, olderr = sys.stdout, sys.stderr
     try:
         sys.stdout, sys.stderr = StringIO(), StringIO()
+        sys.stdout.buffer = sys.stdout
+        sys.stderr.buffer = sys.stderr
         sys.stdout.fileno = sys.stderr.fileno = lambda: -1
         yield sys.stdout, sys.stderr
     finally:
@@ -189,3 +193,17 @@ def temporary_env(**env):
                 del os.environ[key]
             else:
                 os.environ[key] = value
+
+
+def get_multi_tasks_url(route, day="yesterday"):
+    """Builds a URL to obtain all the tasks of a given build route for a single day.
+
+    If previous is true, then we get builds from the previous day,
+    otherwise, we look at the current day.
+    """
+    if day in ("yesterday", "today"):
+        curr = date.today()
+        if day == "yesterday":
+            curr = curr - timedelta(1)
+        day = curr.strftime("%Y.%m.%d")
+    return f"""{MULTI_TASK_ROOT}{route}.{day}.revision"""

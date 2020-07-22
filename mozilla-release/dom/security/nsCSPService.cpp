@@ -20,6 +20,7 @@
 #include "nsContentPolicyUtils.h"
 #include "nsNetUtil.h"
 #include "mozilla/net/DocumentLoadListener.h"
+#include "mozilla/net/DocumentChannel.h"
 
 using namespace mozilla;
 
@@ -57,7 +58,7 @@ bool subjectToCSP(nsIURI* aURI, nsContentPolicyType aContentType) {
     return true;
   }
 
-  // Finally we have to whitelist "about:" which does not fall into
+  // Finally we have to allowlist "about:" which does not fall into
   // the category underneath and also "javascript:" which is not
   // subject to CSP content loading rules.
   if (aURI->SchemeIs("about") || aURI->SchemeIs("javascript")) {
@@ -65,7 +66,7 @@ bool subjectToCSP(nsIURI* aURI, nsContentPolicyType aContentType) {
   }
 
   // Please note that it should be possible for websites to
-  // whitelist their own protocol handlers with respect to CSP,
+  // allowlist their own protocol handlers with respect to CSP,
   // hence we use protocol flags to accomplish that, but we also
   // want resource:, chrome: and moz-icon to be subject to CSP
   // (which also use URI_IS_LOCAL_RESOURCE).
@@ -130,7 +131,7 @@ bool subjectToCSP(nsIURI* aURI, nsContentPolicyType aContentType) {
   // or type is *not* subject to CSP.
   // Please note, the correct way to opt-out of CSP using a custom
   // protocolHandler is to set one of the nsIProtocolHandler flags
-  // that are whitelistet in subjectToCSP()
+  // that are allowlistet in subjectToCSP()
   if (!StaticPrefs::security_csp_enable() ||
       !subjectToCSP(aContentLocation, contentType)) {
     return NS_OK;
@@ -251,6 +252,16 @@ CSPService::AsyncOnChannelRedirect(nsIChannel* oldChannel,
     }
   }
 
+  // Don't do these checks if we're switching from DocumentChannel
+  // to a real channel. In that case, we should already have done
+  // the checks in the parent process. AsyncOnChannelRedirect
+  // isn't called in the content process if we switch process,
+  // so checking here would just hide bugs in the process switch
+  // cases.
+  if (RefPtr<net::DocumentChannel> docChannel = do_QueryObject(oldChannel)) {
+    return NS_OK;
+  }
+
   nsCOMPtr<nsIURI> newUri;
   nsresult rv = newChannel->GetURI(getter_AddRefs(newUri));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -297,7 +308,7 @@ nsresult CSPService::ConsultCSPForRedirect(nsIURI* aOriginalURI,
     bool allowsNavigateTo = false;
     nsresult rv = cspToInherit->GetAllowsNavigateTo(
         aNewURI, aLoadInfo->GetIsFormSubmission(), true, /* aWasRedirected */
-        false,                                           /* aEnforceWhitelist */
+        false,                                           /* aEnforceAllowlist */
         &allowsNavigateTo);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -311,7 +322,7 @@ nsresult CSPService::ConsultCSPForRedirect(nsIURI* aOriginalURI,
   // is *not* subject to CSP.
   // Please note, the correct way to opt-out of CSP using a custom
   // protocolHandler is to set one of the nsIProtocolHandler flags
-  // that are whitelistet in subjectToCSP()
+  // that are allowlistet in subjectToCSP()
   nsContentPolicyType policyType = aLoadInfo->InternalContentPolicyType();
   if (!StaticPrefs::security_csp_enable() ||
       !subjectToCSP(aNewURI, policyType)) {

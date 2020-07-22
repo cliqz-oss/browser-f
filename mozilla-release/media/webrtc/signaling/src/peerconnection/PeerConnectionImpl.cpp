@@ -19,6 +19,7 @@
 #include "pk11pub.h"
 
 #include "nsNetCID.h"
+#include "nsIIDNService.h"
 #include "nsILoadContext.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
@@ -321,6 +322,10 @@ PeerConnectionImpl::PeerConnectionImpl(const GlobalObject* aGlobal)
     }
     mWindow->AddPeerConnection();
     mActiveOnWindow = true;
+
+    mRtxIsAllowed =
+        !HostnameInPref("media.peerconnection.video.use_rtx.blocklist",
+                        mWindow->GetDocumentURI());
   }
   CSFLogInfo(LOGTAG, "%s: PeerConnectionImpl constructor for %s", __FUNCTION__,
              mHandle.c_str());
@@ -468,6 +473,7 @@ nsresult PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
 
   mJsepSession =
       MakeUnique<JsepSessionImpl>(mName, MakeUnique<PCUuidGenerator>());
+  mJsepSession->SetRtxIsAllowed(mRtxIsAllowed);
 
   res = mJsepSession->Init();
   if (NS_FAILED(res)) {
@@ -1026,6 +1032,8 @@ already_AddRefed<TransceiverImpl> PeerConnectionImpl::CreateTransceiverImpl(
     return nullptr;
   }
 
+  jsepTransceiver->SetRtxIsAllowed(mRtxIsAllowed);
+
   // Do this last, since it is not possible to roll back.
   nsresult rv = AddRtpTransceiverToJsepSession(jsepTransceiver);
   if (NS_FAILED(rv)) {
@@ -1303,6 +1311,14 @@ PeerConnectionImpl::SetLocalDescription(int32_t aAction, const char* aSDP) {
     mPrivacyRequested = Some(true);
   }
 
+  mozilla::dom::RTCSdpHistoryEntryInternal sdpEntry;
+  sdpEntry.mIsLocal = true;
+  sdpEntry.mTimestamp = mTimestampMaker.GetNow();
+  sdpEntry.mSdp = NS_ConvertASCIItoUTF16(aSDP);
+  if (!mSdpHistory.AppendElement(sdpEntry, fallible)) {
+    mozalloc_handle_oom(0);
+  }
+
   mLocalRequestedSDP = aSDP;
 
   bool wasRestartingIce = mJsepSession->IsIceRestarting();
@@ -1385,6 +1401,14 @@ PeerConnectionImpl::SetRemoteDescription(int32_t action, const char* aSDP) {
   }
 
   STAMP_TIMECARD(mTimeCard, "Set Remote Description");
+
+  mozilla::dom::RTCSdpHistoryEntryInternal sdpEntry;
+  sdpEntry.mIsLocal = false;
+  sdpEntry.mTimestamp = mTimestampMaker.GetNow();
+  sdpEntry.mSdp = NS_ConvertASCIItoUTF16(aSDP);
+  if (!mSdpHistory.AppendElement(sdpEntry, fallible)) {
+    mozalloc_handle_oom(0);
+  }
 
   mRemoteRequestedSDP = aSDP;
   bool wasRestartingIce = mJsepSession->IsIceRestarting();
@@ -1698,6 +1722,73 @@ void PeerConnectionImpl::DumpPacket_m(size_t level, dom::mozPacketDumpType type,
   mPCObserver->OnPacket(level, type, sending, arrayBuffer, jrv);
 }
 
+bool PeerConnectionImpl::HostnameInPref(const char* aPref, nsIURI* aDocURI) {
+  auto HostInDomain = [](const nsCString& aHost, const nsCString& aPattern) {
+    int32_t patternOffset = 0;
+    int32_t hostOffset = 0;
+
+    // Act on '*.' wildcard in the left-most position in a domain pattern.
+    if (StringBeginsWith(aPattern, nsCString("*."))) {
+      patternOffset = 2;
+
+      // Ignore the lowest level sub-domain for the hostname.
+      hostOffset = aHost.FindChar('.') + 1;
+
+      if (hostOffset <= 1) {
+        // Reject a match between a wildcard and a TLD or '.foo' form.
+        return false;
+      }
+    }
+
+    nsDependentCString hostRoot(aHost, hostOffset);
+    return hostRoot.EqualsIgnoreCase(aPattern.BeginReading() + patternOffset);
+  };
+
+  if (!aDocURI) {
+    return false;
+  }
+
+  nsCString hostName;
+  aDocURI->GetAsciiHost(hostName);  // normalize UTF8 to ASCII equivalent
+  nsCString domainList;
+  nsresult nr = Preferences::GetCString(aPref, domainList);
+
+  if (NS_FAILED(nr)) {
+    return false;
+  }
+
+  domainList.StripWhitespace();
+
+  if (domainList.IsEmpty() || hostName.IsEmpty()) {
+    return false;
+  }
+
+  // Get UTF8 to ASCII domain name normalization service
+  nsresult rv;
+  nsCOMPtr<nsIIDNService> idnService =
+      do_GetService("@mozilla.org/network/idn-service;1", &rv);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return false;
+  }
+
+  // Test each domain name in the comma separated list
+  // after converting from UTF8 to ASCII. Each domain
+  // must match exactly or have a single leading '*.' wildcard.
+  for (const nsACString& each : domainList.Split(',')) {
+    nsCString domainName;
+    rv = idnService->ConvertUTF8toACE(each, domainName);
+    if (NS_SUCCEEDED(rv)) {
+      if (HostInDomain(hostName, domainName)) {
+        return true;
+      }
+    } else {
+      NS_WARNING("Failed to convert UTF-8 host to ASCII");
+    }
+  }
+
+  return false;
+}
+
 nsresult PeerConnectionImpl::EnablePacketDump(unsigned long level,
                                               dom::mozPacketDumpType type,
                                               bool sending) {
@@ -1738,6 +1829,11 @@ nsresult PeerConnectionImpl::DisablePacketDump(unsigned long level,
   }
 
   return NS_OK;
+}
+
+void PeerConnectionImpl::StampTimecard(const char* aEvent) {
+  MOZ_ASSERT(NS_IsMainThread());
+  STAMP_TIMECARD(mTimeCard, aEvent);
 }
 
 NS_IMETHODIMP
@@ -2728,6 +2824,9 @@ RefPtr<dom::RTCStatsReportPromise> PeerConnectionImpl::GetStats(
           NS_ConvertASCIItoUTF16(localDescription.c_str()));
       report->mRemoteSdp.Construct(
           NS_ConvertASCIItoUTF16(remoteDescription.c_str()));
+      if (!report->mSdpHistory.AppendElements(mSdpHistory, fallible)) {
+        mozalloc_handle_oom(0);
+      }
       if (mJsepSession->IsPendingOfferer().isSome()) {
         report->mOfferer.Construct(*mJsepSession->IsPendingOfferer());
       } else if (mJsepSession->IsCurrentOfferer().isSome()) {
@@ -2790,7 +2889,9 @@ RefPtr<dom::RTCStatsReportPromise> PeerConnectionImpl::GetStats(
               if (!report->mRawLocalCandidates.AppendElements(
                       stats->mRawLocalCandidates, fallible) ||
                   !report->mRawRemoteCandidates.AppendElements(
-                      stats->mRawRemoteCandidates, fallible)) {
+                      stats->mRawRemoteCandidates, fallible) ||
+                  !report->mVideoFrameHistories.AppendElements(
+                      stats->mVideoFrameHistories, fallible)) {
                 // XXX(Bug 1632090) Instead of extending the array 1-by-1 (which
                 // might involve multiple reallocations) and potentially
                 // crashing here, SetCapacity could be called outside the loop

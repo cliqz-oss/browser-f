@@ -132,11 +132,12 @@ module.exports = [
     description:
       "Measure time for a bunch of sync console.log statements to appear",
   },
-  {
-    name: "console.autocomplete",
-    path: "webconsole/autocomplete.js",
-    description: "Measure time for autocomplete popup to appear",
-  },
+  // Bug 1480201 - disable test due to frequent failures
+  //  {
+  //    name: "console.autocomplete",
+  //    path: "webconsole/autocomplete.js",
+  //    description: "Measure time for autocomplete popup to appear",
+  //  },
   {
     name: "console.streamlog",
     path: "webconsole/streamlog.js",
@@ -183,5 +184,5 @@ module.exports = [
   },
   // ⚠  Adding new individual tests slows down DAMP execution ⚠
   // ⚠  Consider contributing to custom.${tool} rather than adding isolated tests ⚠
-  // ⚠  See http://docs.firefox-dev.tools/tests/writing-perf-tests.html ⚠
+  // ⚠  See https://firefox-source-docs.mozilla.org/devtools/tests/writing-perf-tests.html ⚠
 ];

@@ -109,16 +109,13 @@ with Files('PermissionsUtils.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Add-ons Manager')
 
 with Files('PopupNotifications.jsm'):
-    BUG_COMPONENT = ('Toolkit', 'Password Manager')
+    BUG_COMPONENT = ('Toolkit', 'Notifications and Alerts')
 
 with Files('PrivateBrowsingUtils.jsm'):
     BUG_COMPONENT = ('Firefox', 'Private Browsing')
 
 with Files('Promise*.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Async Tooling')
-
-with Files('RemoteWebProgress.jsm'):
-    BUG_COMPONENT = ('Core', 'DOM: Navigation')
 
 with Files('ResponsivenessMonitor.jsm'):
     BUG_COMPONENT = ('Firefox', 'Migration')
@@ -212,7 +209,6 @@ EXTRA_JS_MODULES += [
     'PromiseUtils.jsm',
     'Region.jsm',
     'RemotePageAccessManager.jsm',
-    'RemoteWebProgress.jsm',
     'ResetProfile.jsm',
     'ResponsivenessMonitor.jsm',
     'ServiceRequest.jsm',
@@ -282,6 +278,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
 
 for var in ('ANDROID_PACKAGE_NAME',
             'MOZ_APP_NAME',
+            'MOZ_APP_BASENAME',
             'MOZ_APP_VERSION',
             'MOZ_APP_VERSION_DISPLAY',
             'MOZ_BING_API_CLIENTID',

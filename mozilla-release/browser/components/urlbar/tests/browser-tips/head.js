@@ -21,9 +21,23 @@ XPCOMUtils.defineLazyModuleGetters(this, {
     "resource:///modules/UrlbarProviderInterventions.jsm",
   UrlbarProvidersManager: "resource:///modules/UrlbarProvidersManager.jsm",
   UrlbarResult: "resource:///modules/UrlbarResult.jsm",
-  UrlbarTestUtils: "resource://testing-common/UrlbarTestUtils.jsm",
-  SearchTestUtils: "resource://testing-common/SearchTestUtils.jsm",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.jsm",
+});
+
+XPCOMUtils.defineLazyGetter(this, "UrlbarTestUtils", () => {
+  const { UrlbarTestUtils: module } = ChromeUtils.import(
+    "resource://testing-common/UrlbarTestUtils.jsm"
+  );
+  module.init(this);
+  return module;
+});
+
+XPCOMUtils.defineLazyGetter(this, "SearchTestUtils", () => {
+  const { SearchTestUtils: module } = ChromeUtils.import(
+    "resource://testing-common/SearchTestUtils.jsm"
+  );
+  module.init(Assert, registerCleanupFunction);
+  return module;
 });
 
 // For each intervention type, a search string that trigger the intervention.
@@ -34,9 +48,6 @@ const SEARCH_STRINGS = {
 };
 
 add_task(async function init() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.update1.interventions", true]],
-  });
   registerCleanupFunction(() => {
     // We need to reset the provider's appUpdater.status between tests so that
     // each test doesn't interfere with the next.

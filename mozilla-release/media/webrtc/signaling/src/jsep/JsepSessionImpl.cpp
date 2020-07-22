@@ -407,7 +407,8 @@ std::vector<SdpExtmapAttributeList::Extmap> JsepSessionImpl::GetRtpExtensions(
         AddVideoRtpExtension(webrtc::RtpExtension::kRtpStreamIdUri,
                              SdpDirectionAttribute::kSendonly);
 
-        if (Preferences::GetBool("media.peerconnection.video.use_rtx", false)) {
+        if (mRtxIsAllowed &&
+            Preferences::GetBool("media.peerconnection.video.use_rtx", false)) {
           AddVideoRtpExtension(webrtc::RtpExtension::kRepairedRtpStreamIdUri,
                                SdpDirectionAttribute::kSendonly);
         }
@@ -925,14 +926,13 @@ nsresult JsepSessionImpl::HandleNegotiatedSession(
   NS_ENSURE_SUCCESS(rv, rv);
 
   // First, set the bundle level on the transceivers
-  for (auto& midAndMaster : bundledMids) {
-    JsepTransceiver* bundledTransceiver =
-        GetTransceiverForMid(midAndMaster.first);
+  for (auto& [mid, transportOwner] : bundledMids) {
+    JsepTransceiver* bundledTransceiver = GetTransceiverForMid(mid);
     if (!bundledTransceiver) {
-      JSEP_SET_ERROR("No transceiver for bundled mid " << midAndMaster.first);
+      JSEP_SET_ERROR("No transceiver for bundled mid " << mid);
       return NS_ERROR_INVALID_ARG;
     }
-    bundledTransceiver->SetBundleLevel(midAndMaster.second->GetLevel());
+    bundledTransceiver->SetBundleLevel(transportOwner->GetLevel());
   }
 
   // Now walk through the m-sections, perform negotiation, and update the
@@ -1098,11 +1098,11 @@ nsresult JsepSessionImpl::FinalizeTransport(const SdpAttributeList& remote,
     // We do sanity-checking for these in ParseSdp
     ice->mUfrag = remote.GetIceUfrag();
     ice->mPwd = remote.GetIcePwd();
-    if (remote.HasAttribute(SdpAttribute::kCandidateAttribute)) {
-      ice->mCandidates = remote.GetCandidate();
-    }
-
     transport->mIce = std::move(ice);
+  }
+
+  if (remote.HasAttribute(SdpAttribute::kCandidateAttribute)) {
+    transport->mIce->mCandidates = remote.GetCandidate();
   }
 
   if (!transport->mDtls) {
@@ -1949,6 +1949,7 @@ void JsepSessionImpl::SetupDefaultCodecs() {
       new JsepAudioCodecDescription("101", "telephone-event", 8000, 1));
 
   bool useRtx =
+      mRtxIsAllowed &&
       Preferences::GetBool("media.peerconnection.video.use_rtx", false);
   // Supported video codecs.
   // Note: order here implies priority for building offers!

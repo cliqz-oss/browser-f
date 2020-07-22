@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/StyleSheet.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ComputedStyleInlines.h"
 #include "mozilla/css/ErrorReporter.h"
@@ -697,12 +698,14 @@ already_AddRefed<dom::Promise> StyleSheet::Replace(const nsACString& aText,
   // 3. Disallow modifications until finished.
   SetModificationDisallowed(true);
 
+  // TODO(emilio, 1642227): Should constructable stylesheets notify global
+  // observers (i.e., set mMustNotify to true)?
   auto* loader = mConstructorDocument->CSSLoader();
   auto loadData = MakeRefPtr<css::SheetLoadData>(
-      loader, GetBaseURI(), this, /* aSyncLoad */ false,
+      loader, nullptr, this, /* aSyncLoad */ false,
       css::Loader::UseSystemPrincipal::No, css::Loader::IsPreload::No,
       /* aPreloadEncoding */ nullptr,
-      /* aObserver */ nullptr, /* aLoaderPrincipal */ nullptr,
+      /* aObserver */ nullptr, mConstructorDocument->NodePrincipal(),
       GetReferrerInfo(),
       /* aRequestingNode */ nullptr);
 
@@ -893,7 +896,15 @@ void StyleSheet::UnparentChildren() {
              "by a document?");
   // XXXbz this is a little bogus; see the comment where we
   // declare mChildren in StyleSheetInfo.
-  for (StyleSheet* child : ChildSheets()) {
+  //
+  // FIXME(emilio): StyleSheetInfo::RemoveSheet fixes up the parent list
+  // instead... We should maybe remove this and make that fix up more correct
+  // (right now it only tries to fix them up if you're the first sheet, but
+  // there's no guarantee that the first stylesheet is where the children end up
+  // being inserted in presence of deferred loads).
+  for (StyleSheet* child : Inner().mChildren) {
+    MOZ_ASSERT(!child->GetParentSheet() ||
+               child->GetParentSheet()->mInner == mInner);
     if (child->mParentSheet == this) {
       child->mParentSheet = nullptr;
     }
@@ -1180,31 +1191,33 @@ RefPtr<StyleSheetParsePromise> StyleSheet::ParseSheet(
   RefPtr<StyleSheetParsePromise> p = mParsePromise.Ensure(__func__);
   SetURLExtraData();
 
-  const StyleUseCounters* useCounters =
-      aLoader.GetDocument() ? aLoader.GetDocument()->GetStyleUseCounters()
-                            : nullptr;
   // @import rules are disallowed due to this decision:
   // https://github.com/WICG/construct-stylesheets/issues/119#issuecomment-588352418
   // We may allow @import rules again in the future.
   auto allowImportRules = SelfOrAncestorIsConstructed()
                               ? StyleAllowImportRules::No
                               : StyleAllowImportRules::Yes;
+  const bool shouldRecordCounters =
+      aLoader.GetDocument() && aLoader.GetDocument()->GetStyleUseCounters();
   if (!AllowParallelParse(aLoader, GetSheetURI())) {
+    UniquePtr<StyleUseCounters> counters =
+        shouldRecordCounters ? Servo_UseCounters_Create().Consume() : nullptr;
+
     RefPtr<RawServoStyleSheetContents> contents =
         Servo_StyleSheet_FromUTF8Bytes(
             &aLoader, this, &aLoadData, &aBytes, mParsingMode, Inner().mURLData,
-            aLoadData.mLineNumber, aLoader.GetCompatibilityMode(),
-            /* reusable_sheets = */ nullptr, useCounters, allowImportRules,
+            aLoadData.mLineNumber, aLoadData.mCompatMode,
+            /* reusable_sheets = */ nullptr, counters.get(), allowImportRules,
             StyleSanitizationKind::None,
             /* sanitized_output = */ nullptr)
             .Consume();
+    aLoadData.mUseCounters = std::move(counters);
     FinishAsyncParse(contents.forget());
   } else {
     auto holder = MakeRefPtr<css::SheetLoadDataHolder>(__func__, &aLoadData);
     Servo_StyleSheet_FromUTF8BytesAsync(
         holder, Inner().mURLData, &aBytes, mParsingMode, aLoadData.mLineNumber,
-        aLoader.GetCompatibilityMode(),
-        /* should_record_use_counters = */ !!useCounters, allowImportRules);
+        aLoadData.mCompatMode, shouldRecordCounters, allowImportRules);
   }
 
   return p;

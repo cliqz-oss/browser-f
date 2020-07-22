@@ -33,6 +33,7 @@
 #include "nsXULAppAPI.h"
 #include "nsIProtocolHandler.h"
 #include "GeckoProfiler.h"
+#include "nsAppRunner.h"
 
 #if defined(XP_WIN)
 #  include <windows.h>
@@ -83,6 +84,9 @@ static const size_t STARTUP_CACHE_RESERVE_CAPACITY = 450;
 // This is a hard limit which we will assert on, to ensure that we don't
 // have some bug causing runaway cache growth.
 static const size_t STARTUP_CACHE_MAX_CAPACITY = 5000;
+
+// Not const because we change it for gtests.
+static uint8_t STARTUP_CACHE_WRITE_TIMEOUT = 60;
 
 #define STARTUP_CACHE_NAME "startupCache." SC_WORDSIZE "." SC_ENDIAN
 
@@ -148,7 +152,6 @@ StartupCache::StartupCache()
     : mTableLock("StartupCache::mTableLock"),
       mDirty(false),
       mWrittenOnce(false),
-      mStartupWriteInitiated(false),
       mCurTableReferenced(false),
       mRequestedCount(0),
       mCacheEntriesBaseOffset(0),
@@ -162,6 +165,10 @@ nsresult StartupCache::Init() {
       do_GetService(NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "jar"));
 
   nsresult rv;
+
+  if (mozilla::RunningGTest()) {
+    STARTUP_CACHE_WRITE_TIMEOUT = 3;
+  }
 
   // This allows to override the startup cache filename
   // which is useful from xpcshell, when there is no ProfLDS directory to keep
@@ -493,7 +500,6 @@ size_t StartupCache::HeapSizeOfIncludingThis(
 Result<Ok, nsresult> StartupCache::WriteToDisk() {
   mTableLock.AssertCurrentThreadOwns();
 
-  mStartupWriteInitiated = true;
   if (!mDirty || mWrittenOnce) {
     return Ok();
   }
@@ -661,7 +667,6 @@ void StartupCache::EnsureShutdownWriteComplete() {
     // We got the lock. Keep the following in sync with
     // MaybeWriteOffMainThread:
     WaitOnPrefetchThread();
-    mStartupWriteInitiated = false;
     mDirty = true;
     mCacheData.reset();
     // Most of this should be redundant given MaybeWriteOffMainThread should
@@ -740,7 +745,6 @@ void StartupCache::MaybeWriteOffMainThread() {
 
   // Keep this code in sync with EnsureShutdownWriteComplete.
   WaitOnPrefetchThread();
-  mStartupWriteInitiated = false;
   mDirty = true;
   mCacheData.reset();
 
@@ -798,15 +802,14 @@ nsresult StartupCache::ResetStartupWriteTimerCheckingReadCount() {
   else
     rv = mTimer->Cancel();
   NS_ENSURE_SUCCESS(rv, rv);
-  // Wait for 60 seconds, then write out the cache.
-  mTimer->InitWithNamedFuncCallback(StartupCache::WriteTimeout, this, 60000,
-                                    nsITimer::TYPE_ONE_SHOT,
-                                    "StartupCache::WriteTimeout");
+  // Wait for the specified timeout, then write out the cache.
+  mTimer->InitWithNamedFuncCallback(
+      StartupCache::WriteTimeout, this, STARTUP_CACHE_WRITE_TIMEOUT * 1000,
+      nsITimer::TYPE_ONE_SHOT, "StartupCache::WriteTimeout");
   return NS_OK;
 }
 
 nsresult StartupCache::ResetStartupWriteTimer() {
-  mStartupWriteInitiated = false;
   mDirty = true;
   nsresult rv = NS_OK;
   if (!mTimer)
@@ -814,28 +817,17 @@ nsresult StartupCache::ResetStartupWriteTimer() {
   else
     rv = mTimer->Cancel();
   NS_ENSURE_SUCCESS(rv, rv);
-  // Wait for 60 seconds, then write out the cache.
-  mTimer->InitWithNamedFuncCallback(StartupCache::WriteTimeout, this, 60000,
-                                    nsITimer::TYPE_ONE_SHOT,
-                                    "StartupCache::WriteTimeout");
+  // Wait for the specified timeout, then write out the cache.
+  mTimer->InitWithNamedFuncCallback(
+      StartupCache::WriteTimeout, this, STARTUP_CACHE_WRITE_TIMEOUT * 1000,
+      nsITimer::TYPE_ONE_SHOT, "StartupCache::WriteTimeout");
   return NS_OK;
 }
 
 // Used only in tests:
 bool StartupCache::StartupWriteComplete() {
   // Need to have written to disk and not added new things since;
-  // if one of those is not the case, return immediately.
-  if (!mStartupWriteInitiated || mDirty) {
-    return false;
-  }
-  // Ensure we can grab the lock, ie we're not
-  // writing to disk on another thread right now.
-  // XXXgijs is there a more idiomatic way of doing this?
-  if (!mTableLock.TryLock()) {
-    return false;
-  }
-  mTableLock.Unlock();
-  return mStartupWriteInitiated && !mDirty;
+  return !mDirty && mWrittenOnce;
 }
 
 // StartupCacheDebugOutputStream implementation

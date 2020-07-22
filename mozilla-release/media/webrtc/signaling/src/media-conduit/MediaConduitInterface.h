@@ -245,7 +245,8 @@ class MediaSessionConduit {
                                      uint32_t* cumulativeLost,
                                      Maybe<double>* aOutRttMs) = 0;
   virtual bool GetRTCPSenderReport(unsigned int* packetsSent,
-                                   uint64_t* bytesSent) = 0;
+                                   uint64_t* bytesSent,
+                                   DOMHighResTimeStamp* aRemoteTimestamp) = 0;
 
   virtual void GetRtpSources(nsTArray<dom::RTCRtpSourceEntry>& outSources) = 0;
 
@@ -490,6 +491,9 @@ class VideoSessionConduit : public MediaSessionConduit {
                                     uint32_t* framesDecoded) = 0;
 
   virtual void RecordTelemetry() const = 0;
+
+  virtual bool AddFrameHistory(
+      dom::Sequence<dom::RTCVideoFrameHistoryInternal>* outHistories) const = 0;
 
  protected:
   /* RTCP feedback settings, for unit testing purposes */

@@ -597,21 +597,9 @@ bool NS_UsePrivateBrowsing(nsIChannel* channel);
 bool NS_HasBeenCrossOrigin(nsIChannel* aChannel, bool aReport = false);
 
 /**
- * Returns true if the channel is a safe top-level navigation.
- */
-bool NS_IsSafeTopLevelNav(nsIChannel* aChannel);
-
-/**
  * Returns true if the channel has a safe method.
  */
 bool NS_IsSafeMethodNav(nsIChannel* aChannel);
-
-/**
- * Returns true if the channel is a foreign with respect to the host-uri.
- * For loads of TYPE_DOCUMENT, this function returns true if it's a
- * cross origin navigation.
- */
-bool NS_IsSameSiteForeign(nsIChannel* aChannel, nsIURI* aHostURI);
 
 // Unique first-party domain for separating the safebrowsing cookie.
 // Note if this value is changed, code in test_cookiejars_safebrowsing.js and
@@ -783,7 +771,7 @@ bool NS_IsInternalSameURIRedirect(nsIChannel* aOldChannel,
 bool NS_IsHSTSUpgradeRedirect(nsIChannel* aOldChannel, nsIChannel* aNewChannel,
                               uint32_t aFlags);
 
-nsresult NS_LinkRedirectChannels(uint32_t channelId,
+nsresult NS_LinkRedirectChannels(uint64_t channelId,
                                  nsIParentChannel* parentChannel,
                                  nsIChannel** _result);
 

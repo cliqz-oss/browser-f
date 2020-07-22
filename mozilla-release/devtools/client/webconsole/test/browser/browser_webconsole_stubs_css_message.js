@@ -9,7 +9,7 @@ const {
   getCleanedPacket,
   getStubFile,
   writeStubsToFile,
-} = require("chrome://mochitests/content/browser/devtools/client/webconsole/test/browser/stub-generator-helpers");
+} = require(`${CHROME_URL_ROOT}stub-generator-helpers`);
 
 const TEST_URI =
   "http://example.com/browser/devtools/client/webconsole/test/browser/stub-generators/test-css-message.html";
@@ -29,10 +29,9 @@ add_task(async function() {
 
   const existingStubs = getStubFile(STUB_FILE);
   const FAILURE_MSG =
-    "The cssMessage stubs file needs to be updated by running " +
-    "`mach test devtools/client/webconsole/test/browser/" +
-    "browser_webconsole_stubs_css_message.js --headless " +
-    "--setenv WEBCONSOLE_STUBS_UPDATE=true`";
+    "The cssMessage stubs file needs to be updated by running `" +
+    `mach test ${getCurrentTestFilePath()} --headless --setenv WEBCONSOLE_STUBS_UPDATE=true` +
+    "`";
 
   if (generatedStubs.size !== existingStubs.stubPackets.size) {
     ok(false, FAILURE_MSG);
@@ -67,20 +66,19 @@ async function generateCssMessageStubs() {
   // The resource-watcher only supports a single call to watch/unwatch per
   // instance, so we attach a unique watch callback, which will forward the
   // resource to `handleErrorMessage`, dynamically updated for each command.
-  let handleErrorMessage = function() {};
+  let handleCSSMessage = function() {};
 
-  const onErrorMessageAvailable = ({ resource }) => {
-    handleErrorMessage(resource);
+  const onCSSMessageAvailable = ({ resource }) => {
+    handleCSSMessage(resource);
   };
 
-  /* CSS errors are considered as pageError on the server */
-  await resourceWatcher.watchResources([resourceWatcher.TYPES.ERROR_MESSAGE], {
-    onAvailable: onErrorMessageAvailable,
+  await resourceWatcher.watchResources([resourceWatcher.TYPES.CSS_MESSAGE], {
+    onAvailable: onCSSMessageAvailable,
   });
 
   for (const code of getCommands()) {
     const received = new Promise(resolve => {
-      handleErrorMessage = function(packet) {
+      handleCSSMessage = function(packet) {
         const key = packet.pageError.errorMessage;
         stubs.set(key, getCleanedPacket(key, packet));
         resolve();
@@ -99,8 +97,8 @@ async function generateCssMessageStubs() {
     await received;
   }
 
-  resourceWatcher.unwatchResources([resourceWatcher.TYPES.ERROR_MESSAGE], {
-    onAvailable: onErrorMessageAvailable,
+  resourceWatcher.unwatchResources([resourceWatcher.TYPES.CSS_MESSAGE], {
+    onAvailable: onCSSMessageAvailable,
   });
 
   await closeTabAndToolbox().catch(() => {});

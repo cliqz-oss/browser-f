@@ -199,7 +199,7 @@ class MessageLogger(object):
     def _fix_test_name(self, message):
         """Normalize a logged test path to match the relative path from the sourcedir.
         """
-        if 'test' in message:
+        if message.get('test') is not None:
             test = message['test']
             for prefix in MessageLogger.TEST_PATH_PREFIXES:
                 if test.startswith(prefix):
@@ -274,8 +274,8 @@ class MessageLogger(object):
 
         # Error detection also supports "raw" errors (in log messages) because some tests
         # manually dump 'TEST-UNEXPECTED-FAIL'.
-        if ('expected' in message or (message['action'] == 'log' and message[
-                'message'].startswith('TEST-UNEXPECTED'))):
+        if ('expected' in message or (message['action'] == 'log' and message.get(
+                'message', '').startswith('TEST-UNEXPECTED'))):
             self.restore_buffering = self.restore_buffering or self.buffering
             self.buffering = False
             if self.buffered_messages:
@@ -307,7 +307,6 @@ class MessageLogger(object):
 
         if message['action'] == 'test_start':
             self.is_test_running = True
-
             if self.restore_buffering:
                 self.restore_buffering = False
                 self.buffering = True
@@ -700,8 +699,9 @@ class SSLTunnel:
         """ Starts the SSL Tunnel """
 
         # start ssltunnel to provide https:// URLs capability
-        bin_suffix = mozinfo.info.get('bin_suffix', '')
-        ssltunnel = os.path.join(self.utilityPath, "ssltunnel" + bin_suffix)
+        ssltunnel = os.path.join(self.utilityPath, "ssltunnel")
+        if os.name == 'nt':
+            ssltunnel += '.exe'
         if not os.path.exists(ssltunnel):
             self.log.error(
                 "INFO | runtests.py | expected to find ssltunnel at %s" %
@@ -922,6 +922,7 @@ class MochitestDesktop(object):
         self._active_tests = None
         self.currentTests = None
         self._locations = None
+        self.browserEnv = None
 
         self.marionette = None
         self.start_script = None
@@ -1085,6 +1086,11 @@ class MochitestDesktop(object):
                 self.urlOpts.append("jscovDirPrefix=%s" % options.jscov_dir_prefix)
             if options.cleanupCrashes:
                 self.urlOpts.append("cleanupCrashes=true")
+            if "MOZ_XORIGIN_MOCHITEST" in env and \
+                    env["MOZ_XORIGIN_MOCHITEST"] == "1":
+                options.xOriginTests = True
+            if options.xOriginTests:
+                self.urlOpts.append("xOriginTests=true")
 
     def normflavor(self, flavor):
         """
@@ -1128,6 +1134,8 @@ class MochitestDesktop(object):
     def buildTestURL(self, options, scheme='http'):
         if scheme == 'https':
             testHost = "https://example.com:443"
+        elif options.xOriginTests:
+            testHost = "http://mochi.xorigin-test:8888"
         else:
             testHost = "http://mochi.test:8888"
         testURL = "/".join([testHost, self.TEST_PATH])
@@ -2646,6 +2654,7 @@ toolbar#nav-bar {
                 'network.process.enabled', False),
             "verify": options.verify,
             "webrender": options.enable_webrender,
+            "xorigin": options.xOriginTests,
         })
 
         self.setTestRoot(options)
@@ -2744,8 +2753,17 @@ toolbar#nav-bar {
             profiler_logger = get_proxy_logger("profiler")
             profiler_logger.info("Shutdown performance profiling was enabled")
             profiler_logger.info("Profile saved locally to: %s" % profile_path)
-            symbolicate_profile_json(profile_path, options.topobjdir)
-            view_gecko_profile_from_mochitest(profile_path, options, profiler_logger)
+
+            if options.profilerSaveOnly or options.profiler:
+                # Only do the extra work of symbolicating and viewing the profile if
+                # officially requested through a command line flag. The MOZ_PROFILER_*
+                # flags can be set by a user.
+                symbolicate_profile_json(profile_path, options.topobjdir)
+                view_gecko_profile_from_mochitest(profile_path, options, profiler_logger)
+            else:
+                profiler_logger.info("The profiler was enabled outside of the mochitests. "
+                                     "Use --profiler instead of MOZ_PROFILER_SHUTDOWN to "
+                                     "symbolicate and open the profile automatically.")
 
             # Clean up the temporary file if it exists.
             if self.profiler_tempdir:
@@ -2908,6 +2926,8 @@ toolbar#nav-bar {
                 self.log.info("runtests.py | Running with e10s: {}".format(options.e10s))
                 self.log.info("runtests.py | Running with fission: {}".format(
                     mozinfo.info.get('fission', False)))
+                self.log.info("runtests.py | Running with cross-origin iframes: {}".format(
+                    mozinfo.info.get('xorigin', False)))
                 self.log.info("runtests.py | Running with serviceworker_e10s: {}".format(
                     mozinfo.info.get('serviceworker_e10s', False)))
                 self.log.info("runtests.py | Running with socketprocess_e10s: {}".format(
@@ -3142,9 +3162,9 @@ toolbar#nav-bar {
 
         def countline(self, message):
             if message['action'] == 'log':
-                line = message['message']
+                line = message.get('message', '')
             elif message['action'] == 'process_output':
-                line = message['data']
+                line = message.get('data', '')
             else:
                 return message
             val = 0
@@ -3196,7 +3216,8 @@ toolbar#nav-bar {
 
         def trackLSANLeaks(self, message):
             if self.lsanLeaks and message['action'] in ('log', 'process_output'):
-                line = message['message'] if message['action'] == 'log' else message['data']
+                line = message.get(
+                    'message', '') if message['action'] == 'log' else message['data']
                 self.lsanLeaks.log(line)
             return message
 

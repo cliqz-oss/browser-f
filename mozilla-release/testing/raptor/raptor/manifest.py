@@ -405,7 +405,7 @@ def get_raptor_test_list(args, oskey):
             next_test['page_cycles'] = args.page_cycles
             LOG.info("setting page-cycles to %d as specified on cmd line" % args.page_cycles)
         else:
-            if int(next_test.get('page_cycles', 1)) > max_page_cycles:
+            if int(next_test.get('page_cycles', 1)) > int(max_page_cycles):
                 next_test['page_cycles'] = max_page_cycles
                 LOG.info("setting page-cycles to %d because gecko-profling is enabled"
                          % next_test['page_cycles'])
@@ -445,7 +445,8 @@ def get_raptor_test_list(args, oskey):
             next_test['expected_browser_cycles'] = int(next_test['browser_cycles'])
             next_test['page_cycles'] = 1
             # also ensure '-cold' is in test name so perfherder results indicate warm cold-load
-            if "-cold" not in next_test['name']:
+            # Bug 1644344 we can remove this condition once we're migrated away from WebExtension
+            if "-cold" not in next_test['name'] and not args.browsertime:
                 next_test['name'] += "-cold"
         else:
             # when running in warm mode, just set test-cycles to 1 and leave page-cycles as/is

@@ -65,11 +65,11 @@ class GfxInfo::GLStrings {
     RefPtr<gl::GLContext> gl;
     nsCString discardFailureId;
     gl = gl::GLContextProvider::CreateHeadless(
-        gl::CreateContextFlags::REQUIRE_COMPAT_PROFILE, &discardFailureId);
+        {gl::CreateContextFlags::REQUIRE_COMPAT_PROFILE}, &discardFailureId);
 
     if (!gl) {
       // Setting mReady to true here means that we won't retry. Everything will
-      // remain blacklisted forever. Ideally, we would like to update that once
+      // remain blocklisted forever. Ideally, we would like to update that once
       // any GLContext is successfully created, like the compositor's GLContext.
       mReady = true;
       return;
@@ -133,6 +133,11 @@ nsresult GfxInfo::GetHasBattery(bool* aHasBattery) {
 
 NS_IMETHODIMP
 GfxInfo::GetDWriteVersion(nsAString& aDwriteVersion) {
+  return NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
+GfxInfo::GetEmbeddedInFirefoxReality(bool* aEmbeddedInFirefoxReality) {
   return NS_ERROR_FAILURE;
 }
 
@@ -399,7 +404,7 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     return NS_OK;
   }
 
-  // OpenGL layers are never blacklisted on Android.
+  // OpenGL layers are never blocklisted on Android.
   // This early return is so we avoid potentially slow
   // GLStrings initialization on startup when we initialize GL layers.
   if (aFeature == nsIGfxInfo::FEATURE_OPENGL_LAYERS) {
@@ -585,6 +590,17 @@ nsresult GfxInfo::GetFeatureStatusImpl(
         aFailureId = "FEATURE_FAILURE_WEBRENDER_BLOCKED_DEVICE";
       } else {
         *aStatus = nsIGfxInfo::FEATURE_ALLOW_QUALIFIED;
+      }
+      return NS_OK;
+    }
+
+    if (aFeature == FEATURE_WEBRENDER_SCISSORED_CACHE_CLEARS) {
+      const bool isMali = false;  // TODO
+      if (isMali) {
+        *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+        aFailureId = "FEATURE_FAILURE_BUG_1603515";
+      } else {
+        *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
       }
       return NS_OK;
     }

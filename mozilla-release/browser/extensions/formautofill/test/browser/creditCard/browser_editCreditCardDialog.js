@@ -23,6 +23,12 @@ add_task(async function test_cancelEditCreditCardDialogWithESC() {
 
 add_task(async function test_saveCreditCard() {
   await testDialog(EDIT_CREDIT_CARD_DIALOG_URL, win => {
+    ok(
+      win.document.documentElement
+        .querySelector("title")
+        .textContent.includes("Add"),
+      "Add card dialog title is correct"
+    );
     EventUtils.synthesizeKey("VK_TAB", {}, win);
     EventUtils.synthesizeKey(TEST_CREDIT_CARD_1["cc-number"], {}, win);
     EventUtils.synthesizeKey("VK_TAB", {}, win);
@@ -46,7 +52,6 @@ add_task(async function test_saveCreditCard() {
     EventUtils.synthesizeKey(TEST_CREDIT_CARD_1["cc-name"], {}, win);
     EventUtils.synthesizeKey("VK_TAB", {}, win);
     EventUtils.synthesizeKey(TEST_CREDIT_CARD_1["cc-type"], {}, win);
-    EventUtils.synthesizeKey("VK_TAB", {}, win);
     EventUtils.synthesizeKey("VK_TAB", {}, win);
     EventUtils.synthesizeKey("VK_TAB", {}, win);
     info("saving credit card");
@@ -87,7 +92,6 @@ add_task(async function test_saveCreditCardWithMaxYear() {
     EventUtils.synthesizeKey(TEST_CREDIT_CARD_1["cc-type"], {}, win);
     EventUtils.synthesizeKey("VK_TAB", {}, win);
     EventUtils.synthesizeKey("VK_TAB", {}, win);
-    EventUtils.synthesizeKey("VK_TAB", {}, win);
     info("saving credit card");
     EventUtils.synthesizeKey("VK_RETURN", {}, win);
   });
@@ -111,7 +115,7 @@ add_task(async function test_saveCreditCardWithBillingAddress() {
   let billingAddress = addresses[0];
 
   const TEST_CREDIT_CARD = Object.assign({}, TEST_CREDIT_CARD_2, {
-    billingAddressGUID: billingAddress.guid,
+    billingAddressGUID: undefined,
   });
 
   await testDialog(EDIT_CREDIT_CARD_DIALOG_URL, win => {
@@ -136,7 +140,6 @@ add_task(async function test_saveCreditCardWithBillingAddress() {
     EventUtils.synthesizeKey("VK_TAB", {}, win);
     EventUtils.synthesizeKey(billingAddress["given-name"], {}, win);
     EventUtils.synthesizeKey("VK_TAB", {}, win);
-    EventUtils.synthesizeKey("VK_TAB", {}, win);
     info("saving credit card");
     EventUtils.synthesizeKey("VK_RETURN", {}, win);
   });
@@ -149,7 +152,6 @@ add_task(async function test_saveCreditCardWithBillingAddress() {
     }
     is(creditCards[1][fieldName], fieldValue, "check " + fieldName);
   }
-  ok(creditCards[1].billingAddressGUID, "billingAddressGUID is truthy");
   ok(creditCards[1]["cc-number-encrypted"], "cc-number-encrypted exists");
   await removeCreditCards([creditCards[1].guid]);
   await removeAddresses([addresses[0].guid, addresses[1].guid]);
@@ -161,6 +163,12 @@ add_task(async function test_editCreditCard() {
   await testDialog(
     EDIT_CREDIT_CARD_DIALOG_URL,
     win => {
+      ok(
+        win.document.documentElement
+          .querySelector("title")
+          .textContent.includes("Edit"),
+        "Edit card dialog title is correct"
+      );
       EventUtils.synthesizeKey("VK_TAB", {}, win);
       EventUtils.synthesizeKey("VK_TAB", {}, win);
       EventUtils.synthesizeKey("VK_TAB", {}, win);
@@ -314,8 +322,8 @@ add_task(async function test_editCardWithInvalidNetwork() {
   );
   is(
     creditCards[0]["cc-type"],
-    undefined,
-    "unknown cc-type removed upon manual save"
+    "visa",
+    "unknown cc-type removed and next autodetected to visa upon manual save"
   );
   await removeCreditCards([creditCards[0].guid]);
 

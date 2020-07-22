@@ -337,8 +337,9 @@ mozilla::ipc::IPCResult NeckoParent::RecvPDocumentChannelConstructor(
   }
 
   if (!p->Init(aContext.get_canonical(), aArgs)) {
-    return IPC_FAIL_NO_REASON(this);
+    return IPC_FAIL(this, "Couldn't initialize DocumentChannel");
   }
+
   return IPC_OK();
 }
 
@@ -661,7 +662,7 @@ mozilla::ipc::IPCResult NeckoParent::RecvPredPredict(
   nsresult rv = NS_OK;
   nsCOMPtr<nsINetworkPredictor> predictor =
       do_GetService("@mozilla.org/network/predictor;1", &rv);
-  NS_ENSURE_SUCCESS(rv, IPC_FAIL_NO_REASON(this));
+  NS_ENSURE_SUCCESS(rv, IPC_OK());
 
   nsCOMPtr<nsINetworkPredictorVerifier> verifier;
   if (hasVerifier) {
@@ -675,15 +676,11 @@ mozilla::ipc::IPCResult NeckoParent::RecvPredPredict(
 mozilla::ipc::IPCResult NeckoParent::RecvPredLearn(
     nsIURI* aTargetURI, nsIURI* aSourceURI, const uint32_t& aReason,
     const OriginAttributes& aOriginAttributes) {
-  if (!aTargetURI) {
-    return IPC_FAIL(this, "aTargetURI is null");
-  }
-
   // Get the current predictor
   nsresult rv = NS_OK;
   nsCOMPtr<nsINetworkPredictor> predictor =
       do_GetService("@mozilla.org/network/predictor;1", &rv);
-  NS_ENSURE_SUCCESS(rv, IPC_FAIL_NO_REASON(this));
+  NS_ENSURE_SUCCESS(rv, IPC_OK());
 
   predictor->LearnNative(aTargetURI, aSourceURI, aReason, aOriginAttributes);
   return IPC_OK();
@@ -694,7 +691,7 @@ mozilla::ipc::IPCResult NeckoParent::RecvPredReset() {
   nsresult rv = NS_OK;
   nsCOMPtr<nsINetworkPredictor> predictor =
       do_GetService("@mozilla.org/network/predictor;1", &rv);
-  NS_ENSURE_SUCCESS(rv, IPC_FAIL_NO_REASON(this));
+  NS_ENSURE_SUCCESS(rv, IPC_OK());
 
   predictor->Reset();
   return IPC_OK();

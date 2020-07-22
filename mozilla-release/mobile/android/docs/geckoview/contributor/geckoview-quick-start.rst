@@ -17,10 +17,6 @@ project. If you want to get started using GeckoView in your app then you
 should refer to the
 `wiki <https://wiki.mozilla.org/Mobile/GeckoView#Get_Started>`_.
 
-You may also be interested in how to get up and running with `Firefox
-For
-Android <https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Simple_Firefox_for_Android_build>`_.
-
 Get set up with Mozilla Central
 -------------------------------
 
@@ -47,6 +43,9 @@ Bootstrap configures everything for GeckoView and Fennec (Firefox for Android) d
 
    git checkout central/default
 
+If you are on Windows, you will need to install the
+`Java 1.8 SDK <https://adoptopenjdk.net/?variant=openjdk8>`__.
+
 If you are on a mac, you will need to have the Xcode build tools
 installed. You can do this by either `installing
 Xcode <https://developer.apple.com/xcode/>`__ or installing only the
@@ -63,14 +62,10 @@ argument to automatically accept any license agreements.
    not bundled the native code into embedded libraries so you can amend
    the code.
 -  Say Y to all configuration options
--  Once ``mach bootstrap`` is complete it will tell you to copy and
-   paste some configuration into your ``mozconfig`` file. The
-   ``mozconfig`` file can be found in the root of your ``gecko`` repo -
-   or create a file called ``mozconfig`` if it does not exist. Check
-   that the correct value is associated with the ``--target`` argument
-   as this may not correctly match your setup. Copy the file contents
-   from the ``mach bootstrap`` output into your file and save in the
-   root directory of your project.
+-  Once ``mach bootstrap`` is complete, it will automatically write
+   the configuration into a new ``mozconfig`` file. If you already
+   have a ``mozconfig``, ``mach`` will instead output new configuration
+   that you should append to your existing file.
 
 Build from the command line
 ---------------------------

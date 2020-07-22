@@ -219,10 +219,18 @@ button > hbox > label {
   list-style-image: url("chrome://browser/skin/preferences/sync.svg");
 }
 
+<<<<<<< HEAD
 #category-experiments > .category-icon {
   list-style-image: url("chrome://browser/skin/preferences/experiments.svg");
 }
 
+||||||| merged common ancestors
+=======
+#category-experimental > .category-icon {
+  list-style-image: url("chrome://mozapps/skin/extensions/category-experiments.svg");
+}
+
+>>>>>>> origin/upstream-releases
 /* header */
 .header {
   display: flex;
@@ -839,6 +847,11 @@ dialog > .sync-engines-list + hbox {
   list-style-image: url("chrome://browser/skin/preferences/formfill.svg");
 }
 
+.sync-engine-creditcards .checkbox-icon,
+.sync-engine-creditcards.sync-engine-image {
+  list-style-image: url("chrome://formautofill/content/icon-credit-card-generic.svg");
+}
+
 .fxaMobilePromo {
   margin-top: 2px !important;
 }
@@ -1157,4 +1170,37 @@ richlistitem .text-link:hover {
 #proxy-grid > .thin {
   grid-column: span 2;
   height: 20px;
+}
+
+#pane-experimental-search-results-header,
+#pane-experimental-subtitle {
+  background-image: url("chrome://global/skin/icons/warning.svg");
+  background-repeat: no-repeat;
+  background-position: 0 center;
+  background-size: contain;
+  min-height: 30px;
+  padding-inline-start: 38px;
+  display: flex;
+  align-items: center;
+}
+
+#pane-experimental-featureGates {
+  margin-top: 16px;
+}
+
+.featureGate {
+  margin-bottom: 16px;
+}
+
+.featureGateCheckbox {
+  font-size: 1.14em;
+  -moz-box-align: center;
+}
+
+.featureGateCheckbox > .checkbox-label-box {
+  -moz-box-align: center;
+}
+
+.featureGateDescription {
+  margin-inline-start: 28px;
 }

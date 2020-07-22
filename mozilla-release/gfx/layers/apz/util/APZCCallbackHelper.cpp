@@ -137,7 +137,8 @@ static CSSPoint ScrollFrameTo(nsIScrollableFrame* aFrame,
   // request because we'll clobber that one, which is bad.
   bool scrollInProgress = APZCCallbackHelper::IsScrollInProgress(aFrame);
   if (!scrollInProgress) {
-    aFrame->ScrollToCSSPixelsApproximate(targetScrollPosition, nsGkAtoms::apz);
+    aFrame->ScrollToCSSPixelsApproximate(targetScrollPosition,
+                                         ScrollOrigin::Apz);
     geckoScrollPosition = CSSPoint::FromAppUnits(aFrame->GetScrollPosition());
     aSuccessOut = true;
   }
@@ -470,7 +471,7 @@ nsEventStatus APZCCallbackHelper::DispatchSynthesizedMouseEvent(
                          WidgetMouseEvent::eNormal);
   event.mRefPoint = LayoutDeviceIntPoint::Truncate(aRefPoint.x, aRefPoint.y);
   event.mTime = aTime;
-  event.mButton = MouseButton::eLeft;
+  event.mButton = MouseButton::ePrimary;
   event.mInputSource = dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH;
   if (aMsg == eMouseLongTap) {
     event.mFlags.mOnlyChromeDispatch = true;
@@ -791,8 +792,8 @@ void APZCCallbackHelper::NotifyMozMouseScrollEvent(
     return;
   }
 
-  nsContentUtils::DispatchTrustedEvent(ownerDoc, targetContent, aEvent,
-                                       CanBubble::eYes, Cancelable::eYes);
+  nsContentUtils::DispatchEventOnlyToChrome(ownerDoc, targetContent, aEvent,
+                                            CanBubble::eYes, Cancelable::eYes);
 }
 
 void APZCCallbackHelper::NotifyFlushComplete(PresShell* aPresShell) {
@@ -817,7 +818,7 @@ void APZCCallbackHelper::NotifyFlushComplete(PresShell* aPresShell) {
 bool APZCCallbackHelper::IsScrollInProgress(nsIScrollableFrame* aFrame) {
   return aFrame->IsProcessingAsyncScroll() ||
          nsLayoutUtils::CanScrollOriginClobberApz(aFrame->LastScrollOrigin()) ||
-         aFrame->LastSmoothScrollOrigin();
+         aFrame->LastSmoothScrollOrigin() != ScrollOrigin::None;
 }
 
 /* static */

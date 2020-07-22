@@ -22,7 +22,7 @@ mozilla.pth:third_party/python/diskcache
 mozilla.pth:third_party/python/distro
 mozilla.pth:third_party/python/dlmanager
 mozilla.pth:third_party/python/ecdsa/src
-mozilla.pth:third_party/python/enum34
+python2:mozilla.pth:third_party/python/enum34
 mozilla.pth:third_party/python/esprima
 mozilla.pth:third_party/python/fluent.migrate
 mozilla.pth:third_party/python/fluent.syntax
@@ -50,8 +50,8 @@ mozilla.pth:third_party/python/jsmin
 windows:mozilla.pth:third_party/python/psutil-cp27-none-win_amd64
 mozilla.pth:third_party/python/pylru
 mozilla.pth:third_party/python/pystache
-python2:mozilla.pth:third_party/python/pyyaml/lib
-python3:mozilla.pth:third_party/python/pyyaml/lib3/
+python2:mozilla.pth:third_party/python/PyYAML/lib
+python3:mozilla.pth:third_party/python/PyYAML/lib3/
 mozilla.pth:third_party/python/requests
 mozilla.pth:third_party/python/requests-unixsocket
 python2:mozilla.pth:third_party/python/scandir
@@ -73,7 +73,6 @@ mozilla.pth:third_party/python/yamllint
 mozilla.pth:third_party/python/zipp
 mozilla.pth:build
 objdir:build
-mozilla.pth:build/pymake
 mozilla.pth:config
 mozilla.pth:config/mozunit
 mozilla.pth:dom/bindings
@@ -96,7 +95,6 @@ mozilla.pth:tools
 mozilla.pth:testing/web-platform
 mozilla.pth:testing/web-platform/tests/tools/third_party/html5lib
 mozilla.pth:testing/web-platform/tests/tools/third_party/webencodings
-mozilla.pth:testing/web-platform/tests/tools/third_party/enum
 mozilla.pth:testing/web-platform/tests/tools/third_party/h2
 mozilla.pth:testing/web-platform/tests/tools/third_party/hpack
 mozilla.pth:testing/web-platform/tests/tools/third_party/hyperframe

@@ -7,6 +7,10 @@ const { FxAccountsCommands, SendTab } = ChromeUtils.import(
   "resource://gre/modules/FxAccountsCommands.js"
 );
 
+const { FxAccountsClient } = ChromeUtils.import(
+  "resource://gre/modules/FxAccountsClient.jsm"
+);
+
 const { COMMAND_SENDTAB, COMMAND_SENDTAB_TAIL } = ChromeUtils.import(
   "resource://gre/modules/FxAccountsCommon.js"
 );
@@ -36,6 +40,14 @@ function FxaInternalMock() {
     telemetry: new TelemetryMock(),
   };
 }
+
+function MockFxAccountsClient() {
+  FxAccountsClient.apply(this);
+}
+
+MockFxAccountsClient.prototype = {
+  __proto__: FxAccountsClient.prototype,
+};
 
 add_task(async function test_sendtab_isDeviceCompatible() {
   const sendTab = new SendTab(null, null);
@@ -74,6 +86,10 @@ add_task(async function test_sendtab_send() {
     { name: "Device 2" },
     { id: "dev3", name: "Device 3" },
   ];
+  // although we are sending to 3 devices, only 1 is successful - so there's
+  // only 1 streamID we care about. However, we've created IDs even for the
+  // failing items - so it's "4"
+  const expectedTelemetryStreamID = "4";
   const tab = { title: "Foo", url: "https://foo.bar/" };
   const report = await sendTab.send(to, tab);
   Assert.equal(report.succeeded.length, 1);
@@ -89,9 +105,59 @@ add_task(async function test_sendtab_send() {
       object: "command-sent",
       method: COMMAND_SENDTAB_TAIL,
       value: "dev3-san",
-      extra: { flowID: "1" },
+      extra: { flowID: "1", streamID: expectedTelemetryStreamID },
     },
   ]);
+});
+
+add_task(async function test_sendtab_send_rate_limit() {
+  const rateLimitReject = {
+    code: 429,
+    retryAfter: 5,
+    retryAfterLocalized: "retry after 5 seconds",
+  };
+  const fxAccounts = {
+    fxAccountsClient: new MockFxAccountsClient(),
+    getUserAccountData() {
+      return {};
+    },
+    telemetry: new TelemetryMock(),
+  };
+  let rejected = false;
+  let invoked = 0;
+  fxAccounts.fxAccountsClient.invokeCommand = async function invokeCommand() {
+    invoked++;
+    Assert.ok(invoked <= 2, "only called twice and not more");
+    if (rejected) {
+      return {};
+    }
+    rejected = true;
+    return Promise.reject(rateLimitReject);
+  };
+  const commands = new FxAccountsCommands(fxAccounts);
+  const sendTab = new SendTab(commands, fxAccounts);
+  sendTab._encrypt = () => "encryptedpayload";
+
+  const tab = { title: "Foo", url: "https://foo.bar/" };
+  let report = await sendTab.send([{ name: "Device 1" }], tab);
+  Assert.equal(report.succeeded.length, 0);
+  Assert.equal(report.failed.length, 1);
+  Assert.equal(report.failed[0].error, rateLimitReject);
+
+  report = await sendTab.send([{ name: "Device 1" }], tab);
+  Assert.equal(report.succeeded.length, 0);
+  Assert.equal(report.failed.length, 1);
+  Assert.ok(
+    report.failed[0].error.message.includes(
+      "Invoke for " +
+        "https://identity.mozilla.com/cmd/open-uri is rate-limited"
+    )
+  );
+
+  commands._invokeRateLimitExpiry = Date.now() - 1000;
+  report = await sendTab.send([{ name: "Device 1" }], tab);
+  Assert.equal(report.succeeded.length, 1);
+  Assert.equal(report.failed.length, 0);
 });
 
 add_task(async function test_sendtab_receive() {
@@ -120,6 +186,10 @@ add_task(async function test_sendtab_receive() {
 
   for (let { cmd, device, payload } of commands._invokes) {
     Assert.equal(cmd, COMMAND_SENDTAB);
+    // test we do the right thing with the "duplicated" flow ID.
+    Assert.equal(payload.flowID, "1");
+    // change it - ensure we still get what we expect in telemetry later.
+    payload.flowID = "ignore-me";
     Assert.deepEqual(await sendTab.handle(device.id, payload), {
       title: "tab title",
       uri: "http://example.com",
@@ -131,13 +201,40 @@ add_task(async function test_sendtab_receive() {
       object: "command-sent",
       method: COMMAND_SENDTAB_TAIL,
       value: "devid-san",
-      extra: { flowID: "1" },
+      extra: { flowID: "1", streamID: "2" },
     },
     {
       object: "command-received",
       method: COMMAND_SENDTAB_TAIL,
       value: "devid-san",
-      extra: { flowID: "1" },
+      extra: { flowID: "1", streamID: "2" },
+    },
+  ]);
+});
+
+// Test that a client which only sends the flowID in the envelope and not in the
+// encrypted body still gets recorded correctly.
+add_task(async function test_sendtab_receive_old_client() {
+  const fxai = FxaInternalMock();
+  const sendTab = new SendTab(null, fxai);
+  sendTab._decrypt = bytes => {
+    return bytes;
+  };
+  const data = { entries: [{ title: "title", url: "url" }] };
+  // No 'flowID' in the encrypted payload, no 'streamID' anywhere.
+  const payload = {
+    flowID: "flow-id",
+    encrypted: new TextEncoder("utf8").encode(JSON.stringify(data)),
+  };
+  await sendTab.handle("sender-id", payload);
+  Assert.deepEqual(fxai.telemetry._events, [
+    {
+      object: "command-received",
+      method: COMMAND_SENDTAB_TAIL,
+      value: "sender-id-san",
+      // deepEqual doesn't ignore undefined, but our telemetry code and
+      // JSON.stringify() do...
+      extra: { flowID: "flow-id", streamID: undefined },
     },
   ]);
 });

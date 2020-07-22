@@ -13,7 +13,7 @@ clippy:
         - gfx/wr/webrender_build/
         - gfx/wr/wr_malloc_size_of/
         - js/src/
-        - js/src/frontend/binast/
+        - js/src/frontend/smoosh/
         - js/src/rust/shared/
         - js/src/wasm/cranelift/
         - media/audioipc/
@@ -59,7 +59,6 @@ clippy:
         - gfx/wr/webrender_api/
         - gfx/wr/wrench/
         - gfx/wgpu/wgpu-core/
-        - gfx/wgpu/player/
         - gfx/wgpu_bindings/
         # not_unsafe_ptr_arg_deref
         - modules/libpref/parser/
@@ -110,5 +109,10 @@ clippy:
         - rs
     support-files:
         - 'tools/lint/clippy/**'
+    # the version of clippy is:
+    # clippy 0.0.212 (d4092ac 2020-05-11)
+    # but 0.0.212 isn't updated. we use the date instead
+    # replacing - by . because Python StrictVersion expects this
+    min_clippy_version: 2020.05.11
     type: external
     payload: clippy:lint

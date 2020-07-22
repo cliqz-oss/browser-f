@@ -176,12 +176,12 @@ class nsTimerEvent final : public CancelableRunnable {
   static TimerEventAllocator* sAllocator;
 
   static Atomic<int32_t, SequentiallyConsistent> sAllocatorUsers;
-  static bool sCanDeleteAllocator;
+  static Atomic<bool, SequentiallyConsistent> sCanDeleteAllocator;
 };
 
 TimerEventAllocator* nsTimerEvent::sAllocator = nullptr;
 Atomic<int32_t, SequentiallyConsistent> nsTimerEvent::sAllocatorUsers;
-bool nsTimerEvent::sCanDeleteAllocator = false;
+Atomic<bool, SequentiallyConsistent> nsTimerEvent::sCanDeleteAllocator;
 
 namespace {
 
@@ -674,11 +674,8 @@ void TimerThread::RemoveLeadingCanceledTimersInternal() {
   }
 
   // Finally, remove the canceled timers from the back of the
-  // nsTArray.  Note, since std::pop_heap() uses iterators
-  // we must convert to nsTArray indices and number of
-  // elements here.
-  mTimers.RemoveElementsAt(sortedEnd - mTimers.begin(),
-                           mTimers.end() - sortedEnd);
+  // nsTArray.
+  mTimers.RemoveLastElements(mTimers.end() - sortedEnd);
 }
 
 void TimerThread::RemoveFirstTimerInternal() {

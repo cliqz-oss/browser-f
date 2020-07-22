@@ -8,7 +8,6 @@ members = [
   "js/rust",
   "js/src",
   "js/src/frontend/smoosh",
-  "js/src/frontend/binast", # Code generator.
   "js/src/rust",
   "js/src/wasm/cranelift",
   "netwerk/test/http3server",
@@ -76,8 +75,8 @@ failure_derive = { git = "https://github.com/badboy/failure", rev = "64af847bc5f
 
 [patch.crates-io.cranelift-codegen]
 git = "https://github.com/bytecodealliance/wasmtime"
-rev = "b7cfd39b531680217537cfcf5294a22077a0a58d"
+rev = "238ae3bf2111847f60089656eb97fc9345295b1f"
 
 [patch.crates-io.cranelift-wasm]
 git = "https://github.com/bytecodealliance/wasmtime"
-rev = "b7cfd39b531680217537cfcf5294a22077a0a58d"
+rev = "238ae3bf2111847f60089656eb97fc9345295b1f"

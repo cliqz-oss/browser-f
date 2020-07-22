@@ -169,6 +169,15 @@ nsresult HTMLIFrameElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
         // alreay been updated.
         mFrameLoader->ApplySandboxFlags(GetSandboxFlags());
       }
+    } else if (aName == nsGkAtoms::allowfullscreen ||
+               aName == nsGkAtoms::mozallowfullscreen) {
+      if (mFrameLoader) {
+        if (auto* bc = mFrameLoader->GetExtantBrowsingContext()) {
+          // This could be simpler if we didn't support the prefixed
+          // attribute, then it could just use !!aValue.
+          bc->SetFullscreenAllowedByOwner(AllowFullscreen());
+        }
+      }
     }
 
     if (StaticPrefs::dom_security_featurePolicy_enabled()) {
@@ -176,6 +185,7 @@ nsresult HTMLIFrameElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
           aName == nsGkAtoms::srcdoc || aName == nsGkAtoms::sandbox) {
         RefreshFeaturePolicy(true /* parse the feature policy attribute */);
       } else if (aName == nsGkAtoms::allowfullscreen ||
+                 aName == nsGkAtoms::mozallowfullscreen ||
                  aName == nsGkAtoms::allowpaymentrequest) {
         RefreshFeaturePolicy(false /* parse the feature policy attribute */);
       }

@@ -51,14 +51,25 @@ GetContentMediaControllerFromBrowsingContext(
   return controller.forget();
 }
 
+static already_AddRefed<BrowsingContext> GetBrowsingContextForAgent(
+    uint64_t aBrowsingContextId) {
+  // The content media agent would only be created after having `sControllers`.
+  // If the `sControllers` doesn't exist, which means XPCOM has been shutdown
+  // and we're not able to access browsing context as well.
+  if (!sControllers) {
+    return nullptr;
+  }
+  return BrowsingContext::Get(aBrowsingContextId);
+}
+
 /* static */
-ContentControlKeyEventReceiver* ContentControlKeyEventReceiver::Get(
+ContentMediaControlKeyReceiver* ContentMediaControlKeyReceiver::Get(
     BrowsingContext* aBC) {
   MOZ_ASSERT(NS_IsMainThread());
   RefPtr<ContentMediaController> controller =
       GetContentMediaControllerFromBrowsingContext(aBC);
   return controller
-             ? static_cast<ContentControlKeyEventReceiver*>(controller.get())
+             ? static_cast<ContentMediaControlKeyReceiver*>(controller.get())
              : nullptr;
 }
 
@@ -71,35 +82,10 @@ ContentMediaAgent* ContentMediaAgent::Get(BrowsingContext* aBC) {
                     : nullptr;
 }
 
-ContentMediaController::ContentMediaController(uint64_t aId)
-    : mTopLevelBrowsingContextId(aId) {}
-
-void ContentMediaController::AddReceiver(
-    ContentControlKeyEventReceiver* aListener) {
+void ContentMediaAgent::NotifyMediaPlaybackChanged(uint64_t aBrowsingContextId,
+                                                   MediaPlaybackState aState) {
   MOZ_ASSERT(NS_IsMainThread());
-  mReceivers.AppendElement(aListener);
-}
-
-void ContentMediaController::RemoveReceiver(
-    ContentControlKeyEventReceiver* aListener) {
-  MOZ_ASSERT(NS_IsMainThread());
-  mReceivers.RemoveElement(aListener);
-  // No more media needs to be controlled, so we can release this and recreate
-  // it when someone needs it. We have to check `sControllers` because this can
-  // be called via CC after we clear `sControllers`.
-  if (mReceivers.IsEmpty() && sControllers) {
-    sControllers->Remove(mTopLevelBrowsingContextId);
-  }
-}
-
-void ContentMediaController::NotifyPlaybackStateChanged(
-    const ContentControlKeyEventReceiver* aMedia, MediaPlaybackState aState) {
-  MOZ_ASSERT(NS_IsMainThread());
-  if (!mReceivers.Contains(aMedia)) {
-    return;
-  }
-
-  RefPtr<BrowsingContext> bc = aMedia->GetBrowsingContext();
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
   if (!bc || bc->IsDiscarded()) {
     return;
   }
@@ -119,14 +105,10 @@ void ContentMediaController::NotifyPlaybackStateChanged(
   }
 }
 
-void ContentMediaController::NotifyAudibleStateChanged(
-    const ContentControlKeyEventReceiver* aMedia, MediaAudibleState aState) {
+void ContentMediaAgent::NotifyMediaAudibleChanged(uint64_t aBrowsingContextId,
+                                                  MediaAudibleState aState) {
   MOZ_ASSERT(NS_IsMainThread());
-  if (!mReceivers.Contains(aMedia)) {
-    return;
-  }
-
-  RefPtr<BrowsingContext> bc = aMedia->GetBrowsingContext();
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
   if (!bc || bc->IsDiscarded()) {
     return;
   }
@@ -147,39 +129,202 @@ void ContentMediaController::NotifyAudibleStateChanged(
   }
 }
 
-void ContentMediaController::NotifyPictureInPictureModeChanged(
-    const ContentControlKeyEventReceiver* aMedia, bool aEnabled) {
+void ContentMediaAgent::SetIsInPictureInPictureMode(
+    uint64_t aBrowsingContextId, bool aIsInPictureInPictureMode) {
   MOZ_ASSERT(NS_IsMainThread());
-  if (!mReceivers.Contains(aMedia)) {
-    return;
-  }
-
-  RefPtr<BrowsingContext> bc = aMedia->GetBrowsingContext();
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
   if (!bc || bc->IsDiscarded()) {
     return;
   }
 
   LOG("Notify media Picture-in-Picture mode '%s' in BC %" PRId64,
-      aEnabled ? "enabled" : "disabled", bc->Id());
+      aIsInPictureInPictureMode ? "enabled" : "disabled", bc->Id());
   if (XRE_IsContentProcess()) {
     ContentChild* contentChild = ContentChild::GetSingleton();
-    Unused << contentChild->SendNotifyPictureInPictureModeChanged(bc, aEnabled);
+    Unused << contentChild->SendNotifyPictureInPictureModeChanged(
+        bc, aIsInPictureInPictureMode);
   } else {
     // Currently this only happen when we disable e10s, otherwise all controlled
     // media would be run in the content process.
     if (RefPtr<IMediaInfoUpdater> updater =
             bc->Canonical()->GetMediaController()) {
-      updater->SetIsInPictureInPictureMode(aEnabled);
+      updater->SetIsInPictureInPictureMode(bc->Id(), aIsInPictureInPictureMode);
     }
   }
 }
 
-void ContentMediaController::HandleEvent(MediaControlKeysEvent aEvent) {
+void ContentMediaAgent::SetDeclaredPlaybackState(
+    uint64_t aBrowsingContextId, MediaSessionPlaybackState aState) {
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
+  if (!bc || bc->IsDiscarded()) {
+    return;
+  }
+
+  LOG("Notify declared playback state  '%s' in BC %" PRId64,
+      ToMediaSessionPlaybackStateStr(aState), bc->Id());
+  if (XRE_IsContentProcess()) {
+    ContentChild* contentChild = ContentChild::GetSingleton();
+    Unused << contentChild->SendNotifyMediaSessionPlaybackStateChanged(bc,
+                                                                       aState);
+    return;
+  }
+  // This would only happen when we disable e10s.
+  if (RefPtr<IMediaInfoUpdater> updater =
+          bc->Canonical()->GetMediaController()) {
+    updater->SetDeclaredPlaybackState(bc->Id(), aState);
+  }
+}
+
+void ContentMediaAgent::NotifySessionCreated(uint64_t aBrowsingContextId) {
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
+  if (!bc || bc->IsDiscarded()) {
+    return;
+  }
+
+  LOG("Notify media session being created in BC %" PRId64, bc->Id());
+  if (XRE_IsContentProcess()) {
+    ContentChild* contentChild = ContentChild::GetSingleton();
+    Unused << contentChild->SendNotifyMediaSessionUpdated(bc, true);
+    return;
+  }
+  // This would only happen when we disable e10s.
+  if (RefPtr<IMediaInfoUpdater> updater =
+          bc->Canonical()->GetMediaController()) {
+    updater->NotifySessionCreated(bc->Id());
+  }
+}
+
+void ContentMediaAgent::NotifySessionDestroyed(uint64_t aBrowsingContextId) {
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
+  if (!bc || bc->IsDiscarded()) {
+    return;
+  }
+
+  LOG("Notify media session being destroyed in BC %" PRId64, bc->Id());
+  if (XRE_IsContentProcess()) {
+    ContentChild* contentChild = ContentChild::GetSingleton();
+    Unused << contentChild->SendNotifyMediaSessionUpdated(bc, false);
+    return;
+  }
+  // This would only happen when we disable e10s.
+  if (RefPtr<IMediaInfoUpdater> updater =
+          bc->Canonical()->GetMediaController()) {
+    updater->NotifySessionDestroyed(bc->Id());
+  }
+}
+
+void ContentMediaAgent::UpdateMetadata(
+    uint64_t aBrowsingContextId, const Maybe<MediaMetadataBase>& aMetadata) {
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
+  if (!bc || bc->IsDiscarded()) {
+    return;
+  }
+
+  LOG("Notify media session metadata change in BC %" PRId64, bc->Id());
+  if (XRE_IsContentProcess()) {
+    ContentChild* contentChild = ContentChild::GetSingleton();
+    Unused << contentChild->SendNotifyUpdateMediaMetadata(bc, aMetadata);
+    return;
+  }
+  // This would only happen when we disable e10s.
+  if (RefPtr<IMediaInfoUpdater> updater =
+          bc->Canonical()->GetMediaController()) {
+    updater->UpdateMetadata(bc->Id(), aMetadata);
+  }
+}
+
+void ContentMediaAgent::EnableAction(uint64_t aBrowsingContextId,
+                                     MediaSessionAction aAction) {
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
+  if (!bc || bc->IsDiscarded()) {
+    return;
+  }
+
+  LOG("Notify to enable action '%s' in BC %" PRId64,
+      ToMediaSessionActionStr(aAction), bc->Id());
+  if (XRE_IsContentProcess()) {
+    ContentChild* contentChild = ContentChild::GetSingleton();
+    Unused << contentChild->SendNotifyMediaSessionSupportedActionChanged(
+        bc, aAction, true);
+    return;
+  }
+  // This would only happen when we disable e10s.
+  if (RefPtr<IMediaInfoUpdater> updater =
+          bc->Canonical()->GetMediaController()) {
+    updater->EnableAction(bc->Id(), aAction);
+  }
+}
+
+void ContentMediaAgent::DisableAction(uint64_t aBrowsingContextId,
+                                      MediaSessionAction aAction) {
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
+  if (!bc || bc->IsDiscarded()) {
+    return;
+  }
+
+  LOG("Notify to disable action '%s' in BC %" PRId64,
+      ToMediaSessionActionStr(aAction), bc->Id());
+  if (XRE_IsContentProcess()) {
+    ContentChild* contentChild = ContentChild::GetSingleton();
+    Unused << contentChild->SendNotifyMediaSessionSupportedActionChanged(
+        bc, aAction, false);
+    return;
+  }
+  // This would only happen when we disable e10s.
+  if (RefPtr<IMediaInfoUpdater> updater =
+          bc->Canonical()->GetMediaController()) {
+    updater->DisableAction(bc->Id(), aAction);
+  }
+}
+
+void ContentMediaAgent::NotifyMediaFullScreenState(uint64_t aBrowsingContextId,
+                                                   bool aIsInFullScreen) {
+  RefPtr<BrowsingContext> bc = GetBrowsingContextForAgent(aBrowsingContextId);
+  if (!bc || bc->IsDiscarded()) {
+    return;
+  }
+
+  LOG("Notify %s fullscreen in BC %" PRId64,
+      aIsInFullScreen ? "entered" : "left", bc->Id());
+  if (XRE_IsContentProcess()) {
+    ContentChild* contentChild = ContentChild::GetSingleton();
+    Unused << contentChild->SendNotifyMediaFullScreenState(bc, aIsInFullScreen);
+    return;
+  }
+  // This would only happen when we disable e10s.
+  if (RefPtr<IMediaInfoUpdater> updater =
+          bc->Canonical()->GetMediaController()) {
+    updater->NotifyMediaFullScreenState(bc->Id(), aIsInFullScreen);
+  }
+}
+
+ContentMediaController::ContentMediaController(uint64_t aId)
+    : mTopLevelBrowsingContextId(aId) {}
+
+void ContentMediaController::AddReceiver(
+    ContentMediaControlKeyReceiver* aListener) {
   MOZ_ASSERT(NS_IsMainThread());
-  LOG("Handle '%s' event, receiver num=%zu", ToMediaControlKeysEventStr(aEvent),
+  mReceivers.AppendElement(aListener);
+}
+
+void ContentMediaController::RemoveReceiver(
+    ContentMediaControlKeyReceiver* aListener) {
+  MOZ_ASSERT(NS_IsMainThread());
+  mReceivers.RemoveElement(aListener);
+  // No more media needs to be controlled, so we can release this and recreate
+  // it when someone needs it. We have to check `sControllers` because this can
+  // be called via CC after we clear `sControllers`.
+  if (mReceivers.IsEmpty() && sControllers) {
+    sControllers->Remove(mTopLevelBrowsingContextId);
+  }
+}
+
+void ContentMediaController::HandleMediaKey(MediaControlKey aKey) {
+  MOZ_ASSERT(NS_IsMainThread());
+  LOG("Handle '%s' event, receiver num=%zu", ToMediaControlKeyStr(aKey),
       mReceivers.Length());
   for (auto& receiver : mReceivers) {
-    receiver->HandleEvent(aEvent);
+    receiver->HandleMediaKey(aKey);
   }
 }
 

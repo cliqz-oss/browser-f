@@ -9,6 +9,7 @@ const { PromiseTestUtils } = ChromeUtils.import(
   "resource://testing-common/PromiseTestUtils.jsm"
 );
 PromiseTestUtils.whitelistRejectionsGlobally(/Component not initialized/);
+PromiseTestUtils.whitelistRejectionsGlobally(/Connection closed/);
 
 /**
  * Tests if on clicking the stack frame, UI switches to the Debugger panel.
@@ -16,9 +17,6 @@ PromiseTestUtils.whitelistRejectionsGlobally(/Component not initialized/);
 add_task(async function() {
   // Set a higher panel height in order to get full CodeMirror content
   await pushPref("devtools.toolbox.footer.height", 400);
-
-  // Async stacks aren't on by default in all builds
-  await pushPref("javascript.options.asyncstack", true);
 
   const { tab, monitor, toolbox } = await initNetMonitor(POST_DATA_URL, {
     requestCount: 1,

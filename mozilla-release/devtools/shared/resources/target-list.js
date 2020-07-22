@@ -7,12 +7,11 @@
 const Services = require("Services");
 const EventEmitter = require("devtools/shared/event-emitter");
 
-const BROWSERTOOLBOX_FISSION_ENABLED = "devtools.browsertoolbox.fission";
-const CONTENTTOOLBOX_FISSION_ENABLED = "devtools.contenttoolbox.fission";
+// eslint-disable-next-line mozilla/reject-some-requires
+const { gDevTools } = require("devtools/client/framework/devtools");
 
-const {
-  LegacyFramesWatcher,
-} = require("devtools/shared/resources/legacy-target-watchers/legacy-frames-watcher");
+const BROWSERTOOLBOX_FISSION_ENABLED = "devtools.browsertoolbox.fission";
+
 const {
   LegacyProcessesWatcher,
 } = require("devtools/shared/resources/legacy-target-watchers/legacy-processes-watcher");
@@ -80,11 +79,6 @@ class TargetList {
         this._onTargetAvailable,
         this._onTargetDestroyed
       ),
-      frame: new LegacyFramesWatcher(
-        this,
-        this._onTargetAvailable,
-        this._onTargetDestroyed
-      ),
       worker: new LegacyWorkersWatcher(
         this,
         this._onTargetAvailable,
@@ -107,6 +101,7 @@ class TargetList {
     // For now, this is only toggled by tests.
     this.listenForWorkers = false;
     this.listenForServiceWorkers = false;
+    this.destroyServiceWorkersOnNavigation = false;
   }
 
   // Called whenever a new Target front is available.
@@ -114,9 +109,9 @@ class TargetList {
   // or if it has just been created
   async _onTargetAvailable(targetFront, isTargetSwitching = false) {
     if (this._targets.has(targetFront)) {
-      // The top level target front can be reported via listRemoteFrames as well as listProcesses
-      // in the case of the BrowserToolbox. For any other target, log an error if it is already
-      // registered.
+      // The top level target front can be reported via listProcesses in the
+      // case of the BrowserToolbox. For any other target, log an error if it is
+      // already registered.
       if (targetFront != this.targetFront) {
         console.error(
           "Target is already registered in the TargetList",
@@ -179,10 +174,7 @@ class TargetList {
         types = TargetList.ALL_TYPES;
       }
     } else if (this.targetFront.isLocalTab) {
-      const fissionContentToolboxEnabled = Services.prefs.getBoolPref(
-        CONTENTTOOLBOX_FISSION_ENABLED
-      );
-      if (fissionContentToolboxEnabled) {
+      if (gDevTools.isFissionContentToolboxEnabled()) {
         types = [TargetList.TYPES.FRAME];
       }
     }
@@ -431,6 +423,10 @@ class TargetList {
     // Re-register the listeners as the top level target changed
     // and some targets are fetched from it
     await this.startListening();
+  }
+
+  isTargetRegistered(targetFront) {
+    return this._targets.has(targetFront);
   }
 }
 

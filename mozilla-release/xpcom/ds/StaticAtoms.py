@@ -91,6 +91,7 @@ STATIC_ATOMS = [
     Atom("allowscripts", "allow-scripts"),
     Atom("allowscriptstoclose", "allowscriptstoclose"),
     Atom("allowtopnavigation", "allow-top-navigation"),
+    Atom("allowtopnavigationbyuseractivation", "allow-top-navigation-by-user-activation"),
     Atom("allowuntrusted", "allowuntrusted"),
     Atom("alt", "alt"),
     Atom("alternate", "alternate"),
@@ -409,6 +410,7 @@ STATIC_ATOMS = [
     Atom("enctype", "enctype"),
     Atom("end", "end"),
     Atom("endEvent", "endEvent"),
+    Atom("enterkeyhint", "enterkeyhint"),
     Atom("equalsize", "equalsize"),
     Atom("error", "error"),
     Atom("ethiopic_numeric", "ethiopic-numeric"),
@@ -2275,22 +2277,6 @@ STATIC_ATOMS = [
     Atom("ForwardMail", "ForwardMail"),
     Atom("ReplyToMail", "ReplyToMail"),
 
-    # Scroll origins (these are used in various scrolling functions in
-    # nsIScrollableFrame and ScrollFrameHelper). These are divided into two lists
-    # - origins in the first one have smooth-scrolling prefs associated with them,
-    # under the "general.smoothScroll.<origin>.*" pref branch. Origins in the
-    # second one do not.
-    Atom("mouseWheel", "mouseWheel"),  # For discrete wheel events (e.g. not OSX magic mouse)
-    Atom("pixels",     "pixels"),
-    Atom("lines",      "lines"),
-    Atom("pages",      "pages"),
-    Atom("scrollbars", "scrollbars"),
-    # Atom("other",      "other"),  # "other" is present above
-    # Scroll origins without smooth-scrolling prefs
-    Atom("apz",        "apz"),
-    Atom("restore",    "restore"),
-    Atom("relative",    "relative"),
-
     Atom("alert", "alert"),
     Atom("alertdialog", "alertdialog"),
     Atom("application", "application"),
@@ -2394,6 +2380,9 @@ STATIC_ATOMS = [
     Atom("onresume", "onresume"),
     Atom("onmark", "onmark"),
     Atom("onboundary", "onboundary"),
+
+    # Media Controller
+    Atom("onsupportedkeyschange", "onsupportedkeyschange"),
 
     # Contextual Identity / Containers
     Atom("usercontextid", "usercontextid"),

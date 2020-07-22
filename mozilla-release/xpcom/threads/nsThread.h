@@ -7,24 +7,27 @@
 #ifndef nsThread_h__
 #define nsThread_h__
 
-#include "mozilla/Mutex.h"
-#include "nsIThreadInternal.h"
-#include "nsISupportsPriority.h"
-#include "nsThreadUtils.h"
-#include "nsString.h"
-#include "nsTObserverArray.h"
+#include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/Array.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/IntegerTypeTraits.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/SynchronizedEventQueue.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/NotNull.h"
+#include "mozilla/SynchronizedEventQueue.h"
+#include "mozilla/TaskDispatcher.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/Array.h"
 #include "mozilla/dom/DocGroup.h"
+#include "nsIDirectTaskDispatcher.h"
+#include "nsISupportsPriority.h"
+#include "nsIThreadInternal.h"
+#include "nsString.h"
+#include "nsTObserverArray.h"
+#include "nsThreadUtils.h"
+#include "prenv.h"
 
 namespace mozilla {
 class CycleCollectedJSContext;
@@ -41,6 +44,11 @@ class nsThreadEnumerator;
 
 // See https://www.w3.org/TR/longtasks
 #define LONGTASK_BUSY_WINDOW_MS 50
+
+static inline bool UseTaskController() {
+  static const bool kUseTaskController = !!PR_GetEnv("MOZ_USE_TASKCONTROLLER");
+  return kUseTaskController;
+}
 
 // A class for managing performance counter state.
 namespace mozilla {
@@ -146,6 +154,7 @@ class PerformanceCounterState {
 // A native thread
 class nsThread : public nsIThreadInternal,
                  public nsISupportsPriority,
+                 public nsIDirectTaskDispatcher,
                  private mozilla::LinkedListElement<nsThread> {
   friend mozilla::LinkedList<nsThread>;
   friend mozilla::LinkedListElement<nsThread>;
@@ -156,6 +165,7 @@ class nsThread : public nsIThreadInternal,
   NS_DECL_NSITHREAD
   NS_DECL_NSITHREADINTERNAL
   NS_DECL_NSISUPPORTSPRIORITY
+  NS_DECL_NSIDIRECTTASKDISPATCHER
 
   enum MainThreadFlag { MAIN_THREAD, NOT_MAIN_THREAD };
 
@@ -227,8 +237,14 @@ class nsThread : public nsIThreadInternal,
 
   bool ShuttingDown() const { return mShutdownContext != nullptr; }
 
+  static bool GetLabeledRunnableName(nsIRunnable* aEvent, nsACString& aName,
+                                     mozilla::EventQueuePriority aPriority);
+
   virtual mozilla::PerformanceCounter* GetPerformanceCounter(
       nsIRunnable* aEvent) const;
+
+  static mozilla::PerformanceCounter* GetPerformanceCounterBase(
+      nsIRunnable* aEvent);
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
@@ -357,6 +373,8 @@ class nsThread : public nsIThreadInternal,
   mozilla::PerformanceCounterState mPerformanceCounterState;
 
   bool mIsInLocalExecutionMode = false;
+
+  mozilla::SimpleTaskQueue mDirectTasks;
 };
 
 struct nsThreadShutdownContext {

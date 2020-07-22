@@ -59,7 +59,6 @@ describe("ASRouter", () => {
   let messageBlockList;
   let providerBlockList;
   let messageImpressions;
-  let providerImpressions;
   let groupImpressions;
   let previousSessionEnd;
   let fetchStub;
@@ -87,9 +86,6 @@ describe("ASRouter", () => {
       .returns(Promise.resolve(messageImpressions));
     getStub.withArgs("groupImpressions").resolves(groupImpressions);
     getStub
-      .withArgs("providerImpressions")
-      .returns(Promise.resolve(providerImpressions));
-    getStub
       .withArgs("previousSessionEnd")
       .returns(Promise.resolve(previousSessionEnd));
     return {
@@ -116,7 +112,6 @@ describe("ASRouter", () => {
     messageBlockList = [];
     providerBlockList = [];
     messageImpressions = {};
-    providerImpressions = {};
     groupImpressions = {};
     previousSessionEnd = 100;
     sandbox = sinon.createSandbox();
@@ -247,20 +242,6 @@ describe("ASRouter", () => {
       await Router.init(channel, createFakeStorage(), dispatchStub);
 
       assert.deepEqual(Router.state.messageBlockList, ["foo"]);
-    });
-    it("should migrate provider impressions to group impressions", async () => {
-      setMessageProviderPref([
-        { id: "onboarding", type: "local", messages: [] },
-      ]);
-      providerImpressions = { onboarding: [1, 2, 3] };
-      Router = new _ASRouter();
-      await Router.init(channel, createFakeStorage(), dispatchStub);
-
-      assert.property(Router.state.groupImpressions, "onboarding");
-      assert.deepEqual(
-        Router.state.groupImpressions.onboarding,
-        providerImpressions.onboarding
-      );
     });
     it("should initialize all the hub providers", async () => {
       // ASRouter init called in `beforeEach` block above
@@ -607,7 +588,6 @@ describe("ASRouter", () => {
     beforeEach(() => {
       sandbox.stub(CFRPageActions, "forceRecommendation");
       sandbox.stub(CFRPageActions, "addRecommendation");
-      sandbox.stub(CFRPageActions, "showMilestone");
       target = { sendAsyncMessage: sandbox.stub() };
     });
     it("should route whatsnew_panel_message message to the right hub", () => {
@@ -623,7 +603,6 @@ describe("ASRouter", () => {
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(CFRPageActions.addRecommendation);
       assert.notCalled(CFRPageActions.forceRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(target.sendAsyncMessage);
       assert.notCalled(FakeMomentsPageHub.executeAction);
     });
@@ -641,7 +620,6 @@ describe("ASRouter", () => {
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(CFRPageActions.addRecommendation);
       assert.notCalled(CFRPageActions.forceRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(target.sendAsyncMessage);
     });
     it("should route toolbar_badge message to the right hub", () => {
@@ -652,15 +630,18 @@ describe("ASRouter", () => {
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(CFRPageActions.addRecommendation);
       assert.notCalled(CFRPageActions.forceRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(target.sendAsyncMessage);
       assert.notCalled(FakeMomentsPageHub.executeAction);
     });
     it("should route milestone_message to the right hub", () => {
-      Router.routeMessageToTarget({ template: "milestone_message" }, target);
+      Router.routeMessageToTarget(
+        { template: "milestone_message" },
+        target,
+        "",
+        false
+      );
 
-      assert.calledOnce(CFRPageActions.showMilestone);
-      assert.notCalled(CFRPageActions.addRecommendation);
+      assert.calledOnce(CFRPageActions.addRecommendation);
       assert.notCalled(CFRPageActions.forceRecommendation);
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(FakeToolbarBadgeHub.registerBadgeNotificationListener);
@@ -681,7 +662,6 @@ describe("ASRouter", () => {
       assert.notCalled(FakeToolbarBadgeHub.registerBadgeNotificationListener);
       assert.notCalled(CFRPageActions.addRecommendation);
       assert.notCalled(CFRPageActions.forceRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(target.sendAsyncMessage);
       assert.notCalled(FakeMomentsPageHub.executeAction);
     });
@@ -698,7 +678,6 @@ describe("ASRouter", () => {
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(FakeToolbarBadgeHub.registerBadgeNotificationListener);
       assert.notCalled(CFRPageActions.forceRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(target.sendAsyncMessage);
       assert.notCalled(FakeMomentsPageHub.executeAction);
     });
@@ -713,7 +692,6 @@ describe("ASRouter", () => {
       assert.calledOnce(CFRPageActions.forceRecommendation);
       assert.notCalled(FakeToolbarPanelHub.forceShowMessage);
       assert.notCalled(CFRPageActions.addRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(FakeToolbarBadgeHub.registerBadgeNotificationListener);
       assert.notCalled(target.sendAsyncMessage);
@@ -735,7 +713,6 @@ describe("ASRouter", () => {
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(FakeToolbarBadgeHub.registerBadgeNotificationListener);
       assert.notCalled(CFRPageActions.forceRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(target.sendAsyncMessage);
       assert.notCalled(FakeMomentsPageHub.executeAction);
     });
@@ -750,7 +727,6 @@ describe("ASRouter", () => {
       assert.calledOnce(CFRPageActions.forceRecommendation);
       assert.notCalled(FakeToolbarPanelHub.forceShowMessage);
       assert.notCalled(CFRPageActions.addRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(FakeToolbarBadgeHub.registerBadgeNotificationListener);
       assert.notCalled(target.sendAsyncMessage);
@@ -763,7 +739,6 @@ describe("ASRouter", () => {
       assert.notCalled(FakeToolbarPanelHub.forceShowMessage);
       assert.notCalled(CFRPageActions.forceRecommendation);
       assert.notCalled(CFRPageActions.addRecommendation);
-      assert.notCalled(CFRPageActions.showMilestone);
       assert.notCalled(FakeBookmarkPanelHub._forceShowMessage);
       assert.notCalled(FakeToolbarBadgeHub.registerBadgeNotificationListener);
       assert.notCalled(FakeMomentsPageHub.executeAction);
@@ -2355,7 +2330,7 @@ describe("ASRouter", () => {
         let messages = [
           {
             id: "foo1",
-            forReachEvent: true,
+            forReachEvent: { sent: false },
             experimentSlug: "exp01",
             branchSlug: "branch01",
             group: "cfr",
@@ -2373,7 +2348,7 @@ describe("ASRouter", () => {
           },
           {
             id: "foo3",
-            forReachEvent: true,
+            forReachEvent: { sent: false },
             experimentSlug: "exp02",
             branchSlug: "branch02",
             group: "cfr",
@@ -2392,6 +2367,30 @@ describe("ASRouter", () => {
 
         await Router.onMessage(msg);
         assert.calledTwice(Services.telemetry.recordEvent);
+      });
+      it("should not record the Reach event if it's already sent", async () => {
+        let messages = [
+          {
+            id: "foo1",
+            forReachEvent: { sent: true },
+            experimentSlug: "exp01",
+            branchSlug: "branch01",
+            group: "cfr",
+            template: "simple_template",
+            trigger: { id: "foo" },
+            content: { title: "Foo1", body: "Foo123-1" },
+          },
+        ];
+        sandbox.stub(Router, "handleMessageRequest").resolves(messages);
+        sandbox.spy(Services.telemetry, "recordEvent");
+
+        const msg = fakeAsyncMessage({
+          type: "TRIGGER",
+          data: { trigger: { id: "foo" } },
+        });
+
+        await Router.onMessage(msg);
+        assert.notCalled(Services.telemetry.recordEvent);
       });
     });
 
@@ -3192,7 +3191,7 @@ describe("ASRouter", () => {
             {},
             state.messageImpressions
           );
-          const gImpressions = Object.assign({}, state.providerImpressions);
+          let gImpressions = {};
           gImpressions.bar = barGroupImpressions;
           messageImpressions.foo = fooMessageImpressions;
           return {
@@ -4131,7 +4130,7 @@ describe("ASRouter", () => {
       assert.equal(result.messages[1].group, "cfr");
       assert.equal(result.messages[1].experimentSlug, "exp01");
       assert.equal(result.messages[1].branchSlug, "branch02");
-      assert.ok(result.messages[1].forReachEvent);
+      assert.deepEqual(result.messages[1].forReachEvent, { sent: false });
     });
     it("should fetch json from url", async () => {
       let result = await MessageLoaderUtils.loadMessagesForProvider({

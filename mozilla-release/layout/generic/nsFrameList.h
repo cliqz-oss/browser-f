@@ -490,6 +490,18 @@ class nsFrameList {
 
   class Iterator {
    public:
+    // It is disputable whether these type definitions are correct, since
+    // operator* doesn't return a reference at all. Also, the iterator_category
+    // can be at most std::input_iterator_tag (rather than
+    // std::bidrectional_iterator_tag, as it might seem), because it is a
+    // stashing iterator. See also, e.g.,
+    // https://stackoverflow.com/questions/50909701/what-should-be-iterator-category-for-a-stashing-iterator
+    using value_type = nsIFrame* const;
+    using pointer = value_type*;
+    using reference = value_type&;
+    using difference_type = ptrdiff_t;
+    using iterator_category = std::input_iterator_tag;
+
     Iterator(const nsFrameList& aList, nsIFrame* aCurrent)
         : mList(aList), mCurrent(aCurrent) {}
 
@@ -572,14 +584,13 @@ inline bool operator!=(const nsFrameList::Iterator& aIter1,
 }
 
 namespace mozilla {
-namespace layout {
 
 /**
  * Simple "auto_ptr" for nsFrameLists allocated from the shell arena.
  * The frame list given to the constructor will be deallocated (if non-null)
  * in the destructor.  The frame list must then be empty.
  */
-class AutoFrameListPtr {
+class MOZ_RAII AutoFrameListPtr final {
  public:
   AutoFrameListPtr(nsPresContext* aPresContext, nsFrameList* aFrameList)
       : mPresContext(aPresContext), mFrameList(aFrameList) {}
@@ -592,15 +603,14 @@ class AutoFrameListPtr {
   nsFrameList* mFrameList;
 };
 
-namespace detail {
+namespace layout::detail {
 union AlignedFrameListBytes {
   void* ptr;
   char bytes[sizeof(nsFrameList)];
 };
 extern const AlignedFrameListBytes gEmptyFrameListBytes;
-}  // namespace detail
+}  // namespace layout::detail
 
-}  // namespace layout
 }  // namespace mozilla
 
 /* static */ inline const nsFrameList& nsFrameList::EmptyList() {

@@ -32,7 +32,6 @@ const SWAPPED_BROWSER_STATE = [
   "_characterSet",
   "_contentPrincipal",
   "_isSyntheticDocument",
-  "_innerWindowID",
 ];
 
 /**
@@ -102,11 +101,15 @@ function tunnelToInnerBrowser(outer, inner) {
         inner._documentURI = outer._documentURI;
         inner._documentContentType = outer._documentContentType;
         inner._characterSet = outer._characterSet;
-        inner._contentPrincipal = outer._contentPrincipal;
         inner._isSyntheticDocument = outer._isSyntheticDocument;
-        inner._innerWindowID = outer._innerWindowID;
         inner._remoteWebNavigation._currentURI =
           outer._remoteWebNavigation._currentURI;
+        // mozbrowser elements do not support the `contentPrincipal` property.
+        // Because of this, we copy the outer browser's (xul:browser)
+        // `contentPrincipal` here. We need to do this because some event
+        // listeners on the browser tab try to access this property
+        // directly off the browser element.
+        inner.contentPrincipal = outer.contentPrincipal;
       }
     },
 

@@ -26,6 +26,7 @@ namespace js {
 namespace jit {
 
 enum class BaselineCacheIRStubKind;
+enum class InlinableNative : uint16_t;
 
 // [SMDOC] CacheIR
 //
@@ -166,6 +167,7 @@ class TypedOperandId : public OperandId {
   _(In)                   \
   _(HasOwn)               \
   _(TypeOf)               \
+  _(ToPropertyKey)        \
   _(InstanceOf)           \
   _(GetIterator)          \
   _(Compare)              \
@@ -195,6 +197,7 @@ enum class CacheOp {
 
 extern const char* const CacheIROpNames[];
 extern const uint32_t CacheIROpArgLengths[];
+extern const uint32_t CacheIROpHealth[];
 
 class StubField {
  public:
@@ -350,8 +353,9 @@ enum class AttachDecision {
   } while (0)
 
 // Set of arguments supported by GetIndexOfArgument.
-// Support for Arg2 and up can be added easily, but is currently unneeded.
-enum class ArgumentKind : uint8_t { Callee, This, NewTarget, Arg0, Arg1 };
+// Support for higher argument indices can be added easily, but is currently
+// unneeded.
+enum class ArgumentKind : uint8_t { Callee, This, NewTarget, Arg0, Arg1, Arg2 };
 
 // This function calculates the index of an argument based on the call flags.
 // addArgc is an out-parameter, indicating whether the value of argc should
@@ -378,7 +382,7 @@ inline int32_t GetIndexOfArgument(ArgumentKind kind, CallFlags flags,
       break;
     case CallFlags::Spread:
       // Spread calls do not have Arg1 or higher.
-      MOZ_ASSERT(kind != ArgumentKind::Arg1);
+      MOZ_ASSERT(kind <= ArgumentKind::Arg0);
       *addArgc = false;
       break;
     case CallFlags::FunCall:
@@ -399,6 +403,8 @@ inline int32_t GetIndexOfArgument(ArgumentKind kind, CallFlags flags,
       return flags.isConstructing() + hasArgumentArray - 1;
     case ArgumentKind::Arg1:
       return flags.isConstructing() + hasArgumentArray - 2;
+    case ArgumentKind::Arg2:
+      return flags.isConstructing() + hasArgumentArray - 3;
     case ArgumentKind::NewTarget:
       MOZ_ASSERT(flags.isConstructing());
       *addArgc = false;
@@ -781,6 +787,14 @@ class MOZ_RAII CacheIRWriter : public JS::CustomAutoRooter {
     if (addArgc) {
       slotIndex += argc;
     }
+    MOZ_ASSERT(slotIndex >= 0);
+    MOZ_ASSERT(slotIndex <= UINT8_MAX);
+    return loadArgumentFixedSlot_(slotIndex);
+  }
+
+  ValOperandId loadStandardCallArgument(uint32_t index, uint32_t argc) {
+    int32_t slotIndex = -int32_t(index + 1);
+    slotIndex += argc;
     MOZ_ASSERT(slotIndex >= 0);
     MOZ_ASSERT(slotIndex <= UINT8_MAX);
     return loadArgumentFixedSlot_(slotIndex);
@@ -1521,23 +1535,41 @@ class MOZ_RAII CallIRGenerator : public IRGenerator {
   AttachDecision tryAttachArrayPush(HandleFunction callee);
   AttachDecision tryAttachArrayJoin(HandleFunction callee);
   AttachDecision tryAttachArrayIsArray(HandleFunction callee);
+  AttachDecision tryAttachUnsafeGetReservedSlot(HandleFunction callee,
+                                                InlinableNative native);
   AttachDecision tryAttachIsSuspendedGenerator(HandleFunction callee);
-  AttachDecision tryAttachToString(HandleFunction callee);
-  AttachDecision tryAttachToObject(HandleFunction callee);
+  AttachDecision tryAttachToObject(HandleFunction callee,
+                                   InlinableNative native);
   AttachDecision tryAttachToInteger(HandleFunction callee);
+  AttachDecision tryAttachToLength(HandleFunction callee);
   AttachDecision tryAttachIsObject(HandleFunction callee);
   AttachDecision tryAttachIsCallable(HandleFunction callee);
   AttachDecision tryAttachIsConstructor(HandleFunction callee);
+  AttachDecision tryAttachGuardToClass(HandleFunction callee,
+                                       InlinableNative native);
+  AttachDecision tryAttachHasClass(HandleFunction callee, const JSClass* clasp);
+  AttachDecision tryAttachRegExpMatcherSearcherTester(HandleFunction callee,
+                                                      InlinableNative native);
+  AttachDecision tryAttachRegExpPrototypeOptimizable(HandleFunction callee);
+  AttachDecision tryAttachRegExpInstanceOptimizable(HandleFunction callee);
+  AttachDecision tryAttachSubstringKernel(HandleFunction callee);
+  AttachDecision tryAttachString(HandleFunction callee);
   AttachDecision tryAttachStringChar(HandleFunction callee, StringChar kind);
   AttachDecision tryAttachStringCharCodeAt(HandleFunction callee);
   AttachDecision tryAttachStringCharAt(HandleFunction callee);
+  AttachDecision tryAttachStringFromCharCode(HandleFunction callee);
+  AttachDecision tryAttachMathRandom(HandleFunction callee);
   AttachDecision tryAttachMathAbs(HandleFunction callee);
   AttachDecision tryAttachMathFloor(HandleFunction callee);
   AttachDecision tryAttachMathCeil(HandleFunction callee);
   AttachDecision tryAttachMathRound(HandleFunction callee);
   AttachDecision tryAttachMathSqrt(HandleFunction callee);
+  AttachDecision tryAttachMathFRound(HandleFunction callee);
+  AttachDecision tryAttachMathATan2(HandleFunction callee);
   AttachDecision tryAttachMathFunction(HandleFunction callee,
                                        UnaryMathFunction fun);
+  AttachDecision tryAttachMathPow(HandleFunction callee);
+  AttachDecision tryAttachMathMinMax(HandleFunction callee, bool isMax);
 
   AttachDecision tryAttachFunCall(HandleFunction calleeFunc);
   AttachDecision tryAttachFunApply(HandleFunction calleeFunc);
@@ -1651,6 +1683,23 @@ class MOZ_RAII UnaryArithIRGenerator : public IRGenerator {
   UnaryArithIRGenerator(JSContext* cx, HandleScript, jsbytecode* pc,
                         ICState::Mode mode, JSOp op, HandleValue val,
                         HandleValue res);
+
+  AttachDecision tryAttachStub();
+};
+
+class MOZ_RAII ToPropertyKeyIRGenerator : public IRGenerator {
+  HandleValue val_;
+
+  AttachDecision tryAttachInt32();
+  AttachDecision tryAttachNumber();
+  AttachDecision tryAttachString();
+  AttachDecision tryAttachSymbol();
+
+  void trackAttached(const char* name);
+
+ public:
+  ToPropertyKeyIRGenerator(JSContext* cx, HandleScript, jsbytecode* pc,
+                           ICState::Mode mode, HandleValue val);
 
   AttachDecision tryAttachStub();
 };

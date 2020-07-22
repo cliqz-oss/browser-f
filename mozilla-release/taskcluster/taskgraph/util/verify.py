@@ -14,9 +14,16 @@ import six
 
 from .. import GECKO
 from .treeherder import join_symbol
+from taskgraph.util.attributes import match_run_on_projects, RELEASE_PROJECTS
 
 logger = logging.getLogger(__name__)
 doc_base_path = os.path.join(GECKO, 'taskcluster', 'docs')
+
+
+@attr.s(frozen=True)
+class Verification(object):
+    verify = attr.ib()
+    run_on_projects = attr.ib()
 
 
 @attr.s(frozen=True)
@@ -30,16 +37,22 @@ class VerificationSequence(object):
     """
     _verifications = attr.ib(factory=dict)
 
-    def __call__(self, graph_name, graph, graph_config):
+    def __call__(self, graph_name, graph, graph_config, parameters):
         for verification in self._verifications.get(graph_name, []):
+            if not match_run_on_projects(parameters["project"], verification.run_on_projects):
+                continue
             scratch_pad = {}
-            graph.for_each_task(verification, scratch_pad=scratch_pad, graph_config=graph_config)
-            verification(None, graph, scratch_pad=scratch_pad, graph_config=graph_config)
+            graph.for_each_task(
+                verification.verify, scratch_pad=scratch_pad, graph_config=graph_config
+            )
+            verification.verify(None, graph, scratch_pad=scratch_pad, graph_config=graph_config)
         return graph_name, graph
 
-    def add(self, graph_name):
+    def add(self, graph_name, run_on_projects={"all"}):
         def wrap(func):
-            self._verifications.setdefault(graph_name, []).append(func)
+            self._verifications.setdefault(graph_name, []).append(
+                Verification(func, run_on_projects)
+            )
             return func
         return wrap
 
@@ -289,7 +302,7 @@ def verify_always_optimized(task, taskgraph, scratch_pad, graph_config):
         raise Exception('Could not optimize the task {!r}'.format(task.label))
 
 
-@verifications.add('full_task_graph')
+@verifications.add('full_task_graph', run_on_projects=RELEASE_PROJECTS)
 def verify_shippable_no_sccache(task, taskgraph, scratch_pad, graph_config):
     if task and task.attributes.get('shippable'):
         if task.task.get('payload', {}).get('env', {}).get('USE_SCCACHE'):
@@ -338,3 +351,24 @@ def verify_test_packaging(task, taskgraph, scratch_pad, graph_config):
     if task.kind == 'test':
         build_task = taskgraph[task.dependencies['build']]
         scratch_pad[build_task.label] = 1
+
+
+@verifications.add('full_task_graph')
+def verify_local_toolchains(task, taskgraph, scratch_pad, graph_config):
+    """
+    Toolchains that are used for local development need to be built on a
+    level-3 branch to installable via `mach bootstrap`. We ensure here that all
+    such tasks run on at least trunk projects, even if they aren't pulled in as
+    a dependency of other tasks in the graph.
+
+    There is code in `mach artifact toolchain` that verifies that anything
+    installed via `mach bootstrap` has the attribute set.
+    """
+    if task and task.attributes.get('local-toolchain'):
+        run_on_projects = task.attributes.get('run_on_projects', [])
+        if not any(alias in run_on_projects for alias in ["all", "trunk"]):
+            raise Exception(
+                "Toolchain {} used for local development is not built on trunk. {}".format(
+                    task.label, run_on_projects
+                )
+            )

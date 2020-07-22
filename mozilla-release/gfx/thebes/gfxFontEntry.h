@@ -834,11 +834,7 @@ class gfxFontFamily {
     // we need to ensure any null entries are removed, as well as clearing
     // the flag (which may be set again later).
     if (mIsSimpleFamily) {
-      for (size_t i = mAvailableFonts.Length() - 1; i-- > 0;) {
-        if (!mAvailableFonts[i]) {
-          mAvailableFonts.RemoveElementAt(i);
-        }
-      }
+      mAvailableFonts.RemoveElementsBy([](const auto& font) { return !font; });
       mIsSimpleFamily = false;
     }
   }
@@ -898,7 +894,7 @@ class gfxFontFamily {
     mFamilyCharacterMapInitialized = false;
   }
 
-  // mark this family as being in the "bad" underline offset blacklist
+  // mark this family as being in the "bad" underline offset blocklist
   void SetBadUnderlineFamily() {
     mIsBadUnderlineFamily = true;
     if (mHasStyles) {
@@ -957,7 +953,7 @@ class gfxFontFamily {
                                    hb_blob_t* aNameTable,
                                    bool useFullName = false);
 
-  // set whether this font family is in "bad" underline offset blacklist.
+  // set whether this font family is in "bad" underline offset blocklist.
   void SetBadUnderlineFonts() {
     uint32_t i, numFonts = mAvailableFonts.Length();
     for (i = 0; i < numFonts; i++) {

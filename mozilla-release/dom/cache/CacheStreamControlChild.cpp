@@ -28,13 +28,8 @@ using mozilla::ipc::FileDescriptorSetChild;
 using mozilla::ipc::PFileDescriptorSetChild;
 
 // declared in ActorUtils.h
-PCacheStreamControlChild* AllocPCacheStreamControlChild() {
-  return new CacheStreamControlChild();
-}
-
-// declared in ActorUtils.h
-void DeallocPCacheStreamControlChild(PCacheStreamControlChild* aActor) {
-  delete aActor;
+already_AddRefed<PCacheStreamControlChild> AllocPCacheStreamControlChild() {
+  return MakeAndAddRef<CacheStreamControlChild>();
 }
 
 CacheStreamControlChild::CacheStreamControlChild()
@@ -113,7 +108,7 @@ void CacheStreamControlChild::OpenStream(const nsID& aId,
   const SafeRefPtr<CacheWorkerRef> holder = GetWorkerRefPtr().clonePtr();
 
   SendOpenStream(aId)->Then(
-      GetCurrentThreadSerialEventTarget(), __func__,
+      GetCurrentSerialEventTarget(), __func__,
       [aResolver,
        holder = holder.clonePtr()](RefPtr<nsIInputStream>&& aOptionalStream) {
         aResolver(nsCOMPtr<nsIInputStream>(std::move(aOptionalStream)));

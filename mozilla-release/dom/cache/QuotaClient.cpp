@@ -27,10 +27,13 @@ using mozilla::Some;
 using mozilla::Unused;
 using mozilla::dom::ContentParentId;
 using mozilla::dom::cache::DirPaddingFile;
+using mozilla::dom::cache::kCachesSQLiteFilename;
 using mozilla::dom::cache::Manager;
 using mozilla::dom::cache::QuotaInfo;
 using mozilla::dom::quota::AssertIsOnIOThread;
 using mozilla::dom::quota::Client;
+using mozilla::dom::quota::DatabaseUsageType;
+using mozilla::dom::quota::FileUsageType;
 using mozilla::dom::quota::PERSISTENCE_TYPE_DEFAULT;
 using mozilla::dom::quota::PersistenceType;
 using mozilla::dom::quota::QuotaManager;
@@ -82,7 +85,7 @@ static nsresult GetBodyUsage(nsIFile* aMorgueDir, const Atomic<bool>& aCanceled,
         return rv;
       }
       MOZ_DIAGNOSTIC_ASSERT(fileSize >= 0);
-      aUsageInfo->AppendToFileUsage(Some(fileSize));
+      *aUsageInfo += FileUsageType(Some(fileSize));
 
       fileDeleted = false;
 
@@ -124,15 +127,35 @@ static nsresult LockedGetPaddingSizeFromDB(nsIFile* aDir,
   // for the SQLite file).
   MOZ_DIAGNOSTIC_ASSERT(quotaInfo.mDirectoryLockId == -1);
 
-  nsCOMPtr<mozIStorageConnection> conn;
-  nsresult rv = mozilla::dom::cache::OpenDBConnection(quotaInfo, aDir,
-                                                      getter_AddRefs(conn));
-  if (rv == NS_ERROR_FILE_NOT_FOUND ||
-      rv == NS_ERROR_FILE_TARGET_DOES_NOT_EXIST) {
-    // Return NS_OK with size = 0 if both the db and padding file don't exist.
-    // There is no other way to get the overall padding size of an origin.
+  nsCOMPtr<nsIFile> dbFile;
+  nsresult rv = aDir->Clone(getter_AddRefs(dbFile));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = dbFile->Append(kCachesSQLiteFilename);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  bool exists = false;
+  rv = dbFile->Exists(&exists);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  // Return NS_OK with size = 0 if caches.sqlite doesn't exist.
+  // This function is only called if the value of the padding size couldn't be
+  // determined from the padding file, possibly because it doesn't exist, or a
+  // leftover temporary padding file was found.
+  // There is no other way to get the overall padding size of an origin.
+  if (!exists) {
     return NS_OK;
   }
+
+  nsCOMPtr<mozIStorageConnection> conn;
+  rv = mozilla::dom::cache::OpenDBConnection(quotaInfo, dbFile,
+                                             getter_AddRefs(conn));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -165,6 +188,8 @@ namespace mozilla {
 namespace dom {
 namespace cache {
 
+NS_NAMED_LITERAL_STRING(kCachesSQLiteFilename, "caches.sqlite");
+
 CacheQuotaClient::CacheQuotaClient()
     : mDirPaddingFileMutex("DOMCacheQuotaClient.mDirPaddingFileMutex") {
   AssertIsOnBackgroundThread();
@@ -180,30 +205,35 @@ CacheQuotaClient* CacheQuotaClient::Get() {
 
 CacheQuotaClient::Type CacheQuotaClient::GetType() { return DOMCACHE; }
 
-nsresult CacheQuotaClient::InitOrigin(PersistenceType aPersistenceType,
-                                      const nsACString& aGroup,
-                                      const nsACString& aOrigin,
-                                      const AtomicBool& aCanceled,
-                                      UsageInfo* aUsageInfo) {
+Result<UsageInfo, nsresult> CacheQuotaClient::InitOrigin(
+    PersistenceType aPersistenceType, const nsACString& aGroup,
+    const nsACString& aOrigin, const AtomicBool& aCanceled) {
   AssertIsOnIOThread();
 
-  // The QuotaManager passes a nullptr UsageInfo if there is no quota being
-  // enforced against the origin.
-  if (!aUsageInfo) {
-    return NS_OK;
-  }
-
   return GetUsageForOriginInternal(aPersistenceType, aGroup, aOrigin, aCanceled,
-                                   /* aInitializing*/ true, aUsageInfo);
+                                   /* aInitializing*/ true);
 }
 
-nsresult CacheQuotaClient::GetUsageForOrigin(PersistenceType aPersistenceType,
-                                             const nsACString& aGroup,
-                                             const nsACString& aOrigin,
-                                             const AtomicBool& aCanceled,
-                                             UsageInfo* aUsageInfo) {
+nsresult CacheQuotaClient::InitOriginWithoutTracking(
+    PersistenceType aPersistenceType, const nsACString& aGroup,
+    const nsACString& aOrigin, const AtomicBool& aCanceled) {
+  AssertIsOnIOThread();
+
+  // This is called when a storage/permanent/chrome/cache directory exists. Even
+  // though this shouldn't happen with a "good" profile, we shouldn't return an
+  // error here, since that would cause origin initialization to fail. We just
+  // warn and otherwise ignore that.
+  UNKNOWN_FILE_WARNING(NS_LITERAL_STRING(DOMCACHE_DIRECTORY_NAME));
+  return NS_OK;
+}
+
+Result<UsageInfo, nsresult> CacheQuotaClient::GetUsageForOrigin(
+    PersistenceType aPersistenceType, const nsACString& aGroup,
+    const nsACString& aOrigin, const AtomicBool& aCanceled) {
+  AssertIsOnIOThread();
+
   return GetUsageForOriginInternal(aPersistenceType, aGroup, aOrigin, aCanceled,
-                                   /* aInitializing*/ false, aUsageInfo);
+                                   /* aInitializing*/ false);
 }
 
 void CacheQuotaClient::OnOriginClearCompleted(PersistenceType aPersistenceType,
@@ -332,12 +362,11 @@ CacheQuotaClient::~CacheQuotaClient() {
   sInstance = nullptr;
 }
 
-nsresult CacheQuotaClient::GetUsageForOriginInternal(
+Result<UsageInfo, nsresult> CacheQuotaClient::GetUsageForOriginInternal(
     PersistenceType aPersistenceType, const nsACString& aGroup,
     const nsACString& aOrigin, const AtomicBool& aCanceled,
-    const bool aInitializing, UsageInfo* aUsageInfo) {
+    const bool aInitializing) {
   AssertIsOnIOThread();
-  MOZ_DIAGNOSTIC_ASSERT(aUsageInfo);
 #ifndef NIGHTLY_BUILD
   Unused << aInitializing;
 #endif
@@ -351,14 +380,14 @@ nsresult CacheQuotaClient::GetUsageForOriginInternal(
   if (NS_WARN_IF(NS_FAILED(rv))) {
     REPORT_TELEMETRY_ERR_IN_INIT(aInitializing, kQuotaExternalError,
                                  Cache_GetDirForOri);
-    return rv;
+    return Err(rv);
   }
 
   rv = dir->Append(NS_LITERAL_STRING(DOMCACHE_DIRECTORY_NAME));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     REPORT_TELEMETRY_ERR_IN_INIT(aInitializing, kQuotaExternalError,
                                  Cache_Append);
-    return rv;
+    return Err(rv);
   }
 
   bool useCachedValue = false;
@@ -378,7 +407,7 @@ nsresult CacheQuotaClient::GetUsageForOriginInternal(
         if (NS_WARN_IF(NS_FAILED(rv))) {
           REPORT_TELEMETRY_ERR_IN_INIT(aInitializing, kQuotaInternalError,
                                        Cache_GetPaddingSize);
-          return rv;
+          return Err(rv);
         }
       } else {
         // We can't open the database at this point, since it can be already
@@ -391,31 +420,33 @@ nsresult CacheQuotaClient::GetUsageForOriginInternal(
     }
   }
 
+  UsageInfo usageInfo;
+
   if (useCachedValue) {
     uint64_t usage;
     if (qm->GetUsageForClient(PERSISTENCE_TYPE_DEFAULT, aGroup, aOrigin,
                               Client::DOMCACHE, usage)) {
-      aUsageInfo->AppendToDatabaseUsage(Some(usage));
+      usageInfo += DatabaseUsageType(Some(usage));
     }
 
-    return NS_OK;
+    return usageInfo;
   }
 
-  aUsageInfo->AppendToFileUsage(Some(paddingSize));
+  usageInfo += FileUsageType(Some(paddingSize));
 
   nsCOMPtr<nsIDirectoryEnumerator> entries;
   rv = dir->GetDirectoryEntries(getter_AddRefs(entries));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     REPORT_TELEMETRY_ERR_IN_INIT(aInitializing, kQuotaExternalError,
                                  Cache_GetDirEntries);
-    return rv;
+    return Err(rv);
   }
 
   nsCOMPtr<nsIFile> file;
   while (NS_SUCCEEDED(rv = entries->GetNextFile(getter_AddRefs(file))) &&
          file && !aCanceled) {
     if (NS_WARN_IF(QuotaManager::IsShuttingDown())) {
-      return NS_ERROR_ABORT;
+      return Err(NS_ERROR_ABORT);
     }
 
     nsAutoString leafName;
@@ -423,7 +454,7 @@ nsresult CacheQuotaClient::GetUsageForOriginInternal(
     if (NS_WARN_IF(NS_FAILED(rv))) {
       REPORT_TELEMETRY_ERR_IN_INIT(aInitializing, kQuotaExternalError,
                                    Cache_GetLeafName);
-      return rv;
+      return Err(rv);
     }
 
     bool isDir;
@@ -431,18 +462,18 @@ nsresult CacheQuotaClient::GetUsageForOriginInternal(
     if (NS_WARN_IF(NS_FAILED(rv))) {
       REPORT_TELEMETRY_ERR_IN_INIT(aInitializing, kQuotaExternalError,
                                    Cache_IsDirectory);
-      return rv;
+      return Err(rv);
     }
 
     if (isDir) {
       if (leafName.EqualsLiteral("morgue")) {
-        rv = GetBodyUsage(file, aCanceled, aUsageInfo, aInitializing);
+        rv = GetBodyUsage(file, aCanceled, &usageInfo, aInitializing);
         if (NS_WARN_IF(NS_FAILED(rv))) {
           if (rv != NS_ERROR_ABORT) {
             REPORT_TELEMETRY_ERR_IN_INIT(aInitializing, kQuotaExternalError,
                                          Cache_GetBodyUsage);
           }
-          return rv;
+          return Err(rv);
         }
       } else {
         NS_WARNING("Unknown Cache directory found!");
@@ -460,18 +491,18 @@ nsresult CacheQuotaClient::GetUsageForOriginInternal(
       continue;
     }
 
-    if (leafName.EqualsLiteral("caches.sqlite") ||
+    if (leafName.Equals(kCachesSQLiteFilename) ||
         leafName.EqualsLiteral("caches.sqlite-wal")) {
       int64_t fileSize;
       rv = file->GetFileSize(&fileSize);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         REPORT_TELEMETRY_ERR_IN_INIT(aInitializing, kQuotaExternalError,
                                      Cache_GetFileSize);
-        return rv;
+        return Err(rv);
       }
       MOZ_DIAGNOSTIC_ASSERT(fileSize >= 0);
 
-      aUsageInfo->AppendToDatabaseUsage(Some(fileSize));
+      usageInfo += DatabaseUsageType(Some(fileSize));
       continue;
     }
 
@@ -484,10 +515,10 @@ nsresult CacheQuotaClient::GetUsageForOriginInternal(
     NS_WARNING("Unknown Cache file found!");
   }
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    return Err(rv);
   }
 
-  return NS_OK;
+  return usageInfo;
 }
 
 // static

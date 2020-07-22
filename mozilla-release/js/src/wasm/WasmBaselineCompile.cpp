@@ -17,7 +17,7 @@
  */
 
 /*
- * [SMDOC] WebAssembly baseline compiler (RabaldrMonkey)
+ * [WASMDOC] WebAssembly baseline compiler (RabaldrMonkey)
  *
  * General assumptions for 32-bit vs 64-bit code:
  *
@@ -3441,6 +3441,23 @@ class BaseCompiler final : public BaseCompilerInterface {
     }
   }
 
+#ifdef JS_CODEGEN_X64
+  inline void maskResultRegisters(ResultType type) {
+    MOZ_ASSERT(JitOptions.spectreIndexMasking);
+
+    if (type.empty()) {
+      return;
+    }
+
+    for (ABIResultIter iter(type); !iter.done(); iter.next()) {
+      ABIResult result = iter.cur();
+      if (result.inRegister() && result.type().kind() == ValType::I32) {
+        masm.movl(result.gpr(), result.gpr());
+      }
+    }
+  }
+#endif
+
   inline void freeResultRegisters(ResultType type, RegKind which) {
     if (type.empty()) {
       return;
@@ -3538,6 +3555,15 @@ class BaseCompiler final : public BaseCompilerInterface {
   void captureResultRegisters(ResultType type) {
     assertResultRegistersAvailable(type);
     needResultRegisters(type);
+  }
+
+  void captureCallResultRegisters(ResultType type) {
+    captureResultRegisters(type);
+#ifdef JS_CODEGEN_X64
+    if (JitOptions.spectreIndexMasking) {
+      maskResultRegisters(type);
+    }
+#endif
   }
 
   ////////////////////////////////////////////////////////////
@@ -4825,10 +4851,6 @@ class BaseCompiler final : public BaseCompilerInterface {
     pushResults(type, controlItem().stackHeight);
   }
 
-  void pushCallResults(ResultType type, const StackResultsLoc& loc) {
-    pushResults(type, fr.stackResultsBase(loc.bytes()));
-  }
-
   // A combination of popBlockResults + pushBlockResults, used when entering a
   // block with a control-flow join (loops) or split (if) to shuffle the
   // fallthrough block parameters into the locations expected by the
@@ -5791,6 +5813,19 @@ class BaseCompiler final : public BaseCompilerInterface {
         desc, instanceArg, builtin.identity, builtin.failureMode);
   }
 
+  void pushCallResults(const FunctionCall& call, ResultType type,
+                       const StackResultsLoc& loc) {
+#if defined(JS_CODEGEN_ARM)
+    // pushResults currently bypasses special case code in captureReturnedFxx()
+    // that converts GPR results to FPR results for systemABI+softFP.  If we
+    // ever start using that combination for calls we need more code.  This
+    // assert is stronger than we need - we only care about results in return
+    // registers - but that's OK.
+    MOZ_ASSERT(!call.usesSystemAbi || call.hardFP);
+#endif
+    pushResults(type, fr.stackResultsBase(loc.bytes()));
+  }
+
   //////////////////////////////////////////////////////////////////////
   //
   // Sundry low-level code generators.
@@ -5906,6 +5941,11 @@ class BaseCompiler final : public BaseCompilerInterface {
     RegI32 r = RegI32(ReturnReg);
     MOZ_ASSERT(isAvailableI32(r));
     needI32(r);
+#if defined(JS_CODEGEN_X64)
+    if (JitOptions.spectreIndexMasking) {
+      masm.movl(r, r);
+    }
+#endif
     return r;
   }
 
@@ -10112,8 +10152,8 @@ bool BaseCompiler::emitCall() {
 
   popValueStackBy(numArgs);
 
-  captureResultRegisters(resultType);
-  pushCallResults(resultType, results);
+  captureCallResultRegisters(resultType);
+  pushCallResults(baselineCall, resultType, results);
 
   return true;
 }
@@ -10169,8 +10209,8 @@ bool BaseCompiler::emitCallIndirect() {
 
   popValueStackBy(numArgs);
 
-  captureResultRegisters(resultType);
-  pushCallResults(resultType, results);
+  captureCallResultRegisters(resultType);
+  pushCallResults(baselineCall, resultType, results);
 
   return true;
 }
@@ -10769,7 +10809,7 @@ RegI32 BaseCompiler::popMemoryAccess(MemoryAccessDesc* access,
     uint32_t offsetGuardLimit = GetOffsetGuardLimit(env_.hugeMemoryEnabled());
 
     uint64_t ea = uint64_t(addr) + uint64_t(access->offset());
-    uint64_t limit = uint64_t(env_.minMemoryLength) + offsetGuardLimit;
+    uint64_t limit = env_.minMemoryLength + offsetGuardLimit;
 
     check->omitBoundsCheck = ea < limit;
     check->omitAlignmentCheck = (ea & (access->byteSize() - 1)) == 0;
@@ -12728,7 +12768,7 @@ static void MulF32x4(MacroAssembler& masm, RegV128 rs, RegV128 rsd) {
 }
 
 static void MulI64x2(MacroAssembler& masm, RegV128 rs, RegV128 rsd,
-                     RegI64 temp) {
+                     RegV128 temp) {
   masm.mulInt64x2(rs, rsd, temp);
 }
 
@@ -13128,6 +13168,18 @@ static void AllTrueI32x4(MacroAssembler& masm, RegV128 rs, RegI32 rd) {
   masm.allTrueInt32x4(rs, rd);
 }
 
+static void BitmaskI8x16(MacroAssembler& masm, RegV128 rs, RegI32 rd) {
+  masm.bitmaskInt8x16(rs, rd);
+}
+
+static void BitmaskI16x8(MacroAssembler& masm, RegV128 rs, RegI32 rd) {
+  masm.bitmaskInt16x8(rs, rd);
+}
+
+static void BitmaskI32x4(MacroAssembler& masm, RegV128 rs, RegI32 rd) {
+  masm.bitmaskInt32x4(rs, rd);
+}
+
 static void Swizzle(MacroAssembler& masm, RegV128 rs, RegV128 rsd,
                     RegV128 temp) {
   masm.swizzleInt8x16(rs, rsd, temp);
@@ -13440,8 +13492,15 @@ bool BaseCompiler::emitVectorShiftRightI64x2() {
   needI32(specific_.ecx);
   RegI32 count = popI32ToSpecific(specific_.ecx);
   RegV128 lhsDest = popV128();
+  RegI64 tmp = needI64();
   masm.and32(Imm32(63), count);
-  masm.rightShiftInt64x2(count, lhsDest);
+  masm.extractLaneInt64x2(0, lhsDest, tmp);
+  masm.rshift64Arithmetic(count, tmp);
+  masm.replaceLaneInt64x2(0, tmp, lhsDest);
+  masm.extractLaneInt64x2(1, lhsDest, tmp);
+  masm.rshift64Arithmetic(count, tmp);
+  masm.replaceLaneInt64x2(1, tmp, lhsDest);
+  freeI64(tmp);
   freeI32(count);
   pushV128(lhsDest);
 
@@ -14264,6 +14323,12 @@ bool BaseCompiler::emitBody() {
             CHECK_NEXT(dispatchVectorReduction(AllTrueI16x8));
           case uint32_t(SimdOp::I32x4AllTrue):
             CHECK_NEXT(dispatchVectorReduction(AllTrueI32x4));
+          case uint32_t(SimdOp::I8x16Bitmask):
+            CHECK_NEXT(dispatchVectorReduction(BitmaskI8x16));
+          case uint32_t(SimdOp::I16x8Bitmask):
+            CHECK_NEXT(dispatchVectorReduction(BitmaskI16x8));
+          case uint32_t(SimdOp::I32x4Bitmask):
+            CHECK_NEXT(dispatchVectorReduction(BitmaskI32x4));
           case uint32_t(SimdOp::I8x16ReplaceLane):
             CHECK_NEXT(dispatchReplaceLane(ReplaceLaneI8x16, ValType::I32, 16));
           case uint32_t(SimdOp::I16x8ReplaceLane):

@@ -18,6 +18,7 @@ import traceback
 import uuid
 from collections import Iterable
 
+from mach.sentry import register_sentry, report_exception
 from six import string_types
 
 from .base import (
@@ -38,17 +39,17 @@ from .logging import LoggingManager
 from .registrar import Registrar
 from .util import setenv
 
-SUGGEST_MACH_BUSTED = r'''
+SUGGEST_MACH_BUSTED_TEMPLATE = r'''
 You can invoke |./mach busted| to check if this issue is already on file. If it
-isn't, please use |./mach busted file| to report it. If |./mach busted| is
+isn't, please use |./mach busted file %s| to report it. If |./mach busted| is
 misbehaving, you can also inspect the dependencies of bug 1543241.
 '''.lstrip()
 
-MACH_ERROR = r'''
+MACH_ERROR_TEMPLATE = r'''
 The error occurred in mach itself. This is likely a bug in mach itself or a
 fundamental problem with a loaded module.
 
-'''.lstrip() + SUGGEST_MACH_BUSTED
+'''.lstrip() + SUGGEST_MACH_BUSTED_TEMPLATE
 
 ERROR_FOOTER = r'''
 If filing a bug, please include the full output of mach, including this error
@@ -57,17 +58,17 @@ message.
 The details of the failure are as follows:
 '''.lstrip()
 
-COMMAND_ERROR = r'''
+COMMAND_ERROR_TEMPLATE = r'''
 The error occurred in the implementation of the invoked mach command.
 
 This should never occur and is likely a bug in the implementation of that
 command.
-'''.lstrip() + SUGGEST_MACH_BUSTED
+'''.lstrip() + SUGGEST_MACH_BUSTED_TEMPLATE
 
-MODULE_ERROR = r'''
+MODULE_ERROR_TEMPLATE = r'''
 The error occurred in code that was called by the mach command. This is either
 a bug in the called code itself or in the way that mach is calling it.
-'''.lstrip() + SUGGEST_MACH_BUSTED
+'''.lstrip() + SUGGEST_MACH_BUSTED_TEMPLATE
 
 NO_COMMAND_ERROR = r'''
 It looks like you tried to run mach without a command.
@@ -150,7 +151,7 @@ class ContextWrapper(object):
             return getattr(object.__getattribute__(self, '_context'), key)
         except AttributeError as e:
             try:
-                ret = object.__getattribute__(self, '_handler')(self, key)
+                ret = object.__getattribute__(self, '_handler')(key)
             except (AttributeError, TypeError):
                 # TypeError is in case the handler comes from old code not
                 # taking a key argument.
@@ -174,14 +175,11 @@ class Mach(object):
 
         populate_context_handler -- If defined, it must be a callable. The
             callable signature is the following:
-                populate_context_handler(context, key=None)
+                populate_context_handler(key=None)
             It acts as a fallback getter for the mach.base.CommandContext
             instance.
             This allows to augment the context instance with arbitrary data
             for use in command handlers.
-            For backwards compatibility, it is also called before command
-            dispatch without a key, allowing the context handler to add
-            attributes to the context instance.
 
         require_conditions -- If True, commands that do not have any condition
             functions applied will be skipped. Defaults to False.
@@ -319,6 +317,11 @@ To see more help for a specific command, run:
         Returns the integer exit code that should be used. 0 means success. All
         other values indicate failure.
         """
+        if self.populate_context_handler:
+            topsrcdir = self.populate_context_handler('topdir')
+            register_sentry(argv, topsrcdir)
+        else:
+            register_sentry(argv)
 
         # If no encoding is defined, we default to UTF-8 because without this
         # Python 2.7 will assume the default encoding of ASCII. This will blow
@@ -369,12 +372,13 @@ To see more help for a specific command, run:
             # bug in mach (or a loaded command module being silly) and thus
             # should be reported differently.
             self._print_error_header(argv, sys.stdout)
-            print(MACH_ERROR)
+            print(MACH_ERROR_TEMPLATE % 'general')
 
             exc_type, exc_value, exc_tb = sys.exc_info()
             stack = traceback.extract_tb(exc_tb)
 
             self._print_exception(sys.stdout, exc_type, exc_value, stack)
+            report_exception(exc_value)
 
             return 1
 
@@ -398,7 +402,6 @@ To see more help for a specific command, run:
                                  commands=Registrar)
 
         if self.populate_context_handler:
-            self.populate_context_handler(context)
             context = ContextWrapper(context, self.populate_context_handler)
 
         parser = self.get_argument_parser(context)
@@ -480,6 +483,7 @@ To see more help for a specific command, run:
             return e.exit_code
         except Exception:
             exc_type, exc_value, exc_tb = sys.exc_info()
+            report_exception(exc_value)
 
             # The first two frames are us and are never used.
             stack = traceback.extract_tb(exc_tb)[2:]
@@ -491,7 +495,7 @@ To see more help for a specific command, run:
             # argument on the method. We handle that here until the module
             # loader grows the ability to validate better.
             if not len(stack):
-                print(COMMAND_ERROR)
+                print(COMMAND_ERROR_TEMPLATE % handler.name)
                 self._print_exception(sys.stdout, exc_type, exc_value,
                                       traceback.extract_tb(exc_tb))
                 return 1
@@ -516,9 +520,9 @@ To see more help for a specific command, run:
             self._print_error_header(argv, sys.stdout)
 
             if len(other_frames):
-                print(MODULE_ERROR)
+                print(MODULE_ERROR_TEMPLATE % handler.name)
             else:
-                print(COMMAND_ERROR)
+                print(COMMAND_ERROR_TEMPLATE % handler.name)
 
             self._print_exception(sys.stdout, exc_type, exc_value, stack)
 

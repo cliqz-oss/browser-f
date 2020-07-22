@@ -1608,16 +1608,24 @@ void DocAccessible::NotifyOfLoading(bool aIsReloading) {
 }
 
 void DocAccessible::DoInitialUpdate() {
-  if (nsCoreUtils::IsTabDocument(mDocumentNode)) {
-    mDocFlags |= eTabDocument;
+  if (nsCoreUtils::IsTopLevelContentDocInProcess(mDocumentNode)) {
+    mDocFlags |= eTopLevelContentDocInProcess;
     if (IPCAccessibilityActive()) {
       nsIDocShell* docShell = mDocumentNode->GetDocShell();
       if (RefPtr<dom::BrowserChild> browserChild =
               dom::BrowserChild::GetFrom(docShell)) {
+        // In content processes, top level content documents are always
+        // RootAccessibles.
+        MOZ_ASSERT(IsRoot());
         DocAccessibleChild* ipcDoc = IPCDoc();
-        if (!ipcDoc) {
+        if (ipcDoc) {
+          browserChild->SetTopLevelDocAccessibleChild(ipcDoc);
+        } else {
           ipcDoc = new DocAccessibleChild(this, browserChild);
           SetIPCDoc(ipcDoc);
+          // Subsequent initialization might depend on being able to get the
+          // top level DocAccessibleChild, so set that as early as possible.
+          browserChild->SetTopLevelDocAccessibleChild(ipcDoc);
 
 #if defined(XP_WIN)
           IAccessibleHolder holder(
@@ -1632,10 +1640,6 @@ void DocAccessible::DoInitialUpdate() {
 #if !defined(XP_WIN)
           ipcDoc->SendPDocAccessiblePlatformExtConstructor();
 #endif
-        }
-
-        if (IsRoot()) {
-          browserChild->SetTopLevelDocAccessibleChild(ipcDoc);
         }
       }
     }
@@ -1780,14 +1784,12 @@ void DocAccessible::RemoveDependentIDsFor(Accessible* aRelProvider,
 
       AttrRelProviders* providers = GetRelProviders(relProviderElm, id);
       if (providers) {
-        for (uint32_t jdx = 0; jdx < providers->Length();) {
-          const auto& provider = (*providers)[jdx];
-          if (provider->mRelAttr == relAttr &&
-              provider->mContent == relProviderElm)
-            providers->RemoveElementAt(jdx);
-          else
-            jdx++;
-        }
+        providers->RemoveElementsBy(
+            [relAttr, relProviderElm](const auto& provider) {
+              return provider->mRelAttr == relAttr &&
+                     provider->mContent == relProviderElm;
+            });
+
         RemoveRelProvidersIfEmpty(relProviderElm, id);
       }
     }
@@ -2363,7 +2365,7 @@ void DocAccessible::PutChildrenBack(nsTArray<RefPtr<Accessible>>* aChildren,
     }
   }
 
-  aChildren->RemoveElementsAt(aStartIdx, aChildren->Length() - aStartIdx);
+  aChildren->RemoveLastElements(aChildren->Length() - aStartIdx);
 }
 
 bool DocAccessible::MoveChild(Accessible* aChild, Accessible* aNewParent,

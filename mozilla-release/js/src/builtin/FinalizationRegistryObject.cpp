@@ -61,6 +61,8 @@ FinalizationRecordObject* FinalizationRecordObject::create(
 
 FinalizationRegistryObject* FinalizationRecordObject::registryDuringGC(
     gc::GCRuntime* gc) const {
+  MOZ_ASSERT(JS::RuntimeHeapIsMajorCollecting());
+
   FinalizationRegistryObject* registry = registryUnbarriered();
 
   // Perform a manual read barrier. This is the only place where the GC itself
@@ -152,7 +154,7 @@ const JSClassOps FinalizationRegistrationsObject::classOps_ = {
     nullptr,                                    // call
     nullptr,                                    // hasInstance
     nullptr,                                    // construct
-    nullptr,                                    // trace
+    FinalizationRegistrationsObject::trace,     // trace
 };
 
 /* static */
@@ -176,9 +178,22 @@ FinalizationRegistrationsObject* FinalizationRegistrationsObject::create(
 }
 
 /* static */
+void FinalizationRegistrationsObject::trace(JSTracer* trc, JSObject* obj) {
+  if (!trc->traceWeakEdges()) {
+    return;
+  }
+
+  auto* self = &obj->as<FinalizationRegistrationsObject>();
+  if (WeakFinalizationRecordVector* records = self->records()) {
+    TraceRange(trc, records->length(), records->begin(),
+               "FinalizationRegistrationsObject records");
+  }
+}
+
+/* static */
 void FinalizationRegistrationsObject::finalize(JSFreeOp* fop, JSObject* obj) {
-  auto rv = &obj->as<FinalizationRegistrationsObject>();
-  fop->delete_(obj, rv->records(), MemoryUse::FinalizationRecordVector);
+  auto* self = &obj->as<FinalizationRegistrationsObject>();
+  fop->delete_(obj, self->records(), MemoryUse::FinalizationRecordVector);
 }
 
 inline WeakFinalizationRecordVector*
@@ -346,7 +361,9 @@ void FinalizationRegistryObject::trace(JSTracer* trc, JSObject* obj) {
     registrations->trace(trc);
   }
 
-  // The active record set is weakly held and is not traced.
+  // The active record set is weakly held and is not traced. For moving GC this
+  // is updated in sweep(), which is called for all FinalizationRegistryObjects
+  // in a zone.
 
   if (FinalizationRecordVector* records = registry->recordsToBeCleanedUp()) {
     records->trace(trc);
@@ -544,6 +561,11 @@ bool FinalizationRegistryObject::register_(JSContext* cx, unsigned argc,
     return false;
   }
 
+  // If the target is a DOM wrapper, preserve it.
+  if (!preserveDOMWrapper(cx, target)) {
+    return false;
+  }
+
   // Wrap the record into the compartment of the target.
   RootedObject wrappedRecord(cx, record);
   AutoRealm ar(cx, unwrappedTarget);
@@ -566,6 +588,18 @@ bool FinalizationRegistryObject::register_(JSContext* cx, unsigned argc,
   recordsGuard.release();
   registrationsGuard.release();
   args.rval().setUndefined();
+  return true;
+}
+
+/* static */
+bool FinalizationRegistryObject::preserveDOMWrapper(JSContext* cx,
+                                                    HandleObject obj) {
+  if (!MaybePreserveDOMWrapper(cx, obj)) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_BAD_FINALIZATION_REGISTRY_OBJECT);
+    return false;
+  }
+
   return true;
 }
 
@@ -663,28 +697,39 @@ bool FinalizationRegistryObject::unregister(JSContext* cx, unsigned argc,
   //       i. Remove cell from finalizationRegistry.[[Cells]].
   //       ii. Set removed to true.
 
-  FinalizationRecordSet* activeRecords = registry->activeRecords();
   RootedObject obj(cx, registry->registrations()->lookup(unregisterToken));
   if (obj) {
     auto* records = obj->as<FinalizationRegistrationsObject>().records();
     MOZ_ASSERT(records);
     MOZ_ASSERT(!records->empty());
     for (FinalizationRecordObject* record : *records) {
-      if (record->isActive()) {
-        // Clear the fields of this record; it will be removed from the target's
-        // list when it is next swept.
-        activeRecords->remove(record);
-        record->clear();
+      if (unregisterRecord(record)) {
         removed = true;
       }
-
-      MOZ_ASSERT(!activeRecords->has(record));
+      MOZ_ASSERT(!registry->activeRecords()->has(record));
     }
     registry->registrations()->remove(unregisterToken);
   }
 
   // 7. Return removed.
   args.rval().setBoolean(removed);
+  return true;
+}
+
+/* static */
+bool FinalizationRegistryObject::unregisterRecord(
+    FinalizationRecordObject* record) {
+  if (!record->isActive()) {
+    return false;
+  }
+
+  FinalizationRegistryObject* registry = record->registryUnbarriered();
+  MOZ_ASSERT(registry);
+
+  // Clear the fields of this record; it will be removed from the target's
+  // list when it is next swept.
+  registry->activeRecords()->remove(record);
+  record->clear();
   return true;
 }
 

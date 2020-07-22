@@ -20,7 +20,7 @@ interface JSProcessActorParent {
   [ChromeOnly]
   constructor();
 
-  readonly attribute nsIContentParent manager;
+  readonly attribute nsIDOMProcessParent manager;
 };
 JSProcessActorParent includes JSActor;
 
@@ -29,7 +29,7 @@ interface JSProcessActorChild {
   [ChromeOnly]
   constructor();
 
-  readonly attribute nsIContentChild manager;
+  readonly attribute nsIDOMProcessChild manager;
 };
 JSProcessActorChild includes JSActor;
 
@@ -67,10 +67,8 @@ dictionary ProcessActorChildOptions : ProcessActorSidedOptions {
    * An array of observer topics to listen to. An observer will be added for each
    * topic in the list.
    *
-   * Observer notifications in the list use nsGlobalContentInner or
-   * nsGlobalContentOuter object as their subject, and the events will only be
-   * dispatched to the corresponding content actor. If additional observer
-   * notification's subjects are needed, please file a bug for that.
+   * Unlike for JSWindowActor, observers are always invoked, and do not need to
+   * pass an inner or outer window as subject.
    **/
   sequence<ByteString> observers;
 };

@@ -230,13 +230,12 @@ nsChildView::nsChildView()
       mView(nullptr),
       mParentView(nil),
       mParentWidget(nullptr),
-      mViewTearDownLock("ChildViewTearDown"),
+      mCompositingLock("ChildViewCompositing"),
       mBackingScaleFactor(0.0),
       mVisible(false),
       mDrawing(false),
       mIsDispatchPaint(false),
       mPluginFocused{false},
-      mOpaqueRegion("nsChildView::mOpaqueRegion"),
       mCurrentPanGestureBelongsToSwipe{false} {}
 
 nsChildView::~nsChildView() {
@@ -393,7 +392,7 @@ void nsChildView::Destroy() {
 
   // Make sure that no composition is in progress while disconnecting
   // ourselves from the view.
-  MutexAutoLock lock(mViewTearDownLock);
+  MutexAutoLock lock(mCompositingLock);
 
   if (mOnDestroyCalled) return;
   mOnDestroyCalled = true;
@@ -505,8 +504,6 @@ void nsChildView::SetTransparencyMode(nsTransparencyMode aMode) {
   if (windowWidget) {
     windowWidget->SetTransparencyMode(aMode);
   }
-
-  UpdateInternalOpaqueRegion();
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
@@ -1356,7 +1353,8 @@ void nsChildView::PaintWindowInContentLayer() {
   EnsureContentLayerForMainThreadPainting();
   mPoolHandle->OnBeginFrame();
   RefPtr<DrawTarget> dt = mContentLayer->NextSurfaceAsDrawTarget(
-      mContentLayerInvalidRegion.ToUnknownRegion(), gfx::BackendType::SKIA);
+      gfx::IntRect({}, mContentLayer->GetSize()), mContentLayerInvalidRegion.ToUnknownRegion(),
+      gfx::BackendType::SKIA);
   if (!dt) {
     return;
   }
@@ -1382,10 +1380,14 @@ void nsChildView::HandleMainThreadCATransaction() {
     PaintWindow(LayoutDeviceIntRegion(GetBounds()));
   }
 
-  // Apply the changes inside mNativeLayerRoot to the underlying CALayers. Now is a
-  // good time to call this because we know we're currently inside a main thread
-  // CATransaction.
-  mNativeLayerRoot->CommitToScreen();
+  {
+    // Apply the changes inside mNativeLayerRoot to the underlying CALayers. Now is a
+    // good time to call this because we know we're currently inside a main thread
+    // CATransaction, and the lock makes sure that no composition is currently in
+    // progress, so we won't present half-composited state to the screen.
+    MutexAutoLock lock(mCompositingLock);
+    mNativeLayerRoot->CommitToScreen();
+  }
 
   MaybeScheduleUnsuspendAsyncCATransactions();
 }
@@ -1432,11 +1434,6 @@ LayoutDeviceIntPoint nsChildView::WidgetToScreenOffset() {
   return CocoaPointsToDevPixels(origin);
 
   NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(LayoutDeviceIntPoint(0, 0));
-}
-
-LayoutDeviceIntRegion nsChildView::GetOpaqueWidgetRegion() {
-  auto opaqueRegion = mOpaqueRegion.Lock();
-  return *opaqueRegion;
 }
 
 nsresult nsChildView::SetTitle(const nsAString& title) {
@@ -1715,7 +1712,7 @@ bool nsChildView::PreRender(WidgetRenderingContext* aContext) {
   // The lock makes sure that we don't attempt to tear down the view while
   // compositing. That would make us unable to call postRender on it when the
   // composition is done, thus keeping the GL context locked forever.
-  mViewTearDownLock.Lock();
+  mCompositingLock.Lock();
 
   if (aContext->mGL && gfxPlatform::CanMigrateMacGPUs()) {
     GLContextCGL::Cast(aContext->mGL)->MigrateToActiveGPU();
@@ -1724,7 +1721,7 @@ bool nsChildView::PreRender(WidgetRenderingContext* aContext) {
   return true;
 }
 
-void nsChildView::PostRender(WidgetRenderingContext* aContext) { mViewTearDownLock.Unlock(); }
+void nsChildView::PostRender(WidgetRenderingContext* aContext) { mCompositingLock.Unlock(); }
 
 RefPtr<layers::NativeLayerRoot> nsChildView::GetNativeLayerRoot() { return mNativeLayerRoot; }
 
@@ -1900,8 +1897,6 @@ void nsChildView::UpdateVibrancy(const nsTArray<ThemeGeometry>& aThemeGeometries
   changed |= vm.UpdateVibrantRegion(VibrancyType::ACTIVE_SOURCE_LIST_SELECTION,
                                     activeSourceListSelectionRegion);
 
-  UpdateInternalOpaqueRegion();
-
   if (changed) {
     SuspendAsyncCATransactions();
   }
@@ -1913,19 +1908,6 @@ mozilla::VibrancyManager& nsChildView::EnsureVibrancyManager() {
     mVibrancyManager = MakeUnique<VibrancyManager>(*this, [mView vibrancyViewsContainer]);
   }
   return *mVibrancyManager;
-}
-
-void nsChildView::UpdateInternalOpaqueRegion() {
-  MOZ_RELEASE_ASSERT(NS_IsMainThread(), "This should only be called on the main thread.");
-  auto opaqueRegion = mOpaqueRegion.Lock();
-  bool widgetIsOpaque = GetTransparencyMode() == eTransparencyOpaque;
-  if (!widgetIsOpaque) {
-    opaqueRegion->SetEmpty();
-  } else if (VibrancyManager::SystemSupportsVibrancy()) {
-    opaqueRegion->Sub(mBounds, EnsureVibrancyManager().GetUnionOfVibrantRegions());
-  } else {
-    *opaqueRegion = mBounds;
-  }
 }
 
 nsChildView::SwipeInfo nsChildView::SendMayStartSwipe(
@@ -2382,6 +2364,13 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
 
     [self addSubview:mPixelHostingView];
 
+    mRootCALayer = [[CALayer layer] retain];
+    mRootCALayer.position = NSZeroPoint;
+    mRootCALayer.bounds = NSZeroRect;
+    mRootCALayer.anchorPoint = NSZeroPoint;
+    mRootCALayer.contentsGravity = kCAGravityTopLeft;
+    [[mPixelHostingView layer] addSublayer:mRootCALayer];
+
     mLastPressureStage = 0;
   }
 
@@ -2499,6 +2488,7 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
   [mNonDraggableViewsContainer release];
   [mPixelHostingView removeFromSuperview];
   [mPixelHostingView release];
+  [mRootCALayer release];
 
   if (gLastDragView == self) {
     gLastDragView = nil;
@@ -2647,7 +2637,7 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
 }
 
 - (CALayer*)rootCALayer {
-  return [mPixelHostingView layer];
+  return mRootCALayer;
 }
 
 // If we've just created a non-native context menu, we need to mark it as
@@ -2837,6 +2827,7 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
   }
 
   PinchGestureInput event{pinchGestureType,
+                          PinchGestureInput::TRACKPAD,
                           eventIntervalTime,
                           eventTimeStamp,
                           screenOffset,
@@ -3105,9 +3096,9 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
 
   if (!StaticPrefs::dom_event_treat_ctrl_click_as_right_click_disabled() &&
       ([theEvent modifierFlags] & NSControlKeyMask)) {
-    geckoEvent.mButton = MouseButton::eRight;
+    geckoEvent.mButton = MouseButton::eSecondary;
   } else {
-    geckoEvent.mButton = MouseButton::eLeft;
+    geckoEvent.mButton = MouseButton::ePrimary;
   }
 
   mGeckoChild->DispatchInputEvent(&geckoEvent);
@@ -3135,9 +3126,9 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
 
   if (!StaticPrefs::dom_event_treat_ctrl_click_as_right_click_disabled() &&
       ([theEvent modifierFlags] & NSControlKeyMask)) {
-    geckoEvent.mButton = MouseButton::eRight;
+    geckoEvent.mButton = MouseButton::eSecondary;
   } else {
-    geckoEvent.mButton = MouseButton::eLeft;
+    geckoEvent.mButton = MouseButton::ePrimary;
   }
 
   // Remember the event's position before calling DispatchInputEvent, because
@@ -3234,7 +3225,7 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
   // The right mouse went down, fire off a right mouse down event to gecko
   WidgetMouseEvent geckoEvent(true, eMouseDown, mGeckoChild, WidgetMouseEvent::eReal);
   [self convertCocoaMouseEvent:theEvent toGeckoEvent:&geckoEvent];
-  geckoEvent.mButton = MouseButton::eRight;
+  geckoEvent.mButton = MouseButton::eSecondary;
   geckoEvent.mClickCount = [theEvent clickCount];
 
   mGeckoChild->DispatchInputEvent(&geckoEvent);
@@ -3258,7 +3249,7 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
 
   WidgetMouseEvent geckoEvent(true, eMouseUp, mGeckoChild, WidgetMouseEvent::eReal);
   [self convertCocoaMouseEvent:theEvent toGeckoEvent:&geckoEvent];
-  geckoEvent.mButton = MouseButton::eRight;
+  geckoEvent.mButton = MouseButton::eSecondary;
   geckoEvent.mClickCount = [theEvent clickCount];
 
   nsAutoRetainCocoaObject kungFuDeathGrip(self);
@@ -3291,7 +3282,7 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
 
   WidgetMouseEvent geckoEvent(true, eMouseMove, mGeckoChild, WidgetMouseEvent::eReal);
   [self convertCocoaMouseEvent:theEvent toGeckoEvent:&geckoEvent];
-  geckoEvent.mButton = MouseButton::eRight;
+  geckoEvent.mButton = MouseButton::eSecondary;
 
   // send event into Gecko by going directly to the
   // the widget.
@@ -3592,9 +3583,9 @@ static gfx::IntPoint GetIntegerDeltaForEvent(NSEvent* aEvent) {
   if (StaticPrefs::dom_event_treat_ctrl_click_as_right_click_disabled() &&
       [theEvent type] == NSLeftMouseDown) {
     geckoEvent.mContextMenuTrigger = WidgetMouseEvent::eControlClick;
-    geckoEvent.mButton = MouseButton::eLeft;
+    geckoEvent.mButton = MouseButton::ePrimary;
   } else {
-    geckoEvent.mButton = MouseButton::eRight;
+    geckoEvent.mButton = MouseButton::eSecondary;
   }
 
   mGeckoChild->DispatchInputEvent(&geckoEvent);
@@ -3640,10 +3631,10 @@ static gfx::IntPoint GetIntegerDeltaForEvent(NSEvent* aEvent) {
   NSUInteger mouseButtons = [NSEvent pressedMouseButtons];
 
   if (mouseButtons & 0x01) {
-    mouseEvent->mButtons |= MouseButtonsFlag::eLeftFlag;
+    mouseEvent->mButtons |= MouseButtonsFlag::ePrimaryFlag;
   }
   if (mouseButtons & 0x02) {
-    mouseEvent->mButtons |= MouseButtonsFlag::eRightFlag;
+    mouseEvent->mButtons |= MouseButtonsFlag::eSecondaryFlag;
   }
   if (mouseButtons & 0x04) {
     mouseEvent->mButtons |= MouseButtonsFlag::eMiddleFlag;

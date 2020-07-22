@@ -11,7 +11,10 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/IPCBlobInputStream.h"
+#include "mozilla/dom/IPCBlobInputStreamChild.h"
 #include "mozilla/dom/IPCBlobInputStreamStorage.h"
+#include "mozilla/dom/quota/DecryptingInputStream_impl.h"
+#include "mozilla/dom/quota/IPCStreamCipherStrategy.h"
 #include "mozilla/ipc/IPCStreamDestination.h"
 #include "mozilla/ipc/IPCStreamSource.h"
 #include "mozilla/InputStreamLengthHelper.h"
@@ -248,6 +251,9 @@ void InputStreamHelper::PostSerializationActivation(InputStreamParams& aParams,
     case InputStreamParams::TIPCBlobInputStreamParams:
       break;
 
+    case InputStreamParams::TEncryptedFileInputStreamParams:
+      break;
+
     default:
       MOZ_CRASH(
           "A new stream? Should decide if it must be processed recursively or "
@@ -267,16 +273,30 @@ void InputStreamHelper::PostSerializationActivation(
 already_AddRefed<nsIInputStream> InputStreamHelper::DeserializeInputStream(
     const InputStreamParams& aParams,
     const nsTArray<FileDescriptor>& aFileDescriptors) {
-  // IPCBlobInputStreams are not deserializable on the parent side.
   if (aParams.type() == InputStreamParams::TIPCBlobInputStreamParams) {
-    MOZ_ASSERT(XRE_IsParentProcess());
+    const IPCBlobInputStreamParams& params =
+        aParams.get_IPCBlobInputStreamParams();
 
-    nsCOMPtr<nsIInputStream> stream;
-    IPCBlobInputStreamStorage::Get()->GetStream(
-        aParams.get_IPCBlobInputStreamParams().id(),
-        aParams.get_IPCBlobInputStreamParams().start(),
-        aParams.get_IPCBlobInputStreamParams().length(),
-        getter_AddRefs(stream));
+    // IPCBlobInputStreamRefs are not deserializable on the parent side, because
+    // the parent is the only one that has a copy of the original stream in the
+    // IPCBlobInputStreamStorage.
+    if (params.type() == IPCBlobInputStreamParams::TIPCBlobInputStreamRef) {
+      MOZ_ASSERT(XRE_IsParentProcess());
+      const IPCBlobInputStreamRef& ref = params.get_IPCBlobInputStreamRef();
+      auto storage = IPCBlobInputStreamStorage::Get().unwrapOr(nullptr);
+      MOZ_ASSERT(storage);
+      nsCOMPtr<nsIInputStream> stream;
+      storage->GetStream(ref.id(), ref.start(), ref.length(),
+                         getter_AddRefs(stream));
+      return stream.forget();
+    }
+
+    // parent -> child serializations receive an IPCBlobInputStream actor.
+    MOZ_ASSERT(params.type() ==
+               IPCBlobInputStreamParams::TPIPCBlobInputStreamChild);
+    IPCBlobInputStreamChild* actor = static_cast<IPCBlobInputStreamChild*>(
+        params.get_PIPCBlobInputStreamChild());
+    nsCOMPtr<nsIInputStream> stream = actor->CreateStream();
     return stream.forget();
   }
 
@@ -345,6 +365,12 @@ already_AddRefed<nsIInputStream> InputStreamHelper::DeserializeInputStream(
 
     case InputStreamParams::TInputStreamLengthWrapperParams:
       serializable = new InputStreamLengthWrapper();
+      break;
+
+    case InputStreamParams::TEncryptedFileInputStreamParams:
+      serializable = new dom::quota::DecryptingInputStream<
+          dom::quota::IPCStreamCipherStrategy>(
+          dom::quota::IPCStreamCipherStrategy{});
       break;
 
     default:

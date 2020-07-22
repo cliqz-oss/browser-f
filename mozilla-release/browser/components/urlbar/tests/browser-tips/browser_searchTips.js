@@ -16,7 +16,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ProfileAge: "resource://gre/modules/ProfileAge.jsm",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarProviderSearchTips: "resource:///modules/UrlbarProviderSearchTips.jsm",
-  UrlbarTestUtils: "resource://testing-common/UrlbarTestUtils.jsm",
 });
 
 // These should match the same consts in UrlbarProviderSearchTips.jsm.
@@ -38,7 +37,6 @@ add_task(async function init() {
 
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["browser.urlbar.update1.searchTips", true],
       [
         `browser.urlbar.tipShownCount.${UrlbarProviderSearchTips.TIP_TYPE.ONBOARD}`,
         0,

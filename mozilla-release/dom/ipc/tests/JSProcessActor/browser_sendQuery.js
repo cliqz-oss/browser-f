@@ -3,7 +3,11 @@
 "use strict";
 
 function maybeAsyncStack(offset, column) {
-  if (!Services.prefs.getBoolPref("javascript.options.asyncstack")) {
+  if (
+    Services.prefs.getBoolPref(
+      "javascript.options.asyncstack_capture_debuggee_only"
+    )
+  ) {
     return "";
   }
 
@@ -19,7 +23,7 @@ function maybeAsyncStack(offset, column) {
 
 declTest("sendQuery Error", {
   async test(browser) {
-    let parent = browser.browsingContext.currentWindowGlobal.contentParent;
+    let parent = browser.browsingContext.currentWindowGlobal.domProcess;
     let actorParent = parent.getActor("TestProcessActor");
 
     let asyncStack = maybeAsyncStack(2, 8);
@@ -40,7 +44,7 @@ declTest("sendQuery Error", {
 
 declTest("sendQuery Exception", {
   async test(browser) {
-    let parent = browser.browsingContext.currentWindowGlobal.contentParent;
+    let parent = browser.browsingContext.currentWindowGlobal.domProcess;
     let actorParent = parent.getActor("TestProcessActor");
 
     let asyncStack = maybeAsyncStack(2, 8);
@@ -68,7 +72,7 @@ declTest("sendQuery Exception", {
 
 declTest("sendQuery testing", {
   async test(browser) {
-    let parent = browser.browsingContext.currentWindowGlobal.contentParent;
+    let parent = browser.browsingContext.currentWindowGlobal.domProcess;
     let actorParent = parent.getActor("TestProcessActor");
     ok(actorParent, "JSWindowActorParent should have value.");
 

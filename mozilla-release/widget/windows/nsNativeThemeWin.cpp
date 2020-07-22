@@ -345,7 +345,7 @@ static CaptionButtonPadding buttonData[3] = {
 static void AddPaddingRect(LayoutDeviceIntSize* aSize, CaptionButton button) {
   if (!aSize) return;
   RECT offset;
-  if (!IsAppThemed())
+  if (!nsUXThemeData::IsAppThemed())
     offset = buttonData[CAPTION_CLASSIC].hotPadding[button];
   else
     offset = buttonData[CAPTION_BASIC].hotPadding[button];
@@ -357,7 +357,7 @@ static void AddPaddingRect(LayoutDeviceIntSize* aSize, CaptionButton button) {
 // the area we draw into to compensate.
 static void OffsetBackgroundRect(RECT& rect, CaptionButton button) {
   RECT offset;
-  if (!IsAppThemed())
+  if (!nsUXThemeData::IsAppThemed())
     offset = buttonData[CAPTION_CLASSIC].hotPadding[button];
   else
     offset = buttonData[CAPTION_BASIC].hotPadding[button];
@@ -2383,7 +2383,7 @@ nsNativeThemeWin::GetMinimumWidgetSize(nsPresContext* aPresContext,
 
     case StyleAppearance::Scrollbar:
     case StyleAppearance::Scrollcorner: {
-      if (nsLookAndFeel::GetInt(nsLookAndFeel::eIntID_UseOverlayScrollbars) !=
+      if (nsLookAndFeel::GetInt(nsLookAndFeel::IntID::UseOverlayScrollbars) !=
           0) {
         aResult->SizeTo(::GetSystemMetrics(SM_CXHSCROLL),
                         ::GetSystemMetrics(SM_CYVSCROLL));
@@ -2749,7 +2749,7 @@ bool nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case StyleAppearance::Menubar:
     case StyleAppearance::Menupopup:
       // Classic non-flat menus are handled almost entirely through CSS.
-      if (!nsUXThemeData::sFlatMenus) return false;
+      if (!nsUXThemeData::AreFlatMenusEnabled()) return false;
     case StyleAppearance::Button:
     case StyleAppearance::NumberInput:
     case StyleAppearance::Textfield:
@@ -2885,7 +2885,7 @@ bool nsNativeThemeWin::ClassicGetWidgetPadding(nsDeviceContext* aContext,
         return false;
 
       if (part == 1) {  // top-level menu
-        if (nsUXThemeData::sFlatMenus || !(state & DFCS_PUSHED)) {
+        if (nsUXThemeData::AreFlatMenusEnabled() || !(state & DFCS_PUSHED)) {
           (*aResult).top = (*aResult).bottom = (*aResult).left =
               (*aResult).right = 2;
         } else {
@@ -3837,7 +3837,7 @@ RENDER_AGAIN:
     case StyleAppearance::Menubar:
       break;
     case StyleAppearance::Menupopup:
-      NS_ASSERTION(nsUXThemeData::sFlatMenus,
+      NS_ASSERTION(nsUXThemeData::AreFlatMenusEnabled(),
                    "Classic menus are styled entirely through CSS");
       ::FillRect(hdc, &widgetRect, (HBRUSH)(COLOR_MENU + 1));
       ::FrameRect(hdc, &widgetRect, ::GetSysColorBrush(COLOR_BTNSHADOW));
@@ -3847,7 +3847,7 @@ RENDER_AGAIN:
     case StyleAppearance::Radiomenuitem:
       // part == 0 for normal items
       // part == 1 for top-level menu items
-      if (nsUXThemeData::sFlatMenus) {
+      if (nsUXThemeData::AreFlatMenusEnabled()) {
         // Not disabled and hot/pushed.
         if ((state & (DFCS_HOT | DFCS_PUSHED)) != 0) {
           ::FillRect(hdc, &widgetRect, (HBRUSH)(COLOR_MENUHILIGHT + 1));

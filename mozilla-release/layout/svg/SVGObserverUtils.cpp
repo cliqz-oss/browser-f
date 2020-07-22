@@ -12,6 +12,7 @@
 #include "mozilla/dom/CanvasRenderingContext2D.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/RestyleManager.h"
+#include "mozilla/SVGMaskFrame.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsHashKeys.h"
@@ -22,12 +23,11 @@
 #include "nsISupportsImpl.h"
 #include "nsSVGClipPathFrame.h"
 #include "nsSVGFilterFrame.h"
-#include "nsSVGMarkerFrame.h"
-#include "nsSVGMaskFrame.h"
 #include "nsSVGPaintServerFrame.h"
 #include "nsTHashtable.h"
 #include "nsURIHashKey.h"
 #include "SVGGeometryElement.h"
+#include "SVGMarkerFrame.h"
 #include "SVGTextFrame.h"
 #include "SVGTextPathElement.h"
 #include "SVGUseElement.h"
@@ -108,6 +108,43 @@ static already_AddRefed<URLAndReferrerInfo> ResolveURLUsingLocalRef(
 
   RefPtr<URLAndReferrerInfo> info =
       new URLAndReferrerInfo(uri, aURL.ExtraData());
+  return info.forget();
+}
+
+static already_AddRefed<URLAndReferrerInfo> ResolveURLUsingLocalRef(
+    nsIFrame* aFrame, const nsAString& aURL, nsIReferrerInfo* aReferrerInfo) {
+  MOZ_ASSERT(aFrame);
+
+  nsIContent* content = aFrame->GetContent();
+
+  // Like SVGObserverUtils::GetBaseURLForLocalRef, we want to resolve the
+  // URL against any <use> element shadow tree's source document.
+  //
+  // Unlike GetBaseURLForLocalRef, we are assuming that the URL was specified
+  // directly on mFrame's content (because this ResolveURLUsingLocalRef
+  // overload is used for href="" attributes and not CSS URL values), so there
+  // is no need to check whether the URL was specified / inherited from
+  // outside the shadow tree.
+  nsIURI* base = nullptr;
+  const Encoding* encoding = nullptr;
+  if (SVGUseElement* use = content->GetContainingSVGUseShadowHost()) {
+    base = use->GetSourceDocURI();
+    encoding = use->GetSourceDocCharacterSet();
+  }
+
+  if (!base) {
+    base = content->OwnerDoc()->GetDocumentURI();
+    encoding = content->OwnerDoc()->GetDocumentCharacterSet();
+  }
+
+  nsCOMPtr<nsIURI> uri;
+  Unused << NS_NewURI(getter_AddRefs(uri), aURL, WrapNotNull(encoding), base);
+
+  if (!uri) {
+    return nullptr;
+  }
+
+  RefPtr<URLAndReferrerInfo> info = new URLAndReferrerInfo(uri, aReferrerInfo);
   return info.forget();
 }
 
@@ -479,7 +516,7 @@ void SVGMarkerObserver::OnRenderingChange() {
   MOZ_ASSERT(frame->IsFrameOfType(nsIFrame::eSVG), "SVG frame expected");
 
   // Don't need to request ReflowFrame if we're being reflowed.
-  if (!(frame->GetStateBits() & NS_FRAME_IN_REFLOW)) {
+  if (!frame->HasAnyStateBits(NS_FRAME_IN_REFLOW)) {
     // XXXjwatt: We need to unify SVG into standard reflow so we can just use
     // nsChangeHint_NeedReflow | nsChangeHint_NeedDirtyReflow here.
     // XXXSDL KILL THIS!!!
@@ -508,7 +545,7 @@ void nsSVGPaintingProperty::OnRenderingChange() {
     return;
   }
 
-  if (frame->GetStateBits() & NS_FRAME_SVG_LAYOUT) {
+  if (frame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
     frame->InvalidateFrameSubtree();
   } else {
     for (nsIFrame* f = frame; f;
@@ -1144,7 +1181,7 @@ static already_AddRefed<URLAndReferrerInfo> GetMarkerURI(
 }
 
 bool SVGObserverUtils::GetAndObserveMarkers(nsIFrame* aMarkedFrame,
-                                            nsSVGMarkerFrame* (*aFrames)[3]) {
+                                            SVGMarkerFrame* (*aFrames)[3]) {
   MOZ_ASSERT(!aMarkedFrame->GetPrevContinuation() &&
                  aMarkedFrame->IsSVGGeometryFrame() &&
                  static_cast<SVGGeometryElement*>(aMarkedFrame->GetContent())
@@ -1164,7 +1201,7 @@ bool SVGObserverUtils::GetAndObserveMarkers(nsIFrame* aMarkedFrame,
                           LayoutFrameType::SVGMarker, nullptr)              \
                     : nullptr;                                              \
   foundMarker = foundMarker || bool(marker);                                \
-  (*aFrames)[SVGMark::e##type] = static_cast<nsSVGMarkerFrame*>(marker);
+  (*aFrames)[SVGMark::e##type] = static_cast<SVGMarkerFrame*>(marker);
 
   GET_MARKER(Start)
   GET_MARKER(Mid)
@@ -1319,7 +1356,7 @@ static SVGMaskObserverList* GetOrCreateMaskObserverList(
 }
 
 SVGObserverUtils::ReferenceState SVGObserverUtils::GetAndObserveMasks(
-    nsIFrame* aMaskedFrame, nsTArray<nsSVGMaskFrame*>* aMaskFrames) {
+    nsIFrame* aMaskedFrame, nsTArray<SVGMaskFrame*>* aMaskFrames) {
   SVGMaskObserverList* observerList = GetOrCreateMaskObserverList(aMaskedFrame);
   if (!observerList) {
     return eHasNoRefs;
@@ -1335,8 +1372,8 @@ SVGObserverUtils::ReferenceState SVGObserverUtils::GetAndObserveMasks(
 
   for (size_t i = 0; i < observers.Length(); i++) {
     bool frameTypeOK = true;
-    nsSVGMaskFrame* maskFrame =
-        static_cast<nsSVGMaskFrame*>(observers[i]->GetAndObserveReferencedFrame(
+    SVGMaskFrame* maskFrame =
+        static_cast<SVGMaskFrame*>(observers[i]->GetAndObserveReferencedFrame(
             LayoutFrameType::SVGMask, &frameTypeOK));
     MOZ_ASSERT(!maskFrame || frameTypeOK);
     // XXXjwatt: this looks fishy
@@ -1371,17 +1408,12 @@ SVGGeometryElement* SVGObserverUtils::GetAndObserveTextPathsPath(
       return nullptr;  // no URL
     }
 
-    nsCOMPtr<nsIURI> targetURI;
-    nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(targetURI), href,
-                                              content->GetUncomposedDoc(),
-                                              content->GetBaseURI());
-
     // There's no clear refererer policy spec about non-CSS SVG resource
     // references Bug 1415044 to investigate which referrer we should use
     nsCOMPtr<nsIReferrerInfo> referrerInfo =
         ReferrerInfo::CreateForSVGResources(content->OwnerDoc());
     RefPtr<URLAndReferrerInfo> target =
-        new URLAndReferrerInfo(targetURI, referrerInfo);
+        ResolveURLUsingLocalRef(aTextPathFrame, href, referrerInfo);
 
     property =
         GetEffectProperty(target, aTextPathFrame, HrefAsTextPathProperty());

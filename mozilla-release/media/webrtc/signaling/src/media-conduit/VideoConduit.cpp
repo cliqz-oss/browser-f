@@ -421,6 +421,13 @@ uint32_t WebrtcVideoConduit::ReceiveStreamStatistics::Ssrc() const {
   return mSsrc;
 }
 
+DOMHighResTimeStamp
+WebrtcVideoConduit::ReceiveStreamStatistics::RemoteTimestamp() const {
+  ASSERT_ON_THREAD(mStatsThread);
+
+  return mRemoteTimestamp;
+}
+
 void WebrtcVideoConduit::ReceiveStreamStatistics::Update(
     const webrtc::VideoReceiveStream::Stats& aStats) {
   ASSERT_ON_THREAD(mStatsThread);
@@ -436,6 +443,7 @@ void WebrtcVideoConduit::ReceiveStreamStatistics::Update(
       aStats.rtcp_stats.jitter / (webrtc::kVideoPayloadTypeFrequency / 1000);
   mPacketsLost = aStats.rtcp_stats.packets_lost;
   mPacketsSent = aStats.rtcp_sender_packets_sent;
+  mRemoteTimestamp = aStats.rtcp_sender_ntp_timestamp.ToMs();
   mSsrc = aStats.ssrc;
 }
 
@@ -485,6 +493,7 @@ WebrtcVideoConduit::WebrtcVideoConduit(
           this)  // 'this' is stored but not dereferenced in the constructor.
       ,
       mRecvSSRC(0),
+      mRemoteSSRC(0),
       mVideoStatsTimer(NS_NewTimer()),
       mRtpSourceObserver(new RtpSourceObserver(mCall->GetTimestampMaker())) {
   mCall->RegisterConduit(this);
@@ -1005,17 +1014,13 @@ bool WebrtcVideoConduit::SetRemoteSSRCLocked(uint32_t ssrc, uint32_t rtxSsrc) {
   MOZ_ASSERT(NS_IsMainThread());
   mMutex.AssertCurrentThreadOwns();
 
-  uint32_t current_ssrc;
-  if (!GetRemoteSSRCLocked(&current_ssrc)) {
-    return false;
-  }
-
-  if (current_ssrc == ssrc && mRecvStreamConfig.rtp.rtx_ssrc == rtxSsrc) {
+  if (mRecvStreamConfig.rtp.remote_ssrc == ssrc &&
+      mRecvStreamConfig.rtp.rtx_ssrc == rtxSsrc) {
     return true;
   }
 
   bool wasReceiving = mEngineReceiving;
-  if (StopReceivingLocked() != kMediaConduitNoError) {
+  if (NS_WARN_IF(StopReceivingLocked() != kMediaConduitNoError)) {
     return false;
   }
 
@@ -1031,6 +1036,7 @@ bool WebrtcVideoConduit::SetRemoteSSRCLocked(uint32_t ssrc, uint32_t rtxSsrc) {
     }
   }
 
+  mRemoteSSRC = ssrc;
   mRecvStreamConfig.rtp.remote_ssrc = ssrc;
   mRecvStreamConfig.rtp.rtx_ssrc = rtxSsrc;
   mStsThread->Dispatch(NS_NewRunnableFunction(
@@ -1057,18 +1063,14 @@ bool WebrtcVideoConduit::UnsetRemoteSSRC(uint32_t ssrc) {
   MOZ_ASSERT(NS_IsMainThread());
   MutexAutoLock lock(mMutex);
 
-  unsigned int our_ssrc;
-  if (!GetRemoteSSRCLocked(&our_ssrc)) {
-    // This only fails when we aren't sending, which isn't really an error here
-    return true;
-  }
-
-  if (our_ssrc != ssrc && mRecvStreamConfig.rtp.rtx_ssrc != ssrc) {
+  if (mRecvStreamConfig.rtp.remote_ssrc != ssrc &&
+      mRecvStreamConfig.rtp.rtx_ssrc != ssrc) {
     return true;
   }
 
   mRecvStreamConfig.rtp.rtx_ssrc = 0;
 
+  uint32_t our_ssrc = 0;
   do {
     our_ssrc = GenerateRandomSSRC();
     if (our_ssrc == 0) {
@@ -1083,24 +1085,14 @@ bool WebrtcVideoConduit::UnsetRemoteSSRC(uint32_t ssrc) {
   return true;
 }
 
-bool WebrtcVideoConduit::GetRemoteSSRC(unsigned int* ssrc) {
-  MutexAutoLock lock(mMutex);
-
-  return GetRemoteSSRCLocked(ssrc);
-}
-
-bool WebrtcVideoConduit::GetRemoteSSRCLocked(unsigned int* ssrc) {
-  mMutex.AssertCurrentThreadOwns();
-
+bool WebrtcVideoConduit::GetRemoteSSRC(uint32_t* ssrc) {
   if (NS_IsMainThread()) {
     if (!mRecvStream) {
       return false;
     }
-    *ssrc = mRecvStream->GetStats().ssrc;
-  } else {
-    ASSERT_ON_THREAD(mStsThread);
-    *ssrc = mRecvStreamStats.Ssrc();
   }
+  // libwebrtc uses 0 to mean a lack of SSRC. That is not to spec.
+  *ssrc = mRemoteSSRC;
   return true;
 }
 
@@ -1274,8 +1266,9 @@ bool WebrtcVideoConduit::GetRTCPReceiverReport(uint32_t* jitterMs,
   return true;
 }
 
-bool WebrtcVideoConduit::GetRTCPSenderReport(unsigned int* packetsSent,
-                                             uint64_t* bytesSent) {
+bool WebrtcVideoConduit::GetRTCPSenderReport(
+    unsigned int* packetsSent, uint64_t* bytesSent,
+    DOMHighResTimeStamp* aRemoteTimestamp) {
   ASSERT_ON_THREAD(mStsThread);
 
   CSFLogVerbose(LOGTAG, "%s for VideoConduit:%p", __FUNCTION__, this);
@@ -1286,6 +1279,7 @@ bool WebrtcVideoConduit::GetRTCPSenderReport(unsigned int* packetsSent,
 
   *packetsSent = mRecvStreamStats.PacketsSent();
   *bytesSent = mRecvStreamStats.BytesSent();
+  *aRemoteTimestamp = mRecvStreamStats.RemoteTimestamp();
   return true;
 }
 
@@ -2304,13 +2298,52 @@ void WebrtcVideoConduit::OnFrame(const webrtc::VideoFrame& video_frame) {
     return;
   }
 
+  bool needsNewHistoryElement = !mReceivedFrameHistory.mEntries.Length();
+
   if (mReceivingWidth != video_frame.width() ||
       mReceivingHeight != video_frame.height()) {
     mReceivingWidth = video_frame.width();
     mReceivingHeight = video_frame.height();
     mRenderer->FrameSizeChange(mReceivingWidth, mReceivingHeight);
+    needsNewHistoryElement = true;
   }
 
+  uint32_t remoteSsrc;
+  if (!GetRemoteSSRC(&remoteSsrc) && needsNewHistoryElement) {
+    // Frame was decoded after the connection ended
+    return;
+  }
+
+  if (!needsNewHistoryElement) {
+    auto& currentEntry = mReceivedFrameHistory.mEntries.LastElement();
+    needsNewHistoryElement =
+        currentEntry.mRotationAngle !=
+            static_cast<unsigned long>(video_frame.rotation()) ||
+        currentEntry.mLocalSsrc != mRecvSSRC ||
+        currentEntry.mRemoteSsrc != remoteSsrc;
+  }
+
+  // Record frame history
+  const auto historyNow = mCall->GetNow();
+  if (needsNewHistoryElement) {
+    dom::RTCVideoFrameHistoryEntryInternal frameHistoryElement;
+    frameHistoryElement.mConsecutiveFrames = 0;
+    frameHistoryElement.mWidth = video_frame.width();
+    frameHistoryElement.mHeight = video_frame.height();
+    frameHistoryElement.mRotationAngle =
+        static_cast<unsigned long>(video_frame.rotation());
+    frameHistoryElement.mFirstFrameTimestamp = historyNow;
+    frameHistoryElement.mLocalSsrc = mRecvSSRC;
+    frameHistoryElement.mRemoteSsrc = remoteSsrc;
+    if (!mReceivedFrameHistory.mEntries.AppendElement(frameHistoryElement,
+                                                      fallible)) {
+      mozalloc_handle_oom(0);
+    }
+  }
+  auto& currentEntry = mReceivedFrameHistory.mEntries.LastElement();
+
+  currentEntry.mConsecutiveFrames++;
+  currentEntry.mLastFrameTimestamp = historyNow;
   // Attempt to retrieve an timestamp encoded in the image pixels if enabled.
   if (mVideoLatencyTestEnable && mReceivingWidth && mReceivingHeight) {
     uint64_t now = PR_Now();
@@ -2328,6 +2361,16 @@ void WebrtcVideoConduit::OnFrame(const webrtc::VideoFrame& video_frame) {
   mRenderer->RenderVideoFrame(*video_frame.video_frame_buffer(),
                               video_frame.timestamp(),
                               video_frame.render_time_ms());
+}
+
+bool WebrtcVideoConduit::AddFrameHistory(
+    dom::Sequence<dom::RTCVideoFrameHistoryInternal>* outHistories) const {
+  ReentrantMonitorAutoEnter enter(mTransportMonitor);
+  if (!outHistories->AppendElement(mReceivedFrameHistory, fallible)) {
+    mozalloc_handle_oom(0);
+    return false;
+  }
+  return true;
 }
 
 void WebrtcVideoConduit::DumpCodecDB() const {

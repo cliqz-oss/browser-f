@@ -173,6 +173,78 @@ add_task(async function disabled_privateWindow() {
   await cleanUpSuggestions();
 });
 
+add_task(async function disabled_urlbarSuggestions_withRestrictionToken() {
+  Services.prefs.setBoolPref(SUGGEST_PREF, false);
+  Services.prefs.setBoolPref(SUGGEST_ENABLED_PREF, true);
+  let context = createContext(
+    `${UrlbarTokenizer.RESTRICT.SEARCH} ${SEARCH_STRING}`,
+    { isPrivate: false }
+  );
+  await check_results({
+    context,
+    matches: [
+      makeSearchResult(context, {
+        query: SEARCH_STRING,
+        engineName: ENGINE_NAME,
+        heuristic: true,
+      }),
+      ...makeExpectedSuggestionResults(context, {
+        query: SEARCH_STRING,
+      }),
+    ],
+  });
+  await cleanUpSuggestions();
+});
+
+add_task(
+  async function disabled_urlbarSuggestions_withRestrictionToken_private() {
+    Services.prefs.setBoolPref(SUGGEST_PREF, false);
+    Services.prefs.setBoolPref(SUGGEST_ENABLED_PREF, true);
+    Services.prefs.setBoolPref(PRIVATE_ENABLED_PREF, false);
+    let context = createContext(
+      `${UrlbarTokenizer.RESTRICT.SEARCH} ${SEARCH_STRING}`,
+      { isPrivate: true }
+    );
+    await check_results({
+      context,
+      matches: [
+        makeSearchResult(context, {
+          query: SEARCH_STRING,
+          engineName: ENGINE_NAME,
+          heuristic: true,
+        }),
+      ],
+    });
+    await cleanUpSuggestions();
+  }
+);
+
+add_task(
+  async function disabled_urlbarSuggestions_withRestrictionToken_private_enabled() {
+    Services.prefs.setBoolPref(SUGGEST_PREF, false);
+    Services.prefs.setBoolPref(SUGGEST_ENABLED_PREF, true);
+    Services.prefs.setBoolPref(PRIVATE_ENABLED_PREF, true);
+    let context = createContext(
+      `${UrlbarTokenizer.RESTRICT.SEARCH} ${SEARCH_STRING}`,
+      { isPrivate: true }
+    );
+    await check_results({
+      context,
+      matches: [
+        makeSearchResult(context, {
+          query: SEARCH_STRING,
+          engineName: ENGINE_NAME,
+          heuristic: true,
+        }),
+        ...makeExpectedSuggestionResults(context, {
+          query: SEARCH_STRING,
+        }),
+      ],
+    });
+    await cleanUpSuggestions();
+  }
+);
+
 add_task(async function enabled_by_pref_privateWindow() {
   Services.prefs.setBoolPref(SUGGEST_PREF, true);
   Services.prefs.setBoolPref(SUGGEST_ENABLED_PREF, true);
@@ -830,6 +902,62 @@ add_task(async function prohibit_suggestions() {
       makeSearchResult(context, { engineName: ENGINE_NAME, heuristic: true }),
     ],
   });
+
+  await cleanUpSuggestions();
+});
+
+add_task(async function uri_like_queries() {
+  Services.prefs.setBoolPref(SUGGEST_PREF, true);
+  Services.prefs.setBoolPref(SUGGEST_ENABLED_PREF, true);
+
+  // We should not fetch any suggestions for an actual URL.
+  let query = "mozilla.org";
+  let context = createContext(query, { isPrivate: false });
+  await check_results({
+    context,
+    matches: [
+      makeVisitResult(context, {
+        title: `http://${query}/`,
+        uri: `http://${query}/`,
+        iconUri: "",
+        heuristic: true,
+      }),
+      makeSearchResult(context, { query, engineName: ENGINE_NAME }),
+    ],
+  });
+
+  // We should also not fetch suggestions for a partially-typed URL.
+  query = "mozilla.o";
+  context = createContext(query, { isPrivate: false });
+  await check_results({
+    context,
+    matches: [
+      makeSearchResult(context, { engineName: ENGINE_NAME, heuristic: true }),
+    ],
+  });
+
+  // Now trying queries that could be confused for URLs. They should return
+  // results.
+  const uriLikeQueries = [
+    "mozilla.org is a great website",
+    "I like mozilla.org",
+    "a/b testing",
+    "he/him",
+    "Google vs.",
+    "5.8 cm",
+  ];
+  for (query of uriLikeQueries) {
+    context = createContext(query, { isPrivate: false });
+    await check_results({
+      context,
+      matches: [
+        makeSearchResult(context, { engineName: ENGINE_NAME, heuristic: true }),
+        ...makeExpectedRemoteSuggestionResults(context, {
+          suggestionPrefix: query,
+        }),
+      ],
+    });
+  }
 
   await cleanUpSuggestions();
 });

@@ -89,6 +89,88 @@ static inline bool WasmSimdFlag(JSContext* cx) {
 #endif
 }
 
+/*
+ * [WASMDOC] Compiler and feature selection; compiler and feature availability.
+ *
+ * In order to make the computation of whether a wasm feature or wasm compiler
+ * is available predictable, we have established some rules, and implemented
+ * those rules.
+ *
+ * Code elsewhere should use the predicates below to test for features and
+ * compilers, it should never try to compute feature and compiler availability
+ * in other ways.
+ *
+ * At the outset, there is a set of selected compilers C containing at most one
+ * baseline compiler [*] and at most one optimizing compiler [**], and a set of
+ * selected features F.  These selections come from defaults and from overrides
+ * by command line switches in the shell and javascript.option.wasm_X in the
+ * browser.  Defaults for both features and compilers may be platform specific,
+ * for example, some compilers may not be available on some platforms because
+ * they do not support the architecture at all or they do not support features
+ * that must be enabled by default on the platform.
+ *
+ * [*] Currently we have only one, "baseline" aka "Rabaldr", but other
+ *     implementations have additional baseline translators, eg from wasm
+ *     bytecode to an internal code processed by an interpreter.
+ *
+ * [**] Currently we have two, "ion" aka "Baldr", and "Cranelift".
+ *
+ *
+ * Compiler availability:
+ *
+ * The set of features F induces a set of available compilers A: these are the
+ * compilers that all support all the features in F.  (Some of these compilers
+ * may not be in the set C.)
+ *
+ * The sets C and A are intersected, yielding a set of enabled compilers E.
+ * Notably, the set E may be empty, in which case wasm is effectively disabled
+ * (though the WebAssembly object is still present in the global environment).
+ *
+ * An important consequence is that selecting a feature that is not supported by
+ * a particular compiler disables that compiler completely -- there is no notion
+ * of a compiler being available but suddenly failing when an unsupported
+ * feature is used by a program.  If a compiler is available, it supports all
+ * the features that have been selected.
+ *
+ * Equally important, a feature cannot be enabled by default on a platform if
+ * the feature is not supported by all the compilers we wish to have enabled by
+ * default on the platform.  We MUST by-default disable features on a platform
+ * that are not supported by all the compilers on the platform.
+ *
+ * As an example:
+ *
+ *   On ARM64 the default compilers are Baseline and Cranelift.  Say Cranelift
+ *   does not support feature X.  Thus X cannot be enabled by default on ARM64.
+ *   However, X support can be compiled-in to SpiderMonkey, and the user can opt
+ *   to enable X.  Doing so will disable Cranelift.
+ *
+ *   In contrast, X can be enabled by default on x64, where the default
+ *   compilers are Baseline and Ion, both of which support X.
+ *
+ *   A subtlety is worth noting: on x64, enabling Cranelift (thus disabling Ion)
+ *   will not disable X.  Instead, the presence of X in the selected feature set
+ *   will disable Cranelift, leaving only Baseline.  This follows from the logic
+ *   described above.
+ *
+ * In a shell build, the testing functions wasmCompilersPresent,
+ * wasmCompileMode, wasmCraneliftDisabledByFeatures, and
+ * wasmIonDisabledByFeatures can be used to probe compiler availability and the
+ * reasons for a compiler being unavailable.
+ *
+ *
+ * Feature availability:
+ *
+ * A feature is available if it is selected and there is at least one available
+ * compiler that implements it.
+ *
+ * For example, --wasm-gc selects the GC feature, and if Baseline is available
+ * then the feature is available.
+ *
+ * In a shell build, there are per-feature testing functions (usually of the
+ * form wasmFeatureEnabled, wasmFeatureSupport, or wasmFeatureSupported) to
+ * probe whether specific features are available.
+ */
+
 // Compiler availability predicates.  These must be kept in sync with the
 // feature predicates in the next section below.
 //
@@ -163,15 +245,16 @@ bool wasm::CraneliftDisabledByFeatures(JSContext* cx, bool* isDisabled,
   // no threads, no simd, and on ARM64, no reference types.
   bool debug = cx->realm() && cx->realm()->debuggerObservesAsmJS();
   bool gc = cx->options().wasmGc();
-  bool multiValue = WasmMultiValueFlag(cx);
   bool threads =
       cx->realm() &&
       cx->realm()->creationOptions().getSharedMemoryAndAtomicsEnabled();
 #if defined(JS_CODEGEN_ARM64)
   bool reftypesOnArm64 = cx->options().wasmReftypes();
+  bool multiValue = false;
 #else
   // On other platforms, assume reftypes has been implemented.
   bool reftypesOnArm64 = false;
+  bool multiValue = WasmMultiValueFlag(cx);
 #endif
   bool simd = WasmSimdFlag(cx);
   if (reason) {
@@ -223,8 +306,8 @@ bool wasm::GcTypesAvailable(JSContext* cx) {
 }
 
 bool wasm::MultiValuesAvailable(JSContext* cx) {
-  // Cranelift does not support multi-value.
-  return WasmMultiValueFlag(cx) && (BaselineAvailable(cx) || IonAvailable(cx));
+  return WasmMultiValueFlag(cx) &&
+         (BaselineAvailable(cx) || IonAvailable(cx) || CraneliftAvailable(cx));
 }
 
 bool wasm::SimdAvailable(JSContext* cx) {
@@ -777,9 +860,8 @@ static bool EnforceRangeU32(JSContext* cx, HandleValue v, const char* kind,
   return true;
 }
 
-static bool GetLimits(JSContext* cx, HandleObject obj, uint32_t maxInitial,
-                      uint32_t maxMaximum, const char* kind, Limits* limits,
-                      Shareable allowShared) {
+static bool GetLimits(JSContext* cx, HandleObject obj, uint32_t maximumField,
+                      const char* kind, Limits* limits, Shareable allowShared) {
   JSAtom* initialAtom = Atomize(cx, "initial", strlen("initial"));
   if (!initialAtom) {
     return false;
@@ -791,12 +873,13 @@ static bool GetLimits(JSContext* cx, HandleObject obj, uint32_t maxInitial,
     return false;
   }
 
-  if (!EnforceRangeU32(cx, initialVal, kind, "initial size",
-                       &limits->initial)) {
+  uint32_t initial = 0;
+  if (!EnforceRangeU32(cx, initialVal, kind, "initial size", &initial)) {
     return false;
   }
+  limits->initial = initial;
 
-  if (limits->initial > maxInitial) {
+  if (limits->initial > maximumField) {
     JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_RANGE,
                              kind, "initial size");
     return false;
@@ -815,13 +898,13 @@ static bool GetLimits(JSContext* cx, HandleObject obj, uint32_t maxInitial,
 
   // maxVal does not have a default value.
   if (!maxVal.isUndefined()) {
-    limits->maximum.emplace();
-    if (!EnforceRangeU32(cx, maxVal, kind, "maximum size",
-                         limits->maximum.ptr())) {
+    uint32_t maximum = 0;
+    if (!EnforceRangeU32(cx, maxVal, kind, "maximum size", &maximum)) {
       return false;
     }
+    limits->maximum = Some(maximum);
 
-    if (*limits->maximum > maxMaximum || limits->initial > *limits->maximum) {
+    if (*limits->maximum > maximumField || limits->initial > *limits->maximum) {
       JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
                                JSMSG_WASM_BAD_RANGE, kind, "maximum size");
       return false;
@@ -1167,10 +1250,6 @@ bool WasmModuleObject::exports(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  const FuncExportVector& funcExports =
-      module->metadata(module->code().stableTier()).funcExports;
-
-  size_t numFuncExport = 0;
   for (const Export& exp : module->exports()) {
     Rooted<IdValueVector> props(cx, IdValueVector(cx));
     if (!props.reserve(2)) {
@@ -1192,8 +1271,9 @@ bool WasmModuleObject::exports(JSContext* cx, unsigned argc, Value* vp) {
         IdValuePair(NameToId(names.kind), StringValue(kindStr)));
 
     if (fuzzingSafe && exp.kind() == DefinitionKind::Function) {
-      JSString* ftStr =
-          FuncTypeToString(cx, funcExports[numFuncExport++].funcType());
+      const FuncExport& fe = module->metadata(module->code().stableTier())
+                                 .lookupFuncExport(exp.funcIndex());
+      JSString* ftStr = FuncTypeToString(cx, fe.funcType());
       if (!ftStr) {
         return false;
       }
@@ -1977,8 +2057,14 @@ bool WasmMemoryObject::construct(JSContext* cx, unsigned argc, Value* vp) {
 
   RootedObject obj(cx, &args[0].toObject());
   Limits limits;
-  if (!GetLimits(cx, obj, MaxMemoryInitialPages, MaxMemoryMaximumPages,
-                 "Memory", &limits, Shareable::True)) {
+  if (!GetLimits(cx, obj, MaxMemoryLimitField, "Memory", &limits,
+                 Shareable::True)) {
+    return false;
+  }
+
+  if (limits.initial > MaxMemoryPages) {
+    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
+                             JSMSG_WASM_MEM_IMP_LIMIT);
     return false;
   }
 
@@ -2333,7 +2419,8 @@ void WasmTableObject::trace(JSTracer* trc, JSObject* obj) {
 }
 
 /* static */
-WasmTableObject* WasmTableObject::create(JSContext* cx, const Limits& limits,
+WasmTableObject* WasmTableObject::create(JSContext* cx, uint32_t initialLength,
+                                         Maybe<uint32_t> maximumLength,
                                          TableKind tableKind,
                                          HandleObject proto) {
   AutoSetNewObjectMetadata metadata(cx);
@@ -2345,10 +2432,12 @@ WasmTableObject* WasmTableObject::create(JSContext* cx, const Limits& limits,
 
   MOZ_ASSERT(obj->isNewborn());
 
-  TableDesc td(tableKind, limits, /*importedOrExported=*/true);
+  TableDesc td(tableKind, initialLength, maximumLength,
+               /*importedOrExported=*/true);
 
   SharedTable table = Table::create(cx, td, obj);
   if (!table) {
+    ReportOutOfMemory(cx);
     return nullptr;
   }
 
@@ -2426,8 +2515,14 @@ bool WasmTableObject::construct(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   Limits limits;
-  if (!GetLimits(cx, obj, MaxTableInitialLength, MaxTableLength, "Table",
-                 &limits, Shareable::False)) {
+  if (!GetLimits(cx, obj, MaxTableLimitField, "Table", &limits,
+                 Shareable::False)) {
+    return false;
+  }
+
+  if (limits.initial > MaxTableLength) {
+    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
+                             JSMSG_WASM_TABLE_IMP_LIMIT);
     return false;
   }
 
@@ -2440,8 +2535,17 @@ bool WasmTableObject::construct(JSContext* cx, unsigned argc, Value* vp) {
     proto = GlobalObject::getOrCreatePrototype(cx, JSProto_WasmTable);
   }
 
+  // The rest of the runtime expects table limits to be within a 32-bit range.
+  static_assert(MaxTableLimitField <= UINT32_MAX, "invariant");
+  uint32_t initialLength = uint32_t(limits.initial);
+  Maybe<uint32_t> maximumLength;
+  if (limits.maximum) {
+    maximumLength = Some(uint32_t(*limits.maximum));
+  }
+
   RootedWasmTableObject table(
-      cx, WasmTableObject::create(cx, limits, tableKind, proto));
+      cx, WasmTableObject::create(cx, initialLength, maximumLength, tableKind,
+                                  proto));
   if (!table) {
     return false;
   }

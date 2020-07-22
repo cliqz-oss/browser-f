@@ -37,11 +37,8 @@ struct StorageWithTArray {
     return !!aStorage.IsEmpty();
   }
 
-  static bool Push(StorageType& aStorage, const T& aEntry) {
-    // XXX(Bug 1631371) Check if this should use a fallible operation as it
-    // pretended earlier, or change the return type to void.
+  static void Push(StorageType& aStorage, const T& aEntry) {
     aStorage.AppendElement(aEntry);
-    return true;
   }
 
   static bool Pop(StorageType& aStorage, T& aEntry) {
@@ -49,9 +46,7 @@ struct StorageWithTArray {
       return false;
     }
 
-    uint32_t index = aStorage.Length() - 1;
-    aEntry = aStorage.ElementAt(index);
-    aStorage.RemoveElementAt(index);
+    aEntry = aStorage.PopLastElement();
     return true;
   }
 
@@ -117,9 +112,9 @@ class Queue : public LockingPolicy {
     return StoragePolicy::IsEmpty(*mFront) && StoragePolicy::IsEmpty(*mBack);
   }
 
-  bool Push(const T& aEntry) {
+  void Push(const T& aEntry) {
     AutoLock lock(*this);
-    return StoragePolicy::Push(*mBack, aEntry);
+    StoragePolicy::Push(*mBack, aEntry);
   }
 
   bool Pop(T& aEntry) {

@@ -68,9 +68,9 @@ input[type="url"] {
   text-align: match-parent !important; /* override `all: unset` in the rule below */
 }
 
-input[type="password"][readOnly],
-input[type="text"][readOnly],
-input[type="url"][readOnly] {
+input[type="password"]:read-only,
+input[type="text"]:read-only,
+input[type="url"]:read-only {
   all: unset;
   font-size: 1.1em;
   display: inline-block;
@@ -118,6 +118,8 @@ input[type="url"][readOnly] {
   -moz-context-properties: fill;
   fill: currentColor;
   min-width: auto;
+  /* See bug 1627164: In CJK locales, line break could happen in any letter of the button. The fix here is to explicitly specify flex property so that the button couldn't grow or shrink. */
+  flex: 0 0 auto;
 }
 
 .delete-button:dir(rtl),
@@ -135,17 +137,17 @@ input[type="url"][readOnly] {
   padding-inline-start: 32px; /* 8px on each side, and 16px for icon width */
 }
 
-input[type="url"][readOnly] {
+input[type="url"]:read-only {
   color: var(--in-content-link-color) !important;
   cursor: pointer;
 }
 
-input[type="url"][readOnly]:hover {
+input[type="url"]:read-only:hover {
   color: var(--in-content-link-color-hover) !important;
   text-decoration: underline;
 }
 
-input[type="url"][readOnly]:hover:active {
+input[type="url"]:read-only:hover:active {
   color: var(--in-content-link-color-active) !important;
 }
 
@@ -182,7 +184,7 @@ input[type="url"][readOnly]:hover:active {
   margin-bottom: 8px;
 }
 
-:host([data-editing]) .detail-cell input:not([readOnly]):not([type="checkbox"]) {
+:host([data-editing]) .detail-cell input:read-write:not([type="checkbox"]) {
   width: 280px;
 }
 

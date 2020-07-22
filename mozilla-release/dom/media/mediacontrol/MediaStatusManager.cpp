@@ -99,7 +99,12 @@ void MediaStatusManager::UpdateMetadata(
         NS_ConvertUTF16toUTF8(aMetadata->mAlbum).get());
     info->mMetadata = aMetadata;
   }
-  mMetadataChangedEvent.Notify(GetCurrentMediaMetadata());
+  // Only notify the event if the changed metadata belongs to the active media
+  // session.
+  if (!mActiveMediaSessionContextId ||
+      *mActiveMediaSessionContextId == aBrowsingContextId) {
+    mMetadataChangedEvent.Notify(GetCurrentMediaMetadata());
+  }
   if (StaticPrefs::media_mediacontrol_testingevents_enabled()) {
     if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
       obs->NotifyObservers(nullptr, "media-session-controller-metadata-changed",
@@ -139,6 +144,7 @@ void MediaStatusManager::SetActiveMediaSessionContextId(
   LOG("context %" PRIu64 " becomes active session context",
       *mActiveMediaSessionContextId);
   mMetadataChangedEvent.Notify(GetCurrentMediaMetadata());
+  mSupportedActionsChangedEvent.Notify(GetSupportedActions());
 }
 
 void MediaStatusManager::ClearActiveMediaSessionContextIdIfNeeded() {
@@ -148,6 +154,7 @@ void MediaStatusManager::ClearActiveMediaSessionContextIdIfNeeded() {
   LOG("Clear active session context");
   mActiveMediaSessionContextId.reset();
   mMetadataChangedEvent.Notify(GetCurrentMediaMetadata());
+  mSupportedActionsChangedEvent.Notify(GetSupportedActions());
 }
 
 bool MediaStatusManager::IsSessionOwningAudioFocus(
@@ -214,7 +221,7 @@ nsString MediaStatusManager::GetDefaultFaviconURL() const {
   // Convert URI from `chrome://XXX` to `file://XXX` because we would like to
   // let OS related frameworks, such as SMTC and MPRIS, handle this URL in order
   // to show the icon on virtual controller interface.
-  nsCOMPtr<nsIChromeRegistry> regService = services::GetChromeRegistryService();
+  nsCOMPtr<nsIChromeRegistry> regService = services::GetChromeRegistry();
   if (!regService) {
     return EmptyString();
   }
@@ -295,6 +302,71 @@ void MediaStatusManager::UpdateActualPlaybackState() {
   LOG("UpdateActualPlaybackState : '%s'",
       ToMediaSessionPlaybackStateStr(mActualPlaybackState));
   HandleActualPlaybackStateChanged();
+}
+
+void MediaStatusManager::EnableAction(uint64_t aBrowsingContextId,
+                                      MediaSessionAction aAction) {
+  if (!mMediaSessionInfoMap.Contains(aBrowsingContextId)) {
+    return;
+  }
+  MediaSessionInfo* info = mMediaSessionInfoMap.GetValue(aBrowsingContextId);
+  if (info->IsActionSupported(aAction)) {
+    LOG("Action '%s' has already been enabled for context %" PRIu64,
+        ToMediaSessionActionStr(aAction), aBrowsingContextId);
+    return;
+  }
+  LOG("Enable action %s for context %" PRIu64, ToMediaSessionActionStr(aAction),
+      aBrowsingContextId);
+  info->EnableAction(aAction);
+  NotifySupportedKeysChangedIfNeeded(aBrowsingContextId);
+}
+
+void MediaStatusManager::DisableAction(uint64_t aBrowsingContextId,
+                                       MediaSessionAction aAction) {
+  if (!mMediaSessionInfoMap.Contains(aBrowsingContextId)) {
+    return;
+  }
+  MediaSessionInfo* info = mMediaSessionInfoMap.GetValue(aBrowsingContextId);
+  if (!info->IsActionSupported(aAction)) {
+    LOG("Action '%s' hasn't been enabled yet for context %" PRIu64,
+        ToMediaSessionActionStr(aAction), aBrowsingContextId);
+    return;
+  }
+  LOG("Disable action %s for context %" PRIu64,
+      ToMediaSessionActionStr(aAction), aBrowsingContextId);
+  info->DisableAction(aAction);
+  NotifySupportedKeysChangedIfNeeded(aBrowsingContextId);
+}
+
+void MediaStatusManager::NotifySupportedKeysChangedIfNeeded(
+    uint64_t aBrowsingContextId) {
+  // Only the active media session's supported actions would be shown in virtual
+  // control interface, so we only notify the event when supported actions
+  // change happens on the active media session.
+  if (!mActiveMediaSessionContextId ||
+      *mActiveMediaSessionContextId != aBrowsingContextId) {
+    return;
+  }
+  mSupportedActionsChangedEvent.Notify(GetSupportedActions());
+}
+
+CopyableTArray<MediaSessionAction> MediaStatusManager::GetSupportedActions()
+    const {
+  CopyableTArray<MediaSessionAction> supportedActions;
+  if (!mActiveMediaSessionContextId) {
+    return supportedActions;
+  }
+
+  MediaSessionInfo info =
+      mMediaSessionInfoMap.Get(*mActiveMediaSessionContextId);
+  const uint8_t actionNums = uint8_t(MediaSessionAction::EndGuard_);
+  for (uint8_t actionValue = 0; actionValue < actionNums; actionValue++) {
+    MediaSessionAction action = ConvertToMediaSessionAction(actionValue);
+    if (info.IsActionSupported(action)) {
+      supportedActions.AppendElement(action);
+    }
+  }
+  return supportedActions;
 }
 
 MediaMetadataBase MediaStatusManager::GetCurrentMediaMetadata() const {

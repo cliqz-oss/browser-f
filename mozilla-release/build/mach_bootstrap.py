@@ -52,6 +52,7 @@ MACH_MODULES = [
     'python/mozbuild/mozbuild/code-analysis/mach_commands.py',
     'python/mozbuild/mozbuild/compilation/codecomplete.py',
     'python/mozbuild/mozbuild/frontend/mach_commands.py',
+    'python/mozbuild/mozbuild/vendor/mach_commands.py',
     'python/mozbuild/mozbuild/mach_commands.py',
     'python/mozperftest/mozperftest/mach_commands.py',
     'python/mozrelease/mozrelease/mach_commands.py',
@@ -375,7 +376,7 @@ def bootstrap(topsrcdir, mozilla_dir=None):
                               state_dir],
                              stdout=devnull, stderr=devnull)
 
-    def populate_context(context, key=None):
+    def populate_context(key=None):
         if key is None:
             return
         if key == 'state_dir':

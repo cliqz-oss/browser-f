@@ -618,18 +618,17 @@ class AudioCallbackDriver : public GraphDriver,
     return AudioInputType::Unknown;
   }
 
-  /* Enqueue a promise that is going to be resolved on the given main thread
-   * when a specific operation occurs on the cubeb stream. */
-  void EnqueueTrackAndPromiseForOperation(
-      MediaTrack* aTrack, dom::AudioContextOperation aOperation,
-      AbstractThread* aMainThread,
-      MozPromiseHolder<MediaTrackGraph::AudioContextOperationPromise>&&
-          aHolder);
+  std::thread::id ThreadId() { return mAudioThreadIdInCb.load(); }
 
-  std::thread::id ThreadId() { return mAudioThreadId.load(); }
+  /* Called when the thread servicing the callback has changed. This can be
+   * fairly expensive */
+  void OnThreadIdChanged();
+  /* Called at the beginning of the audio callback to check if the thread id has
+   * changed. */
+  bool CheckThreadIdChanged();
 
   bool OnThread() override {
-    return mAudioThreadId.load() == std::this_thread::get_id();
+    return mAudioThreadIdInCb.load() == std::this_thread::get_id();
   }
 
   /* Returns true if this audio callback driver has successfully started and not
@@ -641,8 +640,6 @@ class AudioCallbackDriver : public GraphDriver,
   /* Whether the underlying cubeb stream has been started. See comment for
    * mStarted for details. */
   bool IsStarted();
-
-  void CompleteAudioContextOperations(AsyncCubebOperation aOperation);
 
   // Returns the output latency for the current audio output stream.
   TimeDuration AudioOutputLatency();
@@ -736,14 +733,16 @@ class AudioCallbackDriver : public GraphDriver,
   /* Shared thread pool with up to one thread for off-main-thread
    * initialization and shutdown of the audio stream via AsyncCubebTask. */
   const RefPtr<SharedThreadPool> mInitShutdownThread;
-  DataMutex<AutoTArray<TrackAndPromiseForOperation, 1>> mPromisesForOperation;
   cubeb_device_pref mInputDevicePreference;
   /* The mixer that the graph mixes into during an iteration. Audio thread only.
    */
   AudioMixer mMixer;
-  /* Contains the id of the audio thread for as long as the callback
-   * is taking place, after that it is reseted to an invalid value. */
-  std::atomic<std::thread::id> mAudioThreadId;
+  /* Contains the id of the audio thread, from profiler_get_thread_id. */
+  std::atomic<int> mAudioThreadId;
+  /* This allows implementing AutoInCallback. This is equal to the current
+   * thread id when in an audio callback, and is an invalid thread id otherwise.
+   */
+  std::atomic<std::thread::id> mAudioThreadIdInCb;
   /* State of the audio stream, see inline comments. */
   enum class AudioStreamState {
     /* There is no AudioStream and no pending AsyncCubebTask to INIT one. */
@@ -769,7 +768,7 @@ class AudioCallbackDriver : public GraphDriver,
        may iterate the graph. */
     Stopped,
   };
-  Atomic<FallbackDriverState> mFallbackDriverState;
+  Atomic<FallbackDriverState> mFallbackDriverState{FallbackDriverState::None};
   /* SystemClockDriver used as fallback if this AudioCallbackDriver fails to
    * init or start. */
   DataMutex<RefPtr<FallbackWrapper>> mFallback;
@@ -793,6 +792,7 @@ class AudioCallbackDriver : public GraphDriver,
   WavDumper mOutputStreamFile;
 
   virtual ~AudioCallbackDriver();
+  const bool mSandboxed = false;
 };
 
 class AsyncCubebTask : public Runnable {

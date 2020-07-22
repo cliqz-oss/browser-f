@@ -48,6 +48,11 @@ const Types = (exports.__TypesForTests = [
     front: "devtools/client/fronts/changes",
   },
   {
+    types: ["compatibility"],
+    spec: "devtools/shared/specs/compatibility",
+    front: "devtools/client/fronts/compatibility",
+  },
+  {
     types: ["contentViewer"],
     spec: "devtools/shared/specs/content-viewer",
     front: "devtools/client/fronts/content-viewer",
@@ -56,11 +61,6 @@ const Types = (exports.__TypesForTests = [
     types: ["cssProperties"],
     spec: "devtools/shared/specs/css-properties",
     front: "devtools/client/fronts/css-properties",
-  },
-  {
-    types: ["frameDescriptor"],
-    spec: "devtools/shared/specs/descriptors/frame",
-    front: "devtools/client/fronts/descriptors/frame",
   },
   {
     types: ["processDescriptor"],

@@ -70,7 +70,9 @@ child:
 
   async DispatchSecurityPolicyViolation(nsString aViolationEventJSON);
 
-  async SaveStorageAccessGranted();
+  async SaveStorageAccessPermissionGranted();
+
+  async AddBlockedFrameNodeByClassifier(MaybeDiscardedBrowsingContext aNode);
 
 both:
   async RawMessage(JSActorMessageMeta aMetadata, ClonedMessageData aData,

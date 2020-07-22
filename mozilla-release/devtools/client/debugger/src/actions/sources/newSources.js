@@ -15,7 +15,6 @@ import {
   stringToSourceActorId,
   type SourceActor,
 } from "../../reducers/source-actors";
-import { supportsWasm } from "../../reducers/threads";
 import { insertSourceActors } from "../../actions/source-actors";
 import { makeSourceId } from "../../client/firefox/create";
 import { toggleBlackBox } from "./blackbox";
@@ -42,7 +41,7 @@ import {
   isSourceLoadingOrLoaded,
 } from "../../selectors";
 
-import { prefs } from "../../utils/prefs";
+import { prefs, features } from "../../utils/prefs";
 import sourceQueue from "../../utils/source-queue";
 import { validateNavigateContext, ContextError } from "../../utils/context";
 
@@ -301,7 +300,6 @@ export function newGeneratedSources(sourceInfo: Array<GeneratedSourceData>) {
     getState,
     client,
   }: ThunkArgs): Promise<Array<Source>> => {
-    // bails early for unnecessary calls to newGeneratedSources. This simplifies the reducers which still create a new state, but don't need to.
     if (sourceInfo.length == 0) {
       return [];
     }
@@ -321,8 +319,7 @@ export function newGeneratedSources(sourceInfo: Array<GeneratedSourceData>) {
           isPrettyPrinted: false,
           extensionName: source.extensionName,
           isBlackBoxed: false,
-          isWasm:
-            !!supportsWasm(getState()) && source.introductionType === "wasm",
+          isWasm: !!features.wasm && source.introductionType === "wasm",
           isExtension: (source.url && isUrlExtension(source.url)) || false,
           isOriginal: false,
         };

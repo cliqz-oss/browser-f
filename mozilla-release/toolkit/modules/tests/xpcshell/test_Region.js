@@ -5,11 +5,13 @@ const { AppConstants } = ChromeUtils.import(
 );
 const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
 const { Region } = ChromeUtils.import("resource://gre/modules/Region.jsm");
+const { setTimeout } = ChromeUtils.import("resource://gre/modules/Timer.jsm");
 const { TestUtils } = ChromeUtils.import(
   "resource://testing-common/TestUtils.jsm"
 );
 
 const REGION_PREF = "browser.region.network.url";
+const INTERVAL_PREF = "browser.region.update.interval";
 
 const RESPONSE_DELAY = 500;
 const RESPONSE_TIMEOUT = 100;
@@ -18,11 +20,9 @@ const histogram = Services.telemetry.getHistogramById(
   "SEARCH_SERVICE_COUNTRY_FETCH_RESULT"
 );
 
-Services.prefs.setBoolPref("browser.search.geoSpecificDefaults", true);
-
 add_task(async function test_basic() {
-  let srv = useHttpServer();
-  srv.registerPathHandler("/geo", (req, res) => {
+  let srv = useHttpServer(REGION_PREF);
+  srv.registerPathHandler("/", (req, res) => {
     res.setStatusLine("1.1", 200, "OK");
     send(res, { country_code: "UK" });
   });
@@ -53,6 +53,29 @@ add_task(async function test_invalid_json() {
   checkTelemetry(Region.TELEMETRY.NO_RESULT);
 });
 
+add_task(async function test_timeout() {
+  histogram.clear();
+  Services.prefs.setIntPref("browser.region.timeout", RESPONSE_TIMEOUT);
+  let srv = useHttpServer(REGION_PREF);
+  srv.registerPathHandler("/geo", (req, res) => {
+    res.processAsync();
+    do_timeout(RESPONSE_DELAY, () => {
+      res.setStatusLine("1.1", 200, "OK");
+      send(res, { country_code: "UK" });
+    });
+  });
+
+  try {
+    let result = await Region._fetchRegion();
+    Assert.equal(result, null, "Region fetch should return null");
+  } catch (err) {
+    Assert.ok(false, "fetchRegion doesn't throw");
+  }
+  checkTelemetry(Region.TELEMETRY.TIMEOUT);
+
+  await new Promise(r => srv.stop(r));
+});
+
 add_task(async function test_mismatched_probe() {
   let probeDetails = await getExpectedHistogramDetails();
   let probeHistogram;
@@ -61,11 +84,9 @@ add_task(async function test_mismatched_probe() {
     probeHistogram.clear();
   }
   histogram.clear();
+  Region._home = null;
 
-  Services.prefs.setCharPref(
-    REGION_PREF,
-    'data:application/json,{"country_code": "AU"}'
-  );
+  setNetworkRegion("AU");
   await Region._fetchRegion();
   Assert.equal(Region.home, "AU", "Should have correct region");
   checkTelemetry(Region.TELEMETRY.SUCCESS);
@@ -80,12 +101,54 @@ add_task(async function test_mismatched_probe() {
   deepEqual(snapshot.values, probeDetails.expectedResult);
 });
 
-function useHttpServer() {
+add_task(async function test_location() {
+  let location = { location: { lat: -1, lng: 1 }, accuracy: 100 };
+  let srv = useHttpServer("geo.provider.network.url");
+  srv.registerPathHandler("/", (req, res) => {
+    res.setStatusLine("1.1", 200, "OK");
+    send(res, location);
+  });
+
+  let result = await Region._getLocation();
+  Assert.ok(true, "Region fetch should succeed");
+  Assert.deepEqual(result, location, "Location is returned");
+
+  await new Promise(r => srv.stop(r));
+});
+
+add_task(async function test_update() {
+  Region._home = null;
+  setNetworkRegion("FR");
+  await Region._fetchRegion();
+  Assert.equal(Region.home, "FR", "Should have correct region");
+  setNetworkRegion("DE");
+  await Region._fetchRegion();
+  Assert.equal(Region.home, "FR", "Shouldnt have changed yet");
+  // Thie first fetchRegion will set the prefs to determine when
+  // to update the home region, we need to do 2 fetchRegions to test
+  // it isnt updating when it shouldnt.
+  await Region._fetchRegion();
+  Assert.equal(Region.home, "FR", "Shouldnt have changed yet again");
+  Services.prefs.setIntPref(INTERVAL_PREF, 1);
+  /* eslint-disable mozilla/no-arbitrary-setTimeout */
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  await Region._fetchRegion();
+  Assert.equal(Region.home, "DE", "Should have updated now");
+});
+
+function setNetworkRegion(region) {
+  Services.prefs.setCharPref(
+    REGION_PREF,
+    `data:application/json,{"country_code": "${region}"}`
+  );
+}
+
+function useHttpServer(pref) {
   let server = new HttpServer();
   server.start(-1);
   Services.prefs.setCharPref(
-    REGION_PREF,
-    `http://localhost:${server.identity.primaryPort}/geo`
+    pref,
+    `http://localhost:${server.identity.primaryPort}/`
   );
   return server;
 }

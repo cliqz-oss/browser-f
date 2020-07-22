@@ -17,6 +17,7 @@ if CONFIG['MOZ_GECKO_PROFILER']:
         'public/BaseProfilerSharedLibraries.h',
         'public/BaseProfilingCategory.h',
         'public/BaseProfilingStack.h',
+        'public/ProfilingCategoryList.h',
     ]
     UNIFIED_SOURCES += [
         'core/PageInformation.cpp',
@@ -68,9 +69,6 @@ if CONFIG['MOZ_GECKO_PROFILER']:
     if CONFIG['OS_TARGET'] == 'Android':
         DEFINES['ANDROID_NDK_MAJOR_VERSION'] = CONFIG['ANDROID_NDK_MAJOR_VERSION']
         DEFINES['ANDROID_NDK_MINOR_VERSION'] = CONFIG['ANDROID_NDK_MINOR_VERSION']
-        LOCAL_INCLUDES += [
-            'lul',
-        ]
 
     FINAL_LIBRARY = 'mozglue'
 

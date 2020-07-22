@@ -1781,6 +1781,7 @@ bool nsSocketTransport::RecoverFromError() {
   if ((!mFDFastOpenInProgress ||
        ((mCondition != NS_ERROR_CONNECTION_REFUSED) &&
         (mCondition != NS_ERROR_NET_TIMEOUT) &&
+        (mCondition != NS_BASE_STREAM_CLOSED) &&
         (mCondition != NS_ERROR_PROXY_CONNECTION_REFUSED))) &&
       mState == STATE_CONNECTING && mDNSRecord) {
     mDNSRecord->ReportUnusable(SocketPort());
@@ -2650,7 +2651,7 @@ NS_IMETHODIMP
 nsSocketTransport::SetSecurityCallbacks(nsIInterfaceRequestor* callbacks) {
   nsCOMPtr<nsIInterfaceRequestor> threadsafeCallbacks;
   NS_NewNotificationCallbacksAggregation(callbacks, nullptr,
-                                         GetCurrentThreadEventTarget(),
+                                         GetCurrentEventTarget(),
                                          getter_AddRefs(threadsafeCallbacks));
 
   nsCOMPtr<nsISupports> secinfo;

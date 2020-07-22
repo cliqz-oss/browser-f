@@ -103,13 +103,15 @@ already_AddRefed<nsICookieJarSettings> CookieJarSettings::Create() {
 
 // static
 already_AddRefed<nsICookieJarSettings> CookieJarSettings::Create(
-    uint32_t aCookieBehavior, const nsAString& aFirstPartyDomain,
-    bool aIsFirstPartyIsolated) {
+    uint32_t aCookieBehavior, const nsAString& aPartitionKey,
+    bool aIsFirstPartyIsolated, bool aIsOnContentBlockingAllowList) {
   MOZ_ASSERT(NS_IsMainThread());
 
   RefPtr<CookieJarSettings> cookieJarSettings = new CookieJarSettings(
       aCookieBehavior, aIsFirstPartyIsolated, eProgressive);
-  cookieJarSettings->mFirstPartyDomain = aFirstPartyDomain;
+  cookieJarSettings->mPartitionKey = aPartitionKey;
+  cookieJarSettings->mIsOnContentBlockingAllowList =
+      aIsOnContentBlockingAllowList;
 
   return cookieJarSettings.forget();
 }
@@ -196,8 +198,8 @@ CookieJarSettings::GetIsOnContentBlockingAllowList(
 }
 
 NS_IMETHODIMP
-CookieJarSettings::GetFirstPartyDomain(nsAString& aFirstPartyDomain) {
-  aFirstPartyDomain = mFirstPartyDomain;
+CookieJarSettings::GetPartitionKey(nsAString& aPartitionKey) {
+  aPartitionKey = mPartitionKey;
   return NS_OK;
 }
 
@@ -282,7 +284,7 @@ void CookieJarSettings::Serialize(CookieJarSettingsArgs& aData) {
   aData.cookieBehavior() = mCookieBehavior;
   aData.isFirstPartyIsolated() = mIsFirstPartyIsolated;
   aData.isOnContentBlockingAllowList() = mIsOnContentBlockingAllowList;
-  aData.firstPartyDomain() = mFirstPartyDomain;
+  aData.partitionKey() = mPartitionKey;
 
   for (const RefPtr<nsIPermission>& permission : mCookiePermissions) {
     nsCOMPtr<nsIPrincipal> principal;
@@ -342,7 +344,7 @@ void CookieJarSettings::Serialize(CookieJarSettingsArgs& aData) {
   cookieJarSettings->mIsOnContentBlockingAllowList =
       aData.isOnContentBlockingAllowList();
   cookieJarSettings->mCookiePermissions.SwapElements(list);
-  cookieJarSettings->mFirstPartyDomain = aData.firstPartyDomain();
+  cookieJarSettings->mPartitionKey = aData.partitionKey();
 
   cookieJarSettings.forget(aCookieJarSettings);
 }
@@ -411,12 +413,12 @@ void CookieJarSettings::Merge(const CookieJarSettingsArgs& aData) {
   }
 }
 
-void CookieJarSettings::SetFirstPartyDomain(nsIURI* aURI) {
+void CookieJarSettings::SetPartitionKey(nsIURI* aURI) {
   MOZ_ASSERT(aURI);
 
   OriginAttributes attrs;
-  attrs.SetFirstPartyDomain(true, aURI, true);
-  mFirstPartyDomain = std::move(attrs.mFirstPartyDomain);
+  attrs.SetPartitionKey(aURI);
+  mPartitionKey = std::move(attrs.mPartitionKey);
 }
 
 void CookieJarSettings::UpdateIsOnContentBlockingAllowList(

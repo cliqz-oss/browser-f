@@ -259,16 +259,19 @@ def setup_junit_argument_parser():
 
 def verify_host_bin():
     # validate MOZ_HOST_BIN environment variables for Android tests
+    xpcshell_binary = 'xpcshell'
+    if os.name == 'nt':
+        xpcshell_binary = 'xpcshell.exe'
     MOZ_HOST_BIN = os.environ.get('MOZ_HOST_BIN')
     if not MOZ_HOST_BIN:
         print('environment variable MOZ_HOST_BIN must be set to a directory containing host '
-              'xpcshell')
+              '%s' % xpcshell_binary)
         return 1
     elif not os.path.isdir(MOZ_HOST_BIN):
         print('$MOZ_HOST_BIN does not specify a directory')
         return 1
-    elif not os.path.isfile(os.path.join(MOZ_HOST_BIN, 'xpcshell')):
-        print('$MOZ_HOST_BIN/xpcshell does not exist')
+    elif not os.path.isfile(os.path.join(MOZ_HOST_BIN, xpcshell_binary)):
+        print('$MOZ_HOST_BIN/%s does not exist' % xpcshell_binary)
         return 1
     return 0
 
@@ -492,50 +495,3 @@ class GeckoviewJunitCommands(MachCommandBase):
 
         mochitest = self._spawn(MochitestRunner)
         return mochitest.run_geckoview_junit_test(self._mach_context, **kwargs)
-
-
-# NOTE python/mach/mach/commands/commandinfo.py references this function
-#      by name. If this function is renamed or removed, that file should
-#      be updated accordingly as well.
-def REMOVED(cls):
-    """Command no longer exists! Use |mach mochitest| instead.
-
-    The |mach mochitest| command will automatically detect which flavors and
-    subsuites exist in a given directory. If desired, flavors and subsuites
-    can be restricted using `--flavor` and `--subsuite` respectively. E.g:
-
-        $ ./mach mochitest dom/indexedDB
-
-    will run all of the plain, chrome and browser-chrome mochitests in that
-    directory. To only run the plain mochitests:
-
-        $ ./mach mochitest -f plain dom/indexedDB
-    """
-    return False
-
-
-@CommandProvider
-class DeprecatedCommands(MachCommandBase):
-    @Command('mochitest-plain', category='testing', conditions=[REMOVED])
-    def mochitest_plain(self):
-        pass
-
-    @Command('mochitest-chrome', category='testing', conditions=[REMOVED])
-    def mochitest_chrome(self):
-        pass
-
-    @Command('mochitest-browser', category='testing', conditions=[REMOVED])
-    def mochitest_browser(self):
-        pass
-
-    @Command('mochitest-devtools', category='testing', conditions=[REMOVED])
-    def mochitest_devtools(self):
-        pass
-
-    @Command('mochitest-a11y', category='testing', conditions=[REMOVED])
-    def mochitest_a11y(self):
-        pass
-
-    @Command('robocop', category='testing', conditions=[REMOVED])
-    def robocop(self):
-        pass

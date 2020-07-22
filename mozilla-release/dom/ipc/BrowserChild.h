@@ -614,11 +614,6 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   uintptr_t GetNativeWindowHandle() const { return mNativeWindowHandle; }
 #endif
 
-  // These methods return `true` if this BrowserChild is currently awaiting a
-  // Large-Allocation header.
-  bool StopAwaitingLargeAlloc();
-  bool IsAwaitingLargeAlloc();
-
   BrowsingContext* GetBrowsingContext() const { return mBrowsingContext; }
 
 #if defined(ACCESSIBILITY)
@@ -702,7 +697,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
       uint32_t aEvent, nsIChannel* aChannel, bool aBlocked,
       const nsACString& aTrackingOrigin,
       const nsTArray<nsCString>& aTrackingFullHashes,
-      const Maybe<ContentBlockingNotifier::StorageAccessGrantedReason>&
+      const Maybe<
+          ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
           aReason);
 
  protected:
@@ -735,26 +731,12 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
 
   mozilla::ipc::IPCResult RecvStopIMEStateManagement();
 
-  mozilla::ipc::IPCResult RecvAwaitLargeAlloc();
-
   mozilla::ipc::IPCResult RecvAllowScriptsToClose();
 
   mozilla::ipc::IPCResult RecvSetWidgetNativeData(
       const WindowsHandle& aWidgetNativeData);
 
  private:
-  // Wraps up a JSON object as a structured clone and sends it to the browser
-  // chrome script.
-  //
-  // XXX/bug 780335: Do the work the browser chrome script does in C++ instead
-  // so we don't need things like this.
-  void DispatchMessageManagerMessage(const nsAString& aMessageName,
-                                     const nsAString& aJSONData);
-
-  void ProcessUpdateFrame(const mozilla::layers::RepaintRequest& aRequest);
-
-  bool UpdateFrameHandler(const mozilla::layers::RepaintRequest& aRequest);
-
   void HandleDoubleTap(const CSSPoint& aPoint, const Modifiers& aModifiers,
                        const ScrollableLayerGuid& aGuid);
 
@@ -879,7 +861,6 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   CSSSize mUnscaledInnerSize;
   bool mDidSetRealShowInfo;
   bool mDidLoadURLInit;
-  bool mAwaitingLA;
 
   bool mSkipKeyPress;
 
@@ -897,7 +878,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   // Hash table to track coalesced mousemove events for different pointers.
   nsClassHashtable<nsUint32HashKey, CoalescedMouseData> mCoalescedMouseData;
 
-  nsDeque mToBeDispatchedMouseData;
+  nsDeque<CoalescedMouseData> mToBeDispatchedMouseData;
 
   CoalescedWheelData mCoalescedWheelData;
   RefPtr<CoalescedMouseMoveFlusher> mCoalescedMouseEventFlusher;

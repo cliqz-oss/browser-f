@@ -543,8 +543,10 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
             }
 
             Select(s) => {
-                for ty in &mut s.tys {
-                    self.resolver.resolve_valtype(ty)?;
+                if let Some(list) = &mut s.tys {
+                    for ty in list {
+                        self.resolver.resolve_valtype(ty)?;
+                    }
                 }
                 Ok(())
             }
@@ -561,7 +563,7 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolver.resolve_valtype(&mut s.to)
             }
 
-            RefNull(ty) | RefIsNull(ty) => self.resolver.resolve_reftype(ty),
+            RefNull(ty) => self.resolver.resolve_reftype(ty),
 
             _ => Ok(()),
         }

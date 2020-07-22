@@ -11,6 +11,7 @@ use api::{LineOrientation, LineStyle, NinePatchBorderSource, PipelineId, MixBlen
 use api::{PropertyBinding, ReferenceFrame, ReferenceFrameKind, ScrollFrameDisplayItem, ScrollSensitivity};
 use api::{Shadow, SpaceAndClipInfo, SpatialId, StackingContext, StickyFrameDisplayItem, ImageMask};
 use api::{ClipMode, PrimitiveKeyKind, TransformStyle, YuvColorSpace, ColorRange, YuvData, TempFilterData};
+use api::{ReferenceTransformBinding};
 use api::image_tiling::simplify_repeated_primitive;
 use api::units::*;
 use crate::clip::{ClipChainId, ClipRegion, ClipItemKey, ClipStore, ClipItemKeyKind};
@@ -21,7 +22,7 @@ use crate::glyph_rasterizer::FontInstance;
 use crate::hit_test::{HitTestingItem, HitTestingScene};
 use crate::intern::Interner;
 use crate::internal_types::{FastHashMap, FastHashSet, LayoutPrimitiveInfo, Filter};
-use crate::picture::{Picture3DContext, PictureCompositeMode, PicturePrimitive, PictureOptions};
+use crate::picture::{Picture3DContext, PictureCompositeMode, PicturePrimitive, PictureOptions, SliceId};
 use crate::picture::{BlitReason, OrderedPictureChild, PrimitiveList, TileCacheInstance, ClusterFlags};
 use crate::prim_store::PrimitiveInstance;
 use crate::prim_store::{PrimitiveInstanceKind, NinePatchDescriptor, PrimitiveStore};
@@ -286,6 +287,7 @@ pub struct SceneBuilder<'a> {
     /// The current recursion depth of iframes encountered. Used to restrict picture
     /// caching slices to only the top-level content frame.
     iframe_depth: usize,
+    iframe_size: Vec<LayoutSize>,
 
     /// The number of picture cache slices that were created for content.
     content_slice_count: usize,
@@ -300,6 +302,9 @@ pub struct SceneBuilder<'a> {
 
     /// The current quality / performance settings for this scene.
     quality_settings: QualitySettings,
+
+    /// Map of tile caches that were created for this scene
+    tile_caches: FastHashMap<SliceId, Box<TileCacheInstance>>,
 }
 
 impl<'a> SceneBuilder<'a> {
@@ -340,9 +345,11 @@ impl<'a> SceneBuilder<'a> {
             external_scroll_mapper: ScrollOffsetMapper::new(),
             picture_caching_initialized: false,
             iframe_depth: 0,
+            iframe_size: Vec::new(),
             content_slice_count: 0,
             picture_cache_spatial_nodes: FastHashSet::default(),
             quality_settings: view.quality_settings,
+            tile_caches: FastHashMap::default(),
         };
 
         let device_pixel_scale = view.accumulated_scale_factor_for_snapping();
@@ -411,6 +418,7 @@ impl<'a> SceneBuilder<'a> {
             config: builder.config,
             content_slice_count: builder.content_slice_count,
             picture_cache_spatial_nodes: builder.picture_cache_spatial_nodes,
+            tile_caches: builder.tile_caches,
         }
     }
 
@@ -494,7 +502,7 @@ impl<'a> SceneBuilder<'a> {
             }
 
             // Step through each prim instance, in order to collect shared clips for the slice.
-            for instance in &cluster.prim_instances {
+            for instance in &main_prim_list.prim_instances[cluster.prim_range()] {
                 // If the primitive clip chain is different, then we need to rebuild prim_clips.
                 update_shared_clips |= last_prim_clip_chain_id != instance.clip_chain_id;
                 last_prim_clip_chain_id = instance.clip_chain_id;
@@ -539,8 +547,10 @@ impl<'a> SceneBuilder<'a> {
             );
 
             // Finally, add this cluster to the current slice
-            slices.last_mut().unwrap().prim_list.add_cluster(cluster);
+            slices.last_mut().unwrap().prim_list.add_cluster(cluster, &main_prim_list.prim_instances);
         }
+
+        main_prim_list.clear();
 
         // Step through the slices, creating picture cache wrapper instances.
         for (slice_index, slice) in slices.drain(..).enumerate() {
@@ -568,6 +578,7 @@ impl<'a> SceneBuilder<'a> {
                 &mut self.clip_store,
                 &mut self.picture_cache_spatial_nodes,
                 &self.config,
+                &mut self.tile_caches,
             );
 
             main_prim_list.add_prim(
@@ -717,12 +728,38 @@ impl<'a> SceneBuilder<'a> {
     ) {
         profile_scope!("build_reference_frame");
         let current_offset = self.current_offset(parent_spatial_node);
+
+        let transform = match reference_frame.transform {
+            ReferenceTransformBinding::Static { binding } => binding,
+            ReferenceTransformBinding::Computed { scale_from, vertical_flip } => {
+                let mut transform = if let Some(scale_from) = scale_from {
+                    let content_size = &self.iframe_size.last().unwrap();
+                    LayoutTransform::create_scale(
+                        content_size.width / scale_from.width,
+                        content_size.height / scale_from.height,
+                        1.0
+                    )
+                } else {
+                    LayoutTransform::identity()
+                };
+
+                if vertical_flip {
+                    let content_size = &self.iframe_size.last().unwrap();
+                    transform = transform
+                        .post_translate(LayoutVector3D::new(0.0, content_size.height, 0.0))
+                        .pre_scale(1.0, -1.0, 1.0);
+                }
+
+                PropertyBinding::Value(transform)
+            },
+        };
+
         self.push_reference_frame(
             reference_frame.id,
             Some(parent_spatial_node),
             pipeline_id,
             reference_frame.transform_style,
-            reference_frame.transform,
+            transform,
             reference_frame.kind,
             current_offset + origin.to_vector(),
         );
@@ -734,7 +771,6 @@ impl<'a> SceneBuilder<'a> {
         );
         self.rf_mapper.pop_scope();
     }
-
 
     fn build_stacking_context(
         &mut self,
@@ -852,11 +888,13 @@ impl<'a> SceneBuilder<'a> {
 
         self.rf_mapper.push_scope();
         self.iframe_depth += 1;
+        self.iframe_size.push(bounds.size);
 
         self.build_items(
             &mut pipeline.display_list.iter(),
             pipeline.pipeline_id,
         );
+        self.iframe_size.pop();
         self.iframe_depth -= 1;
         self.rf_mapper.pop_scope();
 
@@ -1884,7 +1922,6 @@ impl<'a> SceneBuilder<'a> {
                 stacking_context.requested_raster_space,
                 stacking_context.prim_list,
                 stacking_context.spatial_node_index,
-                None,
                 PictureOptions::default(),
             ))
         );
@@ -1939,7 +1976,6 @@ impl<'a> SceneBuilder<'a> {
                     stacking_context.requested_raster_space,
                     prim_list,
                     stacking_context.spatial_node_index,
-                    None,
                     PictureOptions::default(),
                 ))
             );
@@ -2004,7 +2040,6 @@ impl<'a> SceneBuilder<'a> {
                         stacking_context.requested_raster_space,
                         prim_list,
                         stacking_context.spatial_node_index,
-                        None,
                         PictureOptions::default(),
                     ))
                 );
@@ -2489,7 +2524,6 @@ impl<'a> SceneBuilder<'a> {
                                 raster_space,
                                 prim_list,
                                 pending_shadow.spatial_node_index,
-                                None,
                                 options,
                             ))
                         );
@@ -3238,7 +3272,6 @@ impl<'a> SceneBuilder<'a> {
                     requested_raster_space,
                     prim_list,
                     backdrop_spatial_node_index,
-                    None,
                     PictureOptions {
                        inflate_if_required: false,
                     },
@@ -3423,7 +3456,6 @@ impl<'a> SceneBuilder<'a> {
                     requested_raster_space,
                     prim_list,
                     spatial_node_index,
-                    None,
                     PictureOptions {
                        inflate_if_required,
                     },
@@ -3441,10 +3473,6 @@ impl<'a> SceneBuilder<'a> {
             if cur_instance.is_chased() {
                 println!("\tis a composite picture for a stacking context with {:?}", filter);
             }
-
-            // Run the optimize pass on this picture, to see if we can
-            // collapse opacity and avoid drawing to an off-screen surface.
-            self.prim_store.optimize_picture_if_possible(current_pic_index);
         }
 
         if !filter_primitives.is_empty() {
@@ -3493,7 +3521,6 @@ impl<'a> SceneBuilder<'a> {
                     requested_raster_space,
                     prim_list,
                     spatial_node_index,
-                    None,
                     PictureOptions {
                         inflate_if_required,
                     },
@@ -3511,10 +3538,6 @@ impl<'a> SceneBuilder<'a> {
             if cur_instance.is_chased() {
                 println!("\tis a composite picture for a stacking context with an SVG filter");
             }
-
-            // Run the optimize pass on this picture, to see if we can
-            // collapse opacity and avoid drawing to an off-screen surface.
-            self.prim_store.optimize_picture_if_possible(current_pic_index);
         }
         (current_pic_index, cur_instance)
     }
@@ -3663,7 +3686,7 @@ impl FlattenedStackingContext {
                             // also allows us to retain subpixel AA in these cases. For these types of
                             // slices, the intra-slice dirty rect handling typically works quite well
                             // (a common case is parallax scrolling effects).
-                            for prim_instance in &cluster.prim_instances {
+                            for prim_instance in &self.prim_list.prim_instances[cluster.prim_range()] {
                                 let mut current_clip_chain_id = prim_instance.clip_chain_id;
 
                                 while current_clip_chain_id != ClipChainId::NONE {
@@ -3814,7 +3837,6 @@ impl FlattenedStackingContext {
                 self.requested_raster_space,
                 mem::replace(&mut self.prim_list, PrimitiveList::empty()),
                 self.spatial_node_index,
-                None,
                 PictureOptions::default(),
             ))
         );
@@ -3997,6 +4019,7 @@ fn create_tile_cache(
     clip_store: &mut ClipStore,
     picture_cache_spatial_nodes: &mut FastHashSet<SpatialNodeIndex>,
     frame_builder_config: &FrameBuilderConfig,
+    tile_caches: &mut FastHashMap<SliceId, Box<TileCacheInstance>>,
 ) -> PrimitiveInstance {
     // Add this spatial node to the list to check for complex transforms
     // at the start of a frame build.
@@ -4042,9 +4065,11 @@ fn create_tile_cache(
         parent_clip_chain_id,
         frame_builder_config,
     ));
+    let slice_id = SliceId::new(slice);
+    tile_caches.insert(slice_id, tile_cache);
 
     let pic_index = prim_store.pictures.alloc().init(PicturePrimitive::new_image(
-        Some(PictureCompositeMode::TileCache { }),
+        Some(PictureCompositeMode::TileCache { slice_id }),
         Picture3DContext::Out,
         None,
         true,
@@ -4052,7 +4077,6 @@ fn create_tile_cache(
         RasterSpace::Screen,
         prim_list,
         scroll_root,
-        Some(tile_cache),
         PictureOptions::default(),
     ));
 

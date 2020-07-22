@@ -30,8 +30,6 @@ class TokenStreamAnyChars;
 enum class SourceKind {
   // We are parsing from a text source (Parser.h)
   Text,
-  // We are parsing from a binary source (BinASTParser.h)
-  Binary,
 };
 
 // Parse handler used when generating a full parse tree for all code which the
@@ -133,11 +131,11 @@ class FullParseHandler {
   FOR_EACH_PARSENODE_SUBCLASS(DECLARE_AS)
 #undef DECLARE_AS
 
-  // The FullParseHandler may be used to create nodes for text sources
-  // (from Parser.h) or for binary sources (from BinASTParser.h). In the latter
-  // case, some common assumptions on offsets are incorrect, e.g. in `a + b`,
-  // `a`, `b` and `+` may be stored in any order. We use `sourceKind()`
-  // to determine whether we need to check these assumptions.
+  // The FullParseHandler may be used to create nodes for text sources (from
+  // Parser.h). With previous binary source formats, some common assumptions on
+  // offsets are incorrect, e.g. in `a + b`, `a`, `b` and `+` may be stored in
+  // any order. We use `sourceKind()` to determine whether we need to check
+  // these assumptions.
   SourceKind sourceKind() const { return sourceKind_; }
 
   NameNodeType newName(PropertyName* name, const TokenPos& pos, JSContext* cx) {
@@ -872,6 +870,9 @@ class FullParseHandler {
 
   AssignmentNodeType newAssignment(ParseNodeKind kind, Node lhs, Node rhs) {
     if ((kind == ParseNodeKind::AssignExpr ||
+         kind == ParseNodeKind::CoalesceAssignExpr ||
+         kind == ParseNodeKind::OrAssignExpr ||
+         kind == ParseNodeKind::AndAssignExpr ||
          kind == ParseNodeKind::InitExpr) &&
         lhs->isKind(ParseNodeKind::Name) && !lhs->isInParens()) {
       checkAndSetIsDirectRHSAnonFunction(rhs);

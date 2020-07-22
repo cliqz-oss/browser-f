@@ -21,11 +21,18 @@
 // compiled.
 pub extern crate glean;
 
+#[macro_use]
+extern crate cstr;
+#[macro_use]
+extern crate xpcom;
+
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
-use nserror::{nsresult, NS_OK};
-use nsstring::nsACString;
+use nserror::{nsresult, NS_ERROR_FAILURE, NS_OK};
+use nsstring::{nsACString, nsCStr};
+use xpcom::interfaces::{mozIViaduct, nsIObserver, nsIPrefBranch, nsISupports};
+use xpcom::{RefPtr, XpCom};
 
 use client_info::ClientInfo;
 use glean_core::Configuration;
@@ -67,6 +74,15 @@ pub unsafe extern "C" fn fog_init(
     };
     log::debug!("Client Info: {:#?}", client_info);
 
+    let pref_observer = UploadPrefObserver::allocate(InitUploadPrefObserver {});
+    if let Err(e) = pref_observer.begin_observing() {
+        log::error!(
+            "Could not observe data upload pref. Abandoning FOG init due to {:?}",
+            e
+        );
+        return e;
+    }
+
     let upload_enabled = static_prefs::pref!("datareporting.healthreport.uploadEnabled");
     let data_path = data_path.to_string();
     let configuration = Configuration {
@@ -79,6 +95,19 @@ pub unsafe extern "C" fn fog_init(
 
     log::debug!("Configuration: {:#?}", configuration);
 
+    // Ensure Viaduct is initialized for networking unconditionally so we don't
+    // need to check again if upload is later enabled.
+    if let Some(viaduct) =
+        xpcom::create_instance::<mozIViaduct>(cstr!("@mozilla.org/toolkit/viaduct;1"))
+    {
+        let result = viaduct.EnsureInitialized();
+        if result.failed() {
+            log::error!("Failed to ensure viaduct was initialized due to {}. Ping upload may not be available.", result.error_name());
+        }
+    } else {
+        log::error!("Failed to create Viaduct via XPCOM. Ping upload may not be available.");
+    }
+
     if configuration.data_path.len() > 0 {
         if let Err(e) = api::initialize(configuration, client_info) {
             log::error!("Failed to init FOG due to {:?}", e);
@@ -86,4 +115,97 @@ pub unsafe extern "C" fn fog_init(
     }
 
     NS_OK
+}
+
+// Partially cargo-culted from https://searchfox.org/mozilla-central/rev/598e50d2c3cd81cd616654f16af811adceb08f9f/security/manager/ssl/cert_storage/src/lib.rs#1192
+#[derive(xpcom)]
+#[xpimplements(nsIObserver)]
+#[refcnt = "atomic"]
+struct InitUploadPrefObserver {}
+
+#[allow(non_snake_case)]
+impl UploadPrefObserver {
+    unsafe fn begin_observing(&self) -> Result<(), nsresult> {
+        let pref_service = xpcom::services::get_PrefService().ok_or(NS_ERROR_FAILURE)?;
+        let pref_branch: RefPtr<nsIPrefBranch> =
+            (*pref_service).query_interface().ok_or(NS_ERROR_FAILURE)?;
+        let pref_nscstr = &nsCStr::from("datareporting.healthreport.uploadEnabled") as &nsACString;
+        (*pref_branch)
+            .AddObserverImpl(pref_nscstr, self.coerce::<nsIObserver>(), false)
+            .to_result()?;
+        Ok(())
+    }
+
+    unsafe fn Observe(
+        &self,
+        _subject: *const nsISupports,
+        topic: *const c_char,
+        pref_name: *const i16,
+    ) -> nserror::nsresult {
+        let topic = CStr::from_ptr(topic).to_str().unwrap();
+        // Conversion utf16 to utf8 is messy.
+        // We should only ever observe changes to the one pref we want,
+        // but just to be on the safe side let's assert.
+
+        // cargo-culted from https://searchfox.org/mozilla-central/rev/598e50d2c3cd81cd616654f16af811adceb08f9f/security/manager/ssl/cert_storage/src/lib.rs#1606-1612
+        // (with a little transformation)
+        let len = (0..).take_while(|&i| *pref_name.offset(i) != 0).count(); // find NUL.
+        let slice = std::slice::from_raw_parts(pref_name as *const u16, len);
+        let pref_name = match String::from_utf16(slice) {
+            Ok(name) => name,
+            Err(_) => return NS_ERROR_FAILURE,
+        };
+        log::info!("Observed {:?}, {:?}", topic, pref_name);
+        debug_assert!(
+            topic == "nsPref:changed" && pref_name == "datareporting.healthreport.uploadEnabled"
+        );
+
+        let upload_enabled = static_prefs::pref!("datareporting.healthreport.uploadEnabled");
+        api::set_upload_enabled(upload_enabled);
+        NS_OK
+    }
+}
+
+static mut PENDING_BUF: Vec<u8> = Vec::new();
+
+// IPC serialization/deserialization methods
+// Crucially important that the first two not be called on multiple threads.
+
+/// Only safe if only called on a single thread (the same single thread you call
+/// fog_give_ipc_buf on).
+#[no_mangle]
+pub unsafe extern "C" fn fog_serialize_ipc_buf() -> usize {
+    if let Some(buf) = glean::ipc::take_buf() {
+        PENDING_BUF = buf;
+        PENDING_BUF.len()
+    } else {
+        PENDING_BUF = vec![];
+        0
+    }
+}
+
+#[no_mangle]
+/// Only safe if called on a single thread (the same single thread you call
+/// fog_serialize_ipc_buf on), and if buf points to an allocated buffer of at
+/// least buf_len bytes.
+pub unsafe extern "C" fn fog_give_ipc_buf(buf: *mut u8, buf_len: usize) -> usize {
+    let pending_len = PENDING_BUF.len();
+    if buf.is_null() || buf_len < pending_len {
+        return 0;
+    }
+    std::ptr::copy_nonoverlapping(PENDING_BUF.as_ptr(), buf, pending_len);
+    PENDING_BUF = Vec::new();
+    pending_len
+}
+
+#[no_mangle]
+/// Only safe if buf points to an allocated buffer of at least buf_len bytes.
+/// No ownership is transfered to Rust by this method: caller owns the memory at
+/// buf before and after this call.
+pub unsafe extern "C" fn fog_use_ipc_buf(buf: *const u8, buf_len: usize) {
+    let slice = std::slice::from_raw_parts(buf, buf_len);
+    let _res = glean::ipc::replay_from_buf(slice);
+    /*if res.is_err() {
+        // TODO: Record the error.
+    }*/
 }

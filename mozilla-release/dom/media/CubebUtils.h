@@ -16,6 +16,9 @@ class AudioDeviceInfo;
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(cubeb_stream_prefs)
 
 namespace mozilla {
+
+class AudioThreadRegistry;
+
 namespace CubebUtils {
 
 typedef cubeb_devid AudioDeviceID;
@@ -27,6 +30,12 @@ void InitLibrary();
 // Shutdown Audio Library. Some Audio backends require shutting down the
 // library after using it.
 void ShutdownLibrary();
+
+bool SandboxEnabled();
+
+// Returns the global instance of AudioThreadRegistry. Initialized and
+// destroying in Init/ShutdownLibrary(), and safe from all threads.
+AudioThreadRegistry* GetAudioThreadRegistry();
 
 // Returns the maximum number of channels supported by the audio hardware.
 uint32_t MaxNumberOfChannels();

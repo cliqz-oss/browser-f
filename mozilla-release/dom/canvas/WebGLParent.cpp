@@ -42,7 +42,7 @@ mozilla::ipc::IPCResult WebGLParent::RecvInitialize(
   return IPC_OK();
 }
 
-WebGLParent::WebGLParent() = default;
+WebGLParent::WebGLParent() : PcqActor(this) {}
 WebGLParent::~WebGLParent() = default;
 
 bool WebGLParent::BeginCommandQueueDrain() {
@@ -136,15 +136,5 @@ mozilla::ipc::IPCResult WebGLParent::RecvUpdateCompositableHandle(
   return IPC_OK();
 }
 
-RefPtr<layers::SharedSurfaceTextureClient> WebGLParent::GetVRFrame(
-    webgl::ObjectId id) {
-  if (!mHost) {
-    return nullptr;
-  }
-
-  return mHost->GetVRFrame(id);
-}
-
 }  // namespace dom
-
 }  // namespace mozilla

@@ -22,6 +22,7 @@
 #include "gc/Cell.h"
 #include "gc/MaybeRooted.h"
 #include "gc/Nursery.h"
+#include "gc/RelocationOverlay.h"
 #include "gc/Rooting.h"
 #include "js/CharacterEncoding.h"
 #include "js/RootingAPI.h"
@@ -293,6 +294,11 @@ class JSString : public js::gc::Cell {
 
   static const uint32_t PINNED_ATOM_BIT = js::Bit(11);
 
+  // NON_DEDUP_BIT is used in string deduplication during tenuring.
+  // Atoms won't be tenured, so overloading PINNED_ATOM_BIT
+  // with NON_DEDUP_BIT works correctly.
+  static const uint32_t NON_DEDUP_BIT = js::Bit(11);
+
   static const uint32_t MAX_LENGTH = js::MaxStringLength;
 
   static const JS::Latin1Char MAX_LATIN1_CHAR = 0xff;
@@ -313,6 +319,10 @@ class JSString : public js::gc::Cell {
   }
   static constexpr size_t offsetOfLength() {
     return offsetof(JSString, header_) + Header::offsetOfLength();
+  }
+
+  bool sameLengthAndFlags(const JSString& other) const {
+    return header_ == other.header_;
   }
 
   static void staticAsserts() {
@@ -378,9 +388,6 @@ class JSString : public js::gc::Cell {
   template <typename CharT>
   MOZ_ALWAYS_INLINE void setNonInlineChars(const CharT* chars);
 
-  MOZ_ALWAYS_INLINE
-  uint32_t flags() const { return header_.flagsField(); }
-
   template <typename CharT>
   static MOZ_ALWAYS_INLINE void checkStringCharsArena(const CharT* chars) {
 #ifdef MOZ_DEBUG
@@ -391,6 +398,9 @@ class JSString : public js::gc::Cell {
  public:
   MOZ_ALWAYS_INLINE
   size_t length() const { return header_.lengthField(); }
+
+  MOZ_ALWAYS_INLINE
+  uint32_t flags() const { return header_.flagsField(); }
 
  protected:
   void setFlattenData(uintptr_t data) {
@@ -510,6 +520,15 @@ class JSString : public js::gc::Cell {
     return *(JSAtom*)this;
   }
 
+  MOZ_ALWAYS_INLINE
+  void setNonDeduplicatable() { setFlagBit(NON_DEDUP_BIT); }
+
+  MOZ_ALWAYS_INLINE
+  void clearNonDeduplicatable() { clearFlagBit(NON_DEDUP_BIT); }
+
+  MOZ_ALWAYS_INLINE
+  bool isDeduplicatable() { return !(flags() & NON_DEDUP_BIT); }
+
   // Fills |array| with various strings that represent the different string
   // kinds and character encodings.
   static bool fillWithRepresentatives(JSContext* cx,
@@ -520,6 +539,15 @@ class JSString : public js::gc::Cell {
   inline bool hasBase() const { return isDependent(); }
 
   inline JSLinearString* base() const;
+
+  // The base may be forwarded and becomes a relocation overlay.
+  // The return value can be a relocation overlay when the base is forwarded,
+  // or the return value can be the actual base when it is not forwarded.
+  inline JSLinearString* nurseryBaseOrRelocOverlay() const;
+
+  inline bool canOwnDependentChars() const;
+
+  inline void setBase(JSLinearString* newBase);
 
   void traceBase(JSTracer* trc);
 
@@ -781,7 +809,7 @@ class JSLinearString : public JSString {
   template <js::AllowGC allowGC, typename CharT>
   static inline JSLinearString* new_(
       JSContext* cx, js::UniquePtr<CharT[], JS::FreePolicy> chars,
-      size_t length);
+      size_t length, js::gc::InitialHeap heap);
 
   template <typename CharT>
   MOZ_ALWAYS_INLINE const CharT* nonInlineChars(
@@ -937,7 +965,13 @@ class JSDependentString : public JSLinearString {
 
  public:
   static inline JSLinearString* new_(JSContext* cx, JSLinearString* base,
-                                     size_t start, size_t length);
+                                     size_t start, size_t length,
+                                     js::gc::InitialHeap heap);
+
+  template <typename T>
+  void relocateNonInlineChars(T chars, size_t offset) {
+    setNonInlineChars(chars + offset);
+  }
 
 #if defined(DEBUG) || defined(JS_JITSPEW)
   void dumpRepresentation(js::GenericPrinter& out, int indent) const;
@@ -1022,7 +1056,8 @@ class JSThinInlineString : public JSInlineString {
   static const size_t MAX_LENGTH_TWO_BYTE = NUM_INLINE_CHARS_TWO_BYTE;
 
   template <js::AllowGC allowGC>
-  static inline JSThinInlineString* new_(JSContext* cx);
+  static inline JSThinInlineString* new_(JSContext* cx,
+                                         js::gc::InitialHeap heap);
 
   template <typename CharT>
   inline CharT* init(size_t length);
@@ -1060,7 +1095,8 @@ class JSFatInlineString : public JSInlineString {
 
  public:
   template <js::AllowGC allowGC>
-  static inline JSFatInlineString* new_(JSContext* cx);
+  static inline JSFatInlineString* new_(JSContext* cx,
+                                        js::gc::InitialHeap heap);
 
   static const size_t MAX_LENGTH_LATIN1 =
       JSString::NUM_INLINE_CHARS_LATIN1 + INLINE_EXTENSION_CHARS_LATIN1;
@@ -1226,6 +1262,9 @@ MOZ_ALWAYS_INLINE JSAtom* JSLinearString::morphAtomizedStringIntoPermanentAtom(
 }
 
 namespace js {
+
+template <typename CharT>
+bool CheckStringIsIndex(const CharT* s, size_t length, uint32_t* indexp);
 
 /**
  * An indexable characters class exposing unaligned, little-endian encoded
@@ -1445,88 +1484,107 @@ static inline UniqueChars StringToNewUTF8CharsZ(JSContext* maybecx,
  * Allocate a string with the given contents, potentially GCing in the process.
  */
 template <typename CharT>
-extern JSLinearString* NewString(JSContext* cx,
-                                 UniquePtr<CharT[], JS::FreePolicy> chars,
-                                 size_t length);
+extern JSLinearString* NewString(
+    JSContext* cx, UniquePtr<CharT[], JS::FreePolicy> chars, size_t length,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 /* Like NewString, but doesn't attempt to deflate to Latin1. */
 template <typename CharT>
 extern JSLinearString* NewStringDontDeflate(
-    JSContext* cx, UniquePtr<CharT[], JS::FreePolicy> chars, size_t length);
+    JSContext* cx, UniquePtr<CharT[], JS::FreePolicy> chars, size_t length,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 /**
  * Allocate a string with the given contents.  If |allowGC == CanGC|, this may
  * trigger a GC.
  */
 template <js::AllowGC allowGC, typename CharT>
-extern JSLinearString* NewString(JSContext* cx,
-                                 UniquePtr<CharT[], JS::FreePolicy> chars,
-                                 size_t length);
+extern JSLinearString* NewString(
+    JSContext* cx, UniquePtr<CharT[], JS::FreePolicy> chars, size_t length,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 /* Like NewString, but doesn't try to deflate to Latin1. */
 template <js::AllowGC allowGC, typename CharT>
 extern JSLinearString* NewStringDontDeflate(
-    JSContext* cx, UniquePtr<CharT[], JS::FreePolicy> chars, size_t length);
+    JSContext* cx, UniquePtr<CharT[], JS::FreePolicy> chars, size_t length,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
-extern JSLinearString* NewDependentString(JSContext* cx, JSString* base,
-                                          size_t start, size_t length);
+extern JSLinearString* NewDependentString(
+    JSContext* cx, JSString* base, size_t start, size_t length,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 /* Take ownership of an array of Latin1Chars. */
-extern JSLinearString* NewLatin1StringZ(JSContext* cx, UniqueChars chars);
+extern JSLinearString* NewLatin1StringZ(
+    JSContext* cx, UniqueChars chars,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 /* Copy a counted string and GC-allocate a descriptor for it. */
 template <js::AllowGC allowGC, typename CharT>
-extern JSLinearString* NewStringCopyN(JSContext* cx, const CharT* s, size_t n);
+extern JSLinearString* NewStringCopyN(
+    JSContext* cx, const CharT* s, size_t n,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 template <js::AllowGC allowGC>
-inline JSLinearString* NewStringCopyN(JSContext* cx, const char* s, size_t n) {
-  return NewStringCopyN<allowGC>(cx, reinterpret_cast<const Latin1Char*>(s), n);
+inline JSLinearString* NewStringCopyN(
+    JSContext* cx, const char* s, size_t n,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap) {
+  return NewStringCopyN<allowGC>(cx, reinterpret_cast<const Latin1Char*>(s), n,
+                                 heap);
 }
 
 /* Like NewStringCopyN, but doesn't try to deflate to Latin1. */
 template <js::AllowGC allowGC, typename CharT>
-extern JSLinearString* NewStringCopyNDontDeflate(JSContext* cx, const CharT* s,
-                                                 size_t n);
+extern JSLinearString* NewStringCopyNDontDeflate(
+    JSContext* cx, const CharT* s, size_t n,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 /* Copy a C string and GC-allocate a descriptor for it. */
 template <js::AllowGC allowGC>
-inline JSLinearString* NewStringCopyZ(JSContext* cx, const char16_t* s) {
-  return NewStringCopyN<allowGC>(cx, s, js_strlen(s));
+inline JSLinearString* NewStringCopyZ(
+    JSContext* cx, const char16_t* s,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap) {
+  return NewStringCopyN<allowGC>(cx, s, js_strlen(s), heap);
 }
 
 template <js::AllowGC allowGC>
-inline JSLinearString* NewStringCopyZ(JSContext* cx, const char* s) {
-  return NewStringCopyN<allowGC>(cx, s, strlen(s));
+inline JSLinearString* NewStringCopyZ(
+    JSContext* cx, const char* s,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap) {
+  return NewStringCopyN<allowGC>(cx, s, strlen(s), heap);
 }
 
 template <js::AllowGC allowGC>
-extern JSLinearString* NewStringCopyUTF8N(JSContext* cx,
-                                          const JS::UTF8Chars utf8);
+extern JSLinearString* NewStringCopyUTF8N(
+    JSContext* cx, const JS::UTF8Chars utf8,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 template <js::AllowGC allowGC>
-inline JSLinearString* NewStringCopyUTF8Z(JSContext* cx,
-                                          const JS::ConstUTF8CharsZ utf8) {
+inline JSLinearString* NewStringCopyUTF8Z(
+    JSContext* cx, const JS::ConstUTF8CharsZ utf8,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap) {
   return NewStringCopyUTF8N<allowGC>(
-      cx, JS::UTF8Chars(utf8.c_str(), strlen(utf8.c_str())));
+      cx, JS::UTF8Chars(utf8.c_str(), strlen(utf8.c_str())), heap);
 }
 
-JSString* NewMaybeExternalString(JSContext* cx, const char16_t* s, size_t n,
-                                 const JSExternalStringCallbacks* callbacks,
-                                 bool* allocatedExternal);
+JSString* NewMaybeExternalString(
+    JSContext* cx, const char16_t* s, size_t n,
+    const JSExternalStringCallbacks* callbacks, bool* allocatedExternal,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 /**
  * Allocate a new string consisting of |chars[0..length]| characters.
  */
-extern JSLinearString* NewStringFromLittleEndianNoGC(JSContext* cx,
-                                                     LittleEndianChars chars,
-                                                     size_t length);
+extern JSLinearString* NewStringFromLittleEndianNoGC(
+    JSContext* cx, LittleEndianChars chars, size_t length,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 static_assert(sizeof(HashNumber) == 4);
 
 template <AllowGC allowGC>
 extern JSString* ConcatStrings(
     JSContext* cx, typename MaybeRooted<JSString*, allowGC>::HandleType left,
-    typename MaybeRooted<JSString*, allowGC>::HandleType right);
+    typename MaybeRooted<JSString*, allowGC>::HandleType right,
+    js::gc::InitialHeap heap = js::gc::DefaultHeap);
 
 /*
  * Test if strings are equal. The caller can call the function even if str1
@@ -1728,6 +1786,23 @@ inline JSLinearString* JSString::base() const {
   return d.s.u3.base;
 }
 
+inline JSLinearString* JSString::nurseryBaseOrRelocOverlay() const {
+  MOZ_ASSERT(hasBase());
+  return d.s.u3.base;
+}
+
+inline bool JSString::canOwnDependentChars() const {
+  // A string that could own the malloced chars used by another (dependent)
+  // string. It will not have a base and must be linear and non-inline.
+  return isLinear() && !isInline() && !hasBase();
+}
+
+inline void JSString::setBase(JSLinearString* newBase) {
+  MOZ_ASSERT(hasBase());
+  MOZ_ASSERT(!newBase->isInline());
+  d.s.u3.base = newBase;
+}
+
 template <>
 MOZ_ALWAYS_INLINE const char16_t* JSLinearString::nonInlineChars(
     const JS::AutoRequireNoGC& nogc) const {
@@ -1872,6 +1947,115 @@ inline JSString* TenuredCell::as<JSString>() {
   MOZ_ASSERT(is<JSString>());
   return reinterpret_cast<JSString*>(this);
 }
+
+// StringRelocationOverlay assists with updating the string chars
+// pointers of dependent strings when their base strings are
+// deduplicated. It stores:
+//  - nursery chars of a root base (root base is a non-dependent base), or
+//  - nursery base of a dependent string
+// StringRelocationOverlay exploits the fact that the 3rd word of a JSString's
+// RelocationOverlay is not utilized and can be used to store extra information.
+class StringRelocationOverlay : public RelocationOverlay {
+  union {
+    // nursery chars of a root base
+    const JS::Latin1Char* nurseryCharsLatin1;
+    const char16_t* nurseryCharsTwoByte;
+
+    // The nursery base can be forwarded, which becomes a string relocation
+    // overlay, or it is not yet forwarded and is simply the base.
+    JSLinearString* nurseryBaseOrRelocOverlay;
+  };
+
+ public:
+  explicit StringRelocationOverlay(Cell* dst) : RelocationOverlay(dst) {
+    static_assert(sizeof(JSString) >= sizeof(StringRelocationOverlay));
+  }
+
+  static const StringRelocationOverlay* fromCell(const Cell* cell) {
+    return static_cast<const StringRelocationOverlay*>(cell);
+  }
+
+  static StringRelocationOverlay* fromCell(Cell* cell) {
+    return static_cast<StringRelocationOverlay*>(cell);
+  }
+
+  StringRelocationOverlay*& nextRef() {
+    MOZ_ASSERT(isForwarded());
+    return (StringRelocationOverlay*&)next_;
+  }
+
+  StringRelocationOverlay* next() const {
+    MOZ_ASSERT(isForwarded());
+    return (StringRelocationOverlay*)next_;
+  }
+
+  template <typename CharT>
+  MOZ_ALWAYS_INLINE const CharT* savedNurseryChars() const;
+
+  const MOZ_ALWAYS_INLINE JS::Latin1Char* savedNurseryCharsLatin1() const {
+    return nurseryCharsLatin1;
+  }
+
+  const MOZ_ALWAYS_INLINE char16_t* savedNurseryCharsTwoByte() const {
+    return nurseryCharsTwoByte;
+  }
+
+  JSLinearString* savedNurseryBaseOrRelocOverlay() const {
+    return nurseryBaseOrRelocOverlay;
+  }
+
+  // Transform a nursery string to a StringRelocationOverlay that is forwarded
+  // to a tenured string.
+  inline static StringRelocationOverlay* forwardCell(JSString* src, Cell* dst) {
+    MOZ_ASSERT(!src->isForwarded());
+    MOZ_ASSERT(!dst->isForwarded());
+
+    JS::AutoCheckCannotGC nogc;
+    StringRelocationOverlay* overlay;
+
+    // Initialize the overlay, and remember the nursery base string if there is
+    // one, or nursery non-inlined chars if it can be the root base of other
+    // strings.
+    //
+    // The non-inlined chars of a tenured dependent string should point to the
+    // tenured root base's one with an offset. For example, a dependent string
+    // may start from the 3rd char of its root base. During tenuring, offsets
+    // of dependent strings can be computed from the nursery non-inlined chars
+    // remembered in overlays.
+    if (src->hasBase()) {
+      auto nurseryBaseOrRelocOverlay = src->nurseryBaseOrRelocOverlay();
+      overlay = new (src) StringRelocationOverlay(dst);
+      overlay->nurseryBaseOrRelocOverlay = nurseryBaseOrRelocOverlay;
+    } else if (src->canOwnDependentChars()) {
+      if (src->hasTwoByteChars()) {
+        auto nurseryCharsTwoByte = src->asLinear().twoByteChars(nogc);
+        overlay = new (src) StringRelocationOverlay(dst);
+        overlay->nurseryCharsTwoByte = nurseryCharsTwoByte;
+      } else {
+        auto nurseryCharsLatin1 = src->asLinear().latin1Chars(nogc);
+        overlay = new (src) StringRelocationOverlay(dst);
+        overlay->nurseryCharsLatin1 = nurseryCharsLatin1;
+      }
+    } else {
+      overlay = new (src) StringRelocationOverlay(dst);
+    }
+
+    return overlay;
+  }
+};
+
+template <>
+MOZ_ALWAYS_INLINE const JS::Latin1Char*
+StringRelocationOverlay::savedNurseryChars() const {
+  return savedNurseryCharsLatin1();
+}
+
+template <>
+MOZ_ALWAYS_INLINE const char16_t* StringRelocationOverlay::savedNurseryChars()
+    const {
+  return savedNurseryCharsTwoByte();
+}
+
 }  // namespace gc
 }  // namespace js
 

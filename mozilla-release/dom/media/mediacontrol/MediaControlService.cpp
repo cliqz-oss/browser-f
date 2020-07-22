@@ -65,11 +65,11 @@ MediaControlService::MediaControlService() {
 }
 
 void MediaControlService::Init() {
-  mMediaKeysHandler = new MediaControlKeysHandler();
-  mMediaControlKeysManager = new MediaControlKeysManager();
-  mMediaControlKeysManager->Open();
-  MOZ_ASSERT(mMediaControlKeysManager->IsOpened());
-  mMediaControlKeysManager->AddListener(mMediaKeysHandler.get());
+  mMediaKeysHandler = new MediaControlKeyHandler();
+  mMediaControlKeyManager = new MediaControlKeyManager();
+  mMediaControlKeyManager->Open();
+  MOZ_ASSERT(mMediaControlKeyManager->IsOpened());
+  mMediaControlKeyManager->AddListener(mMediaKeysHandler.get());
   mControllerManager = MakeUnique<ControllerManager>(this);
 }
 
@@ -97,7 +97,7 @@ MediaControlService::Observe(nsISupports* aSubject, const char* aTopic,
 
 void MediaControlService::Shutdown() {
   mControllerManager->Shutdown();
-  mMediaControlKeysManager->RemoveListener(mMediaKeysHandler.get());
+  mMediaControlKeyManager->RemoveListener(mMediaKeysHandler.get());
 }
 
 bool MediaControlService::RegisterActiveMediaController(
@@ -191,12 +191,11 @@ MediaController* MediaControlService::GetMainController() const {
   return mControllerManager->GetMainController();
 }
 
-void MediaControlService::GenerateMediaControlKeysTestEvent(
-    MediaControlKeysEvent aEvent) {
+void MediaControlService::GenerateTestMediaControlKey(MediaControlKey aKey) {
   if (!StaticPrefs::media_mediacontrol_testingevents_enabled()) {
     return;
   }
-  mMediaKeysHandler->OnKeyPressed(aEvent);
+  mMediaKeysHandler->OnKeyPressed(aKey);
 }
 
 MediaMetadataBase MediaControlService::GetMainControllerMediaMetadata() const {
@@ -220,7 +219,7 @@ MediaSessionPlaybackState MediaControlService::GetMainControllerPlaybackState()
 // Following functions belong to ControllerManager
 MediaControlService::ControllerManager::ControllerManager(
     MediaControlService* aService)
-    : mSource(aService->GetMediaControlKeysEventSource()) {
+    : mSource(aService->GetMediaControlKeySource()) {
   MOZ_ASSERT(mSource);
 }
 
@@ -243,7 +242,7 @@ bool MediaControlService::ControllerManager::RemoveController(
   }
   // This is LinkedListElement's method which will remove controller from
   // `mController`.
-  aController->remove();
+  static_cast<LinkedListControllerPtr>(aController)->remove();
   // If main controller is removed from the list, the last controller in the
   // list would become the main controller. Or reset the main controller when
   // the list is already empty.
@@ -291,7 +290,7 @@ void MediaControlService::ControllerManager::ReorderGivenController(
     // controller would be B. But if we don't maintain the controller order when
     // main controller changes, we would pick C as the main controller because
     // the list is still [A, B, C].
-    aController->remove();
+    static_cast<LinkedListControllerPtr>(aController)->remove();
     return mControllers.insertBack(aController);
   }
 
@@ -303,8 +302,9 @@ void MediaControlService::ControllerManager::ReorderGivenController(
     // a list [A, B, C, D, E] and E is the main controller. If we want to
     // reorder B to the front of E, then the list would become [A, C, D, B, E].
     MOZ_ASSERT(GetMainController() != aController);
-    aController->remove();
-    return GetMainController()->setPrevious(aController);
+    static_cast<LinkedListControllerPtr>(aController)->remove();
+    return static_cast<LinkedListControllerPtr>(GetMainController())
+        ->setPrevious(aController);
   }
 }
 
@@ -330,19 +330,21 @@ void MediaControlService::ControllerManager::UpdateMainControllerInternal(
   MOZ_ASSERT(NS_IsMainThread());
   mMainController = aController;
 
-  // As main controller has been changed, we should disconnect the listener from
-  // the previous controller and reconnect it to the new controller.
-  DisconnectMainControllerEvents();
-
   if (!mMainController) {
     LOG_MAINCONTROLLER_INFO("Clear main controller");
     mSource->SetPlaybackState(MediaSessionPlaybackState::None);
     mSource->SetMediaMetadata(MediaMetadataBase::EmptyData());
+    mSource->SetSupportedMediaKeys(MediaKeysArray());
+    DisconnectMainControllerEvents();
   } else {
     LOG_MAINCONTROLLER_INFO("Set controller %" PRId64 " as main controller",
                             mMainController->Id());
-    ConnectToMainControllerEvents();
+    mSource->SetPlaybackState(mMainController->GetState());
+    mSource->SetMediaMetadata(mMainController->GetCurrentMediaMetadata());
+    mSource->SetSupportedMediaKeys(mMainController->GetSupportedMediaKeys());
+    ConnectMainControllerEvents();
   }
+
   if (StaticPrefs::media_mediacontrol_testingevents_enabled()) {
     if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
       obs->NotifyObservers(nullptr, "main-media-controller-changed", nullptr);
@@ -350,20 +352,38 @@ void MediaControlService::ControllerManager::UpdateMainControllerInternal(
   }
 }
 
-void MediaControlService::ControllerManager::ConnectToMainControllerEvents() {
-  MOZ_ASSERT(mMainController);
-  // Listen to main controller's event in order to get its metadata update.
+void MediaControlService::ControllerManager::ConnectMainControllerEvents() {
+  // As main controller has been changed, we should disconnect listeners from
+  // the previous controller and reconnect them to the new controller.
+  DisconnectMainControllerEvents();
+  // Listen to main controller's event in order to propagate the content that
+  // might be displayed on the virtual control interface created by the source.
   mMetadataChangedListener = mMainController->MetadataChangedEvent().Connect(
       AbstractThread::MainThread(), this,
       &ControllerManager::MainControllerMetadataChanged);
-
-  // Update controller's current status to the event source.
-  mSource->SetPlaybackState(mMainController->GetState());
-  mSource->SetMediaMetadata(mMainController->GetCurrentMediaMetadata());
+  mSupportedKeysChangedListener =
+      mMainController->SupportedKeysChangedEvent().Connect(
+          AbstractThread::MainThread(),
+          [this](const MediaKeysArray& aSupportedKeys) {
+            mSource->SetSupportedMediaKeys(aSupportedKeys);
+          });
+  mFullScreenChangedListener =
+      mMainController->FullScreenChangedEvent().Connect(
+          AbstractThread::MainThread(), [this](bool aIsEnabled) {
+            mSource->SetEnableFullScreen(aIsEnabled);
+          });
+  mPictureInPictureModeChangedListener =
+      mMainController->PictureInPictureModeChangedEvent().Connect(
+          AbstractThread::MainThread(), [this](bool aIsEnabled) {
+            mSource->SetEnablePictureInPictureMode(aIsEnabled);
+          });
 }
 
 void MediaControlService::ControllerManager::DisconnectMainControllerEvents() {
   mMetadataChangedListener.DisconnectIfExists();
+  mSupportedKeysChangedListener.DisconnectIfExists();
+  mFullScreenChangedListener.DisconnectIfExists();
+  mPictureInPictureModeChangedListener.DisconnectIfExists();
 }
 
 MediaController* MediaControlService::ControllerManager::GetMainController()
@@ -372,7 +392,14 @@ MediaController* MediaControlService::ControllerManager::GetMainController()
 }
 
 uint64_t MediaControlService::ControllerManager::GetControllersNum() const {
-  return mControllers.length();
+  size_t length = 0;
+  const auto* element =
+      static_cast<ConstLinkedListControllerPtr>(mControllers.getFirst());
+  while (element) {
+    length++;
+    element = element->getNext();
+  }
+  return length;
 }
 
 bool MediaControlService::ControllerManager::Contains(

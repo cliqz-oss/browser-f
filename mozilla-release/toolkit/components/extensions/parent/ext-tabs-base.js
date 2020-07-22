@@ -28,6 +28,7 @@ var {
   DefaultWeakMap,
   ExtensionError,
   getWinUtils,
+  parseMatchPatterns,
 } = ExtensionUtils;
 
 var { defineLazyGetter } = ExtensionCommon;
@@ -717,7 +718,7 @@ class TabBase {
     }
 
     options.hasActiveTabPermission = this.hasActiveTabPermission;
-    options.matches = this.extension.whiteListedHosts.patterns.map(
+    options.matches = this.extension.allowedOrigins.patterns.map(
       host => host.pattern
     );
 
@@ -1962,6 +1963,21 @@ class TabManagerBase {
    * @returns {Iterator<TabBase>}
    */
   *query(queryInfo = null, context = null) {
+    if (queryInfo) {
+      if (queryInfo.url !== null) {
+        queryInfo.url = parseMatchPatterns([].concat(queryInfo.url), {
+          restrictSchemes: false,
+        });
+      }
+
+      if (queryInfo.title !== null) {
+        try {
+          queryInfo.title = new MatchGlob(queryInfo.title);
+        } catch (e) {
+          throw new ExtensionError(`Invalid title: ${queryInfo.title}`);
+        }
+      }
+    }
     function* candidates(windowWrapper) {
       if (queryInfo) {
         let { active, highlighted, index } = queryInfo;

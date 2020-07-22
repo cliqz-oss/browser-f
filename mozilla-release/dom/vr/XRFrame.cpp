@@ -73,17 +73,13 @@ already_AddRefed<XRViewerPose> XRFrame::GetViewerPose(
         sensorState.pose.orientation[0], sensorState.pose.orientation[1],
         sensorState.pose.orientation[2], sensorState.pose.orientation[3]);
 
-    // Quaternion was inverted for WebVR. We need to invert it here again.
-    // TODO: Remove those extra inverts when WebVR support is disabled.
-    viewerOrientation.Invert();
-
     gfx::Matrix4x4Double headTransform;
     headTransform.SetRotationFromQuaternion(viewerOrientation);
     headTransform.PostTranslate(viewerPosition);
 
     gfx::Matrix4x4Double originTransform;
     originTransform.SetRotationFromQuaternion(
-        aReferenceSpace.GetEffectiveOriginOrientation());
+        aReferenceSpace.GetEffectiveOriginOrientation().Inverse());
     originTransform.PreTranslate(-aReferenceSpace.GetEffectiveOriginPosition());
 
     headTransform *= originTransform;
@@ -159,7 +155,8 @@ already_AddRefed<XRPose> XRFrame::GetPose(const XRSpace& aSpace,
 
   const bool emulatedPosition = aSpace.IsPositionEmulated();
   gfx::Matrix4x4Double base;
-  base.SetRotationFromQuaternion(aBaseSpace.GetEffectiveOriginOrientation());
+  base.SetRotationFromQuaternion(
+      aBaseSpace.GetEffectiveOriginOrientation().Inverse());
   base.PreTranslate(-aBaseSpace.GetEffectiveOriginPosition());
 
   gfx::Matrix4x4Double matrix = aSpace.GetEffectiveOriginTransform() * base;

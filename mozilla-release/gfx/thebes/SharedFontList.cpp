@@ -615,7 +615,12 @@ void FontList::ShareBlocksToProcess(nsTArray<base::SharedMemoryHandle>* aBlocks,
     base::SharedMemoryHandle* handle =
         aBlocks->AppendElement(base::SharedMemory::NULLHandle());
     if (!shmem->ShareToProcess(aPid, handle)) {
-      MOZ_CRASH("failed to share block");
+      // If something went wrong here, we just bail out; the child will need to
+      // request the blocks as needed, at some performance cost. (Although in
+      // practice this may mean resources are so constrained the child process
+      // isn't really going to work at all. But that's not our problem here.)
+      aBlocks->Clear();
+      return;
     }
   }
 }
@@ -705,7 +710,7 @@ void FontList::SetAliases(
   aliasArray.SetCapacity(aAliasTable.Count());
   for (auto i = aAliasTable.Iter(); !i.Done(); i.Next()) {
     aliasArray.AppendElement(Family::InitData(
-        i.Key(), i.Key(), i.Data()->mIndex, i.Data()->mVisibility,
+        i.Key(), i.Data()->mBaseFamily, i.Data()->mIndex, i.Data()->mVisibility,
         i.Data()->mBundled, i.Data()->mBadUnderline, i.Data()->mForceClassic));
   }
   aliasArray.Sort();
@@ -722,9 +727,9 @@ void FontList::SetAliases(
     (void)new (&aliases[i]) Family(this, aliasArray[i]);
     LOG_FONTLIST(("(shared-fontlist) alias family %u (%s)", (unsigned)i,
                   aliasArray[i].mName.get()));
-    aliases[i].SetFacePtrs(this, aAliasTable.Get(aliasArray[i].mName)->mFaces);
+    aliases[i].SetFacePtrs(this, aAliasTable.Get(aliasArray[i].mKey)->mFaces);
     if (LOG_FONTLIST_ENABLED()) {
-      const auto& faces = aAliasTable.Get(aliasArray[i].mName)->mFaces;
+      const auto& faces = aAliasTable.Get(aliasArray[i].mKey)->mFaces;
       for (unsigned j = 0; j < faces.Length(); j++) {
         auto face = static_cast<const fontlist::Face*>(faces[j].ToPtr(this));
         const nsCString& desc = face->mDescriptor.AsString(this);
@@ -769,8 +774,30 @@ void FontList::SetLocalNames(
     (void)new (&faces[i]) LocalFaceRec();
     const auto& rec = aLocalNameTable.Get(faceArray[i]);
     faces[i].mKey.Assign(faceArray[i], this);
-    faces[i].mFamilyIndex = FindFamily(rec.mFamilyName) - families;
-    faces[i].mFaceIndex = rec.mFaceIndex;
+    const auto* family = FindFamily(rec.mFamilyName);
+    if (!family) {
+      // Skip this record if family was excluded by the font whitelist pref.
+      continue;
+    }
+    faces[i].mFamilyIndex = family - families;
+    if (rec.mFaceIndex == uint32_t(-1)) {
+      // The InitData record contains an mFaceDescriptor rather than an index,
+      // so now we need to look for the appropriate index in the family.
+      faces[i].mFaceIndex = 0;
+      const Pointer* faceList =
+          static_cast<const Pointer*>(family->Faces(this));
+      for (uint32_t j = 0; j < family->NumFaces(); j++) {
+        if (!faceList[j].IsNull()) {
+          const Face* face = static_cast<const Face*>(faceList[j].ToPtr(this));
+          if (rec.mFaceDescriptor == face->mDescriptor.AsString(this)) {
+            faces[i].mFaceIndex = j;
+            break;
+          }
+        }
+      }
+    } else {
+      faces[i].mFaceIndex = rec.mFaceIndex;
+    }
   }
   header.mLocalFaces = ptr;
   header.mLocalFaceCount.store(count);

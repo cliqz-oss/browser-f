@@ -15,6 +15,7 @@
 #include "ProcessPriorityManager.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIXULRuntime.h"
+#include <deque>
 
 using namespace mozilla::hal;
 using namespace mozilla::dom;
@@ -25,6 +26,8 @@ namespace mozilla {
  * PreallocatedProcessManager.
  */
 class PreallocatedProcessManagerImpl final : public nsIObserver {
+  friend class PreallocatedProcessManager;
+
  public:
   static PreallocatedProcessManagerImpl* Singleton();
 
@@ -34,14 +37,14 @@ class PreallocatedProcessManagerImpl final : public nsIObserver {
   // See comments on PreallocatedProcessManager for these methods.
   void AddBlocker(ContentParent* aParent);
   void RemoveBlocker(ContentParent* aParent);
-  already_AddRefed<ContentParent> Take();
+  already_AddRefed<ContentParent> Take(const nsAString& aRemoteType);
   bool Provide(ContentParent* aParent);
   void Erase(ContentParent* aParent);
 
  private:
   static const char* const kObserverTopics[];
 
-  static mozilla::StaticRefPtr<PreallocatedProcessManagerImpl> sSingleton;
+  static StaticRefPtr<PreallocatedProcessManagerImpl> sSingleton;
 
   PreallocatedProcessManagerImpl();
   ~PreallocatedProcessManagerImpl();
@@ -55,18 +58,29 @@ class PreallocatedProcessManagerImpl final : public nsIObserver {
   void AllocateNow();
 
   void RereadPrefs();
-  void Enable();
+  void Enable(uint32_t aProcesses);
   void Disable();
-  void CloseProcess();
+  void CloseProcesses();
+
+  bool IsEmpty() const {
+    return mPreallocatedProcesses.empty() && !mLaunchInProgress;
+  }
 
   bool mEnabled;
-  bool mShutdown;
+  static bool sShutdown;
   bool mLaunchInProgress;
-  RefPtr<ContentParent> mPreallocatedProcess;
-  nsTHashtable<nsUint64HashKey> mBlockers;
-
-  bool IsEmpty() const { return !mPreallocatedProcess && !mLaunchInProgress; }
+  uint32_t mNumberPreallocs;
+  std::deque<RefPtr<ContentParent>> mPreallocatedProcesses;
+  RefPtr<ContentParent> mPreallocatedE10SProcess;  // There can be only one
+  // Even if we have multiple PreallocatedProcessManagerImpls, we'll have
+  // one blocker counter
+  static uint32_t sNumBlockers;
+  TimeStamp mBlockingStartTime;
 };
+
+/* static */
+uint32_t PreallocatedProcessManagerImpl::sNumBlockers = 0;
+bool PreallocatedProcessManagerImpl::sShutdown = false;
 
 const char* const PreallocatedProcessManagerImpl::kObserverTopics[] = {
     "memory-pressure",
@@ -82,18 +96,18 @@ StaticRefPtr<PreallocatedProcessManagerImpl>
 PreallocatedProcessManagerImpl* PreallocatedProcessManagerImpl::Singleton() {
   MOZ_ASSERT(NS_IsMainThread());
   if (!sSingleton) {
-    sSingleton = new PreallocatedProcessManagerImpl();
+    sSingleton = new PreallocatedProcessManagerImpl;
     sSingleton->Init();
     ClearOnShutdown(&sSingleton);
   }
-
   return sSingleton;
+  //  PreallocatedProcessManagers live until shutdown
 }
 
 NS_IMPL_ISUPPORTS(PreallocatedProcessManagerImpl, nsIObserver)
 
 PreallocatedProcessManagerImpl::PreallocatedProcessManagerImpl()
-    : mEnabled(false), mShutdown(false), mLaunchInProgress(false) {}
+    : mEnabled(false), mLaunchInProgress(false), mNumberPreallocs(1) {}
 
 PreallocatedProcessManagerImpl::~PreallocatedProcessManagerImpl() {
   // This shouldn't happen, because the promise callbacks should
@@ -106,6 +120,11 @@ void PreallocatedProcessManagerImpl::Init() {
   // We have to respect processCount at all time. This is especially important
   // for testing.
   Preferences::AddStrongObserver(this, "dom.ipc.processCount");
+  // A StaticPref, but we need to adjust the number of preallocated processes
+  // if the value goes up or down, so we need to run code on change.
+  Preferences::AddStrongObserver(this,
+                                 "dom.ipc.processPrelaunch.fission.number");
+
   nsCOMPtr<nsIObserverService> os = services::GetObserverService();
   MOZ_ASSERT(os);
   for (auto topic : kObserverTopics) {
@@ -125,6 +144,9 @@ PreallocatedProcessManagerImpl::Observe(nsISupports* aSubject,
              !strcmp("profile-change-teardown", aTopic)) {
     Preferences::RemoveObserver(this, "dom.ipc.processPrelaunch.enabled");
     Preferences::RemoveObserver(this, "dom.ipc.processCount");
+    Preferences::RemoveObserver(this,
+                                "dom.ipc.processPrelaunch.fission.number");
+
     nsCOMPtr<nsIObserverService> os = services::GetObserverService();
     MOZ_ASSERT(os);
     for (auto topic : kObserverTopics) {
@@ -132,11 +154,11 @@ PreallocatedProcessManagerImpl::Observe(nsISupports* aSubject,
     }
     // Let's prevent any new preallocated processes from starting. ContentParent
     // will handle the shutdown of the existing process and the
-    // mPreallocatedProcess reference will be cleared by the ClearOnShutdown of
-    // the manager singleton.
-    mShutdown = true;
+    // mPreallocatedProcesses reference will be cleared by the ClearOnShutdown
+    // of the manager singleton.
+    sShutdown = true;
   } else if (!strcmp("memory-pressure", aTopic)) {
-    CloseProcess();
+    CloseProcesses();
   } else {
     MOZ_ASSERT_UNREACHABLE("Unknown topic");
   }
@@ -147,54 +169,91 @@ PreallocatedProcessManagerImpl::Observe(nsISupports* aSubject,
 void PreallocatedProcessManagerImpl::RereadPrefs() {
   if (mozilla::BrowserTabsRemoteAutostart() &&
       Preferences::GetBool("dom.ipc.processPrelaunch.enabled")) {
-    Enable();
+    int32_t number = 1;
+    if (mozilla::FissionAutostart()) {
+      number = StaticPrefs::dom_ipc_processPrelaunch_fission_number();
+    }
+    if (number >= 0) {
+      Enable(number);
+      // We have one prealloc queue for all types except File now
+      if (static_cast<uint64_t>(number) < mPreallocatedProcesses.size()) {
+        CloseProcesses();
+      }
+    }
   } else {
     Disable();
   }
-
-  if (ContentParent::IsMaxProcessCountReached(
-          NS_LITERAL_STRING(DEFAULT_REMOTE_TYPE))) {
-    CloseProcess();
-  }
 }
 
-already_AddRefed<ContentParent> PreallocatedProcessManagerImpl::Take() {
-  if (!mEnabled || mShutdown) {
+already_AddRefed<ContentParent> PreallocatedProcessManagerImpl::Take(
+    const nsAString& aRemoteType) {
+  if (!mEnabled || sShutdown) {
     return nullptr;
   }
-
-  if (mPreallocatedProcess) {
-    // The preallocated process is taken. Let's try to start up a new one soon.
-    ProcessPriorityManager::SetProcessPriority(mPreallocatedProcess,
-                                               PROCESS_PRIORITY_FOREGROUND);
-    AllocateOnIdle();
+  RefPtr<ContentParent> process;
+  if (aRemoteType.EqualsLiteral(DEFAULT_REMOTE_TYPE)) {
+    // we can recycle processes via Provide() for e10s only
+    process = mPreallocatedE10SProcess.forget();
+    if (process) {
+      MOZ_LOG(ContentParent::GetLog(), LogLevel::Debug,
+              ("Reuse " DEFAULT_REMOTE_TYPE " process %p",
+               process.get()));
+    }
   }
-
-  return mPreallocatedProcess.forget();
+  if (!process && !mPreallocatedProcesses.empty()) {
+    process = mPreallocatedProcesses.front().forget();
+    mPreallocatedProcesses.pop_front();  // holds a nullptr
+    // We took a preallocated process. Let's try to start up a new one
+    // soon.
+    AllocateOnIdle();
+    MOZ_LOG(ContentParent::GetLog(), LogLevel::Debug,
+            ("Use " PREALLOC_REMOTE_TYPE " process %p", process.get()));
+  }
+  if (process) {
+    ProcessPriorityManager::SetProcessPriority(process,
+                                               PROCESS_PRIORITY_FOREGROUND);
+  }
+  return process.forget();
 }
 
 bool PreallocatedProcessManagerImpl::Provide(ContentParent* aParent) {
+  MOZ_DIAGNOSTIC_ASSERT(
+      aParent->GetRemoteType().EqualsLiteral(DEFAULT_REMOTE_TYPE));
+
   // This will take the already-running process even if there's a
   // launch in progress; if that process hasn't been taken by the
   // time the launch completes, the new process will be shut down.
-  if (mEnabled && !mShutdown && !mPreallocatedProcess) {
-    mPreallocatedProcess = aParent;
+  if (mEnabled && !sShutdown && !mPreallocatedE10SProcess) {
+    MOZ_LOG(ContentParent::GetLog(), LogLevel::Debug,
+            ("Store for reuse " DEFAULT_REMOTE_TYPE " process %p", aParent));
+    ProcessPriorityManager::SetProcessPriority(aParent,
+                                               PROCESS_PRIORITY_BACKGROUND);
+    mPreallocatedE10SProcess = aParent;
+    return true;
   }
 
   // We might get a call from both NotifyTabDestroying and NotifyTabDestroyed
   // with the same ContentParent. Returning true here for both calls is
   // important to avoid the cached process to be destroyed.
-  return aParent == mPreallocatedProcess;
+  return aParent == mPreallocatedE10SProcess;
 }
 
 void PreallocatedProcessManagerImpl::Erase(ContentParent* aParent) {
-  if (mPreallocatedProcess == aParent) {
-    mBlockers.RemoveEntry(aParent->ChildID());
-    mPreallocatedProcess = nullptr;
+  // Ensure this ContentParent isn't cached
+  for (auto it = mPreallocatedProcesses.begin();
+       it != mPreallocatedProcesses.end(); it++) {
+    if (*it == aParent) {
+      mPreallocatedProcesses.erase(it);
+      break;
+    }
+  }
+  if (mPreallocatedE10SProcess == aParent) {
+    mPreallocatedE10SProcess = nullptr;
   }
 }
 
-void PreallocatedProcessManagerImpl::Enable() {
+void PreallocatedProcessManagerImpl::Enable(uint32_t aProcesses) {
+  mNumberPreallocs = aProcesses;
   if (mEnabled) {
     return;
   }
@@ -204,13 +263,13 @@ void PreallocatedProcessManagerImpl::Enable() {
 }
 
 void PreallocatedProcessManagerImpl::AddBlocker(ContentParent* aParent) {
-  uint64_t childID = aParent->ChildID();
-  MOZ_ASSERT(!mBlockers.Contains(childID));
-  mBlockers.PutEntry(childID);
+  if (sNumBlockers == 0) {
+    mBlockingStartTime = TimeStamp::Now();
+  }
+  sNumBlockers++;
 }
 
 void PreallocatedProcessManagerImpl::RemoveBlocker(ContentParent* aParent) {
-  uint64_t childID = aParent->ChildID();
   // This used to assert that the blocker existed, but preallocated
   // processes aren't blockers anymore because it's not useful and
   // interferes with async launch, and it's simpler if content
@@ -218,16 +277,27 @@ void PreallocatedProcessManagerImpl::RemoveBlocker(ContentParent* aParent) {
   // (And preallocated processes can't AddBlocker when taken, because
   // it's possible for a short-lived process to be recycled through
   // Provide() and Take() before reaching RecvFirstIdle.)
-  mBlockers.RemoveEntry(childID);
-  if (IsEmpty() && mBlockers.IsEmpty()) {
-    AllocateAfterDelay();
+
+  MOZ_DIAGNOSTIC_ASSERT(sNumBlockers > 0);
+  sNumBlockers--;
+  if (sNumBlockers == 0) {
+    MOZ_LOG(ContentParent::GetLog(), LogLevel::Debug,
+            ("Blocked preallocation for %fms",
+             (TimeStamp::Now() - mBlockingStartTime).ToMilliseconds()));
+    PROFILER_ADD_TEXT_MARKER(
+        "Process", NS_LITERAL_CSTRING("Blocked preallocation"),
+        JS::ProfilingCategoryPair::DOM, mBlockingStartTime, TimeStamp::Now());
+    if (IsEmpty()) {
+      AllocateAfterDelay();
+    }
   }
 }
 
 bool PreallocatedProcessManagerImpl::CanAllocate() {
-  return mEnabled && mBlockers.IsEmpty() && IsEmpty() && !mShutdown &&
-         !ContentParent::IsMaxProcessCountReached(
-             NS_LITERAL_STRING(DEFAULT_REMOTE_TYPE));
+  return mEnabled && sNumBlockers == 0 &&
+         mPreallocatedProcesses.size() < mNumberPreallocs && !sShutdown &&
+         (FissionAutostart() || !ContentParent::IsMaxProcessCountReached(
+                                    NS_LITERAL_STRING(DEFAULT_REMOTE_TYPE)));
 }
 
 void PreallocatedProcessManagerImpl::AllocateAfterDelay() {
@@ -254,7 +324,7 @@ void PreallocatedProcessManagerImpl::AllocateOnIdle() {
 
 void PreallocatedProcessManagerImpl::AllocateNow() {
   if (!CanAllocate()) {
-    if (mEnabled && !mShutdown && IsEmpty() && !mBlockers.IsEmpty()) {
+    if (mEnabled && !sShutdown && IsEmpty() && sNumBlockers > 0) {
       // If it's too early to allocate a process let's retry later.
       AllocateAfterDelay();
     }
@@ -265,12 +335,27 @@ void PreallocatedProcessManagerImpl::AllocateNow() {
   mLaunchInProgress = true;
 
   ContentParent::PreallocateProcess()->Then(
-      GetCurrentThreadSerialEventTarget(), __func__,
+      GetCurrentSerialEventTarget(), __func__,
 
       [self, this](const RefPtr<ContentParent>& process) {
         mLaunchInProgress = false;
         if (CanAllocate()) {
-          mPreallocatedProcess = process;
+          // slight perf reason for push_back - while the cpu cache
+          // probably has stack/etc associated with the most recent
+          // process created, we don't know that it has finished startup.
+          // If we added it to the queue on completion of startup, we
+          // could push_front it, but that would require a bunch more
+          // logic.
+          mPreallocatedProcesses.push_back(process);
+          MOZ_LOG(
+              ContentParent::GetLog(), LogLevel::Debug,
+              ("Preallocated = %lu of %d processes",
+               (unsigned long)mPreallocatedProcesses.size(), mNumberPreallocs));
+
+          // Continue prestarting processes if needed
+          if (mPreallocatedProcesses.size() < mNumberPreallocs) {
+            AllocateOnIdle();
+          }
         } else {
           process->ShutDownProcess(ContentParent::SEND_SHUTDOWN_MESSAGE);
         }
@@ -287,43 +372,77 @@ void PreallocatedProcessManagerImpl::Disable() {
   }
 
   mEnabled = false;
-  CloseProcess();
+  CloseProcesses();
 }
 
-void PreallocatedProcessManagerImpl::CloseProcess() {
-  if (mPreallocatedProcess) {
-    mPreallocatedProcess->ShutDownProcess(ContentParent::SEND_SHUTDOWN_MESSAGE);
-    mPreallocatedProcess = nullptr;
+void PreallocatedProcessManagerImpl::CloseProcesses() {
+  while (!mPreallocatedProcesses.empty()) {
+    RefPtr<ContentParent> process(mPreallocatedProcesses.front().forget());
+    mPreallocatedProcesses.pop_front();
+    process->ShutDownProcess(ContentParent::SEND_SHUTDOWN_MESSAGE);
+    // drop ref and let it free
+  }
+  if (mPreallocatedE10SProcess) {
+    mPreallocatedE10SProcess->ShutDownProcess(
+        ContentParent::SEND_SHUTDOWN_MESSAGE);
+    mPreallocatedE10SProcess = nullptr;
   }
 }
 
-inline PreallocatedProcessManagerImpl* GetPPMImpl() {
+inline PreallocatedProcessManagerImpl*
+PreallocatedProcessManager::GetPPMImpl() {
+  if (PreallocatedProcessManagerImpl::sShutdown) {
+    return nullptr;
+  }
   return PreallocatedProcessManagerImpl::Singleton();
 }
 
 /* static */
-void PreallocatedProcessManager::AddBlocker(ContentParent* aParent) {
-  GetPPMImpl()->AddBlocker(aParent);
+void PreallocatedProcessManager::AddBlocker(const nsAString& aRemoteType,
+                                            ContentParent* aParent) {
+  MOZ_LOG(ContentParent::GetLog(), LogLevel::Debug,
+          ("AddBlocker: %s %p (sNumBlockers=%d)",
+           NS_ConvertUTF16toUTF8(aRemoteType).get(), aParent,
+           PreallocatedProcessManagerImpl::sNumBlockers));
+  if (auto impl = GetPPMImpl()) {
+    impl->AddBlocker(aParent);
+  }
 }
 
 /* static */
-void PreallocatedProcessManager::RemoveBlocker(ContentParent* aParent) {
-  GetPPMImpl()->RemoveBlocker(aParent);
+void PreallocatedProcessManager::RemoveBlocker(const nsAString& aRemoteType,
+                                               ContentParent* aParent) {
+  MOZ_LOG(ContentParent::GetLog(), LogLevel::Debug,
+          ("RemoveBlocker: %s %p (sNumBlockers=%d)",
+           NS_ConvertUTF16toUTF8(aRemoteType).get(), aParent,
+           PreallocatedProcessManagerImpl::sNumBlockers));
+  if (auto impl = GetPPMImpl()) {
+    impl->RemoveBlocker(aParent);
+  }
 }
 
 /* static */
-already_AddRefed<ContentParent> PreallocatedProcessManager::Take() {
-  return GetPPMImpl()->Take();
+already_AddRefed<ContentParent> PreallocatedProcessManager::Take(
+    const nsAString& aRemoteType) {
+  if (auto impl = GetPPMImpl()) {
+    return impl->Take(aRemoteType);
+  }
+  return nullptr;
 }
 
 /* static */
 bool PreallocatedProcessManager::Provide(ContentParent* aParent) {
-  return GetPPMImpl()->Provide(aParent);
+  if (auto impl = GetPPMImpl()) {
+    return impl->Provide(aParent);
+  }
+  return false;  // We didn't take the ContentParent
 }
 
 /* static */
 void PreallocatedProcessManager::Erase(ContentParent* aParent) {
-  return GetPPMImpl()->Erase(aParent);
+  if (auto impl = GetPPMImpl()) {
+    impl->Erase(aParent);
+  }
 }
 
 }  // namespace mozilla

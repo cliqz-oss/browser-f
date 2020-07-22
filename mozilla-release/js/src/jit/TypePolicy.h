@@ -146,11 +146,15 @@ class CallPolicy final : public TypePolicy {
                                  MInstruction* def) const override;
 };
 
-// Policy for MPow. First operand Double; second Double or Int32.
+// Policy for MPow:
+//
+// * If return type is MIRType::Double, we need (Double, Double) or
+//   (Double, Int32) operands.
+// * If return type is MIRType::Int32, we need (Int32, Int32) operands.
 class PowPolicy final : public TypePolicy {
  public:
   constexpr PowPolicy() = default;
-  SPECIALIZATION_DATA_;
+  EMPTY_DATA_;
   MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc,
                                  MInstruction* ins) const override;
 };
@@ -162,6 +166,20 @@ class SignPolicy final : public TypePolicy {
   SPECIALIZATION_DATA_;
   MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc,
                                  MInstruction* ins) const override;
+};
+
+// Expect a symbol for operand Op. If the input is a Value, it is unboxed.
+template <unsigned Op>
+class SymbolPolicy final : public TypePolicy {
+ public:
+  constexpr SymbolPolicy() = default;
+  EMPTY_DATA_;
+  static MOZ_MUST_USE bool staticAdjustInputs(TempAllocator& alloc,
+                                              MInstruction* def);
+  MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc,
+                                 MInstruction* def) const override {
+    return staticAdjustInputs(alloc, def);
+  }
 };
 
 // Expect a string for operand Op. If the input is a Value, it is unboxed.

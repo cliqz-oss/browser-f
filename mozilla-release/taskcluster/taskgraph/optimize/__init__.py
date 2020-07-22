@@ -40,7 +40,7 @@ def register_strategy(name, args=()):
 
 
 def optimize_task_graph(target_task_graph, params, do_not_optimize,
-                        existing_tasks=None, strategy_override=None):
+                        decision_task_id, existing_tasks=None, strategy_override=None):
     """
     Perform task optimization, returning a taskgraph and a map from label to
     assigned taskId, including replacement tasks.
@@ -73,7 +73,7 @@ def optimize_task_graph(target_task_graph, params, do_not_optimize,
 
     return get_subgraph(
             target_task_graph, removed_tasks, replaced_tasks,
-            label_to_taskid), label_to_taskid
+            label_to_taskid, decision_task_id), label_to_taskid
 
 
 def _get_optimizations(target_task_graph, strategies):
@@ -186,7 +186,9 @@ def replace_tasks(target_task_graph, params, optimizations, do_not_optimize,
     return replaced
 
 
-def get_subgraph(target_task_graph, removed_tasks, replaced_tasks, label_to_taskid):
+def get_subgraph(
+    target_task_graph, removed_tasks, replaced_tasks, label_to_taskid, decision_task_id,
+):
     """
     Return the subgraph of target_task_graph consisting only of
     non-optimized tasks and edges between them.
@@ -230,7 +232,13 @@ def get_subgraph(target_task_graph, removed_tasks, replaced_tasks, label_to_task
                 if label in label_to_taskid and label not in omit
             })
 
-        task.task = resolve_task_references(task.label, task.task, named_task_dependencies)
+        task.task = resolve_task_references(
+            task.label,
+            task.task,
+            task_id=task.task_id,
+            decision_task_id=decision_task_id,
+            dependencies=named_task_dependencies,
+        )
         deps = task.task.setdefault('dependencies', [])
         deps.extend(sorted(named_task_dependencies.itervalues()))
         tasks_by_taskid[task.task_id] = task
@@ -384,6 +392,10 @@ import_sibling_modules()
 
 # Register composite strategies.
 register_strategy('build', args=('skip-unless-schedules',))(Alias)
+register_strategy('build-optimized', args=(
+    Any('skip-unless-schedules', 'bugbug-reduced-fallback', split_args=tuple),
+    'backstop',
+))(All)
 register_strategy('build-fuzzing', args=('push-interval-10',))(Alias)
 register_strategy('test', args=(
     Any('skip-unless-schedules', 'bugbug-reduced-fallback', split_args=tuple),

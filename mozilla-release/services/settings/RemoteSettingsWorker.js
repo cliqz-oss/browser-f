@@ -64,9 +64,17 @@ const Agent = {
    * (eg. blocklists/certificates, main/onboarding)
    * @param {String} bucket
    * @param {String} collection
+   * @returns {int} Number of records loaded from dump or -1 if no dump found.
    */
   async importJSONDump(bucket, collection) {
-    const { data: records } = await loadJSONDump(bucket, collection);
+    const { data: records } = await SharedUtils.loadJSONDump(
+      bucket,
+      collection
+    );
+    if (records === null) {
+      // Return -1 if file is missing.
+      return -1;
+    }
     if (gShutdown) {
       throw new Error("Can't import when we've started shutting down.");
     }
@@ -130,27 +138,6 @@ self.onmessage = event => {
     });
 };
 
-/**
- * Load (from disk) the JSON file distributed with the release for this collection.
- * @param {String}  bucket
- * @param {String}  collection
- */
-async function loadJSONDump(bucket, collection) {
-  const fileURI = `resource://app/defaults/settings/${bucket}/${collection}.json`;
-  let response;
-  try {
-    response = await fetch(fileURI);
-  } catch (e) {
-    // Return empty dataset if file is missing.
-    return { data: [] };
-  }
-  if (gShutdown) {
-    throw new Error("Can't import when we've started shutting down.");
-  }
-  // Will throw if JSON is invalid.
-  return response.json();
-}
-
 let gPendingTransactions = new Set();
 
 /**
@@ -176,7 +163,7 @@ async function importDumpIDB(bucket, collection, records) {
     // Each entry of the dump will be stored in the records store.
     // They are indexed by `_cid`.
     const cid = bucket + "/" + collection;
-    // We can just modify the items in-place, as we got them from loadJSONDump.
+    // We can just modify the items in-place, as we got them from SharedUtils.loadJSONDump().
     records.forEach(item => {
       item._cid = cid;
     });
@@ -190,6 +177,8 @@ async function importDumpIDB(bucket, collection, records) {
       [IDB_RECORDS_STORE, IDB_TIMESTAMPS_STORE],
       "readwrite",
       ([recordsStore, timestampStore], rejectTransaction) => {
+        // Wipe before loading
+        recordsStore.delete(IDBKeyRange.bound([cid], [cid, []], false, true));
         IDBHelpers.bulkOperationHelper(
           recordsStore,
           {

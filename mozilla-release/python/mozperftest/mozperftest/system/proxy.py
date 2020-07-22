@@ -28,7 +28,7 @@ class ProxyRunner(Layer):
     def setup(self):
         pass
 
-    def __call__(self, metadata):
+    def run(self, metadata):
         self.metadata = metadata
 
         # replace with artifacts
@@ -54,7 +54,9 @@ class ProxyRunner(Layer):
             prefs["network.proxy.ssl"] = "localhost"
             prefs["network.proxy.ssl_port"] = port
             prefs["network.proxy.no_proxies_on"] = "localhost"
-            metadata.update_browser_prefs(prefs)
+            browser_prefs = metadata.get_options("browser_prefs")
+            browser_prefs.update(prefs)
+
         return metadata
 
     def teardown(self):

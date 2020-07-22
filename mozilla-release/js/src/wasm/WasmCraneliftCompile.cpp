@@ -152,7 +152,7 @@ static bool GenerateCraneliftCode(WasmMacroAssembler& masm,
 
   // Copy the machine code; handle jump tables and other read-only data below.
   uint32_t funcBase = masm.currentOffset();
-  if (!masm.appendRawCode(func.code, func.code_size)) {
+  if (func.code_size && !masm.appendRawCode(func.code, func.code_size)) {
     return false;
   }
 #if defined(JS_CODEGEN_X64) || defined(JS_CODEGEN_X86)
@@ -223,7 +223,7 @@ static bool GenerateCraneliftCode(WasmMacroAssembler& masm,
 
 #ifdef DEBUG
     // Check code offsets.
-    MOZ_ASSERT(offset.value() >= offsets->normalEntry);
+    MOZ_ASSERT(offset.value() >= offsets->uncheckedCallEntry);
     MOZ_ASSERT(offset.value() < offsets->ret);
     MOZ_ASSERT(metadata.module_bytecode_offset != 0);
 
@@ -387,8 +387,16 @@ bool env_uses_shared_memory(const CraneliftModuleEnvironment* wrapper) {
   return wrapper->env->usesSharedMemory();
 }
 
-const FuncTypeWithId* env_function_signature(
-    const CraneliftModuleEnvironment* wrapper, size_t funcIndex) {
+size_t env_num_types(const CraneliftModuleEnvironment* wrapper) {
+  return wrapper->env->types.length();
+}
+const FuncTypeWithId* env_type(const CraneliftModuleEnvironment* wrapper,
+                               size_t typeIndex) {
+  return &wrapper->env->types[typeIndex].funcType();
+}
+
+const FuncTypeWithId* env_func_sig(const CraneliftModuleEnvironment* wrapper,
+                                   size_t funcIndex) {
   return wrapper->env->funcTypes[funcIndex];
 }
 

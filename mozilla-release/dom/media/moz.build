@@ -110,11 +110,14 @@ EXPORTS += [
     'AudioConfig.h',
     'AudioConverter.h',
     'AudioDeviceInfo.h',
+    'AudioDriftCorrection.h',
     'AudioMixer.h',
     'AudioPacketizer.h',
+    'AudioRingBuffer.h',
     'AudioSampleFormat.h',
     'AudioSegment.h',
     'AudioStream.h',
+    'AudioThreadRegistry.h',
     'AutoplayPolicy.h',
     'BackgroundVideoDecodingPermissionObserver.h',
     'Benchmark.h',
@@ -124,10 +127,12 @@ EXPORTS += [
     'BufferReader.h',
     'ByteWriter.h',
     'ChannelMediaDecoder.h',
+    'CrossGraphTrack.h',
     'CubebUtils.h',
     'DecoderTraits.h',
     'DOMMediaStream.h',
     'DriftCompensation.h',
+    'DynamicResampler.h',
     'FileBlockCache.h',
     'ForwardedInputTrack.h',
     'FrameStatistics.h',
@@ -166,6 +171,7 @@ EXPORTS += [
     'MediaTrackList.h',
     'MediaTrackListener.h',
     'MemoryBlockCache.h',
+    'MPSCQueue.h',
     'nsIDocumentActivity.h',
     'PrincipalChangeObserver.h',
     'PrincipalHandle.h',
@@ -234,6 +240,7 @@ UNIFIED_SOURCES += [
     'AudioConfig.cpp',
     'AudioConverter.cpp',
     'AudioDeviceInfo.cpp',
+    'AudioRingBuffer.cpp',
     'AudioSegment.cpp',
     'AudioStream.cpp',
     'AudioStreamTrack.cpp',
@@ -249,7 +256,9 @@ UNIFIED_SOURCES += [
     'ChannelMediaDecoder.cpp',
     'ChannelMediaResource.cpp',
     'CloneableWithRangeMediaResource.cpp',
+    'CrossGraphTrack.cpp',
     'DOMMediaStream.cpp',
+    'DynamicResampler.cpp',
     'FileBlockCache.cpp',
     'FileMediaResource.cpp',
     'ForwardedInputTrack.cpp',
@@ -374,17 +383,11 @@ if CONFIG['COMPILE_ENVIRONMENT']:
         '!audioipc_server_ffi_generated.h',
     ]
 
-    GeneratedFile('audioipc_client_ffi_generated.h',
-                  script='/build/RunCbindgen.py', entry_point='generate',
-                  inputs=[
-                      '/media/audioipc/client',
-                  ])
+    CbindgenHeader('audioipc_client_ffi_generated.h',
+                   inputs=['/media/audioipc/client'])
 
-    GeneratedFile('audioipc_server_ffi_generated.h',
-                  script='/build/RunCbindgen.py', entry_point='generate',
-                  inputs=[
-                      '/media/audioipc/server',
-                  ])
+    CbindgenHeader('audioipc_server_ffi_generated.h',
+                   inputs=['/media/audioipc/server'])
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

@@ -231,6 +231,11 @@ struct RangePaintInfo {
   // offset of builder's reference frame to the root frame
   nsPoint mRootOffset;
 
+  // Resolution at which the items are normally painted. So if we're painting
+  // these items in a range separately from the "full display list", we may want
+  // to paint them at this resolution.
+  float mResolution = 1.0;
+
   RangePaintInfo(nsRange* aRange, nsIFrame* aFrame)
       : mRange(aRange),
         mBuilder(aFrame, nsDisplayListBuilderMode::Painting, false) {
@@ -602,11 +607,10 @@ void PresShell::DirtyRootsList::Remove(nsIFrame* aFrame) {
 nsIFrame* PresShell::DirtyRootsList::PopShallowestRoot() {
   // List is sorted in order of decreasing depth, so there are no deeper
   // frames than the last one.
-  const FrameAndDepth& lastFAD = mList.LastElement();
+  const FrameAndDepth& lastFAD = mList.PopLastElement();
   nsIFrame* frame = lastFAD.mFrame;
   // We don't expect frame to change depths.
   MOZ_ASSERT(frame->GetDepthInFrameTree() == lastFAD.mDepth);
-  mList.RemoveLastElement();
   return frame;
 }
 
@@ -648,6 +652,7 @@ StaticRefPtr<Element> PresShell::EventHandler::sLastKeyDownEventTargetElement;
 bool PresShell::sProcessInteractable = false;
 
 static bool gVerifyReflowEnabled;
+extern mozilla::LazyLogModule sApzMvmLog;
 
 bool PresShell::GetVerifyReflowEnable() {
 #ifdef DEBUG
@@ -816,7 +821,7 @@ PresShell::PresShell(Document* aDocument)
       mIgnoreFrameDestruction(false),
       mIsActive(true),
       mFrozen(false),
-      mIsFirstPaint(true),  // FIXME/bug 735029: find a better solution
+      mIsFirstPaint(true),
       mObservesMutationsForPrint(false),
       mWasLastReflowInterrupted(false),
       mObservingStyleFlushes(false),
@@ -1161,6 +1166,15 @@ static void LogTextPerfStats(gfxTextPerfMetrics* aTextPerf,
   }
 }
 
+bool PresShell::InRDMPane() {
+  if (Document* doc = GetDocument()) {
+    if (BrowsingContext* bc = doc->GetBrowsingContext()) {
+      return bc->InRDMPane();
+    }
+  }
+  return false;
+}
+
 void PresShell::Destroy() {
   // Do not add code before this line please!
   if (mHaveShutDown) {
@@ -1171,6 +1185,18 @@ void PresShell::Destroy() {
                "destroy called on presshell while scripts not blocked");
 
   AUTO_PROFILER_LABEL("PresShell::Destroy", LAYOUT);
+
+  // If we have a RCD that has been painted (mIsFirstPaint=false), then record
+  // whether or not it had an APZ zoom applied to it during its lifetime, and
+  // whether or not it's in responsive design mode. We omit unpainted presShells
+  // because we get a handful of transient presShells that always report no
+  // zoom, and those skew the numbers.
+  if (!mIsFirstPaint && mPresContext->IsRootContentDocumentCrossProcess()) {
+    Telemetry::HistogramID histogram = InRDMPane()
+                                           ? Telemetry::APZ_ZOOM_ACTIVITY_RDM
+                                           : Telemetry::APZ_ZOOM_ACTIVITY;
+    Telemetry::Accumulate(histogram, IsResolutionUpdatedByApz());
+  }
 
   // dump out cumulative text perf metrics
   gfxTextPerfMetrics* tp;
@@ -1851,7 +1877,7 @@ nsresult PresShell::Initialize() {
 
   // Note: when the frame was created above it had the NS_FRAME_IS_DIRTY bit
   // set, but XBL processing could have caused a reflow which clears it.
-  if (MOZ_LIKELY(rootFrame->GetStateBits() & NS_FRAME_IS_DIRTY)) {
+  if (MOZ_LIKELY(rootFrame->HasAnyStateBits(NS_FRAME_IS_DIRTY))) {
     // Unset the DIRTY bits so that FrameNeedsReflow() will work right.
     rootFrame->RemoveStateBits(NS_FRAME_IS_DIRTY | NS_FRAME_HAS_DIRTY_CHILDREN);
     NS_ASSERTION(!mDirtyRoots.Contains(rootFrame),
@@ -1920,14 +1946,18 @@ nsresult PresShell::ResizeReflow(nscoord aWidth, nscoord aHeight,
     // the ZCC to update itself.
     mZoomConstraintsClient->ScreenSizeChanged();
   }
-  if (mMobileViewportManager) {
-    // If we have a mobile viewport manager, request a reflow from it. It can
-    // recompute the final CSS viewport and trigger a call to
+  if (UsesMobileViewportSizing()) {
+    // If we are using mobile viewport sizing, request a reflow from the MVM.
+    // It can recompute the final CSS viewport and trigger a call to
     // ResizeReflowIgnoreOverride if it changed. We don't force adjusting
     // of resolution, because that is only necessary when we are destroying
     // the MVM.
+    MOZ_ASSERT(mMobileViewportManager);
     mMobileViewportManager->RequestReflow(false);
     return NS_OK;
+  }
+  if (mMobileViewportManager) {
+    mMobileViewportManager->NotifyResizeReflow();
   }
 
   return ResizeReflowIgnoreOverride(aWidth, aHeight, aOptions);
@@ -2332,10 +2362,10 @@ PresShell::ScrollPage(bool aForward) {
   nsIScrollableFrame* scrollFrame =
       GetScrollableFrameToScroll(ScrollableDirection::Vertical);
   if (scrollFrame) {
-    scrollFrame->ScrollBy(nsIntPoint(0, aForward ? 1 : -1), ScrollUnit::PAGES,
-                          ScrollMode::Smooth, nullptr, nullptr,
-                          nsIScrollableFrame::NOT_MOMENTUM,
-                          nsIScrollableFrame::ENABLE_SNAP);
+    scrollFrame->ScrollBy(
+        nsIntPoint(0, aForward ? 1 : -1), ScrollUnit::PAGES, ScrollMode::Smooth,
+        nullptr, mozilla::ScrollOrigin::NotSpecified,
+        nsIScrollableFrame::NOT_MOMENTUM, nsIScrollableFrame::ENABLE_SNAP);
   }
   return NS_OK;
 }
@@ -2348,10 +2378,10 @@ PresShell::ScrollLine(bool aForward) {
     int32_t lineCount =
         Preferences::GetInt("toolkit.scrollbox.verticalScrollDistance",
                             NS_DEFAULT_VERTICAL_SCROLL_DISTANCE);
-    scrollFrame->ScrollBy(nsIntPoint(0, aForward ? lineCount : -lineCount),
-                          ScrollUnit::LINES, ScrollMode::Smooth, nullptr,
-                          nullptr, nsIScrollableFrame::NOT_MOMENTUM,
-                          nsIScrollableFrame::ENABLE_SNAP);
+    scrollFrame->ScrollBy(
+        nsIntPoint(0, aForward ? lineCount : -lineCount), ScrollUnit::LINES,
+        ScrollMode::Smooth, nullptr, mozilla::ScrollOrigin::NotSpecified,
+        nsIScrollableFrame::NOT_MOMENTUM, nsIScrollableFrame::ENABLE_SNAP);
   }
   return NS_OK;
 }
@@ -2364,10 +2394,10 @@ PresShell::ScrollCharacter(bool aRight) {
     int32_t h =
         Preferences::GetInt("toolkit.scrollbox.horizontalScrollDistance",
                             NS_DEFAULT_HORIZONTAL_SCROLL_DISTANCE);
-    scrollFrame->ScrollBy(nsIntPoint(aRight ? h : -h, 0), ScrollUnit::LINES,
-                          ScrollMode::Smooth, nullptr, nullptr,
-                          nsIScrollableFrame::NOT_MOMENTUM,
-                          nsIScrollableFrame::ENABLE_SNAP);
+    scrollFrame->ScrollBy(
+        nsIntPoint(aRight ? h : -h, 0), ScrollUnit::LINES, ScrollMode::Smooth,
+        nullptr, mozilla::ScrollOrigin::NotSpecified,
+        nsIScrollableFrame::NOT_MOMENTUM, nsIScrollableFrame::ENABLE_SNAP);
   }
   return NS_OK;
 }
@@ -2377,10 +2407,10 @@ PresShell::CompleteScroll(bool aForward) {
   nsIScrollableFrame* scrollFrame =
       GetScrollableFrameToScroll(ScrollableDirection::Vertical);
   if (scrollFrame) {
-    scrollFrame->ScrollBy(nsIntPoint(0, aForward ? 1 : -1), ScrollUnit::WHOLE,
-                          ScrollMode::Smooth, nullptr, nullptr,
-                          nsIScrollableFrame::NOT_MOMENTUM,
-                          nsIScrollableFrame::ENABLE_SNAP);
+    scrollFrame->ScrollBy(
+        nsIntPoint(0, aForward ? 1 : -1), ScrollUnit::WHOLE, ScrollMode::Smooth,
+        nullptr, mozilla::ScrollOrigin::NotSpecified,
+        nsIScrollableFrame::NOT_MOMENTUM, nsIScrollableFrame::ENABLE_SNAP);
   }
   return NS_OK;
 }
@@ -2585,7 +2615,7 @@ void PresShell::VerifyHasDirtyRootAncestor(nsIFrame* aFrame) {
 
   // Make sure that there is a reflow root ancestor of |aFrame| that's
   // in mDirtyRoots already.
-  while (aFrame && (aFrame->GetStateBits() & NS_FRAME_HAS_DIRTY_CHILDREN)) {
+  while (aFrame && aFrame->HasAnyStateBits(NS_FRAME_HAS_DIRTY_CHILDREN)) {
     if ((aFrame->HasAnyStateBits(NS_FRAME_REFLOW_ROOT |
                                  NS_FRAME_DYNAMIC_REFLOW_ROOT) ||
          !aFrame->GetParent()) &&
@@ -2788,7 +2818,7 @@ void PresShell::FrameNeedsReflow(nsIFrame* aFrame,
       f = f->GetParent();
       wasDirty = NS_SUBTREE_DIRTY(f);
       f->ChildIsDirty(child);
-      NS_ASSERTION(f->GetStateBits() & NS_FRAME_HAS_DIRTY_CHILDREN,
+      NS_ASSERTION(f->HasAnyStateBits(NS_FRAME_HAS_DIRTY_CHILDREN),
                    "ChildIsDirty didn't do its job");
       if (wasDirty) {
         // This frame was already marked dirty.
@@ -2810,7 +2840,7 @@ void PresShell::FrameNeedsToContinueReflow(nsIFrame* aFrame) {
       aFrame == mCurrentReflowRoot ||
           nsLayoutUtils::IsProperAncestorFrame(mCurrentReflowRoot, aFrame),
       "Frame passed in is not the descendant of mCurrentReflowRoot");
-  NS_ASSERTION(aFrame->GetStateBits() & NS_FRAME_IN_REFLOW,
+  NS_ASSERTION(aFrame->HasAnyStateBits(NS_FRAME_IN_REFLOW),
                "Frame passed in not in reflow?");
 
   mFramesToDirty.PutEntry(aFrame);
@@ -3314,18 +3344,20 @@ static void AccumulateFrameBounds(nsIFrame* aContainerFrame, nsIFrame* aFrame,
 static bool ComputeNeedToScroll(WhenToScroll aWhenToScroll, nscoord aLineSize,
                                 nscoord aRectMin, nscoord aRectMax,
                                 nscoord aViewMin, nscoord aViewMax) {
-  // See how the rect should be positioned vertically
-  if (WhenToScroll::Always == aWhenToScroll) {
-    // The caller wants the frame as visible as possible
-    return true;
-  } else if (WhenToScroll::IfNotVisible == aWhenToScroll) {
-    // Scroll only if no part of the frame is visible in this view
-    return aRectMax - aLineSize <= aViewMin || aRectMin + aLineSize >= aViewMax;
-  } else if (WhenToScroll::IfNotFullyVisible == aWhenToScroll) {
-    // Scroll only if part of the frame is hidden and more can fit in view
-    return !(aRectMin >= aViewMin && aRectMax <= aViewMax) &&
-           std::min(aViewMax, aRectMax) - std::max(aRectMin, aViewMin) <
-               aViewMax - aViewMin;
+  // See how the rect should be positioned in a given axis.
+  switch (aWhenToScroll) {
+    case WhenToScroll::Always:
+      // The caller wants the frame as visible as possible
+      return true;
+    case WhenToScroll::IfNotVisible:
+      // Scroll only if no part of the frame is visible in this view.
+      return aRectMax - aLineSize <= aViewMin ||
+             aRectMin + aLineSize >= aViewMax;
+    case WhenToScroll::IfNotFullyVisible:
+      // Scroll only if part of the frame is hidden and more can fit in view
+      return !(aRectMin >= aViewMin && aRectMax <= aViewMax) &&
+             std::min(aViewMax, aRectMax) - std::max(aRectMin, aViewMin) <
+                 aViewMax - aViewMin;
   }
   return false;
 }
@@ -3368,7 +3400,20 @@ static void ScrollToShowRect(nsIScrollableFrame* aFrameAsScrollable,
                              const nsRect& aRect, ScrollAxis aVertical,
                              ScrollAxis aHorizontal, ScrollFlags aScrollFlags) {
   nsPoint scrollPt = aFrameAsScrollable->GetVisualViewportOffset();
-  nsRect visibleRect(scrollPt, aFrameAsScrollable->GetVisualViewportSize());
+  const nsPoint originalScrollPt = scrollPt;
+  const nsRect visibleRect(scrollPt,
+                           aFrameAsScrollable->GetVisualViewportSize());
+
+  const nsMargin scrollPadding =
+      (aScrollFlags & ScrollFlags::IgnoreMarginAndPadding)
+          ? nsMargin()
+          : aFrameAsScrollable->GetScrollPadding();
+
+  const nsRect rectToScrollIntoView = [&] {
+    nsRect r(aRect);
+    r.Inflate(scrollPadding);
+    return r.Intersect(aFrameAsScrollable->GetScrolledRect());
+  }();
 
   nsSize lineSize;
   // Don't call GetLineScrollAmount unless we actually need it. Not only
@@ -3382,7 +3427,6 @@ static void ScrollToShowRect(nsIScrollableFrame* aFrameAsScrollable,
   }
   ScrollStyles ss = aFrameAsScrollable->GetScrollStyles();
   nsRect allowedRange(scrollPt, nsSize(0, 0));
-  bool needToScroll = false;
   uint32_t directions = aFrameAsScrollable->GetAvailableScrollingDirections();
 
   if (((aScrollFlags & ScrollFlags::ScrollOverflowHidden) ||
@@ -3390,14 +3434,14 @@ static void ScrollToShowRect(nsIScrollableFrame* aFrameAsScrollable,
       (!aVertical.mOnlyIfPerceivedScrollableDirection ||
        (directions & nsIScrollableFrame::VERTICAL))) {
     if (ComputeNeedToScroll(aVertical.mWhenToScroll, lineSize.height, aRect.y,
-                            aRect.YMost(), visibleRect.y,
-                            visibleRect.YMost())) {
+                            aRect.YMost(), visibleRect.y + scrollPadding.top,
+                            visibleRect.YMost() - scrollPadding.bottom)) {
       nscoord maxHeight;
       scrollPt.y = ComputeWhereToScroll(
-          aVertical.mWhereToScroll, scrollPt.y, aRect.y, aRect.YMost(),
-          visibleRect.y, visibleRect.YMost(), &allowedRange.y, &maxHeight);
+          aVertical.mWhereToScroll, scrollPt.y, rectToScrollIntoView.y,
+          rectToScrollIntoView.YMost(), visibleRect.y, visibleRect.YMost(),
+          &allowedRange.y, &maxHeight);
       allowedRange.height = maxHeight - allowedRange.y;
-      needToScroll = true;
     }
   }
 
@@ -3406,47 +3450,49 @@ static void ScrollToShowRect(nsIScrollableFrame* aFrameAsScrollable,
       (!aHorizontal.mOnlyIfPerceivedScrollableDirection ||
        (directions & nsIScrollableFrame::HORIZONTAL))) {
     if (ComputeNeedToScroll(aHorizontal.mWhenToScroll, lineSize.width, aRect.x,
-                            aRect.XMost(), visibleRect.x,
-                            visibleRect.XMost())) {
+                            aRect.XMost(), visibleRect.x + scrollPadding.left,
+                            visibleRect.XMost() - scrollPadding.right)) {
       nscoord maxWidth;
       scrollPt.x = ComputeWhereToScroll(
-          aHorizontal.mWhereToScroll, scrollPt.x, aRect.x, aRect.XMost(),
-          visibleRect.x, visibleRect.XMost(), &allowedRange.x, &maxWidth);
+          aHorizontal.mWhereToScroll, scrollPt.x, rectToScrollIntoView.x,
+          rectToScrollIntoView.XMost(), visibleRect.x, visibleRect.XMost(),
+          &allowedRange.x, &maxWidth);
       allowedRange.width = maxWidth - allowedRange.x;
-      needToScroll = true;
     }
   }
 
   // If we don't need to scroll, then don't try since it might cancel
   // a current smooth scroll operation.
-  if (needToScroll) {
-    ScrollMode scrollMode = ScrollMode::Instant;
-    bool autoBehaviorIsSmooth = aFrameAsScrollable->IsSmoothScroll();
-    bool smoothScroll = (aScrollFlags & ScrollFlags::ScrollSmooth) ||
-                        ((aScrollFlags & ScrollFlags::ScrollSmoothAuto) &&
-                         autoBehaviorIsSmooth);
-    if (StaticPrefs::layout_css_scroll_behavior_enabled() && smoothScroll) {
-      scrollMode = ScrollMode::SmoothMsd;
-    }
-    nsIFrame* frame = do_QueryFrame(aFrameAsScrollable);
-    AutoWeakFrame weakFrame(frame);
-    aFrameAsScrollable->ScrollTo(scrollPt, scrollMode, &allowedRange,
-                                 aScrollFlags & ScrollFlags::ScrollSnap
-                                     ? nsIScrollbarMediator::ENABLE_SNAP
-                                     : nsIScrollbarMediator::DISABLE_SNAP);
-    if (!weakFrame.IsAlive()) {
-      return;
-    }
+  if (scrollPt == originalScrollPt) {
+    return;
+  }
 
-    // If this is the RCD-RSF, also call ScrollToVisual() since we want to
-    // scroll the rect into view visually, and that may require scrolling
-    // the visual viewport in scenarios where there is not enough layout
-    // scroll range.
-    if (aFrameAsScrollable->IsRootScrollFrameOfDocument() &&
-        frame->PresShell()->GetPresContext()->IsRootContentDocument()) {
-      frame->PresShell()->ScrollToVisual(scrollPt, FrameMetrics::eMainThread,
-                                         scrollMode);
-    }
+  ScrollMode scrollMode = ScrollMode::Instant;
+  bool autoBehaviorIsSmooth = aFrameAsScrollable->IsSmoothScroll();
+  bool smoothScroll =
+      (aScrollFlags & ScrollFlags::ScrollSmooth) ||
+      ((aScrollFlags & ScrollFlags::ScrollSmoothAuto) && autoBehaviorIsSmooth);
+  if (StaticPrefs::layout_css_scroll_behavior_enabled() && smoothScroll) {
+    scrollMode = ScrollMode::SmoothMsd;
+  }
+  nsIFrame* frame = do_QueryFrame(aFrameAsScrollable);
+  AutoWeakFrame weakFrame(frame);
+  aFrameAsScrollable->ScrollTo(scrollPt, scrollMode, &allowedRange,
+                               aScrollFlags & ScrollFlags::ScrollSnap
+                                   ? nsIScrollbarMediator::ENABLE_SNAP
+                                   : nsIScrollbarMediator::DISABLE_SNAP);
+  if (!weakFrame.IsAlive()) {
+    return;
+  }
+
+  // If this is the RCD-RSF, also call ScrollToVisual() since we want to
+  // scroll the rect into view visually, and that may require scrolling
+  // the visual viewport in scenarios where there is not enough layout
+  // scroll range.
+  if (aFrameAsScrollable->IsRootScrollFrameOfDocument() &&
+      frame->PresShell()->GetPresContext()->IsRootContentDocument()) {
+    frame->PresShell()->ScrollToVisual(scrollPt, FrameMetrics::eMainThread,
+                                       scrollMode);
   }
 }
 
@@ -3504,7 +3550,7 @@ void PresShell::DoScrollContentIntoView() {
     return;
   }
 
-  if (frame->GetStateBits() & NS_FRAME_FIRST_REFLOW) {
+  if (frame->HasAnyStateBits(NS_FRAME_FIRST_REFLOW)) {
     // The reflow flush before this scroll got interrupted, and this frame's
     // coords and size are all zero, and it has no content showing anyway.
     // Don't bother scrolling to it.  We'll try again when we finish up layout.
@@ -3605,11 +3651,6 @@ bool PresShell::ScrollFrameRectIntoView(nsIFrame* aFrame, const nsRect& aRect,
       }
 
       targetRect -= sf->GetScrolledFrame()->GetPosition();
-      if (!(aScrollFlags & ScrollFlags::IgnoreMarginAndPadding)) {
-        nsMargin scrollPadding = sf->GetScrollPadding();
-        targetRect.Inflate(scrollPadding);
-        targetRect = targetRect.Intersect(sf->GetScrolledRect());
-      }
 
       {
         AutoWeakFrame wf(container);
@@ -4528,6 +4569,9 @@ nsresult PresShell::RenderDocument(const nsRect& aRect,
   if (!(aFlags & RenderDocumentFlags::AsyncDecodeImages)) {
     flags |= PaintFrameFlags::SyncDecodeImages;
   }
+  if (aFlags & RenderDocumentFlags::UseHighQualityScaling) {
+    flags |= PaintFrameFlags::UseHighQualityScaling;
+  }
   if (aFlags & RenderDocumentFlags::UseWidgetLayers) {
     // We only support using widget layers on display root's with widgets.
     nsView* view = rootFrame->GetView();
@@ -4777,6 +4821,32 @@ UniquePtr<RangePaintInfo> PresShell::CreateRangePaintInfo(
     BuildDisplayListForNode(endContainer);
   }
 
+  // If one of the ancestor presShells (including this one) has a resolution
+  // set, we may have some APZ zoom applied. That means we may want to rasterize
+  // the nodes at that zoom level. Populate `info` with the relevant information
+  // so that the caller can decide what to do. Also wrap the display list in
+  // appropriate nsDisplayAsyncZoom display items. This code handles the general
+  // case with nested async zooms (even though that never actually happens),
+  // because it fell out of the implementation for free.
+  for (nsPresContext* ctx = GetPresContext(); ctx;
+       ctx = ctx->GetParentPresContext()) {
+    PresShell* shell = ctx->PresShell();
+    float resolution = shell->GetResolution();
+    if (resolution == 1.0) {
+      continue;
+    }
+
+    info->mResolution *= resolution;
+    nsIFrame* rootScrollFrame = shell->GetRootScrollFrame();
+    ViewID zoomedId =
+        nsLayoutUtils::FindOrCreateIDFor(rootScrollFrame->GetContent());
+
+    nsDisplayList wrapped;
+    wrapped.AppendNewToTop<nsDisplayAsyncZoom>(&info->mBuilder, rootScrollFrame,
+                                               &info->mList, nullptr, zoomedId);
+    info->mList.AppendToTop(&wrapped);
+  }
+
 #ifdef DEBUG
   if (gDumpRangePaintList) {
     fprintf(stderr, "CreateRangePaintInfo --- before ClipListToRange:\n");
@@ -4814,13 +4884,11 @@ already_AddRefed<SourceSurface> PresShell::PaintRangePaintInfo(
   if (!pc || aArea.width == 0 || aArea.height == 0) return nullptr;
 
   // use the rectangle to create the surface
-  nsIntRect pixelArea = aArea.ToOutsidePixels(pc->AppUnitsPerDevPixel());
+  LayoutDeviceIntRect pixelArea = LayoutDeviceIntRect::FromAppUnitsToOutside(
+      aArea, pc->AppUnitsPerDevPixel());
 
   // if the image should not be resized, scale must be 1
   float scale = 1.0;
-  nsIntRect rootScreenRect =
-      GetRootFrame()->GetScreenRectInAppUnits().ToNearestPixels(
-          pc->AppUnitsPerDevPixel());
 
   nsRect maxSize;
   pc->DeviceContext()->GetClientRect(maxSize);
@@ -4832,8 +4900,8 @@ already_AddRefed<SourceSurface> PresShell::PaintRangePaintInfo(
     // check if image-resizing-algorithm should be used
     if (aFlags & RenderImageFlags::IsImage) {
       // get max screensize
-      nscoord maxWidth = pc->AppUnitsToDevPixels(maxSize.width);
-      nscoord maxHeight = pc->AppUnitsToDevPixels(maxSize.height);
+      int32_t maxWidth = pc->AppUnitsToDevPixels(maxSize.width);
+      int32_t maxHeight = pc->AppUnitsToDevPixels(maxSize.height);
       // resize image relative to the screensize
       // get best height/width relative to screensize
       float bestHeight = float(maxHeight) * RELATIVE_SCALEFACTOR;
@@ -4852,8 +4920,8 @@ already_AddRefed<SourceSurface> PresShell::PaintRangePaintInfo(
       scale = std::min(scale, adjustedScale);
     } else {
       // get half of max screensize
-      nscoord maxWidth = pc->AppUnitsToDevPixels(maxSize.width >> 1);
-      nscoord maxHeight = pc->AppUnitsToDevPixels(maxSize.height >> 1);
+      int32_t maxWidth = pc->AppUnitsToDevPixels(maxSize.width >> 1);
+      int32_t maxHeight = pc->AppUnitsToDevPixels(maxSize.height >> 1);
       if (pixelArea.width > maxWidth || pixelArea.height > maxHeight) {
         // divide the maximum size by the image size in both directions.
         // Whichever direction produces the smallest result determines how much
@@ -4865,19 +4933,65 @@ already_AddRefed<SourceSurface> PresShell::PaintRangePaintInfo(
       }
     }
 
+    // Pick a resolution scale factor that is the highest we need for any of
+    // the items. This means some items may get rendered at a higher-than-needed
+    // resolution but at least nothing will be avoidably blurry.
+    float resolutionScale = 1.0;
+    for (const UniquePtr<RangePaintInfo>& rangeInfo : aItems) {
+      resolutionScale = std::max(resolutionScale, rangeInfo->mResolution);
+    }
+    float unclampedResolution = resolutionScale;
+    // Clamp the resolution scale so that `pixelArea` when scaled by `scale` and
+    // `resolutionScale` isn't bigger than `maxSize`. This prevents creating
+    // giant/unbounded images.
+    resolutionScale =
+        std::min(resolutionScale, maxSize.width / (scale * pixelArea.width));
+    resolutionScale =
+        std::min(resolutionScale, maxSize.height / (scale * pixelArea.height));
+    // The following assert should only get hit if pixelArea scaled by `scale`
+    // alone would already have been bigger than `maxSize`, which should never
+    // be the case. For release builds we handle gracefully by reverting
+    // resolutionScale to 1.0 to avoid unexpected consequences.
+    MOZ_ASSERT(resolutionScale >= 1.0);
+    resolutionScale = std::max(1.0f, resolutionScale);
+
+    scale *= resolutionScale;
+
+    // Now we need adjust the output screen position of the surface based on the
+    // scaling factor and any APZ zoom that may be in effect. The goal is here
+    // to set `aScreenRect`'s top-left corner (in screen-relative LD pixels)
+    // such that the scaling effect on the surface appears anchored  at `aPoint`
+    // ("anchor" here is like "transform-origin"). When this code is e.g. used
+    // to generate a drag image for dragging operations, `aPoint` refers to the
+    // position of the mouse cursor (also in screen-relative LD pixels), and the
+    // user-visible effect of doing this is that the point at which the user
+    // clicked to start the drag remains under the mouse during the drag.
+
+    // In order to do this we first compute the top-left corner of the
+    // pixelArea is screen-relative LD pixels.
+    LayoutDevicePoint visualPoint = ViewportUtils::ToScreenRelativeVisual(
+        LayoutDevicePoint(pixelArea.TopLeft()), pc);
+    // And then adjust the output screen position based on that, which we can do
+    // since everything here is screen-relative LD pixels. Note that the scale
+    // factor we use here is the effective "transform" scale applied to the
+    // content we're painting, relative to the scale at which it would normally
+    // get painted at as part of page rendering (`unclampedResolution`).
+    float scaleRelativeToNormalContent = scale / unclampedResolution;
+    aScreenRect->x = NSToIntFloor(aPoint.x - float(aPoint.x - visualPoint.x) *
+                                                 scaleRelativeToNormalContent);
+    aScreenRect->y = NSToIntFloor(aPoint.y - float(aPoint.y - visualPoint.y) *
+                                                 scaleRelativeToNormalContent);
+
     pixelArea.width = NSToIntFloor(float(pixelArea.width) * scale);
     pixelArea.height = NSToIntFloor(float(pixelArea.height) * scale);
-    if (!pixelArea.width || !pixelArea.height) return nullptr;
-
-    // adjust the screen position based on the rescaled size
-    nscoord left = rootScreenRect.x + pixelArea.x;
-    nscoord top = rootScreenRect.y + pixelArea.y;
-    aScreenRect->x = NSToIntFloor(aPoint.x - float(aPoint.x - left) * scale);
-    aScreenRect->y = NSToIntFloor(aPoint.y - float(aPoint.y - top) * scale);
+    if (!pixelArea.width || !pixelArea.height) {
+      return nullptr;
+    }
   } else {
     // move aScreenRect to the position of the surface in screen coordinates
-    aScreenRect->MoveTo(rootScreenRect.x + pixelArea.x,
-                        rootScreenRect.y + pixelArea.y);
+    LayoutDevicePoint visualPoint = ViewportUtils::ToScreenRelativeVisual(
+        LayoutDevicePoint(pixelArea.TopLeft()), pc);
+    aScreenRect->MoveTo(RoundedToInt(visualPoint));
   }
   aScreenRect->width = pixelArea.width;
   aScreenRect->height = pixelArea.height;
@@ -4914,7 +5028,9 @@ already_AddRefed<SourceSurface> PresShell::PaintRangePaintInfo(
 
   gfxMatrix initialTM = ctx->CurrentMatrixDouble();
 
-  if (resize) initialTM.PreScale(scale, scale);
+  if (resize) {
+    initialTM.PreScale(scale, scale);
+  }
 
   // translate so that points are relative to the surface area
   gfxPoint surfaceOffset = nsLayoutUtils::PointToGfxPoint(
@@ -5161,7 +5277,8 @@ nscolor PresShell::GetDefaultBackgroundColorToDraw() {
   BrowsingContext* bc = doc->GetBrowsingContext();
   if (bc && bc->IsTop() && !bc->HasOpener() && doc->GetDocumentURI() &&
       NS_IsAboutBlank(doc->GetDocumentURI()) &&
-      doc->PrefersColorScheme(Document::IgnoreRFP::Yes) == StylePrefersColorScheme::Dark) {
+      doc->PrefersColorScheme(Document::IgnoreRFP::Yes) ==
+          StylePrefersColorScheme::Dark) {
     // Use --in-content-page-background for prefers-color-scheme: dark.
     return NS_RGB(0x2A, 0x2A, 0x2E);
   }
@@ -5181,11 +5298,21 @@ void PresShell::UpdateCanvasBackground() {
     // style frame but we don't have access to the canvasframe here. It isn't
     // a problem because only a few frames can return something other than true
     // and none of them would be a canvas frame or root element style frame.
-    bool drawBackgroundImage;
-    bool drawBackgroundColor;
-    mCanvasBackgroundColor = nsCSSRendering::DetermineBackgroundColor(
-        mPresContext, bgStyle, rootStyleFrame, drawBackgroundImage,
-        drawBackgroundColor);
+    bool drawBackgroundImage = false;
+    bool drawBackgroundColor = false;
+    const nsStyleDisplay* disp = rootStyleFrame->StyleDisplay();
+    if (rootStyleFrame->IsThemed(disp) &&
+        disp->mAppearance != StyleAppearance::MozWinGlass &&
+        disp->mAppearance != StyleAppearance::MozWinBorderlessGlass) {
+      // Ignore the CSS background-color if -moz-appearance is used and it is
+      // not one of the glass values. (Windows 7 Glass has traditionally not
+      // overridden background colors, so we preserve that behavior for now.)
+      mCanvasBackgroundColor = NS_RGBA(0, 0, 0, 0);
+    } else {
+      mCanvasBackgroundColor = nsCSSRendering::DetermineBackgroundColor(
+          mPresContext, bgStyle, rootStyleFrame, drawBackgroundImage,
+          drawBackgroundColor);
+    }
     mHasCSSBackgroundColor = drawBackgroundColor;
     if (mPresContext->IsRootContentDocumentCrossProcess() &&
         !IsTransparentContainerElement(mPresContext)) {
@@ -6165,7 +6292,7 @@ void PresShell::Paint(nsView* aViewToPaint, const nsRegion& aDirtyRegion,
     }
 
     if (!(aFlags & PaintFlags::PaintSyncDecodeImages) &&
-        !(frame->GetStateBits() & NS_FRAME_UPDATE_LAYER_TREE) &&
+        !frame->HasAnyStateBits(NS_FRAME_UPDATE_LAYER_TREE) &&
         !mNextPaintCompressed) {
       NotifySubDocInvalidationFunc computeInvalidFunc =
           presContext->MayHavePaintEventListenerInSubDocument()
@@ -7568,8 +7695,9 @@ nsIFrame* PresShell::EventHandler::ComputeRootFrameToHandleEventWithPopup(
 
   // If a remote browser is currently capturing input break out if we
   // detect a chrome generated popup.
+  // XXXedgar, do we need to check fission OOP iframe?
   if (aCapturingContent &&
-      EventStateManager::IsRemoteTarget(aCapturingContent)) {
+      EventStateManager::IsTopLevelRemoteTarget(aCapturingContent)) {
     *aIsCapturingContentIgnored = true;
   }
 
@@ -10427,8 +10555,7 @@ void ReflowCountMgr::PaintCount(const char* aName,
 
       // We don't care about the document language or user fonts here;
       // just get a default Latin font.
-      nsFont font(StyleGenericFontFamily::Serif,
-                  nsPresContext::CSSPixelsToAppUnits(11));
+      nsFont font(StyleGenericFontFamily::Serif, Length::FromPixels(11));
       nsFontMetrics::Params params;
       params.language = nsGkAtoms::x_western;
       params.textPerf = aPresContext->GetTextPerfMetrics();
@@ -10774,73 +10901,96 @@ RefPtr<MobileViewportManager> PresShell::GetMobileViewportManager() const {
   return mMobileViewportManager;
 }
 
-bool UseMobileViewportManager(PresShell* aPresShell, Document* aDocument) {
+Maybe<MobileViewportManager::ManagerType> UseMobileViewportManager(
+    PresShell* aPresShell, Document* aDocument) {
   // If we're not using APZ, we won't be able to zoom, so there is no
   // point in having an MVM.
   if (nsPresContext* presContext = aPresShell->GetPresContext()) {
     if (nsIWidget* widget = presContext->GetNearestWidget()) {
       if (!widget->AsyncPanZoomEnabled()) {
-        return false;
+        return Nothing();
       }
     }
   }
-  return nsLayoutUtils::ShouldHandleMetaViewport(aDocument) ||
-         nsLayoutUtils::AllowZoomingForDocument(aDocument);
+  if (nsLayoutUtils::ShouldHandleMetaViewport(aDocument)) {
+    return Some(MobileViewportManager::ManagerType::VisualAndMetaViewport);
+  }
+  if (StaticPrefs::apz_mvm_force_enabled() ||
+      nsLayoutUtils::AllowZoomingForDocument(aDocument)) {
+    return Some(MobileViewportManager::ManagerType::VisualViewportOnly);
+  }
+  return Nothing();
 }
 
 void PresShell::UpdateViewportOverridden(bool aAfterInitialization) {
-  // Determine if we require a MobileViewportManager. We need one any
-  // time we allow resolution zooming for a document, and any time we
-  // want to obey <meta name="viewport"> tags for it.
-  bool needMVM = UseMobileViewportManager(this, mDocument);
+  // Determine if we require a MobileViewportManager, and what kind if so. We
+  // need one any time we allow resolution zooming for a document, and any time
+  // we want to obey <meta name="viewport"> tags for it.
+  Maybe<MobileViewportManager::ManagerType> mvmType =
+      UseMobileViewportManager(this, mDocument);
 
-  if (needMVM == !!mMobileViewportManager) {
-    // Either we've need one and we've already got it, or we don't need one
-    // and don't have it. Either way, we're done.
+  if (mvmType.isNothing() && !mMobileViewportManager) {
+    // We don't need one and don't have it. So we're done.
     return;
   }
+  if (mvmType && mMobileViewportManager &&
+      *mvmType == mMobileViewportManager->GetManagerType()) {
+    // We need one and we have one of the correct type, so we're done.
+  }
 
-  if (needMVM) {
+  if (mMobileViewportManager) {
+    // We have one, but we need to either destroy it completely to replace it
+    // with another one of the correct type. So either way, let's destroy the
+    // one we have.
+    mMobileViewportManager->Destroy();
+    mMobileViewportManager = nullptr;
+    mMVMContext = nullptr;
+
+    ResetVisualViewportSize();
+
+    // After we clear out the MVM and the MVMContext, also reset the
+    // resolution to its pre-MVM value.
+    SetResolutionAndScaleTo(mDocument->GetSavedResolutionBeforeMVM(),
+                            ResolutionChangeOrigin::MainThreadRestore);
+
+    if (aAfterInitialization) {
+      // Force a reflow to our correct size by going back to the docShell
+      // and asking it to reassert its size. This is necessary because
+      // everything underneath the docShell, like the ViewManager, has been
+      // altered by the MobileViewportManager in an irreversible way.
+      nsDocShell* docShell =
+          static_cast<nsDocShell*>(GetPresContext()->GetDocShell());
+      int32_t width, height;
+      docShell->GetSize(&width, &height);
+      docShell->SetSize(width, height, false);
+    }
+  }
+
+  if (mvmType) {
+    // Let's create the MVM of the type that we need. At this point we shouldn't
+    // have one.
+    MOZ_ASSERT(!mMobileViewportManager);
+
     if (mPresContext->IsRootContentDocumentCrossProcess()) {
       // Store the resolution so we can restore to this resolution when
       // the MVM is destroyed.
       mDocument->SetSavedResolutionBeforeMVM(mResolution.valueOr(1.0f));
 
       mMVMContext = new GeckoMVMContext(mDocument, this);
-      mMobileViewportManager = new MobileViewportManager(mMVMContext);
+      mMobileViewportManager = new MobileViewportManager(mMVMContext, *mvmType);
+      if (MOZ_UNLIKELY(MOZ_LOG_TEST(sApzMvmLog, LogLevel::Debug))) {
+        nsIURI* uri = mDocument->GetDocumentURI();
+        MOZ_LOG(sApzMvmLog, LogLevel::Debug,
+                ("Created MVM %p (type %d) for URI %s",
+                 mMobileViewportManager.get(), (int)*mvmType,
+                 uri ? uri->GetSpecOrDefault().get() : "(null)"));
+      }
 
       if (aAfterInitialization) {
         // Setting the initial viewport will trigger a reflow.
         mMobileViewportManager->SetInitialViewport();
       }
     }
-    return;
-  }
-
-  MOZ_ASSERT(mMobileViewportManager,
-             "Shouldn't reach this without a MobileViewportManager.");
-
-  mMobileViewportManager->Destroy();
-  mMobileViewportManager = nullptr;
-  mMVMContext = nullptr;
-
-  ResetVisualViewportSize();
-
-  // After we clear out the MVM and the MVMContext, also reset the
-  // resolution to its pre-MVM value.
-  SetResolutionAndScaleTo(mDocument->GetSavedResolutionBeforeMVM(),
-                          ResolutionChangeOrigin::MainThreadRestore);
-
-  if (aAfterInitialization) {
-    // Force a reflow to our correct size by going back to the docShell
-    // and asking it to reassert its size. This is necessary because
-    // everything underneath the docShell, like the ViewManager, has been
-    // altered by the MobileViewportManager in an irreversible way.
-    nsDocShell* docShell =
-        static_cast<nsDocShell*>(GetPresContext()->GetDocShell());
-    int32_t width, height;
-    docShell->GetSize(&width, &height);
-    docShell->SetSize(width, height, false);
   }
 }
 
@@ -10931,23 +11081,66 @@ void PresShell::MarkFixedFramesForReflow(IntrinsicDirty aIntrinsicDirty) {
   }
 }
 
-void PresShell::CompleteChangeToVisualViewportSize() {
-  if (nsIScrollableFrame* rootScrollFrame = GetRootScrollFrameAsScrollable()) {
-    rootScrollFrame->MarkScrollbarsDirtyForReflow();
+void PresShell::MaybeReflowForInflationScreenSizeChange() {
+  nsPresContext* pc = GetPresContext();
+  const bool fontInflationWasEnabled = FontSizeInflationEnabled();
+  RecomputeFontSizeInflationEnabled();
+  bool changed = false;
+  if (FontSizeInflationEnabled() && FontSizeInflationMinTwips() != 0) {
+    pc->ScreenSizeInchesForFontInflation(&changed);
   }
-  MarkFixedFramesForReflow(IntrinsicDirty::Resize);
+
+  changed = changed || fontInflationWasEnabled != FontSizeInflationEnabled();
+  if (!changed) {
+    return;
+  }
+  if (nsCOMPtr<nsIDocShell> docShell = pc->GetDocShell()) {
+    nsCOMPtr<nsIContentViewer> cv;
+    docShell->GetContentViewer(getter_AddRefs(cv));
+    if (!cv) {
+      return;
+    }
+    nsTArray<nsCOMPtr<nsIContentViewer>> array;
+    cv->AppendSubtree(array);
+    for (uint32_t i = 0, iEnd = array.Length(); i < iEnd; ++i) {
+      nsCOMPtr<nsIContentViewer> cv = array[i];
+      if (RefPtr<PresShell> descendantPresShell = cv->GetPresShell()) {
+        nsIFrame* rootFrame = descendantPresShell->GetRootFrame();
+        if (rootFrame) {
+          descendantPresShell->FrameNeedsReflow(
+              rootFrame, IntrinsicDirty::StyleChange, NS_FRAME_IS_DIRTY);
+        }
+      }
+    }
+  }
+}
+
+void PresShell::CompleteChangeToVisualViewportSize() {
+  // This can get called during reflow, if the caller wants to get the latest
+  // visual viewport size after scrollbars have been added/removed. In such a
+  // case, we don't need to mark things as dirty because the things that we
+  // would mark dirty either just got updated (the root scrollframe's
+  // scrollbars), or will be laid out later during this reflow cycle (fixed-pos
+  // items). Callers that update the visual viewport during a reflow are
+  // responsible for maintaining these invariants.
+  if (!mIsReflowing) {
+    if (nsIScrollableFrame* rootScrollFrame =
+            GetRootScrollFrameAsScrollable()) {
+      rootScrollFrame->MarkScrollbarsDirtyForReflow();
+    }
+    MarkFixedFramesForReflow(IntrinsicDirty::Resize);
+  }
+
+  MaybeReflowForInflationScreenSizeChange();
 
   if (auto* window = nsGlobalWindowInner::Cast(mDocument->GetInnerWindow())) {
     window->VisualViewport()->PostResizeEvent();
   }
-
-  if (nsIScrollableFrame* rootScrollFrame = GetRootScrollFrameAsScrollable()) {
-    ScrollAnchorContainer* container = rootScrollFrame->Anchor();
-    container->UserScrolled();
-  }
 }
 
 void PresShell::SetVisualViewportSize(nscoord aWidth, nscoord aHeight) {
+  MOZ_ASSERT(aWidth >= 0.0 && aHeight >= 0.0);
+
   if (!mVisualViewportSizeSet || mVisualViewportSize.width != aWidth ||
       mVisualViewportSize.height != aHeight) {
     mVisualViewportSizeSet = true;

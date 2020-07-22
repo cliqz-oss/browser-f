@@ -6,8 +6,6 @@
 XPCOMUtils.defineLazyModuleGetters(this, {
   AboutNewTab: "resource:///modules/AboutNewTab.jsm",
   NewTabUtils: "resource://gre/modules/NewTabUtils.jsm",
-  PlacesSearchAutocompleteProvider:
-    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
 });
 
 const EN_US_TOPSITES =
@@ -47,7 +45,7 @@ async function checkDoesNotOpenOnFocus(win = window) {
   win.gURLBar.blur();
 
   // Focus with the mouse.
-  EventUtils.synthesizeMouseAtCenter(win.gURLBar.inputField, {});
+  EventUtils.synthesizeMouseAtCenter(win.gURLBar.inputField, {}, win);
   // Because the panel opening may not be immediate, we must wait a bit.
   // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
   await new Promise(resolve => setTimeout(resolve, 500));
@@ -94,9 +92,9 @@ add_task(async function topSitesShown() {
       if (gURLBar.getAttribute("pageproxystate") == "invalid") {
         gURLBar.handleRevert();
       }
-      EventUtils.synthesizeMouseAtCenter(window.gURLBar.inputField, {});
+      EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
     });
-    Assert.ok(window.gURLBar.view.isOpen, "UrlbarView should be open.");
+    Assert.ok(gURLBar.view.isOpen, "UrlbarView should be open.");
     await UrlbarTestUtils.promiseSearchComplete(window);
     Assert.equal(
       UrlbarTestUtils.getResultCount(window),
@@ -128,7 +126,7 @@ add_task(async function topSitesShown() {
       );
     }
     await UrlbarTestUtils.promisePopupClose(window, () => {
-      window.gURLBar.blur();
+      gURLBar.blur();
     });
     await SpecialPowers.popPrefEnv();
   }
@@ -143,7 +141,7 @@ add_task(async function selectSearchTopSite() {
     if (gURLBar.getAttribute("pageproxystate") == "invalid") {
       gURLBar.handleRevert();
     }
-    EventUtils.synthesizeMouseAtCenter(window.gURLBar.inputField, {});
+    EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
   });
   await UrlbarTestUtils.promiseSearchComplete(window);
 
@@ -172,7 +170,7 @@ add_task(async function selectSearchTopSite() {
     "The Urlbar should be populated with the search alias."
   );
   await UrlbarTestUtils.promisePopupClose(window, () => {
-    window.gURLBar.blur();
+    gURLBar.blur();
   });
 });
 
@@ -189,9 +187,9 @@ add_task(async function topSitesBookmarksAndTabs() {
     if (gURLBar.getAttribute("pageproxystate") == "invalid") {
       gURLBar.handleRevert();
     }
-    EventUtils.synthesizeMouseAtCenter(window.gURLBar.inputField, {});
+    EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
   });
-  Assert.ok(window.gURLBar.view.isOpen, "UrlbarView should be open.");
+  Assert.ok(gURLBar.view.isOpen, "UrlbarView should be open.");
   await UrlbarTestUtils.promiseSearchComplete(window);
 
   Assert.equal(
@@ -224,7 +222,7 @@ add_task(async function topSitesBookmarksAndTabs() {
     "The YouTube Top Site should appear in the view as a bookmark result."
   );
   await UrlbarTestUtils.promisePopupClose(window, () => {
-    window.gURLBar.blur();
+    gURLBar.blur();
   });
 
   await PlacesUtils.bookmarks.eraseEverything();
@@ -243,9 +241,9 @@ add_task(async function topSitesKeywordNavigationPageproxystate() {
     if (gURLBar.getAttribute("pageproxystate") == "invalid") {
       gURLBar.handleRevert();
     }
-    EventUtils.synthesizeMouseAtCenter(window.gURLBar.inputField, {});
+    EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
   });
-  Assert.ok(window.gURLBar.view.isOpen, "UrlbarView should be open.");
+  Assert.ok(gURLBar.view.isOpen, "UrlbarView should be open.");
   await UrlbarTestUtils.promiseSearchComplete(window);
 
   let count = UrlbarTestUtils.getResultCount(window);
@@ -297,9 +295,9 @@ add_task(async function topSitesPinned() {
   );
 
   await UrlbarTestUtils.promisePopupOpen(window, () => {
-    EventUtils.synthesizeMouseAtCenter(window.gURLBar.inputField, {});
+    EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
   });
-  Assert.ok(window.gURLBar.view.isOpen, "UrlbarView should be open.");
+  Assert.ok(gURLBar.view.isOpen, "UrlbarView should be open.");
   await UrlbarTestUtils.promiseSearchComplete(window);
 
   Assert.equal(
@@ -327,7 +325,7 @@ add_task(async function topSitesPinned() {
   );
 
   await UrlbarTestUtils.promisePopupClose(window, () => {
-    window.gURLBar.blur();
+    gURLBar.blur();
   });
   NewTabUtils.pinnedLinks.unpin(info);
 
@@ -355,9 +353,9 @@ add_task(async function topSitesBookmarksAndTabsDisabled() {
     if (gURLBar.getAttribute("pageproxystate") == "invalid") {
       gURLBar.handleRevert();
     }
-    EventUtils.synthesizeMouseAtCenter(window.gURLBar.inputField, {});
+    EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
   });
-  Assert.ok(window.gURLBar.view.isOpen, "UrlbarView should be open.");
+  Assert.ok(gURLBar.view.isOpen, "UrlbarView should be open.");
   await UrlbarTestUtils.promiseSearchComplete(window);
 
   Assert.equal(
@@ -390,7 +388,7 @@ add_task(async function topSitesBookmarksAndTabsDisabled() {
     "The YouTube Top Site should appear as a normal result even though it's bookmarked."
   );
   await UrlbarTestUtils.promisePopupClose(window, () => {
-    window.gURLBar.blur();
+    gURLBar.blur();
   });
 
   await PlacesUtils.bookmarks.eraseEverything();
@@ -423,7 +421,6 @@ add_task(async function topSitesDisabled() {
   // gets cleared.
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window: privateWin,
-    waitForFocus,
     value: "example",
   });
   privateWin.gURLBar.select();
@@ -436,5 +433,68 @@ add_task(async function topSitesDisabled() {
   await BrowserTestUtils.closeWindow(privateWin);
 
   await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesUtils.history.clear();
+  await UrlbarTestUtils.promisePopupClose(window, () => {
+    gURLBar.blur();
+  });
+});
+
+add_task(async function topSitesNumber() {
+  // Add some visits
+  for (let i = 0; i < 5; i++) {
+    await PlacesTestUtils.addVisits([
+      "http://example-a.com/",
+      "http://example-b.com/",
+      "http://example-c.com/",
+      "http://example-d.com/",
+      "http://example-e.com/",
+    ]);
+  }
+
+  // Wait for the expected number of Top sites.
+  await updateTopSites(sites => sites && sites.length == 8);
+  Assert.equal(
+    AboutNewTab.getTopSites().length,
+    8,
+    "The test suite browser should have 8 Top Sites."
+  );
+
+  await UrlbarTestUtils.promisePopupOpen(window, () => {
+    EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
+  });
+  Assert.ok(gURLBar.view.isOpen, "UrlbarView should be open.");
+  await UrlbarTestUtils.promiseSearchComplete(window);
+  Assert.equal(
+    UrlbarTestUtils.getResultCount(window),
+    8,
+    "The number of results should be the default (8)."
+  );
+  await UrlbarTestUtils.promisePopupClose(window);
+
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.newtabpage.activity-stream.topSitesRows", 2]],
+  });
+  // Wait for the expected number of Top sites.
+  await updateTopSites(sites => sites && sites.length == 11);
+  Assert.equal(
+    AboutNewTab.getTopSites().length,
+    11,
+    "The test suite browser should have 11 Top Sites."
+  );
+
+  await UrlbarTestUtils.promisePopupOpen(window, () => {
+    EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
+  });
+  Assert.ok(gURLBar.view.isOpen, "UrlbarView should be open.");
+  await UrlbarTestUtils.promiseSearchComplete(window);
+
+  Assert.equal(
+    UrlbarTestUtils.getResultCount(window),
+    10,
+    "The number of results should be maxRichResults (10)."
+  );
+  await UrlbarTestUtils.promisePopupClose(window);
+
+  await SpecialPowers.popPrefEnv();
   await PlacesUtils.history.clear();
 });

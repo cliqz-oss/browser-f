@@ -5,8 +5,12 @@
 // @flow
 
 import { prepareSourcePayload, createThread, createFrame } from "./create";
-import { updateTargets, attachTarget } from "./targets";
-import { clientEvents } from "./events";
+import {
+  addThreadEventListeners,
+  clientEvents,
+  removeThreadEventListeners,
+} from "./events";
+import { makePendingLocationId } from "../../utils/breakpoint";
 
 import Reps from "devtools-reps";
 import type { Node } from "devtools-reps";
@@ -24,6 +28,7 @@ import type {
   SourceActor,
   Range,
   URL,
+  Thread,
 } from "../../types";
 
 import type {
@@ -41,6 +46,9 @@ import type {
   EventListenerCategoryList,
   EventListenerActiveList,
 } from "../../actions/types";
+
+// $FlowIgnore
+const { defaultThreadOptions } = require("devtools/client/shared/thread-utils");
 
 let targets: { [string]: Target };
 let devToolsClient: DevToolsClient;
@@ -167,6 +175,10 @@ function stepOut(thread: string, frameId: ?FrameId): Promise<*> {
   return lookupThreadFront(thread).stepOut(frameId);
 }
 
+function restart(thread: string, frameId: FrameId): Promise<*> {
+  return lookupThreadFront(thread).restart(frameId);
+}
+
 function breakOnNext(thread: string): Promise<*> {
   return lookupThreadFront(thread).breakOnNext();
 }
@@ -216,30 +228,21 @@ async function removeWatchpoint(object: Grip, property: string) {
   }
 }
 
-// Get the string key to use for a breakpoint location.
-// See also duplicate code in breakpoint-actor-map.js :(
-function locationKey(location: BreakpointLocation) {
-  const { sourceUrl, line, column } = location;
-  const sourceId = location.sourceId || "";
-  // $FlowIgnore
-  return `${sourceUrl}:${sourceId}:${line}:${column}`;
-}
-
 function hasBreakpoint(location: BreakpointLocation) {
-  return !!breakpoints[locationKey(location)];
+  return !!breakpoints[makePendingLocationId(location)];
 }
 
 function setBreakpoint(
   location: BreakpointLocation,
   options: BreakpointOptions
 ) {
-  breakpoints[locationKey(location)] = { location, options };
+  breakpoints[makePendingLocationId(location)] = { location, options };
 
   return forEachThread(thread => thread.setBreakpoint(location, options));
 }
 
 function removeBreakpoint(location: PendingLocation) {
-  delete breakpoints[locationKey((location: any))];
+  delete breakpoints[makePendingLocationId((location: any))];
 
   return forEachThread(thread => thread.removeBreakpoint(location));
 }
@@ -458,26 +461,6 @@ function getSourceForActor(actor: ActorId) {
   return sourceActors[actor];
 }
 
-async function fetchThreads() {
-  const options = {
-    breakpoints,
-    eventBreakpoints,
-    observeAsmJS: true,
-  };
-
-  await updateTargets({
-    devToolsClient,
-    targets,
-    options,
-    targetList,
-  });
-
-  // eslint-disable-next-line
-  return (Object.entries(targets).map: any)(([actor, target]) =>
-    createThread((actor: any), (target: any))
-  );
-}
-
 async function attachThread(targetFront: Target) {
   const options = {
     breakpoints,
@@ -485,10 +468,55 @@ async function attachThread(targetFront: Target) {
     observeAsmJS: true,
   };
 
-  await attachTarget(targetFront, targets, options);
+  await attachTarget(targetFront, options);
   const threadFront: ThreadFront = await targetFront.getFront("thread");
 
   return createThread(threadFront.actorID, targetFront);
+}
+
+export async function attachTarget(targetFront: Target, options: Object) {
+  try {
+    await targetFront.attach();
+
+    const threadActorID = targetFront.targetForm.threadActor;
+    if (targets[threadActorID]) {
+      return;
+    }
+    targets[threadActorID] = targetFront;
+
+    // Content process targets have already been attached by the toolbox.
+    // And the thread front has been initialized from there.
+    // So we only need to retrieve it here.
+    let threadFront = targetFront.threadFront;
+
+    // But workers targets are still only managed by the debugger codebase
+    // and so we have to attach their thread actor
+    if (!threadFront) {
+      threadFront = await targetFront.attachThread({
+        ...defaultThreadOptions(),
+        ...options,
+      });
+      // NOTE: resume is not necessary for ProcessDescriptors and can be removed
+      // once we switch to WorkerDescriptors
+      threadFront.resume();
+    }
+
+    addThreadEventListeners(threadFront);
+  } catch (e) {
+    // If any of the workers have terminated since the list command initiated
+    // then we will get errors. Ignore these.
+  }
+}
+
+function removeThread(thread: Thread) {
+  const targetFront = targets[thread.actor];
+  if (targetFront) {
+    // Note that if the target is already fully destroyed, threadFront will be
+    // null, but event listeners will already have been removed.
+    removeThreadEventListeners(targetFront.threadFront);
+  }
+
+  delete targets[thread.actor];
 }
 
 function getMainThread() {
@@ -551,6 +579,7 @@ const clientCommands = {
   stepIn,
   stepOut,
   stepOver,
+  restart,
   breakOnNext,
   sourceContents,
   getSourceForActor,
@@ -577,8 +606,8 @@ const clientCommands = {
   fetchThreadSources,
   checkIfAlreadyPaused,
   registerSourceActor,
-  fetchThreads,
   attachThread,
+  removeThread,
   getMainThread,
   sendPacket,
   setSkipPausing,

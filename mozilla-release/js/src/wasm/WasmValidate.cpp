@@ -921,6 +921,9 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
           case uint32_t(SimdOp::I16x8AllTrue):
           case uint32_t(SimdOp::I32x4AnyTrue):
           case uint32_t(SimdOp::I32x4AllTrue):
+          case uint32_t(SimdOp::I8x16Bitmask):
+          case uint32_t(SimdOp::I16x8Bitmask):
+          case uint32_t(SimdOp::I32x4Bitmask):
             CHECK(iter.readConversion(ValType::V128, ValType::I32, &nothing));
 
           case uint32_t(SimdOp::I8x16ReplaceLane):
@@ -1839,9 +1842,11 @@ static bool DecodeLimits(Decoder& d, Limits* limits,
                    uint32_t(flags & ~uint8_t(mask)));
   }
 
-  if (!d.readVarU32(&limits->initial)) {
+  uint32_t initial;
+  if (!d.readVarU32(&initial)) {
     return d.fail("expected initial length");
   }
+  limits->initial = initial;
 
   if (flags & uint8_t(MemoryTableFlags::HasMaximum)) {
     uint32_t maximum;
@@ -1852,11 +1857,11 @@ static bool DecodeLimits(Decoder& d, Limits* limits,
     if (limits->initial > maximum) {
       return d.failf(
           "memory size minimum must not be greater than maximum; "
-          "maximum length %" PRIu32 " is less than initial length %" PRIu32,
+          "maximum length %" PRIu32 " is less than initial length %" PRIu64,
           maximum, limits->initial);
     }
 
-    limits->maximum.emplace(maximum);
+    limits->maximum.emplace(uint64_t(maximum));
   }
 
   limits->shared = Shareable::False;
@@ -1908,8 +1913,9 @@ static bool DecodeTableTypeAndLimits(Decoder& d, bool refTypesEnabled,
   // If there's a maximum, check it is in range.  The check to exclude
   // initial > maximum is carried out by the DecodeLimits call above, so
   // we don't repeat it here.
-  if (limits.initial > MaxTableInitialLength ||
-      ((limits.maximum.isSome() && limits.maximum.value() > MaxTableLength))) {
+  if (limits.initial > MaxTableLimitField ||
+      ((limits.maximum.isSome() &&
+        limits.maximum.value() > MaxTableLimitField))) {
     return d.fail("too many table elements");
   }
 
@@ -1917,7 +1923,15 @@ static bool DecodeTableTypeAndLimits(Decoder& d, bool refTypesEnabled,
     return d.fail("too many tables");
   }
 
-  return tables->emplaceBack(tableKind, limits);
+  // The rest of the runtime expects table limits to be within a 32-bit range.
+  static_assert(MaxTableLimitField <= UINT32_MAX, "invariant");
+  uint32_t initialLength = uint32_t(limits.initial);
+  Maybe<uint32_t> maximumLength;
+  if (limits.maximum) {
+    maximumLength = Some(uint32_t(*limits.maximum));
+  }
+
+  return tables->emplaceBack(tableKind, initialLength, maximumLength);
 }
 
 static bool GlobalIsJSCompatible(Decoder& d, ValType type) {
@@ -1971,30 +1985,12 @@ static bool DecodeGlobalType(Decoder& d, const TypeDefVector& types,
 }
 
 void wasm::ConvertMemoryPagesToBytes(Limits* memory) {
-  CheckedInt<uint32_t> initialBytes = memory->initial;
-  initialBytes *= PageSize;
-
-  static_assert(MaxMemoryInitialPages < UINT16_MAX,
-                "multiplying by PageSize can't overflow");
-  MOZ_ASSERT(initialBytes.isValid(), "can't overflow by above assertion");
-
-  memory->initial = initialBytes.value();
+  memory->initial *= PageSize;
 
   if (!memory->maximum) {
     return;
   }
-
-  MOZ_ASSERT(*memory->maximum <= MaxMemoryMaximumPages);
-
-  CheckedInt<uint32_t> maximumBytes = *memory->maximum;
-  maximumBytes *= PageSize;
-
-  // Clamp the maximum memory value to UINT32_MAX; it's not semantically
-  // visible since growing will fail for values greater than INT32_MAX.
-  memory->maximum =
-      Some(maximumBytes.isValid() ? maximumBytes.value() : UINT32_MAX);
-
-  MOZ_ASSERT(memory->initial <= *memory->maximum);
+  *memory->maximum *= PageSize;
 }
 
 static bool DecodeMemoryLimits(Decoder& d, ModuleEnvironment* env) {
@@ -2007,11 +2003,11 @@ static bool DecodeMemoryLimits(Decoder& d, ModuleEnvironment* env) {
     return false;
   }
 
-  if (memory.initial > MaxMemoryInitialPages) {
+  if (memory.initial > MaxMemoryLimitField) {
     return d.fail("initial memory size too big");
   }
 
-  if (memory.maximum && *memory.maximum > MaxMemoryMaximumPages) {
+  if (memory.maximum && *memory.maximum > MaxMemoryLimitField) {
     return d.fail("maximum memory size too big");
   }
 
@@ -2740,7 +2736,7 @@ static bool DecodeElemSection(Decoder& d, ModuleEnvironment* env) {
       return d.fail("expected segment size");
     }
 
-    if (numElems > MaxTableInitialLength) {
+    if (numElems > MaxElemSegmentLength) {
       return d.fail("too many table elements");
     }
 
@@ -3057,7 +3053,7 @@ static bool DecodeDataSection(Decoder& d, ModuleEnvironment* env) {
       return d.fail("expected segment size");
     }
 
-    if (seg.length > MaxMemoryInitialPages * PageSize) {
+    if (seg.length > MaxDataSegmentLengthPages * PageSize) {
       return d.fail("segment size too big");
     }
 

@@ -656,6 +656,17 @@ interface nsIDOMWindowUtils : nsISupports {
   void clearNativeTouchSequence([optional] in nsIObserver aObserver);
 
   /**
+   * Clears the SharedStyleSheetCache.
+   */
+  void clearSharedStyleSheetCache();
+
+  /**
+   * Returns the number of stylesheets that have been parsed on this document.
+   * Useful to test caching.
+   */
+  readonly attribute unsigned long parsedStyleSheets;
+
+  /**
    * See nsIWidget::ActivateNativeMenuItemAt
    *
    * Cannot be accessed from unprivileged context (not content-accessible)
@@ -875,6 +886,13 @@ interface nsIDOMWindowUtils : nsISupports {
    * Returns the scroll position of the window's visual viewport.
    */
   void getVisualViewportOffset(out long aOffsetX, out long aOffsetY);
+
+  /**
+   * Transforms the passed in rect from layout relative coords (relative to
+   * this document) to be is visual coords.
+   */
+  DOMRect transformRectLayoutToVisual(in float aX, in float aY,
+                                      in float aWidth, in float aHeight);
 
   /**
    * Sets the maximum height of the dynamic toolbar in Screen pixel units.

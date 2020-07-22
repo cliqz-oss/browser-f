@@ -203,45 +203,6 @@ AccessibleWrap::get_accParent(IDispatch __RPC_FAR* __RPC_FAR* ppdispParent) {
 
   if (IsDefunct()) return CO_E_OBJNOTCONNECTED;
 
-  DocAccessible* doc = AsDoc();
-  if (doc) {
-    // Return window system accessible object for root document and tab document
-    // accessibles.
-    if (!doc->ParentDocument() ||
-        (nsWinUtils::IsWindowEmulationStarted() &&
-         nsCoreUtils::IsTabDocument(doc->DocumentNode()))) {
-      HWND hwnd = static_cast<HWND>(doc->GetNativeWindow());
-      if (XRE_IsParentProcess() && hwnd && !doc->ParentDocument()) {
-        nsIFrame* frame = GetFrame();
-        if (frame) {
-          nsIWidget* widget = frame->GetNearestWidget();
-          if (widget->WindowType() == eWindowType_child &&
-              !widget->GetParent()) {
-            // Bug 1427304: Windows opened with popup=yes (such as the WebRTC
-            // sharing indicator) get two HWNDs. The root widget is associated
-            // with the inner HWND, but the outer HWND still answers to
-            // WM_GETOBJECT queries. This means that getting the parent of the
-            // oleacc window accessible for the inner HWND returns this
-            // root accessible. Thus, to avoid a loop, we must never return the
-            // oleacc window accessible for the inner HWND. Instead, we use the
-            // outer HWND here.
-            HWND parentHwnd = ::GetParent(hwnd);
-            if (parentHwnd) {
-              MOZ_ASSERT(::GetWindowLongW(parentHwnd, GWL_STYLE) & WS_POPUP,
-                         "Parent HWND should be a popup!");
-              hwnd = parentHwnd;
-            }
-          }
-        }
-      }
-      if (hwnd &&
-          SUCCEEDED(::AccessibleObjectFromWindow(
-              hwnd, OBJID_WINDOW, IID_IAccessible, (void**)ppdispParent))) {
-        return S_OK;
-      }
-    }
-  }
-
   Accessible* xpParentAcc = Parent();
   if (!xpParentAcc) return S_FALSE;
 
@@ -462,10 +423,10 @@ AccessibleWrap::get_accRole(
 
   uint32_t msaaRole = 0;
 
-#define ROLE(_geckoRole, stringRole, atkRole, macRole, _msaaRole, ia2Role, \
-             androidClass, nameRule)                                       \
-  case roles::_geckoRole:                                                  \
-    msaaRole = _msaaRole;                                                  \
+#define ROLE(_geckoRole, stringRole, atkRole, macRole, macSubrole, _msaaRole, \
+             ia2Role, androidClass, nameRule)                                 \
+  case roles::_geckoRole:                                                     \
+    msaaRole = _msaaRole;                                                     \
     break;
 
   switch (geckoRole) {

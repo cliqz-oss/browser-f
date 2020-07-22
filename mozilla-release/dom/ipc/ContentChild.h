@@ -14,13 +14,14 @@
 #include "mozilla/dom/BrowserBridgeChild.h"
 #include "mozilla/dom/ProcessActor.h"
 #include "mozilla/dom/JSProcessActorChild.h"
+#include "mozilla/dom/MediaControllerBinding.h"
 #include "mozilla/dom/PContentChild.h"
 #include "mozilla/dom/RemoteBrowser.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/ipc/InputStreamUtils.h"
 #include "mozilla/ipc/Shmem.h"
 #include "nsHashKeys.h"
-#include "nsIContentChild.h"
+#include "nsIDOMProcessChild.h"
 #include "nsIObserver.h"
 #include "nsTHashtable.h"
 #include "nsStringFwd.h"
@@ -41,7 +42,6 @@ struct LookAndFeelInt;
 class nsDocShellLoadState;
 class nsFrameLoader;
 class nsIOpenWindowInfo;
-class JSProcessActorChild;
 
 namespace mozilla {
 class RemoteSpellcheckEngineChild;
@@ -71,10 +71,9 @@ class ClonedMessageData;
 class BrowserChild;
 class GetFilesHelperChild;
 class TabContext;
-enum class MediaControlKeysEvent : uint32_t;
 
 class ContentChild final : public PContentChild,
-                           public nsIContentChild,
+                           public nsIDOMProcessChild,
                            public mozilla::ipc::IShmemAllocator,
                            public mozilla::ipc::ChildToParentStreamActorManager,
                            public ProcessActor {
@@ -85,7 +84,7 @@ class ContentChild final : public PContentChild,
   friend class PContentChild;
 
  public:
-  NS_DECL_NSICONTENTCHILD
+  NS_DECL_NSIDOMPROCESSCHILD
 
   ContentChild();
   virtual ~ContentChild();
@@ -304,6 +303,9 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvNotifyVisited(nsTArray<VisitedQueryResult>&&);
   mozilla::ipc::IPCResult RecvThemeChanged(nsTArray<LookAndFeelInt>&&);
 
+  mozilla::ipc::IPCResult RecvUpdateSystemParameters(
+      nsTArray<SystemParameterKVPair>&& aUpdates);
+
   // auto remove when alertfinished is received.
   nsresult AddRemoteAlertObserver(const nsString& aData,
                                   nsIObserver* aObserver);
@@ -458,10 +460,6 @@ class ContentChild final : public PContentChild,
 
   mozilla::ipc::IPCResult RecvNotifyPushSubscriptionModifiedObservers(
       const nsCString& aScope, const IPC::Principal& aPrincipal);
-
-  mozilla::ipc::IPCResult RecvActivate(PBrowserChild* aTab);
-
-  mozilla::ipc::IPCResult RecvDeactivate(PBrowserChild* aTab);
 
   mozilla::ipc::IPCResult RecvRefreshScreens(
       nsTArray<ScreenDetails>&& aScreens);
@@ -631,9 +629,8 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvStartDelayedAutoplayMediaComponents(
       const MaybeDiscarded<BrowsingContext>& aContext);
 
-  mozilla::ipc::IPCResult RecvUpdateMediaControlKeysEvent(
-      const MaybeDiscarded<BrowsingContext>& aContext,
-      MediaControlKeysEvent aEvent);
+  mozilla::ipc::IPCResult RecvUpdateMediaControlKey(
+      const MaybeDiscarded<BrowsingContext>& aContext, MediaControlKey aKey);
 
   void HoldBrowsingContextGroup(BrowsingContextGroup* aBCG);
   void ReleaseBrowsingContextGroup(BrowsingContextGroup* aBCG);
@@ -655,7 +652,8 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvOnAllowAccessFor(
       const MaybeDiscarded<BrowsingContext>& aContext,
       const nsCString& aTrackingOrigin, uint32_t aCookieBehavior,
-      const ContentBlockingNotifier::StorageAccessGrantedReason& aReason);
+      const ContentBlockingNotifier::StorageAccessPermissionGrantedReason&
+          aReason);
 
   mozilla::ipc::IPCResult RecvOnContentBlockingDecision(
       const MaybeDiscarded<BrowsingContext>& aContext,
@@ -679,10 +677,6 @@ class ContentChild final : public PContentChild,
       PChildToParentStreamChild* aActor) override;
   PFileDescriptorSetChild* SendPFileDescriptorSetConstructor(
       const FileDescriptor& aFD) override;
-
-  // Get a JS actor object by name.
-  already_AddRefed<mozilla::dom::JSProcessActorChild> GetActor(
-      const nsACString& aName, ErrorResult& aRv);
 
  private:
   static void ForceKillTimerCallback(nsITimer* aTimer, void* aClosure);
@@ -783,14 +777,12 @@ class ContentChild final : public PContentChild,
                                          const ClonedMessageData& aData,
                                          const ClonedMessageData& aStack);
 
-  void ReceiveRawMessage(const JSActorMessageMeta& aMeta,
-                         ipc::StructuredCloneData&& aData,
-                         ipc::StructuredCloneData&& aStack);
-
   JSActor::Type GetSide() override { return JSActor::Type::Child; }
 
   mozilla::ipc::IPCResult RecvHistoryCommitLength(
       const MaybeDiscarded<BrowsingContext>& aContext, uint32_t aLength);
+
+  mozilla::ipc::IPCResult RecvFlushFOGData(FlushFOGDataResolver&& aResolver);
 
  private:
 #ifdef NIGHTLY_BUILD
@@ -891,7 +883,7 @@ class ContentChild final : public PContentChild,
 };
 
 inline nsISupports* ToSupports(mozilla::dom::ContentChild* aContentChild) {
-  return static_cast<nsIContentChild*>(aContentChild);
+  return static_cast<nsIDOMProcessChild*>(aContentChild);
 }
 
 }  // namespace dom

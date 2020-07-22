@@ -144,7 +144,7 @@ class DataChannelConnection final : public net::NeckoTargetHolder
   // Create a new DataChannel Connection
   // Must be called on Main thread
   static Maybe<RefPtr<DataChannelConnection>> Create(
-      DataConnectionListener* aListener, nsIEventTarget* aTarget,
+      DataConnectionListener* aListener, nsISerialEventTarget* aTarget,
       MediaTransportHandler* aHandler, const uint16_t aLocalPort,
       const uint16_t aNumStreams, const Maybe<uint64_t>& aMaxMessageSize);
 
@@ -221,6 +221,11 @@ class DataChannelConnection final : public net::NeckoTargetHolder
 
   bool SendDeferredMessages();
 
+#ifdef SCTP_DTLS_SUPPORTED
+  int SctpDtlsOutput(void* addr, void* buffer, size_t length, uint8_t tos,
+                     uint8_t set_df);
+#endif
+
  protected:
   // Avoid cycles with PeerConnectionImpl
   // Use from main thread only as WeakPtr is not threadsafe
@@ -228,7 +233,7 @@ class DataChannelConnection final : public net::NeckoTargetHolder
 
  private:
   DataChannelConnection(DataConnectionListener* aListener,
-                        nsIEventTarget* aTarget,
+                        nsISerialEventTarget* aTarget,
                         MediaTransportHandler* aHandler);
 
   bool Init(const uint16_t aLocalPort, const uint16_t aNumStreams,
@@ -249,8 +254,6 @@ class DataChannelConnection final : public net::NeckoTargetHolder
   void SendPacket(std::unique_ptr<MediaPacket>&& packet);
   void SctpDtlsInput(const std::string& aTransportId,
                      const MediaPacket& packet);
-  static int SctpDtlsOutput(void* addr, void* buffer, size_t length,
-                            uint8_t tos, uint8_t set_df);
 #endif
   DataChannel* FindChannelByStream(uint16_t stream);
   uint16_t FindFreeStream();
@@ -357,7 +360,7 @@ class DataChannelConnection final : public net::NeckoTargetHolder
   Channels mChannels;
   // STS only
   uint32_t mCurrentStream = 0;
-  nsDeque mPending;  // Holds addref'ed DataChannel's -- careful!
+  nsDeque<DataChannel> mPending;  // Holds addref'ed DataChannel's -- careful!
   // STS and main
   size_t mNegotiatedIdLimit = 0;  // GUARDED_BY(mConnection->mLock)
   uint8_t mPendingType = PENDING_NONE;
@@ -394,6 +397,7 @@ class DataChannelConnection final : public net::NeckoTargetHolder
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   bool mShutdown;
 #endif
+  uintptr_t mId = 0;
 };
 
 #define ENSURE_DATACONNECTION \
@@ -553,7 +557,7 @@ class DataChannel {
   nsCString mRecvBuffer;
   nsTArray<UniquePtr<BufferedOutgoingMsg>>
       mBufferedData;  // GUARDED_BY(mConnection->mLock)
-  nsCOMPtr<nsIEventTarget> mMainThreadEventTarget;
+  nsCOMPtr<nsISerialEventTarget> mMainThreadEventTarget;
   mutable Mutex mStatsLock;  // protects mTrafficCounters
   TrafficCounters mTrafficCounters;
 };

@@ -24,6 +24,7 @@
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Services.h"
+#include "mozilla/StaticPrefs_fission.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Utf8.h"
 #include "mozilla/intl/LocaleService.h"
@@ -100,10 +101,14 @@
 #  include <intrin.h>
 #  include <math.h>
 #  include "cairo/cairo-features.h"
+#  include "mozilla/DllPrefetchExperimentRegistryInfo.h"
 #  include "mozilla/WindowsDllBlocklist.h"
 #  include "mozilla/WindowsProcessMitigations.h"
 #  include "mozilla/WinHeaderOnlyUtils.h"
 #  include "mozilla/mscom/ProcessRuntime.h"
+#  if defined(MOZ_GECKO_PROFILER)
+#    include "mozilla/mscom/ProfilerMarkers.h"
+#  endif  // defined(MOZ_GECKO_PROFILER)
 #  include "mozilla/widget/AudioSession.h"
 #  include "WinTokenUtils.h"
 
@@ -320,6 +325,8 @@ void XRE_LibFuzzerSetDriver(LibFuzzerDriver aDriver) {
 
 namespace mozilla {
 int (*RunGTest)(int*, char**) = 0;
+
+bool RunningGTest() { return RunGTest; }
 }  // namespace mozilla
 
 using namespace mozilla;
@@ -433,6 +440,7 @@ static ArgResult CheckArgExists(const char* aArg) {
 }
 
 bool gSafeMode = false;
+bool gFxREmbedded = false;
 
 /**
  * The nsXULAppInfo object implements nsIFactory so that it can be its own
@@ -1555,6 +1563,28 @@ static void RegisterApplicationRestartChanged(const char* aPref, void* aData) {
   } else if (wasRegistered) {
     ::UnregisterApplicationRestart();
   }
+}
+
+static void OnAlteredPrefetchPrefChanged(const char* aPref, void* aData) {
+  int32_t prefVal = Preferences::GetInt(PREF_WIN_ALTERED_DLL_PREFETCH, 0);
+
+  mozilla::DllPrefetchExperimentRegistryInfo prefetchRegInfo;
+  mozilla::DebugOnly<mozilla::Result<Ok, nsresult>> reflectResult =
+      prefetchRegInfo.ReflectPrefToRegistry(prefVal);
+
+  MOZ_ASSERT(reflectResult.value.isOk());
+}
+
+static void SetupAlteredPrefetchPref() {
+  mozilla::DllPrefetchExperimentRegistryInfo prefetchRegInfo;
+
+  mozilla::DebugOnly<mozilla::Result<Ok, nsresult>> reflectResult =
+      prefetchRegInfo.ReflectPrefToRegistry(
+          Preferences::GetInt(PREF_WIN_ALTERED_DLL_PREFETCH, 0));
+  MOZ_ASSERT(reflectResult.value.isOk());
+
+  Preferences::RegisterCallback(&OnAlteredPrefetchPrefChanged,
+                                PREF_WIN_ALTERED_DLL_PREFETCH);
 }
 
 #  if defined(MOZ_LAUNCHER_PROCESS)
@@ -2777,6 +2807,7 @@ NS_VISIBILITY_DEFAULT PRBool nspr_use_zone_allocator = PR_FALSE;
 #ifdef CAIRO_HAS_DWRITE_FONT
 
 #  include <dwrite.h>
+#  include "nsWindowsHelpers.h"
 
 #  ifdef DEBUG_DWRITE_STARTUP
 
@@ -2803,7 +2834,7 @@ static void LogRegistryEvent(const wchar_t* msg) {
 static DWORD WINAPI InitDwriteBG(LPVOID lpdwThreadParam) {
   SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
   LOGREGISTRY(L"loading dwrite.dll");
-  HMODULE dwdll = LoadLibraryW(L"dwrite.dll");
+  HMODULE dwdll = LoadLibrarySystem32(L"dwrite.dll");
   if (dwdll) {
     decltype(DWriteCreateFactory)* createDWriteFactory =
         (decltype(DWriteCreateFactory)*)GetProcAddress(dwdll,
@@ -3027,6 +3058,10 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
         ChaosFeature::TimerScheduling));
   }
 #endif
+
+  if (CheckArgExists("fxr")) {
+    gFxREmbedded = true;
+  }
 
   if (ChaosMode::isActive(ChaosFeature::Any)) {
     printf_stderr(
@@ -3602,14 +3637,12 @@ static void ReadAheadSystemDll(const wchar_t* dllName) {
   }
 }
 
-#  ifdef NIGHTLY_BUILD
 static void ReadAheadPackagedDll(const wchar_t* dllName,
                                  const wchar_t* aGREDir) {
   wchar_t dllPath[MAX_PATH];
   swprintf(dllPath, MAX_PATH, L"%s\\%s", aGREDir, dllName);
   ReadAheadLib(dllPath);
 }
-#  endif
 
 static void PR_CALLBACK ReadAheadDlls_ThreadStart(void* arg) {
   UniquePtr<wchar_t[]> greDir(static_cast<wchar_t*>(arg));
@@ -3620,32 +3653,32 @@ static void PR_CALLBACK ReadAheadDlls_ThreadStart(void* arg) {
   // retention (see Bug 1640087). Before we place this within a pref,
   // we should ensure this feature only ships to the nightly channel
   // and monitor results from that subset.
-#  ifdef NIGHTLY_BUILD
-  // Prefetch the DLLs shipped with firefox
-  ReadAheadPackagedDll(L"libegl.dll", greDir.get());
-  ReadAheadPackagedDll(L"libGLESv2.dll", greDir.get());
-  ReadAheadPackagedDll(L"nssckbi.dll", greDir.get());
-  ReadAheadPackagedDll(L"freebl3.dll", greDir.get());
-  ReadAheadPackagedDll(L"softokn3.dll", greDir.get());
+  if (greDir) {
+    // Prefetch the DLLs shipped with firefox
+    ReadAheadPackagedDll(L"libegl.dll", greDir.get());
+    ReadAheadPackagedDll(L"libGLESv2.dll", greDir.get());
+    ReadAheadPackagedDll(L"nssckbi.dll", greDir.get());
+    ReadAheadPackagedDll(L"freebl3.dll", greDir.get());
+    ReadAheadPackagedDll(L"softokn3.dll", greDir.get());
 
-  // Prefetch the system DLLs
-  ReadAheadSystemDll(L"DWrite.dll");
-  ReadAheadSystemDll(L"D3DCompiler_47.dll");
-#  else
-  // Load DataExchange.dll and twinapi.appcore.dll for
-  // nsWindow::EnableDragDrop
-  ReadAheadSystemDll(L"DataExchange.dll");
-  ReadAheadSystemDll(L"twinapi.appcore.dll");
+    // Prefetch the system DLLs
+    ReadAheadSystemDll(L"DWrite.dll");
+    ReadAheadSystemDll(L"D3DCompiler_47.dll");
+  } else {
+    // Load DataExchange.dll and twinapi.appcore.dll for
+    // nsWindow::EnableDragDrop
+    ReadAheadSystemDll(L"DataExchange.dll");
+    ReadAheadSystemDll(L"twinapi.appcore.dll");
 
-  // Load twinapi.dll for WindowsUIUtils::UpdateTabletModeState
-  ReadAheadSystemDll(L"twinapi.dll");
+    // Load twinapi.dll for WindowsUIUtils::UpdateTabletModeState
+    ReadAheadSystemDll(L"twinapi.dll");
 
-  // Load explorerframe.dll for WinTaskbar::Initialize
-  ReadAheadSystemDll(L"ExplorerFrame.dll");
+    // Load explorerframe.dll for WinTaskbar::Initialize
+    ReadAheadSystemDll(L"ExplorerFrame.dll");
 
-  // Load WinTypes.dll for nsOSHelperAppService::GetApplicationDescription
-  ReadAheadSystemDll(L"WinTypes.dll");
-#  endif
+    // Load WinTypes.dll for nsOSHelperAppService::GetApplicationDescription
+    ReadAheadSystemDll(L"WinTypes.dll");
+  }
 }
 #endif
 
@@ -4261,7 +4294,11 @@ nsresult XREMain::XRE_mainRun() {
   dllServices->StartUntrustedModulesProcessor();
   auto dllServicesDisable =
       MakeScopeExit([&dllServices]() { dllServices->DisableFull(); });
-#endif  // defined(XP_WIN)
+
+#  if defined(MOZ_GECKO_PROFILER)
+  mozilla::mscom::InitProfilerMarkers();
+#  endif  // defined(MOZ_GECKO_PROFILER)
+#endif    // defined(XP_WIN)
 
 #ifdef NS_FUNCTION_TIMER
   // initialize some common services, so we don't pay the cost for these at odd
@@ -4333,14 +4370,29 @@ nsresult XREMain::XRE_mainRun() {
   }
 
 #ifdef XP_WIN
-  if (!PR_GetEnv("XRE_NO_DLL_READAHEAD")) {
+  mozilla::DllPrefetchExperimentRegistryInfo prefetchRegInfo;
+  mozilla::AlteredDllPrefetchMode dllPrefetchMode =
+      prefetchRegInfo.GetAlteredDllPrefetchMode();
+
+  if (!PR_GetEnv("XRE_NO_DLL_READAHEAD") &&
+      dllPrefetchMode != mozilla::AlteredDllPrefetchMode::NoPrefetch) {
     nsCOMPtr<nsIFile> greDir = mDirProvider.GetGREDir();
     nsAutoString path;
     rv = greDir->GetPath(path);
     if (NS_SUCCEEDED(rv)) {
       PRThread* readAheadThread;
-      wchar_t* pathRaw = new wchar_t[MAX_PATH];
-      wcscpy_s(pathRaw, MAX_PATH, path.get());
+      wchar_t* pathRaw;
+
+      // We use the presence of a path argument inside the thread to determine
+      // which list of Dlls to use. The old list does not need access to the
+      // GRE dir, so the path argument is set to a null pointer.
+      if (dllPrefetchMode ==
+          mozilla::AlteredDllPrefetchMode::OptimizedPrefetch) {
+        pathRaw = new wchar_t[MAX_PATH];
+        wcscpy_s(pathRaw, MAX_PATH, path.get());
+      } else {
+        pathRaw = nullptr;
+      }
       readAheadThread = PR_CreateThread(
           PR_USER_THREAD, ReadAheadDlls_ThreadStart, (void*)pathRaw,
           PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD, PR_UNJOINABLE_THREAD, 0);
@@ -4548,6 +4600,7 @@ nsresult XREMain::XRE_mainRun() {
 #ifdef XP_WIN
     Preferences::RegisterCallbackAndCall(RegisterApplicationRestartChanged,
                                          PREF_WIN_REGISTER_APPLICATION_RESTART);
+    SetupAlteredPrefetchPref();
 #  if defined(MOZ_LAUNCHER_PROCESS)
     SetupLauncherProcessPref();
 #  endif  // defined(MOZ_LAUNCHER_PROCESS)
@@ -4693,6 +4746,8 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
 #ifdef MOZ_CODE_COVERAGE
   CodeCoverageHandler::Init();
 #endif
+
+  NS_SetCurrentThreadName("MainThread");
 
   AUTO_BASE_PROFILER_LABEL("XREMain::XRE_main (around Gecko Profiler)", OTHER);
   AUTO_PROFILER_INIT;
@@ -5058,6 +5113,12 @@ bool BrowserTabsRemoteAutostart() {
   gBrowserTabsRemoteStatus = status;
 
   return gBrowserTabsRemoteAutostart;
+}
+
+bool FissionAutostart() {
+  return !gSafeMode &&
+         (StaticPrefs::fission_autostart_AtStartup_DoNotUseDirectly() ||
+          EnvHasValue("MOZ_FORCE_ENABLE_FISSION"));
 }
 
 uint32_t GetMaxWebProcessCount() {

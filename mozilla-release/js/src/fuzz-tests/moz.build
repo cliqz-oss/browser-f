@@ -11,20 +11,11 @@ include('../js-standalone.mozbuild')
 
 UNIFIED_SOURCES += [
     'testExample.cpp',
+    'testRegExp.cpp',
     'tests.cpp',
     'testStructuredCloneReader.cpp',
     'testWasm.cpp',
 ]
-
-if CONFIG['JS_BUILD_BINAST']:
-    UNIFIED_SOURCES += [
-        'testBinASTReader.cpp',
-    ]
-
-if CONFIG['ENABLE_NEW_REGEXP']:
-    UNIFIED_SOURCES += [
-        'testRegExp.cpp',
-    ]
 
 DEFINES['EXPORT_JS_API'] = True
 

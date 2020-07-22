@@ -26,11 +26,11 @@ msgevent-msg_resent = Die letzte Nachricht an { $name } wurde erneut gesendet.
 
 # Variables:
 #   $name (String) - the screen name of a chat contact person
-msgevent-rcvdmsg_not_private = Die von { $name } empfangene verschlüsselte Nachricht, ist nicht lesbar, da Sie derzeit nicht privat kommunizieren.
+msgevent-rcvdmsg_not_private = Die von { $name } empfangene verschlüsselte Nachricht ist nicht lesbar, da Sie derzeit nicht privat kommunizieren.
 
 # Variables:
 #   $name (String) - the screen name of a chat contact person
-msgevent-rcvdmsg_unreadable = Sie haben eine nicht lesbare verschlüsselte Nachricht von { $name } erhalten.
+msgevent-rcvdmsg_unreadable = Sie haben eine nicht lesbare verschlüsselte Nachricht von { $name } empfangen.
 
 # Variables:
 #   $name (String) - the screen name of a chat contact person
@@ -75,11 +75,11 @@ context-gone_secure_unverified = Verschlüsseltes, aber nicht bestätigtes Gespr
 #   $name (String) - the screen name of a chat contact person
 context-still_secure = Verschlüsseltes Gespräch mit { $name } erfolgreich wiederaufgenommen.
 
-error-enc = Beim verschlüsselten der Nachricht trat ein Fehler auf.
+error-enc = Beim Verschlüsseln der Nachricht trat ein Fehler auf.
 
 # Variables:
 #   $name (String) - the screen name of a chat contact person
-error-not_priv = Sie haben verschlüsselte Daten an { $name } gesendet. Die Gegenseite rechnete jedoch nicht damit.
+error-not_priv = Sie haben verschlüsselte Daten an { $name } gesendet. Die Gegenseite erwartete dies jedoch nicht.
 
 error-unreadable = Sie haben einen nicht lesbare verschlüsselte Nachricht gesendet.
 error-malformed = Sie haben eine nicht wohlgeformte Datennachricht gesendet.
@@ -94,4 +94,4 @@ tlv-disconnected = { $name } hat das verschlüsselte Gespräch mit Ihnen beendet
 # Make sure that this string does NOT contain any numbers, e.g. like "3".
 # Variables:
 #   $name (String) - the screen name of a chat contact person
-query-msg = { $name } hat ein mit Off-the-Record (OTR) verschlüsseltes Gespräch angefragt. Sie verfügen jedoch über kein Plugin, welches dies unterstützt. Weitere Informationen finden Sie unte https://en.wikipedia.org/wiki/Off-the-Record_Messaging
+query-msg = { $name } hat ein mit Off-the-Record (OTR) verschlüsseltes Gespräch angefragt. Sie verfügen jedoch über kein Plugin, welches dies unterstützt. Weitere Informationen finden Sie unter https://en.wikipedia.org/wiki/Off-the-Record_Messaging

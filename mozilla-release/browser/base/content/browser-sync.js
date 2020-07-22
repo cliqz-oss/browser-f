@@ -31,8 +31,17 @@ var gSync = {
   // once syncing completes (bug 1239042).
   _syncStartTime: 0,
   _syncAnimationTimer: 0,
-
   _obs: ["weave:engine:sync:finish", "quit-application", UIState.ON_UPDATE],
+
+  get log() {
+    if (!this._log) {
+      const { Log } = ChromeUtils.import("resource://gre/modules/Log.jsm");
+      let syncLog = Log.repository.getLogger("Sync.Browser");
+      syncLog.manageLevelFromPref("services.sync.log.logger.browser");
+      this._log = syncLog;
+    }
+    return this._log;
+  },
 
   get fxaStrings() {
     delete this.fxaStrings;
@@ -272,7 +281,7 @@ var gSync = {
       await fxAccounts.device.refreshDeviceList({ ignoreCached: true });
       return true;
     } catch (e) {
-      console.error("Refreshing device list failed.", e);
+      this.log.error("Refreshing device list failed.", e);
       return false;
     }
   },
@@ -801,7 +810,7 @@ var gSync = {
       } else if (target.clientRecord) {
         oldSendTabClients.push(target.clientRecord);
       } else {
-        console.error(`Target ${target.id} unsuitable for send tab.`);
+        this.log.error(`Target ${target.id} unsuitable for send tab.`);
       }
     }
     // If a master-password is enabled then it must be unlocked so FxA can get
@@ -813,19 +822,21 @@ var gSync = {
     );
     if (!cryptoSDR.isLoggedIn) {
       if (cryptoSDR.uiBusy) {
-        console.log("Master password UI is busy - not sending the tabs");
+        this.log.info("Master password UI is busy - not sending the tabs");
         return false;
       }
       try {
         cryptoSDR.encrypt("bacon"); // forces the mp prompt.
       } catch (e) {
-        console.log("Master password remains unlocked - not sending the tabs");
+        this.log.info(
+          "Master password remains unlocked - not sending the tabs"
+        );
         return false;
       }
     }
     let numFailed = 0;
     if (fxaCommandsDevices.length) {
-      console.log(
+      this.log.info(
         `Sending a tab to ${fxaCommandsDevices
           .map(d => d.name)
           .join(", ")} using FxA commands.`
@@ -835,24 +846,16 @@ var gSync = {
         { url, title }
       );
       for (let { device, error } of report.failed) {
-        console.error(
-          `Failed to send a tab with FxA commands for ${device.name}.
-                       Falling back on the Sync back-end`,
+        this.log.error(
+          `Failed to send a tab with FxA commands for ${device.name}.`,
           error
         );
-        if (!device.clientRecord) {
-          console.error(
-            `Could not find associated Sync device for ${device.name}`
-          );
-          numFailed++;
-          continue;
-        }
-        oldSendTabClients.push(device.clientRecord);
+        numFailed++;
       }
     }
     for (let client of oldSendTabClients) {
       try {
-        console.log(`Sending a tab to ${client.name} using Sync.`);
+        this.log.info(`Sending a tab to ${client.name} using Sync.`);
         await Weave.Service.clientsEngine.sendURIToClientForDisplay(
           url,
           client.id,
@@ -860,7 +863,7 @@ var gSync = {
         );
       } catch (e) {
         numFailed++;
-        console.error("Could not send tab to device.", e);
+        this.log.error("Could not send tab to device.", e);
       }
     }
     return numFailed < targets.length; // Good enough.
@@ -1324,7 +1327,7 @@ var gSync = {
         // but some users might have issues with push, so let's unblock them
         // by fetching the missed FxA commands on manual sync.
         fxAccounts.commands.pollDeviceCommands().catch(e => {
-          console.error("Fetching missed remote commands failed.", e);
+          this.log.error("Fetching missed remote commands failed.", e);
         });
         Weave.Service.sync();
       });
@@ -1439,7 +1442,7 @@ var gSync = {
     } catch (ex) {
       // shouldn't happen, but one client having an invalid date shouldn't
       // break the entire feature.
-      console.log("failed to format lastSync time", date, ex);
+      this.log.warn("failed to format lastSync time", date, ex);
       return null;
     }
   },

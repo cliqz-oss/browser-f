@@ -68,6 +68,7 @@
 #include "js/StructuredClone.h"
 #include "js/Symbol.h"
 #include "js/Utility.h"
+#include "js/WasmModule.h"
 #include "js/Wrapper.h"
 #include "util/CompleteFile.h"
 #include "util/StringBuffer.h"
@@ -460,6 +461,10 @@ JS_PUBLIC_API bool JS::InitSelfHostedCode(JSContext* cx) {
   JSRuntime* rt = cx->runtime();
 
   if (!rt->initializeAtoms(cx)) {
+    return false;
+  }
+
+  if (!rt->initializeParserAtoms(cx)) {
     return false;
   }
 
@@ -1245,11 +1250,12 @@ JS_PUBLIC_API bool JS::detail::ComputeThis(JSContext* cx, Value* vp,
   cx->check(vp[0], vp[1]);
 
   MutableHandleValue thisv = MutableHandleValue::fromMarkedLocation(&vp[1]);
-  if (!BoxNonStrictThis(cx, thisv, thisv)) {
+  JSObject* obj = BoxNonStrictThis(cx, thisv);
+  if (!obj) {
     return false;
   }
 
-  thisObject.set(&thisv.toObject());
+  thisObject.set(obj);
   return true;
 }
 
@@ -3473,6 +3479,7 @@ void JS::TransitiveCompileOptions::copyPODTransitiveOptions(
   hasIntroductionInfo = rhs.hasIntroductionInfo;
   hideScriptFromDebugger = rhs.hideScriptFromDebugger;
   nonSyntacticScope = rhs.nonSyntacticScope;
+  privateClassFields = rhs.privateClassFields;
 };
 
 void JS::ReadOnlyCompileOptions::copyPODNonTransitiveOptions(
@@ -3564,6 +3571,8 @@ JS::CompileOptions::CompileOptions(JSContext* cx)
   }
   throwOnAsmJSValidationFailureOption =
       cx->options().throwOnAsmJSValidationFailure();
+  privateClassFields =
+      cx->realm()->creationOptions().getPrivateClassFieldsEnabled();
 
   sourcePragmas_ = cx->options().sourcePragmas();
 
@@ -3595,39 +3604,6 @@ CompileOptions& CompileOptions::setIntroductionInfoToCaller(
   } else {
     return setIntroductionType(introductionType);
   }
-}
-
-JSScript* JS::DecodeBinAST(JSContext* cx, const ReadOnlyCompileOptions& options,
-                           const uint8_t* buf, size_t length,
-                           JS::BinASTFormat format) {
-#if defined(JS_BUILD_BINAST)
-  MOZ_ASSERT(!cx->zone()->isAtomsZone());
-  AssertHeapIsIdle();
-  CHECK_THREAD(cx);
-
-  return frontend::CompileGlobalBinASTScript(cx, options, buf, length, format);
-#else   // !JS_BUILD_BINAST
-  JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                            JSMSG_SUPPORT_NOT_ENABLED, "BinAST");
-  return nullptr;
-#endif  // JS_BUILD_BINAST
-}
-
-JSScript* JS::DecodeBinAST(JSContext* cx, const ReadOnlyCompileOptions& options,
-                           FILE* file, JS::BinASTFormat format) {
-#if defined(JS_BUILD_BINAST)
-  FileContents fileContents(cx);
-  if (!ReadCompleteFile(cx, file, fileContents)) {
-    return nullptr;
-  }
-
-  return DecodeBinAST(cx, options, fileContents.begin(), fileContents.length(),
-                      format);
-#else   // !JS_BUILD_BINAST
-  JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                            JSMSG_SUPPORT_NOT_ENABLED, "BinAST");
-  return nullptr;
-#endif  // JS_BUILD_BINAST
 }
 
 JS_PUBLIC_API JSObject* JS_GetGlobalFromScript(JSScript* script) {
@@ -5854,6 +5830,15 @@ JS_PUBLIC_API bool JS::CaptureCurrentStack(
   }
   stackp.set(frame.get());
   return true;
+}
+
+JS_PUBLIC_API bool JS::IsAsyncStackCaptureEnabledForRealm(JSContext* cx) {
+  if (!cx->options().asyncStack()) {
+    return false;
+  }
+
+  return !cx->options().asyncStackCaptureDebuggeeOnly() ||
+         cx->realm()->isDebuggee();
 }
 
 JS_PUBLIC_API bool JS::CopyAsyncStack(JSContext* cx,

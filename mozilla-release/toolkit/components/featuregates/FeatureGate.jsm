@@ -31,7 +31,12 @@ const kTargetFacts = new Map([
   ["release", AppConstants.MOZ_UPDATE_CHANNEL === "release"],
   ["beta", AppConstants.MOZ_UPDATE_CHANNEL === "beta"],
   ["dev-edition", AppConstants.MOZ_UPDATE_CHANNEL === "aurora"],
-  ["nightly", AppConstants.MOZ_UPDATE_CHANNEL === "nightly"],
+  [
+    "nightly",
+    AppConstants.MOZ_UPDATE_CHANNEL === "nightly" ||
+      /* Treat local builds the same as Nightly builds */
+      AppConstants.MOZ_UPDATE_CHANNEL === "default",
+  ],
   ["win", AppConstants.platform === "win"],
   ["mac", AppConstants.platform === "macosx"],
   ["linux", AppConstants.platform === "linux"],
@@ -76,6 +81,23 @@ function evaluateTargetedValue(targetedValue, targetingFacts) {
   return targetedValue.default;
 }
 
+function buildFeatureGateImplementation(definition) {
+  const targetValueKeys = ["defaultValue", "isPublic"];
+  for (const key of targetValueKeys) {
+    definition[key] = evaluateTargetedValue(definition[key], kTargetFacts);
+  }
+  return new FeatureGateImplementation(definition);
+}
+
+let featureGatePrefObserver = {
+  onChange() {
+    FeatureGate.annotateCrashReporter();
+  },
+  // Ignore onEnable and onDisable since onChange is called in both cases.
+  onEnable() {},
+  onDisable() {},
+};
+
 const kFeatureGateCache = new Map();
 
 /** A high level control for turning features on and off. */
@@ -111,12 +133,58 @@ class FeatureGate {
     }
 
     // Make a copy of the definition, since we are about to modify it
-    const definition = { ...featureDefinitions.get(id) };
-    const targetValueKeys = ["defaultValue", "isPublic"];
-    for (const key of targetValueKeys) {
-      definition[key] = evaluateTargetedValue(definition[key], kTargetFacts);
+    return buildFeatureGateImplementation({ ...featureDefinitions.get(id) });
+  }
+
+  /**
+   * Constructs feature gate objects for each of the definitions in ``Features.toml``.
+   * @param {string} testDefinitionsUrl A URL from which definitions can be fetched. Only use this in tests.
+   */
+  static async all(testDefinitionsUrl = undefined) {
+    let featureDefinitions;
+    if (testDefinitionsUrl) {
+      featureDefinitions = await fetchFeatureDefinitions(testDefinitionsUrl);
+    } else {
+      featureDefinitions = await gFeatureDefinitionsPromise;
     }
-    return new FeatureGateImplementation(definition);
+
+    let definitions = [];
+    for (let definition of featureDefinitions.values()) {
+      // Make a copy of the definition, since we are about to modify it
+      definitions[definitions.length] = buildFeatureGateImplementation(
+        Object.assign({}, definition)
+      );
+    }
+    return definitions;
+  }
+
+  static async observePrefChangesForCrashReportAnnotation(
+    testDefinitionsUrl = undefined
+  ) {
+    let featureDefinitions = await FeatureGate.all(testDefinitionsUrl);
+
+    for (let definition of featureDefinitions.values()) {
+      FeatureGate.addObserver(
+        definition.id,
+        featureGatePrefObserver,
+        testDefinitionsUrl
+      );
+    }
+  }
+
+  static async annotateCrashReporter() {
+    let crashReporter = Cc["@mozilla.org/toolkit/crash-reporter;1"].getService(
+      Ci.nsICrashReporter
+    );
+    if (!crashReporter?.enabled) {
+      return;
+    }
+    let features = await FeatureGate.all();
+    let enabledFeatures = features
+      .filter(async f => f.getValue())
+      .map(f => f.preference)
+      .join(",");
+    crashReporter.annotateCrashReport("ExperimentalFeatures", enabledFeatures);
   }
 
   /**

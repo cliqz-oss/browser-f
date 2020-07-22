@@ -555,6 +555,9 @@ class UrlbarController {
       case UrlbarUtils.RESULT_TYPE.TIP:
         telemetryType = "tip";
         break;
+      case UrlbarUtils.RESULT_TYPE.DYNAMIC:
+        telemetryType = "dynamic";
+        break;
       default:
         Cu.reportError(`Unknown Result Type ${result.type}`);
         return;
@@ -597,14 +600,15 @@ class UrlbarController {
     const selectedResult = this.input.view.selectedResult;
     if (
       !selectedResult ||
-      selectedResult.source != UrlbarUtils.RESULT_SOURCE.HISTORY
+      selectedResult.source != UrlbarUtils.RESULT_SOURCE.HISTORY ||
+      selectedResult.heuristic
     ) {
       return false;
     }
 
     let { queryContext } = this._lastQueryContextWrapper;
     let index = queryContext.results.indexOf(selectedResult);
-    if (!index) {
+    if (index < 0) {
       Cu.reportError("Failed to find the selected result in the results");
       return false;
     }
@@ -913,6 +917,8 @@ class TelemetryEvent {
             return "tiphelp";
           }
           return "tip";
+        case UrlbarUtils.RESULT_TYPE.DYNAMIC:
+          return "dynamic";
       }
     }
     return "none";

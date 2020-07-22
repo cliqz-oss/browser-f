@@ -8,13 +8,16 @@ import pickle
 import typing
 
 from . import types
-from .utils import consume, keep_until
+from .utils import consume, keep_until, split
 from .ordered import OrderedSet, OrderedFrozenSet
 from .actions import Action, FilterFlag
 from .grammar import End, ErrorSymbol, InitNt, Nt
 from .rewrites import CanonicalGrammar
 from .lr0 import LR0Generator, Term
-from .aps import APS, Edge, Path, StateId
+from .aps import APS, Edge, Path
+
+# StateAndTransitions objects are indexed using a StateId which is an integer.
+StateId = int
 
 
 class StateAndTransitions:
@@ -160,6 +163,12 @@ class StateAndTransitions:
             self,
             state_map: typing.Dict[StateId, StateId]
     ) -> None:
+        def apply_on_term(term: typing.Union[Term, None]) -> Term:
+            assert term is not None
+            if isinstance(term, Action):
+                return term.rewrite_state_indexes(state_map)
+            return term
+
         self.index = state_map[self.index]
         self.terminals = {
             k: state_map[s] for k, s in self.terminals.items()
@@ -171,10 +180,11 @@ class StateAndTransitions:
             k: state_map[s] for k, s in self.errors.items()
         }
         self.epsilon = [
-            (k, state_map[s]) for k, s in self.epsilon
+            (k.rewrite_state_indexes(state_map), state_map[s]) for k, s in self.epsilon
         ]
         self.backedges = OrderedSet(
-            Edge(state_map[edge.src], edge.term) for edge in self.backedges
+            Edge(state_map[edge.src], apply_on_term(edge.term))
+            for edge in self.backedges
         )
 
     def get_error_symbol(self) -> typing.Optional[ErrorSymbol]:
@@ -365,6 +375,22 @@ class ParseTable:
                 return True
         return False
 
+    def rewrite_state_indexes(self, state_map: typing.Dict[StateId, StateId]) -> None:
+        for s in self.states:
+            if s is not None:
+                s.rewrite_state_indexes(state_map)
+        self.named_goals = [
+            (nt, state_map[s]) for nt, s in self.named_goals
+        ]
+
+    def rewrite_reordered_state_indexes(self) -> None:
+        state_map = {
+            s.index: i
+            for i, s in enumerate(self.states)
+            if s is not None
+        }
+        self.rewrite_state_indexes(state_map)
+
     def new_state(
             self,
             locations: OrderedFrozenSet[str],
@@ -394,7 +420,6 @@ class ParseTable:
 
     def remove_state(self, s: StateId, maybe_unreachable_set: OrderedSet[StateId]) -> None:
         state = self.states[s]
-        # print("Remove state {}".format(state))
         self.clear_edges(state, maybe_unreachable_set)
         del self.state_cache[state]
 
@@ -429,6 +454,7 @@ class ParseTable:
     ) -> None:
         self.states[dest].backedges.remove(Edge(src.index, term))
         maybe_unreachable_set.add(dest)
+        self.assert_state_invariants(src)
 
     def replace_edge(
             self,
@@ -437,10 +463,10 @@ class ParseTable:
             dest: StateId,
             maybe_unreachable_set: OrderedSet[StateId]
     ) -> None:
-        assert isinstance(src, StateAndTransitions)
         assert isinstance(dest, int) and dest < len(self.states)
 
-        if term in src:
+        edge_existed = term in src
+        if edge_existed:
             old_dest = src[term]
             self.remove_backedge(src, term, old_dest, maybe_unreachable_set)
 
@@ -454,6 +480,34 @@ class ParseTable:
         else:
             src.terminals[term] = dest
         self.states[dest].backedges.add(Edge(src.index, term))
+
+        self.assert_state_invariants(src)
+        self.assert_state_invariants(dest)
+        if edge_existed:
+            self.assert_state_invariants(old_dest)
+
+    def remove_edge(
+            self,
+            src: StateAndTransitions,
+            term: Term,
+            maybe_unreachable_set: OrderedSet[StateId]
+    ) -> None:
+        edge_existed = term in src
+        if edge_existed:
+            old_dest = src[term]
+            self.remove_backedge(src, term, old_dest, maybe_unreachable_set)
+        if isinstance(term, Action):
+            src.epsilon = [(t, d) for t, d in src.epsilon if t != term]
+        elif isinstance(term, Nt):
+            del src.nonterminals[term]
+        elif isinstance(term, ErrorSymbol):
+            del src.errors[term]
+        else:
+            del src.terminals[term]
+
+        self.assert_state_invariants(src)
+        if edge_existed:
+            self.assert_state_invariants(old_dest)
 
     def clear_edges(
             self,
@@ -469,6 +523,18 @@ class ParseTable:
         src.nonterminals = {}
         src.errors = {}
         src.epsilon = []
+
+    def assert_state_invariants(self, src: typing.Union[StateId, StateAndTransitions]) -> None:
+        if not self.debug_info:
+            return
+        if isinstance(src, int):
+            src = self.states[src]
+        assert isinstance(src, StateAndTransitions)
+        for term, dest in src.edges():
+            assert Edge(src.index, term) in self.states[dest].backedges
+        for e in src.backedges:
+            assert e.term is not None
+            assert self.states[e.src][e.term] == src.index
 
     def remove_unreachable_states(
             self,
@@ -551,7 +617,7 @@ class ParseTable:
                     print("\nMapping state {} to LR0:\n{}".format(s.stable_hash, s_it))
                 for k, sk_it in s_it.transitions().items():
                     locations = sk_it.stable_locations()
-                    if not self.is_term_shifted(k):
+                    if not self.term_is_shifted(k):
                         locations = OrderedFrozenSet()
                     is_new, sk = self.new_state(locations)
                     if is_new:
@@ -566,7 +632,7 @@ class ParseTable:
             print("Create LR(0) Table Result:")
             self.debug_dump()
 
-    def is_term_shifted(self, term: typing.Optional[Term]) -> bool:
+    def term_is_shifted(self, term: typing.Optional[Term]) -> bool:
         return not (isinstance(term, Action) and term.update_stack())
 
     def is_valid_path(
@@ -631,28 +697,6 @@ class ParseTable:
                 continue
             todo.extend(aps.shift_next(self))
 
-    def lanes(self, state: StateId) -> typing.List[APS]:
-        """Compute the lanes from the amount of lookahead available. Only consider
-        context when reduce states are encountered."""
-        record = []
-
-        def visit(aps: APS) -> bool:
-            has_shift_loop = len(aps.shift) != 1 + len(set(zip(aps.shift, aps.shift[1:])))
-            has_stack_loop = len(aps.stack) != 1 + len(set(zip(aps.stack, aps.stack[1:])))
-            has_lookahead = len(aps.lookahead) >= 1
-            stop = has_shift_loop or has_stack_loop or has_lookahead
-            # print("\t{} = {} or {} or {}".format(
-            #     stop, has_shift_loop, has_stack_loop, has_lookahead))
-            # print(aps.string("\tvisitor"))
-            if stop:
-                print("lanes_visit stop:")
-                print(aps.string("\trecord"))
-                record.append(aps)
-            return not stop
-
-        self.aps_visitor(APS.start(state), visit)
-        return record
-
     def context_lanes(self, state: StateId) -> typing.Tuple[bool, typing.List[APS]]:
         """Compute lanes, such that each reduce action can have set of unique stack to
         reach the given state. The stacks are assumed to be loop-free by
@@ -668,7 +712,7 @@ class ParseTable:
         enough context to disambiguate the inconsistency of the given state."""
 
         def not_interesting(aps: APS) -> bool:
-            reduce_list = [e for e in aps.history if self.is_term_shifted(e.term)]
+            reduce_list = [e for e in aps.history if self.term_is_shifted(e.term)]
             has_reduce_loop = len(reduce_list) != len(set(reduce_list))
             return has_reduce_loop
 
@@ -757,7 +801,7 @@ class ParseTable:
                 edges: Path
         ) -> typing.Tuple[int, typing.Optional[Edge]]:
             for i, edge in enumerate(edges):
-                if not self.is_term_shifted(edge.term):
+                if not self.term_is_shifted(edge.term):
                     return i, edge
             return 0, None
 
@@ -765,7 +809,7 @@ class ParseTable:
                 edges: Path
         ) -> typing.Tuple[int, typing.Optional[Edge]]:
             for i, edge in zip(reversed(range(len(edges))), reversed(edges)):
-                if not self.is_term_shifted(edge.term):
+                if not self.term_is_shifted(edge.term):
                     return i, edge
             return 0, None
 
@@ -923,7 +967,7 @@ class ParseTable:
     #             if flag_in is not None:
     #                 maybe_id_edges.add(Id(edge))
     #         edge = aps.stack[-1]
-    #         nt = edge.term.reduce_with().nt
+    #         nt = edge.term.update_stack_with().nt
     #         rule = Eq(nt, edge, None)
     #         rules, free_vars = unify_with(rule, rules, free_vars)
     #         nts.add(nt)
@@ -1033,7 +1077,7 @@ class ParseTable:
             # No need to consider any action beyind the first reduced action
             # since the reduced action is in charge of replaying the lookahead
             # terms.
-            actions = list(keep_until(actions[:-1], lambda edge: not self.is_term_shifted(edge.term)))
+            actions = list(keep_until(actions[:-1], lambda edge: not self.term_is_shifted(edge.term)))
             assert all(isinstance(edge.term, Action) for edge in actions)
 
             # Change the order of the shifted term, shift all actions by 1 with
@@ -1086,7 +1130,7 @@ class ParseTable:
                 ]
                 new_shift_map = collections.defaultdict(lambda: [])
                 recurse = False
-                if not self.is_term_shifted(term):
+                if not self.term_is_shifted(term):
                     # There is no more target after a reduce action.
                     actions_list = []
                 for target, actions in actions_list:
@@ -1265,9 +1309,7 @@ class ParseTable:
 
     def remove_all_unreachable_state(self, verbose: bool, progress: bool) -> None:
         self.states = [s for s in self.states if s is not None]
-        state_map = {s.index: i for i, s in enumerate(self.states)}
-        for s in self.states:
-            s.rewrite_state_indexes(state_map)
+        self.rewrite_reordered_state_indexes()
 
     def fold_identical_endings(self, verbose: bool, progress: bool) -> None:
         # If 2 states have the same outgoing edges, then we can merge the 2
@@ -1275,32 +1317,43 @@ class ParseTable:
         # these states to be replaced by edges going to the reference state.
         if verbose or progress:
             print("Fold identical endings.")
-        maybe_unreachable: OrderedSet[StateId] = OrderedSet()
 
-        def rewrite_backedges(state_list: typing.List[StateAndTransitions]) -> bool:
+        def rewrite_backedges(state_list: typing.List[StateAndTransitions],
+                              state_map: typing.Dict[StateId, StateId],
+                              maybe_unreachable: OrderedSet[StateId]) -> bool:
             # All states have the same outgoing edges. Thus we replace all of
-            # them by a single state.
-            ref = state_list[0]
-            replace_edges = [e for s in state_list[1:] for e in s.backedges]
+            # them by a single state. We do that by replacing edges of which
+            # are targeting the state in the state_list by edges targetting the
+            # ref state.
+            ref = state_list.pop()
+            replace_edges = [e for s in state_list for e in s.backedges]
             hit = False
             for edge in replace_edges:
-                src = self.states[edge.src]
-                # print("replace {} -- {} --> {}, by {} -- {} --> {}"
-                #       .format(src.index, term, src[term], src.index, term, ref.index))
                 edge_term = edge.term
                 assert edge_term is not None
+                src = self.states[edge.src]
+                old_dest = src[edge_term]
+                # print("replace {} -- {} --> {}, by {} -- {} --> {}"
+                #       .format(src.index, term, src[term], src.index, term, ref.index))
                 self.replace_edge(src, edge_term, ref.index, maybe_unreachable)
+                state_map[old_dest] = ref.index
                 hit = True
             return hit
 
         def rewrite_if_same_outedges(state_list: typing.List[StateAndTransitions]) -> bool:
+            maybe_unreachable: OrderedSet[StateId] = OrderedSet()
             outedges = collections.defaultdict(lambda: [])
             for s in state_list:
                 outedges[tuple(s.edges())].append(s)
             hit = False
+            state_map = {i: i for i, _ in enumerate(self.states)}
             for same in outedges.values():
                 if len(same) > 1:
-                    hit = rewrite_backedges(same) or hit
+                    hit = rewrite_backedges(same, state_map, maybe_unreachable) or hit
+            if hit:
+                self.remove_unreachable_states(maybe_unreachable)
+                self.rewrite_state_indexes(state_map)
+                self.remove_all_unreachable_state(verbose, progress)
             return hit
 
         def visit_table() -> typing.Iterator[None]:
@@ -1311,24 +1364,28 @@ class ParseTable:
 
         consume(visit_table(), progress)
 
-        self.remove_unreachable_states(maybe_unreachable)
-        self.remove_all_unreachable_state(verbose, progress)
-
     def group_epsilon_states(self, verbose: bool, progress: bool) -> None:
-        shift_states = [s for s in self.states if len(s.epsilon) == 0]
-        action_states = [s for s in self.states if len(s.epsilon) > 0]
+        def all_action_inedges(s: StateAndTransitions) -> bool:
+            return all(isinstance(e.term, Action) for e in s.backedges)
+        shift_states, action_states = split(self.states, lambda s: len(s.epsilon) == 0)
+        from_act_action_states, from_shf_action_states = split(action_states, all_action_inedges)
         self.states = []
         self.states.extend(shift_states)
-        self.states.extend(action_states)
-        state_map = {s.index: i for i, s in enumerate(self.states)}
-        for s in self.states:
-            s.rewrite_state_indexes(state_map)
+        self.states.extend(from_shf_action_states)
+        self.states.extend(from_act_action_states)
+        self.rewrite_reordered_state_indexes()
 
     def count_shift_states(self) -> int:
         return sum(1 for s in self.states if s is not None and len(s.epsilon) == 0)
 
     def count_action_states(self) -> int:
         return sum(1 for s in self.states if s is not None and len(s.epsilon) > 0)
+
+    def count_action_from_shift_states(self) -> int:
+        def from_shift_states(s: StateAndTransitions) -> bool:
+            return any(not isinstance(e.term, Action) for e in s.backedges)
+
+        return sum(1 for s in self.states if len(s.epsilon) > 0 and from_shift_states(s))
 
     def prepare_debug_context(self) -> DebugInfo:
         """To better filter out the traversal of the grammar in debug context, we
@@ -1368,20 +1425,20 @@ class ParseTable:
             if aps.history == []:
                 return True
             last = aps.history[-1].term
-            is_reduce = not self.is_term_shifted(last)
+            is_unwind = isinstance(last, Action) and last.update_stack()
             has_shift_loop = len(aps.shift) != 1 + len(set(zip(aps.shift, aps.shift[1:])))
             can_reduce_later = True
             try:
                 can_reduce_later = debug_info[aps.shift[-1].src] >= len(aps.shift)
             except KeyError:
                 can_reduce_later = False
-            stop = is_reduce or has_shift_loop or not can_reduce_later
+            stop = is_unwind or has_shift_loop or not can_reduce_later
             # Record state which are reducing at most all the shifted states.
             save = stop and len(aps.shift) == 1
-            save = save and is_reduce
+            save = save and is_unwind
             if save:
                 assert isinstance(last, Action)
-                save = last.reduce_with().nt in self.states[aps.shift[0].src]
+                save = last.update_stack_with().nt in self.states[aps.shift[0].src]
             if save:
                 record.append(aps)
             return not stop
@@ -1394,8 +1451,8 @@ class ParseTable:
             action = aps.history[-1].term
             assert isinstance(action, Action)
             assert action.update_stack()
-            reducer = action.reduce_with()
-            replay = reducer.replay
+            stack_diff = action.update_stack_with()
+            replay = stack_diff.replay
             before = [repr(e.term) for e in aps.stack[:-1]]
             after = [repr(e.term) for e in aps.history[:-1]]
             prod = before + ["\N{MIDDLE DOT}"] + after
@@ -1406,11 +1463,7 @@ class ParseTable:
                 replay += 1
             if replay > 0:
                 prod = prod[:-replay] + ["[lookahead:"] + prod[-replay:] + ["]"]
-            txt = "{}{} ::= {}".format(
-                prefix,
-                repr(action.reduce_with().nt),
-                " ".join(prod)
-            )
+            txt = "{}{} ::= {}".format(prefix, repr(stack_diff.nt), " ".join(prod))
             context.add(txt)
 
         if split_txt is None:

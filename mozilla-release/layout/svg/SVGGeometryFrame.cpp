@@ -22,7 +22,7 @@
 #include "nsLayoutUtils.h"
 #include "SVGObserverUtils.h"
 #include "nsSVGIntegrationUtils.h"
-#include "nsSVGMarkerFrame.h"
+#include "SVGMarkerFrame.h"
 #include "SVGGeometryElement.h"
 #include "nsSVGUtils.h"
 #include "mozilla/ArrayUtils.h"
@@ -53,9 +53,9 @@ NS_QUERYFRAME_HEAD(SVGGeometryFrame)
   NS_QUERYFRAME_ENTRY(SVGGeometryFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsFrame)
 
-void nsDisplaySVGGeometry::HitTest(nsDisplayListBuilder* aBuilder,
-                                   const nsRect& aRect, HitTestState* aState,
-                                   nsTArray<nsIFrame*>* aOutFrames) {
+void DisplaySVGGeometry::HitTest(nsDisplayListBuilder* aBuilder,
+                                 const nsRect& aRect, HitTestState* aState,
+                                 nsTArray<nsIFrame*>* aOutFrames) {
   SVGGeometryFrame* frame = static_cast<SVGGeometryFrame*>(mFrame);
   nsPoint pointRelativeToReferenceFrame = aRect.Center();
   // ToReferenceFrame() includes frame->GetPosition(), our user space position.
@@ -69,8 +69,8 @@ void nsDisplaySVGGeometry::HitTest(nsDisplayListBuilder* aBuilder,
   }
 }
 
-void nsDisplaySVGGeometry::Paint(nsDisplayListBuilder* aBuilder,
-                                 gfxContext* aCtx) {
+void DisplaySVGGeometry::Paint(nsDisplayListBuilder* aBuilder,
+                               gfxContext* aCtx) {
   uint32_t appUnitsPerDevPixel = mFrame->PresContext()->AppUnitsPerDevPixel();
 
   // ToReferenceFrame includes our mRect offset, but painting takes
@@ -89,7 +89,7 @@ void nsDisplaySVGGeometry::Paint(nsDisplayListBuilder* aBuilder,
   nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, imgParams.result);
 }
 
-void nsDisplaySVGGeometry::ComputeInvalidationRegion(
+void DisplaySVGGeometry::ComputeInvalidationRegion(
     nsDisplayListBuilder* aBuilder, const nsDisplayItemGeometry* aGeometry,
     nsRegion* aInvalidRegion) const {
   auto geometry =
@@ -151,7 +151,7 @@ void SVGGeometryFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle) {
         // decides whether or not to insert little lines into the path for zero
         // length subpaths base on that property.
         element->ClearAnyCachedPath();
-      } else if (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) {
+      } else if (HasAnyStateBits(NS_STATE_SVG_CLIPPATH_CHILD)) {
         if (StyleSVG()->mClipRule != oldStyleSVG->mClipRule) {
           // Moz2D Path objects are fill-rule specific.
           // For clipPath we use clip-rule as the path's fill-rule.
@@ -205,7 +205,7 @@ void SVGGeometryFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     return;
   }
   DisplayOutline(aBuilder, aLists);
-  aLists.Content()->AppendNewToTop<nsDisplaySVGGeometry>(aBuilder, this);
+  aLists.Content()->AppendNewToTop<DisplaySVGGeometry>(aBuilder, this);
 }
 
 //----------------------------------------------------------------------
@@ -256,7 +256,7 @@ void SVGGeometryFrame::PaintSVG(gfxContext& aContext,
 nsIFrame* SVGGeometryFrame::GetFrameForPoint(const gfxPoint& aPoint) {
   FillRule fillRule;
   uint16_t hitTestFlags;
-  if (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) {
+  if (HasAnyStateBits(NS_STATE_SVG_CLIPPATH_CHILD)) {
     hitTestFlags = SVG_HIT_TEST_FILL;
     fillRule = nsSVGUtils::ToFillRule(StyleSVG()->mClipRule);
   } else {
@@ -319,7 +319,7 @@ void SVGGeometryFrame::ReflowSVG() {
   NS_ASSERTION(nsSVGUtils::OuterSVGIsCallingReflowSVG(this),
                "This call is probably a wasteful mistake");
 
-  MOZ_ASSERT(!(GetStateBits() & NS_FRAME_IS_NONDISPLAY),
+  MOZ_ASSERT(!HasAnyStateBits(NS_FRAME_IS_NONDISPLAY),
              "ReflowSVG mechanism not designed for this");
 
   if (!nsSVGUtils::NeedsReflowSVG(this)) {
@@ -361,7 +361,7 @@ void SVGGeometryFrame::ReflowSVG() {
 
   // Invalidate, but only if this is not our first reflow (since if it is our
   // first reflow then we haven't had our first paint yet).
-  if (!(GetParent()->GetStateBits() & NS_FRAME_FIRST_REFLOW)) {
+  if (!GetParent()->HasAnyStateBits(NS_FRAME_FIRST_REFLOW)) {
     InvalidateFrame();
   }
 }
@@ -477,8 +477,8 @@ SVGBBox SVGGeometryFrame::GetBBoxContribution(const Matrix& aToBBoxUserspace,
 #endif
 
     FillRule fillRule = nsSVGUtils::ToFillRule(
-        (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) ? StyleSVG()->mClipRule
-                                                       : StyleSVG()->mFillRule);
+        HasAnyStateBits(NS_STATE_SVG_CLIPPATH_CHILD) ? StyleSVG()->mClipRule
+                                                     : StyleSVG()->mFillRule);
     RefPtr<Path> pathInUserSpace = element->GetOrBuildPath(tmpDT, fillRule);
     if (!pathInUserSpace) {
       return bbox;
@@ -572,7 +572,7 @@ SVGBBox SVGGeometryFrame::GetBBoxContribution(const Matrix& aToBBoxUserspace,
   // Account for markers:
   if ((aFlags & nsSVGUtils::eBBoxIncludeMarkers) != 0 &&
       element->IsMarkable()) {
-    nsSVGMarkerFrame* markerFrames[SVGMark::eTypeCount];
+    SVGMarkerFrame* markerFrames[SVGMark::eTypeCount];
     if (SVGObserverUtils::GetAndObserveMarkers(this, &markerFrames)) {
       nsTArray<SVGMark> marks;
       element->GetMarkPoints(&marks);
@@ -580,7 +580,7 @@ SVGBBox SVGGeometryFrame::GetBBoxContribution(const Matrix& aToBBoxUserspace,
         float strokeWidth = nsSVGUtils::GetStrokeWidth(this);
         for (uint32_t i = 0; i < num; i++) {
           const SVGMark& mark = marks[i];
-          nsSVGMarkerFrame* frame = markerFrames[mark.type];
+          SVGMarkerFrame* frame = markerFrames[mark.type];
           if (frame) {
             SVGBBox mbbox = frame->GetMarkBBoxContribution(
                 aToBBoxUserspace, aFlags, this, mark, strokeWidth);
@@ -620,8 +620,8 @@ void SVGGeometryFrame::Render(gfxContext* aContext, uint32_t aRenderComponents,
   }
 
   FillRule fillRule = nsSVGUtils::ToFillRule(
-      (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) ? StyleSVG()->mClipRule
-                                                     : StyleSVG()->mFillRule);
+      HasAnyStateBits(NS_STATE_SVG_CLIPPATH_CHILD) ? StyleSVG()->mClipRule
+                                                   : StyleSVG()->mFillRule);
 
   SVGGeometryElement* element = static_cast<SVGGeometryElement*>(GetContent());
 
@@ -637,7 +637,7 @@ void SVGGeometryFrame::Render(gfxContext* aContext, uint32_t aRenderComponents,
   gfxContextMatrixAutoSaveRestore autoRestoreTransform(aContext);
   aContext->SetMatrixDouble(aTransform);
 
-  if (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) {
+  if (HasAnyStateBits(NS_STATE_SVG_CLIPPATH_CHILD)) {
     // We don't complicate this code with GetAsSimplePath since the cost of
     // masking will dwarf Path creation overhead anyway.
     RefPtr<Path> path = element->GetOrBuildPath(drawTarget, fillRule);
@@ -735,7 +735,7 @@ void SVGGeometryFrame::PaintMarkers(gfxContext& aContext,
   auto element = static_cast<SVGGeometryElement*>(GetContent());
 
   if (element->IsMarkable()) {
-    nsSVGMarkerFrame* markerFrames[SVGMark::eTypeCount];
+    SVGMarkerFrame* markerFrames[SVGMark::eTypeCount];
     if (SVGObserverUtils::GetAndObserveMarkers(this, &markerFrames)) {
       nsTArray<SVGMark> marks;
       element->GetMarkPoints(&marks);
@@ -745,7 +745,7 @@ void SVGGeometryFrame::PaintMarkers(gfxContext& aContext,
         float strokeWidth = nsSVGUtils::GetStrokeWidth(this, contextPaint);
         for (uint32_t i = 0; i < num; i++) {
           const SVGMark& mark = marks[i];
-          nsSVGMarkerFrame* frame = markerFrames[mark.type];
+          SVGMarkerFrame* frame = markerFrames[mark.type];
           if (frame) {
             frame->PaintMark(aContext, aTransform, this, mark, strokeWidth,
                              aImgParams);

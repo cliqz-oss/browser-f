@@ -49,33 +49,46 @@ nsresult HttpBackgroundChannelChild::Init(HttpChannelChild* aChannelChild) {
 
 void HttpBackgroundChannelChild::CreateDataBridge() {
   MOZ_ASSERT(OnSocketThread());
+
+  if (!mChannelChild) {
+    return;
+  }
+
   PBackgroundChild* actorChild =
       BackgroundChild::GetOrCreateSocketActorForCurrentThread();
   if (NS_WARN_IF(!actorChild)) {
     return;
   }
 
-  mDataBridgeChild = new BackgroundDataBridgeChild(this);
-  if (!actorChild->SendPBackgroundDataBridgeConstructor(
-          mDataBridgeChild, mChannelChild->ChannelId())) {
-    mDataBridgeChild = nullptr;
-  }
+  RefPtr<BackgroundDataBridgeChild> dataBridgeChild =
+      new BackgroundDataBridgeChild(this);
+  Unused << actorChild->SendPBackgroundDataBridgeConstructor(
+      dataBridgeChild, mChannelChild->ChannelId());
 }
 
 void HttpBackgroundChannelChild::OnChannelClosed() {
   LOG(("HttpBackgroundChannelChild::OnChannelClosed [this=%p]\n", this));
   MOZ_ASSERT(OnSocketThread());
 
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  if (mChannelChild) {
+    mChannelChild->mBackgroundChildQueueFinalState =
+        mQueuedRunnables.IsEmpty() ? HttpChannelChild::BCKCHILD_EMPTY
+                                   : HttpChannelChild::BCKCHILD_NON_EMPTY;
+  }
+#endif
+
   // HttpChannelChild is not going to handle any incoming message.
   mChannelChild = nullptr;
 
   // Remove pending IPC messages as well.
   mQueuedRunnables.Clear();
+}
 
-  if (mDataBridgeChild) {
-    mDataBridgeChild->Destroy();
-    mDataBridgeChild = nullptr;
-  }
+bool HttpBackgroundChannelChild::ChannelClosed() {
+  MOZ_ASSERT(OnSocketThread());
+
+  return !mChannelChild;
 }
 
 void HttpBackgroundChannelChild::OnStartRequestReceived() {
@@ -157,6 +170,15 @@ IPCResult HttpBackgroundChannelChild::RecvOnTransportAndData(
   MOZ_ASSERT(OnSocketThread());
 
   if (NS_WARN_IF(!mChannelChild)) {
+    return IPC_OK();
+  }
+
+  // The HttpTransactionChild in socket process may not know that this request
+  // is cancelled or failed due to the IPC delay. In this case, we should not
+  // forward ODA to HttpChannelChild.
+  nsresult channelStatus;
+  mChannelChild->GetStatus(&channelStatus);
+  if (NS_FAILED(channelStatus)) {
     return IPC_OK();
   }
 

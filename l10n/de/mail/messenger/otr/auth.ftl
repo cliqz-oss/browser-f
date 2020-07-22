@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 otr-auth =
-    .title = Kontaktidentitäte bestätigen
+    .title = Kontaktidentität bestätigen
     .buttonlabelaccept = Bestätigen
 
 # Variables:
@@ -12,13 +12,13 @@ auth-title = Identität von { $name } bestätigen
 
 # Variables:
 #   $own_name (String) - the user's own screen name
-auth-your-fp-value = Ihr { $own_name } Fingerabdruck:
+auth-your-fp-value = Ihr { $own_name }-Fingerabdruck:
 
 # Variables:
 #   $their_name (String) - the screen name of a chat contact
 auth-their-fp-value = Fingerabdruck für { $their_name }:
 
-auth-help = Verifying a contact's identity helps ensure that the conversation is truly private, making it very difficult for a third party to eavesdrop or manipulate the conversation.
+auth-help = Das Bestätigen der Identität eines Kontaktes hilft beim Sicherstellen, dass ein Gespräch wirklich privat ist, und erschwert das Abhören oder Manipulieren des Gesprächs durch Andere sehr.
 auth-helpTitle = Hilfe zur Bestätigung
 
 auth-questionReceived = Von Ihrem Kontakt gestellte Frage:
@@ -44,7 +44,7 @@ auth-questionAndAnswer-label =
 auth-sharedSecret-label =
     .label = { auth-sharedSecret }
 
-auth-manualInstruction = Kontakten Sie Ihren beabsichtigten Gesprächspartner über einen anderen bestätigten Kommunikationskanal wie mit OpenPGP signierte E-Mails oder per Telefon. Teilen Sie sich gegenseitig Ihre Fingerabdrücke mit. (Ein Fingerabdruck ist die Prüfsummem, welche einen Verschlüsselungschlüssel identifiziert.) Falls die Fingerabdrücke stimmen, sollten Sie unten in diesem Dialog angeben, dass Sie den Fingerabdruck bestätigt haben?.
+auth-manualInstruction = Kontakten Sie Ihren beabsichtigten Gesprächspartner über einen anderen bestätigten Kommunikationskanal wie mit OpenPGP signierte E-Mails oder per Telefon. Teilen Sie sich gegenseitig Ihre Fingerabdrücke mit. (Ein Fingerabdruck ist die Prüfsumme, welche einen Verschlüsselungschlüssel identifiziert.) Falls die Fingerabdrücke stimmen, sollten Sie unten in diesem Dialog angeben, dass Sie den Fingerabdruck bestätigt haben.
 
 auth-how = Wie soll die Identität Ihres Kontaktes bestätigt werden
 

@@ -65,7 +65,7 @@ class WorkerThread::Observer final : public nsIThreadObserver {
   NS_DECL_NSITHREADOBSERVER
 };
 
-WorkerThread::WorkerThread()
+WorkerThread::WorkerThread(ConstructorKey)
     : nsThread(MakeNotNull<ThreadEventQueue<mozilla::EventQueue>*>(
                    MakeUnique<mozilla::EventQueue>()),
                nsThread::NOT_MAIN_THREAD, kWorkerStackSize),
@@ -87,17 +87,16 @@ WorkerThread::~WorkerThread() {
 }
 
 // static
-already_AddRefed<WorkerThread> WorkerThread::Create(
+SafeRefPtr<WorkerThread> WorkerThread::Create(
     const WorkerThreadFriendKey& /* aKey */) {
-  RefPtr<WorkerThread> thread = new WorkerThread();
+  SafeRefPtr<WorkerThread> thread =
+      MakeSafeRefPtr<WorkerThread>(ConstructorKey());
   if (NS_FAILED(thread->Init(NS_LITERAL_CSTRING("DOM Worker")))) {
     NS_WARNING("Failed to create new thread!");
     return nullptr;
   }
-  thread->mAbstractThread = AbstractThread::CreateXPCOMThreadWrapper(
-      thread, false /* aRequireTailDispatch */);
 
-  return thread.forget();
+  return thread;
 }
 
 void WorkerThread::SetWorker(const WorkerThreadFriendKey& /* aKey */,
@@ -128,10 +127,12 @@ void WorkerThread::SetWorker(const WorkerThreadFriendKey& /* aKey */,
 
       MOZ_ASSERT(mWorkerPrivate);
       MOZ_ASSERT(!mAcceptingNonWorkerRunnables);
-      MOZ_ASSERT(!mOtherThreadsDispatchingViaEventTarget,
-                 "XPCOM Dispatch hapenning at the same time our thread is "
-                 "being unset! This should not be possible!");
-
+      // mOtherThreadsDispatchingViaEventTarget can still be non-zero here
+      // because WorkerThread::Dispatch isn't atomic so a thread initiating
+      // dispatch can have dispatched a runnable at this thread allowing us to
+      // begin shutdown before that thread gets a chance to decrement
+      // mOtherThreadsDispatchingViaEventTarget back to 0.  So we need to wait
+      // for that.
       while (mOtherThreadsDispatchingViaEventTarget) {
         mWorkerPrivateCondVar.Wait();
       }
@@ -331,14 +332,6 @@ PerformanceCounter* WorkerThread::GetPerformanceCounter(
     return mWorkerPrivate->GetPerformanceCounter();
   }
   return nullptr;
-}
-
-NS_IMETHODIMP
-WorkerThread::Shutdown() {
-  MOZ_ALWAYS_SUCCEEDS(nsThread::Shutdown());
-  // We need to break the cycle.
-  mAbstractThread = nullptr;
-  return NS_OK;
 }
 
 NS_IMPL_ISUPPORTS(WorkerThread::Observer, nsIThreadObserver)

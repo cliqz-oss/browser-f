@@ -6,6 +6,8 @@
 #ifndef HttpTransactionParent_h__
 #define HttpTransactionParent_h__
 
+#include "mozilla/Atomics.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/net/HttpTransactionShell.h"
 #include "mozilla/net/NeckoChannelParams.h"
 #include "mozilla/net/PHttpTransactionParent.h"
@@ -35,7 +37,7 @@ class HttpTransactionParent final : public PHttpTransactionParent,
                                     public nsIRequest,
                                     public nsIThreadRetargetableRequest {
  public:
-  NS_DECL_ISUPPORTS
+  NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_HTTPTRANSACTIONSHELL
   NS_DECL_NSIREQUEST
   NS_DECL_NSITHREADRETARGETABLEREQUEST
@@ -62,7 +64,8 @@ class HttpTransactionParent final : public PHttpTransactionParent,
       const int64_t& aTransferSize, const TimingStructArgs& aTimings,
       const Maybe<nsHttpHeaderArray>& responseTrailers,
       const bool& aHasStickyConn,
-      Maybe<TransactionObserverResult>&& aTransactionObserverResult);
+      Maybe<TransactionObserverResult>&& aTransactionObserverResult,
+      const int64_t& aRequestSize);
   mozilla::ipc::IPCResult RecvOnNetAddrUpdate(const NetAddr& aSelfAddr,
                                               const NetAddr& aPeerAddr,
                                               const bool& aResolvedByTRR);
@@ -100,12 +103,20 @@ class HttpTransactionParent final : public PHttpTransactionParent,
       const int64_t& aTransferSize, const TimingStructArgs& aTimings,
       const Maybe<nsHttpHeaderArray>& responseTrailers,
       const bool& aHasStickyConn,
-      Maybe<TransactionObserverResult>&& aTransactionObserverResult);
+      Maybe<TransactionObserverResult>&& aTransactionObserverResult,
+      const int64_t& aRequestSize);
   void DoNotifyListener();
+  void ContinueDoNotifyListener();
+  // Get event target for ODA.
+  already_AddRefed<nsIEventTarget> GetODATarget();
+  void CancelOnMainThread(nsresult aRv);
+  void HandleAsyncAbort();
 
   nsCOMPtr<nsITransportEventSink> mEventsink;
   nsCOMPtr<nsIStreamListener> mChannel;
   nsCOMPtr<nsIEventTarget> mTargetThread;
+  nsCOMPtr<nsIEventTarget> mODATarget;
+  Mutex mEventTargetMutex;
   nsCOMPtr<nsISupports> mSecurityInfo;
   UniquePtr<nsHttpResponseHead> mResponseHead;
   UniquePtr<nsHttpHeaderArray> mResponseTrailers;
@@ -115,8 +126,8 @@ class HttpTransactionParent final : public PHttpTransactionParent,
   int64_t mTransferSize;
   int64_t mRequestSize;
   bool mProxyConnectFailed;
-  bool mCanceled;
-  nsresult mStatus;
+  Atomic<bool, ReleaseAcquire> mCanceled;
+  Atomic<nsresult, ReleaseAcquire> mStatus;
   int32_t mSuspendCount;
   bool mResponseHeadTaken;
   bool mResponseTrailersTaken;
@@ -137,6 +148,7 @@ class HttpTransactionParent final : public PHttpTransactionParent,
   TransactionObserverFunc mTransactionObserver;
   OnPushCallback mOnPushCallback;
   nsTArray<uint8_t> mDataForSniffer;
+  std::function<void()> mCallOnResume;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(HttpTransactionParent,

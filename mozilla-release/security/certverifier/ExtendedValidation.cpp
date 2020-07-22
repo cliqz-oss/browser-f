@@ -225,18 +225,6 @@ static const struct EVInfo kEVInfos[] = {
     "ToEtioJl4AsC7j41AkblPQ==",
   },
   {
-    // CN=AddTrust External CA Root,OU=AddTrust External TTP Network,O=AddTrust AB,C=SE
-    "1.3.6.1.4.1.6449.1.2.1.5.1",
-    "Comodo EV OID",
-    { 0x68, 0x7F, 0xA4, 0x51, 0x38, 0x22, 0x78, 0xFF, 0xF0, 0xC8, 0xB1,
-      0x1F, 0x8D, 0x43, 0xD5, 0x76, 0x67, 0x1C, 0x6E, 0xB2, 0xBC, 0xEA,
-      0xB4, 0x13, 0xFB, 0x83, 0xD9, 0x65, 0xD0, 0x6D, 0x2F, 0xF2 },
-    "MG8xCzAJBgNVBAYTAlNFMRQwEgYDVQQKEwtBZGRUcnVzdCBBQjEmMCQGA1UECxMd"
-    "QWRkVHJ1c3QgRXh0ZXJuYWwgVFRQIE5ldHdvcmsxIjAgBgNVBAMTGUFkZFRydXN0"
-    "IEV4dGVybmFsIENBIFJvb3Q=",
-    "AQ==",
-  },
-  {
     // OU=Go Daddy Class 2 Certification Authority,O=\"The Go Daddy Group, Inc.\",C=US
     "2.16.840.1.114413.1.7.23.3",
     "Go Daddy EV OID a",
@@ -838,17 +826,6 @@ static const struct EVInfo kEVInfos[] = {
     "AA==",
   },
   {
-    // CN=LuxTrust Global Root 2,O=LuxTrust S.A.,C=LU
-    "1.3.171.1.1.10.5.2",
-    "LuxTrust EV OID",
-    { 0x54, 0x45, 0x5F, 0x71, 0x29, 0xC2, 0x0B, 0x14, 0x47, 0xC4, 0x18,
-      0xF9, 0x97, 0x16, 0x8F, 0x24, 0xC5, 0x8F, 0xC5, 0x02, 0x3B, 0xF5,
-      0xDA, 0x5B, 0xE2, 0xEB, 0x6E, 0x1D, 0xD8, 0x90, 0x2E, 0xD5 },
-    "MEYxCzAJBgNVBAYTAkxVMRYwFAYDVQQKDA1MdXhUcnVzdCBTLkEuMR8wHQYDVQQD"
-    "DBZMdXhUcnVzdCBHbG9iYWwgUm9vdCAy",
-    "Cn6m30tEntpqJIWe5rgV0xZ/u7E=",
-  },
-  {
     // CN=GDCA TrustAUTH R5 ROOT,O="GUANG DONG CERTIFICATE AUTHORITY CO.,LTD.",C=CN
     "1.2.156.112559.1.1.6.1",
     "GDCA EV OID",
@@ -952,6 +929,17 @@ static const struct EVInfo kEVInfos[] = {
     "MFoxCzAJBgNVBAYTAlVTMRMwEQYDVQQLEwplbVNpZ24gUEtJMRQwEgYDVQQKEwtl"
     "TXVkaHJhIEluYzEgMB4GA1UEAxMXZW1TaWduIEVDQyBSb290IENBIC0gQzM=",
     "e3G2gla4EnycqA==",
+  },
+  {
+    // OU=certSIGN ROOT CA G2,O=CERTSIGN SA,C=RO
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0x65, 0x7C, 0xFE, 0x2F, 0xA7, 0x3F, 0xAA, 0x38, 0x46, 0x25, 0x71,
+      0xF3, 0x32, 0xA2, 0x36, 0x3A, 0x46, 0xFC, 0xE7, 0x02, 0x09, 0x51,
+      0x71, 0x07, 0x02, 0xCD, 0xFB, 0xB6, 0xEE, 0xDA, 0x33, 0x05 },
+    "MEExCzAJBgNVBAYTAlJPMRQwEgYDVQQKEwtDRVJUU0lHTiBTQTEcMBoGA1UECxMT"
+    "Y2VydFNJR04gUk9PVCBDQSBHMg==",
+    "EQA0tk7GNi02",
   },
     // clang-format on
 };

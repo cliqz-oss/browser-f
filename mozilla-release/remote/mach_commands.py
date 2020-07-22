@@ -12,7 +12,6 @@ import argparse
 import json
 import sys
 import os
-import re
 import tempfile
 import shutil
 import subprocess
@@ -41,9 +40,6 @@ EX_CONFIG = 78
 EX_SOFTWARE = 70
 EX_USAGE = 64
 
-DEFAULT_REPO = "https://github.com/andreastt/puppeteer.git"
-DEFAULT_COMMITISH = "firefox"
-
 
 def setup():
     # add node and npm from mozbuild to front of system path
@@ -71,14 +67,12 @@ class RemoteCommands(MachCommandBase):
                 "Pull in latest changes of the Puppeteer client.")
     @CommandArgument("--repository",
                      metavar="REPO",
-                     default=DEFAULT_REPO,
-                     help="The (possibly remote) repository to clone from. "
-                          "Defaults to {}.".format(DEFAULT_REPO))
+                     required=True,
+                     help="The (possibly remote) repository to clone from.")
     @CommandArgument("--commitish",
                      metavar="COMMITISH",
-                     default=DEFAULT_COMMITISH,
-                     help="The commit or tag object name to check out. "
-                          "Defaults to \"{}\".".format(DEFAULT_COMMITISH))
+                     required=True,
+                     help="The commit or tag object name to check out.")
     def vendor_puppeteer(self, repository, commitish):
         puppeteerdir = os.path.join(self.remotedir, "test", "puppeteer")
 
@@ -97,6 +91,10 @@ class RemoteCommands(MachCommandBase):
             os.remove(os.path.join(puppeteerdir, ".gitignore"))
         except OSError:
             pass
+
+        experimental_dir = os.path.join(puppeteerdir, "experimental")
+        if os.path.isdir(experimental_dir):
+            shutil.rmtree(experimental_dir)
 
         import yaml
         annotation = {
@@ -173,10 +171,13 @@ def npm(*args, **kwargs):
     return p.returncode
 
 
-def wait_proc(p, cmd=None, exit_on_fail=True):
+def wait_proc(p, cmd=None, exit_on_fail=True, output_timeout=None):
     try:
-        p.run()
+        p.run(outputTimeout=output_timeout)
         p.wait()
+        if p.timedOut:
+            # In some cases, we wait longer for a mocha timeout
+            print("Timed out after {} seconds of no output".format(output_timeout))
     finally:
         p.kill()
     if exit_on_fail and p.returncode > 0:
@@ -188,11 +189,10 @@ def wait_proc(p, cmd=None, exit_on_fail=True):
 class MochaOutputHandler(object):
     def __init__(self, logger, expected):
         self.logger = logger
-        self.test_name_re = re.compile(r"\d+\) \[\s*(\w+)\s*\] (.*) \(.*\)")
-        self.control_re = re.compile("\x1b\\[[0-9]*m")
         self.proc = None
         self.test_results = OrderedDict()
         self.expected = expected
+        self.unexpected_skips = set()
 
         self.has_unexpected = False
         self.logger.suite_start([], name="puppeteer-tests")
@@ -200,7 +200,9 @@ class MochaOutputHandler(object):
             "CRASHED": "CRASH",
             "OK": "PASS",
             "TERMINATED": "CRASH",
-            "TIME": "TIMEOUT",
+            "pass": "PASS",
+            "fail": "FAIL",
+            "pending": "SKIP"
         }
 
     @property
@@ -208,23 +210,47 @@ class MochaOutputHandler(object):
         return self.proc and self.proc.pid
 
     def __call__(self, line):
-        line_text = self.control_re.subn("", line)[0]
-        m = self.test_name_re.match(line_text)
-        if m:
-            status, test_name = m.groups()
-            status = self.status_map.get(status, status)
+        event = None
+        try:
+            if line.startswith('[') and line.endswith(']'):
+                event = json.loads(line)
+            self.process_event(event)
+        except ValueError:
+            pass
+        finally:
+            self.logger.process_output(self.pid, line, command="npm")
+
+    def process_event(self, event):
+        if isinstance(event, list) and len(event) > 1:
+            status = self.status_map.get(event[0])
+            test_start = event[0] == 'test-start'
+            if not status and not test_start:
+                return
+            test_info = event[1]
+            test_name = test_info.get("fullTitle", "")
+            test_path = test_info.get("file", "")
+            test_err = test_info.get("err")
+            if status == "FAIL" and test_err:
+                if "timeout" in test_err.lower():
+                    status = "TIMEOUT"
+            if test_name and test_path:
+                test_name = "{} ({})".format(test_name, os.path.basename(test_path))
+            if test_start:
+                self.logger.test_start(test_name)
+                return
+            expected = self.expected.get(test_name, ["PASS"])
             # mozlog doesn't really allow unexpected skip,
-            # so if a test is disabled just expect that
+            # so if a test is disabled just expect that and note the unexpected skip
+            # Also, mocha doesn't log test-start for skipped tests
             if status == "SKIP":
+                self.logger.test_start(test_name)
+                if status not in expected:
+                    self.unexpected_skips.add(test_name)
                 expected = ["SKIP"]
-            else:
-                expected = self.expected.get(test_name, ["PASS"])
             known_intermittent = expected[1:]
             expected_status = expected[0]
 
             self.test_results[test_name] = status
-
-            self.logger.test_start(test_name)
             self.logger.test_end(test_name,
                                  status=status,
                                  expected=expected_status,
@@ -232,7 +258,6 @@ class MochaOutputHandler(object):
 
             if status not in expected:
                 self.has_unexpected = True
-        self.logger.process_output(self.pid, line, command="npm")
 
     def new_expected(self):
         new_expected = OrderedDict()
@@ -250,10 +275,20 @@ class MochaOutputHandler(object):
     def after_end(self, subset=False):
         if not subset:
             missing = set(self.expected) - set(self.test_results)
+            extra = set(self.test_results) - set(self.expected)
             if missing:
                 self.has_unexpected = True
                 for test_name in missing:
                     self.logger.error("TEST-UNEXPECTED-MISSING %s" % (test_name,))
+            if self.expected and extra:
+                self.has_unexpected = True
+                for test_name in extra:
+                    self.logger.error("TEST-UNEXPECTED-MISSING Unknown new test %s" % (test_name,))
+
+        if self.unexpected_skips:
+            self.has_unexpected = True
+            for test_name in self.unexpected_skips:
+                self.logger.error("TEST-UNEXPECTED-MISSING Unexpected skipped %s" % (test_name,))
         self.logger.suite_end()
 
 
@@ -316,16 +351,29 @@ class PuppeteerRunner(MozbuildObject):
         binary = params.get("binary") or self.get_binary_path()
         product = params.get("product", "firefox")
 
-        env = {"DUMPIO": "1"}
+        env = {
+            # Print browser process ouptut
+            "DUMPIO": "1",
+            # Checked by Puppeteer's custom mocha config
+            "CI": "1",
+            # Causes some tests to be skipped due to assumptions about install
+            "PUPPETEER_ALT_INSTALL": "1"
+        }
         extra_options = {}
         for k, v in params.get("extra_launcher_options", {}).items():
             extra_options[k] = json.loads(v)
 
+        # Override upstream defaults: no retries, shorter timeout
+        mocha_options = [
+            "--reporter", "./json-mocha-reporter.js",
+            "--retries", "0",
+            "--fullTrace",
+            "--timeout", "15000"
+        ]
         if product == "firefox":
             env["BINARY"] = binary
-            command = ["run", "funit", "--", "--verbose"]
-        elif product == "chrome":
-            command = ["run", "unit", "--", "--verbose"]
+            env["PUPPETEER_PRODUCT"] = "firefox"
+        command = ["run", "unit", "--"] + mocha_options
 
         if params.get("jobs"):
             env["PPTR_PARALLEL_TESTS"] = str(params["jobs"])
@@ -354,7 +402,9 @@ class PuppeteerRunner(MozbuildObject):
                    processOutputLine=output_handler, wait=False)
         output_handler.proc = proc
 
-        wait_proc(proc, "npm", exit_on_fail=False)
+        # Puppeteer unit tests don't always clean-up child processes in case of
+        # failure, so use an output_timeout as a fallback
+        wait_proc(proc, "npm", output_timeout=60, exit_on_fail=False)
 
         output_handler.after_end(params.get("subset", False))
 
@@ -508,10 +558,24 @@ class PuppeteerTest(MachCommandBase):
     def install_puppeteer(self, product):
         setup()
         env = {}
+        from mozversioncontrol import get_repository_object
+        repo = get_repository_object(self.topsrcdir)
+        puppeteer_dir = os.path.join("remote", "test", "puppeteer")
+        src_dir = os.path.join(puppeteer_dir, "src")
+        changed_files = False
+        for f in repo.get_changed_files():
+            if f.startswith(src_dir):
+                changed_files = True
+                break
+
         if product != "chrome":
-            env["PUPPETEER_SKIP_CHROMIUM_DOWNLOAD"] = "1"
+            env["PUPPETEER_SKIP_DOWNLOAD"] = "1"
+        lib_dir = os.path.join(self.topsrcdir, puppeteer_dir, "lib")
+        if changed_files and os.path.isdir(lib_dir):
+            # clobber lib to force `tsc compile` step
+            shutil.rmtree(lib_dir)
         npm("install",
-            cwd=os.path.join(self.topsrcdir, "remote", "test", "puppeteer"),
+            cwd=os.path.join(self.topsrcdir, puppeteer_dir),
             env=env)
 
 

@@ -1798,6 +1798,7 @@ class BootstrapScope {
         signedState: addon.signedState,
         temporarilyInstalled: addon.location.isTemporary,
         builtIn: addon.location.isBuiltin,
+        isSystem: addon.location.isSystem,
       };
 
       if (aMethod == "startup" && addon.startupData) {

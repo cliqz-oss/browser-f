@@ -2,11 +2,9 @@
 max-line-length = 99
 exclude =
     # These paths should be triaged and either fixed or moved to the list below.
-    client.py,
     devtools/shared,
     dom/base,
     dom/bindings,
-    dom/browser-element,
     dom/canvas,
     dom/encoding,
     dom/websocket,
@@ -120,6 +118,7 @@ per-file-ignores =
     memory/**: F821
     mozglue/**: F821
     python/mozbuild/**: F821
+    python/mozbuild/mozbuild/test/configure/test_checks_configure.py: E128
     python/mozversioncontrol/**: F821
     testing/mozharness/**: F821
     testing/talos/**: F821
@@ -131,3 +130,7 @@ per-file-ignores =
     testing/mochitest/**: F821
     testing/xpcshell/**: F633, F821
     xpcom/idl-parser/xpidl/**: F633, F821
+
+builtins =
+    # For GDB extensions
+    gdb

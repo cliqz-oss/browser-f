@@ -92,6 +92,7 @@ var dialog = {
   initialize: function initialize() {
     this._handlerInfo = window.arguments[7].QueryInterface(Ci.nsIHandlerInfo);
     this._URI = window.arguments[8].QueryInterface(Ci.nsIURI);
+    let principal = window.arguments[9]?.QueryInterface(Ci.nsIPrincipal);
     this._browsingContext = window.arguments[10];
     let usePrivateBrowsing = false;
     if (this._browsingContext) {
@@ -123,6 +124,20 @@ var dialog = {
     checkbox.desc.label = window.arguments[4];
     checkbox.desc.accessKey = window.arguments[5];
     checkbox.text.textContent = window.arguments[6];
+
+    if (principal && principal.isContentPrincipal) {
+      let hostContainer = document.getElementById("originating-host");
+      document.l10n.pauseObserving();
+      document.l10n.setAttributes(hostContainer, "handler-dialog-host", {
+        host: principal.exposablePrePath,
+        scheme: this._URI.scheme,
+      });
+      document.l10n
+        .translateElements([hostContainer])
+        .then(() => window.sizeToContent());
+      document.l10n.resumeObserving();
+      hostContainer.parentNode.removeAttribute("hidden");
+    }
 
     // Hide stuff that needs to be hidden
     if (!checkbox.desc.label) {

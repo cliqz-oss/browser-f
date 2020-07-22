@@ -111,7 +111,7 @@ const USE_REMOTE_L10N_PREF =
 // Experiment groups that need to report the reach event in Messaging-Experiments.
 // If you're adding new groups to it, make sure they're also added in the
 // `messaging_experiments.reach.objects` defined in "toolkit/components/telemetry/Events.yaml"
-const REACH_EVENT_GROUPS = ["cfr"];
+const REACH_EVENT_GROUPS = ["cfr", "moments-page"];
 const REACH_EVENT_CATEGORY = "messaging_experiments";
 const REACH_EVENT_METHOD = "reach";
 
@@ -383,7 +383,7 @@ const MessageLoaderUtils = {
           ) {
             experiments.push({
               group,
-              forReachEvent: true,
+              forReachEvent: { sent: false },
               experimentSlug: experimentData.slug,
               branchSlug: branch.slug,
               ...branch.value,
@@ -972,17 +972,6 @@ class _ASRouter {
       (await this._storage.get("groupBlockList")) || []
     ).concat(providerBlockList);
 
-    // Merge any existing provider impressions into the corresponding group
-    // Don't keep providerImpressions in state anymore
-    const providerImpressions =
-      (await this._storage.get("providerImpressions")) || {};
-    for (const provider of Object.keys(providerImpressions)) {
-      groupImpressions[provider] = [
-        ...(groupImpressions[provider] || []),
-        ...providerImpressions[provider],
-      ];
-    }
-
     const previousSessionEnd =
       (await this._storage.get("previousSessionEnd")) || 0;
     await this.setState({
@@ -1354,6 +1343,7 @@ class _ASRouter {
         }
         break;
       case "cfr_doorhanger":
+      case "milestone_message":
         if (force) {
           CFRPageActions.forceRecommendation(target, message, this.dispatch);
         } else {
@@ -1387,9 +1377,6 @@ class _ASRouter {
         break;
       case "update_action":
         MomentsPageHub.executeAction(message);
-        break;
-      case "milestone_message":
-        CFRPageActions.showMilestone(target, message, this.dispatch, { force });
         break;
       default:
         try {
@@ -1530,11 +1517,6 @@ class _ASRouter {
         state,
         state.groups,
         "groupImpressions"
-      );
-      this._cleanupImpressionsForItems(
-        state,
-        state.providers,
-        "providerImpressions"
       );
       return { messageImpressions, groupImpressions };
     });
@@ -1728,11 +1710,8 @@ class _ASRouter {
 
     await this.setState(state => {
       const providerBlockList = [...state.providerBlockList, ...idsToBlock];
-      // When a provider is blocked, its impressions should be cleared as well
-      const providerImpressions = { ...state.providerImpressions };
-      idsToBlock.forEach(id => delete providerImpressions[id]);
       this._storage.set("providerBlockList", providerBlockList);
-      return { providerBlockList, providerImpressions };
+      return { providerBlockList };
     });
   }
 
@@ -2063,7 +2042,10 @@ class _ASRouter {
     const nonReachMessages = [];
     for (const message of messages) {
       if (message.forReachEvent) {
-        this._recordReachEvent(message);
+        if (!message.forReachEvent.sent) {
+          this._recordReachEvent(message);
+          message.forReachEvent.sent = true;
+        }
       } else {
         nonReachMessages.push(message);
       }

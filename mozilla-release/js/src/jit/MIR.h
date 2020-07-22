@@ -784,11 +784,11 @@ class MDefinition : public MNode {
   // use's definition. Else returns nullptr.
   MDefinition* maybeSingleDefUse() const;
 
-  // Returns the most recent use (ignoring MResumePoints) for this MDefinition.
-  // Returns nullptr if there are no uses. Note that this relies on addUse
-  // adding new uses to the front of the list, and should only be called during
-  // MIR building (before optimization passes make changes to the uses).
-  MDefinition* maybeMostRecentDefUse() const;
+  // Returns the most recently added use (ignoring MResumePoints) for this
+  // MDefinition. Returns nullptr if there are no uses. Note that this relies on
+  // addUse adding new uses to the front of the list, and should only be called
+  // during MIR building (before optimization passes make changes to the uses).
+  MDefinition* maybeMostRecentlyAddedDefUse() const;
 
   void addUse(MUse* use) {
     MOZ_ASSERT(use->producer() == this);
@@ -2644,19 +2644,16 @@ class WrappedFunction : public TempObject {
 
   size_t nargs() const { return nargs_; }
 
-  bool isNative() const { return flags_.isNative(); }
-  bool isBuiltinNative() const { return flags_.isBuiltinNative(); }
-  bool isNativeWithJitEntry() const { return flags_.isNativeWithJitEntry(); }
-  bool isNativeWithCppEntry() const {
-    return isNative() && !isNativeWithJitEntry();
+  bool isNativeWithoutJitEntry() const {
+    return flags_.isNativeWithoutJitEntry();
   }
-  bool isInterpreted() const { return flags_.isInterpreted(); }
+  bool hasJitEntry() const { return flags_.hasJitEntry(); }
   bool isConstructor() const { return flags_.isConstructor(); }
   bool isClassConstructor() const { return flags_.isClassConstructor(); }
 
   // These fields never change, they can be accessed off-main thread.
   JSNative native() const {
-    MOZ_ASSERT(isNative());
+    MOZ_ASSERT(isNativeWithoutJitEntry());
     return fun_->nativeUnchecked();
   }
   bool hasJitInfo() const {
@@ -3533,6 +3530,25 @@ class MAssertRange : public MUnaryInstruction, public NoTypePolicy::Data {
 #endif
 };
 
+class MAssertClass : public MUnaryInstruction, public NoTypePolicy::Data {
+  const JSClass* class_;
+
+  MAssertClass(MDefinition* obj, const JSClass* clasp)
+      : MUnaryInstruction(classOpcode, obj), class_(clasp) {
+    MOZ_ASSERT(obj->type() == MIRType::Object);
+
+    setGuard();
+    setResultType(MIRType::None);
+  }
+
+ public:
+  INSTRUCTION_HEADER(AssertClass)
+  TRIVIAL_NEW_WRAPPERS
+
+  const JSClass* getClass() const { return class_; }
+  AliasSet getAliasSet() const override { return AliasSet::None(); }
+};
+
 // Caller-side allocation of |this| for |new|:
 // Given a templateobject, construct |this| for JSOp::New.
 // Not used for JSOp::SuperCall, because Baseline doesn't attach template
@@ -3547,8 +3563,10 @@ class MCreateThisWithTemplate : public MUnaryInstruction,
       : MUnaryInstruction(classOpcode, templateConst),
         initialHeap_(initialHeap) {
     setResultType(MIRType::Object);
-    setResultTypeSet(
-        MakeSingletonTypeSet(alloc, constraints, templateObject()));
+    if (!JitOptions.warpBuilder) {
+      setResultTypeSet(
+          MakeSingletonTypeSet(alloc, constraints, templateObject()));
+    }
   }
 
  public:
@@ -4483,12 +4501,10 @@ class MBitNot : public MUnaryInstruction, public BitwisePolicy::Data {
 };
 
 class MTypeOf : public MUnaryInstruction, public BoxInputsPolicy::Data {
-  MIRType inputType_;
   bool inputMaybeCallableOrEmulatesUndefined_;
 
-  MTypeOf(MDefinition* def, MIRType inputType)
+  explicit MTypeOf(MDefinition* def)
       : MUnaryInstruction(classOpcode, def),
-        inputType_(inputType),
         inputMaybeCallableOrEmulatesUndefined_(true) {
     setResultType(MIRType::String);
     setMovable();
@@ -4497,8 +4513,6 @@ class MTypeOf : public MUnaryInstruction, public BoxInputsPolicy::Data {
  public:
   INSTRUCTION_HEADER(TypeOf)
   TRIVIAL_NEW_WRAPPERS
-
-  MIRType inputType() const { return inputType_; }
 
   MDefinition* foldsTo(TempAllocator& alloc) override;
   void cacheInputMaybeCallableOrEmulatesUndefined(
@@ -4515,9 +4529,6 @@ class MTypeOf : public MUnaryInstruction, public BoxInputsPolicy::Data {
 
   bool congruentTo(const MDefinition* ins) const override {
     if (!ins->isTypeOf()) {
-      return false;
-    }
-    if (inputType() != ins->toTypeOf()->inputType()) {
       return false;
     }
     if (inputMaybeCallableOrEmulatesUndefined() !=
@@ -4545,13 +4556,15 @@ class MToAsyncIter : public MBinaryInstruction,
   NAMED_OPERANDS((0, getIterator), (1, getNextMethod))
 };
 
-class MToId : public MUnaryInstruction, public BoxInputsPolicy::Data {
-  explicit MToId(MDefinition* index) : MUnaryInstruction(classOpcode, index) {
+class MToPropertyKeyCache : public MUnaryInstruction,
+                            public BoxPolicy<0>::Data {
+  explicit MToPropertyKeyCache(MDefinition* input)
+      : MUnaryInstruction(classOpcode, input) {
     setResultType(MIRType::Value);
   }
 
  public:
-  INSTRUCTION_HEADER(ToId)
+  INSTRUCTION_HEADER(ToPropertyKeyCache)
   TRIVIAL_NEW_WRAPPERS
 };
 
@@ -5175,18 +5188,45 @@ class MHypot : public MVariadicInstruction, public AllDoublePolicy::Data {
 };
 
 // Inline implementation of Math.pow().
+//
+// Supports the following three specializations:
+//
+// 1. MPow(FloatingPoint, FloatingPoint) -> Double
+//   - The most general mode, calls js::ecmaPow.
+//   - Never performs a bailout.
+// 2. MPow(FloatingPoint, Int32) -> Double
+//   - Optimization to call js::powi instead of js::ecmaPow.
+//   - Never performs a bailout.
+// 3. MPow(Int32, Int32) -> Int32
+//   - Performs the complete exponentiation operation in assembly code.
+//   - Bails out if the result doesn't fit in Int32.
 class MPow : public MBinaryInstruction, public PowPolicy::Data {
-  MPow(MDefinition* input, MDefinition* power, MIRType powerType)
-      : MBinaryInstruction(classOpcode, input, power) {
-    MOZ_ASSERT(powerType == MIRType::Double || powerType == MIRType::Int32);
-    specialization_ = powerType;
-    setResultType(MIRType::Double);
+  // If true, convert the power operand to int32 instead of double (this only
+  // affects the Double specialization). This exists because we can sometimes
+  // get more precise types during MIR building than in type analysis.
+  bool powerIsInt32_ : 1;
+
+  // If true, the result is guaranteed to never be negative zero, as long as the
+  // power is a positive number.
+  bool canBeNegativeZero_ : 1;
+
+  MPow(MDefinition* input, MDefinition* power, MIRType specialization)
+      : MBinaryInstruction(classOpcode, input, power),
+        powerIsInt32_(power->type() == MIRType::Int32) {
+    MOZ_ASSERT(specialization == MIRType::Int32 ||
+               specialization == MIRType::Double);
+    setResultType(specialization);
     setMovable();
+
+    // The result can't be negative zero if the base is an Int32 value.
+    canBeNegativeZero_ = input->type() != MIRType::Int32;
   }
 
   // Helpers for `foldsTo`
   MDefinition* foldsConstant(TempAllocator& alloc);
   MDefinition* foldsConstantPower(TempAllocator& alloc);
+
+  bool canBeNegativeZero() const { return canBeNegativeZero_; }
 
  public:
   INSTRUCTION_HEADER(Pow)
@@ -5194,11 +5234,16 @@ class MPow : public MBinaryInstruction, public PowPolicy::Data {
 
   MDefinition* input() const { return lhs(); }
   MDefinition* power() const { return rhs(); }
+  bool powerIsInt32() const { return powerIsInt32_; }
+
   bool congruentTo(const MDefinition* ins) const override {
+    if (!ins->isPow() || ins->toPow()->powerIsInt32() != powerIsInt32()) {
+      return false;
+    }
     return congruentIfOperandsEqual(ins);
   }
   AliasSet getAliasSet() const override { return AliasSet::None(); }
-  bool possiblyCalls() const override { return true; }
+  bool possiblyCalls() const override { return type() != MIRType::Int32; }
   MOZ_MUST_USE bool writeRecoverData(
       CompactBufferWriter& writer) const override;
   bool canRecoverOnBailout() const override { return true; }
@@ -5910,16 +5955,16 @@ class MStringSplit : public MBinaryInstruction,
   }
 };
 
-// Returns the value to use as |this| value. See also ComputeThis and
+// Returns the object to use as |this| value in a non-strict function. See also
 // BoxNonStrictThis in Interpreter.h.
-class MComputeThis : public MUnaryInstruction, public BoxPolicy<0>::Data {
-  explicit MComputeThis(MDefinition* def)
+class MBoxNonStrictThis : public MUnaryInstruction, public BoxPolicy<0>::Data {
+  explicit MBoxNonStrictThis(MDefinition* def)
       : MUnaryInstruction(classOpcode, def) {
-    setResultType(MIRType::Value);
+    setResultType(MIRType::Object);
   }
 
  public:
-  INSTRUCTION_HEADER(ComputeThis)
+  INSTRUCTION_HEADER(BoxNonStrictThis)
   TRIVIAL_NEW_WRAPPERS
 
   bool possiblyCalls() const override { return true; }
@@ -9249,6 +9294,60 @@ class MGuardSpecificAtom : public MUnaryInstruction,
   }
 };
 
+class MGuardSpecificSymbol : public MUnaryInstruction,
+                             public SymbolPolicy<0>::Data {
+  CompilerGCPointer<JS::Symbol*> expected_;
+
+  MGuardSpecificSymbol(MDefinition* symbol, JS::Symbol* expected)
+      : MUnaryInstruction(classOpcode, symbol), expected_(expected) {
+    setGuard();
+    setMovable();
+    setResultType(MIRType::Symbol);
+  }
+
+ public:
+  INSTRUCTION_HEADER(GuardSpecificSymbol)
+  TRIVIAL_NEW_WRAPPERS
+  NAMED_OPERANDS((0, symbol))
+
+  JS::Symbol* expected() const { return expected_; }
+
+  bool congruentTo(const MDefinition* ins) const override {
+    if (!ins->isGuardSpecificSymbol()) {
+      return false;
+    }
+    if (expected() != ins->toGuardSpecificSymbol()->expected()) {
+      return false;
+    }
+    return congruentIfOperandsEqual(ins);
+  }
+  MDefinition* foldsTo(TempAllocator& alloc) override;
+  AliasSet getAliasSet() const override { return AliasSet::None(); }
+
+  bool appendRoots(MRootList& roots) const override {
+    return roots.append(expected_);
+  }
+};
+
+class MGuardNoDenseElements : public MUnaryInstruction,
+                              public ObjectPolicy<0>::Data {
+  explicit MGuardNoDenseElements(MDefinition* obj)
+      : MUnaryInstruction(classOpcode, obj) {
+    setGuard();
+    setMovable();
+    setResultType(MIRType::Object);
+  }
+
+ public:
+  INSTRUCTION_HEADER(GuardNoDenseElements)
+  TRIVIAL_NEW_WRAPPERS
+  NAMED_OPERANDS((0, object))
+
+  AliasSet getAliasSet() const override {
+    return AliasSet::Load(AliasSet::ObjectFields);
+  }
+};
+
 // Load from vp[slot] (slots that are not inline in an object).
 class MLoadDynamicSlot : public MUnaryInstruction, public NoTypePolicy::Data {
   uint32_t slot_;
@@ -10835,6 +10934,8 @@ class MIsArray : public MUnaryInstruction,
   INSTRUCTION_HEADER(IsArray)
   TRIVIAL_NEW_WRAPPERS
   NAMED_OPERANDS((0, value))
+
+  MDefinition* foldsTo(TempAllocator& alloc) override;
 };
 
 class MIsTypedArray : public MUnaryInstruction,
@@ -11030,25 +11131,6 @@ class MAtomicIsLockFree : public MUnaryInstruction,
   bool canRecoverOnBailout() const override { return true; }
 
   ALLOW_CLONE(MAtomicIsLockFree)
-};
-
-// This applies to an object that is known to be a TypedArray, it bails out
-// if the obj does not map a SharedArrayBuffer.
-
-class MGuardSharedTypedArray : public MUnaryInstruction,
-                               public SingleObjectPolicy::Data {
-  explicit MGuardSharedTypedArray(MDefinition* obj)
-      : MUnaryInstruction(classOpcode, obj) {
-    setGuard();
-    setMovable();
-  }
-
- public:
-  INSTRUCTION_HEADER(GuardSharedTypedArray)
-  TRIVIAL_NEW_WRAPPERS
-  NAMED_OPERANDS((0, object))
-
-  AliasSet getAliasSet() const override { return AliasSet::None(); }
 };
 
 class MCompareExchangeTypedArrayElement
@@ -12628,6 +12710,9 @@ class MWasmScalarToSimd128 : public MUnaryInstruction,
     return ins->toWasmScalarToSimd128()->simdOp() == simdOp_ &&
            congruentIfOperandsEqual(ins);
   }
+#ifdef ENABLE_WASM_SIMD
+  MDefinition* foldsTo(TempAllocator& alloc) override;
+#endif
 
   wasm::SimdOp simdOp() const { return simdOp_; }
 
@@ -12661,6 +12746,9 @@ class MWasmReduceSimd128 : public MUnaryInstruction, public NoTypePolicy::Data {
            ins->toWasmReduceSimd128()->imm() == imm_ &&
            congruentIfOperandsEqual(ins);
   }
+#ifdef ENABLE_WASM_SIMD
+  MDefinition* foldsTo(TempAllocator& alloc) override;
+#endif
 
   uint32_t imm() const { return imm_; }
   wasm::SimdOp simdOp() const { return simdOp_; }

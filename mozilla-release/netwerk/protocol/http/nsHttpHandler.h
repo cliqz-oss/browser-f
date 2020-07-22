@@ -50,10 +50,12 @@ class EventTokenBucket;
 class Tickler;
 class nsHttpConnection;
 class nsHttpConnectionInfo;
+class HttpHandlerInitArgs;
 class HttpTransactionShell;
 class AltSvcMapping;
 class TRR;
 class TRRServiceChannel;
+class SocketProcessChild;
 
 /*
  * FRAMECHECK_LAX - no check
@@ -448,8 +450,7 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   bool Bug1563695() const { return mBug1563695; }
   bool Bug1556491() const { return mBug1556491; }
 
-  bool IsHttp3VersionSupportedHex(const nsACString& version);
-  nsCString Http3Version() { return kHttp3Version; }
+  bool IsHttp3VersionSupported(const nsACString& version);
 
   bool IsHttp3Enabled() const { return mHttp3Enabled; }
   uint32_t DefaultQpackTableSize() const { return mQpackTableSize; }
@@ -484,7 +485,8 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   nsresult CompleteUpgrade(HttpTransactionShell* aTrans,
                            nsIHttpUpgradeListener* aUpgradeListener);
 
-  nsresult DoShiftReloadConnectionCleanup(nsHttpConnectionInfo* aCI = nullptr);
+  nsresult DoShiftReloadConnectionCleanupWithConnInfo(
+      nsHttpConnectionInfo* aCI);
 
  private:
   nsHttpHandler();
@@ -509,6 +511,10 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   void NotifyObservers(nsIChannel* chan, const char* event);
 
   void SetFastOpenOSSupport();
+
+  friend class SocketProcessChild;
+  void SetHttpHandlerInitArgs(const HttpHandlerInitArgs& aArgs);
+  void SetDeviceModelId(const nsCString& aModelId);
 
   // Checks if there are any user certs or active smart cards on a different
   // thread. Updates mSpeculativeConnectEnabled when done.

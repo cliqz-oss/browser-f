@@ -9,16 +9,16 @@
 #include "nsXULElement.h"
 
 #include "nsMathUtils.h"
-#include "SVGImageContext.h"
 
 #include "nsContentUtils.h"
 
 #include "mozilla/PresShell.h"
 #include "mozilla/PresShellInlines.h"
+#include "mozilla/SVGImageContext.h"
+#include "mozilla/SVGObserverUtils.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/dom/GeneratePlaceholderCanvasData.h"
-#include "SVGObserverUtils.h"
 #include "nsPresContext.h"
 
 #include "nsIInterfaceRequestorUtils.h"
@@ -104,9 +104,7 @@
 #include "mozilla/dom/HTMLImageElement.h"
 #include "mozilla/dom/HTMLVideoElement.h"
 #include "mozilla/dom/SVGImageElement.h"
-#include "mozilla/dom/SVGMatrix.h"
 #include "mozilla/dom/TextMetrics.h"
-#include "mozilla/dom/SVGMatrix.h"
 #include "mozilla/FloatingPoint.h"
 #include "nsGlobalWindow.h"
 #include "nsFilterInstance.h"
@@ -703,8 +701,18 @@ class AdjustedTarget {
   UniquePtr<AdjustedTargetForFilter> mFilterTarget;
 };
 
-void CanvasPattern::SetTransform(SVGMatrix& aMatrix) {
-  mTransform = ToMatrix(aMatrix.GetMatrix());
+void CanvasPattern::SetTransform(const DOMMatrix2DInit& aInit,
+                                 ErrorResult& aError) {
+  RefPtr<DOMMatrixReadOnly> matrix =
+      DOMMatrixReadOnly::FromMatrix(GetParentObject(), aInit, aError);
+  if (aError.Failed()) {
+    return;
+  }
+  const auto* matrix2D = matrix->GetInternal2D();
+  if (!matrix2D->IsFinite()) {
+    return;
+  }
+  mTransform = Matrix(*matrix2D);
 }
 
 void CanvasGradient::AddColorStop(float aOffset, const nsACString& aColorstr,
@@ -779,42 +787,6 @@ CanvasShutdownObserver::Observe(nsISupports* aSubject, const char* aTopic,
 
   return NS_OK;
 }
-
-class CanvasRenderingContext2DUserData : public LayerUserData {
- public:
-  explicit CanvasRenderingContext2DUserData(CanvasRenderingContext2D* aContext)
-      : mContext(aContext) {
-    aContext->mUserDatas.AppendElement(this);
-  }
-  ~CanvasRenderingContext2DUserData() {
-    if (mContext) {
-      mContext->mUserDatas.RemoveElement(this);
-    }
-  }
-
-  static void PreTransactionCallback(void* aData) {
-    CanvasRenderingContext2D* context =
-        static_cast<CanvasRenderingContext2D*>(aData);
-    if (!context || !context->mTarget) return;
-
-    context->OnStableState();
-  }
-
-  static void DidTransactionCallback(void* aData) {
-    CanvasRenderingContext2D* context =
-        static_cast<CanvasRenderingContext2D*>(aData);
-    if (context) {
-      context->MarkContextClean();
-    }
-  }
-  bool IsForContext(CanvasRenderingContext2D* aContext) {
-    return mContext == aContext;
-  }
-  void Forget() { mContext = nullptr; }
-
- private:
-  CanvasRenderingContext2D* mContext;
-};
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(CanvasRenderingContext2D)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(CanvasRenderingContext2D)
@@ -979,10 +951,7 @@ CanvasRenderingContext2D::~CanvasRenderingContext2D() {
   RemovePostRefreshObserver();
   RemoveShutdownObserver();
   Reset();
-  // Drop references from all CanvasRenderingContext2DUserData to this context
-  for (uint32_t i = 0; i < mUserDatas.Length(); ++i) {
-    mUserDatas[i]->Forget();
-  }
+
   sNumLivingContexts--;
   if (!sNumLivingContexts) {
     NS_IF_RELEASE(sErrorTarget);
@@ -2398,7 +2367,7 @@ class CanvasUserSpaceMetrics : public UserSpaceMetricsWithSize {
         mPresContext(aPresContext) {}
 
   virtual float GetEmLength() const override {
-    return NSAppUnitsToFloatPixels(mFont.size, AppUnitsPerCSSPixel());
+    return mFont.size.ToCSSPixels();
   }
 
   virtual float GetExLength() const override {
@@ -3250,7 +3219,7 @@ bool CanvasRenderingContext2D::SetFontInternal(const nsAString& aFont,
   // pixels to CSS pixels, to adjust for the difference in expectations from
   // other nsFontMetrics clients.
   resizedFont.size =
-      (fontStyle->mSize * c->AppUnitsPerDevPixel()) / AppUnitsPerCSSPixel();
+      fontStyle->mSize.ScaledBy(1.0f / c->CSSToDevPixelScale().scale);
 
   c->Document()->FlushUserFontSet();
 
@@ -3939,7 +3908,9 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
   // if only measuring, don't need to do any more work
   if (aOp == TextDrawOperation::MEASURE) {
     aError = NS_OK;
-    double actualBoundingBoxLeft = processor.mBoundingBox.X() - offsetX;
+    // Note that actualBoundingBoxLeft measures the distance in the leftward
+    // direction, so its sign is reversed from our usual physical coordinates.
+    double actualBoundingBoxLeft = offsetX - processor.mBoundingBox.X();
     double actualBoundingBoxRight = processor.mBoundingBox.XMost() - offsetX;
     double actualBoundingBoxAscent =
         -processor.mBoundingBox.Y() - baselineAnchor;
@@ -5344,7 +5315,12 @@ already_AddRefed<ImageData> CanvasRenderingContext2D::CreateImageData(
                                        aImagedata.Height(), aError);
 }
 
-static uint8_t g2DContextLayerUserData;
+void CanvasRenderingContext2D::OnBeforePaintTransaction() {
+  if (!mTarget) return;
+  OnStableState();
+}
+
+void CanvasRenderingContext2D::OnDidPaintTransaction() { MarkContextClean(); }
 
 already_AddRefed<Layer> CanvasRenderingContext2D::GetCanvasLayer(
     nsDisplayListBuilder* aBuilder, Layer* aOldLayer, LayerManager* aManager) {
@@ -5366,20 +5342,8 @@ already_AddRefed<Layer> CanvasRenderingContext2D::GetCanvasLayer(
   }
 
   if (!mResetLayer && aOldLayer) {
-    auto userData = static_cast<CanvasRenderingContext2DUserData*>(
-        aOldLayer->GetUserData(&g2DContextLayerUserData));
-
-    CanvasInitializeData data;
-
-    data.mBufferProvider = mBufferProvider;
-
-    if (userData && userData->IsForContext(this) &&
-        static_cast<CanvasLayer*>(aOldLayer)
-            ->CreateOrGetCanvasRenderer()
-            ->IsDataValid(data)) {
-      RefPtr<Layer> ret = aOldLayer;
-      return ret.forget();
-    }
+    RefPtr<Layer> ret = aOldLayer;
+    return ret.forget();
   }
 
   RefPtr<CanvasLayer> canvasLayer = aManager->CreateCanvasLayer();
@@ -5390,22 +5354,8 @@ already_AddRefed<Layer> CanvasRenderingContext2D::GetCanvasLayer(
     MarkContextClean();
     return nullptr;
   }
-  CanvasRenderingContext2DUserData* userData = nullptr;
-  // Make the layer tell us whenever a transaction finishes (including
-  // the current transaction), so we can clear our invalidation state and
-  // start invalidating again. We need to do this for all layers since
-  // callers of DrawWindow may be expecting to receive normal invalidation
-  // notifications after this paint.
 
-  // The layer will be destroyed when we tear down the presentation
-  // (at the latest), at which time this userData will be destroyed,
-  // releasing the reference to the element.
-  // The userData will receive DidTransactionCallbacks, which flush the
-  // the invalidation state to indicate that the canvas is up to date.
-  userData = new CanvasRenderingContext2DUserData(this);
-  canvasLayer->SetUserData(&g2DContextLayerUserData, userData);
-
-  CanvasRenderer* canvasRenderer = canvasLayer->CreateOrGetCanvasRenderer();
+  const auto canvasRenderer = canvasLayer->CreateOrGetCanvasRenderer();
   InitializeCanvasRenderer(aBuilder, canvasRenderer);
   uint32_t flags = mOpaque ? Layer::CONTENT_OPAQUE : 0;
   canvasLayer->SetContentFlags(flags);
@@ -5436,12 +5386,12 @@ bool CanvasRenderingContext2D::UpdateWebRenderCanvasData(
     return false;
   }
 
-  CanvasRenderer* renderer = aCanvasData->GetCanvasRenderer();
+  auto renderer = aCanvasData->GetCanvasRenderer();
 
   if (!mResetLayer && renderer) {
-    CanvasInitializeData data;
-
-    data.mBufferProvider = mBufferProvider;
+    CanvasRendererData data;
+    data.mContext = mSharedPtrPtr;
+    data.mSize = GetSize();
 
     if (renderer->IsDataValid(data)) {
       return true;
@@ -5462,15 +5412,11 @@ bool CanvasRenderingContext2D::UpdateWebRenderCanvasData(
 
 bool CanvasRenderingContext2D::InitializeCanvasRenderer(
     nsDisplayListBuilder* aBuilder, CanvasRenderer* aRenderer) {
-  CanvasInitializeData data;
+  CanvasRendererData data;
+  data.mContext = mSharedPtrPtr;
   data.mSize = GetSize();
-  data.mHasAlpha = !mOpaque;
-  data.mPreTransCallback =
-      CanvasRenderingContext2DUserData::PreTransactionCallback;
-  data.mPreTransCallbackData = this;
-  data.mDidTransCallback =
-      CanvasRenderingContext2DUserData::DidTransactionCallback;
-  data.mDidTransCallbackData = this;
+  data.mIsOpaque = mOpaque;
+  data.mDoPaintCallbacks = true;
 
   if (!mBufferProvider) {
     // Force the creation of a buffer provider.
@@ -5481,8 +5427,6 @@ bool CanvasRenderingContext2D::InitializeCanvasRenderer(
       return false;
     }
   }
-
-  data.mBufferProvider = mBufferProvider;
 
   aRenderer->Initialize(data);
   aRenderer->SetDirty();

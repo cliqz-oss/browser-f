@@ -667,6 +667,16 @@ class nsDisplayListBuilder {
   void SetPaintingToWindow(bool aToWindow) { mIsPaintingToWindow = aToWindow; }
   bool IsPaintingToWindow() const { return mIsPaintingToWindow; }
   /**
+   * Call this if we're using high quality scaling for image decoding.
+   * It is also implied by IsPaintingToWindow.
+   */
+  void SetUseHighQualityScaling(bool aUseHighQualityScaling) {
+    mUseHighQualityScaling = aUseHighQualityScaling;
+  }
+  bool UseHighQualityScaling() const {
+    return mIsPaintingToWindow || mUseHighQualityScaling;
+  }
+  /**
    * Call this if we're doing painting for WebRender
    */
   void SetPaintingForWebRender(bool aForWebRender) {
@@ -962,8 +972,7 @@ class nsDisplayListBuilder {
    * rect, because it may have out-of-flows that do so.
    */
   bool ShouldDescendIntoFrame(nsIFrame* aFrame, bool aVisible) const {
-    return (aFrame->GetStateBits() &
-            NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO) ||
+    return aFrame->HasAnyStateBits(NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO) ||
            (aVisible && aFrame->ForceDescendIntoIfVisible()) ||
            GetIncludeAllOutOfFlows();
   }
@@ -2014,6 +2023,7 @@ class nsDisplayListBuilder {
   bool mIsInChromePresContext;
   bool mSyncDecodeImages;
   bool mIsPaintingToWindow;
+  bool mUseHighQualityScaling;
   bool mIsPaintingForWebRender;
   bool mIsCompositingCheap;
   bool mContainsPluginItem;
@@ -2037,6 +2047,7 @@ class nsDisplayListBuilder {
   bool mBuildAsyncZoomContainer;
   bool mContainsBackdropFilter;
   bool mIsRelativeToLayoutViewport;
+  bool mUseOverlayScrollbars;
 
   nsRect mHitTestArea;
   CompositorHitTestInfo mHitTestInfo;
@@ -2761,8 +2772,6 @@ class nsDisplayItem : public nsDisplayItemBase {
   virtual bool ShouldFixToViewport(nsDisplayListBuilder* aBuilder) const {
     return false;
   }
-
-  virtual bool ClearsBackground() const { return false; }
 
   /**
    * Returns true if all layers that can be active should be forced to be
@@ -5038,49 +5047,6 @@ class nsDisplayTableBackgroundColor : public nsDisplayBackgroundColor {
 
  protected:
   nsIFrame* mAncestorFrame;
-};
-
-class nsDisplayClearBackground : public nsPaintedDisplayItem {
- public:
-  nsDisplayClearBackground(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
-      : nsPaintedDisplayItem(aBuilder, aFrame) {}
-
-  NS_DISPLAY_DECL_NAME("ClearBackground", TYPE_CLEAR_BACKGROUND)
-
-  nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) const override {
-    *aSnap = true;
-    return nsRect(ToReferenceFrame(), Frame()->GetSize());
-  }
-
-  nsRegion GetOpaqueRegion(nsDisplayListBuilder* aBuilder,
-                           bool* aSnap) const override {
-    *aSnap = false;
-    return GetBounds(aBuilder, aSnap);
-  }
-
-  mozilla::Maybe<nscolor> IsUniform(
-      nsDisplayListBuilder* aBuilder) const override {
-    return mozilla::Some(NS_RGBA(0, 0, 0, 0));
-  }
-
-  bool ClearsBackground() const override { return true; }
-
-  LayerState GetLayerState(
-      nsDisplayListBuilder* aBuilder, LayerManager* aManager,
-      const ContainerLayerParameters& aParameters) override {
-    return mozilla::LayerState::LAYER_ACTIVE_FORCE;
-  }
-
-  already_AddRefed<Layer> BuildLayer(
-      nsDisplayListBuilder* aBuilder, LayerManager* aManager,
-      const ContainerLayerParameters& aContainerParameters) override;
-
-  bool CreateWebRenderCommands(
-      mozilla::wr::DisplayListBuilder& aBuilder,
-      mozilla::wr::IpcResourceUpdateQueue& aResources,
-      const StackingContextHelper& aSc,
-      mozilla::layers::RenderRootStateManager* aManager,
-      nsDisplayListBuilder* aDisplayListBuilder) override;
 };
 
 /**

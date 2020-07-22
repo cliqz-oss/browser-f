@@ -17,8 +17,7 @@
 #include "mozilla/layers/ISurfaceAllocator.h"
 #include "mozilla/webrender/RenderEGLImageTextureHost.h"
 #include "mozilla/webrender/WebRenderAPI.h"
-#include "nsRegion.h"  // for nsIntRegion
-#include "AndroidSurfaceTexture.h"
+#include "nsRegion.h"             // for nsIntRegion
 #include "GfxTexturesReporter.h"  // for GfxTexturesReporter
 #include "GLBlitTextureImageHelper.h"
 #include "GeckoProfiler.h"
@@ -32,7 +31,7 @@
 #endif
 
 #ifdef MOZ_WAYLAND
-#  include "mozilla/layers/WaylandDMABUFTextureHostOGL.h"
+#  include "mozilla/layers/DMABUFTextureHostOGL.h"
 #endif
 
 using namespace mozilla::gl;
@@ -83,7 +82,7 @@ already_AddRefed<TextureHost> CreateTextureHostOGL(
 
 #ifdef MOZ_WAYLAND
     case SurfaceDescriptor::TSurfaceDescriptorDMABuf: {
-      result = new WaylandDMABUFTextureHostOGL(aFlags, aDesc);
+      result = new DMABUFTextureHostOGL(aFlags, aDesc);
       break;
     }
 #endif

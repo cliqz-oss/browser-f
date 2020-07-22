@@ -236,7 +236,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY stopCmd.label                "Stopp">
 <!ENTITY stopCmd.accesskey            "p">
 <!ENTITY stopCmd.macCommandKey        ".">
-
 <!ENTITY goEndCap.tooltip             "In der Adressleiste eingegebene Adresse laden">
 
 <!ENTITY printButton.label            "Drucken">
@@ -254,7 +253,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.pluginsNotificationAnchor.tooltip         "Plugin-Verwendung verwalten">
 <!ENTITY urlbar.webNotificationAnchor.tooltip             "Ändern, ob diese Website Benachrichtigungen senden darf">
 <!ENTITY urlbar.persistentStorageNotificationAnchor.tooltip     "Daten im dauerhaften Speicher speichern">
-
 <!ENTITY urlbar.remoteControlNotificationAnchor.tooltip   "Browser wird ferngesteuert">
 <!ENTITY urlbar.webAuthnAnchor.tooltip                    "Ansicht für Web-Authentifizierung öffnen">
 <!ENTITY urlbar.storageAccessAnchor.tooltip               "Ansicht für während des Surfens berechtigte Aktivitäten öffnen">
@@ -284,8 +282,16 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
 
+<<<<<<< HEAD
 <!ENTITY urlbar.permissionsGranted.tooltip       "Du hast dieser Website zusätzliche Berechtigungen erteilt.">
 
+||||||| merged common ancestors
+
+<!ENTITY urlbar.permissionsGranted.tooltip       "Sie haben dieser Website zusätzliche Berechtigungen erteilt.">
+
+
+=======
+>>>>>>> origin/upstream-releases
 <!ENTITY searchItem.title             "Suchen">
 
 <!-- Toolbar items -->
@@ -345,7 +351,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY fileMenu.label         "Datei">
 <!ENTITY fileMenu.accesskey       "D">
-
 <!ENTITY newUserContext.label             "Neuer Tab in Umgebung">
 <!ENTITY newUserContext.accesskey         "m">
 <!ENTITY manageUserContext.label          "Tab-Umgebungen verwalten">
@@ -396,7 +401,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY viewToolbarsMenu.accesskey     "y">
 <!ENTITY viewSidebarMenu.label "Sidebar">
 <!ENTITY viewSidebarMenu.accesskey "b">
-
 <!ENTITY viewCustomizeToolbar.label       "Anpassen…">
 <!ENTITY viewCustomizeToolbar.accesskey     "A">
 
@@ -457,7 +461,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY customizeMenu.addToToolbar.label "Zu Symbolleiste hinzufügen">
 <!ENTITY customizeMenu.addToToolbar.accesskey "S">
 <!-- LOCALIZATION NOTE (customizeMenu.addToOverflowMenu.label,
-     customizeMenu.pinToOverflowMenu.label, customizeMenu.unpinFromOverflowMenu.label)
+     customizeMenu.unpinFromOverflowMenu.label)
      The overflow menu is the menu that appears if you click the chevron (>> button)
      in the location bar. -->
 <!ENTITY customizeMenu.addToOverflowMenu.label "Zu Überhangmenü hinzufügen">
@@ -491,8 +495,15 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY moreMenu.label "Sonstiges">
 
 <!ENTITY openCmd.commandkey           "l">
+<<<<<<< HEAD
 
 <!ENTITY urlbar.placeholder2          "In Cliqz suchen oder Adresse eingeben">
+||||||| merged common ancestors
+
+<!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
+=======
+<!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
+>>>>>>> origin/upstream-releases
 <!ENTITY urlbar.accesskey             "s">
 <!-- LOCALIZATION NOTE (urlbar.extension.label): Used to indicate that a selected autocomplete entry is provided by an extension. -->
 <!ENTITY urlbar.extension.label       "Erweiterung:">
@@ -631,6 +642,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
   "Pocket" is a brand name. -->
 <!ENTITY pocketButton.tooltiptext     "In Pocket speichern">
 
+<!-- LOCALIZATION NOTE(pocket-button.tooltiptext, saveToPocketCmd.label, saveLinkToPocketCmd.label, pocketMenuitem.label):
+  "Pocket" is a brand name. -->
 <!ENTITY saveToPocketCmd.label        "Seite in Pocket speichern">
 <!ENTITY saveToPocketCmd.accesskey    "o">
 <!ENTITY saveLinkToPocketCmd.label    "Link in Pocket speichern">
@@ -934,7 +947,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY contentBlocking.breakageReportView.label "Probleme melden">
 <!ENTITY contentBlocking.breakageReportView2.description "Das Blockieren von Seitenelementen kann bei einigen Websites zu Problemen führen. Wenn du Probleme meldest, hilfst du &brandShortName; für alle besser zu machen. (Dabei werden die Adresse sowie Informationen über deine Browsereinstellungen an Mozilla gesendet.)">
 <!ENTITY contentBlocking.breakageReportView.learnMore "Weitere Informationen">
-
 <!ENTITY contentBlocking.breakageReportView.collection.url.label "Adresse">
 <!ENTITY contentBlocking.breakageReportView.collection.comments.label "Welche Probleme traten bei dir auf? (freiwillig)">
 <!ENTITY contentBlocking.breakageReportView.sendReport.label "Bericht senden">
@@ -986,10 +998,21 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY newTabControlled.disableButton.label "Erweiterung deaktivieren">
 <!ENTITY newTabControlled.disableButton.accesskey "d">
 
+<<<<<<< HEAD
 <!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls du diese Änderung nicht willst, kannst du die entsprechenden Einstellungen zurücksetzen.">
 
 <!ENTITY homepageControlled.header.message "Deine Startseite hat sich geändert.">
 <!ENTITY homepageControlled.keepButton.label "Änderungen behalten">
+||||||| merged common ancestors
+<!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls Sie diese Änderung nicht wollen, können Sie die entsprechenden Einstellungen zurücksetzen.">
+
+<!ENTITY homepageControlled.header.message "Ihre Startseite hat sich geändert.">
+<!ENTITY homepageControlled.keepButton.label "Änderungen behalten">
+=======
+<!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls Sie diese Änderung nicht wollen, können Sie die entsprechenden Einstellungen zurücksetzen.">
+<!ENTITY homepageControlled.header.message "Ihre Startseite hat sich geändert.">
+<!ENTITY homepageControlled.keepButton.label "Änderungen beibehalten">
+>>>>>>> origin/upstream-releases
 <!ENTITY homepageControlled.keepButton.accesskey "b">
 <!ENTITY homepageControlled.disableButton.label "Erweiterung deaktivieren">
 <!ENTITY homepageControlled.disableButton.accesskey "d">

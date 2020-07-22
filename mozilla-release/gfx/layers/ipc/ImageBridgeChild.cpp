@@ -20,8 +20,7 @@
 #include "mozilla/ipc/MessageChannel.h"  // for MessageChannel, etc
 #include "mozilla/ipc/Transport.h"       // for Transport
 #include "mozilla/gfx/gfxVars.h"
-#include "mozilla/gfx/Point.h"  // for IntSize
-#include "mozilla/layers/AsyncCanvasRenderer.h"
+#include "mozilla/gfx/Point.h"                         // for IntSize
 #include "mozilla/media/MediaSystemResourceManager.h"  // for MediaSystemResourceManager
 #include "mozilla/media/MediaSystemResourceManagerChild.h"  // for MediaSystemResourceManagerChild
 #include "mozilla/layers/CompositableClient.h"  // for CompositableChild, etc
@@ -233,14 +232,6 @@ void ImageBridgeChild::CreateImageClientSync(SynchronousTask* aTask,
   *result = CreateImageClientNow(aType, aImageContainer);
 }
 
-// dispatched function
-void ImageBridgeChild::CreateCanvasClientSync(
-    SynchronousTask* aTask, CanvasClient::CanvasClientType aType,
-    TextureFlags aFlags, RefPtr<CanvasClient>* const outResult) {
-  AutoCompleteTask complete(aTask);
-  *outResult = CreateCanvasClientNow(aType, aFlags);
-}
-
 ImageBridgeChild::ImageBridgeChild(uint32_t aNamespace)
     : mNamespace(aNamespace),
       mCanSend(false),
@@ -330,45 +321,6 @@ void ImageBridgeChild::UpdateImageClient(RefPtr<ImageContainer> aContainer) {
 
   BeginTransaction();
   client->UpdateImage(aContainer, Layer::CONTENT_OPAQUE);
-  EndTransaction();
-}
-
-void ImageBridgeChild::UpdateAsyncCanvasRendererSync(
-    SynchronousTask* aTask, AsyncCanvasRenderer* aWrapper) {
-  AutoCompleteTask complete(aTask);
-
-  UpdateAsyncCanvasRendererNow(aWrapper);
-}
-
-void ImageBridgeChild::UpdateAsyncCanvasRenderer(
-    AsyncCanvasRenderer* aWrapper) {
-  aWrapper->GetCanvasClient()->UpdateAsync(aWrapper);
-
-  if (InImageBridgeChildThread()) {
-    UpdateAsyncCanvasRendererNow(aWrapper);
-    return;
-  }
-
-  SynchronousTask task("UpdateAsyncCanvasRenderer Lock");
-
-  RefPtr<Runnable> runnable = WrapRunnable(
-      RefPtr<ImageBridgeChild>(this),
-      &ImageBridgeChild::UpdateAsyncCanvasRendererSync, &task, aWrapper);
-  GetThread()->Dispatch(runnable.forget());
-
-  task.Wait();
-}
-
-void ImageBridgeChild::UpdateAsyncCanvasRendererNow(
-    AsyncCanvasRenderer* aWrapper) {
-  MOZ_ASSERT(aWrapper);
-
-  if (!CanSend()) {
-    return;
-  }
-
-  BeginTransaction();
-  aWrapper->GetCanvasClient()->Updated();
   EndTransaction();
 }
 
@@ -718,37 +670,6 @@ RefPtr<ImageClient> ImageBridgeChild::CreateImageClientNow(
   return client;
 }
 
-already_AddRefed<CanvasClient> ImageBridgeChild::CreateCanvasClient(
-    CanvasClient::CanvasClientType aType, TextureFlags aFlag) {
-  if (InImageBridgeChildThread()) {
-    return CreateCanvasClientNow(aType, aFlag);
-  }
-
-  SynchronousTask task("CreateCanvasClient Lock");
-
-  // RefPtrs on arguments are not needed since this dispatches synchronously.
-  RefPtr<CanvasClient> result = nullptr;
-  RefPtr<Runnable> runnable = WrapRunnable(
-      RefPtr<ImageBridgeChild>(this), &ImageBridgeChild::CreateCanvasClientSync,
-      &task, aType, aFlag, &result);
-  GetThread()->Dispatch(runnable.forget());
-
-  task.Wait();
-
-  return result.forget();
-}
-
-already_AddRefed<CanvasClient> ImageBridgeChild::CreateCanvasClientNow(
-    CanvasClient::CanvasClientType aType, TextureFlags aFlag) {
-  RefPtr<CanvasClient> client =
-      CanvasClient::CreateCanvasClient(aType, this, aFlag);
-  MOZ_ASSERT(client, "failed to create CanvasClient");
-  if (client) {
-    client->Connect();
-  }
-  return client.forget();
-}
-
 bool ImageBridgeChild::AllocUnsafeShmem(
     size_t aSize, ipc::SharedMemory::SharedMemoryType aType,
     ipc::Shmem* aShmem) {
@@ -927,7 +848,7 @@ mozilla::ipc::IPCResult ImageBridgeChild::RecvReportFramesDropped(
 PTextureChild* ImageBridgeChild::CreateTexture(
     const SurfaceDescriptor& aSharedData, const ReadLockDescriptor& aReadLock,
     LayersBackend aLayersBackend, TextureFlags aFlags, uint64_t aSerial,
-    wr::MaybeExternalImageId& aExternalImageId, nsIEventTarget* aTarget) {
+    wr::MaybeExternalImageId& aExternalImageId, nsISerialEventTarget* aTarget) {
   MOZ_ASSERT(CanSend());
   return SendPTextureConstructor(aSharedData, aReadLock, aLayersBackend, aFlags,
                                  aSerial, aExternalImageId);

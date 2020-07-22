@@ -23,6 +23,7 @@
 #include <gdk/gdkx.h>
 #ifdef MOZ_WAYLAND
 #  include "mozilla/widget/nsWaylandDisplay.h"
+#  include "mozilla/widget/DMABufLibWrapper.h"
 #endif
 
 #ifdef DEBUG
@@ -84,7 +85,7 @@ void GfxInfo::GetData() {
   glxtest_pipe = -1;
 
   // bytesread < 0 would mean that the above read() call failed.
-  // This should never happen. If it did, the outcome would be to blacklist
+  // This should never happen. If it did, the outcome would be to blocklist
   // anyway.
   if (bytesread < 0) bytesread = 0;
 
@@ -109,7 +110,7 @@ void GfxInfo::GetData() {
         // ECHILD happens when the glxtest process got reaped got reaped after a
         // PR_CreateProcess as per bug 227246. This shouldn't matter, as we
         // still seem to get the data from the pipe, and if we didn't, the
-        // outcome would be to blacklist anyway.
+        // outcome would be to blocklist anyway.
         waiting_for_glxtest_process_failed = (waitpid_errno != ECHILD);
       }
     }
@@ -338,7 +339,7 @@ void GfxInfo::GetData() {
   mIsWayland = gdk_display_get_default() &&
                !GDK_IS_X11_DISPLAY(gdk_display_get_default());
   if (mIsWayland) {
-    mIsWaylandDRM = nsWaylandDisplay::IsDMABufEnabled();
+    mIsWaylandDRM = GetDMABufDevice()->IsDMABufEnabled();
   }
 #endif
 
@@ -442,7 +443,7 @@ void GfxInfo::GetData() {
 const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
   if (!sDriverInfo->Length()) {
     // Mesa 10.0 provides the GLX_MESA_query_renderer extension, which allows us
-    // to query device IDs backing a GL context for blacklisting.
+    // to query device IDs backing a GL context for blocklisting.
     APPEND_TO_DRIVER_BLOCKLIST_EXT(
         OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
         DesktopEnvironment::All, WindowProtocol::All, DriverVendor::MesaAll,
@@ -601,7 +602,7 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     return NS_OK;
   }
 
-  // Blacklist software GL implementations from using layers acceleration.
+  // Blocklist software GL implementations from using layers acceleration.
   // On the test infrastructure, we'll force-enable layers acceleration.
   if (aFeature == nsIGfxInfo::FEATURE_OPENGL_LAYERS && !mIsAccelerated &&
       !PR_GetEnv("MOZ_LAYERS_ALLOW_SOFTWARE_GL")) {
@@ -627,6 +628,11 @@ GfxInfo::GetDWriteVersion(nsAString& aDwriteVersion) {
 
 NS_IMETHODIMP GfxInfo::GetHasBattery(bool* aHasBattery) {
   return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+GfxInfo::GetEmbeddedInFirefoxReality(bool* aEmbeddedInFirefoxReality) {
+  return NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP

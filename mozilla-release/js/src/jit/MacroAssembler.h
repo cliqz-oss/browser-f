@@ -320,6 +320,22 @@ class MacroAssembler : public MacroAssemblerSpecific {
   void Push(RegisterOrSP reg);
 #endif
 
+#ifdef ENABLE_WASM_SIMD
+  // `op` should be a shift operation.  Return true if a variable-width shift
+  // operation must be scalarized on the current architecture.
+  static bool MustScalarizeShiftSimd128(wasm::SimdOp op);
+
+  // `op` should be a shift operation.  Return true if a variable-width shift
+  // operation on this architecture that is not scalarized should pre-mask the
+  // shift count, and if so, return the mask in `*mask`.
+  static bool MustMaskShiftCountSimd128(wasm::SimdOp op, int32_t* mask);
+
+  // `op` should be a shift operation and `imm` a possibly-unmasked immediate
+  // shift count.  Return true if a constant-width shift operation with the
+  // given width must be scalarized on the current architecture.
+  static bool MustScalarizeShiftSimd128(wasm::SimdOp op, Imm32 imm);
+#endif
+
   //{{{ check_macroassembler_decl_style
  public:
   // ===============================================================
@@ -1023,6 +1039,11 @@ class MacroAssembler : public MacroAssemblerSpecific {
   void roundDoubleToInt32(FloatRegister src, Register dest, FloatRegister temp,
                           Label* fail) PER_SHARED_ARCH;
 
+  // Returns a random double in range [0, 1) in |dest|. The |rng| register must
+  // hold a pointer to a mozilla::non_crypto::XorShift128PlusRNG.
+  void randomDouble(Register rng, FloatRegister dest, Register64 temp0,
+                    Register64 temp1);
+
   // srcDest = {min,max}{Float32,Double}(srcDest, other)
   // For min and max, handle NaN specially if handleNaN is true.
 
@@ -1041,6 +1062,11 @@ class MacroAssembler : public MacroAssemblerSpecific {
   // |base| and |power| are preserved, the other input registers are clobbered.
   void pow32(Register base, Register power, Register dest, Register temp1,
              Register temp2, Label* onOver);
+
+  void branchIfNotRegExpPrototypeOptimizable(Register proto, Register temp,
+                                             Label* label);
+  void branchIfNotRegExpInstanceOptimizable(Register regexp, Register temp,
+                                            Label* label);
 
   // ===============================================================
   // Shift functions
@@ -1363,8 +1389,8 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
   inline void branchIfFunctionHasNoJitEntry(Register fun, bool isConstructing,
                                             Label* label);
-  inline void branchIfInterpreted(Register fun, bool isConstructing,
-                                  Label* label);
+  inline void branchIfFunctionHasJitEntry(Register fun, bool isConstructing,
+                                          Label* label);
 
   inline void branchIfScriptHasJitScript(Register script, Label* label);
   inline void branchIfScriptHasNoJitScript(Register script, Label* label);
@@ -1895,7 +1921,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
   inline void splatX4(FloatRegister src, FloatRegister dest)
       DEFINED_ON(x86_shared);
 
-  inline void splatX2(Register64 src, FloatRegister dest) DEFINED_ON(x64);
+  inline void splatX2(Register64 src, FloatRegister dest) DEFINED_ON(x86, x64);
 
   inline void splatX2(FloatRegister src, FloatRegister dest)
       DEFINED_ON(x86_shared);
@@ -1918,7 +1944,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
                                  Register dest) DEFINED_ON(x86_shared);
 
   inline void extractLaneInt64x2(uint32_t lane, FloatRegister src,
-                                 Register64 dest) DEFINED_ON(x64);
+                                 Register64 dest) DEFINED_ON(x86, x64);
 
   inline void extractLaneFloat32x4(uint32_t lane, FloatRegister src,
                                    FloatRegister dest) DEFINED_ON(x86_shared);
@@ -1938,7 +1964,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
                                  FloatRegister lhsDest) DEFINED_ON(x86_shared);
 
   inline void replaceLaneInt64x2(unsigned lane, Register64 rhs,
-                                 FloatRegister lhsDest) DEFINED_ON(x64);
+                                 FloatRegister lhsDest) DEFINED_ON(x86, x64);
 
   inline void replaceLaneFloat32x4(unsigned lane, FloatRegister rhs,
                                    FloatRegister lhsDest)
@@ -2056,7 +2082,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
       DEFINED_ON(x86_shared);
 
   inline void mulInt64x2(FloatRegister rhs, FloatRegister lhsDest,
-                         Register64 temp) DEFINED_ON(x64);
+                         FloatRegister temp) DEFINED_ON(x86_shared);
 
   // Integer Negate
 
@@ -2232,13 +2258,9 @@ class MacroAssembler : public MacroAssemblerSpecific {
                                         FloatRegister dest)
       DEFINED_ON(x86_shared);
 
-  // `rhs` must be the CL register and it must have been masked so that its
-  // value is <= 63.
-  inline void rightShiftInt64x2(Register rhs, FloatRegister lhsDest)
-      DEFINED_ON(x64);
-
+  // Only if !MustScalarizeShiftSimd128(SimdOp::I64x2ShrS, count).
   inline void rightShiftInt64x2(Imm32 count, FloatRegister src,
-                                FloatRegister dest) DEFINED_ON(x64);
+                                FloatRegister dest) DEFINED_ON(x86_shared);
 
   inline void unsignedRightShiftInt64x2(Register rhs, FloatRegister lhsDest,
                                         Register temp) DEFINED_ON(x86_shared);
@@ -2251,6 +2273,9 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
   inline void bitwiseAndSimd128(FloatRegister rhs, FloatRegister lhsDest)
       DEFINED_ON(x86_shared);
+
+  inline void bitwiseAndSimd128(const SimdConstant& rhs, FloatRegister lhsDest)
+      DEFINED_ON(x64, x86);
 
   inline void bitwiseOrSimd128(FloatRegister rhs, FloatRegister lhsDest)
       DEFINED_ON(x86_shared);
@@ -2275,7 +2300,8 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
   // Any lane true, ie, any bit set
 
-  inline void anyTrueSimd128(FloatRegister src, Register dest) DEFINED_ON(x64);
+  inline void anyTrueSimd128(FloatRegister src, Register dest)
+      DEFINED_ON(x86, x64);
 
   // All lanes true
 
@@ -2286,6 +2312,17 @@ class MacroAssembler : public MacroAssemblerSpecific {
       DEFINED_ON(x86_shared);
 
   inline void allTrueInt32x4(FloatRegister src, Register dest)
+      DEFINED_ON(x86_shared);
+
+  // Bitmask, ie extract and compress high bits of all lanes
+
+  inline void bitmaskInt8x16(FloatRegister src, Register dest)
+      DEFINED_ON(x86_shared);
+
+  inline void bitmaskInt16x8(FloatRegister src, Register dest)
+      DEFINED_ON(x86_shared);
+
+  inline void bitmaskInt32x4(FloatRegister src, Register dest)
       DEFINED_ON(x86_shared);
 
   // Comparisons (integer and floating-point)
@@ -2507,8 +2544,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
   void convertUInt64ToDouble(Register64 src, FloatRegister dest,
                              Register temp) PER_ARCH;
 
-  void convertInt64ToDouble(Register64 src, FloatRegister dest)
-      DEFINED_ON(arm64, mips64, x64, x86);
+  void convertInt64ToDouble(Register64 src, FloatRegister dest) PER_ARCH;
 
  public:
   // ========================================================================
@@ -3711,12 +3747,9 @@ class MacroAssembler : public MacroAssemblerSpecific {
   // This class is used to surround call sites throughout the assembler. This
   // is used by callWithABI, and callJit functions, except if suffixed by
   // NoProfiler.
-  class AutoProfilerCallInstrumentation {
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER;
-
+  class MOZ_RAII AutoProfilerCallInstrumentation {
    public:
-    explicit AutoProfilerCallInstrumentation(
-        MacroAssembler& masm MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
+    explicit AutoProfilerCallInstrumentation(MacroAssembler& masm);
     ~AutoProfilerCallInstrumentation() = default;
   };
   friend class AutoProfilerCallInstrumentation;

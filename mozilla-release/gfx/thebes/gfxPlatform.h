@@ -771,6 +771,9 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   virtual void EnsureDevicesInitialized(){};
   virtual bool DevicesInitialized() { return true; };
 
+  virtual bool UseWaylandDMABufWebGL() { return false; }
+  virtual bool IsWaylandDisplay() { return false; }
+
   static uint32_t TargetFrameRate();
 
  protected:

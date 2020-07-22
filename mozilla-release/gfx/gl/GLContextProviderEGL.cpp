@@ -218,6 +218,11 @@ static EGLSurface CreateFallbackSurface(GLLibraryEGL* const egl,
 static EGLSurface CreateSurfaceFromNativeWindow(
     GLLibraryEGL* const egl, const EGLNativeWindowType window,
     const EGLConfig config) {
+  nsCString discardFailureId;
+  if (!GLLibraryEGL::EnsureInitialized(false, &discardFailureId)) {
+    gfxCriticalNote << "Failed to load EGL library 7!";
+    return EGL_NO_SURFACE;
+  }
   MOZ_ASSERT(window);
   EGLSurface newSurface = EGL_NO_SURFACE;
 
@@ -225,6 +230,9 @@ static EGLSurface CreateSurfaceFromNativeWindow(
   JNIEnv* const env = jni::GetEnvForThread();
   ANativeWindow* const nativeWindow =
       ANativeWindow_fromSurface(env, reinterpret_cast<jobject>(window));
+  if (!nativeWindow) {
+    return EGL_NO_SURFACE;
+  }
   newSurface = egl->fCreateWindowSurface(egl->fGetDisplay(EGL_DEFAULT_DISPLAY),
                                          config, nativeWindow, 0);
   ANativeWindow_release(nativeWindow);
@@ -293,9 +301,9 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
     flags |= CreateContextFlags::REQUIRE_COMPAT_PROFILE;
   }
 
-  SurfaceCaps caps = SurfaceCaps::Any();
+  const auto desc = GLContextDesc{{flags}, false};
   RefPtr<GLContextEGL> gl = GLContextEGL::CreateGLContext(
-      egl, flags, caps, false, config, surface, aUseGles, &discardFailureId);
+      egl, desc, config, surface, aUseGles, &discardFailureId);
   if (!gl) {
     const auto err = egl->fGetError();
     gfxCriticalNote << "Failed to create EGLContext!: " << gfx::hexa(err);
@@ -321,8 +329,11 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
 
 already_AddRefed<GLContext> GLContextEGLFactory::Create(
     EGLNativeWindowType aWindow, bool aWebRender) {
-  RefPtr<GLContext> glContext = CreateImpl(aWindow, aWebRender,
-                                           /* aUseGles */ false);
+  RefPtr<GLContext> glContext;
+#if !defined(MOZ_WIDGET_ANDROID)
+  glContext = CreateImpl(aWindow, aWebRender, /* aUseGles */ false);
+#endif  // !defined(MOZ_WIDGET_ANDROID)
+
   if (!glContext) {
     glContext = CreateImpl(aWindow, aWebRender, /* aUseGles */ true);
   }
@@ -352,11 +363,10 @@ EGLSurface GLContextEGL::CreateEGLSurfaceForCompositorWidget(
 }
 #endif
 
-GLContextEGL::GLContextEGL(GLLibraryEGL* const egl, CreateContextFlags flags,
-                           const SurfaceCaps& caps, bool isOffscreen,
+GLContextEGL::GLContextEGL(GLLibraryEGL* const egl, const GLContextDesc& desc,
                            EGLConfig config, EGLSurface surface,
                            EGLContext context)
-    : GLContext(flags, caps, nullptr, isOffscreen, false),
+    : GLContext(desc, nullptr, false),
       mEgl(egl),
       mConfig(config),
       mContext(context),
@@ -590,9 +600,10 @@ EGLint GLContextEGL::GetBufferAge() const {
 #define LOCAL_EGL_CONTEXT_PROVOKING_VERTEX_DONT_CARE_MOZ 0x6000
 
 already_AddRefed<GLContextEGL> GLContextEGL::CreateGLContext(
-    GLLibraryEGL* const egl, CreateContextFlags flags, const SurfaceCaps& caps,
-    bool isOffscreen, EGLConfig config, EGLSurface surface, const bool useGles,
-    nsACString* const out_failureId) {
+    GLLibraryEGL* const egl, const GLContextDesc& desc, EGLConfig config,
+    EGLSurface surface, const bool useGles, nsACString* const out_failureId) {
+  const auto& flags = desc.flags;
+
   std::vector<EGLint> required_attribs;
 
   if (useGles) {
@@ -715,7 +726,7 @@ already_AddRefed<GLContextEGL> GLContextEGL::CreateGLContext(
   MOZ_ASSERT(context);
 
   RefPtr<GLContextEGL> glContext =
-      new GLContextEGL(egl, flags, caps, isOffscreen, config, surface, context);
+      new GLContextEGL(egl, desc, config, surface, context);
   if (!glContext->Init()) {
     *out_failureId = NS_LITERAL_CSTRING("FEATURE_FAILURE_EGL_INIT");
     return nullptr;
@@ -938,11 +949,9 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateWrappingExisting(
   if (!aContext || !aSurface) return nullptr;
 
   const auto& egl = GLLibraryEGL::Get();
-  SurfaceCaps caps = SurfaceCaps::Any();
   EGLConfig config = EGL_NO_CONFIG;
-  RefPtr<GLContextEGL> gl =
-      new GLContextEGL(egl, CreateContextFlags::NONE, caps, false, config,
-                       (EGLSurface)aSurface, (EGLContext)aContext);
+  RefPtr<GLContextEGL> gl = new GLContextEGL(
+      egl, {}, config, (EGLSurface)aSurface, (EGLContext)aContext);
   gl->SetIsDoubleBuffered(true);
   gl->mOwnsContext = false;
 
@@ -1013,9 +1022,7 @@ void GLContextProviderEGL::DestroyEGLSurface(EGLSurface surface) {
 }
 #endif  // defined(ANDROID)
 
-static void FillOffscreenContextAttribs(bool alpha, bool depth, bool stencil,
-                                        bool bpp16, bool es3, bool useGles,
-                                        nsTArray<EGLint>* out) {
+static void FillContextAttribs(bool es3, bool useGles, nsTArray<EGLint>* out) {
   out->AppendElement(LOCAL_EGL_SURFACE_TYPE);
 #if defined(MOZ_WAYLAND)
   if (IS_WAYLAND_DISPLAY()) {
@@ -1039,38 +1046,22 @@ static void FillOffscreenContextAttribs(bool alpha, bool depth, bool stencil,
   }
 
   out->AppendElement(LOCAL_EGL_RED_SIZE);
-  if (bpp16) {
-    out->AppendElement(alpha ? 4 : 5);
-  } else {
-    out->AppendElement(8);
-  }
+  out->AppendElement(8);
 
   out->AppendElement(LOCAL_EGL_GREEN_SIZE);
-  if (bpp16) {
-    out->AppendElement(alpha ? 4 : 6);
-  } else {
-    out->AppendElement(8);
-  }
+  out->AppendElement(8);
 
   out->AppendElement(LOCAL_EGL_BLUE_SIZE);
-  if (bpp16) {
-    out->AppendElement(alpha ? 4 : 5);
-  } else {
-    out->AppendElement(8);
-  }
+  out->AppendElement(8);
 
   out->AppendElement(LOCAL_EGL_ALPHA_SIZE);
-  if (alpha) {
-    out->AppendElement(bpp16 ? 4 : 8);
-  } else {
-    out->AppendElement(0);
-  }
+  out->AppendElement(8);
 
   out->AppendElement(LOCAL_EGL_DEPTH_SIZE);
-  out->AppendElement(depth ? 16 : 0);
+  out->AppendElement(0);
 
   out->AppendElement(LOCAL_EGL_STENCIL_SIZE);
-  out->AppendElement(stencil ? 8 : 0);
+  out->AppendElement(0);
 
   // EGL_ATTRIBS_LIST_SAFE_TERMINATION_WORKING_AROUND_BUGS
   out->AppendElement(LOCAL_EGL_NONE);
@@ -1080,6 +1071,8 @@ static void FillOffscreenContextAttribs(bool alpha, bool depth, bool stencil,
   out->AppendElement(0);
 }
 
+/*
+/// Useful for debugging, but normally unused.
 static GLint GetAttrib(GLLibraryEGL* egl, EGLConfig config, EGLint attrib) {
   EGLint bits = 0;
   egl->fGetConfigAttrib(egl->Display(), config, attrib, &bits);
@@ -1087,23 +1080,19 @@ static GLint GetAttrib(GLLibraryEGL* egl, EGLConfig config, EGLint attrib) {
 
   return bits;
 }
+*/
 
-static EGLConfig ChooseConfigOffscreen(GLLibraryEGL* egl,
-                                       CreateContextFlags flags,
-                                       const SurfaceCaps& minCaps,
-                                       bool aUseGles,
-                                       SurfaceCaps* const out_configCaps) {
+static EGLConfig ChooseConfig(GLLibraryEGL* const egl,
+                              const GLContextCreateDesc& desc,
+                              const bool useGles) {
   nsTArray<EGLint> configAttribList;
-  FillOffscreenContextAttribs(minCaps.alpha, minCaps.depth, minCaps.stencil,
-                              minCaps.bpp16,
-                              bool(flags & CreateContextFlags::PREFER_ES3),
-                              aUseGles, &configAttribList);
+  FillContextAttribs(bool(desc.flags & CreateContextFlags::PREFER_ES3), useGles,
+                     &configAttribList);
 
   const EGLint* configAttribs = configAttribList.Elements();
 
-  // We're guaranteed to get at least minCaps, and the sorting dictated by the
-  // spec for eglChooseConfig reasonably assures that a reasonable 'best' config
-  // is on top.
+  // The sorting dictated by the spec for eglChooseConfig reasonably assures
+  // that a reasonable 'best' config is on top.
   const EGLint kMaxConfigs = 1;
   EGLConfig configs[kMaxConfigs];
   EGLint foundConfigs = 0;
@@ -1114,34 +1103,22 @@ static EGLConfig ChooseConfigOffscreen(GLLibraryEGL* egl,
   }
 
   EGLConfig config = configs[0];
-
-  *out_configCaps = minCaps;  // Pick up any preserve, etc.
-  out_configCaps->color = true;
-  out_configCaps->alpha = bool(GetAttrib(egl, config, LOCAL_EGL_ALPHA_SIZE));
-  out_configCaps->depth = bool(GetAttrib(egl, config, LOCAL_EGL_DEPTH_SIZE));
-  out_configCaps->stencil =
-      bool(GetAttrib(egl, config, LOCAL_EGL_STENCIL_SIZE));
-  out_configCaps->bpp16 = (GetAttrib(egl, config, LOCAL_EGL_RED_SIZE) < 8);
-
   return config;
 }
 
 /*static*/
 already_AddRefed<GLContextEGL>
 GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
-    CreateContextFlags flags, const mozilla::gfx::IntSize& size,
-    const SurfaceCaps& minCaps, bool aUseGles,
-    nsACString* const out_failureId) {
-  bool forceEnableHardware =
-      bool(flags & CreateContextFlags::FORCE_ENABLE_HARDWARE);
+    const GLContextCreateDesc& desc, const mozilla::gfx::IntSize& size,
+    const bool useGles, nsACString* const out_failureId) {
+  const bool forceEnableHardware =
+      bool(desc.flags & CreateContextFlags::FORCE_ENABLE_HARDWARE);
   if (!GLLibraryEGL::EnsureInitialized(forceEnableHardware, out_failureId)) {
     return nullptr;
   }
 
   auto* egl = gl::GLLibraryEGL::Get();
-  SurfaceCaps configCaps;
-  EGLConfig config =
-      ChooseConfigOffscreen(egl, flags, minCaps, aUseGles, &configCaps);
+  const EGLConfig config = ChooseConfig(egl, desc, useGles);
   if (config == EGL_NO_CONFIG) {
     *out_failureId = NS_LITERAL_CSTRING("FEATURE_FAILURE_EGL_NO_CONFIG");
     NS_WARNING("Failed to find a compatible config.");
@@ -1169,8 +1146,10 @@ GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
     return nullptr;
   }
 
+  auto fullDesc = GLContextDesc{desc};
+  fullDesc.isOffscreen = true;
   RefPtr<GLContextEGL> gl = GLContextEGL::CreateGLContext(
-      egl, flags, configCaps, true, config, surface, aUseGles, out_failureId);
+      egl, fullDesc, config, surface, useGles, out_failureId);
   if (!gl) {
     NS_WARNING("Failed to create GLContext from PBuffer");
     egl->fDestroySurface(egl->Display(), surface);
@@ -1184,79 +1163,23 @@ GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
 }
 
 already_AddRefed<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContext(
-    CreateContextFlags flags, const mozilla::gfx::IntSize& size,
-    const SurfaceCaps& minCaps, nsACString* const out_failureId) {
+    const GLContextCreateDesc& desc, const mozilla::gfx::IntSize& size,
+    nsACString* const out_failureId) {
   RefPtr<GLContextEGL> gl = CreateEGLPBufferOffscreenContextImpl(
-      flags, size, minCaps, /* aUseGles */ false, out_failureId);
+      desc, size, /* useGles */ false, out_failureId);
   if (!gl) {
-    gl = CreateEGLPBufferOffscreenContextImpl(
-        flags, size, minCaps, /* aUseGles */ true, out_failureId);
+    gl = CreateEGLPBufferOffscreenContextImpl(desc, size, /* useGles */ true,
+                                              out_failureId);
   }
   return gl.forget();
 }
 
 /*static*/
 already_AddRefed<GLContext> GLContextProviderEGL::CreateHeadless(
-    CreateContextFlags flags, nsACString* const out_failureId) {
+    const GLContextCreateDesc& desc, nsACString* const out_failureId) {
   mozilla::gfx::IntSize dummySize = mozilla::gfx::IntSize(16, 16);
-  SurfaceCaps dummyCaps = SurfaceCaps::Any();
-  return GLContextEGL::CreateEGLPBufferOffscreenContext(
-      flags, dummySize, dummyCaps, out_failureId);
-}
-
-// Under EGL, on Android, pbuffers are supported fine, though
-// often without the ability to texture from them directly.
-/*static*/
-already_AddRefed<GLContext> GLContextProviderEGL::CreateOffscreen(
-    const mozilla::gfx::IntSize& size, const SurfaceCaps& minCaps,
-    CreateContextFlags flags, nsACString* const out_failureId) {
-  bool forceEnableHardware =
-      bool(flags & CreateContextFlags::FORCE_ENABLE_HARDWARE);
-  if (!GLLibraryEGL::EnsureInitialized(
-          forceEnableHardware, out_failureId)) {  // Needed for IsANGLE().
-    return nullptr;
-  }
-
-  auto* egl = gl::GLLibraryEGL::Get();
-  bool canOffscreenUseHeadless = true;
-  if (egl->IsANGLE()) {
-    // ANGLE needs to use PBuffers.
-    canOffscreenUseHeadless = false;
-  }
-
-#if defined(MOZ_WIDGET_ANDROID)
-  // Using a headless context loses the SurfaceCaps
-  // which can cause a loss of depth and/or stencil
-  canOffscreenUseHeadless = false;
-#endif  //  defined(MOZ_WIDGET_ANDROID)
-
-  RefPtr<GLContext> gl;
-  SurfaceCaps minOffscreenCaps = minCaps;
-
-  if (canOffscreenUseHeadless) {
-    gl = CreateHeadless(flags, out_failureId);
-    if (!gl) {
-      return nullptr;
-    }
-  } else {
-    gl = GLContextEGL::CreateEGLPBufferOffscreenContext(
-        flags, size, minOffscreenCaps, out_failureId);
-    if (!gl) return nullptr;
-
-    // Pull the actual resulting caps to ensure that our offscreen matches our
-    // backbuffer.
-    minOffscreenCaps.alpha = gl->Caps().alpha;
-    minOffscreenCaps.depth = gl->Caps().depth;
-    minOffscreenCaps.stencil = gl->Caps().stencil;
-  }
-
-  // Init the offscreen with the updated offscreen caps.
-  if (!gl->InitOffscreen(size, minOffscreenCaps)) {
-    *out_failureId = NS_LITERAL_CSTRING("FEATURE_FAILURE_EGL_OFFSCREEN");
-    return nullptr;
-  }
-
-  return gl.forget();
+  return GLContextEGL::CreateEGLPBufferOffscreenContext(desc, dummySize,
+                                                        out_failureId);
 }
 
 // Don't want a global context on Android as 1) share groups across 2 threads

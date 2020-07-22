@@ -23,9 +23,11 @@ The --push-to-try flow is:
 - run_test() grabs the parameters artifact and converts them into args for
   perftest
 """
-import sys
+import json
 import os
 import shutil
+import sys
+import logging
 
 
 HERE = os.path.dirname(__file__)
@@ -50,7 +52,7 @@ SEARCH_PATHS = [
     "third_party/python/importlib_metadata",
     "third_party/python/jsonschema",
     "third_party/python/pyrsistent",
-    "third_party/python/pyyaml/lib3",
+    "third_party/python/PyYAML/lib3",
     "third_party/python/redo",
     "third_party/python/requests",
     "third_party/python/six",
@@ -77,74 +79,68 @@ def _setup_path():
         sys.path.insert(0, path)
 
 
-def _get_params():
-    """Fetches the parameters.yml artifact and returns its content.
-    """
-    # XXX - this already exists in taskcluster code
-    # in a more robust way, but for now let's not depend on it.
-    import requests
-    import yaml
-
-    root = os.environ.get(
-        "TASKCLUSTER_ROOT_URL", "https://firefox-ci-tc.services.mozilla.com"
-    )
-    # set by require-decision-task-id
-    tid = os.environ["DECISION_TASK_ID"]
-    url = root + "/api/queue/v1/task/%s/artifacts/public/parameters.yml" % tid
-    response = requests.get(url)
-    return yaml.load(response.text)
-
-
 def run_tests(mach_cmd, **kwargs):
     """This tests runner can be used directly via main or via Mach.
 
-    When the --on-try option is used, the test runner looks for the
-    `parameters.yml` artifact that contains all options passed by
-    the used via a ./mach perftest --push-to-try call.
+    When the --on-try option is used, the test runner looks at the
+    `PERFTEST_OPTIONS` environment variable that contains all options passed by
+    the user via a ./mach perftest --push-to-try call.
     """
     _setup_path()
     on_try = kwargs.pop("on_try", False)
 
     # trying to get the arguments from the task params
     if on_try:
-        params = _get_params()
-        kwargs.update(params["try_options"]["perftest"])
+        try_options = json.loads(os.environ["PERFTEST_OPTIONS"])
+        kwargs.update(try_options)
 
-    from mozperftest.utils import build_test_list, install_package
+    from mozperftest.utils import build_test_list
     from mozperftest import MachEnvironment, Metadata
+    from mozperftest.hooks import Hooks
 
-    flavor = kwargs["flavor"]
-    kwargs["tests"], tmp_dir = build_test_list(
-        kwargs["tests"], randomized=flavor != "doc"
-    )
+    hooks = Hooks(mach_cmd, kwargs.pop("hooks", None))
+    verbose = kwargs.get("verbose", False)
+    log_level = logging.DEBUG if verbose else logging.INFO
+
+    # If we run through mach, we just  want to set the level
+    # of the existing termminal handler.
+    # Otherwise, we're adding it.
+    if mach_cmd.log_manager.terminal_handler is not None:
+        mach_cmd.log_manager.terminal_handler.level = log_level
+    else:
+        mach_cmd.log_manager.add_terminal_logging(level=log_level)
 
     try:
-        if flavor == "doc":
-            location = os.path.join(
-                mach_cmd.topsrcdir, "third_party", "python", "esprima"
+        hooks.run("before_iterations", kwargs)
+
+        for iteration in range(kwargs.get("test_iterations", 1)):
+            flavor = kwargs["flavor"]
+            kwargs["tests"], tmp_dir = build_test_list(
+                kwargs["tests"], randomized=flavor != "doc"
             )
-            install_package(mach_cmd.virtualenv_manager, location)
-
-            from mozperftest.scriptinfo import ScriptInfo
-
-            for test in kwargs["tests"]:
-                print(ScriptInfo(test))
-            return
-
-        env = MachEnvironment(mach_cmd, **kwargs)
-        try:
-            metadata = Metadata(mach_cmd, env, flavor)
-            env.run_hook("before_runs")
             try:
-                with env.frozen() as e:
-                    e.run(metadata)
+                # XXX this doc is specific to browsertime scripts
+                # maybe we want to move it
+                if flavor == "doc":
+                    from mozperftest.test.browsertime.script import ScriptInfo
+
+                    for test in kwargs["tests"]:
+                        print(ScriptInfo(test))
+                    return
+
+                env = MachEnvironment(mach_cmd, hooks=hooks, **kwargs)
+                metadata = Metadata(mach_cmd, env, flavor)
+                hooks.run("before_runs", env)
+                try:
+                    with env.frozen() as e:
+                        e.run(metadata)
+                finally:
+                    hooks.run("after_runs", env)
             finally:
-                env.run_hook("after_runs")
-        finally:
-            env.cleanup()
+                if tmp_dir is not None:
+                    shutil.rmtree(tmp_dir)
     finally:
-        if tmp_dir is not None:
-            shutil.rmtree(tmp_dir)
+        hooks.cleanup()
 
 
 def main(argv=sys.argv[1:]):
@@ -155,11 +151,13 @@ def main(argv=sys.argv[1:]):
     from mozbuild.base import MachCommandBase, MozbuildObject
     from mozperftest import PerftestArgumentParser
     from mozboot.util import get_state_dir
+    from mach.logging import LoggingManager
 
     config = MozbuildObject.from_environment()
     config.topdir = config.topsrcdir
     config.cwd = os.getcwd()
     config.state_dir = get_state_dir()
+    config.log_manager = LoggingManager()
     mach_cmd = MachCommandBase(config)
     parser = PerftestArgumentParser(description="vanilla perftest")
     args = parser.parse_args(args=argv)

@@ -29,7 +29,7 @@ use style_traits::{ParseError, StyleParseErrorKind};
 /// A pseudo-element, both public and private.
 ///
 /// NB: If you add to this list, be sure to update `each_simple_pseudo_element` too.
-#[derive(Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToShmem)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize, ToShmem)]
 #[allow(missing_docs)]
 #[repr(usize)]
 pub enum PseudoElement {
@@ -615,15 +615,14 @@ impl DerefMut for SnapshotMap {
 }
 
 /// Servo's version of an element snapshot.
-#[derive(Debug)]
-#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
+#[derive(Debug, Default, MallocSizeOf)]
 pub struct ServoElementSnapshot {
     /// The stored state of the element.
     pub state: Option<ElementState>,
     /// The set of stored attributes and its values.
     pub attrs: Option<Vec<(AttrIdentifier, AttrValue)>>,
-    /// Whether this element is an HTML element in an HTML document.
-    pub is_html_element_in_html_document: bool,
+    /// The set of changed attributes and its values.
+    pub changed_attrs: Vec<LocalName>,
     /// Whether the class attribute changed or not.
     pub class_changed: bool,
     /// Whether the id attribute changed or not.
@@ -634,15 +633,8 @@ pub struct ServoElementSnapshot {
 
 impl ServoElementSnapshot {
     /// Create an empty element snapshot.
-    pub fn new(is_html_element_in_html_document: bool) -> Self {
-        ServoElementSnapshot {
-            state: None,
-            attrs: None,
-            is_html_element_in_html_document: is_html_element_in_html_document,
-            class_changed: false,
-            id_changed: false,
-            other_attributes_changed: false,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Returns whether the id attribute changed or not.
@@ -667,6 +659,17 @@ impl ServoElementSnapshot {
             .iter()
             .find(|&&(ref ident, _)| ident.local_name == *name && ident.namespace == *namespace)
             .map(|&(_, ref v)| v)
+    }
+
+    /// Executes the callback once for each attribute that changed.
+    #[inline]
+    pub fn each_attr_changed<F>(&self, mut callback: F)
+    where
+        F: FnMut(&LocalName),
+    {
+        for name in &self.changed_attrs {
+            callback(name)
+        }
     }
 
     fn any_attr_ignore_ns<F>(&self, name: &LocalName, mut f: F) -> bool

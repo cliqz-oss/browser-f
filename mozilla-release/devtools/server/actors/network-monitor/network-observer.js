@@ -10,6 +10,12 @@ const flags = require("devtools/shared/flags");
 const {
   wildcardToRegExp,
 } = require("devtools/server/actors/network-monitor/utils/wildcard-to-regexp");
+loader.lazyRequireGetter(
+  this,
+  "ChannelMap",
+  "devtools/server/actors/network-monitor/utils/channel-map",
+  true
+);
 
 loader.lazyRequireGetter(
   this,
@@ -69,27 +75,19 @@ const HTTP_TEMPORARY_REDIRECT = 307;
  */
 function matchRequest(channel, filters) {
   // Log everything if no filter is specified
-  if (!filters.outerWindowID && !filters.window) {
+  if (!filters.browsingContextID && !filters.window) {
     return true;
   }
 
   // Ignore requests from chrome or add-on code when we are monitoring
   // content.
-  // TODO: one particular test (browser_styleeditor_fetch-from-cache.js) needs
-  // the flags.testing check. We will move to a better way to serve
-  // its needs in bug 1167188, where this check should be removed.
   if (
-    !flags.testing &&
+    !flags.wantAllNetworkRequests &&
     channel.loadInfo &&
     channel.loadInfo.loadingDocument === null &&
     (channel.loadInfo.loadingPrincipal ===
       Services.scriptSecurityManager.getSystemPrincipal() ||
-      // StyleEditor loads stylesheets with not the system principal but the content
-      // principal that same as of the document that loaded the stylesheet in order
-      // to take over the context of Private Browsing etc. Thus, in order to restrict
-      // the networking from StyleEditor, we check the loading policy.
-      channel.loadInfo.internalContentPolicyType ===
-        Ci.nsIContentPolicy.TYPE_INTERNAL_STYLESHEET)
+      channel.loadInfo.isInDevToolsContext)
   ) {
     return false;
   }
@@ -109,24 +107,19 @@ function matchRequest(channel, filters) {
     }
   }
 
-  if (filters.outerWindowID) {
+  if (filters.browsingContextID) {
     const topFrame = NetworkHelper.getTopFrameForRequest(channel);
     // topFrame is typically null for some chrome requests like favicons
-    if (topFrame) {
-      try {
-        if (topFrame.outerWindowID == filters.outerWindowID) {
-          return true;
-        }
-      } catch (e) {
-        // outerWindowID getter from browser.js (non-remote <xul:browser>) may
-        // throw when closing a tab while resources are still loading.
-      }
-    } else if (
+    if (topFrame && topFrame.browsingContext.id == filters.browsingContextID) {
+      return true;
+    }
+
+    // If we couldn't get the top frame BrowsingContext from the loadContext,
+    // look for it on channel.loadInfo instead.
+    if (
       channel.loadInfo &&
-      channel.loadInfo.topOuterWindowID == filters.outerWindowID
+      channel.loadInfo.browsingContextID == filters.browsingContextID
     ) {
-      // If we couldn't get the top frame outerWindowID from the loadContext,
-      // look to the channel.loadInfo.topOuterWindowID instead.
       return true;
     }
   }
@@ -146,7 +139,7 @@ exports.matchRequest = matchRequest;
  *        Object with the filters to use for network requests:
  *        - window (nsIDOMWindow): filter network requests by the associated
  *          window object.
- *        - outerWindowID (number): filter requests by their top frame's outerWindowID.
+ *        - browsingContextID (number): filter requests by their top frame's BrowsingContext.
  *        Filters are optional. If any of these filters match the request is
  *        logged (OR is applied). If no filter is provided then all requests are
  *        logged.
@@ -162,8 +155,8 @@ function NetworkObserver(filters, owner) {
   this.filters = filters;
   this.owner = owner;
 
-  this.openRequests = new WeakMap();
-  this.openResponses = new WeakMap();
+  this.openRequests = new ChannelMap();
+  this.openResponses = new ChannelMap();
 
   this.blockedURLs = [];
 
@@ -325,6 +318,20 @@ NetworkObserver.prototype = {
       return;
     }
 
+    // Ignore preload requests to avoid duplicity request entries in
+    // the Network panel. If a preload fails (for whatever reason)
+    // then the platform kicks off another 'real' request.
+    const type = channel.loadInfo.internalContentPolicyType;
+    if (
+      type == Ci.nsIContentPolicy.TYPE_INTERNAL_SCRIPT_PRELOAD ||
+      type == Ci.nsIContentPolicy.TYPE_INTERNAL_MODULE_PRELOAD ||
+      type == Ci.nsIContentPolicy.TYPE_INTERNAL_IMAGE_PRELOAD ||
+      type == Ci.nsIContentPolicy.TYPE_INTERNAL_STYLESHEET_PRELOAD ||
+      type == Ci.nsIContentPolicy.TYPE_INTERNAL_FONT_PRELOAD
+    ) {
+      return;
+    }
+
     const blockedCode = channel.loadInfo.requestBlockingReason;
     this._httpResponseExaminer(subject, topic, blockedCode);
   },
@@ -370,15 +377,10 @@ NetworkObserver.prototype = {
       // If the owner isn't set we need to create the network event and send
       // it to the client. This happens in case where the request has been
       // blocked (e.g. CORS) and "http-on-stop-request" is the first notification.
-
-      // Temp fix to land on 79 to uplift to 78, lets remove from 79 after
-      // eslint-disable-next-line no-lonely-if
-      if (id || reason) {
-        this._createNetworkEvent(subject, {
-          blockedReason: reason,
-          blockingExtension: id,
-        });
-      }
+      this._createNetworkEvent(subject, {
+        blockedReason: reason,
+        blockingExtension: id,
+      });
     }
   },
 
@@ -478,10 +480,13 @@ NetworkObserver.prototype = {
       // If this is a cached response, there never was a request event
       // so we need to construct one here so the frontend gets all the
       // expected events.
-      const httpActivity = this._createNetworkEvent(channel, {
-        fromCache: !fromServiceWorker,
-        fromServiceWorker: fromServiceWorker,
-      });
+      let httpActivity = this.createOrGetActivityObject(channel);
+      if (!httpActivity.owner) {
+        httpActivity = this._createNetworkEvent(channel, {
+          fromCache: !fromServiceWorker,
+          fromServiceWorker: fromServiceWorker,
+        });
+      }
       httpActivity.owner.addResponseStart(
         {
           httpVersion: response.httpVersion,
@@ -872,7 +877,7 @@ NetworkObserver.prototype = {
    *        The HTTP activity object, or null if it is not found.
    */
   _findActivityObject: function(channel) {
-    return this.openRequests.get(channel) || null;
+    return this.openRequests.getChannelById(channel.channelId);
   },
 
   /**

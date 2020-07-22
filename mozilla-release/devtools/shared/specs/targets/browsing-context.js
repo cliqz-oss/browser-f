@@ -8,6 +8,7 @@ const {
   generateActorSpec,
   RetVal,
   Option,
+  Arg,
 } = require("devtools/shared/protocol");
 
 types.addDictType("browsingContextTarget.attach", {
@@ -65,6 +66,14 @@ const browsingContextTargetSpecPrototype = {
       response: {},
     },
     focus: {
+      request: {},
+      response: {},
+    },
+    goForward: {
+      request: {},
+      response: {},
+    },
+    goBack: {
       request: {},
       response: {},
     },
@@ -141,6 +150,15 @@ const browsingContextTargetSpecPrototype = {
     // We can remove that once FF66 is no longer supported.
     newSource: {
       type: "newSource",
+    },
+
+    "resource-available-form": {
+      type: "resource-available-form",
+      resources: Arg(0, "array:json"),
+    },
+    "resource-destroyed-form": {
+      type: "resource-destroyed-form",
+      resources: Arg(0, "array:json"),
     },
   },
 };

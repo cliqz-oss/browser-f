@@ -16,6 +16,13 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   Services: "resource://gre/modules/Services.jsm",
 });
 
+XPCOMUtils.defineLazyGetter(this, "logConsole", () => {
+  return console.createInstance({
+    prefix: "SearchUtils",
+    maxLogLevel: SearchUtils.loggingEnabled ? "Debug" : "Warn",
+  });
+});
+
 const BROWSER_SEARCH_PREF = "browser.search.";
 
 var SearchUtils = {
@@ -96,34 +103,9 @@ var SearchUtils = {
    */
   notifyAction(engine, verb) {
     if (Services.search.isInitialized) {
-      this.log('NOTIFY: Engine: "' + engine.name + '"; Verb: "' + verb + '"');
+      logConsole.debug("NOTIFY: Engine:", engine.name, "Verb:", verb);
       Services.obs.notifyObservers(engine, this.TOPIC_ENGINE_MODIFIED, verb);
     }
-  },
-
-  /**
-   * Outputs text to the JavaScript console.
-   *
-   * @param {string} text
-   *   The message to log.
-   */
-  log(text) {
-    if (SearchUtils.loggingEnabled) {
-      Services.console.logStringMessage(text);
-    }
-  },
-
-  /**
-   * Logs the failure message (if browser.search.log is enabled) and throws.
-   * @param {string} message
-   *   A message to display
-   * @param {number} resultCode
-   *   The NS_ERROR_* value to throw.
-   * @throws resultCode or NS_ERROR_INVALID_ARG if resultCode isn't specified.
-   */
-  fail(message, resultCode) {
-    this.log(message);
-    throw Components.Exception(message, resultCode || Cr.NS_ERROR_INVALID_ARG);
   },
 
   /**

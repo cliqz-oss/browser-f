@@ -223,6 +223,8 @@
       <vbox class="panel-subview-body">
         <vbox id="appMenu-addon-banners"/>
         <toolbarbutton id="appMenu-update-banner" class="panel-banner-item"
+                       data-l10n-id="appmenuitem-update-banner"
+                       data-l10n-attrs="label-update-downloading"
                        label-update-available="&updateAvailable.panelUI.label;"
                        label-update-manual="&updateManual.panelUI.label;"
                        label-update-unsupported="&updateUnsupported.panelUI.label;"
@@ -764,12 +766,6 @@
         <toolbarseparator/>
         <vbox id="PanelUI-characterEncodingView-charsets"
               class="PanelUI-characterEncodingView-list"/>
-        <toolbarseparator id="PanelUI-characterEncodingView-autodetect-separator"/>
-        <vbox id="PanelUI-characterEncodingView-autodetect-container">
-          <label id="PanelUI-characterEncodingView-autodetect-label"/>
-          <vbox id="PanelUI-characterEncodingView-autodetect"
-                class="PanelUI-characterEncodingView-list"/>
-        </vbox>
       </vbox>
     </panelview>
 
@@ -990,6 +986,9 @@
 
     <panelview id="PanelUI-whatsNew" class="PanelUI-subView">
       <vbox class="panel-subview-body">
+        <box id="PanelUI-whatsNew-title" class="panel-header">
+          <label data-l10n-id="whatsnew-panel-header"/>
+        </box>
         <toolbaritem id="PanelUI-whatsNew-content"
                      orient="vertical"
                      smoothscroll="false">

@@ -348,7 +348,6 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
 
   // Should be called by derived implementations to notify on system color and
   // theme changes.
-  void NotifySysColorChanged();
   void NotifyThemeChanged();
   void NotifyUIStateChanged(UIStateChangeType aShowFocusRings);
 
@@ -466,9 +465,6 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   }
   virtual uint32_t GetGLFrameBufferFormat();
   virtual bool CompositorInitiallyPaused() { return false; }
-#ifdef XP_MACOSX
-  virtual LayoutDeviceIntRegion GetOpaqueWidgetRegion() { return {}; }
-#endif
 
  protected:
   void ResolveIconName(const nsAString& aIconName, const nsAString& aIconSuffix,

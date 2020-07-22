@@ -40,9 +40,9 @@ using namespace mozilla::a11y;
 using namespace mozilla::dom;
 
 StaticAutoPtr<nsTArray<DocAccessibleParent*>> DocManager::sRemoteDocuments;
-nsRefPtrHashtable<nsPtrHashKey<const DocAccessibleParent>,
-                  xpcAccessibleDocument>* DocManager::sRemoteXPCDocumentCache =
-    nullptr;
+StaticAutoPtr<nsRefPtrHashtable<nsPtrHashKey<const DocAccessibleParent>,
+                                xpcAccessibleDocument>>
+    DocManager::sRemoteXPCDocumentCache;
 
 ////////////////////////////////////////////////////////////////////////////////
 // DocManager
@@ -143,8 +143,10 @@ xpcAccessibleDocument* DocManager::GetXPCDocument(DocAccessibleParent* aDoc) {
     sRemoteXPCDocumentCache =
         new nsRefPtrHashtable<nsPtrHashKey<const DocAccessibleParent>,
                               xpcAccessibleDocument>;
+    ClearOnShutdown(&sRemoteXPCDocumentCache);
   }
 
+  MOZ_ASSERT(!aDoc->IsShutdown(), "Adding a shutdown doc to remote XPC cache");
   doc = new xpcAccessibleDocument(aDoc,
                                   Interfaces::DOCUMENT | Interfaces::HYPERTEXT);
   sRemoteXPCDocumentCache->Put(aDoc, RefPtr{doc});

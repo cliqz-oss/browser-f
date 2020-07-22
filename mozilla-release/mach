@@ -23,7 +23,6 @@ py2commands="
     geckodriver
     geckodriver-test
     geckoview-junit
-    gradle
     hazards
     jsapi-tests
     jsshell-bench
@@ -32,18 +31,14 @@ py2commands="
     jstests
     mochitest
     mozharness
-    pastebin
     prettier-format
-    python
     python-test
     raptor
     raptor-test
     reftest
     release
     rusttests
-    static-analysis
     talos-test
-    taskcluster-build-image
     taskcluster-load-image
     taskgraph
     telemetry-tests-client

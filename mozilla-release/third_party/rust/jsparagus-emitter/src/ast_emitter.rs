@@ -8,7 +8,10 @@ use crate::compilation_info::CompilationInfo;
 use crate::emitter::{EmitError, EmitOptions, InstructionWriter};
 use crate::emitter_scope::{EmitterScopeStack, NameLocation};
 use crate::expression_emitter::*;
-use crate::function_declaration_emitter::{DummyFunctionScriptEmitter, FunctionDeclarationEmitter};
+use crate::function_declaration_emitter::{
+    AnnexBFunctionDeclarationEmitter, LazyFunctionEmitter, LexicalFunctionDeclarationEmitter,
+    TopLevelFunctionDeclarationEmitter,
+};
 use crate::object_emitter::*;
 use crate::reference_op_emitter::{
     AssignmentEmitter, CallEmitter, DeclarationEmitter, ElemReferenceEmitter, GetElemEmitter,
@@ -18,7 +21,6 @@ use crate::reference_op_emitter::{
 use crate::script_emitter::ScriptEmitter;
 use ast::source_atom_set::{CommonSourceAtomSetIndices, SourceAtomSetIndex};
 use ast::types::*;
-use std::collections::HashSet;
 use stencil::opcode::Opcode;
 use stencil::regexp::RegExpItem;
 use stencil::result::EmitResult;
@@ -48,8 +50,10 @@ pub fn emit_program<'alloc>(
         compilation_info.atoms.into(),
         compilation_info.slices.into(),
         compilation_info.scope_data_map.into(),
+        compilation_info.regexps.into(),
         script,
         compilation_info.functions.into(),
+        compilation_info.script_data_list.into(),
     ))
 }
 
@@ -59,10 +63,6 @@ pub struct AstEmitter<'alloc, 'opt> {
     pub options: &'opt EmitOptions,
     pub compilation_info: &'opt mut CompilationInfo<'alloc>,
     pub control_stack: ControlStructureStack,
-
-    /// Holds the offset of top-level function declarations, to check if the
-    /// given function function declaration is top-level.
-    top_level_function_offsets: HashSet<usize>,
 }
 
 impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
@@ -76,19 +76,7 @@ impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
             options,
             compilation_info,
             control_stack: ControlStructureStack::new(),
-            top_level_function_offsets: HashSet::new(),
         }
-    }
-
-    pub fn with_inner<ScriptFn>(&mut self, callback: ScriptFn) -> Result<ScriptStencil, EmitError>
-    where
-        ScriptFn: Fn(&mut AstEmitter) -> Result<(), EmitError>,
-    {
-        let mut inner_emitter = AstEmitter::new(self.options, self.compilation_info);
-
-        callback(&mut inner_emitter)?;
-
-        Ok(inner_emitter.emit.into())
     }
 
     pub fn lookup_name(&mut self, name: SourceAtomSetIndex) -> NameLocation {
@@ -97,7 +85,7 @@ impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
 
     fn emit_script(mut self, ast: &Script) -> Result<ScriptStencil, EmitError> {
         let scope_data_map = &self.compilation_info.scope_data_map;
-        let function_map = &self.compilation_info.function_map;
+        let function_declarations = &self.compilation_info.function_declarations;
 
         let scope_index = scope_data_map.get_global_index();
         let scope_data = scope_data_map.get_global_at(scope_index);
@@ -105,12 +93,12 @@ impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
         let top_level_functions: Vec<&Function> = scope_data
             .functions
             .iter()
-            .map(|key| *function_map.get(key).expect("function should exist"))
+            .map(|key| {
+                *function_declarations
+                    .get(key)
+                    .expect("function should exist")
+            })
             .collect();
-
-        for fun in &top_level_functions {
-            self.note_top_level_function(fun);
-        }
 
         ScriptEmitter {
             top_level_functions: top_level_functions.iter(),
@@ -120,22 +108,72 @@ impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
         }
         .emit(&mut self)?;
 
-        Ok(self.emit.into())
+        let script = self
+            .emit
+            .into_stencil(&mut self.compilation_info.script_data_list)?;
+
+        Ok(script)
     }
 
     fn emit_top_level_function_declaration(&mut self, fun: &Function) -> Result<(), EmitError> {
-        let name = fun
-            .name
-            .as_ref()
-            .expect("function declaration should have name")
-            .name
-            .value;
+        if fun.is_generator {
+            return Err(EmitError::NotImplemented("TODO: Generator"));
+        }
+        if fun.is_async {
+            return Err(EmitError::NotImplemented("TODO: Async function"));
+        }
 
-        let fun_index = DummyFunctionScriptEmitter { name }.emit(self)?;
+        let stencil_index = *self
+            .compilation_info
+            .function_stencil_indices
+            .get(fun)
+            .expect("ScriptStencil should be created");
+        let fun_index = LazyFunctionEmitter { stencil_index }.emit(self);
 
-        FunctionDeclarationEmitter { fun: fun_index }.emit(self);
+        TopLevelFunctionDeclarationEmitter { fun_index }.emit(self);
 
-        Ok(())
+        Err(EmitError::NotImplemented(
+            "TODO: Populate ScriptStencil fields",
+        ))
+    }
+
+    fn emit_non_top_level_function_declaration(&mut self, fun: &Function) -> Result<(), EmitError> {
+        if fun.is_generator {
+            return Err(EmitError::NotImplemented("TODO: Generator"));
+        }
+        if fun.is_async {
+            return Err(EmitError::NotImplemented("TODO: Async function"));
+        }
+
+        let stencil_index = *self
+            .compilation_info
+            .function_stencil_indices
+            .get(fun)
+            .expect("ScriptStencil should be created");
+
+        let is_annex_b = self
+            .compilation_info
+            .function_declaration_properties
+            .is_annex_b(stencil_index);
+
+        let fun_index = LazyFunctionEmitter { stencil_index }.emit(self);
+
+        let name = self
+            .compilation_info
+            .functions
+            .get(stencil_index)
+            .fun_name()
+            .expect("Function declaration should have name");
+
+        if is_annex_b {
+            AnnexBFunctionDeclarationEmitter { fun_index, name }.emit(self)?;
+        } else {
+            LexicalFunctionDeclarationEmitter { fun_index, name }.emit(self)?;
+        }
+
+        Err(EmitError::NotImplemented(
+            "TODO: Populate ScriptStencil fields",
+        ))
     }
 
     fn emit_statement(&mut self, ast: &Statement) -> Result<(), EmitError> {
@@ -144,8 +182,26 @@ impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
                 return Err(EmitError::NotImplemented("TODO: ClassDeclaration"));
             }
             Statement::BlockStatement { block, .. } => {
+                let scope_data_map = &self.compilation_info.scope_data_map;
+                let function_declarations = &self.compilation_info.function_declarations;
+
+                let scope_index = scope_data_map.get_index(block);
+                let scope_data = scope_data_map.get_lexical_at(scope_index);
+
+                let functions: Vec<&Function> = scope_data
+                    .functions
+                    .iter()
+                    .map(|key| {
+                        *function_declarations
+                            .get(key)
+                            .expect("function should exist")
+                    })
+                    .collect();
+
                 BlockEmitter {
                     scope_index: self.compilation_info.scope_data_map.get_index(block),
+                    functions: functions.iter(),
+                    function: |emitter, fun| emitter.emit_non_top_level_function_declaration(fun),
                     statements: block.statements.iter(),
                     statement: |emitter, statement| emitter.emit_statement(statement),
                 }
@@ -164,7 +220,7 @@ impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
                 .emit(self);
             }
             Statement::DebuggerStatement { .. } => {
-                return Err(EmitError::NotImplemented("TODO: DebuggerStatement"));
+                self.emit.debugger();
             }
             Statement::DoWhileStatement { block, test, .. } => {
                 DoWhileEmitter {
@@ -265,24 +321,10 @@ impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
             Statement::WithStatement { .. } => {
                 return Err(EmitError::NotImplemented("TODO: WithStatement"));
             }
-            Statement::FunctionDeclaration(fun) => {
-                if !self.is_top_level_function(fun) {
-                    return Err(EmitError::NotImplemented(
-                        "TODO: non-top-level FunctionDeclaration",
-                    ));
-                }
-            }
+            Statement::FunctionDeclaration(_) => {}
         };
 
         Ok(())
-    }
-
-    fn note_top_level_function(&mut self, fun: &Function) {
-        self.top_level_function_offsets.insert(fun.loc.start);
-    }
-
-    fn is_top_level_function(&self, fun: &Function) -> bool {
-        self.top_level_function_offsets.contains(&fun.loc.start)
     }
 
     fn emit_variable_declaration_statement(
@@ -404,7 +446,8 @@ impl<'alloc, 'opt> AstEmitter<'alloc, 'opt> {
                     sticky: *sticky,
                     unicode: *unicode,
                 };
-                let index = self.emit.get_regexp_gcthing_index(item);
+                let regexp_index = self.compilation_info.regexps.push(item);
+                let index = self.emit.get_regexp_gcthing_index(regexp_index);
                 self.emit.reg_exp(index);
             }
 

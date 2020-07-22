@@ -279,9 +279,9 @@ nsTArray<LookAndFeelInt> nsLookAndFeel::GetIntCacheImpl() {
   nsTArray<LookAndFeelInt> lookAndFeelIntCache =
       nsXPLookAndFeel::GetIntCacheImpl();
 
-  const IntID kIdsToCache[] = {eIntID_SystemUsesDarkTheme,
-                               eIntID_PrefersReducedMotion,
-                               eIntID_UseAccessibilityTheme};
+  const IntID kIdsToCache[] = {IntID::SystemUsesDarkTheme,
+                               IntID::PrefersReducedMotion,
+                               IntID::UseAccessibilityTheme};
 
   for (IntID id : kIdsToCache) {
     lookAndFeelIntCache.AppendElement(
@@ -295,14 +295,17 @@ void nsLookAndFeel::SetIntCacheImpl(
     const nsTArray<LookAndFeelInt>& aLookAndFeelIntCache) {
   for (const auto& entry : aLookAndFeelIntCache) {
     switch (entry.id) {
-      case eIntID_SystemUsesDarkTheme:
+      case IntID::SystemUsesDarkTheme:
         mSystemUsesDarkTheme = entry.value;
         break;
-      case eIntID_PrefersReducedMotion:
+      case IntID::PrefersReducedMotion:
         mPrefersReducedMotion = entry.value;
         break;
-      case eIntID_UseAccessibilityTheme:
+      case IntID::UseAccessibilityTheme:
         mHighContrast = entry.value;
+        break;
+      default:
+        MOZ_ASSERT_UNREACHABLE("Bogus Int ID in cache");
         break;
     }
   }
@@ -501,6 +504,12 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, nscolor& aColor) {
     case ColorID::MozGtkInfoBarText:
       aColor = mInfoBarText;
       break;
+    case ColorID::MozColheadertext:
+      aColor = mMozColHeaderText;
+      break;
+    case ColorID::MozColheaderhovertext:
+      aColor = mMozColHeaderHoverText;
+      break;
     default:
       /* default color is BLACK */
       aColor = 0;
@@ -537,13 +546,13 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
 
   // Set these before they can get overrided in the nsXPLookAndFeel.
   switch (aID) {
-    case eIntID_ScrollButtonLeftMouseButtonAction:
+    case IntID::ScrollButtonLeftMouseButtonAction:
       aResult = 0;
       return NS_OK;
-    case eIntID_ScrollButtonMiddleMouseButtonAction:
+    case IntID::ScrollButtonMiddleMouseButtonAction:
       aResult = 1;
       return NS_OK;
-    case eIntID_ScrollButtonRightMouseButtonAction:
+    case IntID::ScrollButtonRightMouseButtonAction:
       aResult = 2;
       return NS_OK;
     default:
@@ -556,21 +565,21 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
 
   // We use delayed initialization by EnsureInit() here
   // to make sure mozilla::Preferences is available (Bug 115807).
-  // eIntID_UseAccessibilityTheme is requested before user preferences
+  // IntID::UseAccessibilityTheme is requested before user preferences
   // are read, and so EnsureInit(), which depends on preference values,
   // is deliberately delayed until required.
   switch (aID) {
-    case eIntID_CaretBlinkTime:
+    case IntID::CaretBlinkTime:
       EnsureInit();
       aResult = mCaretBlinkTime;
       break;
-    case eIntID_CaretWidth:
+    case IntID::CaretWidth:
       aResult = 1;
       break;
-    case eIntID_ShowCaretDuringSelection:
+    case IntID::ShowCaretDuringSelection:
       aResult = 0;
       break;
-    case eIntID_SelectTextfieldsOnKeyFocus: {
+    case IntID::SelectTextfieldsOnKeyFocus: {
       GtkWidget* entry;
       GtkSettings* settings;
       gboolean select_on_focus;
@@ -589,7 +598,7 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
       gtk_widget_destroy(entry);
       g_object_unref(entry);
     } break;
-    case eIntID_ScrollToClick: {
+    case IntID::ScrollToClick: {
       GtkSettings* settings;
       gboolean warps_slider = FALSE;
 
@@ -605,7 +614,7 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
       else
         aResult = 0;
     } break;
-    case eIntID_SubmenuDelay: {
+    case IntID::SubmenuDelay: {
       GtkSettings* settings;
       gint delay;
 
@@ -614,19 +623,19 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
       aResult = (int32_t)delay;
       break;
     }
-    case eIntID_TooltipDelay: {
+    case IntID::TooltipDelay: {
       aResult = 500;
       break;
     }
-    case eIntID_MenusCanOverlapOSBar:
+    case IntID::MenusCanOverlapOSBar:
       // we want XUL popups to be able to overlap the task bar.
       aResult = 1;
       break;
-    case eIntID_SkipNavigatingDisabledMenuItem:
+    case IntID::SkipNavigatingDisabledMenuItem:
       aResult = 1;
       break;
-    case eIntID_DragThresholdX:
-    case eIntID_DragThresholdY: {
+    case IntID::DragThresholdX:
+    case IntID::DragThresholdY: {
       GtkWidget* box = gtk_hbox_new(FALSE, 5);
       gint threshold = 0;
       g_object_get(gtk_widget_get_settings(box), "gtk-dnd-drag-threshold",
@@ -635,93 +644,93 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
 
       aResult = threshold;
     } break;
-    case eIntID_ScrollArrowStyle: {
+    case IntID::ScrollArrowStyle: {
       GtkWidget* scrollbar = GetWidget(MOZ_GTK_SCROLLBAR_HORIZONTAL);
       aResult = ConvertGTKStepperStyleToMozillaScrollArrowStyle(scrollbar);
       break;
     }
-    case eIntID_ScrollSliderStyle:
+    case IntID::ScrollSliderStyle:
       aResult = eScrollThumbStyle_Proportional;
       break;
-    case eIntID_TreeOpenDelay:
+    case IntID::TreeOpenDelay:
       aResult = 1000;
       break;
-    case eIntID_TreeCloseDelay:
+    case IntID::TreeCloseDelay:
       aResult = 1000;
       break;
-    case eIntID_TreeLazyScrollDelay:
+    case IntID::TreeLazyScrollDelay:
       aResult = 150;
       break;
-    case eIntID_TreeScrollDelay:
+    case IntID::TreeScrollDelay:
       aResult = 100;
       break;
-    case eIntID_TreeScrollLinesMax:
+    case IntID::TreeScrollLinesMax:
       aResult = 3;
       break;
-    case eIntID_DWMCompositor:
-    case eIntID_WindowsClassic:
-    case eIntID_WindowsDefaultTheme:
-    case eIntID_WindowsThemeIdentifier:
-    case eIntID_OperatingSystemVersionIdentifier:
+    case IntID::DWMCompositor:
+    case IntID::WindowsClassic:
+    case IntID::WindowsDefaultTheme:
+    case IntID::WindowsThemeIdentifier:
+    case IntID::OperatingSystemVersionIdentifier:
       aResult = 0;
       res = NS_ERROR_NOT_IMPLEMENTED;
       break;
-    case eIntID_TouchEnabled:
+    case IntID::TouchEnabled:
       aResult = mozilla::widget::WidgetUtils::IsTouchDeviceSupportPresent();
       break;
-    case eIntID_MacGraphiteTheme:
+    case IntID::MacGraphiteTheme:
       aResult = 0;
       res = NS_ERROR_NOT_IMPLEMENTED;
       break;
-    case eIntID_AlertNotificationOrigin:
+    case IntID::AlertNotificationOrigin:
       aResult = NS_ALERT_TOP;
       break;
-    case eIntID_IMERawInputUnderlineStyle:
-    case eIntID_IMEConvertedTextUnderlineStyle:
+    case IntID::IMERawInputUnderlineStyle:
+    case IntID::IMEConvertedTextUnderlineStyle:
       aResult = NS_STYLE_TEXT_DECORATION_STYLE_SOLID;
       break;
-    case eIntID_IMESelectedRawTextUnderlineStyle:
-    case eIntID_IMESelectedConvertedTextUnderline:
+    case IntID::IMESelectedRawTextUnderlineStyle:
+    case IntID::IMESelectedConvertedTextUnderline:
       aResult = NS_STYLE_TEXT_DECORATION_STYLE_NONE;
       break;
-    case eIntID_SpellCheckerUnderlineStyle:
+    case IntID::SpellCheckerUnderlineStyle:
       aResult = NS_STYLE_TEXT_DECORATION_STYLE_WAVY;
       break;
-    case eIntID_MenuBarDrag:
+    case IntID::MenuBarDrag:
       EnsureInit();
       aResult = mMenuSupportsDrag;
       break;
-    case eIntID_ScrollbarButtonAutoRepeatBehavior:
+    case IntID::ScrollbarButtonAutoRepeatBehavior:
       aResult = 1;
       break;
-    case eIntID_SwipeAnimationEnabled:
+    case IntID::SwipeAnimationEnabled:
       aResult = 0;
       break;
-    case eIntID_ContextMenuOffsetVertical:
-    case eIntID_ContextMenuOffsetHorizontal:
+    case IntID::ContextMenuOffsetVertical:
+    case IntID::ContextMenuOffsetHorizontal:
       aResult = 2;
       break;
-    case eIntID_GTKCSDAvailable:
+    case IntID::GTKCSDAvailable:
       EnsureInit();
       aResult = mCSDAvailable;
       break;
-    case eIntID_GTKCSDHideTitlebarByDefault:
+    case IntID::GTKCSDHideTitlebarByDefault:
       EnsureInit();
       aResult = mCSDHideTitlebarByDefault;
       break;
-    case eIntID_GTKCSDMaximizeButton:
+    case IntID::GTKCSDMaximizeButton:
       EnsureInit();
       aResult = mCSDMaximizeButton;
       break;
-    case eIntID_GTKCSDMinimizeButton:
+    case IntID::GTKCSDMinimizeButton:
       EnsureInit();
       aResult = mCSDMinimizeButton;
       break;
-    case eIntID_GTKCSDCloseButton:
+    case IntID::GTKCSDCloseButton:
       EnsureInit();
       aResult = mCSDCloseButton;
       break;
-    case eIntID_GTKCSDTransparentBackground: {
+    case IntID::GTKCSDTransparentBackground: {
       // Enable transparent titlebar corners for titlebar mode.
       GdkScreen* screen = gdk_screen_get_default();
       aResult = gdk_screen_is_composited(screen)
@@ -730,29 +739,29 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
                     : false;
       break;
     }
-    case eIntID_GTKCSDReversedPlacement:
+    case IntID::GTKCSDReversedPlacement:
       EnsureInit();
       aResult = mCSDReversedPlacement;
       break;
-    case eIntID_PrefersReducedMotion: {
+    case IntID::PrefersReducedMotion: {
       aResult = mPrefersReducedMotion;
       break;
     }
-    case eIntID_SystemUsesDarkTheme: {
+    case IntID::SystemUsesDarkTheme: {
       EnsureInit();
       aResult = mSystemUsesDarkTheme;
       break;
     }
-    case eLookAndFeel_GTKCSDMaximizeButtonPosition:
+    case IntID::GTKCSDMaximizeButtonPosition:
       aResult = mCSDMaximizeButtonPosition;
       break;
-    case eLookAndFeel_GTKCSDMinimizeButtonPosition:
+    case IntID::GTKCSDMinimizeButtonPosition:
       aResult = mCSDMinimizeButtonPosition;
       break;
-    case eLookAndFeel_GTKCSDCloseButtonPosition:
+    case IntID::GTKCSDCloseButtonPosition:
       aResult = mCSDCloseButtonPosition;
       break;
-    case eIntID_UseAccessibilityTheme: {
+    case IntID::UseAccessibilityTheme: {
       EnsureInit();
       aResult = mHighContrast;
       break;
@@ -772,13 +781,13 @@ nsresult nsLookAndFeel::GetFloatImpl(FloatID aID, float& aResult) {
   res = NS_OK;
 
   switch (aID) {
-    case eFloatID_IMEUnderlineRelativeSize:
+    case FloatID::IMEUnderlineRelativeSize:
       aResult = 1.0f;
       break;
-    case eFloatID_SpellCheckerUnderlineRelativeSize:
+    case FloatID::SpellCheckerUnderlineRelativeSize:
       aResult = 1.0f;
       break;
-    case eFloatID_CaretAspectRatio:
+    case FloatID::CaretAspectRatio:
       EnsureInit();
       aResult = mCaretRatio;
       break;
@@ -828,36 +837,36 @@ static void GetSystemFontInfo(GtkStyleContext* aStyle, nsString* aFontName,
 bool nsLookAndFeel::GetFontImpl(FontID aID, nsString& aFontName,
                                 gfxFontStyle& aFontStyle) {
   switch (aID) {
-    case eFont_Menu:          // css2
-    case eFont_PullDownMenu:  // css3
+    case FontID::Menu:          // css2
+    case FontID::PullDownMenu:  // css3
       aFontName = mMenuFontName;
       aFontStyle = mMenuFontStyle;
       break;
 
-    case eFont_Field:  // css3
-    case eFont_List:   // css3
+    case FontID::Field:  // css3
+    case FontID::List:   // css3
       aFontName = mFieldFontName;
       aFontStyle = mFieldFontStyle;
       break;
 
-    case eFont_Button:  // css3
+    case FontID::Button:  // css3
       aFontName = mButtonFontName;
       aFontStyle = mButtonFontStyle;
       break;
 
-    case eFont_Caption:       // css2
-    case eFont_Icon:          // css2
-    case eFont_MessageBox:    // css2
-    case eFont_SmallCaption:  // css2
-    case eFont_StatusBar:     // css2
-    case eFont_Window:        // css3
-    case eFont_Document:      // css3
-    case eFont_Workspace:     // css3
-    case eFont_Desktop:       // css3
-    case eFont_Info:          // css3
-    case eFont_Dialog:        // css3
-    case eFont_Tooltips:      // moz
-    case eFont_Widget:        // moz
+    case FontID::Caption:       // css2
+    case FontID::Icon:          // css2
+    case FontID::MessageBox:    // css2
+    case FontID::SmallCaption:  // css2
+    case FontID::StatusBar:     // css2
+    case FontID::Window:        // css3
+    case FontID::Document:      // css3
+    case FontID::Workspace:     // css3
+    case FontID::Desktop:       // css3
+    case FontID::Info:          // css3
+    case FontID::Dialog:        // css3
+    case FontID::Tooltips:      // moz
+    case FontID::Widget:        // moz
     default:
       aFontName = mDefaultFontName;
       aFontStyle = mDefaultFontStyle;
@@ -1190,6 +1199,13 @@ void nsLookAndFeel::EnsureInit() {
   gtk_style_context_get_background_color(style, GTK_STATE_FLAG_NORMAL, &color);
   mOddCellBackground = GDK_RGBA_TO_NS_RGBA(color);
   gtk_style_context_restore(style);
+
+  // Column header colors
+  style = GetStyleContext(MOZ_GTK_TREE_HEADER_CELL);
+  gtk_style_context_get_color(style, GTK_STATE_FLAG_NORMAL, &color);
+  mMozColHeaderText = GDK_RGBA_TO_NS_RGBA(color);
+  gtk_style_context_get_color(style, GTK_STATE_FLAG_PRELIGHT, &color);
+  mMozColHeaderHoverText = GDK_RGBA_TO_NS_RGBA(color);
 
   // Compute cell highlight colors
   InitCellHighlightColors();

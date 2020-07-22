@@ -434,9 +434,12 @@ class MachCommands(MachCommandBase):
 
             tgg = taskgraph.generator.TaskGraphGenerator(
                 root_dir=options.get('root'),
-                parameters=parameters)
+                parameters=parameters,
+            )
 
-            actions = taskgraph.actions.render_actions_json(tgg.parameters, tgg.graph_config)
+            actions = taskgraph.actions.render_actions_json(
+                tgg.parameters, tgg.graph_config, decision_task_id="DECISION-TASK",
+                )
             print(json.dumps(actions, sort_keys=True, indent=2, separators=(',', ': ')))
         except Exception:
             traceback.print_exc()

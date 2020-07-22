@@ -270,18 +270,30 @@ nsresult nsIOService::Init() {
                                        gCallbackPrefs, this);
   PrefsChanged();
 
+  mSocketProcessTopicBlackList.PutEntry(
+      NS_LITERAL_CSTRING(NS_XPCOM_WILL_SHUTDOWN_OBSERVER_ID));
+  mSocketProcessTopicBlackList.PutEntry(
+      NS_LITERAL_CSTRING(NS_XPCOM_SHUTDOWN_OBSERVER_ID));
+  mSocketProcessTopicBlackList.PutEntry(
+      NS_LITERAL_CSTRING("xpcom-shutdown-threads"));
+  mSocketProcessTopicBlackList.PutEntry(
+      NS_LITERAL_CSTRING("profile-do-change"));
+
   // Register for profile change notifications
-  nsCOMPtr<nsIObserverService> observerService = services::GetObserverService();
-  if (observerService) {
-    observerService->AddObserver(this, kProfileChangeNetTeardownTopic, true);
-    observerService->AddObserver(this, kProfileChangeNetRestoreTopic, true);
-    observerService->AddObserver(this, kProfileDoChange, true);
-    observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, true);
-    observerService->AddObserver(this, NS_NETWORK_LINK_TOPIC, true);
-    observerService->AddObserver(this, NS_NETWORK_ID_CHANGED_TOPIC, true);
-    observerService->AddObserver(this, NS_WIDGET_WAKE_OBSERVER_TOPIC, true);
-  } else
-    NS_WARNING("failed to get observer service");
+  mObserverService = services::GetObserverService();
+  AddObserver(this, kProfileChangeNetTeardownTopic, true);
+  AddObserver(this, kProfileChangeNetRestoreTopic, true);
+  AddObserver(this, kProfileDoChange, true);
+  AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, true);
+  AddObserver(this, NS_NETWORK_LINK_TOPIC, true);
+  AddObserver(this, NS_NETWORK_ID_CHANGED_TOPIC, true);
+  AddObserver(this, NS_WIDGET_WAKE_OBSERVER_TOPIC, true);
+
+  // Register observers for sending notifications to nsSocketTransportService
+  if (XRE_IsParentProcess()) {
+    AddObserver(this, "profile-initial-state", true);
+    AddObserver(this, NS_WIDGET_SLEEP_OBSERVER_TOPIC, true);
+  }
 
   if (IsSocketProcessChild()) {
     Preferences::RegisterCallbacks(nsIOService::OnTLSPrefChange,
@@ -296,6 +308,65 @@ nsresult nsIOService::Init() {
   SetOffline(false);
 
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsIOService::AddObserver(nsIObserver* aObserver, const char* aTopic,
+                         bool aOwnsWeak) {
+  if (!mObserverService) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // Register for the origional observer.
+  nsresult rv = mObserverService->AddObserver(aObserver, aTopic, aOwnsWeak);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  if (!XRE_IsParentProcess()) {
+    return NS_OK;
+  }
+
+  if (!UseSocketProcess()) {
+    return NS_OK;
+  }
+
+  nsAutoCString topic(aTopic);
+  if (mSocketProcessTopicBlackList.Contains(topic)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // Avoid registering  duplicate topics.
+  if (mObserverTopicForSocketProcess.Contains(topic)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  mObserverTopicForSocketProcess.PutEntry(topic);
+
+  // This happens when AddObserver() is called by nsIOService::Init(). We don't
+  // want to add nsIOService again.
+  if (SameCOMIdentity(aObserver, static_cast<nsIObserver*>(this))) {
+    return NS_OK;
+  }
+
+  return mObserverService->AddObserver(this, aTopic, true);
+}
+
+NS_IMETHODIMP
+nsIOService::RemoveObserver(nsIObserver* aObserver, const char* aTopic) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsIOService::EnumerateObservers(const char* aTopic,
+                                nsISimpleEnumerator** anEnumerator) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP nsIOService::NotifyObservers(nsISupports* aSubject,
+                                           const char* aTopic,
+                                           const char16_t* aSomeData) {
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 nsIOService::~nsIOService() {
@@ -443,6 +514,10 @@ nsresult nsIOService::LaunchSocketProcess() {
     return NS_OK;
   }
 
+  if (mShutdown) {
+    return NS_OK;
+  }
+
   if (mSocketProcess) {
     return NS_OK;
   }
@@ -475,6 +550,7 @@ nsresult nsIOService::LaunchSocketProcess() {
 }
 
 void nsIOService::DestroySocketProcess() {
+  LOG(("nsIOService::DestroySocketProcess"));
   MOZ_ASSERT(NS_IsMainThread());
 
   if (XRE_GetProcessType() != GeckoProcessType_Default || !mSocketProcess) {
@@ -506,6 +582,11 @@ bool nsIOService::UseSocketProcess(bool aCheckAgain) {
   sUseSocketProcess = false;
 
   if (PR_GetEnv("MOZ_DISABLE_SOCKET_PROCESS")) {
+    return sUseSocketProcess;
+  }
+
+  if (PR_GetEnv("MOZ_FORCE_USE_SOCKET_PROCESS")) {
+    sUseSocketProcess = true;
     return sUseSocketProcess;
   }
 
@@ -617,7 +698,8 @@ nsIOService::SocketProcessTelemetryPing() {
 }
 
 NS_IMPL_ISUPPORTS(nsIOService, nsIIOService, nsINetUtil, nsISpeculativeConnect,
-                  nsIObserver, nsIIOServiceInternal, nsISupportsWeakReference)
+                  nsIObserver, nsIIOServiceInternal, nsISupportsWeakReference,
+                  nsIObserverService)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1186,6 +1268,9 @@ nsIOService::SetOffline(bool offline) {
                                              NS_IPC_IOSERVICE_SET_OFFLINE_TOPIC,
                                              offline ? u"true" : u"false");
     }
+    if (SocketProcessReady()) {
+      Unused << mSocketProcess->GetActor()->SendSetOffline(offline);
+    }
   }
 
   nsIIOService* subject = static_cast<nsIIOService*>(this);
@@ -1573,6 +1658,17 @@ nsIOService::Observe(nsISupports* subject, const char* topic,
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1152048#c19
     nsCOMPtr<nsIRunnable> wakeupNotifier = new nsWakeupNotifier(this);
     NS_DispatchToMainThread(wakeupNotifier);
+  }
+
+  if (UseSocketProcess() &&
+      mObserverTopicForSocketProcess.Contains(nsDependentCString(topic))) {
+    nsCString topicStr(topic);
+    nsString dataStr(data);
+    auto sendObserver = [topicStr, dataStr]() {
+      Unused << gIOService->mSocketProcess->GetActor()->SendNotifyObserver(
+          topicStr, dataStr);
+    };
+    CallOrWaitForSocketProcess(sendObserver);
   }
 
   return NS_OK;

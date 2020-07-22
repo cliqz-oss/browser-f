@@ -20,8 +20,8 @@
 #include "mozilla/dom/WindowGlobalActorsBinding.h"
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/dom/WindowContext.h"
-#include "mozilla/ipc/InProcessChild.h"
-#include "mozilla/ipc/InProcessParent.h"
+#include "mozilla/dom/InProcessChild.h"
+#include "mozilla/dom/InProcessParent.h"
 #include "nsContentUtils.h"
 #include "nsDocShell.h"
 #include "nsFocusManager.h"
@@ -214,7 +214,7 @@ void WindowGlobalChild::OnNewDocument(Document* aDocument) {
   txn.SetIsThirdPartyTrackingResourceWindow(
       nsContentUtils::IsThirdPartyTrackingResourceWindow(mWindowGlobal));
   txn.SetIsSecureContext(mWindowGlobal->IsSecureContext());
-  auto policy = aDocument->GetEmbedderPolicyFromHTTP();
+  auto policy = aDocument->GetEmbedderPolicy();
   if (policy.isSome()) {
     txn.SetEmbedderPolicy(policy.ref());
   }
@@ -371,6 +371,7 @@ mozilla::ipc::IPCResult WindowGlobalChild::RecvMakeFrameLocal(
   RemotenessOptions options;
   options.mRemoteType.Assign(VoidString());
   options.mPendingSwitchID.Construct(aPendingSwitchId);
+  options.mSwitchingInProgressLoad = true;
   flo->ChangeRemoteness(options, IgnoreErrors());
   return IPC_OK();
 }
@@ -485,16 +486,17 @@ mozilla::ipc::IPCResult WindowGlobalChild::RecvGetSecurityInfo(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult WindowGlobalChild::RecvSaveStorageAccessGranted() {
+mozilla::ipc::IPCResult
+WindowGlobalChild::RecvSaveStorageAccessPermissionGranted() {
   nsCOMPtr<nsPIDOMWindowInner> inner = GetWindowGlobal();
   if (inner) {
-    inner->SaveStorageAccessGranted();
+    inner->SaveStorageAccessPermissionGranted();
   }
 
   nsCOMPtr<nsPIDOMWindowOuter> outer =
       nsPIDOMWindowOuter::GetFromCurrentInner(inner);
   if (outer) {
-    nsGlobalWindowOuter::Cast(outer)->SetHasStorageAccess(true);
+    nsGlobalWindowOuter::Cast(outer)->SetStorageAccessPermissionGranted(true);
   }
 
   return IPC_OK();
@@ -521,6 +523,27 @@ mozilla::ipc::IPCResult WindowGlobalChild::RecvDispatchSecurityPolicyViolation(
       doc, NS_LITERAL_STRING("securitypolicyviolation"), violationEvent);
   event->SetTrusted(true);
   doc->DispatchEvent(*event, IgnoreErrors());
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult WindowGlobalChild::RecvAddBlockedFrameNodeByClassifier(
+    const MaybeDiscardedBrowsingContext& aNode) {
+  if (aNode.IsNullOrDiscarded()) {
+    return IPC_OK();
+  }
+
+  nsGlobalWindowInner* window = GetWindowGlobal();
+  if (!window) {
+    return IPC_OK();
+  }
+
+  Document* doc = window->GetDocument();
+  if (!doc) {
+    return IPC_OK();
+  }
+
+  MOZ_ASSERT(aNode.get()->GetEmbedderElement()->OwnerDoc() == doc);
+  doc->AddBlockedNodeByClassifier(aNode.get()->GetEmbedderElement());
   return IPC_OK();
 }
 

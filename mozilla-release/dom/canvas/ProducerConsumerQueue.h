@@ -13,8 +13,11 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include "mozilla/StaticPtr.h"
+#include "mozilla/WeakPtr.h"
 #include "mozilla/dom/QueueParamTraits.h"
 #include "CrossProcessSemaphore.h"
+#include "nsThreadUtils.h"
 
 namespace IPC {
 template <typename T>
@@ -24,17 +27,84 @@ struct ParamTraits;
 namespace mozilla {
 namespace webgl {
 
-using IPC::PcqTypeInfo;
-using IPC::PcqTypeInfoID;
+using mozilla::ipc::IProtocol;
+using mozilla::ipc::Shmem;
 
 extern LazyLogModule gPCQLog;
 #define PCQ_LOG_(lvl, ...) MOZ_LOG(mozilla::webgl::gPCQLog, lvl, (__VA_ARGS__))
 #define PCQ_LOGD(...) PCQ_LOG_(LogLevel::Debug, __VA_ARGS__)
 #define PCQ_LOGE(...) PCQ_LOG_(LogLevel::Error, __VA_ARGS__)
 
-class ProducerConsumerQuue;
+class ProducerConsumerQueue;
 class PcqProducer;
 class PcqConsumer;
+
+/**
+ * PcqActor is an actor base-class that is used as a static map that
+ * provides casting from an IProtocol to a PcqActor.  PcqActors delegate
+ * all needed IProtocol operations and also support weak references.
+ * Actors used to construct a PCQ must implement this class.
+ * Example:
+ * class MyActorParent : public PMyActorParent, public PcqActor {
+ *   MyActorParent() : PcqActor(this) {}
+ *   // ...
+ * }
+ * Implementations of abstract methods will typically just forward to IProtocol.
+ */
+class PcqActor : public SupportsWeakPtr<PcqActor> {
+  // The IProtocol part of `this`.
+  IProtocol* mProtocol;
+
+  using PcqActorMap = std::unordered_map<IProtocol*, PcqActor*>;
+  // uses StaticAutoPtr to placate anti-static-ctor static analysis
+  inline static StaticAutoPtr<PcqActorMap> sMap;
+
+  static bool IsActorThread() {
+    static nsIThread* sActorThread = [] { return NS_GetCurrentThread(); }();
+    return sActorThread == NS_GetCurrentThread();
+  }
+
+ protected:
+  explicit PcqActor(IProtocol* aProtocol) : mProtocol(aProtocol) {
+    MOZ_ASSERT(IsActorThread());
+    if (!sMap) {
+      sMap = new PcqActorMap();
+    }
+    sMap->insert({mProtocol, this});
+  }
+  ~PcqActor() {
+    MOZ_ASSERT(IsActorThread());
+    sMap->erase(mProtocol);
+    if (sMap->empty()) {
+      delete sMap;
+      sMap = nullptr;
+    }
+  }
+
+ public:
+  MOZ_DECLARE_WEAKREFERENCE_TYPENAME(PcqActor)
+
+  Shmem::SharedMemory* LookupSharedMemory(int32_t aId) {
+    return mProtocol->LookupSharedMemory(aId);
+  }
+  int32_t Id() const { return mProtocol->Id(); }
+  base::ProcessId OtherPid() const { return mProtocol->OtherPid(); }
+  bool AllocShmem(size_t aSize,
+                  mozilla::ipc::SharedMemory::SharedMemoryType aShmType,
+                  mozilla::ipc::Shmem* aShmem) {
+    return mProtocol->AllocShmem(aSize, aShmType, aShmem);
+  }
+
+  static PcqActor* LookupProtocol(IProtocol* aProtocol) {
+    MOZ_ASSERT(IsActorThread());
+    MOZ_ASSERT(sMap);
+    if (!sMap) {
+      return nullptr;
+    }
+    auto it = sMap->find(aProtocol);
+    return (it != sMap->end()) ? it->second : nullptr;
+  }
+};
 
 }  // namespace webgl
 
@@ -42,11 +112,10 @@ class PcqConsumer;
 // existing code get confused if mozilla::detail and mozilla::webgl::detail
 // exist.
 namespace detail {
-using IPC::PcqTypeInfo;
-using IPC::PcqTypeInfoID;
-
+using mozilla::ipc::IProtocol;
 using mozilla::ipc::Shmem;
 using mozilla::webgl::IsSuccess;
+using mozilla::webgl::PcqActor;
 using mozilla::webgl::ProducerConsumerQueue;
 using mozilla::webgl::QueueStatus;
 
@@ -73,24 +142,13 @@ constexpr size_t GetMaxHeaderSize() {
 }
 
 template <typename View, typename Arg, typename... Args>
-size_t MinSizeofArgs(View& aView, const Arg* aArg, const Args*... aArgs) {
+size_t MinSizeofArgs(View& aView, const Arg& aArg, const Args&... aArgs) {
   return aView.MinSizeParam(aArg) + MinSizeofArgs(aView, aArgs...);
 }
 
 template <typename View>
 size_t MinSizeofArgs(View&) {
   return 0;
-}
-
-template <typename View, typename Arg1, typename Arg2, typename... Args>
-size_t MinSizeofArgs(View& aView) {
-  return aView.template MinSizeParam<Arg1>(nullptr) +
-         MinSizeofArgs<Arg2, Args...>(aView);
-}
-
-template <typename View, typename Arg>
-size_t MinSizeofArgs(View& aView) {
-  return aView.MinSizeParam(nullptr);
 }
 
 class PcqRCSemaphore {
@@ -184,19 +242,12 @@ class PcqBase {
   friend struct mozilla::ipc::IPDLParamTraits<PcqBase>;
   friend ProducerConsumerQueue;
 
-  PcqBase()
-      : mOtherPid(0),
-        mQueue(nullptr),
-        mQueueBufferSize(0),
-        mUserReservedMemory(nullptr),
-        mUserReservedSize(0),
-        mRead(nullptr),
-        mWrite(nullptr) {}
+  PcqBase() = default;
 
-  PcqBase(Shmem& aShmem, base::ProcessId aOtherPid, size_t aQueueSize,
+  PcqBase(Shmem& aShmem, IProtocol* aProtocol, size_t aQueueSize,
           RefPtr<PcqRCSemaphore> aMaybeNotEmptySem,
           RefPtr<PcqRCSemaphore> aMaybeNotFullSem) {
-    Set(aShmem, aOtherPid, aQueueSize, aMaybeNotEmptySem, aMaybeNotFullSem);
+    Set(aShmem, aProtocol, aQueueSize, aMaybeNotEmptySem, aMaybeNotFullSem);
   }
 
   PcqBase(const PcqBase&) = delete;
@@ -204,10 +255,13 @@ class PcqBase {
   PcqBase& operator=(const PcqBase&) = delete;
   PcqBase& operator=(PcqBase&&) = default;
 
-  void Set(Shmem& aShmem, base::ProcessId aOtherPid, size_t aQueueSize,
+  void Set(Shmem& aShmem, IProtocol* aProtocol, size_t aQueueSize,
            RefPtr<PcqRCSemaphore> aMaybeNotEmptySem,
            RefPtr<PcqRCSemaphore> aMaybeNotFullSem) {
-    mOtherPid = aOtherPid;
+    mActor = PcqActor::LookupProtocol(aProtocol);
+    MOZ_RELEASE_ASSERT(mActor);
+
+    mOtherPid = mActor->OtherPid();
     mShmem = aShmem;
     mQueue = aShmem.get<uint8_t>();
 
@@ -297,20 +351,23 @@ class PcqBase {
    */
   size_t QueueBufferSize() { return mQueueBufferSize; }
 
-  // PID of process on the other end.  Both ends may run on the same process.
-  base::ProcessId mOtherPid;
+  // Actor used for making Shmems.
+  WeakPtr<PcqActor> mActor;
 
-  uint8_t* mQueue;
-  size_t mQueueBufferSize;
+  // PID of process on the other end.  Both ends may run on the same process.
+  base::ProcessId mOtherPid = 0;
+
+  uint8_t* mQueue = nullptr;
+  size_t mQueueBufferSize = 0;
 
   // Pointer to memory reserved for use by the user, or null if none
-  uint8_t* mUserReservedMemory;
-  size_t mUserReservedSize;
+  uint8_t* mUserReservedMemory = nullptr;
+  size_t mUserReservedSize = 0;
 
   // These std::atomics are in shared memory so DO NOT DELETE THEM!  We should,
   // however, call their destructors.
-  std::atomic_size_t* mRead;
-  std::atomic_size_t* mWrite;
+  std::atomic_size_t* mRead = nullptr;
+  std::atomic_size_t* mWrite = nullptr;
 
   // The Shmem contents are laid out like this:
   // -----------------------------------------------------------------------
@@ -375,7 +432,7 @@ class PcqProducer : public detail::PcqBase {
 
     // Check that the queue has enough unoccupied room for all Args types.
     // This is based on the user's size estimate for args from QueueParamTraits.
-    size_t bytesNeeded = detail::MinSizeofArgs(view, &aArgs...);
+    size_t bytesNeeded = detail::MinSizeofArgs(view, aArgs...);
 
     if (Size() < bytesNeeded) {
       PCQ_LOGE(
@@ -444,9 +501,22 @@ class PcqProducer : public detail::PcqBase {
     return TryWaitInsertImpl(false, aDuration, std::forward<Args>(aArgs)...);
   }
 
-  template <typename... Args>
-  QueueStatus TryTypedInsert(Args&&... aArgs) {
-    return TryInsert(PcqTypedArg<Args>(aArgs)...);
+  QueueStatus AllocShmem(mozilla::ipc::Shmem* aShmem, size_t aBufferSize,
+                         const void* aBuffer = nullptr) {
+    if (!mActor) {
+      return QueueStatus::kFatalError;
+    }
+
+    if (!mActor->AllocShmem(
+            aBufferSize,
+            mozilla::ipc::SharedMemory::SharedMemoryType::TYPE_BASIC, aShmem)) {
+      return QueueStatus::kOOMError;
+    }
+
+    if (aBuffer) {
+      memcpy(aShmem->get<uint8_t>(), aBuffer, aBufferSize);
+    }
+    return QueueStatus::kSuccess;
   }
 
  protected:
@@ -454,9 +524,9 @@ class PcqProducer : public detail::PcqBase {
   friend ProducerView<PcqProducer>;
 
   template <typename Arg, typename... Args>
-  QueueStatus TryInsertHelper(ProducerView<PcqProducer>& aView, const Arg& aArg,
-                              const Args&... aArgs) {
-    QueueStatus status = TryInsertItem(aView, aArg);
+  QueueStatus TryInsertHelper(ProducerView<PcqProducer>& aView, Arg&& aArg,
+                              Args&&... aArgs) {
+    QueueStatus status = TryInsertItem(aView, std::forward<Arg>(aArg));
     return IsSuccess(status) ? TryInsertHelper(aView, aArgs...) : status;
   }
 
@@ -465,8 +535,9 @@ class PcqProducer : public detail::PcqBase {
   }
 
   template <typename Arg>
-  QueueStatus TryInsertItem(ProducerView<PcqProducer>& aView, const Arg& aArg) {
-    return QueueParamTraits<typename RemoveCVR<Arg>::Type>::Write(aView, aArg);
+  QueueStatus TryInsertItem(ProducerView<PcqProducer>& aView, Arg&& aArg) {
+    return QueueParamTraits<typename RemoveCVR<Arg>::Type>::Write(
+        aView, std::forward<Arg>(aArg));
   }
 
   template <typename... Args>
@@ -523,10 +594,10 @@ class PcqProducer : public detail::PcqBase {
     return (Size() / 16) < aRequested;
   }
 
-  PcqProducer(Shmem& aShmem, base::ProcessId aOtherPid, size_t aQueueSize,
+  PcqProducer(Shmem& aShmem, IProtocol* aProtocol, size_t aQueueSize,
               RefPtr<detail::PcqRCSemaphore> aMaybeNotEmptySem,
               RefPtr<detail::PcqRCSemaphore> aMaybeNotFullSem)
-      : PcqBase(aShmem, aOtherPid, aQueueSize, aMaybeNotEmptySem,
+      : PcqBase(aShmem, aProtocol, aQueueSize, aMaybeNotEmptySem,
                 aMaybeNotFullSem) {
     // Since they are shared, this initializes mRead/mWrite in the PcqConsumer
     // as well.
@@ -550,62 +621,12 @@ class PcqConsumer : public detail::PcqBase {
   size_t Size() { return QueueSize(); }
 
   /**
-   * Attempts to copy aArgs in the queue.  The queue remains unchanged.
-   */
-  template <typename... Args>
-  QueueStatus TryPeek(Args&... aArgs) {
-    return TryPeekOrRemove<false, Args...>(
-        [&](ConsumerView<PcqConsumer>& aView) -> QueueStatus {
-          return TryPeekRemoveHelper(aView, &aArgs...);
-        });
-  }
-
-  template <typename... Args>
-  QueueStatus TryTypedPeek(Args&... aArgs) {
-    return TryPeek(PcqTypedArg<Args>(aArgs)...);
-  }
-
-  /**
    * Attempts to copy and remove aArgs from the queue.  If the operation does
    * not succeed then the queue is unchanged.
    */
   template <typename... Args>
   QueueStatus TryRemove(Args&... aArgs) {
-    return TryPeekOrRemove<true, Args...>(
-        [&](ConsumerView<PcqConsumer>& aView) -> QueueStatus {
-          return TryPeekRemoveHelper(aView, &aArgs...);
-        });
-  }
-
-  template <typename... Args>
-  QueueStatus TryTypedRemove(Args&... aArgs) {
-    return TryRemove(PcqTypedArg<Args>(&aArgs)...);
-  }
-
-  /**
-   * Attempts to remove Args from the queue without copying them.  If the
-   * operation does not succeed then the queue is unchanged.
-   */
-  template <typename... Args>
-  QueueStatus TryRemove() {
-    using seq = std::index_sequence_for<Args...>;
-    return TryRemove<Args...>(seq{});
-  }
-
-  template <typename... Args>
-  QueueStatus TryTypedRemove() {
-    return TryRemove<PcqTypedArg<Args>...>();
-  }
-
-  /**
-   * Wait for up to aDuration to get a copy of the requested data.  If the
-   * operation does not succeed in the time allotted then the queue is
-   * unchanged. Pass Nothing to wait until peek succeeds.
-   */
-  template <typename... Args>
-  QueueStatus TryWaitPeek(const Maybe<TimeDuration>& aDuration,
-                          Args&... aArgs) {
-    return TryWaitPeekOrRemove<false>(aDuration, aArgs...);
+    return TryRemoveImpl(aArgs...);
   }
 
   /**
@@ -615,62 +636,22 @@ class PcqConsumer : public detail::PcqBase {
   template <typename... Args>
   QueueStatus TryWaitRemove(const Maybe<TimeDuration>& aDuration,
                             Args&... aArgs) {
-    return TryWaitPeekOrRemove<true>(aDuration, aArgs...);
+    return TryWaitRemoveImpl(false, aDuration, aArgs...);
   }
 
-  /**
-   * Wait for up to aDuration to remove the requested data.  No copy
-   * of the data is returned.  If the operation does not succeed in the
-   * time allotted then the queue is unchanged.
-   * Pass Nothing to wait until removal succeeds.
-   */
-  template <typename... Args>
-  QueueStatus TryWaitRemove(const Maybe<TimeDuration>& aDuration) {
-    // Wait up to aDuration for the not-empty semaphore to be signaled.
-    // If we run out of time then quit.
-    TimeStamp start(TimeStamp::Now());
-    if (!mMaybeNotEmptySem->Wait(aDuration)) {
-      return QueueStatus::kNotReady;
+  mozilla::ipc::Shmem::SharedMemory* LookupSharedMemory(uint32_t aId) {
+    if (!mActor) {
+      return nullptr;
     }
-
-    // Attempt to remove all args.  No waiting is done here.
-    QueueStatus status = TryRemove<Args...>();
-
-    TimeStamp now;
-    if (IsSuccess(status)) {
-      // If our local view of the queue is that it is still not empty then
-      // we know it won't get empty without us (we are the only consumer).
-      // So re-set the not-empty semaphore unless it's already set.
-      // (We are also the only not-empty semaphore decrementer so it can't
-      // become 0.)
-      if ((!IsEmpty()) && (!mMaybeNotEmptySem->IsAvailable())) {
-        mMaybeNotEmptySem->Signal();
-      }
-    } else if ((status == QueueStatus::kNotReady) &&
-               (aDuration.isNothing() ||
-                ((now = TimeStamp::Now()) - start) < aDuration.value())) {
-      // We don't have enough data but still have time, e.g. because
-      // the producer wrote some data but not enough or because the
-      // not-empty semaphore gave a false positive.  Either way, retry.
-      status =
-          aDuration.isNothing()
-              ? TryWaitRemove<Args...>(aDuration)
-              : TryWaitRemove<Args...>(Some(aDuration.value() - (now - start)));
-    }
-
-    return status;
+    return mActor->LookupSharedMemory(aId);
   }
 
  protected:
   friend ProducerConsumerQueue;
   friend ConsumerView<PcqConsumer>;
 
-  // PeekOrRemoveOperation takes a read pointer and a write index.
-  using PeekOrRemoveOperation =
-      std::function<QueueStatus(ConsumerView<PcqConsumer>&)>;
-
-  template <bool isRemove, typename... Args>
-  QueueStatus TryPeekOrRemove(const PeekOrRemoveOperation& aOperation) {
+  template <typename... Args>
+  QueueStatus TryRemoveImpl(Args&... aArgs) {
     size_t write = mWrite->load(std::memory_order_acquire);
     size_t read = mRead->load(std::memory_order_relaxed);
     const size_t initRead = read;
@@ -687,7 +668,7 @@ class PcqConsumer : public detail::PcqBase {
 
     // Check that the queue has enough unoccupied room for all Args types.
     // This is based on the user's size estimate for Args from QueueParamTraits.
-    size_t bytesNeeded = detail::MinSizeofArgs(view);
+    size_t bytesNeeded = detail::MinSizeofArgs(view, aArgs...);
 
     if (Size() < bytesNeeded) {
       PCQ_LOGE(
@@ -705,9 +686,8 @@ class PcqConsumer : public detail::PcqBase {
       return QueueStatus::kNotReady;
     }
 
-    // Only update the queue if the operation was successful and we aren't
-    // peeking.
-    QueueStatus status = aOperation(view);
+    // Only update the queue if the operation was successful.
+    QueueStatus status = TryRemoveArgs(view, aArgs...);
     if (!status) {
       return status;
     }
@@ -725,44 +705,25 @@ class PcqConsumer : public detail::PcqBase {
     MOZ_ASSERT(ValidState(read, write));
 
     PCQ_LOGD(
-        "Successfully %s.  PcqConsumer used %zu bytes total.  "
+        "Successfully removed.  PcqConsumer used %zu bytes total.  "
         "Read index: %zu -> %zu",
-        isRemove ? "removed" : "peeked", bytesNeeded, initRead, read);
+        bytesNeeded, initRead, read);
 
-    // Commit the transaction... unless we were just peeking.
-    if (isRemove) {
-      mRead->store(read, std::memory_order_release);
-      // Set the semaphore (unless it is already set) to let the producer know
-      // that the queue may not be full.  We just need to guarantee that it
-      // was set (i.e. non-zero) at some time after mRead was updated.
-      if (!mMaybeNotFullSem->IsAvailable()) {
-        mMaybeNotFullSem->Signal();
-      }
+    // Commit the transaction.
+    mRead->store(read, std::memory_order_release);
+    // Set the semaphore (unless it is already set) to let the producer know
+    // that the queue may not be full.  We just need to guarantee that it
+    // was set (i.e. non-zero) at some time after mRead was updated.
+    if (!mMaybeNotFullSem->IsAvailable()) {
+      mMaybeNotFullSem->Signal();
     }
     return status;
   }
 
-  // Helper that passes nulls for all Args*
-  template <typename... Args, size_t... Is>
-  QueueStatus TryRemove(std::index_sequence<Is...>) {
-    std::tuple<Args*...> nullArgs;
-    return TryPeekOrRemove<true, Args...>(
-        [&](ConsumerView<PcqConsumer>& aView) {
-          return TryPeekRemoveHelper(aView, std::get<Is>(nullArgs)...);
-        });
-  }
-
-  template <bool isRemove, typename... Args>
-  QueueStatus TryWaitPeekOrRemove(const Maybe<TimeDuration>& aDuration,
-                                  Args&&... aArgs) {
-    return TryWaitPeekOrRemoveImpl<isRemove>(false, aDuration,
-                                             std::forward<Args>(aArgs)...);
-  }
-
-  template <bool isRemove, typename... Args>
-  QueueStatus TryWaitPeekOrRemoveImpl(bool aRecursed,
-                                      const Maybe<TimeDuration>& aDuration,
-                                      Args&... aArgs) {
+  template <typename... Args>
+  QueueStatus TryWaitRemoveImpl(bool aRecursed,
+                                const Maybe<TimeDuration>& aDuration,
+                                Args&... aArgs) {
     // Wait up to aDuration for the not-empty semaphore to be signaled.
     // If we run out of time then quit.
     TimeStamp start(TimeStamp::Now());
@@ -771,7 +732,7 @@ class PcqConsumer : public detail::PcqBase {
     }
 
     // Attempt to read all args.  No waiting is done here.
-    QueueStatus status = isRemove ? TryRemove(aArgs...) : TryPeek(aArgs...);
+    QueueStatus status = TryRemove(aArgs...);
 
     TimeStamp now;
     if (aRecursed && IsSuccess(status)) {
@@ -791,9 +752,9 @@ class PcqConsumer : public detail::PcqBase {
       // not-empty semaphore gave a false positive.  Either way, retry.
       status =
           aDuration.isNothing()
-              ? TryWaitPeekOrRemoveImpl<isRemove>(true, aDuration, aArgs...)
-              : TryWaitPeekOrRemoveImpl<isRemove>(
-                    true, Some(aDuration.value() - (now - start)), aArgs...);
+              ? TryWaitRemoveImpl(true, aDuration, aArgs...)
+              : TryWaitRemoveImpl(true, Some(aDuration.value() - (now - start)),
+                                  aArgs...);
     }
 
     return status;
@@ -801,27 +762,26 @@ class PcqConsumer : public detail::PcqBase {
 
   // Version of the helper for copying values out of the queue.
   template <typename... Args>
-  QueueStatus TryPeekRemoveHelper(ConsumerView<PcqConsumer>& aView,
-                                  Args*... aArgs);
+  QueueStatus TryRemoveArgs(ConsumerView<PcqConsumer>& aView, Args&... aArgs);
 
   template <typename Arg, typename... Args>
-  QueueStatus TryPeekRemoveHelper(ConsumerView<PcqConsumer>& aView, Arg* aArg,
-                                  Args*... aArgs) {
-    QueueStatus status = TryCopyOrSkipItem<Arg>(aView, aArg);
-    return IsSuccess(status) ? TryPeekRemoveHelper<Args...>(aView, aArgs...)
-                             : status;
+  QueueStatus TryRemoveArgs(ConsumerView<PcqConsumer>& aView, Arg& aArg,
+                            Args&... aArgs) {
+    QueueStatus status = TryCopyItem(aView, aArg);
+    return IsSuccess(status) ? TryRemoveArgs(aView, aArgs...) : status;
   }
 
-  QueueStatus TryPeekRemoveHelper(ConsumerView<PcqConsumer>&) {
+  QueueStatus TryRemoveArgs(ConsumerView<PcqConsumer>&) {
     return QueueStatus::kSuccess;
   }
 
   // If an item is available then it is copied into aArg.  The item is skipped
   // over if aArg is null.
   template <typename Arg>
-  QueueStatus TryCopyOrSkipItem(ConsumerView<PcqConsumer>& aView, Arg* aArg) {
+  QueueStatus TryCopyItem(ConsumerView<PcqConsumer>& aView, Arg& aArg) {
+    MOZ_ASSERT(aArg);
     return QueueParamTraits<typename RemoveCVR<Arg>::Type>::Read(
-        aView, const_cast<std::remove_cv_t<Arg>*>(aArg));
+        aView, const_cast<std::remove_cv_t<Arg>*>(&aArg));
   }
 
   template <typename Arg>
@@ -838,10 +798,10 @@ class PcqConsumer : public detail::PcqBase {
     return (Size() / 16) < aRequested;
   }
 
-  PcqConsumer(Shmem& aShmem, base::ProcessId aOtherPid, size_t aQueueSize,
+  PcqConsumer(Shmem& aShmem, IProtocol* aProtocol, size_t aQueueSize,
               RefPtr<detail::PcqRCSemaphore> aMaybeNotEmptySem,
               RefPtr<detail::PcqRCSemaphore> aMaybeNotFullSem)
-      : PcqBase(aShmem, aOtherPid, aQueueSize, aMaybeNotEmptySem,
+      : PcqBase(aShmem, aProtocol, aQueueSize, aMaybeNotEmptySem,
                 aMaybeNotFullSem) {}
 
   PcqConsumer(const PcqConsumer&) = delete;
@@ -872,10 +832,12 @@ class ProducerConsumerQueue {
    * Clients may use this shared memory for their own purposes.
    * See GetUserReservedMemory() and GetUserReservedMemorySize()
    */
-  static UniquePtr<ProducerConsumerQueue> Create(
-      mozilla::ipc::IProtocol* aProtocol, size_t aQueueSize,
-      size_t aAdditionalBytes = 0) {
+  static UniquePtr<ProducerConsumerQueue> Create(IProtocol* aProtocol,
+                                                 size_t aQueueSize,
+                                                 size_t aAdditionalBytes = 0) {
     MOZ_ASSERT(aProtocol);
+    // Protocol must subclass PcqActor
+    MOZ_ASSERT(PcqActor::LookupProtocol(aProtocol));
     Shmem shmem;
 
     // NB: We need one extra byte for the queue contents (hence the "+1").
@@ -887,50 +849,14 @@ class ProducerConsumerQueue {
       return nullptr;
     }
 
-    UniquePtr<ProducerConsumerQueue> ret =
-        Create(shmem, aProtocol->OtherPid(), aQueueSize);
-    if (!ret) {
-      return ret;
-    }
-
-    // The system may have reserved more bytes than the user asked for.
-    // Make sure they aren't given access to the extra.
-    MOZ_ASSERT(ret->mProducer->mUserReservedSize >= aAdditionalBytes);
-    ret->mProducer->mUserReservedSize = aAdditionalBytes;
-    ret->mConsumer->mUserReservedSize = aAdditionalBytes;
-    if (aAdditionalBytes == 0) {
-      ret->mProducer->mUserReservedMemory = nullptr;
-      ret->mConsumer->mUserReservedMemory = nullptr;
-    }
-    return ret;
-  }
-
-  /**
-   * Create a queue that is backed by aShmem, which must be:
-   * (1) unsafe
-   * (2) made for use with aOtherPid (may be this process' PID)
-   * (3) large enough to hold the queue contents and the shared meta-data of
-   *     the queue (see GetMaxHeaderSize).  Any room left over will be available
-   *     as user reserved memory.
-   *     See GetUserReservedMemory() and GetUserReservedMemorySize()
-   */
-  static UniquePtr<ProducerConsumerQueue> Create(Shmem& aShmem,
-                                                 base::ProcessId aOtherPid,
-                                                 size_t aQueueSize) {
-    uint32_t totalShmemSize = aShmem.Size<uint8_t>();
-
     // NB: We need one extra byte for the queue contents (hence the "+1").
-    if ((!aShmem.IsWritable()) || (!aShmem.IsReadable()) ||
+    if ((!shmem.IsWritable()) || (!shmem.IsReadable()) ||
         ((GetMaxHeaderSize() + aQueueSize + 1) > totalShmemSize)) {
       return nullptr;
     }
 
-    auto notempty = MakeRefPtr<detail::PcqRCSemaphore>(
-        CrossProcessSemaphore::Create("webgl-notempty", 0));
-    auto notfull = MakeRefPtr<detail::PcqRCSemaphore>(
-        CrossProcessSemaphore::Create("webgl-notfull", 1));
-    return WrapUnique(new ProducerConsumerQueue(aShmem, aOtherPid, aQueueSize,
-                                                notempty, notfull));
+    return WrapUnique(new ProducerConsumerQueue(shmem, aProtocol, aQueueSize,
+                                                aAdditionalBytes));
   }
 
   /**
@@ -956,20 +882,33 @@ class ProducerConsumerQueue {
   UniquePtr<Consumer> TakeConsumer() { return std::move(mConsumer); }
 
  private:
-  ProducerConsumerQueue(Shmem& aShmem, base::ProcessId aOtherPid,
-                        size_t aQueueSize,
-                        RefPtr<detail::PcqRCSemaphore>& aMaybeNotEmptySem,
-                        RefPtr<detail::PcqRCSemaphore>& aMaybeNotFullSem)
-      : mProducer(
-            WrapUnique(new Producer(aShmem, aOtherPid, aQueueSize,
-                                    aMaybeNotEmptySem, aMaybeNotFullSem))),
-        mConsumer(
-            WrapUnique(new Consumer(aShmem, aOtherPid, aQueueSize,
-                                    aMaybeNotEmptySem, aMaybeNotFullSem))) {
+  ProducerConsumerQueue(Shmem& aShmem, IProtocol* aProtocol, size_t aQueueSize,
+                        size_t aAdditionalBytes) {
+    auto notempty = MakeRefPtr<detail::PcqRCSemaphore>(
+        CrossProcessSemaphore::Create("webgl-notempty", 0));
+    auto notfull = MakeRefPtr<detail::PcqRCSemaphore>(
+        CrossProcessSemaphore::Create("webgl-notfull", 1));
+
+    mProducer = WrapUnique(
+        new Producer(aShmem, aProtocol, aQueueSize, notempty, notfull));
+    mConsumer = WrapUnique(
+        new Consumer(aShmem, aProtocol, aQueueSize, notempty, notfull));
+
+    // The system may have reserved more bytes than the user asked for.
+    // Make sure they aren't given access to the extra.
+    MOZ_ASSERT(mProducer->mUserReservedSize >= aAdditionalBytes);
+    mProducer->mUserReservedSize = aAdditionalBytes;
+    mConsumer->mUserReservedSize = aAdditionalBytes;
+    if (aAdditionalBytes == 0) {
+      mProducer->mUserReservedMemory = nullptr;
+      mConsumer->mUserReservedMemory = nullptr;
+    }
+
     PCQ_LOGD(
         "Constructed PCQ (%p).  Shmem Size = %zu. Queue Size = %zu.  "
         "Other process ID: %08x.",
-        this, aShmem.Size<uint8_t>(), aQueueSize, (uint32_t)aOtherPid);
+        this, aShmem.Size<uint8_t>(), aQueueSize,
+        (uint32_t)aProtocol->OtherPid());
   }
 
   UniquePtr<Producer> mProducer;
@@ -985,6 +924,9 @@ struct IPDLParamTraits<mozilla::detail::PcqBase> {
   typedef mozilla::detail::PcqBase paramType;
 
   static void Write(IPC::Message* aMsg, IProtocol* aActor, paramType& aParam) {
+    // Must be sent using the queue's underlying actor, which must still exist!
+    MOZ_RELEASE_ASSERT(aParam.mActor && aActor->Id() == aParam.mActor->Id());
+    WriteIPDLParam(aMsg, aActor, aParam.mActor->Id());
     WriteIPDLParam(aMsg, aActor, aParam.QueueSize());
     WriteIPDLParam(aMsg, aActor, std::move(aParam.mShmem));
 
@@ -1001,12 +943,15 @@ struct IPDLParamTraits<mozilla::detail::PcqBase> {
 
   static bool Read(const IPC::Message* aMsg, PickleIterator* aIter,
                    IProtocol* aActor, paramType* aResult) {
+    int32_t iProtocolId;
     size_t queueSize;
     Shmem shmem;
     CrossProcessSemaphoreHandle notEmptyHandle;
     CrossProcessSemaphoreHandle notFullHandle;
 
-    if (!ReadIPDLParam(aMsg, aIter, aActor, &queueSize) ||
+    if (!ReadIPDLParam(aMsg, aIter, aActor, &iProtocolId) ||
+        (iProtocolId != aActor->Id()) ||
+        !ReadIPDLParam(aMsg, aIter, aActor, &queueSize) ||
         !ReadIPDLParam(aMsg, aIter, aActor, &shmem) ||
         !ReadIPDLParam(aMsg, aIter, aActor, &notEmptyHandle) ||
         !ReadIPDLParam(aMsg, aIter, aActor, &notFullHandle)) {
@@ -1014,7 +959,7 @@ struct IPDLParamTraits<mozilla::detail::PcqBase> {
     }
 
     MOZ_ASSERT(IsHandleValid(notEmptyHandle) && IsHandleValid(notFullHandle));
-    aResult->Set(shmem, aActor->OtherPid(), queueSize,
+    aResult->Set(shmem, aActor, queueSize,
                  MakeRefPtr<detail::PcqRCSemaphore>(
                      CrossProcessSemaphore::Create(notEmptyHandle)),
                  MakeRefPtr<detail::PcqRCSemaphore>(

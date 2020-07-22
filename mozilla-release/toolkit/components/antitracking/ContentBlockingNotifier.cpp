@@ -51,7 +51,7 @@ void RunConsoleReportingRunnable(already_AddRefed<nsIRunnable>&& aRunnable) {
 void ReportUnblockingToConsole(
     uint64_t aWindowID, nsIPrincipal* aPrincipal,
     const nsAString& aTrackingOrigin,
-    ContentBlockingNotifier::StorageAccessGrantedReason aReason) {
+    ContentBlockingNotifier::StorageAccessPermissionGrantedReason aReason) {
   MOZ_ASSERT(aWindowID);
   MOZ_ASSERT(aPrincipal);
 
@@ -140,25 +140,35 @@ void ReportBlockingToConsole(uint64_t aWindowID, nsIURI* aURI,
         nsAutoCString category;
         // When changing this list, please make sure to update the corresponding
         // code in antitracking_head.js (inside _createTask).
+        // XXX: The nsIWebProgressListener constants below are interpreted as
+        // signed integers on Windows and the compiler complains that they can't
+        // be narrowed to uint32_t. To prevent this, we cast them to uint32_t.
         switch (aRejectedReason) {
-          case nsIWebProgressListener::STATE_COOKIES_BLOCKED_BY_PERMISSION:
+          case uint32_t(
+              nsIWebProgressListener::STATE_COOKIES_BLOCKED_BY_PERMISSION):
             message = "CookieBlockedByPermission";
             category = NS_LITERAL_CSTRING("cookieBlockedPermission");
             break;
 
-          case nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER:
+          case uint32_t(nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER):
             message = "CookieBlockedTracker";
             category = NS_LITERAL_CSTRING("cookieBlockedTracker");
             break;
 
-          case nsIWebProgressListener::STATE_COOKIES_BLOCKED_ALL:
+          case uint32_t(nsIWebProgressListener::STATE_COOKIES_BLOCKED_ALL):
             message = "CookieBlockedAll";
             category = NS_LITERAL_CSTRING("cookieBlockedAll");
             break;
 
-          case nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN:
+          case uint32_t(nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN):
             message = "CookieBlockedForeign";
             category = NS_LITERAL_CSTRING("cookieBlockedForeign");
+            break;
+
+          case uint32_t(
+              nsIWebProgressListener::STATE_COOKIES_PARTITIONED_FOREIGN):
+            message = "CookiePartitionedForeign";
+            category = NS_LITERAL_CSTRING("cookiePartitionedForeign");
             break;
 
           default:
@@ -291,7 +301,8 @@ void NotifyBlockingDecision(nsIChannel* aTrackingChannel,
 void NotifyEventInChild(
     nsIChannel* aTrackingChannel, bool aBlocked, uint32_t aRejectedReason,
     const nsACString& aTrackingOrigin,
-    const Maybe<ContentBlockingNotifier::StorageAccessGrantedReason>& aReason) {
+    const Maybe<ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
+        aReason) {
   MOZ_ASSERT(XRE_IsContentProcess());
 
   // We don't need to find the top-level window here because the
@@ -330,7 +341,8 @@ void NotifyEventInChild(
 void NotifyEventInParent(
     nsIChannel* aTrackingChannel, bool aBlocked, uint32_t aRejectedReason,
     const nsACString& aTrackingOrigin,
-    const Maybe<ContentBlockingNotifier::StorageAccessGrantedReason>& aReason) {
+    const Maybe<ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
+        aReason) {
   MOZ_ASSERT(XRE_IsParentProcess());
 
   nsCOMPtr<nsILoadInfo> loadInfo = aTrackingChannel->LoadInfo();
@@ -364,7 +376,7 @@ void NotifyEventInParent(
 /* static */
 void ContentBlockingNotifier::ReportUnblockingToConsole(
     BrowsingContext* aBrowsingContext, const nsAString& aTrackingOrigin,
-    ContentBlockingNotifier::StorageAccessGrantedReason aReason) {
+    ContentBlockingNotifier::StorageAccessPermissionGrantedReason aReason) {
   MOZ_ASSERT(aBrowsingContext);
 
   uint64_t windowID = aBrowsingContext->GetCurrentInnerWindowId();
@@ -497,7 +509,7 @@ void ContentBlockingNotifier::OnEvent(nsIChannel* aTrackingChannel,
 void ContentBlockingNotifier::OnEvent(
     nsIChannel* aTrackingChannel, bool aBlocked, uint32_t aRejectedReason,
     const nsACString& aTrackingOrigin,
-    const Maybe<StorageAccessGrantedReason>& aReason) {
+    const Maybe<StorageAccessPermissionGrantedReason>& aReason) {
   if (XRE_IsParentProcess()) {
     NotifyEventInParent(aTrackingChannel, aBlocked, aRejectedReason,
                         aTrackingOrigin, aReason);

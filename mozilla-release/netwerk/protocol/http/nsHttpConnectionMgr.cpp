@@ -452,12 +452,18 @@ nsresult nsHttpConnectionMgr::VerifyTraffic() {
   return PostEvent(&nsHttpConnectionMgr::OnMsgVerifyTraffic);
 }
 
-nsresult nsHttpConnectionMgr::DoShiftReloadConnectionCleanup(
+nsresult nsHttpConnectionMgr::DoShiftReloadConnectionCleanup() {
+  return PostEvent(&nsHttpConnectionMgr::OnMsgDoShiftReloadConnectionCleanup, 0,
+                   nullptr);
+}
+
+nsresult nsHttpConnectionMgr::DoShiftReloadConnectionCleanupWithConnInfo(
     nsHttpConnectionInfo* aCI) {
-  RefPtr<nsHttpConnectionInfo> ci;
-  if (aCI) {
-    ci = aCI->Clone();
+  if (!aCI) {
+    return NS_ERROR_INVALID_ARG;
   }
+
+  RefPtr<nsHttpConnectionInfo> ci = aCI->Clone();
   return PostEvent(&nsHttpConnectionMgr::OnMsgDoShiftReloadConnectionCleanup, 0,
                    ci);
 }
@@ -728,7 +734,7 @@ HttpConnectionBase* nsHttpConnectionMgr::FindCoalescableConnectionByHashKey(
         listOfWeakConns->Elements()[j] =
             listOfWeakConns->Elements()[listLen - 1];
       }
-      listOfWeakConns->RemoveElementAt(listLen - 1);
+      listOfWeakConns->RemoveLastElement();
       MOZ_ASSERT(listOfWeakConns->Length() == listLen - 1);
       listLen--;
       continue;  // without adjusting iterator

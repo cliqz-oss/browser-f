@@ -59,10 +59,12 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ScriptLoadRequest)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mFetchOptions, mCacheInfo)
   tmp->mScript = nullptr;
   tmp->DropBytecodeCacheReferences();
+  tmp->MaybeUnblockOnload();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFetchOptions, mCacheInfo)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFetchOptions, mCacheInfo,
+                                    mLoadBlockedDocument)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(ScriptLoadRequest)
@@ -101,17 +103,21 @@ ScriptLoadRequest::ScriptLoadRequest(ScriptKind aKind, nsIURI* aURI,
 }
 
 ScriptLoadRequest::~ScriptLoadRequest() {
-  // We should always clean up any off-thread script parsing resources.
-  MOZ_ASSERT(!mOffThreadToken);
+  // When speculative parsing is enabled, it is possible to off-main-thread
+  // compile scripts that are never executed.  These should be cleaned up here
+  // if they exist.
+  MOZ_ASSERT_IF(
+      !StaticPrefs::
+          dom_script_loader_external_scripts_speculative_omt_parse_enabled(),
+      !mOffThreadToken);
 
-  // But play it safe in release builds and try to clean them up here
-  // as a fail safe.
   MaybeCancelOffThreadScript();
 
   if (mScript) {
     DropBytecodeCacheReferences();
   }
 
+  MaybeUnblockOnload();
   DropJSObjects(this);
 }
 
@@ -184,15 +190,7 @@ void ScriptLoadRequest::SetTextSource() {
   }
 }
 
-void ScriptLoadRequest::SetBinASTSource() {
-#ifdef JS_BUILD_BINAST
-  MOZ_ASSERT(IsUnknownDataType());
-  mDataType = DataType::eBinASTSource;
-  mScriptData.emplace(VariantType<BinASTSourceBuffer>());
-#else
-  MOZ_CRASH("BinAST not supported");
-#endif
-}
+void ScriptLoadRequest::SetBinASTSource() { MOZ_CRASH("BinAST not supported"); }
 
 void ScriptLoadRequest::SetBytecode() {
   MOZ_ASSERT(IsUnknownDataType());
@@ -200,24 +198,7 @@ void ScriptLoadRequest::SetBytecode() {
 }
 
 bool ScriptLoadRequest::ShouldAcceptBinASTEncoding() const {
-#ifdef JS_BUILD_BINAST
-  // We accept the BinAST encoding if we're using a secure connection.
-
-  if (!mURI->SchemeIs("https")) {
-    return false;
-  }
-
-  if (StaticPrefs::dom_script_loader_binast_encoding_domain_restrict()) {
-    if (!nsContentUtils::IsURIInPrefList(
-            mURI, "dom.script_loader.binast_encoding.domain.restrict.list")) {
-      return false;
-    }
-  }
-
-  return true;
-#else
   MOZ_CRASH("BinAST not supported");
-#endif
 }
 
 void ScriptLoadRequest::ClearScriptSource() {

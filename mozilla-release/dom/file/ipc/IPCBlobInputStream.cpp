@@ -6,8 +6,10 @@
 
 #include "IPCBlobInputStream.h"
 #include "IPCBlobInputStreamChild.h"
+#include "IPCBlobInputStreamParent.h"
 #include "IPCBlobInputStreamStorage.h"
 #include "mozilla/ipc/InputStreamParams.h"
+#include "mozilla/net/SocketProcessParent.h"
 #include "mozilla/SlicedInputStream.h"
 #include "mozilla/NonBlockingAsyncInputStream.h"
 #include "IPCBlobInputStreamThread.h"
@@ -19,6 +21,9 @@
 #include "nsStringStream.h"
 
 namespace mozilla {
+
+using net::SocketProcessParent;
+
 namespace dom {
 
 class IPCBlobInputStream;
@@ -137,11 +142,13 @@ IPCBlobInputStream::IPCBlobInputStream(IPCBlobInputStreamChild* aActor)
 
   if (XRE_IsParentProcess()) {
     nsCOMPtr<nsIInputStream> stream;
-    IPCBlobInputStreamStorage::Get()->GetStream(mActor->ID(), 0, mLength,
-                                                getter_AddRefs(stream));
-    if (stream) {
-      mState = eRunning;
-      mRemoteStream = stream;
+    auto storage = IPCBlobInputStreamStorage::Get().unwrapOr(nullptr);
+    if (storage) {
+      storage->GetStream(mActor->ID(), 0, mLength, getter_AddRefs(stream));
+      if (stream) {
+        mState = eRunning;
+        mRemoteStream = stream;
+      }
     }
   }
 }
@@ -431,16 +438,26 @@ IPCBlobInputStream::AsyncWait(nsIInputStreamCallback* aCallback,
         break;
       }
 
-      // Stream is closed.
+      case eClosed:
+        [[fallthrough]];
       default:
         MOZ_ASSERT(mState == eClosed);
-        return NS_BASE_STREAM_CLOSED;
+        if (mInputStreamCallback && aCallback) {
+          return NS_ERROR_FAILURE;
+        }
+        break;
     }
   }
 
-  MOZ_ASSERT(asyncRemoteStream);
-  return asyncRemoteStream->AsyncWait(aCallback ? this : nullptr, 0, 0,
-                                      aEventTarget);
+  if (asyncRemoteStream) {
+    return asyncRemoteStream->AsyncWait(aCallback ? this : nullptr, 0, 0,
+                                        aEventTarget);
+  }
+
+  // if asyncRemoteStream is nullptr here, that probably means the stream has
+  // been closed and the callback can be executed immediately
+  InputStreamCallbackRunnable::Execute(aCallback, aEventTarget, this);
+  return NS_OK;
 }
 
 void IPCBlobInputStream::StreamReady(
@@ -574,7 +591,36 @@ void IPCBlobInputStream::Serialize(
   MOZ_ASSERT(aSizeUsed);
   *aSizeUsed = 0;
 
-  SerializeInternal(aParams);
+  // So far we support only socket process serialization.
+  MOZ_DIAGNOSTIC_ASSERT(aManager == SocketProcessParent::GetSingleton(),
+                        "Serializing an IPCBlobInputStream parent to child is "
+                        "wrong! The caller must be fixed! See IPCBlobUtils.h.");
+  SocketProcessParent* socketActor = SocketProcessParent::GetSingleton();
+
+  nsresult rv;
+  nsCOMPtr<nsIAsyncInputStream> asyncRemoteStream;
+  RefPtr<IPCBlobInputStreamParent> parentActor;
+  {
+    MutexAutoLock lock(mMutex);
+    rv = EnsureAsyncRemoteStream(lock);
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+    asyncRemoteStream = mAsyncRemoteStream;
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+  }
+
+  MOZ_ASSERT(asyncRemoteStream);
+
+  parentActor = IPCBlobInputStreamParent::Create(asyncRemoteStream, mLength, 0,
+                                                 &rv, socketActor);
+  MOZ_ASSERT(parentActor);
+
+  if (!socketActor->SendPIPCBlobInputStreamConstructor(
+          parentActor, parentActor->ID(), parentActor->Size())) {
+    MOZ_CRASH("The serialization is not supposed to fail");
+  }
+
+  aParams = mozilla::ipc::IPCBlobInputStreamParams(parentActor);
 }
 
 void IPCBlobInputStream::Serialize(
@@ -585,14 +631,9 @@ void IPCBlobInputStream::Serialize(
   MOZ_ASSERT(aSizeUsed);
   *aSizeUsed = 0;
 
-  SerializeInternal(aParams);
-}
-
-void IPCBlobInputStream::SerializeInternal(
-    mozilla::ipc::InputStreamParams& aParams) {
   MutexAutoLock lock(mMutex);
 
-  mozilla::ipc::IPCBlobInputStreamParams params;
+  mozilla::ipc::IPCBlobInputStreamRef params;
   params.id() = mActor->ID();
   params.start() = mStart;
   params.length() = mLength;
@@ -803,38 +844,6 @@ IPCBlobInputStream::Length(int64_t* aLength) {
   return NS_BASE_STREAM_WOULD_BLOCK;
 }
 
-// nsIAsyncInputStreamLength
-
-NS_IMETHODIMP
-IPCBlobInputStream::AsyncLengthWait(nsIInputStreamLengthCallback* aCallback,
-                                    nsIEventTarget* aEventTarget) {
-  MutexAutoLock lock(mMutex);
-
-  if (mState == eClosed) {
-    return NS_BASE_STREAM_CLOSED;
-  }
-
-  if (mConsumed) {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
-
-  // If we have the callback, we must have the event target.
-  if (NS_WARN_IF(!!aCallback != !!aEventTarget)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  MOZ_ASSERT(mActor);
-
-  mLengthCallback = aCallback;
-  mLengthCallbackEventTarget = aEventTarget;
-
-  if (aCallback) {
-    mActor->LengthNeeded(this, aEventTarget);
-  }
-
-  return NS_OK;
-}
-
 namespace {
 
 class InputStreamLengthCallbackRunnable final : public CancelableRunnable {
@@ -874,10 +883,43 @@ class InputStreamLengthCallbackRunnable final : public CancelableRunnable {
 
   nsCOMPtr<nsIInputStreamLengthCallback> mCallback;
   RefPtr<IPCBlobInputStream> mStream;
-  int64_t mLength;
+  const int64_t mLength;
 };
 
 }  // namespace
+
+// nsIAsyncInputStreamLength
+
+NS_IMETHODIMP
+IPCBlobInputStream::AsyncLengthWait(nsIInputStreamLengthCallback* aCallback,
+                                    nsIEventTarget* aEventTarget) {
+  // If we have the callback, we must have the event target.
+  if (NS_WARN_IF(!!aCallback != !!aEventTarget)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  {
+    MutexAutoLock lock(mMutex);
+
+    mLengthCallback = aCallback;
+    mLengthCallbackEventTarget = aEventTarget;
+
+    if (mState != eClosed && !mConsumed) {
+      MOZ_ASSERT(mActor);
+
+      if (aCallback) {
+        mActor->LengthNeeded(this, aEventTarget);
+      }
+
+      return NS_OK;
+    }
+  }
+
+  // If execution has reached here, it means the stream is either closed or
+  // consumed, and therefore the callback can be executed immediately
+  InputStreamLengthCallbackRunnable::Execute(aCallback, aEventTarget, this, -1);
+  return NS_OK;
+}
 
 void IPCBlobInputStream::LengthReady(int64_t aLength) {
   nsCOMPtr<nsIInputStreamLengthCallback> lengthCallback;
@@ -886,19 +928,20 @@ void IPCBlobInputStream::LengthReady(int64_t aLength) {
   {
     MutexAutoLock lock(mMutex);
 
-    // We have been closed in the meantime.
+    // Stream has been closed in the meantime. Callback can be executed
+    // immediately
     if (mState == eClosed || mConsumed) {
-      return;
-    }
+      aLength = -1;
+    } else {
+      if (mStart > 0) {
+        aLength -= mStart;
+      }
 
-    if (mStart > 0) {
-      aLength -= mStart;
-    }
-
-    if (mLength < mActor->Size()) {
-      // If the remote stream must be sliced, we must return here the correct
-      // value.
-      aLength = XPCOM_MIN(aLength, (int64_t)mLength);
+      if (mLength < mActor->Size()) {
+        // If the remote stream must be sliced, we must return here the correct
+        // value.
+        aLength = XPCOM_MIN(aLength, (int64_t)mLength);
+      }
     }
 
     lengthCallback.swap(mLengthCallback);

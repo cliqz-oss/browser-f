@@ -110,18 +110,17 @@ use crate::debug_colors;
 use euclid::{vec2, vec3, Point2D, Scale, Size2D, Vector2D, Rect, Transform3D, SideOffsets2D};
 use euclid::approxeq::ApproxEq;
 use crate::filterdata::SFilterData;
-use crate::frame_builder::{FrameBuilderConfig, FrameVisibilityContext, FrameVisibilityState};
+use crate::frame_builder::FrameBuilderConfig;
 use crate::intern::ItemUid;
 use crate::internal_types::{FastHashMap, FastHashSet, PlaneSplitter, Filter, PlaneSplitAnchor, TextureSource};
 use crate::frame_builder::{FrameBuildingContext, FrameBuildingState, PictureState, PictureContext};
 use crate::gpu_cache::{GpuCache, GpuCacheAddress, GpuCacheHandle};
 use crate::gpu_types::{UvRectKind, ZBufferId};
 use plane_split::{Clipper, Polygon, Splitter};
-use crate::prim_store::{SpaceMapper, PrimitiveVisibilityMask, PrimitiveTemplateKind};
+use crate::prim_store::{SpaceMapper, PrimitiveTemplateKind};
 use crate::prim_store::{SpaceSnapper, PictureIndex, PrimitiveInstance, PrimitiveInstanceKind};
 use crate::prim_store::{get_raster_rects, PrimitiveScratchBuffer};
-use crate::prim_store::{OpacityBindingStorage, ImageInstanceStorage, OpacityBindingIndex};
-use crate::prim_store::{ColorBindingStorage, ColorBindingIndex, PrimitiveVisibilityFlags};
+use crate::prim_store::{ColorBindingStorage, ColorBindingIndex};
 use crate::print_tree::{PrintTree, PrintTreePrinter};
 use crate::render_backend::{DataStores, FrameId};
 use crate::render_task_graph::RenderTaskId;
@@ -133,9 +132,11 @@ use smallvec::SmallVec;
 use std::{mem, u8, marker, u32};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::hash_map::Entry;
+use std::ops::Range;
 use crate::texture_cache::TextureCacheHandle;
-use crate::util::{MaxRect, VecHelper, RectHelpers, MatrixHelpers};
+use crate::util::{MaxRect, VecHelper, RectHelpers, MatrixHelpers, Recycler};
 use crate::filterdata::{FilterDataHandle};
+use crate::visibility::{PrimitiveVisibilityMask, PrimitiveVisibilityFlags, FrameVisibilityContext, FrameVisibilityState};
 #[cfg(any(feature = "capture", feature = "replay"))]
 use ron;
 #[cfg(feature = "capture")]
@@ -2261,6 +2262,19 @@ pub struct ExternalNativeSurface {
     pub image_dependencies: [ImageDependency; 3],
 }
 
+/// The key that identifies a tile cache instance. For now, it's simple the index of
+/// the slice as it was created during scene building.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+pub struct SliceId(usize);
+
+impl SliceId {
+    pub fn new(index: usize) -> Self {
+        SliceId(index)
+    }
+}
+
 /// Represents a cache of tiles that make up a picture primitives.
 pub struct TileCacheInstance {
     /// Index of the tile cache / slice for this frame builder. It's determined
@@ -2513,7 +2527,9 @@ impl TileCacheInstance {
         // which will provide a local clip rect. This is useful for establishing things
         // like whether the backdrop rect supplied by Gecko can be considered opaque.
         if self.shared_clip_chain != ClipChainId::NONE {
-            let mut shared_clips = Vec::new();
+            let shared_clips = &mut frame_state.scratch.picture.clip_chain_ids;
+            shared_clips.clear();
+
             let mut current_clip_chain_id = self.shared_clip_chain;
             while current_clip_chain_id != ClipChainId::NONE {
                 shared_clips.push(current_clip_chain_id);
@@ -3183,9 +3199,7 @@ impl TileCacheInstance {
         clip_store: &ClipStore,
         pictures: &[PicturePrimitive],
         resource_cache: &mut ResourceCache,
-        opacity_binding_store: &OpacityBindingStorage,
         color_bindings: &ColorBindingStorage,
-        image_instances: &ImageInstanceStorage,
         surface_stack: &[SurfaceIndex],
         composite_state: &mut CompositeState,
     ) -> Option<PrimitiveVisibilityFlags> {
@@ -3321,39 +3335,30 @@ impl TileCacheInstance {
                     prim_info.opacity_bindings.push(binding.into());
                 }
             }
-            PrimitiveInstanceKind::Rectangle { data_handle, opacity_binding_index, color_binding_index, .. } => {
-                if opacity_binding_index == OpacityBindingIndex::INVALID {
-                    // Rectangles can only form a backdrop candidate if they are known opaque.
-                    // TODO(gw): We could resolve the opacity binding here, but the common
-                    //           case for background rects is that they don't have animated opacity.
-                    let color = match data_stores.prim[data_handle].kind {
-                        PrimitiveTemplateKind::Rectangle { color, .. } => {
-                            frame_context.scene_properties.resolve_color(&color)
-                        }
-                        _ => unreachable!(),
-                    };
-                    if color.a >= 1.0 {
-                        backdrop_candidate = Some(BackdropInfo {
-                            opaque_rect: pic_clip_rect,
-                            kind: Some(BackdropKind::Color { color }),
-                        });
+            PrimitiveInstanceKind::Rectangle { data_handle, color_binding_index, .. } => {
+                // Rectangles can only form a backdrop candidate if they are known opaque.
+                // TODO(gw): We could resolve the opacity binding here, but the common
+                //           case for background rects is that they don't have animated opacity.
+                let color = match data_stores.prim[data_handle].kind {
+                    PrimitiveTemplateKind::Rectangle { color, .. } => {
+                        frame_context.scene_properties.resolve_color(&color)
                     }
-                } else {
-                    let opacity_binding = &opacity_binding_store[opacity_binding_index];
-                    for binding in &opacity_binding.bindings {
-                        prim_info.opacity_bindings.push(OpacityBinding::from(*binding));
-                    }
+                    _ => unreachable!(),
+                };
+                if color.a >= 1.0 {
+                    backdrop_candidate = Some(BackdropInfo {
+                        opaque_rect: pic_clip_rect,
+                        kind: Some(BackdropKind::Color { color }),
+                    });
                 }
 
                 if color_binding_index != ColorBindingIndex::INVALID {
                     prim_info.color_binding = Some(color_bindings[color_binding_index].into());
                 }
             }
-            PrimitiveInstanceKind::Image { data_handle, image_instance_index, ref mut is_compositor_surface, .. } => {
+            PrimitiveInstanceKind::Image { data_handle, ref mut is_compositor_surface, .. } => {
                 let image_key = &data_stores.image[data_handle];
                 let image_data = &image_key.kind;
-                let image_instance = &image_instances[image_instance_index];
-                let opacity_binding_index = image_instance.opacity_binding_index;
 
                 let mut promote_to_surface = false;
                 let mut promote_with_flip_y = false;
@@ -3373,25 +3378,18 @@ impl TileCacheInstance {
                     }
                 }
 
-                if opacity_binding_index == OpacityBindingIndex::INVALID {
-                    if let Some(image_properties) = resource_cache.get_image_properties(image_data.key) {
-                        // For an image to be a possible opaque backdrop, it must:
-                        // - Have a valid, opaque image descriptor
-                        // - Not use tiling (since they can fail to draw)
-                        // - Not having any spacing / padding
-                        if image_properties.descriptor.is_opaque() &&
-                           image_properties.tiling.is_none() &&
-                           image_data.tile_spacing == LayoutSize::zero() {
-                            backdrop_candidate = Some(BackdropInfo {
-                                opaque_rect: pic_clip_rect,
-                                kind: None,
-                            });
-                        }
-                    }
-                } else {
-                    let opacity_binding = &opacity_binding_store[opacity_binding_index];
-                    for binding in &opacity_binding.bindings {
-                        prim_info.opacity_bindings.push(OpacityBinding::from(*binding));
+                if let Some(image_properties) = resource_cache.get_image_properties(image_data.key) {
+                    // For an image to be a possible opaque backdrop, it must:
+                    // - Have a valid, opaque image descriptor
+                    // - Not use tiling (since they can fail to draw)
+                    // - Not having any spacing / padding
+                    if image_properties.descriptor.is_opaque() &&
+                       image_properties.tiling.is_none() &&
+                       image_data.tile_spacing == LayoutSize::zero() {
+                        backdrop_candidate = Some(BackdropInfo {
+                            opaque_rect: pic_clip_rect,
+                            kind: None,
+                        });
                     }
                 }
 
@@ -3644,7 +3642,7 @@ impl TileCacheInstance {
         //           diff'ing the invalidation states in a visual tool.
         let mut pt = PrintTree::new("Picture Cache");
 
-        pt.new_level(format!("Slice {}", self.slice));
+        pt.new_level(format!("Slice {:?}", self.slice));
 
         pt.add_item(format!("fract_offset: {:?}", self.fract_offset));
         pt.add_item(format!("background_color: {:?}", self.background_color));
@@ -3831,10 +3829,39 @@ impl TileCacheInstance {
         // When under test, record a copy of the dirty region to support
         // invalidation testing in wrench.
         if frame_context.config.testing {
-            frame_state.scratch.recorded_dirty_regions.push(self.dirty_region.record());
+            frame_state.scratch.primitive.recorded_dirty_regions.push(self.dirty_region.record());
         }
     }
 }
+
+pub struct PictureScratchBuffer {
+    surface_stack: Vec<SurfaceIndex>,
+    picture_stack: Vec<PictureInfo>,
+    clip_chain_ids: Vec<ClipChainId>,
+}
+
+impl Default for PictureScratchBuffer {
+    fn default() -> Self {
+        PictureScratchBuffer {
+            surface_stack: Vec::new(),
+            picture_stack: Vec::new(),
+            clip_chain_ids: Vec::new(),
+        }
+    }
+}
+
+impl PictureScratchBuffer {
+    pub fn begin_frame(&mut self) {
+        self.surface_stack.clear();
+        self.picture_stack.clear();
+        self.clip_chain_ids.clear();
+    }
+
+    pub fn recycle(&mut self, recycler: &mut Recycler) {
+        recycler.recycle_vec(&mut self.surface_stack);
+        recycler.recycle_vec(&mut self.picture_stack);
+    }
+ }
 
 /// Maintains a stack of picture and surface information, that
 /// is used during the initial picture traversal.
@@ -3848,6 +3875,7 @@ pub struct PictureUpdateState<'a> {
 
 impl<'a> PictureUpdateState<'a> {
     pub fn update_all(
+        buffers: &mut PictureScratchBuffer,
         surfaces: &'a mut Vec<SurfaceInfo>,
         pic_index: PictureIndex,
         picture_primitives: &mut [PicturePrimitive],
@@ -3862,11 +3890,13 @@ impl<'a> PictureUpdateState<'a> {
 
         let mut state = PictureUpdateState {
             surfaces,
-            surface_stack: vec![SurfaceIndex(0)],
-            picture_stack: Vec::new(),
+            surface_stack: buffers.surface_stack.take().cleared(),
+            picture_stack: buffers.picture_stack.take().cleared(),
             are_raster_roots_assigned: true,
             composite_state,
         };
+
+        state.surface_stack.push(SurfaceIndex(0));
 
         state.update(
             pic_index,
@@ -3884,6 +3914,9 @@ impl<'a> PictureUpdateState<'a> {
                 ROOT_SPATIAL_NODE_INDEX,
             );
         }
+
+        buffers.surface_stack = state.surface_stack.take();
+        buffers.picture_stack = state.picture_stack.take();
     }
 
     /// Return the current surface
@@ -3944,22 +3977,23 @@ impl<'a> PictureUpdateState<'a> {
             frame_context,
         ) {
             for cluster in &prim_list.clusters {
-                if cluster.flags.contains(ClusterFlags::IS_PICTURE) {
-                    for prim_instance in &cluster.prim_instances {
-                        let child_pic_index = match prim_instance.kind {
-                            PrimitiveInstanceKind::Picture { pic_index, .. } => pic_index,
-                            _ => unreachable!(),
-                        };
+                if !cluster.flags.contains(ClusterFlags::IS_PICTURE) {
+                    continue;
+                }
+                for prim_instance in &prim_list.prim_instances[cluster.prim_range()] {
+                    let child_pic_index = match prim_instance.kind {
+                        PrimitiveInstanceKind::Picture { pic_index, .. } => pic_index,
+                        _ => unreachable!(),
+                    };
 
-                        self.update(
-                            child_pic_index,
-                            picture_primitives,
-                            frame_context,
-                            gpu_cache,
-                            clip_store,
-                            data_stores,
-                        );
-                    }
+                    self.update(
+                        child_pic_index,
+                        picture_primitives,
+                        frame_context,
+                        gpu_cache,
+                        clip_store,
+                        data_stores,
+                    );
                 }
             }
 
@@ -3998,18 +4032,19 @@ impl<'a> PictureUpdateState<'a> {
         };
 
         for cluster in &picture.prim_list.clusters {
-            if cluster.flags.contains(ClusterFlags::IS_PICTURE) {
-                for instance in &cluster.prim_instances {
-                    let child_pic_index = match instance.kind {
-                        PrimitiveInstanceKind::Picture { pic_index, .. } => pic_index,
-                        _ => unreachable!(),
-                    };
-                    self.assign_raster_roots(
-                        child_pic_index,
-                        picture_primitives,
-                        new_fallback,
-                    );
-                }
+            if !cluster.flags.contains(ClusterFlags::IS_PICTURE) {
+                continue;
+            }
+            for instance in &picture.prim_list.prim_instances[cluster.prim_range()] {
+                let child_pic_index = match instance.kind {
+                    PrimitiveInstanceKind::Picture { pic_index, .. } => pic_index,
+                    _ => unreachable!(),
+                };
+                self.assign_raster_roots(
+                    child_pic_index,
+                    picture_primitives,
+                    new_fallback,
+                );
             }
         }
     }
@@ -4151,6 +4186,7 @@ pub enum PictureCompositeMode {
     Blit(BlitReason),
     /// Used to cache a picture as a series of tiles.
     TileCache {
+        slice_id: SliceId,
     },
     /// Apply an SVG filter
     SvgFilter(Vec<FilterPrimitive>, Vec<SFilterData>),
@@ -4292,19 +4328,12 @@ pub struct PrimitiveCluster {
     /// during the first picture traversal, which is needed for local scale
     /// determination, and render task size calculations.
     bounding_rect: LayoutRect,
-    /// The list of primitive instances in this cluster.
-    pub prim_instances: Vec<PrimitiveInstance>,
+    /// The range of primitive instance indices associated with this cluster.
+    pub prim_range: Range<usize>,
     /// Various flags / state for this cluster.
     pub flags: ClusterFlags,
     /// An optional scroll root to use if this cluster establishes a picture cache slice.
     pub cache_scroll_root: Option<SpatialNodeIndex>,
-}
-
-/// Where to insert a prim instance in a primitive list.
-#[derive(Debug, Copy, Clone)]
-enum PrimitiveListPosition {
-    Begin,
-    End,
 }
 
 impl PrimitiveCluster {
@@ -4312,13 +4341,14 @@ impl PrimitiveCluster {
     fn new(
         spatial_node_index: SpatialNodeIndex,
         flags: ClusterFlags,
+        first_instance_index: usize,
     ) -> Self {
         PrimitiveCluster {
             bounding_rect: LayoutRect::zero(),
             spatial_node_index,
             flags,
-            prim_instances: Vec::new(),
             cache_scroll_root: None,
+            prim_range: first_instance_index..first_instance_index
         }
     }
 
@@ -4338,18 +4368,19 @@ impl PrimitiveCluster {
         self.flags == flags && self.spatial_node_index == spatial_node_index
     }
 
-    /// Add a primitive instance to this cluster, at the start or end
-    fn push(
-        &mut self,
-        prim_instance: PrimitiveInstance,
-        prim_rect: LayoutRect,
-    ) {
-        let culling_rect = prim_instance.local_clip_rect
-            .intersection(&prim_rect)
-            .unwrap_or_else(LayoutRect::zero);
+    pub fn prim_range(&self) -> Range<usize> {
+        self.prim_range.clone()
+    }
 
-        self.bounding_rect = self.bounding_rect.union(&culling_rect);
-        self.prim_instances.push(prim_instance);
+    /// Add a primitive instance to this cluster, at the start or end
+    fn add_instance(
+        &mut self,
+        culling_rect: &LayoutRect,
+        instance_index: usize,
+    ) {
+        debug_assert_eq!(instance_index, self.prim_range.end);
+        self.bounding_rect = self.bounding_rect.union(culling_rect);
+        self.prim_range.end += 1;
     }
 }
 
@@ -4361,6 +4392,7 @@ impl PrimitiveCluster {
 pub struct PrimitiveList {
     /// List of primitives grouped into clusters.
     pub clusters: Vec<PrimitiveCluster>,
+    pub prim_instances: Vec<PrimitiveInstance>,
 }
 
 impl PrimitiveList {
@@ -4371,17 +4403,17 @@ impl PrimitiveList {
     pub fn empty() -> Self {
         PrimitiveList {
             clusters: Vec::new(),
+            prim_instances: Vec::new(),
         }
     }
 
-    /// Add a primitive instance to this list, at the start or end
-    fn push(
+    /// Add a primitive instance to the end of the list
+    pub fn add_prim(
         &mut self,
         prim_instance: PrimitiveInstance,
         prim_rect: LayoutRect,
         spatial_node_index: SpatialNodeIndex,
         prim_flags: PrimitiveFlags,
-        insert_position: PrimitiveListPosition,
     ) {
         let mut flags = ClusterFlags::empty();
 
@@ -4412,66 +4444,28 @@ impl PrimitiveList {
             flags.insert(ClusterFlags::PREFER_COMPOSITOR_SURFACE);
         }
 
-        // Insert the primitive into the first or last cluster as required
-        match insert_position {
-            PrimitiveListPosition::Begin => {
-                let mut cluster = PrimitiveCluster::new(
-                    spatial_node_index,
-                    flags,
-                );
-                cluster.push(prim_instance, prim_rect);
-                self.clusters.insert(0, cluster);
-            }
-            PrimitiveListPosition::End => {
-                if let Some(cluster) = self.clusters.last_mut() {
-                    if cluster.is_compatible(spatial_node_index, flags) {
-                        cluster.push(prim_instance, prim_rect);
-                        return;
-                    }
-                }
+        let culling_rect = prim_instance.local_clip_rect
+            .intersection(&prim_rect)
+            .unwrap_or_else(LayoutRect::zero);
 
-                let mut cluster = PrimitiveCluster::new(
-                    spatial_node_index,
-                    flags,
-                );
-                cluster.push(prim_instance, prim_rect);
-                self.clusters.push(cluster);
+        let instance_index = self.prim_instances.len();
+        self.prim_instances.push(prim_instance);
+
+        if let Some(cluster) = self.clusters.last_mut() {
+            if cluster.is_compatible(spatial_node_index, flags) {
+                cluster.add_instance(&culling_rect, instance_index);
+                return;
             }
         }
-    }
 
-    /// Add a primitive instance to the start of the list
-    pub fn add_prim_to_start(
-        &mut self,
-        prim_instance: PrimitiveInstance,
-        prim_rect: LayoutRect,
-        spatial_node_index: SpatialNodeIndex,
-        flags: PrimitiveFlags,
-    ) {
-        self.push(
-            prim_instance,
-            prim_rect,
+        let mut cluster = PrimitiveCluster::new(
             spatial_node_index,
             flags,
-            PrimitiveListPosition::Begin,
-        )
-    }
+            instance_index,
+        );
 
-    /// Add a primitive instance to the end of the list
-    pub fn add_prim(
-        &mut self,
-        prim_instance: PrimitiveInstance,
-        prim_rect: LayoutRect,
-        spatial_node_index: SpatialNodeIndex,
-        flags: PrimitiveFlags,
-    ) {
-        self.push(
-            prim_instance,
-            prim_rect,
-            spatial_node_index,
-            flags,
-            PrimitiveListPosition::End,
-        )
+        cluster.add_instance(&culling_rect, instance_index);
+        self.clusters.push(cluster);
     }
 
     /// Returns true if there are no clusters (and thus primitives)
@@ -4480,13 +4474,30 @@ impl PrimitiveList {
     }
 
     /// Add an existing cluster to this prim list
-    pub fn add_cluster(&mut self, cluster: PrimitiveCluster) {
+    pub fn add_cluster(&mut self, mut cluster: PrimitiveCluster, prim_instances: &[PrimitiveInstance]) {
+        let start = self.prim_instances.len();
+        self.prim_instances.extend_from_slice(&prim_instances[cluster.prim_range()]);
+        let end = self.prim_instances.len();
+
+        cluster.prim_range = start..end;
         self.clusters.push(cluster);
     }
 
     /// Merge another primitive list into this one
-    pub fn extend(&mut self, prim_list: PrimitiveList) {
+    pub fn extend(&mut self, mut prim_list: PrimitiveList) {
+        let offset = self.prim_instances.len();
+        for cluster in &mut prim_list.clusters {
+            cluster.prim_range.start += offset;
+            cluster.prim_range.end += offset;
+        }
+
+        self.prim_instances.extend(prim_list.prim_instances);
         self.clusters.extend(prim_list.clusters);
+    }
+
+    pub fn clear(&mut self) {
+        self.prim_instances.clear();
+        self.clusters.clear();
     }
 }
 
@@ -4565,15 +4576,16 @@ pub struct PicturePrimitive {
     /// different depending on how much was culled.
     pub precise_local_rect: LayoutRect,
 
+    /// Store the state of the previous precise local rect
+    /// for this picture. We need this in order to know when
+    /// to invalidate segments / drop-shadow gpu cache handles.
+    pub prev_precise_local_rect: LayoutRect,
+
     /// If false, this picture needs to (re)build segments
     /// if it supports segment rendering. This can occur
     /// if the local rect of the picture changes due to
     /// transform animation and/or scrolling.
     pub segments_are_valid: bool,
-
-    /// If Some(..) the tile cache that is associated with this picture.
-    #[cfg_attr(feature = "capture", serde(skip))] //TODO
-    pub tile_cache: Option<Box<TileCacheInstance>>,
 
     /// The config options for this picture.
     pub options: PictureOptions,
@@ -4599,14 +4611,15 @@ impl PicturePrimitive {
         pt.add_item(format!("requested_composite_mode: {:?}", self.requested_composite_mode));
 
         for cluster in &self.prim_list.clusters {
-            if cluster.flags.contains(ClusterFlags::IS_PICTURE) {
-                for instance in &cluster.prim_instances {
-                    let index = match instance.kind {
-                        PrimitiveInstanceKind::Picture { pic_index, .. } => pic_index,
-                        _ => unreachable!(),
-                    };
-                    pictures[index.0].print(pictures, index, pt);
-                }
+            if !cluster.flags.contains(ClusterFlags::IS_PICTURE) {
+                continue;
+            }
+            for instance in &self.prim_list.prim_instances[cluster.prim_range()] {
+                let index = match instance.kind {
+                    PrimitiveInstanceKind::Picture { pic_index, .. } => pic_index,
+                    _ => unreachable!(),
+                };
+                pictures[index.0].print(pictures, index, pt);
             }
         }
 
@@ -4665,29 +4678,32 @@ impl PicturePrimitive {
     pub fn destroy(
         &mut self,
         retained_tiles: &mut RetainedTiles,
+        tile_caches: &mut FastHashMap<SliceId, Box<TileCacheInstance>>,
     ) {
-        if let Some(tile_cache) = self.tile_cache.take() {
-            if !tile_cache.tiles.is_empty() {
-                retained_tiles.caches.insert(
-                    tile_cache.slice,
-                    PictureCacheState {
-                        tiles: tile_cache.tiles,
-                        spatial_node_comparer: tile_cache.spatial_node_comparer,
-                        opacity_bindings: tile_cache.opacity_bindings,
-                        color_bindings: tile_cache.color_bindings,
-                        root_transform: tile_cache.root_transform,
-                        current_tile_size: tile_cache.current_tile_size,
-                        native_surface: tile_cache.native_surface,
-                        external_native_surface_cache: tile_cache.external_native_surface_cache,
-                        virtual_offset: tile_cache.virtual_offset,
-                        frame_id: tile_cache.frame_id,
-                        allocations: PictureCacheRecycledAllocations {
-                            old_opacity_bindings: tile_cache.old_opacity_bindings,
-                            old_color_bindings: tile_cache.old_color_bindings,
-                            compare_cache: tile_cache.compare_cache,
+        if let Some(PictureCompositeMode::TileCache { slice_id }) = self.requested_composite_mode {
+            if let Some(tile_cache) = tile_caches.remove(&slice_id) {
+                if !tile_cache.tiles.is_empty() {
+                    retained_tiles.caches.insert(
+                        tile_cache.slice,
+                        PictureCacheState {
+                            tiles: tile_cache.tiles,
+                            spatial_node_comparer: tile_cache.spatial_node_comparer,
+                            opacity_bindings: tile_cache.opacity_bindings,
+                            color_bindings: tile_cache.color_bindings,
+                            root_transform: tile_cache.root_transform,
+                            current_tile_size: tile_cache.current_tile_size,
+                            native_surface: tile_cache.native_surface,
+                            external_native_surface_cache: tile_cache.external_native_surface_cache,
+                            virtual_offset: tile_cache.virtual_offset,
+                            frame_id: tile_cache.frame_id,
+                            allocations: PictureCacheRecycledAllocations {
+                                old_opacity_bindings: tile_cache.old_opacity_bindings,
+                                old_color_bindings: tile_cache.old_color_bindings,
+                                compare_cache: tile_cache.compare_cache,
+                            },
                         },
-                    },
-                );
+                    );
+                }
             }
         }
     }
@@ -4705,7 +4721,6 @@ impl PicturePrimitive {
         requested_raster_space: RasterSpace,
         prim_list: PrimitiveList,
         spatial_node_index: SpatialNodeIndex,
-        tile_cache: Option<Box<TileCacheInstance>>,
         options: PictureOptions,
     ) -> Self {
         PicturePrimitive {
@@ -4723,7 +4738,7 @@ impl PicturePrimitive {
             spatial_node_index,
             estimated_local_rect: LayoutRect::zero(),
             precise_local_rect: LayoutRect::zero(),
-            tile_cache,
+            prev_precise_local_rect: LayoutRect::zero(),
             options,
             segments_are_valid: false,
             num_render_tasks: 0,
@@ -4764,6 +4779,7 @@ impl PicturePrimitive {
         frame_context: &FrameBuildingContext,
         scratch: &mut PrimitiveScratchBuffer,
         tile_cache_logger: &mut TileCacheLogger,
+        tile_caches: &mut FastHashMap<SliceId, Box<TileCacheInstance>>,
     ) -> Option<(PictureContext, PictureState, PrimitiveList)> {
         if !self.is_visible() {
             return None;
@@ -4992,8 +5008,6 @@ impl PicturePrimitive {
                             raster_config.root_scaling_factor = scale;
                         }
 
-                        let device_rect = device_rect.to_i32();
-
                         let uv_rect_kind = calculate_uv_rect_kind(
                             &pic_rect,
                             &transform,
@@ -5003,7 +5017,7 @@ impl PicturePrimitive {
 
                         let picture_task_id = frame_state.render_tasks.add().init(
                             RenderTask::new_picture(
-                                RenderTaskLocation::Dynamic(None, device_rect.size),
+                                RenderTaskLocation::Dynamic(None, device_rect.size.to_i32()),
                                 unclipped.size,
                                 pic_index,
                                 device_rect.origin,
@@ -5061,8 +5075,6 @@ impl PicturePrimitive {
                             raster_config.root_scaling_factor = scale;
                         }
 
-                        let device_rect = device_rect.to_i32();
-
                         let uv_rect_kind = calculate_uv_rect_kind(
                             &pic_rect,
                             &transform,
@@ -5072,7 +5084,7 @@ impl PicturePrimitive {
 
                         let picture_task_id = frame_state.render_tasks.add().init({
                             let mut picture_task = RenderTask::new_picture(
-                                RenderTaskLocation::Dynamic(None, device_rect.size),
+                                RenderTaskLocation::Dynamic(None, device_rect.size.to_i32()),
                                 unclipped.size,
                                 pic_index,
                                 device_rect.origin,
@@ -5107,7 +5119,7 @@ impl PicturePrimitive {
                                 RenderTargetKind::Color,
                                 ClearMode::Transparent,
                                 Some(&mut blur_tasks),
-                                device_rect.size,
+                                device_rect.size.to_i32(),
                             );
                         }
 
@@ -5124,8 +5136,6 @@ impl PicturePrimitive {
                             raster_config.root_scaling_factor = scale;
                         }
 
-                        let clipped = clipped.to_i32();
-
                         let uv_rect_kind = calculate_uv_rect_kind(
                             &pic_rect,
                             &transform,
@@ -5134,7 +5144,7 @@ impl PicturePrimitive {
                         );
 
                         let readback_task_id = frame_state.render_tasks.add().init(
-                            RenderTask::new_readback(clipped)
+                            RenderTask::new_readback(clipped.to_i32())
                         );
 
                         frame_state.render_tasks.add_dependency(
@@ -5146,7 +5156,7 @@ impl PicturePrimitive {
 
                         let render_task_id = frame_state.render_tasks.add().init(
                             RenderTask::new_picture(
-                                RenderTaskLocation::Dynamic(None, clipped.size),
+                                RenderTaskLocation::Dynamic(None, clipped.size.to_i32()),
                                 unclipped.size,
                                 pic_index,
                                 clipped.origin,
@@ -5172,8 +5182,6 @@ impl PicturePrimitive {
                             raster_config.root_scaling_factor = scale;
                         }
 
-                        let clipped = clipped.to_i32();
-
                         let uv_rect_kind = calculate_uv_rect_kind(
                             &pic_rect,
                             &transform,
@@ -5183,7 +5191,7 @@ impl PicturePrimitive {
 
                         let render_task_id = frame_state.render_tasks.add().init(
                             RenderTask::new_picture(
-                                RenderTaskLocation::Dynamic(None, clipped.size),
+                                RenderTaskLocation::Dynamic(None, clipped.size.to_i32()),
                                 unclipped.size,
                                 pic_index,
                                 clipped.origin,
@@ -5208,8 +5216,6 @@ impl PicturePrimitive {
                             raster_config.root_scaling_factor = scale;
                         }
 
-                        let clipped = clipped.to_i32();
-
                         let uv_rect_kind = calculate_uv_rect_kind(
                             &pic_rect,
                             &transform,
@@ -5219,7 +5225,7 @@ impl PicturePrimitive {
 
                         let render_task_id = frame_state.render_tasks.add().init(
                             RenderTask::new_picture(
-                                RenderTaskLocation::Dynamic(None, clipped.size),
+                                RenderTaskLocation::Dynamic(None, clipped.size.to_i32()),
                                 unclipped.size,
                                 pic_index,
                                 clipped.origin,
@@ -5234,8 +5240,8 @@ impl PicturePrimitive {
 
                         Some((render_task_id, render_task_id))
                     }
-                    PictureCompositeMode::TileCache { .. } => {
-                        let tile_cache = self.tile_cache.as_mut().unwrap();
+                    PictureCompositeMode::TileCache { slice_id } => {
+                        let tile_cache = tile_caches.get_mut(&slice_id).unwrap();
                         let mut first = true;
 
                         // Get the overall world space rect of the picture cache. Used to clip
@@ -5486,7 +5492,7 @@ impl PicturePrimitive {
                                         },
                                         tile_cache.current_tile_size.to_f32(),
                                         pic_index,
-                                        content_origin.to_i32(),
+                                        content_origin,
                                         UvRectKind::Rect,
                                         surface_spatial_node_index,
                                         device_pixel_scale,
@@ -5537,8 +5543,6 @@ impl PicturePrimitive {
                             raster_config.root_scaling_factor = scale;
                         }
 
-                        let clipped = clipped.to_i32();
-
                         let uv_rect_kind = calculate_uv_rect_kind(
                             &pic_rect,
                             &transform,
@@ -5548,7 +5552,7 @@ impl PicturePrimitive {
 
                         let render_task_id = frame_state.render_tasks.add().init(
                             RenderTask::new_picture(
-                                RenderTaskLocation::Dynamic(None, clipped.size),
+                                RenderTaskLocation::Dynamic(None, clipped.size.to_i32()),
                                 unclipped.size,
                                 pic_index,
                                 clipped.origin,
@@ -5574,8 +5578,6 @@ impl PicturePrimitive {
                             raster_config.root_scaling_factor = scale;
                         }
 
-                        let clipped = clipped.to_i32();
-
                         let uv_rect_kind = calculate_uv_rect_kind(
                             &pic_rect,
                             &transform,
@@ -5585,7 +5587,7 @@ impl PicturePrimitive {
 
                         let picture_task_id = frame_state.render_tasks.add().init(
                             RenderTask::new_picture(
-                                RenderTaskLocation::Dynamic(None, clipped.size),
+                                RenderTaskLocation::Dynamic(None, clipped.size.to_i32()),
                                 unclipped.size,
                                 pic_index,
                                 clipped.origin,
@@ -5602,7 +5604,7 @@ impl PicturePrimitive {
                             primitives,
                             filter_datas,
                             &mut frame_state.render_tasks,
-                            clipped.size,
+                            clipped.size.to_i32(),
                             uv_rect_kind,
                             picture_task_id,
                             device_pixel_scale,
@@ -5630,28 +5632,29 @@ impl PicturePrimitive {
         #[cfg(feature = "capture")]
         {
             if frame_context.debug_flags.contains(DebugFlags::TILE_CACHE_LOGGING_DBG) {
-                if let Some(ref tile_cache) = self.tile_cache
-                {
-                    // extract just the fields that we're interested in
-                    let mut tile_cache_tiny = TileCacheInstanceSerializer {
-                        slice: tile_cache.slice,
-                        tiles: FastHashMap::default(),
-                        background_color: tile_cache.background_color,
-                        fract_offset: tile_cache.fract_offset
-                    };
-                    for (key, tile) in &tile_cache.tiles {
-                        tile_cache_tiny.tiles.insert(*key, TileSerializer {
-                            rect: tile.local_tile_rect,
-                            current_descriptor: tile.current_descriptor.clone(),
-                            fract_offset: tile.fract_offset,
-                            id: tile.id,
-                            root: tile.root.clone(),
-                            background_color: tile.background_color,
-                            invalidation_reason: tile.invalidation_reason.clone()
-                        });
+                if let Some(PictureCompositeMode::TileCache { slice_id }) = self.requested_composite_mode {
+                    if let Some(ref tile_cache) = tile_caches.get(&slice_id) {
+                        // extract just the fields that we're interested in
+                        let mut tile_cache_tiny = TileCacheInstanceSerializer {
+                            slice: tile_cache.slice,
+                            tiles: FastHashMap::default(),
+                            background_color: tile_cache.background_color,
+                            fract_offset: tile_cache.fract_offset
+                        };
+                        for (key, tile) in &tile_cache.tiles {
+                            tile_cache_tiny.tiles.insert(*key, TileSerializer {
+                                rect: tile.local_tile_rect,
+                                current_descriptor: tile.current_descriptor.clone(),
+                                fract_offset: tile.fract_offset,
+                                id: tile.id,
+                                root: tile.root.clone(),
+                                background_color: tile.background_color,
+                                invalidation_reason: tile.invalidation_reason.clone()
+                            });
+                        }
+                        let text = ron::ser::to_string_pretty(&tile_cache_tiny, Default::default()).unwrap();
+                        tile_cache_logger.add(text, map_pic_to_world.get_transform());
                     }
-                    let text = ron::ser::to_string_pretty(&tile_cache_tiny, Default::default()).unwrap();
-                    tile_cache_logger.add(text, map_pic_to_world.get_transform());
                 }
             }
         }
@@ -5673,8 +5676,8 @@ impl PicturePrimitive {
 
         // If this is a picture cache, push the dirty region to ensure any
         // child primitives are culled and clipped to the dirty rect(s).
-        if let Some(RasterConfig { composite_mode: PictureCompositeMode::TileCache { .. }, .. }) = self.raster_config {
-            let dirty_region = self.tile_cache.as_ref().unwrap().dirty_region.clone();
+        if let Some(RasterConfig { composite_mode: PictureCompositeMode::TileCache { slice_id }, .. }) = self.raster_config {
+            let dirty_region = tile_caches[&slice_id].dirty_region.clone();
             frame_state.push_dirty_region(dirty_region);
             dirty_region_count += 1;
         }
@@ -5690,8 +5693,8 @@ impl PicturePrimitive {
         let (is_passthrough, subpixel_mode) = match self.raster_config {
             Some(RasterConfig { ref composite_mode, .. }) => {
                 let subpixel_mode = match composite_mode {
-                    PictureCompositeMode::TileCache { .. } => {
-                        self.tile_cache.as_ref().unwrap().subpixel_mode.clone()
+                    PictureCompositeMode::TileCache { slice_id } => {
+                        tile_caches[&slice_id].subpixel_mode.clone()
                     }
                     PictureCompositeMode::Blit(..) |
                     PictureCompositeMode::ComponentTransferFilter(..) |
@@ -5866,7 +5869,9 @@ impl PicturePrimitive {
 
         // Process the accumulated split planes and order them for rendering.
         // Z axis is directed at the screen, `sort` is ascending, and we need back-to-front order.
-        for poly in splitter.sort(vec3(0.0, 0.0, 1.0)) {
+        let sorted = splitter.sort(vec3(0.0, 0.0, 1.0));
+        ordered.reserve(sorted.len());
+        for poly in sorted {
             let cluster = &self.prim_list.clusters[poly.anchor.cluster_index];
             let spatial_node_index = cluster.spatial_node_index;
             let transform = match spatial_tree
@@ -5948,11 +5953,11 @@ impl PicturePrimitive {
         // See if this picture actually needs a surface for compositing.
         let actual_composite_mode = match self.requested_composite_mode {
             Some(PictureCompositeMode::Filter(ref filter)) if filter.is_noop() => None,
-            Some(PictureCompositeMode::TileCache { .. }) => {
+            Some(PictureCompositeMode::TileCache { slice_id }) => {
                 // Only allow picture caching composite mode if global picture caching setting
                 // is enabled this frame.
                 if state.composite_state.picture_caching_is_enabled {
-                    Some(PictureCompositeMode::TileCache { })
+                    Some(PictureCompositeMode::TileCache { slice_id })
                 } else {
                     None
                 }
@@ -6110,7 +6115,7 @@ impl PicturePrimitive {
                     frame_context.spatial_tree,
                 );
 
-                for prim_instance in &mut cluster.prim_instances {
+                for prim_instance in &mut self.prim_list.prim_instances[cluster.prim_range()] {
                     match prim_instance.kind {
                         PrimitiveInstanceKind::Backdrop { data_handle, .. } => {
                             // The actual size and clip rect of this primitive are determined by computing the bounding
@@ -6360,11 +6365,9 @@ fn calculate_screen_uv(
 fn calculate_uv_rect_kind(
     pic_rect: &PictureRect,
     transform: &PictureToRasterTransform,
-    rendered_rect: &DeviceIntRect,
+    rendered_rect: &DeviceRect,
     device_pixel_scale: DevicePixelScale,
 ) -> UvRectKind {
-    let rendered_rect = rendered_rect.to_f32();
-
     let top_left = calculate_screen_uv(
         &pic_rect.origin,
         transform,

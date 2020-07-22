@@ -5,12 +5,7 @@
 // @flow
 
 import { setupCommands, clientCommands } from "./firefox/commands";
-import {
-  removeEventsTopTarget,
-  setupEvents,
-  setupEventsTopTarget,
-  clientEvents,
-} from "./firefox/events";
+import { setupEvents, clientEvents } from "./firefox/events";
 import { features, prefs } from "../utils/prefs";
 
 let actions;
@@ -24,6 +19,16 @@ export async function onConnect(
 
   setupCommands({ devToolsClient, targetList });
   setupEvents({ actions, devToolsClient });
+  const { targetFront } = targetList;
+  if (targetFront.isBrowsingContext || targetFront.isParentProcess) {
+    targetList.listenForWorkers = true;
+    if (targetFront.localTab && features.windowlessServiceWorkers) {
+      targetList.listenForServiceWorkers = true;
+      targetList.destroyServiceWorkersOnNavigation = true;
+    }
+    await targetList.startListening();
+  }
+
   await targetList.watchTargets(
     targetList.ALL_TYPES,
     onTargetAvailable,
@@ -36,6 +41,7 @@ async function onTargetAvailable({
   isTargetSwitching,
 }): Promise<void> {
   if (!targetFront.isTopLevel) {
+    await actions.addTarget(targetFront);
     return;
   }
 
@@ -55,17 +61,12 @@ async function onTargetAvailable({
     return;
   }
 
-  setupEventsTopTarget(targetFront);
   targetFront.on("will-navigate", actions.willNavigate);
   targetFront.on("navigate", actions.navigated);
-
-  const wasmBinarySource =
-    features.wasm && !!targetFront.client.mainRoot.traits.wasmBinarySource;
 
   await threadFront.reconfigure({
     observeAsmJS: true,
     pauseWorkersUntilAttach: true,
-    wasmBinarySource,
     skipBreakpoints: prefs.skipPausing,
     logEventBreakpoints: prefs.logEventBreakpoints,
   });
@@ -85,16 +86,14 @@ async function onTargetAvailable({
     targetFront.isWebExtension
   );
 
-  await actions.addTarget(targetFront);
-
   await clientCommands.checkIfAlreadyPaused();
+  await actions.addTarget(targetFront);
 }
 
 function onTargetDestroyed({ targetFront }): void {
   if (targetFront.isTopLevel) {
     targetFront.off("will-navigate", actions.willNavigate);
     targetFront.off("navigate", actions.navigated);
-    removeEventsTopTarget(targetFront);
   }
   actions.removeTarget(targetFront);
 }

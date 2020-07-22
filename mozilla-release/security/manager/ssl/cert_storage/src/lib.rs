@@ -6,6 +6,8 @@ extern crate base64;
 extern crate byteorder;
 extern crate crossbeam_utils;
 #[macro_use]
+extern crate cstr;
+#[macro_use]
 extern crate log;
 extern crate memmap;
 extern crate moz_task;
@@ -26,7 +28,7 @@ extern crate tempfile;
 use byteorder::{LittleEndian, NetworkEndian, ReadBytesExt, WriteBytesExt};
 use crossbeam_utils::atomic::AtomicCell;
 use memmap::Mmap;
-use moz_task::{create_thread, is_main_thread, Task, TaskRunnable};
+use moz_task::{create_background_task_queue, is_main_thread, Task, TaskRunnable};
 use nserror::{
     nsresult, NS_ERROR_FAILURE, NS_ERROR_NOT_SAME_THREAD, NS_ERROR_NO_AGGREGATION,
     NS_ERROR_NULL_POINTER, NS_ERROR_UNEXPECTED, NS_OK,
@@ -46,14 +48,14 @@ use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 use std::slice;
 use std::str;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use storage_variant::VariantType;
 use thin_vec::ThinVec;
 use xpcom::interfaces::{
     nsICRLiteState, nsICertInfo, nsICertStorage, nsICertStorageCallback, nsIFile,
     nsIIssuerAndSerialRevocationState, nsIObserver, nsIPrefBranch, nsIRevocationState,
-    nsISubjectAndPubKeyRevocationState, nsISupports, nsIThread,
+    nsISerialEventTarget, nsISubjectAndPubKeyRevocationState, nsISupports,
 };
 use xpcom::{nsIID, GetterAddrefs, RefPtr, ThreadBoundRefPtr, XpCom};
 
@@ -125,6 +127,8 @@ struct SecurityState {
     crlite_filter: Option<holding::CRLiteFilter>,
     /// Maps issuer spki hashes to sets of seiral numbers.
     crlite_stash: HashMap<Vec<u8>, HashSet<Vec<u8>>>,
+    /// Tracks the number of asynchronous operations which have been dispatched but not completed.
+    remaining_ops: i32,
 }
 
 impl SecurityState {
@@ -137,6 +141,7 @@ impl SecurityState {
             int_prefs: HashMap::new(),
             crlite_filter: None,
             crlite_stash: HashMap::new(),
+            remaining_ops: 0,
         })
     }
 
@@ -1014,7 +1019,7 @@ fn do_construct_cert_storage(
 
     let cert_storage = CertStorage::allocate(InitCertStorage {
         security_state: Arc::new(RwLock::new(SecurityState::new(path_buf)?)),
-        thread: Mutex::new(create_thread("cert_storage")?),
+        queue: create_background_task_queue(cstr!("cert_storage"))?,
     });
 
     unsafe {
@@ -1031,7 +1036,7 @@ fn do_construct_cert_storage(
 }
 
 fn read_int_pref(name: &str) -> Result<u32, SecurityStateError> {
-    let pref_service = match xpcom::services::get_PreferencesService() {
+    let pref_service = match xpcom::services::get_PrefService() {
         Some(ps) => ps,
         _ => {
             return Err(SecurityStateError::from(
@@ -1084,13 +1089,16 @@ impl<T: Default + VariantType, F: FnOnce(&mut SecurityState) -> Result<T, Securi
         callback: &nsICertStorageCallback,
         security_state: &Arc<RwLock<SecurityState>>,
         task_action: F,
-    ) -> SecurityStateTask<T, F> {
-        SecurityStateTask {
+    ) -> Result<SecurityStateTask<T, F>, nsresult> {
+        let mut ss = security_state.write().or(Err(NS_ERROR_FAILURE))?;
+        ss.remaining_ops = ss.remaining_ops.wrapping_add(1);
+
+        Ok(SecurityStateTask {
             callback: AtomicCell::new(Some(ThreadBoundRefPtr::new(RefPtr::new(callback)))),
             security_state: Arc::clone(security_state),
             result: AtomicCell::new((NS_ERROR_FAILURE, T::default())),
             task_action: AtomicCell::new(Some(task_action)),
-        }
+        })
     }
 }
 
@@ -1120,6 +1128,10 @@ impl<T: Default + VariantType, F: FnOnce(&mut SecurityState) -> Result<T, Securi
         let result = self.result.swap((NS_ERROR_FAILURE, T::default()));
         let variant = result.1.into_variant();
         let nsrv = unsafe { callback.Done(result.0, &*variant) };
+
+        let mut ss = self.security_state.write().or(Err(NS_ERROR_FAILURE))?;
+        ss.remaining_ops = ss.remaining_ops.wrapping_sub(1);
+
         match nsrv {
             NS_OK => Ok(()),
             e => Err(e),
@@ -1192,7 +1204,7 @@ macro_rules! get_security_state {
 #[refcnt = "atomic"]
 struct InitCertStorage {
     security_state: Arc<RwLock<SecurityState>>,
-    thread: Mutex<RefPtr<nsIThread>>,
+    queue: RefPtr<nsISerialEventTarget>,
 }
 
 /// CertStorage implements the nsICertStorage interface. The actual work is done by the
@@ -1200,7 +1212,7 @@ struct InitCertStorage {
 /// the one and only SecurityState. So, only one thread can use SecurityState's &mut self functions
 /// at a time, while multiple threads can use &self functions simultaneously (as long as there are
 /// no threads using an &mut self function). The Arc is to allow for the creation of background
-/// tasks that use the SecurityState on the thread owned by CertStorage. This allows us to not block
+/// tasks that use the SecurityState on the queue owned by CertStorage. This allows us to not block
 /// the main thread.
 #[allow(non_snake_case)]
 impl CertStorage {
@@ -1211,7 +1223,7 @@ impl CertStorage {
         ];
 
         // Fetch add observers for relevant prefs
-        let pref_service = xpcom::services::get_PreferencesService().unwrap();
+        let pref_service = xpcom::services::get_PrefService().unwrap();
         let prefs: RefPtr<nsIPrefBranch> = match (*pref_service).query_interface() {
             Some(pb) => pb,
             _ => return Err(SecurityStateError::from("could not QI to nsIPrefBranch")),
@@ -1246,14 +1258,25 @@ impl CertStorage {
         if callback.is_null() {
             return NS_ERROR_NULL_POINTER;
         }
-        let task = Box::new(SecurityStateTask::new(
+        let task = Box::new(try_ns!(SecurityStateTask::new(
             &*callback,
             &self.security_state,
             move |ss| ss.get_has_prior_data(data_type),
-        ));
-        let thread = try_ns!(self.thread.lock());
+        )));
         let runnable = try_ns!(TaskRunnable::new("HasPriorData", task));
-        try_ns!(TaskRunnable::dispatch(runnable, &*thread));
+        try_ns!(TaskRunnable::dispatch(runnable, self.queue.coerce()));
+        NS_OK
+    }
+
+    unsafe fn GetRemainingOperationCount(&self, state: *mut i32) -> nserror::nsresult {
+        if !is_main_thread() {
+            return NS_ERROR_NOT_SAME_THREAD;
+        }
+        if state.is_null() {
+            return NS_ERROR_NULL_POINTER;
+        }
+        let ss = try_ns!(self.security_state.read());
+        *state = ss.remaining_ops;
         NS_OK
     }
 
@@ -1308,14 +1331,13 @@ impl CertStorage {
             }
         }
 
-        let task = Box::new(SecurityStateTask::new(
+        let task = Box::new(try_ns!(SecurityStateTask::new(
             &*callback,
             &self.security_state,
             move |ss| ss.set_batch_state(&entries, nsICertStorage::DATA_TYPE_REVOCATION as u8),
-        ));
-        let thread = try_ns!(self.thread.lock());
+        )));
         let runnable = try_ns!(TaskRunnable::new("SetRevocations", task));
-        try_ns!(TaskRunnable::dispatch(runnable, &*thread));
+        try_ns!(TaskRunnable::dispatch(runnable, self.queue.coerce()));
         NS_OK
     }
 
@@ -1387,14 +1409,13 @@ impl CertStorage {
             crlite_entries.push((make_key!(PREFIX_CRLITE, &subject, &pub_key_hash), state));
         }
 
-        let task = Box::new(SecurityStateTask::new(
+        let task = Box::new(try_ns!(SecurityStateTask::new(
             &*callback,
             &self.security_state,
             move |ss| ss.set_batch_state(&crlite_entries, nsICertStorage::DATA_TYPE_CRLITE as u8),
-        ));
-        let thread = try_ns!(self.thread.lock());
+        )));
         let runnable = try_ns!(TaskRunnable::new("SetCRLiteState", task));
-        try_ns!(TaskRunnable::dispatch(runnable, &*thread));
+        try_ns!(TaskRunnable::dispatch(runnable, self.queue.coerce()));
         NS_OK
     }
 
@@ -1433,14 +1454,13 @@ impl CertStorage {
             return NS_ERROR_NULL_POINTER;
         }
         let filter_owned = (*filter).to_vec();
-        let task = Box::new(SecurityStateTask::new(
+        let task = Box::new(try_ns!(SecurityStateTask::new(
             &*callback,
             &self.security_state,
             move |ss| ss.set_full_crlite_filter(filter_owned, timestamp),
-        ));
-        let thread = try_ns!(self.thread.lock());
+        )));
         let runnable = try_ns!(TaskRunnable::new("SetFullCRLiteFilter", task));
-        try_ns!(TaskRunnable::dispatch(runnable, &*thread));
+        try_ns!(TaskRunnable::dispatch(runnable, self.queue.coerce()));
         NS_OK
     }
 
@@ -1456,14 +1476,13 @@ impl CertStorage {
             return NS_ERROR_NULL_POINTER;
         }
         let stash_owned = (*stash).to_vec();
-        let task = Box::new(SecurityStateTask::new(
+        let task = Box::new(try_ns!(SecurityStateTask::new(
             &*callback,
             &self.security_state,
             move |ss| ss.add_crlite_stash(stash_owned),
-        ));
-        let thread = try_ns!(self.thread.lock());
+        )));
         let runnable = try_ns!(TaskRunnable::new("AddCRLiteStash", task));
-        try_ns!(TaskRunnable::dispatch(runnable, &*thread));
+        try_ns!(TaskRunnable::dispatch(runnable, self.queue.coerce()));
         NS_OK
     }
 
@@ -1539,14 +1558,13 @@ impl CertStorage {
             try_ns!((*cert).GetTrust(&mut trust).to_result(), or continue);
             cert_entries.push((der, subject, trust));
         }
-        let task = Box::new(SecurityStateTask::new(
+        let task = Box::new(try_ns!(SecurityStateTask::new(
             &*callback,
             &self.security_state,
             move |ss| ss.add_certs(&cert_entries),
-        ));
-        let thread = try_ns!(self.thread.lock());
+        )));
         let runnable = try_ns!(TaskRunnable::new("AddCerts", task));
-        try_ns!(TaskRunnable::dispatch(runnable, &*thread));
+        try_ns!(TaskRunnable::dispatch(runnable, self.queue.coerce()));
         NS_OK
     }
 
@@ -1567,14 +1585,13 @@ impl CertStorage {
             let hash_decoded = try_ns!(base64::decode(&*hash), or continue);
             hash_entries.push(hash_decoded);
         }
-        let task = Box::new(SecurityStateTask::new(
+        let task = Box::new(try_ns!(SecurityStateTask::new(
             &*callback,
             &self.security_state,
             move |ss| ss.remove_certs_by_hashes(&hash_entries),
-        ));
-        let thread = try_ns!(self.thread.lock());
+        )));
         let runnable = try_ns!(TaskRunnable::new("RemoveCertsByHashes", task));
-        try_ns!(TaskRunnable::dispatch(runnable, &*thread));
+        try_ns!(TaskRunnable::dispatch(runnable, self.queue.coerce()));
         NS_OK
     }
 

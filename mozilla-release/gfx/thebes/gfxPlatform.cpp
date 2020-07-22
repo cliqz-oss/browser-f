@@ -36,6 +36,7 @@
 
 #include "mozilla/Logging.h"
 #include "mozilla/Services.h"
+#include "nsAppRunner.h"
 #include "nsAppDirectoryServiceDefs.h"
 
 #include "gfxCrashReporterUtils.h"
@@ -150,6 +151,7 @@ static const uint32_t kDefaultGlyphCacheSize = -1;
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/TouchEvent.h"
 #include "gfxVR.h"
+#include "VRManager.h"
 #include "VRManagerChild.h"
 #include "mozilla/gfx/GPUParent.h"
 #include "mozilla/layers/MemoryReportingMLGPU.h"
@@ -863,6 +865,10 @@ void gfxPlatform::Init() {
     nsAutoCString path;
     Preferences::GetCString("layers.windowrecording.path", path);
     gfxVars::SetLayersWindowRecordingPath(path);
+
+    if (gFxREmbedded) {
+      gfxVars::SetFxREmbedded(true);
+    }
   }
 
   // Drop a note in the crash report if we end up forcing an option that could
@@ -2797,6 +2803,8 @@ void gfxPlatform::InitWebRenderConfig() {
   // Set features that affect WR's RendererOptions
   gfxVars::SetUseGLSwizzle(
       IsFeatureSupported(nsIGfxInfo::FEATURE_GL_SWIZZLE, true));
+  gfxVars::SetUseWebRenderScissoredCacheClears(IsFeatureSupported(
+      nsIGfxInfo::FEATURE_WEBRENDER_SCISSORED_CACHE_CLEARS, true));
 
   // The RemoveShaderCacheFromDiskIfNecessary() needs to be called after
   // WebRenderConfig initialization.
@@ -3385,7 +3393,7 @@ void gfxPlatform::InitOpenGLConfig() {
   openGLFeature.EnableByDefault();
 #endif
 
-  // When layers acceleration is force-enabled, enable it even for blacklisted
+  // When layers acceleration is force-enabled, enable it even for blocklisted
   // devices.
   if (StaticPrefs::
           layers_acceleration_force_enabled_AtStartup_DoNotUseDirectly()) {
@@ -3397,7 +3405,7 @@ void gfxPlatform::InitOpenGLConfig() {
   nsCString failureId;
   if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_OPENGL_LAYERS, &message,
                            failureId)) {
-    openGLFeature.Disable(FeatureStatus::Blacklisted, message.get(), failureId);
+    openGLFeature.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
   }
 }
 

@@ -13,6 +13,37 @@ exclude: true
 
 ⚠️  breaking change and deprecation notices
 
+## v79
+- Added `runtime.openOptionsPage` support. For `options_ui.open_in_new_tab` ==
+  `false`, [`TabDelegate.onOpenOptionsPage`][79.1] is called.
+  ([bug 1618058]({{bugzilla}}1619766))
+- Added [`WebNotification.source`][79.2], which is the URL of the page
+  or Service Worker that created the notification.
+- Removed deprecated `WebExtensionController.setTabDelegate` and `WebExtensionController.getTabDelegate`
+  APIs ([bug 1618987]({{bugzilla}}1618987)).
+- ⚠️  [`RuntimeTelemetry#getSnapshots`][68.10] is removed after deprecation.
+  Use Glean to handle Gecko telemetry.
+  ([bug 1644447]({{bugzilla}}1644447))
+- Added [`ensureBuiltIn`][79.3] that ensures that a built-in extension is
+  installed without re-installing.
+  ([bug 1635564]({{bugzilla}}1635564))
+- Added [`ProfilerController`][79.4], accessible via [`GeckoRuntime.getProfilerController`][79.5]
+to allow adding gecko profiler markers.
+([bug 1624993]({{bugzilla}}1624993))
+- ⚠️ Deprecated `Parcelable` support in `GeckoSession` with the intention of removing
+  in GeckoView v82. ([bug 1649529]({{bugzilla}}1649529))
+- ⚠️ Deprecated [`GeckoRuntimeSettings.Builder.useMultiprocess`][79.6] and
+  [`GeckoRuntimeSettings.getUseMultiprocess`][79.7] with the intention of removing
+  them in GeckoView v82. ([bug 1649530]({{bugzilla}}1649530))
+
+[79.1]: {{javadoc_uri}}/WebExtension.TabDelegate.html#onOpenOptionsPage-org.mozilla.geckoview.WebExtension-
+[79.2]: {{javadoc_uri}}/WebNotification.html#source
+[79.3]: {{javadoc_uri}}/WebExtensionController.html#ensureBuiltIn-java.lang.String-java.lang.String-
+[79.4]: {{javadoc_uri}}/ProfilerController.html
+[79.5]: {{javadoc_uri}}/GeckoRuntime.html#getProfilerController--
+[79.6]: {{javadoc_uri}}/GeckoRuntimeSettings.Builder.html#useMultiprocess-boolean-
+[79.7]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getUseMultiprocess--
+
 ## v78
 - Added [`WebExtensionController.installBuiltIn`][78.1] that allows installing an
   extension that is bundled with the APK. This method is meant as a replacement
@@ -712,4 +743,4 @@ exclude: true
 [65.24]: {{javadoc_uri}}/CrashReporter.html#sendCrashReport-android.content.Context-android.os.Bundle-java.lang.String-
 [65.25]: {{javadoc_uri}}/GeckoResult.html
 
-[api-version]: f334c3c72b512156da2d96b2d2e7bbf4392c0b0e
+[api-version]: 41921b808dd64b6d85929aa7f52031cc762605f9

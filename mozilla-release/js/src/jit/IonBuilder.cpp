@@ -1534,7 +1534,7 @@ class MOZ_RAII PoppedValueUseChecker {
       switch (op) {
         case JSOp::Pos:
         case JSOp::ToNumeric:
-        case JSOp::ToId:
+        case JSOp::ToPropertyKey:
         case JSOp::ToString:
           // These ops may leave their input on the stack without setting
           // the ImplicitlyUsed flag. If this value will be popped immediately,
@@ -2277,8 +2277,8 @@ AbortReasonOr<Ok> IonBuilder::inspectOpcode(JSOp op, bool* restarted) {
     case JSOp::ToAsyncIter:
       return jsop_toasynciter();
 
-    case JSOp::ToId:
-      return jsop_toid();
+    case JSOp::ToPropertyKey:
+      return jsop_topropertykey();
 
     case JSOp::IterNext:
       return jsop_iternext();
@@ -2562,6 +2562,8 @@ AbortReasonOr<Ok> IonBuilder::replaceTypeSet(MDefinition* subject,
     return Ok();
   }
 
+  MOZ_ASSERT(!type->hasType(TypeSet::MagicArgType()));
+
   // Don't emit MFilterTypeSet if it doesn't improve the typeset.
   if (subject->resultTypeSet()) {
     if (subject->resultTypeSet()->equals(type)) {
@@ -2685,7 +2687,7 @@ AbortReasonOr<Ok> IonBuilder::improveTypesAtTypeOfCompare(MCompare* ins,
                 alloc_->lifoAlloc());
   }
 
-  if (inputTypes->unknown()) {
+  if (inputTypes->unknown() || inputTypes->hasType(TypeSet::MagicArgType())) {
     return Ok();
   }
 
@@ -2776,7 +2778,7 @@ AbortReasonOr<Ok> IonBuilder::improveTypesAtNullOrUndefinedCompare(
                 alloc_->lifoAlloc());
   }
 
-  if (inputTypes->unknown()) {
+  if (inputTypes->unknown() || inputTypes->hasType(TypeSet::MagicArgType())) {
     return Ok();
   }
 
@@ -2859,7 +2861,7 @@ AbortReasonOr<Ok> IonBuilder::improveTypesAtTest(MDefinition* ins,
                     alloc_->lifoAlloc());
       }
 
-      if (oldType->unknown()) {
+      if (oldType->unknown() || oldType->hasType(TypeSet::MagicArgType())) {
         return Ok();
       }
 
@@ -2893,7 +2895,7 @@ AbortReasonOr<Ok> IonBuilder::improveTypesAtTest(MDefinition* ins,
       }
 
       // If ins does not have a typeset we return as we cannot optimize.
-      if (oldType->unknown()) {
+      if (oldType->unknown() || oldType->hasType(TypeSet::MagicArgType())) {
         return Ok();
       }
 
@@ -2942,7 +2944,7 @@ AbortReasonOr<Ok> IonBuilder::improveTypesAtTest(MDefinition* ins,
   }
 
   // If ins does not have a typeset we return as we cannot optimize.
-  if (oldType->unknown()) {
+  if (oldType->unknown() || oldType->hasType(TypeSet::MagicArgType())) {
     return Ok();
   }
 
@@ -3605,11 +3607,7 @@ AbortReasonOr<Ok> IonBuilder::powTrySpecialized(bool* emitted,
     return Ok();
   }
 
-  if (powerType == MIRType::Float32) {
-    powerType = MIRType::Double;
-  }
-
-  MPow* pow = MPow::New(alloc(), base, power, powerType);
+  MPow* pow = MPow::New(alloc(), base, power, MIRType::Double);
   current->add(pow);
   output = pow;
 
@@ -5408,10 +5406,6 @@ MDefinition* IonBuilder::createThis(JSFunction* target, MDefinition* callee,
   // getPolyCallTargets ensures |target| is a constructor.
   MOZ_ASSERT_IF(target, target->isConstructor());
 
-  // Only asm.js natives can be constructors and asm.js natives don't have a
-  // JIT entry.
-  MOZ_ASSERT_IF(target, !target->isNativeWithJitEntry());
-
   // Can't inline without a known target function.
   MOZ_ASSERT_IF(inlining, target);
 
@@ -5429,6 +5423,8 @@ MDefinition* IonBuilder::createThis(JSFunction* target, MDefinition* callee,
   // constructors. Note: proxies are already excluded since target has type
   // JSFunction.
   if (target->isNative()) {
+    MOZ_ASSERT(target->isNativeWithoutJitEntry(),
+               "Natives with JitEntry are not supported for constructor calls");
     return constant(MagicValue(JS_IS_CONSTRUCTING));
   }
   if (target->constructorNeedsUninitializedThis()) {
@@ -6189,7 +6185,7 @@ AbortReasonOr<MCall*> IonBuilder::makeCallHelper(
 
   // Collect number of missing arguments provided that the target is
   // scripted. Native functions are passed an explicit 'argc' parameter.
-  if (target && !target->isBuiltinNative()) {
+  if (target && target->hasJitEntry()) {
     targetArgs = std::max<uint32_t>(target->nargs(), callInfo.argc());
   }
 
@@ -6213,8 +6209,7 @@ AbortReasonOr<MCall*> IonBuilder::makeCallHelper(
 
   // Explicitly pad any missing arguments with |undefined|.
   // This permits skipping the argumentsRectifier.
-  MOZ_ASSERT_IF(target && targetArgs > callInfo.argc(),
-                !target->isBuiltinNative());
+  MOZ_ASSERT_IF(target && targetArgs > callInfo.argc(), target->hasJitEntry());
   for (int i = targetArgs; i > (int)callInfo.argc(); i--) {
     MConstant* undef = constant(UndefinedValue());
     if (!alloc().ensureBallast()) {
@@ -12089,11 +12084,11 @@ AbortReasonOr<Ok> IonBuilder::jsop_functionthis() {
   if (IsNullOrUndefined(def->type())) {
     LexicalEnvironmentObject* globalLexical =
         &script()->global().lexicalEnvironment();
-    pushConstant(globalLexical->thisValue());
+    pushConstant(ObjectValue(*globalLexical->thisObject()));
     return Ok();
   }
 
-  MComputeThis* thisObj = MComputeThis::New(alloc(), def);
+  MBoxNonStrictThis* thisObj = MBoxNonStrictThis::New(alloc(), def);
   current->add(thisObj);
   current->push(thisObj);
 
@@ -12110,13 +12105,13 @@ AbortReasonOr<Ok> IonBuilder::jsop_globalthis() {
 
   LexicalEnvironmentObject* globalLexical =
       &script()->global().lexicalEnvironment();
-  pushConstant(globalLexical->thisValue());
+  pushConstant(ObjectValue(*globalLexical->thisObject()));
   return Ok();
 }
 
 AbortReasonOr<Ok> IonBuilder::jsop_typeof() {
   MDefinition* input = current->pop();
-  MTypeOf* ins = MTypeOf::New(alloc(), input, input->type());
+  MTypeOf* ins = MTypeOf::New(alloc(), input);
 
   ins->cacheInputMaybeCallableOrEmulatesUndefined(constraints());
 
@@ -12139,8 +12134,8 @@ AbortReasonOr<Ok> IonBuilder::jsop_toasynciter() {
   return resumeAfter(ins);
 }
 
-AbortReasonOr<Ok> IonBuilder::jsop_toid() {
-  // No-op if the index is trivally convertable to an id.
+AbortReasonOr<Ok> IonBuilder::jsop_topropertykey() {
+  // No-op if the index is trivally convertable to a PropertyKey.
   MIRType type = current->peek(-1)->type();
   if (type == MIRType::Int32 || type == MIRType::String ||
       type == MIRType::Symbol) {
@@ -12148,7 +12143,7 @@ AbortReasonOr<Ok> IonBuilder::jsop_toid() {
   }
 
   MDefinition* index = current->pop();
-  MToId* ins = MToId::New(alloc(), index);
+  auto* ins = MToPropertyKeyCache::New(alloc(), index);
 
   current->add(ins);
   current->push(ins);
@@ -12956,12 +12951,6 @@ MInstruction* IonBuilder::addGuardReceiverPolymorphic(
     }
   }
 
-  return guard;
-}
-
-MInstruction* IonBuilder::addSharedTypedArrayGuard(MDefinition* obj) {
-  MGuardSharedTypedArray* guard = MGuardSharedTypedArray::New(alloc(), obj);
-  current->add(guard);
   return guard;
 }
 

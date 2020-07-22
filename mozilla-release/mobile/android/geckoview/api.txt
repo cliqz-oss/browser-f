@@ -41,6 +41,7 @@ import java.lang.Boolean;
 import java.lang.CharSequence;
 import java.lang.Class;
 import java.lang.Deprecated;
+import java.lang.Double;
 import java.lang.Exception;
 import java.lang.Float;
 import java.lang.Integer;
@@ -75,6 +76,7 @@ import org.mozilla.geckoview.GeckoView;
 import org.mozilla.geckoview.MediaElement;
 import org.mozilla.geckoview.OverscrollEdgeEffect;
 import org.mozilla.geckoview.PanZoomController;
+import org.mozilla.geckoview.ProfilerController;
 import org.mozilla.geckoview.RuntimeSettings;
 import org.mozilla.geckoview.RuntimeTelemetry;
 import org.mozilla.geckoview.ScreenLength;
@@ -514,9 +516,9 @@ package org.mozilla.geckoview {
     method @UiThread @Nullable public GeckoRuntime.Delegate getDelegate();
     method @UiThread @Nullable public Autocomplete.LoginStorageDelegate getLoginStorageDelegate();
     method @UiThread @Nullable public File getProfileDir();
+    method @UiThread @NonNull public ProfilerController getProfilerController();
     method @AnyThread @NonNull public GeckoRuntimeSettings getSettings();
     method @UiThread @NonNull public StorageController getStorageController();
-    method @UiThread @NonNull public RuntimeTelemetry getTelemetry();
     method @UiThread @NonNull public WebExtensionController getWebExtensionController();
     method @UiThread @Nullable public WebNotificationDelegate getWebNotificationDelegate();
     method @UiThread @NonNull public WebPushController getWebPushController();
@@ -572,7 +574,7 @@ package org.mozilla.geckoview {
     method @Nullable public Rect getScreenSizeOverride();
     method @Nullable public RuntimeTelemetry.Delegate getTelemetryDelegate();
     method public boolean getUseMaxScreenDepth();
-    method public boolean getUseMultiprocess();
+    method @Deprecated public boolean getUseMultiprocess();
     method public boolean getWebFontsEnabled();
     method public boolean getWebManifestEnabled();
     method @NonNull public GeckoRuntimeSettings setAboutConfigEnabled(boolean);
@@ -625,7 +627,7 @@ package org.mozilla.geckoview {
     method @NonNull public GeckoRuntimeSettings.Builder screenSizeOverride(int, int);
     method @NonNull public GeckoRuntimeSettings.Builder telemetryDelegate(@NonNull RuntimeTelemetry.Delegate);
     method @NonNull public GeckoRuntimeSettings.Builder useMaxScreenDepth(boolean);
-    method @NonNull public GeckoRuntimeSettings.Builder useMultiprocess(boolean);
+    method @Deprecated @NonNull public GeckoRuntimeSettings.Builder useMultiprocess(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder webFontsEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder webManifest(boolean);
     method @NonNull protected GeckoRuntimeSettings newSettings(@Nullable GeckoRuntimeSettings);
@@ -688,7 +690,7 @@ package org.mozilla.geckoview {
     method @AnyThread public void loadUri(@NonNull Uri, @Nullable Uri, int, @Nullable Map<String,String>);
     method @UiThread public void open(@NonNull GeckoRuntime);
     method @AnyThread public void purgeHistory();
-    method @AnyThread public void readFromParcel(@NonNull Parcel);
+    method @Deprecated @AnyThread public void readFromParcel(@NonNull Parcel);
     method @UiThread public void releaseDisplay(@NonNull GeckoDisplay);
     method @AnyThread public void reload();
     method @AnyThread public void reload(int);
@@ -708,7 +710,7 @@ package org.mozilla.geckoview {
     method @UiThread public void setSelectionActionDelegate(@Nullable GeckoSession.SelectionActionDelegate);
     method @AnyThread public void stop();
     method @UiThread protected void setShouldPinOnScreen(boolean);
-    field public static final Parcelable.Creator<GeckoSession> CREATOR;
+    field @Deprecated public static final Parcelable.Creator<GeckoSession> CREATOR;
     field public static final int FINDER_DISPLAY_DIM_PAGE = 2;
     field public static final int FINDER_DISPLAY_DRAW_LINK_OUTLINE = 4;
     field public static final int FINDER_DISPLAY_HIGHLIGHT_ALL = 1;
@@ -1360,6 +1362,17 @@ package org.mozilla.geckoview {
     field public static final int SCROLL_BEHAVIOR_SMOOTH = 0;
   }
 
+  @UiThread public class ProfilerController {
+    ctor public ProfilerController();
+    method public void addMarker(@NonNull String, @Nullable Double, @Nullable Double, @Nullable String);
+    method public void addMarker(@NonNull String, @Nullable Double, @Nullable String);
+    method public void addMarker(@NonNull String, @Nullable Double);
+    method public void addMarker(@NonNull String, @Nullable String);
+    method public void addMarker(@NonNull String);
+    method @Nullable public Double getProfilerTime();
+    method public boolean isProfilerActive();
+  }
+
   public abstract class RuntimeSettings implements Parcelable {
     ctor protected RuntimeSettings();
     ctor protected RuntimeSettings(@Nullable RuntimeSettings);
@@ -1375,7 +1388,7 @@ package org.mozilla.geckoview {
   }
 
   public final class RuntimeTelemetry {
-    method @Deprecated @AnyThread @NonNull public GeckoResult<JSONObject> getSnapshots(boolean);
+    ctor protected RuntimeTelemetry();
   }
 
   public static interface RuntimeTelemetry.Delegate {
@@ -1635,6 +1648,7 @@ package org.mozilla.geckoview {
 
   public static interface WebExtension.TabDelegate {
     method @UiThread @Nullable default public GeckoResult<GeckoSession> onNewTab(@NonNull WebExtension, @NonNull WebExtension.CreateTabDetails);
+    method @UiThread default public void onOpenOptionsPage(@NonNull WebExtension);
   }
 
   public static class WebExtension.UpdateTabDetails {
@@ -1650,8 +1664,8 @@ package org.mozilla.geckoview {
   public class WebExtensionController {
     method @AnyThread @NonNull public GeckoResult<WebExtension> disable(@NonNull WebExtension, int);
     method @AnyThread @NonNull public GeckoResult<WebExtension> enable(@NonNull WebExtension, int);
+    method @NonNull @AnyThread public GeckoResult<WebExtension> ensureBuiltIn(@NonNull String, @Nullable String);
     method @UiThread @Nullable public WebExtensionController.PromptDelegate getPromptDelegate();
-    method @UiThread @Nullable @Deprecated public WebExtensionController.TabDelegate getTabDelegate();
     method @NonNull @AnyThread public GeckoResult<WebExtension> install(@NonNull String);
     method @NonNull @AnyThread public GeckoResult<WebExtension> installBuiltIn(@NonNull String);
     method @AnyThread @NonNull public GeckoResult<List<WebExtension>> list();
@@ -1659,7 +1673,6 @@ package org.mozilla.geckoview {
     method @UiThread public void setDebuggerDelegate(@NonNull WebExtensionController.DebuggerDelegate);
     method @UiThread public void setPromptDelegate(@Nullable WebExtensionController.PromptDelegate);
     method @AnyThread public void setTabActive(@NonNull GeckoSession, boolean);
-    method @Deprecated @UiThread public void setTabDelegate(@Nullable WebExtensionController.TabDelegate);
     method @NonNull @AnyThread public GeckoResult<Void> uninstall(@NonNull WebExtension);
     method @AnyThread @NonNull public GeckoResult<WebExtension> update(@NonNull WebExtension);
   }
@@ -1702,6 +1715,7 @@ package org.mozilla.geckoview {
     field @Nullable public final String imageUrl;
     field @Nullable public final String lang;
     field @NonNull public final boolean requireInteraction;
+    field @NonNull public final String source;
     field @NonNull public final String tag;
     field @Nullable public final String text;
     field @Nullable public final String textDirection;
