@@ -499,7 +499,7 @@ bool BlockReflowInput::AddFloat(nsLineLayout* aLineLayout, nsIFrame* aFloat,
                                 nscoord aAvailableISize) {
   MOZ_ASSERT(aLineLayout, "must have line layout");
   MOZ_ASSERT(mBlock->LinesEnd() != mCurrentLine, "null ptr");
-  MOZ_ASSERT(aFloat->GetStateBits() & NS_FRAME_OUT_OF_FLOW,
+  MOZ_ASSERT(aFloat->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW),
              "aFloat must be an out-of-flow frame");
 
   MOZ_ASSERT(aFloat->GetParent(), "float must have parent");
@@ -710,8 +710,14 @@ bool BlockReflowInput::FlowAndPlaceFloat(nsIFrame* aFloat) {
   // when floats are inserted before it.
   if (StyleClear::None != floatDisplay->mBreakType) {
     // XXXldb Does this handle vertical margins correctly?
-    mBCoord = ClearFloats(mBCoord, floatDisplay->mBreakType);
+    auto [bCoord, result] = ClearFloats(mBCoord, floatDisplay->mBreakType);
+    if (result == ClearFloatsResult::FloatsPushedOrSplit) {
+      PushFloatPastBreak(aFloat);
+      return false;
+    }
+    mBCoord = bCoord;
   }
+
   // Get the band of available space with respect to margin box.
   nsFlowAreaRect floatAvailableSpace =
       GetFloatAvailableSpaceForPlacingFloat(mBCoord);
@@ -1049,9 +1055,9 @@ void BlockReflowInput::PlaceBelowCurrentLineFloats(nsLineBox* aLine) {
   aLine->AppendFloats(mBelowCurrentLineFloats);
 }
 
-nscoord BlockReflowInput::ClearFloats(nscoord aBCoord, StyleClear aBreakType,
-                                      nsIFrame* aReplacedBlock,
-                                      uint32_t aFlags) {
+std::tuple<nscoord, BlockReflowInput::ClearFloatsResult>
+BlockReflowInput::ClearFloats(nscoord aBCoord, StyleClear aBreakType,
+                              nsIFrame* aReplacedBlock) {
 #ifdef DEBUG
   if (nsBlockFrame::gNoisyReflow) {
     nsFrame::IndentBy(stdout, nsBlockFrame::gNoiseIndent);
@@ -1066,13 +1072,17 @@ nscoord BlockReflowInput::ClearFloats(nscoord aBCoord, StyleClear aBreakType,
 #endif
 
   if (!FloatManager()->HasAnyFloats()) {
-    return aBCoord;
+    return {aBCoord, ClearFloatsResult::BCoordNoChange};
   }
 
   nscoord newBCoord = aBCoord;
 
   if (aBreakType != StyleClear::None) {
-    newBCoord = FloatManager()->ClearFloats(newBCoord, aBreakType, aFlags);
+    newBCoord = FloatManager()->ClearFloats(newBCoord, aBreakType);
+
+    if (FloatManager()->ClearContinues(aBreakType)) {
+      return {newBCoord, ClearFloatsResult::FloatsPushedOrSplit};
+    }
   }
 
   if (aReplacedBlock) {
@@ -1098,5 +1108,8 @@ nscoord BlockReflowInput::ClearFloats(nscoord aBCoord, StyleClear aBreakType,
   }
 #endif
 
-  return newBCoord;
+  ClearFloatsResult result = newBCoord == aBCoord
+                                 ? ClearFloatsResult::BCoordNoChange
+                                 : ClearFloatsResult::BCoordAdvanced;
+  return {newBCoord, result};
 }

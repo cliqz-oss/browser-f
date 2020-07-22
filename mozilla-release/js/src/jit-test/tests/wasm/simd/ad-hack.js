@@ -218,6 +218,12 @@ function shru(count, width) {
     }
 }
 
+function popcount(n) {
+  n = n - ((n >> 1) & 0x55555555)
+  n = (n & 0x33333333) + ((n >> 2) & 0x33333333)
+  return ((n + (n >> 4) & 0xF0F0F0F) * 0x1010101) >> 24
+}
+
 // For each input array, a set of arrays of the proper length for v128, with
 // values in range but possibly of the wrong signedness (eg, for Int8Array, 128
 // is in range but is really -128).  Also a unary operator `rectify` that
@@ -256,7 +262,9 @@ Int32Array.rectify = (x) => sign_extend(x,32);
 Uint32Array.inputs = Int32Array.inputs;
 Uint32Array.rectify = (x) => zero_extend(x,32);
 
-BigInt64Array.inputs = [[1,2],[2,1],[-1,-2],[-2,-1],[2n ** 32n, 2n ** 32n - 5n]];
+BigInt64Array.inputs = [[1,2],[2,1],[-1,-2],[-2,-1],[2n ** 32n, 2n ** 32n - 5n],
+                        [(2n ** 38n) / 5n, (2n ** 41n) / 7n],
+                        [-((2n ** 38n) / 5n), (2n ** 41n) / 7n]];
 BigInt64Array.rectify = (x) => BigInt(x);
 
 Float32Array.inputs = [[1, -1, 1e10, -1e10],
@@ -654,48 +662,72 @@ for ( let [op, memtype, rop, resultmemtype] of
         testIt(a,b);
 }
 
-// Splat
+// Splat, with and without constants (different code paths in ion)
 
 var ins = wasmEvalText(`
   (module
     (memory (export "mem") 1 1)
     (func (export "splat_i8x16") (param $src i32)
       (v128.store (i32.const 0) (i8x16.splat (local.get $src))))
+    (func (export "csplat_i8x16")
+      (v128.store (i32.const 0) (i8x16.splat (i32.const 37))))
     (func (export "splat_i16x8") (param $src i32)
       (v128.store (i32.const 0) (i16x8.splat (local.get $src))))
+    (func (export "csplat_i16x8")
+      (v128.store (i32.const 0) (i16x8.splat (i32.const 1175))))
     (func (export "splat_i32x4") (param $src i32)
       (v128.store (i32.const 0) (i32x4.splat (local.get $src))))
+    (func (export "csplat_i32x4")
+      (v128.store (i32.const 0) (i32x4.splat (i32.const 127639))))
     (func (export "splat_i64x2") (param $src i64)
       (v128.store (i32.const 0) (i64x2.splat (local.get $src))))
+    (func (export "csplat_i64x2")
+      (v128.store (i32.const 0) (i64x2.splat (i64.const 0x1234_5678_4365))))
     (func (export "splat_f32x4") (param $src f32)
       (v128.store (i32.const 0) (f32x4.splat (local.get $src))))
+    (func (export "csplat_f32x4")
+      (v128.store (i32.const 0) (f32x4.splat (f32.const 9121.25))))
     (func (export "splat_f64x2") (param $src f64)
       (v128.store (i32.const 0) (f64x2.splat (local.get $src))))
+    (func (export "csplat_f64x2")
+      (v128.store (i32.const 0) (f64x2.splat (f64.const 26789.125))))
 )`);
 
-ins.exports.splat_i8x16(3);
 var mem8 = new Uint8Array(ins.exports.mem.buffer);
-assertSame(get(mem8, 0, 16), [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]);
+ins.exports.splat_i8x16(3);
+assertSame(get(mem8, 0, 16), iota(16).map(_=>3));
+ins.exports.csplat_i8x16();
+assertSame(get(mem8, 0, 16), iota(16).map(_=>37));
 
-ins.exports.splat_i16x8(976);
 var mem16 = new Uint16Array(ins.exports.mem.buffer);
-assertSame(get(mem16, 0, 8), [976, 976, 976, 976, 976, 976, 976, 976]);
+ins.exports.splat_i16x8(976);
+assertSame(get(mem16, 0, 8), iota(8).map(_=>976));
+ins.exports.csplat_i16x8();
+assertSame(get(mem16, 0, 8), iota(8).map(_=>1175));
 
-ins.exports.splat_i32x4(147812);
 var mem32 = new Uint32Array(ins.exports.mem.buffer);
+ins.exports.splat_i32x4(147812);
 assertSame(get(mem32, 0, 4), [147812, 147812, 147812, 147812]);
+ins.exports.csplat_i32x4();
+assertSame(get(mem32, 0, 4), [127639, 127639, 127639, 127639]);
 
-ins.exports.splat_i64x2(147812n);
 var mem64 = new BigInt64Array(ins.exports.mem.buffer);
+ins.exports.splat_i64x2(147812n);
 assertSame(get(mem64, 0, 2), [147812, 147812]);
+ins.exports.csplat_i64x2();
+assertSame(get(mem64, 0, 2), [0x1234_5678_4365n, 0x1234_5678_4365n]);
 
-ins.exports.splat_f32x4(147812.5);
 var memf32 = new Float32Array(ins.exports.mem.buffer);
+ins.exports.splat_f32x4(147812.5);
 assertSame(get(memf32, 0, 4), [147812.5, 147812.5, 147812.5, 147812.5]);
+ins.exports.csplat_f32x4();
+assertSame(get(memf32, 0, 4), [9121.25, 9121.25, 9121.25, 9121.25]);
 
-ins.exports.splat_f64x2(147812.5);
 var memf64 = new Float64Array(ins.exports.mem.buffer);
+ins.exports.splat_f64x2(147812.5);
 assertSame(get(memf64, 0, 2), [147812.5, 147812.5]);
+ins.exports.csplat_f64x2();
+assertSame(get(memf64, 0, 2), [26789.125, 26789.125]);
 
 // Simple unary operators.  Place parameter in memory at offset 16,
 // read the result at offset 0.
@@ -754,17 +786,29 @@ for ( let [op, memtype, rop, resultmemtype] of
         testIt(a);
 }
 
-// AnyTrue
+// AnyTrue.  Ion constant folds, so test that too.
 
 var ins = wasmEvalText(`
   (module
     (memory (export "mem") 1 1)
     (func (export "anytrue_i8x16") (result i32)
       (i8x16.any_true (v128.load (i32.const 16))))
+    (func (export "true_anytrue_i8x16") (result i32)
+      (i8x16.any_true (v128.const i8x16 0 0 8 0 0 0 0 0 0 0 0 0 0 0 0 0)))
+    (func (export "false_anytrue_i8x16") (result i32)
+      (i8x16.any_true (v128.const i8x16 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)))
     (func (export "anytrue_i16x8") (result i32)
       (i16x8.any_true (v128.load (i32.const 16))))
+    (func (export "true_anytrue_i16x8") (result i32)
+      (i16x8.any_true (v128.const i16x8 0 0 0 0 0 7 0 0)))
+    (func (export "false_anytrue_i16x8") (result i32)
+      (i16x8.any_true (v128.const i16x8 0 0 0 0 0 0 0 0)))
     (func (export "anytrue_i32x4") (result i32)
-      (i32x4.any_true (v128.load (i32.const 16)))))`);
+      (i32x4.any_true (v128.load (i32.const 16))))
+    (func (export "true_anytrue_i32x4") (result i32)
+      (i32x4.any_true (v128.const i32x4 0 0 128 0)))
+    (func (export "false_anytrue_i32x4") (result i32)
+      (i32x4.any_true (v128.const i32x4 0 0 0 0))))`);
 
 var mem = new Uint8Array(ins.exports.mem.buffer);
 set(mem, 16, iota(16).map((_) => 0));
@@ -779,17 +823,36 @@ for ( let dope of [1, 7, 32, 195 ] ) {
     assertEq(ins.exports.anytrue_i32x4(), 1);
 }
 
-// AllTrue
+assertEq(ins.exports.true_anytrue_i8x16(), 1);
+assertEq(ins.exports.false_anytrue_i8x16(), 0);
+assertEq(ins.exports.true_anytrue_i16x8(), 1);
+assertEq(ins.exports.false_anytrue_i16x8(), 0);
+assertEq(ins.exports.true_anytrue_i32x4(), 1);
+assertEq(ins.exports.false_anytrue_i32x4(), 0);
+
+// AllTrue.  Ion constant folds, so test that too.
 
 var ins = wasmEvalText(`
   (module
     (memory (export "mem") 1 1)
     (func (export "alltrue_i8x16") (result i32)
       (i8x16.all_true (v128.load (i32.const 16))))
+    (func (export "true_alltrue_i8x16") (result i32)
+      (i8x16.all_true (v128.const i8x16 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)))
+    (func (export "false_alltrue_i8x16") (result i32)
+      (i8x16.all_true (v128.const i8x16 1 2 3 4 5 6 0 8 9 10 11 12 13 14 15 16)))
     (func (export "alltrue_i16x8") (result i32)
       (i16x8.all_true (v128.load (i32.const 16))))
+    (func (export "true_alltrue_i16x8") (result i32)
+      (i16x8.all_true (v128.const i16x8 1 2 3 4 5 6 7 8)))
+    (func (export "false_alltrue_i16x8") (result i32)
+      (i16x8.all_true (v128.const i16x8 1 2 3 4 5 0 7 8)))
     (func (export "alltrue_i32x4") (result i32)
-      (i32x4.all_true (v128.load (i32.const 16)))))`);
+      (i32x4.all_true (v128.load (i32.const 16))))
+    (func (export "true_alltrue_i32x4") (result i32)
+      (i32x4.all_true (v128.const i32x4 1 2 3 4)))
+    (func (export "false_alltrue_i32x4") (result i32)
+      (i32x4.all_true (v128.const i32x4 1 2 3 0))))`);
 
 var mem8 = new Uint8Array(ins.exports.mem.buffer);
 var mem16 = new Uint16Array(ins.exports.mem.buffer);
@@ -819,6 +882,74 @@ for ( let dope of [1, 7, 32, 195 ] ) {
     set(mem32, 4, iota(4).map((x) => x == 2 ? 0 : dope));
     assertEq(ins.exports.alltrue_i32x4(), 0);
 }
+
+assertEq(ins.exports.true_alltrue_i8x16(), 1);
+assertEq(ins.exports.false_alltrue_i8x16(), 0);
+assertEq(ins.exports.true_alltrue_i16x8(), 1);
+assertEq(ins.exports.false_alltrue_i16x8(), 0);
+assertEq(ins.exports.true_alltrue_i32x4(), 1);
+assertEq(ins.exports.false_alltrue_i32x4(), 0);
+
+// Bitmask.  Ion constant folds, so test that too.
+
+var ins = wasmEvalText(`
+  (module
+    (memory (export "mem") 1 1)
+    (func (export "bitmask_i8x16") (result i32)
+      (i8x16.bitmask (v128.load (i32.const 16))))
+    (func (export "const_bitmask_i8x16") (result i32)
+      (i8x16.bitmask (v128.const i8x16 0x80 0x7f 0xff 0x33 0x42 0x98 0x01 0x00
+                                       0x31 0xcc 0xdd 0x12 0xf0 0x40 0x02 0xa0)))
+    (func (export "bitmask_i16x8") (result i32)
+      (i16x8.bitmask (v128.load (i32.const 16))))
+    (func (export "const_bitmask_i16x8") (result i32)
+      (i16x8.bitmask (v128.const i16x8 0x7f80 0xff33 0x9842 0x0001 0xcc31 0x12dd 0x40f0 0xa002)))
+    (func (export "bitmask_i32x4") (result i32)
+      (i32x4.bitmask (v128.load (i32.const 16))))
+    (func (export "const_bitmask_i32x4") (result i32)
+      (i32x4.bitmask (v128.const i32x4 0xff337f80 0x00019842 0xcc3112dd 0xa00240f0))))`);
+
+var mem8 = new Uint8Array(ins.exports.mem.buffer);
+var mem16 = new Uint16Array(ins.exports.mem.buffer);
+var mem32 = new Uint32Array(ins.exports.mem.buffer);
+
+set(mem8, 16, iota(16).map((_) => 0));
+assertEq(ins.exports.bitmask_i8x16(), 0);
+assertEq(ins.exports.bitmask_i16x8(), 0);
+assertEq(ins.exports.bitmask_i32x4(), 0);
+
+set(mem8, 16, iota(16).map((_) => 0x80));
+assertEq(ins.exports.bitmask_i8x16(), 0xFFFF);
+
+set(mem8, 16, iota(16).map((_) => 0x7F));
+assertEq(ins.exports.bitmask_i8x16(), 0);
+
+set(mem8, 16, iota(16).map((i) => popcount(i) == 1 ? 0x80 : 0));
+assertEq(ins.exports.bitmask_i8x16(), (1 << 1) | (1 << 2) | (1 << 4) | (1 << 8));
+
+assertEq(ins.exports.const_bitmask_i8x16(), 0x9625);
+
+set(mem16, 8, iota(8).map((i) => 0x8000))
+assertEq(ins.exports.bitmask_i16x8(), 0xFF)
+
+set(mem16, 8, iota(8).map((i) => 0x7FFF))
+assertEq(ins.exports.bitmask_i16x8(), 0)
+
+set(mem16, 8, iota(8).map((i) => popcount(i) == 1 ? 0x8000 : 0))
+assertEq(ins.exports.bitmask_i16x8(), (1 << 1) | (1 << 2) | (1 << 4));
+
+assertEq(ins.exports.const_bitmask_i16x8(), 0x96);
+
+set(mem32, 4, iota(4).map((_) => 0x80000000))
+assertEq(ins.exports.bitmask_i32x4(), 0xF);
+
+set(mem32, 4, iota(4).map((_) => 0x7FFFFFFF))
+assertEq(ins.exports.bitmask_i32x4(), 0);
+
+set(mem32, 4, iota(4).map((i) => popcount(i) == 1 ? 0x80000000 : 0))
+assertEq(ins.exports.bitmask_i32x4(), (1 << 1) | (1 << 2));
+
+assertEq(ins.exports.const_bitmask_i32x4(), 0xd);
 
 // Shifts
 //
@@ -1178,9 +1309,9 @@ ins.exports.widen_high_i16x8_u();
 assertSame(get(mem32u, 0, 4), iota(4).map((n) => zero_extend(as[n+4], 16)));
 
 
-// Extract lane
+// Extract lane.  Ion constant folds, so test that too.
 //
-// operand is v128 in memory
+// operand is v128 in memory (or constant)
 // lane index is immediate so we're testing something randomish but not zero
 // result is scalar (returned directly)
 
@@ -1189,20 +1320,36 @@ var ins = wasmEvalText(`
     (memory (export "mem") 1 1)
     (func (export "extract_i8x16_9") (result i32)
       (i8x16.extract_lane_s 9 (v128.load (i32.const 16))))
+    (func (export "const_extract_i8x16_9") (result i32)
+      (i8x16.extract_lane_s 9 (v128.const i8x16 -1 -2 -3 -4 -5 -6 -7 -8 -9 -10 -11 -12 -13 -14 -15 -16)))
     (func (export "extract_u8x16_6") (result i32)
       (i8x16.extract_lane_u 6 (v128.load (i32.const 16))))
+    (func (export "const_extract_u8x16_9") (result i32)
+      (i8x16.extract_lane_u 9 (v128.const i8x16 -1 -2 -3 -4 -5 -6 -7 -8 -9 -10 -11 -12 -13 -14 -15 -16)))
     (func (export "extract_i16x8_5") (result i32)
       (i16x8.extract_lane_s 5 (v128.load (i32.const 16))))
+    (func (export "const_extract_i16x8_5") (result i32)
+      (i16x8.extract_lane_s 5 (v128.const i16x8 -1 -2 -3 -4 -5 -6 -7 -8)))
     (func (export "extract_u16x8_3") (result i32)
       (i16x8.extract_lane_u 3 (v128.load (i32.const 16))))
+    (func (export "const_extract_u16x8_3") (result i32)
+      (i16x8.extract_lane_u 3 (v128.const i16x8 -1 -2 -3 -4 -5 -6 -7 -8)))
     (func (export "extract_i32x4_2") (result i32)
       (i32x4.extract_lane 2 (v128.load (i32.const 16))))
+    (func (export "const_extract_i32x4_2") (result i32)
+      (i32x4.extract_lane 2 (v128.const i32x4 -1 -2 -3 -4)))
     (func (export "extract_i64x2_1") (result i64)
       (i64x2.extract_lane 1 (v128.load (i32.const 16))))
+    (func (export "const_extract_i64x2_1") (result i64)
+      (i64x2.extract_lane 1 (v128.const i64x2 -1 -2)))
     (func (export "extract_f32x4_2") (result f32)
       (f32x4.extract_lane 2 (v128.load (i32.const 16))))
+    (func (export "const_extract_f32x4_2") (result f32)
+      (f32x4.extract_lane 2 (v128.const f32x4 -1 -2 -3 -4)))
     (func (export "extract_f64x2_1") (result f64)
-      (f64x2.extract_lane 1 (v128.load (i32.const 16)))))`);
+      (f64x2.extract_lane 1 (v128.load (i32.const 16))))
+    (func (export "const_extract_f64x2_1") (result f64)
+      (f64x2.extract_lane 1 (v128.const f64x2 -1 -2))))`);
 
 var mem8 = new Uint8Array(ins.exports.mem.buffer);
 var as = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
@@ -1214,6 +1361,9 @@ assertEq(ins.exports.extract_i8x16_9(), as[9]);
 set(mem8, 16, bs)
 assertEq(ins.exports.extract_u8x16_6(), 256 - as[6]);
 
+assertEq(ins.exports.const_extract_i8x16_9(), -10);
+assertEq(ins.exports.const_extract_u8x16_9(), 256-10);
+
 var mem16 = new Uint16Array(ins.exports.mem.buffer);
 var as = [1, 2, 3, 4, 5, 6, 7, 8];
 var bs = as.map((x) => -x);
@@ -1224,11 +1374,16 @@ assertEq(ins.exports.extract_i16x8_5(), as[5]);
 set(mem16, 8, bs)
 assertEq(ins.exports.extract_u16x8_3(), 65536 - as[3]);
 
+assertEq(ins.exports.const_extract_i16x8_5(), -6);
+assertEq(ins.exports.const_extract_u16x8_3(), 65536-4);
+
 var mem32 = new Uint32Array(ins.exports.mem.buffer);
 var as = [1, 2, 3, 4];
 
 set(mem32, 4, as)
 assertEq(ins.exports.extract_i32x4_2(), as[2]);
+
+assertEq(ins.exports.const_extract_i32x4_2(), -3);
 
 var mem32 = new Float32Array(ins.exports.mem.buffer);
 var as = [1.5, 2.5, 3.5, 4.5];
@@ -1236,17 +1391,23 @@ var as = [1.5, 2.5, 3.5, 4.5];
 set(mem32, 4, as)
 assertEq(ins.exports.extract_f32x4_2(), as[2]);
 
+assertEq(ins.exports.const_extract_f32x4_2(), -3);
+
 var mem64 = new Float64Array(ins.exports.mem.buffer);
 var as = [1.5, 2.5];
 
 set(mem64, 2, as)
 assertEq(ins.exports.extract_f64x2_1(), as[1]);
 
+assertEq(ins.exports.const_extract_f64x2_1(), -2);
+
 var mem64 = new BigInt64Array(ins.exports.mem.buffer);
 var as = [12345, 67890];
 
 set(mem64, 2, as)
 assertSame(ins.exports.extract_i64x2_1(), as[1]);
+
+assertEq(ins.exports.const_extract_i64x2_1(), -2n);
 
 // Replace lane
 //

@@ -46,7 +46,6 @@ use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::SystemTime;
 use std::u32;
 use crate::texture_cache::{TextureCache, TextureCacheHandle, Eviction};
 
@@ -221,7 +220,9 @@ struct CachedImageInfo {
 
 impl CachedImageInfo {
     fn mark_unused(&mut self, texture_cache: &mut TextureCache) {
-        texture_cache.mark_unused(&self.texture_cache_handle);
+        if self.manual_eviction {
+            texture_cache.evict_manual_handle(&self.texture_cache_handle);
+        }
         self.manual_eviction = false;
     }
 }
@@ -668,7 +669,7 @@ impl ResourceCache {
         self.glyph_rasterizer.delete_font(font_key);
         self.resources.font_templates.remove(&font_key);
         self.cached_glyphs
-            .clear_fonts(&mut self.texture_cache, |font| font.font_key == font_key);
+            .clear_fonts(|font| font.font_key == font_key);
     }
 
     pub fn delete_font_instance(&mut self, instance_key: FontInstanceKey) {
@@ -1110,18 +1111,6 @@ impl ResourceCache {
         })
     }
 
-    pub fn prepare_for_frames(&mut self, time: SystemTime) {
-        self.texture_cache.prepare_for_frames(time);
-    }
-
-    pub fn bookkeep_after_frames(&mut self) {
-        self.texture_cache.bookkeep_after_frames();
-    }
-
-    pub fn requires_frame_build(&self) -> bool {
-        self.texture_cache.requires_frame_build()
-    }
-
     pub fn begin_frame(&mut self, stamp: FrameStamp) {
         profile_scope!("begin_frame");
         debug_assert_eq!(self.state, State::Idle);
@@ -1389,7 +1378,7 @@ impl ResourceCache {
             .font_templates
             .retain(|key, _| key.0 != namespace);
         self.cached_glyphs
-            .clear_fonts(&mut self.texture_cache, |font| font.font_key.0 == namespace);
+            .clear_fonts(|font| font.font_key.0 == namespace);
     }
 
     /// Reports the CPU heap usage of this ResourceCache.
@@ -1746,6 +1735,8 @@ impl ResourceCache {
                     DeviceIntSize::zero(),
                     self.texture_cache.color_formats(),
                     self.texture_cache.swizzle_settings(),
+                    self.texture_cache.eviction_threshold_bytes(),
+                    self.texture_cache.max_evictions_per_frame(),
                 );
             }
         }

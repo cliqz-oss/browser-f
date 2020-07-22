@@ -222,7 +222,7 @@ WidgetMouseEvent MultiTouchInput::ToWidgetMouseEvent(nsIWidget* aWidget) const {
   event.mRefPoint.y = firstTouch.mScreenPoint.y;
 
   event.mTime = mTime;
-  event.mButton = MouseButton::eLeft;
+  event.mButton = MouseButton::ePrimary;
   event.mInputSource = MouseEvent_Binding::MOZ_SOURCE_TOUCH;
   event.mModifiers = modifiers;
   event.mFlags.mHandledByAPZ = mHandledByAPZ;
@@ -291,14 +291,14 @@ MouseInput::MouseInput(const WidgetMouseEventBase& aMouseEvent)
   mButtonType = NONE;
 
   switch (aMouseEvent.mButton) {
-    case MouseButton::eLeft:
-      mButtonType = MouseInput::LEFT_BUTTON;
+    case MouseButton::ePrimary:
+      mButtonType = MouseInput::PRIMARY_BUTTON;
       break;
     case MouseButton::eMiddle:
       mButtonType = MouseInput::MIDDLE_BUTTON;
       break;
-    case MouseButton::eRight:
-      mButtonType = MouseInput::RIGHT_BUTTON;
+    case MouseButton::eSecondary:
+      mButtonType = MouseInput::SECONDARY_BUTTON;
       break;
   }
 
@@ -337,7 +337,7 @@ MouseInput::MouseInput(const WidgetMouseEventBase& aMouseEvent)
       PixelCastJustification::LayoutDeviceIsScreenForUntransformedEvent));
 }
 
-bool MouseInput::IsLeftButton() const { return mButtonType == LEFT_BUTTON; }
+bool MouseInput::IsLeftButton() const { return mButtonType == PRIMARY_BUTTON; }
 
 bool MouseInput::TransformToLocal(
     const ScreenToParentLayerMatrix4x4& aTransform) {
@@ -397,14 +397,14 @@ WidgetMouseEvent MouseInput::ToWidgetMouseEvent(nsIWidget* aWidget) const {
   }
 
   switch (mButtonType) {
-    case MouseInput::LEFT_BUTTON:
-      event.mButton = MouseButton::eLeft;
+    case MouseInput::PRIMARY_BUTTON:
+      event.mButton = MouseButton::ePrimary;
       break;
     case MouseInput::MIDDLE_BUTTON:
       event.mButton = MouseButton::eMiddle;
       break;
-    case MouseInput::RIGHT_BUTTON:
-      event.mButton = MouseButton::eRight;
+    case MouseInput::SECONDARY_BUTTON:
+      event.mButton = MouseButton::eSecondary;
       break;
     case MouseInput::NONE:
     default:
@@ -538,14 +538,17 @@ ParentLayerPoint PanGestureInput::UserMultipliedLocalPanDisplacement() const {
 PinchGestureInput::PinchGestureInput()
     : InputData(PINCHGESTURE_INPUT),
       mType(PINCHGESTURE_START),
+      mSource(UNKNOWN),
       mHandledByAPZ(false) {}
 
 PinchGestureInput::PinchGestureInput(
-    PinchGestureType aType, uint32_t aTime, TimeStamp aTimeStamp,
-    const ExternalPoint& aScreenOffset, const ScreenPoint& aFocusPoint,
-    ScreenCoord aCurrentSpan, ScreenCoord aPreviousSpan, Modifiers aModifiers)
+    PinchGestureType aType, PinchGestureSource aSource, uint32_t aTime,
+    TimeStamp aTimeStamp, const ExternalPoint& aScreenOffset,
+    const ScreenPoint& aFocusPoint, ScreenCoord aCurrentSpan,
+    ScreenCoord aPreviousSpan, Modifiers aModifiers)
     : InputData(PINCHGESTURE_INPUT, aTime, aTimeStamp, aModifiers),
       mType(aType),
+      mSource(aSource),
       mFocusPoint(aFocusPoint),
       mScreenOffset(aScreenOffset),
       mCurrentSpan(aCurrentSpan),
@@ -610,21 +613,19 @@ WidgetWheelEvent PinchGestureInput::ToWidgetWheelEvent(
   // Specifically, it creates a PinchGestureInput with |mCurrentSpan == 100.0 *
   // currentScale| and |mPreviousSpan == 100.0 * lastScale| where currentScale
   // is the scale from the current OS event and lastScale is the scale when the
-  // previous OS event happened. It then seems reasonable to calculate |M =
-  // currentScale / lastScale| and use the same formula as the macOS code
+  // previous OS event happened. On macOS [event magnification] is a relative
+  // change in scale factor, ie if the scale factor changed from 1 to 1.1 it
+  // will be 0.1, similarly if it changed from 1 to 0.9 it will be -0.1. To
+  // calculate the relative scale change on Windows we would calculate |M =
+  // currentScale - lastScale = (mCurrentSpan-mPreviousSpan)/100| and use the
+  // same formula as the macOS code
   // (|-100.0 * M * GetDefaultScaleInternal()|).
 
   // XXX When we write the code for other platforms to do the same we'll need to
   // make sure this calculation is reasonable.
 
-  if (mPreviousSpan != 0.f) {
-    wheelEvent.mDeltaY = -100.0 * (mCurrentSpan / mPreviousSpan) *
-                         (aWidget ? aWidget->GetDefaultScaleInternal() : 1.f);
-  } else {
-    // Not sure what makes sense here, this seems reasonable.
-    wheelEvent.mDeltaY = -100.0 * mCurrentSpan *
-                         (aWidget ? aWidget->GetDefaultScaleInternal() : 1.f);
-  }
+  wheelEvent.mDeltaY = (mPreviousSpan - mCurrentSpan) *
+                       (aWidget ? aWidget->GetDefaultScaleInternal() : 1.f);
 #endif
 
   return wheelEvent;

@@ -7,7 +7,9 @@
 #include "jit/MacroAssembler-inl.h"
 
 #include "mozilla/CheckedInt.h"
+#include "mozilla/FloatingPoint.h"
 #include "mozilla/MathAlgorithms.h"
+#include "mozilla/XorShift128PlusRNG.h"
 
 #include <algorithm>
 
@@ -2457,9 +2459,7 @@ void MacroAssembler::link(JitCode* code) {
 }
 
 MacroAssembler::AutoProfilerCallInstrumentation::
-    AutoProfilerCallInstrumentation(
-        MacroAssembler& masm MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL) {
-  MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+    AutoProfilerCallInstrumentation(MacroAssembler& masm) {
   if (!masm.emitProfilingInstrumentation_) {
     return;
   }
@@ -3022,6 +3022,8 @@ void MacroAssembler::pow32(Register base, Register power, Register dest,
   // large enough so that the result is no longer representable as a double with
   // fractional parts. We can't easily determine when y is too large, so we bail
   // here.
+  // Note: it's important for this condition to match the code in CacheIR.cpp
+  // (CanAttachInt32Pow) to prevent failure loops.
   Label start;
   branchTest32(Assembler::NotSigned, power, power, &start);
   jump(onOver);
@@ -3045,6 +3047,90 @@ void MacroAssembler::pow32(Register base, Register power, Register dest,
   branchRshift32(Assembler::NonZero, Imm32(1), temp2, &loop);
 
   bind(&done);
+}
+
+void MacroAssembler::randomDouble(Register rng, FloatRegister dest,
+                                  Register64 temp0, Register64 temp1) {
+  using mozilla::non_crypto::XorShift128PlusRNG;
+
+  static_assert(
+      sizeof(XorShift128PlusRNG) == 2 * sizeof(uint64_t),
+      "Code below assumes XorShift128PlusRNG contains two uint64_t values");
+
+  Address state0Addr(rng, XorShift128PlusRNG::offsetOfState0());
+  Address state1Addr(rng, XorShift128PlusRNG::offsetOfState1());
+
+  Register64 s0Reg = temp0;
+  Register64 s1Reg = temp1;
+
+  // uint64_t s1 = mState[0];
+  load64(state0Addr, s1Reg);
+
+  // s1 ^= s1 << 23;
+  move64(s1Reg, s0Reg);
+  lshift64(Imm32(23), s1Reg);
+  xor64(s0Reg, s1Reg);
+
+  // s1 ^= s1 >> 17
+  move64(s1Reg, s0Reg);
+  rshift64(Imm32(17), s1Reg);
+  xor64(s0Reg, s1Reg);
+
+  // const uint64_t s0 = mState[1];
+  load64(state1Addr, s0Reg);
+
+  // mState[0] = s0;
+  store64(s0Reg, state0Addr);
+
+  // s1 ^= s0
+  xor64(s0Reg, s1Reg);
+
+  // s1 ^= s0 >> 26
+  rshift64(Imm32(26), s0Reg);
+  xor64(s0Reg, s1Reg);
+
+  // mState[1] = s1
+  store64(s1Reg, state1Addr);
+
+  // s1 += mState[0]
+  load64(state0Addr, s0Reg);
+  add64(s0Reg, s1Reg);
+
+  // See comment in XorShift128PlusRNG::nextDouble().
+  static constexpr int MantissaBits =
+      mozilla::FloatingPoint<double>::kExponentShift + 1;
+  static constexpr double ScaleInv = double(1) / (1ULL << MantissaBits);
+
+  and64(Imm64((1ULL << MantissaBits) - 1), s1Reg);
+
+  // Note: we know s1Reg isn't signed after the and64 so we can use the faster
+  // convertInt64ToDouble instead of convertUInt64ToDouble.
+  convertInt64ToDouble(s1Reg, dest);
+
+  // dest *= ScaleInv
+  mulDoublePtr(ImmPtr(&ScaleInv), s0Reg.scratchReg(), dest);
+}
+
+void MacroAssembler::branchIfNotRegExpPrototypeOptimizable(Register proto,
+                                                           Register temp,
+                                                           Label* fail) {
+  loadJSContext(temp);
+  loadPtr(Address(temp, JSContext::offsetOfRealm()), temp);
+  size_t offset = Realm::offsetOfRegExps() +
+                  RegExpRealm::offsetOfOptimizableRegExpPrototypeShape();
+  loadPtr(Address(temp, offset), temp);
+  branchTestObjShapeUnsafe(Assembler::NotEqual, proto, temp, fail);
+}
+
+void MacroAssembler::branchIfNotRegExpInstanceOptimizable(Register regexp,
+                                                          Register temp,
+                                                          Label* label) {
+  loadJSContext(temp);
+  loadPtr(Address(temp, JSContext::offsetOfRealm()), temp);
+  size_t offset = Realm::offsetOfRegExps() +
+                  RegExpRealm::offsetOfOptimizableRegExpInstanceShape();
+  loadPtr(Address(temp, offset), temp);
+  branchTestObjShapeUnsafe(Assembler::NotEqual, regexp, temp, label);
 }
 
 // ===============================================================
@@ -3612,9 +3698,8 @@ void MacroAssembler::memoryBarrierAfter(const Synchronization& sync) {
 }
 
 void MacroAssembler::loadWasmTlsRegFromFrame(Register dest) {
-  loadPtr(
-      Address(getStackPointer(), framePushed() + offsetof(wasm::Frame, tls)),
-      dest);
+  loadPtr(Address(getStackPointer(), framePushed() + wasm::Frame::tlsOffset()),
+          dest);
 }
 
 void MacroAssembler::BranchGCPtr::emit(MacroAssembler& masm) {

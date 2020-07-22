@@ -21,250 +21,8 @@ job-defaults:
         script: raptor_script.py
         config:
             - raptor/android_hw_config.py
-
-raptor-tp6m-1-fennec68:
-    description: "Raptor tp6m-1 on Fennec68"
-    try-name: raptor-tp6m-1-fennec68
-    treeherder-symbol: Rap(tp6m-1-f68)
-    mozharness:
         extra-options:
-            - --test=raptor-tp6m-1-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-2-fennec68:
-    description: "Raptor tp6m-2 on Fennec68"
-    try-name: raptor-tp6m-2-fennec68
-    treeherder-symbol: Rap(tp6m-2-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-2-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-3-fennec68:
-    description: "Raptor tp6m-3 on Fennec68"
-    try-name: raptor-tp6m-3-fennec68
-    treeherder-symbol: Rap(tp6m-3-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-3-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-4-fennec68:
-    description: "Raptor tp6m-4 on Fennec68"
-    try-name: raptor-tp6m-4-fennec68
-    treeherder-symbol: Rap(tp6m-4-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-4-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-5-fennec68:
-    description: "Raptor tp6m-5 on Fennec68"
-    try-name: raptor-tp6m-5-fennec68
-    treeherder-symbol: Rap(tp6m-5-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-5-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-6-fennec68:
-    description: "Raptor tp6m-6 on Fennec68"
-    try-name: raptor-tp6m-6-fennec68
-    treeherder-symbol: Rap(tp6m-6-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-6-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-7-fennec68:
-    description: "Raptor tp6m-7 on Fennec68"
-    try-name: raptor-tp6m-7-fennec68
-    treeherder-symbol: Rap(tp6m-7-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-7-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-8-fennec68:
-    description: "Raptor tp6m-8 on Fennec68"
-    try-name: raptor-tp6m-8-fennec68
-    treeherder-symbol: Rap(tp6m-8-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-8-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-9-fennec68:
-    description: "Raptor tp6m-9 on Fennec68"
-    try-name: raptor-tp6m-9-fennec68
-    treeherder-symbol: Rap(tp6m-9-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-9-fennec68
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-1-fennec68-cold:
-    description: "Raptor tp6m-1 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-1-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-1-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-1-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-2-fennec68-cold:
-    description: "Raptor tp6m-2 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-2-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-2-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-2-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-3-fennec68-cold:
-    description: "Raptor tp6m-3 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-3-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-3-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-3-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-4-fennec68-cold:
-    description: "Raptor tp6m-4 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-4-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-4-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-4-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-5-fennec68-cold:
-    description: "Raptor tp6m-5 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-5-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-5-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-5-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-6-fennec68-cold:
-    description: "Raptor tp6m-6 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-6-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-6-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-6-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-7-fennec68-cold:
-    description: "Raptor tp6m-7 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-7-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-7-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-7-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-8-fennec68-cold:
-    description: "Raptor tp6m-8 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-8-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-8-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-8-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-9-fennec68-cold:
-    description: "Raptor tp6m-9 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-9-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-9-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-9-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-10-fennec68-cold:
-    description: "Raptor tp6m-10 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-10-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-10-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-10-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-11-fennec68-cold:
-    description: "Raptor tp6m-11 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-11-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-11-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-11-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-12-fennec68-cold:
-    description: "Raptor tp6m-12 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-12-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-12-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-12-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-13-fennec68-cold:
-    description: "Raptor tp6m-13 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-13-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-13-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-13-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
-
-raptor-tp6m-14-fennec68-cold:
-    description: "Raptor tp6m-14 cold page-load on Fennec68"
-    max-run-time: 3600
-    try-name: raptor-tp6m-14-fennec68-cold
-    treeherder-symbol: Rap(tp6m-c-14-f68)
-    mozharness:
-        extra-options:
-            - --test=raptor-tp6m-14-fennec68-cold
-            - --app=fennec
-            - --binary=org.mozilla.firefox
+            - --no-conditioned-profile
 
 raptor-speedometer-fennec68:
     description: "Raptor Speedometer on Fennec68"
@@ -317,13 +75,6 @@ raptor-youtube-playback-fennec68:
     description: "Raptor YouTube Playback on Fennec68"
     try-name: raptor-youtube-playback-fennec68
     treeherder-symbol: Rap(ytp)
-    run-on-projects:
-        by-test-platform:
-            android-hw-p2.*aarch64.*/pgo: ['mozilla-central']
-            android-hw-p2.*aarch64-shippable/opt: ['mozilla-central']
-            android-hw-g5.*/pgo: ['mozilla-central']
-            android-hw-g5.*-shippable/opt: ['mozilla-central']
-            default: []
     mozharness:
         extra-options:
             - --test=raptor-youtube-playback-fennec68
@@ -334,7 +85,6 @@ raptor-youtube-playback-av1-sfr-fennec68:
     description: "Raptor YouTube Playback AV1 SFR on Fennec68"
     try-name: raptor-youtube-playback-av1-sfr-fennec68
     treeherder-symbol: Rap(ytp-av1-sfr)
-    run-on-projects: []
     mozharness:
         extra-options:
             - --test=raptor-youtube-playback-av1-sfr-fennec68
@@ -345,6 +95,16 @@ raptor-youtube-playback-h264-sfr-fennec68:
     description: "Raptor YouTube Playback H264 SFR on Fennec68"
     try-name: raptor-youtube-playback-h264-sfr-fennec68
     treeherder-symbol: Rap(ytp-h264-sfr)
+    mozharness:
+        extra-options:
+            - --test=raptor-youtube-playback-h264-sfr-fennec68
+            - --app=fennec
+            - --binary=org.mozilla.firefox
+
+raptor-youtube-playback-h264-fennec68:
+    description: "Raptor YouTube Playback H264 on Fennec68"
+    try-name: raptor-youtube-playback-h264-fennec68
+    treeherder-symbol: Rap(ytp-h264)
     run-on-projects:
         by-test-platform:
             android-hw-p2.*aarch64.*/pgo: ['mozilla-central']
@@ -354,7 +114,7 @@ raptor-youtube-playback-h264-sfr-fennec68:
             default: []
     mozharness:
         extra-options:
-            - --test=raptor-youtube-playback-h264-sfr-fennec68
+            - --test=raptor-youtube-playback-h264-std-fennec68
             - --app=fennec
             - --binary=org.mozilla.firefox
 
@@ -362,11 +122,6 @@ raptor-youtube-playback-vp9-sfr-fennec68:
     description: "Raptor YouTube Playback VP9 SFR on Fennec68"
     try-name: raptor-youtube-playback-vp9-sfr-fennec68
     treeherder-symbol: Rap(ytp-vp9-sfr)
-    run-on-projects:
-        by-test-platform:
-            android-hw-p2.*aarch64.*/pgo: ['mozilla-central']
-            android-hw-p2.*aarch64-shippable/opt: ['mozilla-central']
-            default: []
     mozharness:
         extra-options:
             - --test=raptor-youtube-playback-vp9-sfr-fennec68

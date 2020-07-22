@@ -100,6 +100,7 @@ const URLBAR_SELECTED_RESULT_TYPES = {
   tip: 12,
   topsite: 13,
   formhistory: 14,
+  dynamic: 15,
   // n_values = 32, so you'll need to create a new histogram if you need more.
 };
 
@@ -884,7 +885,7 @@ let BrowserUsageTelemetry = {
     if (node.ownerDocument.URL == AppConstants.BROWSER_CHROME_URL) {
       // First find if it is inside one of the customizable areas.
       for (let area of CustomizableUI.areas) {
-        if (node.closest(`#${area}`)) {
+        if (node.closest(`#${CSS.escape(area)}`)) {
           for (let widget of CustomizableUI.getWidgetIdsInArea(area)) {
             if (
               // We care about the buttons on the tabs themselves.
@@ -897,7 +898,7 @@ let BrowserUsageTelemetry = {
               continue;
             }
 
-            if (node.closest(`#${widget}`)) {
+            if (node.closest(`#${CSS.escape(widget)}`)) {
               return widget;
             }
           }

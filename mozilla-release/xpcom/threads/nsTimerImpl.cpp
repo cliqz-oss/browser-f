@@ -15,6 +15,7 @@
 #include "mozilla/Logging.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/ResultExtensions.h"
+#include "mozilla/Sprintf.h"
 #include "nsThreadManager.h"
 #include "nsThreadUtils.h"
 #include "pratom.h"
@@ -496,7 +497,7 @@ nsresult nsTimerImpl::SetTarget(nsIEventTarget* aTarget) {
   if (aTarget) {
     mEventTarget = aTarget;
   } else {
-    mEventTarget = mozilla::GetCurrentThreadEventTarget();
+    mEventTarget = mozilla::GetCurrentEventTarget();
   }
   return NS_OK;
 }
@@ -676,8 +677,8 @@ void nsTimerImpl::LogFiring(const Callback& aCallback, uint8_t aType,
         } else if (info.dli_fname) {
           // The "#0: " prefix is necessary for `fix_stacks.py` to interpret
           // this string as something to convert.
-          snprintf(buf, buflen, "#0: ???[%s +0x%" PRIxPTR "]\n", info.dli_fname,
-                   uintptr_t(addr) - uintptr_t(info.dli_fbase));
+          SprintfLiteral(buf, "#0: ???[%s +0x%" PRIxPTR "]\n", info.dli_fname,
+                         uintptr_t(addr) - uintptr_t(info.dli_fbase));
           name = buf;
 
         } else {
@@ -774,7 +775,7 @@ size_t nsTimer::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const {
 /* static */
 RefPtr<nsTimer> nsTimer::WithEventTarget(nsIEventTarget* aTarget) {
   if (!aTarget) {
-    aTarget = mozilla::GetCurrentThreadEventTarget();
+    aTarget = mozilla::GetCurrentEventTarget();
   }
   return do_AddRef(new nsTimer(aTarget));
 }

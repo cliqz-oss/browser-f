@@ -758,7 +758,20 @@ static mozilla::Atomic<bool> sStreamsEnabled(false);
 
 static mozilla::Atomic<bool> sPropertyErrorMessageFixEnabled(false);
 static mozilla::Atomic<bool> sWeakRefsEnabled(false);
+static mozilla::Atomic<bool> sWeakRefsExposeCleanupSome(false);
 static mozilla::Atomic<bool> sIteratorHelpersEnabled(false);
+
+static JS::WeakRefSpecifier GetWeakRefsEnabled() {
+  if (!sWeakRefsEnabled) {
+    return JS::WeakRefSpecifier::Disabled;
+  }
+
+  if (sWeakRefsExposeCleanupSome) {
+    return JS::WeakRefSpecifier::EnabledWithCleanupSome;
+  }
+
+  return JS::WeakRefSpecifier::EnabledWithoutCleanupSome;
+}
 
 void xpc::SetPrefableRealmOptions(JS::RealmOptions& options) {
   options.creationOptions()
@@ -770,7 +783,7 @@ void xpc::SetPrefableRealmOptions(JS::RealmOptions& options) {
       .setWritableStreamsEnabled(
           StaticPrefs::javascript_options_writable_streams())
       .setPropertyErrorMessageFixEnabled(sPropertyErrorMessageFixEnabled)
-      .setWeakRefsEnabled(sWeakRefsEnabled)
+      .setWeakRefsEnabled(GetWeakRefsEnabled())
       .setIteratorHelpersEnabled(sIteratorHelpersEnabled);
 }
 
@@ -934,6 +947,8 @@ static void ReloadPrefsCallback(const char* pref, void* aXpccx) {
   bool useSourcePragmas =
       Preferences::GetBool(JS_OPTIONS_DOT_STR "source_pragmas");
   bool useAsyncStack = Preferences::GetBool(JS_OPTIONS_DOT_STR "asyncstack");
+  bool useAsyncStackCaptureDebuggeeOnly = Preferences::GetBool(
+      JS_OPTIONS_DOT_STR "asyncstack_capture_debuggee_only");
 
   bool throwOnDebuggeeWouldRun =
       Preferences::GetBool(JS_OPTIONS_DOT_STR "throw_on_debuggee_would_run");
@@ -946,9 +961,10 @@ static void ReloadPrefsCallback(const char* pref, void* aXpccx) {
   sStreamsEnabled = Preferences::GetBool(JS_OPTIONS_DOT_STR "streams");
   sPropertyErrorMessageFixEnabled =
       Preferences::GetBool(JS_OPTIONS_DOT_STR "property_error_message_fix");
+  sWeakRefsEnabled = Preferences::GetBool(JS_OPTIONS_DOT_STR "weakrefs");
+  sWeakRefsExposeCleanupSome = Preferences::GetBool(
+      JS_OPTIONS_DOT_STR "experimental.weakrefs.expose_cleanupSome");
 #ifdef NIGHTLY_BUILD
-  sWeakRefsEnabled =
-      Preferences::GetBool(JS_OPTIONS_DOT_STR "experimental.weakrefs");
   sIteratorHelpersEnabled =
       Preferences::GetBool(JS_OPTIONS_DOT_STR "experimental.iterator_helpers");
 #endif
@@ -992,6 +1008,7 @@ static void ReloadPrefsCallback(const char* pref, void* aXpccx) {
       .setThrowOnAsmJSValidationFailure(throwOnAsmJSValidationFailure)
       .setSourcePragmas(useSourcePragmas)
       .setAsyncStack(useAsyncStack)
+      .setAsyncStackCaptureDebuggeeOnly(useAsyncStackCaptureDebuggeeOnly)
       .setThrowOnDebuggeeWouldRun(throwOnDebuggeeWouldRun)
       .setDumpStackOnDebuggeeWouldRun(dumpStackOnDebuggeeWouldRun);
 

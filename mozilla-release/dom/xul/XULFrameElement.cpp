@@ -69,6 +69,13 @@ Document* XULFrameElement::GetContentDocument() {
   return nullptr;
 }
 
+uint64_t XULFrameElement::BrowserId() {
+  if (auto* bc = mFrameLoader->GetExtantBrowsingContext()) {
+    return bc->GetBrowserId();
+  }
+  return 0;
+}
+
 void XULFrameElement::LoadSrc() {
   if (!IsInUncomposedDoc() || !OwnerDoc()->GetRootElement()) {
     return;
@@ -172,8 +179,14 @@ nsresult XULFrameElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                        const nsAttrValue* aOldValue,
                                        nsIPrincipal* aSubjectPrincipal,
                                        bool aNotify) {
-  if (aNamespaceID == kNameSpaceID_None && aName == nsGkAtoms::src && aValue) {
-    LoadSrc();
+  if (aNamespaceID == kNameSpaceID_None) {
+    if (aName == nsGkAtoms::src && aValue) {
+      LoadSrc();
+    } else if (aName == nsGkAtoms::disablefullscreen && mFrameLoader) {
+      if (auto* bc = mFrameLoader->GetExtantBrowsingContext()) {
+        bc->SetFullscreenAllowedByOwner(!aValue);
+      }
+    }
   }
 
   return nsXULElement::AfterSetAttr(aNamespaceID, aName, aValue, aOldValue,

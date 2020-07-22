@@ -161,7 +161,6 @@ ${helpers.predefined_type(
     "Time",
     "computed::Time::zero()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::Time::zero()",
     parse_method="parse_non_negative",
     vector=True,
@@ -176,7 +175,6 @@ ${helpers.predefined_type(
     "TimingFunction",
     "computed::TimingFunction::ease()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::TimingFunction::ease()",
     vector=True,
     need_index=True,
@@ -190,7 +188,6 @@ ${helpers.predefined_type(
     "TransitionProperty",
     "computed::TransitionProperty::all()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::TransitionProperty::all()",
     vector=True,
     allow_empty="NotInitial",
@@ -205,7 +202,6 @@ ${helpers.predefined_type(
     "Time",
     "computed::Time::zero()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::Time::zero()",
     vector=True,
     need_index=True,
@@ -221,7 +217,6 @@ ${helpers.predefined_type(
     "AnimationName",
     "computed::AnimationName::none()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::AnimationName::none()",
     vector=True,
     need_index=True,
@@ -236,7 +231,6 @@ ${helpers.predefined_type(
     "Time",
     "computed::Time::zero()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::Time::zero()",
     parse_method="parse_non_negative",
     vector=True,
@@ -253,7 +247,6 @@ ${helpers.predefined_type(
     "TimingFunction",
     "computed::TimingFunction::ease()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::TimingFunction::ease()",
     vector=True,
     need_index=True,
@@ -268,7 +261,6 @@ ${helpers.predefined_type(
     "AnimationIterationCount",
     "computed::AnimationIterationCount::one()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::AnimationIterationCount::one()",
     vector=True,
     need_index=True,
@@ -283,7 +275,6 @@ ${helpers.single_keyword(
     "animation-direction",
     "normal reverse alternate alternate-reverse",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     need_index=True,
     animation_value_type="none",
     vector=True,
@@ -299,7 +290,6 @@ ${helpers.single_keyword(
     "animation-play-state",
     "running paused",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     need_index=True,
     animation_value_type="none",
     vector=True,
@@ -312,7 +302,7 @@ ${helpers.single_keyword(
 ${helpers.single_keyword(
     "animation-fill-mode",
     "none forwards backwards both",
-    engines="gecko servo-2013",
+    engines="gecko servo-2013 servo-2020",
     need_index=True,
     animation_value_type="none",
     vector=True,
@@ -328,7 +318,6 @@ ${helpers.predefined_type(
     "Time",
     "computed::Time::zero()",
     engines="gecko servo-2013 servo-2020",
-    servo_2020_pref="layout.2020.unimplemented",
     initial_specified_value="specified::Time::zero()",
     vector=True,
     need_index=True,
@@ -636,6 +625,21 @@ ${helpers.predefined_type(
     spec="Nonstandard (https://developer.mozilla.org/en-US/docs/Web/CSS/-moz-appearance)",
     animation_value_type="discrete",
     gecko_ffi_name="mAppearance",
+)}
+
+// A UA-sheet only property that is always set to the same value as
+// -moz-appearance.  Used to record telemetry for when author sheets
+// override the value of -moz-appearance; see
+// nsIFrame::RecordAppearanceTelemetry.
+${helpers.predefined_type(
+    "-moz-default-appearance",
+    "Appearance",
+    "computed::Appearance::None",
+    engines="gecko",
+    animation_value_type="none",
+    spec="Internal (not web-exposed)",
+    enabled_in="ua",
+    gecko_ffi_name="mDefaultAppearance",
 )}
 
 ${helpers.single_keyword(

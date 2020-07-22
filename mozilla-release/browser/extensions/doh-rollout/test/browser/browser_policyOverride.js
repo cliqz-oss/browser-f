@@ -43,7 +43,7 @@ add_task(async function testPolicyOverride() {
   );
   ensureNoTRRSelectionTelemetry();
   await ensureNoTRRModeChange(0);
-  await checkHeuristicsTelemetry("policy_without_doh", "first_run");
+  ensureNoHeuristicsTelemetry();
 
   // Simulate a network change.
   simulateNetworkChange();

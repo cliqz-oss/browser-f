@@ -912,6 +912,12 @@ this.tabs = class extends ExtensionAPI {
           nativeTab.linkedBrowser.reloadWithFlags(flags);
         },
 
+        async warmup(tabId) {
+          let nativeTab = tabTracker.getTab(tabId);
+          let tabbrowser = nativeTab.ownerGlobal.gBrowser;
+          tabbrowser.warmupTab(nativeTab);
+        },
+
         async get(tabId) {
           return tabManager.get(tabId).convert();
         },
@@ -933,18 +939,6 @@ this.tabs = class extends ExtensionAPI {
               });
             }
           }
-
-          queryInfo = Object.assign({}, queryInfo);
-
-          if (queryInfo.url !== null) {
-            queryInfo.url = new MatchPatternSet([].concat(queryInfo.url), {
-              restrictSchemes: false,
-            });
-          }
-          if (queryInfo.title !== null) {
-            queryInfo.title = new MatchGlob(queryInfo.title);
-          }
-
           return Array.from(tabManager.query(queryInfo, context), tab =>
             tab.convert()
           );
@@ -1090,25 +1084,24 @@ this.tabs = class extends ExtensionAPI {
 
         duplicate(tabId, duplicateProperties) {
           const { active, index } = duplicateProperties || {};
+          const inBackground = active === undefined ? false : !active;
+
           // Schema requires tab id.
           let nativeTab = getTabOrActive(tabId);
 
           let gBrowser = nativeTab.ownerGlobal.gBrowser;
-          let newTab = gBrowser.duplicateTab(nativeTab, true, { index });
+          let newTab = gBrowser.duplicateTab(nativeTab, true, {
+            inBackground,
+            index,
+          });
 
           tabListener.blockTabUntilRestored(newTab);
-
           return new Promise(resolve => {
-            // We need to use SSTabRestoring because any attributes set before
-            // are ignored.
+            // Use SSTabRestoring to ensure that the tab's URL is ready before
+            // resolving the promise.
             newTab.addEventListener(
               "SSTabRestoring",
-              function() {
-                if (active !== false) {
-                  gBrowser.selectedTab = newTab;
-                }
-                resolve(tabManager.convert(newTab));
-              },
+              () => resolve(tabManager.convert(newTab)),
               { once: true }
             );
           });
@@ -1489,8 +1482,11 @@ this.tabs = class extends ExtensionAPI {
             );
           }
           let nativeTab = getTabOrActive(tabId);
-          nativeTab.linkedBrowser.messageManager.sendAsyncMessage(
-            "Reader:ToggleReaderMode"
+
+          nativeTab.linkedBrowser.sendMessageToActor(
+            "Reader:ToggleReaderMode",
+            {},
+            "AboutReader"
           );
         },
 

@@ -264,8 +264,7 @@ TEST(TestFetchPreloader, CacheNoneBeforeConsume)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -273,7 +272,7 @@ TEST(TestFetchPreloader, CacheNoneBeforeConsume)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   RefPtr<FakeListener> listener = new FakeListener();
@@ -303,8 +302,7 @@ TEST(TestFetchPreloader, CacheStartBeforeConsume)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -312,7 +310,7 @@ TEST(TestFetchPreloader, CacheStartBeforeConsume)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -344,8 +342,7 @@ TEST(TestFetchPreloader, CachePartOfDataBeforeConsume)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -353,7 +350,7 @@ TEST(TestFetchPreloader, CachePartOfDataBeforeConsume)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -385,8 +382,7 @@ TEST(TestFetchPreloader, CacheAllDataBeforeConsume)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -394,7 +390,7 @@ TEST(TestFetchPreloader, CacheAllDataBeforeConsume)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -426,8 +422,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsume)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -435,7 +430,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsume)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -466,8 +461,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeWithChannelError)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -475,7 +469,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeWithChannelError)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -506,8 +500,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeWithChannelCancel)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -515,7 +508,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeWithChannelCancel)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -550,8 +543,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnStartRequest)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -559,7 +551,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnStartRequest)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -591,8 +583,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnDataAvailable)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -600,7 +591,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnDataAvailable)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -632,8 +623,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnStopRequest)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -641,7 +631,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnStopRequest)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -675,8 +665,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeCancelInOnStartRequest)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -684,7 +673,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeCancelInOnStartRequest)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -719,8 +708,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeCancelInOnDataAvailable)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -728,7 +716,7 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeCancelInOnDataAvailable)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -764,8 +752,7 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnDataAvailable)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -773,7 +760,7 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnDataAvailable)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -806,8 +793,7 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnStartRequestAndRace)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -815,7 +801,7 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnStartRequestAndRace)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -856,8 +842,7 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnDataAvailableAndRace)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -865,7 +850,7 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnDataAvailableAndRace)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));
@@ -906,8 +891,7 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeThrowFromOnStartRequestAndRace)
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("https://example.com"));
-  auto key = mozilla::PreloadHashKey::CreateAsFetch(
-      uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty);
+  auto key = mozilla::PreloadHashKey::CreateAsFetch(uri, mozilla::CORS_NONE);
 
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
@@ -915,7 +899,7 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeThrowFromOnStartRequestAndRace)
   NS_NewXMLDocument(getter_AddRefs(doc));
 
   EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(&key, uri, mozilla::CORS_NONE,
+      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
                              mozilla::dom::ReferrerPolicy::_empty, doc)));
 
   EXPECT_TRUE(NS_SUCCEEDED(channel->Start()));

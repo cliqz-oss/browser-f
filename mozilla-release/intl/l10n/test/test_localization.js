@@ -33,7 +33,7 @@ key-attr =
   };
 
   const source = new FileSource("test", ["de", "en-US"], "/localization/{locale}");
-  L10nRegistry.registerSource(source);
+  L10nRegistry.registerSources([source]);
 
   async function* generateBundles(resIds) {
     yield * await L10nRegistry.generateBundles(["de", "en-US"], resIds);
@@ -49,6 +49,20 @@ key-attr =
       {id: "key-value2"},
       {id: "key-missing"},
       {id: "key-attr"}
+    ]);
+
+    strictEqual(values[0], "[de] Value2");
+    strictEqual(values[1], "[en] Value3");
+    strictEqual(values[2], null);
+    strictEqual(values[3], null);
+  }
+
+  {
+    let values = await l10n.formatValues([
+      "key-value1",
+      "key-value2",
+      "key-missing",
+      "key-attr"
     ]);
 
     strictEqual(values[0], "[de] Value2");
@@ -109,7 +123,7 @@ key = { PLATFORM() ->
   };
 
   const source = new FileSource("test", ["en-US"], "/localization/{locale}");
-  L10nRegistry.registerSource(source);
+  L10nRegistry.registerSources([source]);
 
   async function* generateBundles(resIds) {
     yield * await L10nRegistry.generateBundles(["en-US"], resIds);
@@ -144,7 +158,7 @@ add_task(async function test_add_remove_resourceIds() {
   };
 
   const source = new FileSource("test", ["en-US"], "/localization/{locale}");
-  L10nRegistry.registerSource(source);
+  L10nRegistry.registerSources([source]);
 
   async function* generateBundles(resIds) {
     yield * await L10nRegistry.generateBundles(["en-US"], resIds);
@@ -160,6 +174,16 @@ add_task(async function test_add_remove_resourceIds() {
   l10n.addResourceIds(["/toolkit/menu.ftl"]);
 
   values = await l10n.formatValues([{id: "key1"}, {id: "key2"}]);
+
+  strictEqual(values[0], "Value1");
+  strictEqual(values[1], "Value2");
+
+  values = await l10n.formatValues(["key1", {id: "key2"}]);
+
+  strictEqual(values[0], "Value1");
+  strictEqual(values[1], "Value2");
+
+  values = await l10n.formatValues([{id: "key1"}, "key2"]);
 
   strictEqual(values[0], "Value1");
   strictEqual(values[1], "Value2");
@@ -202,7 +226,7 @@ add_task(async function test_switch_to_async() {
   };
 
   const source = new FileSource("test", ["en-US"], "/localization/{locale}");
-  L10nRegistry.registerSource(source);
+  L10nRegistry.registerSources([source]);
 
   async function* generateBundles(resIds) {
     yield * await L10nRegistry.generateBundles(["en-US"], resIds);

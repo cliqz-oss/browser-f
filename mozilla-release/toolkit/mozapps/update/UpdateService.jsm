@@ -59,6 +59,7 @@ const PREF_APP_UPDATE_ELEVATE_ATTEMPTS = "app.update.elevate.attempts";
 const PREF_APP_UPDATE_ELEVATE_MAXATTEMPTS = "app.update.elevate.maxAttempts";
 const PREF_APP_UPDATE_LOG = "app.update.log";
 const PREF_APP_UPDATE_LOG_FILE = "app.update.log.file";
+const PREF_APP_UPDATE_NOTIFYDURINGDOWNLOAD = "app.update.notifyDuringDownload";
 const PREF_APP_UPDATE_PROMPTWAITTIME = "app.update.promptWaitTime";
 const PREF_APP_UPDATE_SERVICE_ENABLED = "app.update.service.enabled";
 const PREF_APP_UPDATE_SERVICE_ERRORS = "app.update.service.errors";
@@ -3391,13 +3392,7 @@ UpdateManager.prototype = {
         }
         updates = this._loadXMLFileIntoArray(FILE_UPDATES_XML);
       }
-      delete this._updates;
-      Object.defineProperty(this, "_updates", {
-        value: updates,
-        writable: true,
-        configurable: true,
-        enumerable: true,
-      });
+      this._updatesCache = updates;
     }
   },
 
@@ -3500,34 +3495,27 @@ UpdateManager.prototype = {
   },
 
   /**
-   * Loads the update history from the updates.xml file and then replaces
-   * |_updates| with an array of all previous updates so the file is only read
-   * once.
+   * Loads the update history from the updates.xml file into a cache.
    */
-  get _updates() {
-    delete this._updates;
-    let updates = this._loadXMLFileIntoArray(FILE_UPDATES_XML);
-    Object.defineProperty(this, "_updates", {
-      value: updates,
-      writable: true,
-      configurable: true,
-      enumerable: true,
-    });
-    return this._updates;
+  _getUpdates() {
+    if (!this._updatesCache) {
+      this._updatesCache = this._loadXMLFileIntoArray(FILE_UPDATES_XML);
+    }
+    return this._updatesCache;
   },
 
   /**
    * See nsIUpdateService.idl
    */
   getUpdateAt: function UM_getUpdateAt(aIndex) {
-    return this._updates[aIndex];
+    return this._getUpdates()[aIndex];
   },
 
   /**
    * See nsIUpdateService.idl
    */
-  get updateCount() {
-    return this._updates.length;
+  getUpdateCount() {
+    return this._getUpdates().length;
   },
 
   /**
@@ -3540,9 +3528,10 @@ UpdateManager.prototype = {
     if (!aActiveUpdate && this._activeUpdate) {
       this._updatesDirty = true;
       // Add the current active update to the front of the update history.
-      this._updates.unshift(this._activeUpdate);
+      let updates = this._getUpdates();
+      updates.unshift(this._activeUpdate);
       // Limit the update history to 10 updates.
-      this._updates.splice(10);
+      updates.splice(10);
     }
 
     this._activeUpdate = aActiveUpdate;
@@ -3670,7 +3659,7 @@ UpdateManager.prototype = {
     if (this._updatesDirty) {
       this._updatesDirty = false;
       promises[1] = this._writeUpdatesToXMLFile(
-        this._updates,
+        this._getUpdates(),
         FILE_UPDATES_XML
       ).then(wroteSuccessfully =>
         handleCriticalWriteResult(wroteSuccessfully, FILE_UPDATES_XML)
@@ -4433,6 +4422,24 @@ Downloader.prototype = {
   },
 
   /**
+   * Whether or not the user wants to be notified that an update is being
+   * downloaded.
+   */
+  get _notifyDuringDownload() {
+    return Services.prefs.getBoolPref(
+      PREF_APP_UPDATE_NOTIFYDURINGDOWNLOAD,
+      false
+    );
+  },
+
+  _notifyDownloadStatusObservers: function Downloader_notifyDownloadStatusObservers() {
+    if (this._notifyDuringDownload) {
+      let status = this.updateService.isDownloading ? "downloading" : "idle";
+      Services.obs.notifyObservers(this._update, "update-downloading", status);
+    }
+  },
+
+  /**
    * Whether or not we are currently downloading something.
    */
   get isBusy() {
@@ -4673,6 +4680,9 @@ Downloader.prototype = {
         .getService(Ci.nsIUpdateManager)
         .saveUpdates();
     }
+
+    this._notifyDownloadStatusObservers();
+
     return STATE_DOWNLOADING;
   },
 
@@ -4966,8 +4976,6 @@ Downloader.prototype = {
       }
     }
 
-    // XXX ehsan shouldShowPrompt should always be false here.
-    // But what happens when there is already a UI showing?
     var state = this._patch.state;
     var shouldShowPrompt = false;
     var shouldRegisterOnlineObserver = false;
@@ -5008,9 +5016,7 @@ Downloader.prototype = {
         } else {
           state = STATE_PENDING;
         }
-        if (this.background) {
-          shouldShowPrompt = !getCanStageUpdates();
-        }
+        shouldShowPrompt = !getCanStageUpdates();
         AUSTLMY.pingDownloadCode(this.isCompleteUpdate, AUSTLMY.DWNLD_SUCCESS);
 
         // Tell the updater.exe we're ready to apply.
@@ -5179,6 +5185,11 @@ Downloader.prototype = {
 
     this._request = null;
 
+    // This notification must happen after _request is set to null so that
+    // the correct this.updateService.isDownloading value is available in
+    // _notifyDownloadStatusObservers().
+    this._notifyDownloadStatusObservers();
+
     if (state == STATE_DOWNLOAD_FAILED) {
       var allFailed = true;
       // If we haven't already, attempt to download without BITS
@@ -5288,9 +5299,7 @@ Downloader.prototype = {
           LOG(
             "Downloader:onStopRequest - failed to stage update. Exception: " + e
           );
-          if (this.background) {
-            shouldShowPrompt = true;
-          }
+          shouldShowPrompt = true;
         }
       }
     }

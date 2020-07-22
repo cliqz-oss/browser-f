@@ -42,7 +42,7 @@ TEST_SUITES = {
     'cppunittest': {
         'aliases': ('cpp',),
         'mach_command': 'cppunittest',
-        'kwargs': {'test_file': None},
+        'kwargs': {'test_files': None},
     },
     'crashtest': {
         'aliases': ('c', 'rc'),
@@ -215,14 +215,23 @@ TEST_SUITES = {
         'mach_command': 'web-platform-tests',
         'build_flavor': 'web-platform-tests',
         'kwargs': {'subsuite': 'testharness'},
-        'task_regex': ['web-platform-tests($|.*(-1|[^0-9])$)',
+        'task_regex': ['web-platform-tests(?!-crashtest|-reftest|-wdspec|-print)'
+                       '($|.*(-1|[^0-9])$)',
                        'test-verify-wpt'],
     },
     'web-platform-tests-crashtest': {
         'aliases': ('wpt',),
         'mach_command': 'web-platform-tests',
-        'kwargs': {'include': []},
+        'build_flavor': 'web-platform-tests',
+        'kwargs': {'subsuite': 'crashtest'},
         'task_regex': ['web-platform-tests-crashtest($|.*(-1|[^0-9])$)',
+                       'test-verify-wpt'],
+    },
+    'web-platform-tests-print-reftest': {
+        'aliases': ('wpt',),
+        'mach_command': 'web-platform-tests',
+        'kwargs': {'include': []},
+        'task_regex': ['web-platform-tests-print-reftest($|.*(-1|[^0-9])$)',
                        'test-verify-wpt'],
     },
     'web-platform-tests-reftest': {
@@ -236,7 +245,8 @@ TEST_SUITES = {
     'web-platform-tests-wdspec': {
         'aliases': ('wpt',),
         'mach_command': 'web-platform-tests',
-        'kwargs': {'include': []},
+        'build_flavor': 'web-platform-tests',
+        'kwargs': {'subsuite': 'wdspec'},
         'task_regex': ['web-platform-tests-wdspec($|.*(-1|[^0-9])$)',
                        'test-verify-wpt'],
     },
@@ -530,8 +540,12 @@ class TestResolver(MozbuildObject):
     def tests_by_manifest(self):
         if not self._tests_by_manifest:
             for test in self.tests:
-                relpath = mozpath.relpath(test['path'], mozpath.dirname(test['manifest']))
-                self._tests_by_manifest[test['manifest_relpath']].append(relpath)
+                if test['flavor'] == "web-platform-tests":
+                    # Use test ids instead of paths for WPT.
+                    self._tests_by_manifest[test['manifest']].append(test['name'])
+                else:
+                    relpath = mozpath.relpath(test['path'], mozpath.dirname(test['manifest']))
+                    self._tests_by_manifest[test['manifest_relpath']].append(relpath)
         return self._tests_by_manifest
 
     @property
@@ -689,20 +703,26 @@ class TestResolver(MozbuildObject):
             return True
         return False
 
-    def get_wpt_group(self, test):
-        """Given a test object, set the group (aka manifest) that it belongs to.
+    def get_wpt_group(self, test, depth=3):
+        """Given a test object set the group (aka manifest) that it belongs to.
+
+        If a custom value for `depth` is provided, it will override the default
+        value of 3 path components.
 
         Args:
             test (dict): Test object for the particular suite and subsuite.
+            depth (int, optional): Custom number of path elements.
 
         Returns:
             str: The group the given test belongs to.
         """
-        # Extract the first path component (top level directory) as the key.
-        # This value should match the path in manifest-runtimes JSON data.
-        # Mozilla WPT paths have one extra URL component in the front.
-        components = 3 if test['name'].startswith('/_mozilla') else 2
-        group = '/'.join(test['name'].split('/')[:components])
+        # This takes into account that for mozilla-specific WPT tests, the path
+        # contains an extra '/_mozilla' prefix that must be accounted for.
+        depth = depth + 1 if test['name'].startswith('/_mozilla') else depth
+
+        group = os.path.dirname(test['name'])
+        while group.count('/') > depth:
+            group = os.path.dirname(group)
         return group
 
     def add_wpt_manifest_data(self):
@@ -736,6 +756,7 @@ class TestResolver(MozbuildObject):
 
         for manifest, data in six.iteritems(manifests):
             tests_root = data["tests_path"]  # full path on disk until web-platform tests directory
+
             for test_type, path, tests in manifest:
                 full_path = mozpath.join(tests_root, path)
                 src_path = mozpath.relpath(full_path, self.topsrcdir)
@@ -839,24 +860,6 @@ class TestResolver(MozbuildObject):
             else:
                 yield test
 
-    def get_outgoing_metadata(self):
-        paths, tags, flavors = set(), set(), set()
-        changed_files = self.repository.get_outgoing_files('AM')
-        if changed_files:
-            reader = self.mozbuild_reader(config_mode='empty')
-            files_info = reader.files_info(changed_files)
-
-            for path, info in six.iteritems(files_info):
-                paths |= info.test_files
-                tags |= info.test_tags
-                flavors |= info.test_flavors
-
-        return {
-            'paths': paths,
-            'tags': tags,
-            'flavors': flavors,
-        }
-
     def resolve_metadata(self, what):
         """Resolve tests based on the given metadata. If not specified, metadata
         from outgoing files will be used instead.
@@ -886,24 +889,5 @@ class TestResolver(MozbuildObject):
 
             if not tests:
                 print('UNKNOWN TEST: %s' % entry, file=sys.stderr)
-
-        if not what:
-            res = self.get_outgoing_metadata()
-            paths, tags, flavors = (res[key] for key in ('paths', 'tags', 'flavors'))
-
-            # This requires multiple calls to resolve_tests, because the test
-            # resolver returns tests that match every condition, while we want
-            # tests that match any condition. Bug 1210213 tracks implementing
-            # more flexible querying.
-            if tags:
-                run_tests = list(self.resolve_tests(tags=tags))
-            if paths:
-                run_tests += [t for t in self.resolve_tests(paths=paths)
-                              if not (tags & set(t.get('tags', '').split()))]
-            if flavors:
-                run_tests = [
-                    t for t in run_tests if t['flavor'] not in flavors]
-                for flavor in flavors:
-                    run_tests += list(self.resolve_tests(flavor=flavor))
 
         return run_suites, run_tests

@@ -2,8 +2,12 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 const TRACKING_PAGE = "https://tracking.example.org";
+const TRACKING_PAGE2 =
+  "https://tracking.example.org^partitionKey=(https,example.com)";
 const BENIGN_PAGE = "https://example.com";
-const HTTP_TRACKING_PAGE = "http://tracking.example.org";
+const FOREIGN_PAGE = "https://example.net";
+const FOREIGN_PAGE2 = "https://example.net^partitionKey=(https,example.com)";
+const FOREIGN_PAGE3 = "https://example.net^partitionKey=(https,example.org)";
 
 const { UrlClassifierTestUtils } = ChromeUtils.import(
   "resource://testing-common/UrlClassifierTestUtils.jsm"
@@ -26,9 +30,10 @@ XPCOMUtils.defineLazyServiceGetter(
 add_task(async function setup() {
   Services.prefs.setIntPref(
     "network.cookie.cookieBehavior",
-    Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER
+    Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN
   );
   Services.prefs.setBoolPref("privacy.purge_trackers.enabled", true);
+  Services.prefs.setCharPref("privacy.purge_trackers.logging.level", "Debug");
   Services.prefs.setStringPref(
     "urlclassifier.trackingAnnotationTable.testEntries",
     "tracking.example.org"
@@ -51,27 +56,37 @@ add_task(async function() {
     Services.perms.ALLOW_ACTION
   );
 
-  SiteDataTestUtils.addToLocalStorage(TRACKING_PAGE);
   SiteDataTestUtils.addToCookies(BENIGN_PAGE);
-  SiteDataTestUtils.addToCookies(TRACKING_PAGE);
-  await SiteDataTestUtils.addToIndexedDB(TRACKING_PAGE);
+  for (let url of [
+    TRACKING_PAGE,
+    TRACKING_PAGE2,
+    FOREIGN_PAGE,
+    FOREIGN_PAGE2,
+    FOREIGN_PAGE3,
+  ]) {
+    SiteDataTestUtils.addToLocalStorage(url);
+    SiteDataTestUtils.addToCookies(url);
+    await SiteDataTestUtils.addToIndexedDB(url);
+  }
 
   // Purge while storage access permission exists.
   await PurgeTrackerService.purgeTrackingCookieJars();
 
-  ok(
-    SiteDataTestUtils.hasCookies(TRACKING_PAGE),
-    "cookie remains while storage access permission exists."
-  );
-  ok(
-    SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
-    "localStorage should not have been removed while storage access permission exists."
-  );
-  Assert.greater(
-    await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
-    0,
-    `We have data for ${TRACKING_PAGE}`
-  );
+  for (let url of [TRACKING_PAGE, TRACKING_PAGE2]) {
+    ok(
+      SiteDataTestUtils.hasCookies(url),
+      "cookie remains while storage access permission exists."
+    );
+    ok(
+      SiteDataTestUtils.hasLocalStorage(url),
+      "localStorage should not have been removed while storage access permission exists."
+    );
+    Assert.greater(
+      await SiteDataTestUtils.getQuotaUsage(url),
+      0,
+      `We have data for ${url}`
+    );
+  }
 
   // Run purge after storage access permission has been removed.
   PermissionTestUtils.remove(TRACKING_PAGE, "storageAccessAPI");
@@ -82,20 +97,39 @@ add_task(async function() {
     "A non-tracking page should retain cookies after purging"
   );
 
+  for (let url of [FOREIGN_PAGE, FOREIGN_PAGE2, FOREIGN_PAGE3]) {
+    ok(
+      SiteDataTestUtils.hasCookies(url),
+      `A non-tracking foreign page should retain cookies after purging`
+    );
+    ok(
+      SiteDataTestUtils.hasLocalStorage(url),
+      `localStorage for ${url} should not have been removed.`
+    );
+    Assert.greater(
+      await SiteDataTestUtils.getQuotaUsage(url),
+      0,
+      `We have data for ${url}`
+    );
+  }
+
   // Cookie should have been removed.
-  ok(
-    !SiteDataTestUtils.hasCookies(TRACKING_PAGE),
-    "cookie is removed after purge with no storage access permission."
-  );
-  ok(
-    !SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
-    "localStorage should not have been removed while storage access permission exists."
-  );
-  Assert.equal(
-    await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
-    0,
-    "quota storage was deleted"
-  );
+
+  for (let url of [TRACKING_PAGE, TRACKING_PAGE2]) {
+    ok(
+      !SiteDataTestUtils.hasCookies(url),
+      "cookie is removed after purge with no storage access permission."
+    );
+    ok(
+      !SiteDataTestUtils.hasLocalStorage(url),
+      "localStorage should have been removed"
+    );
+    Assert.equal(
+      await SiteDataTestUtils.getQuotaUsage(url),
+      0,
+      "quota storage was deleted"
+    );
+  }
 
   UrlClassifierTestUtils.cleanupTestTrackers();
 });
@@ -153,6 +187,70 @@ add_task(async function() {
 });
 
 /**
+ * Test that trackers are not cleared if they are associated
+ * with an entry on the entity list that has user interaction.
+ */
+add_task(async function() {
+  Services.prefs.setBoolPref(
+    "privacy.purge_trackers.consider_entity_list",
+    true
+  );
+  // The test URL for the entity list for annotation is
+  // itisatrap.org/?resource=example.org, so we need to
+  // add example.org as a tracker.
+  Services.prefs.setCharPref(
+    "urlclassifier.trackingAnnotationTable.testEntries",
+    "example.org"
+  );
+  await UrlClassifierTestUtils.addTestTrackers();
+
+  // These are hard coded test values on the entity list.
+  const OWNER_PAGE = "https://itisatrap.org";
+  const RESOURCE_PAGE = "https://example.org";
+
+  PermissionTestUtils.add(
+    OWNER_PAGE,
+    "storageAccessAPI",
+    Services.perms.ALLOW_ACTION
+  );
+
+  SiteDataTestUtils.addToCookies(RESOURCE_PAGE);
+
+  // Add another tracker to verify we're actually purging.
+  SiteDataTestUtils.addToCookies("https://another-tracking.example.net");
+
+  await PurgeTrackerService.purgeTrackingCookieJars();
+
+  ok(
+    SiteDataTestUtils.hasCookies(RESOURCE_PAGE),
+    `${RESOURCE_PAGE} should have retained its cookies when permission is set for ${OWNER_PAGE}.`
+  );
+
+  ok(
+    !SiteDataTestUtils.hasCookies("https://another-tracking.example.net"),
+    "cookie is removed after purge with no storage access permission."
+  );
+
+  Services.prefs.setBoolPref(
+    "privacy.purge_trackers.consider_entity_list",
+    false
+  );
+
+  await PurgeTrackerService.purgeTrackingCookieJars();
+
+  ok(
+    !SiteDataTestUtils.hasCookies(RESOURCE_PAGE),
+    `${RESOURCE_PAGE} should not have retained its cookies when permission is set for ${OWNER_PAGE} and the entity list pref is off.`
+  );
+
+  PermissionTestUtils.remove(OWNER_PAGE, "storageAccessAPI");
+  await SiteDataTestUtils.clear();
+
+  Services.prefs.clearUserPref("privacy.purge_trackers.consider_entity_list");
+  UrlClassifierTestUtils.cleanupTestTrackers();
+});
+
+/**
  * Test that quota storage (even without cookies) is considered when purging trackers.
  */
 add_task(async function() {
@@ -172,13 +270,29 @@ add_task(async function() {
     );
 
     if (localStorage) {
-      SiteDataTestUtils.addToLocalStorage(TRACKING_PAGE);
-      SiteDataTestUtils.addToLocalStorage(BENIGN_PAGE);
+      for (let url of [
+        TRACKING_PAGE,
+        TRACKING_PAGE2,
+        BENIGN_PAGE,
+        FOREIGN_PAGE,
+        FOREIGN_PAGE2,
+        FOREIGN_PAGE3,
+      ]) {
+        SiteDataTestUtils.addToLocalStorage(url);
+      }
     }
 
     if (indexedDB) {
-      await SiteDataTestUtils.addToIndexedDB(TRACKING_PAGE);
-      await SiteDataTestUtils.addToIndexedDB(BENIGN_PAGE);
+      for (let url of [
+        TRACKING_PAGE,
+        TRACKING_PAGE2,
+        BENIGN_PAGE,
+        FOREIGN_PAGE,
+        FOREIGN_PAGE2,
+        FOREIGN_PAGE3,
+      ]) {
+        await SiteDataTestUtils.addToIndexedDB(url);
+      }
     }
 
     // Purge while storage access permission exists.
@@ -192,11 +306,19 @@ add_task(async function() {
     }
 
     if (indexedDB) {
-      Assert.greater(
-        await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
-        0,
-        `We have data for ${TRACKING_PAGE}`
-      );
+      for (let url of [
+        TRACKING_PAGE,
+        TRACKING_PAGE2,
+        FOREIGN_PAGE,
+        FOREIGN_PAGE2,
+        FOREIGN_PAGE3,
+      ]) {
+        Assert.greater(
+          await SiteDataTestUtils.getQuotaUsage(url),
+          0,
+          `We have data for ${url}`
+        );
+      }
     }
 
     // Run purge after storage access permission has been removed.
@@ -204,27 +326,46 @@ add_task(async function() {
     await PurgeTrackerService.purgeTrackingCookieJars();
 
     if (localStorage) {
-      ok(
-        SiteDataTestUtils.hasLocalStorage(BENIGN_PAGE),
-        "localStorage should not have been removed for benign page."
-      );
-      ok(
-        !SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
-        "localStorage should have been removed."
-      );
+      for (let url of [
+        BENIGN_PAGE,
+        FOREIGN_PAGE,
+        FOREIGN_PAGE2,
+        FOREIGN_PAGE3,
+      ]) {
+        ok(
+          SiteDataTestUtils.hasLocalStorage(url),
+          "localStorage should not have been removed for non-tracking page."
+        );
+      }
+      for (let url of [TRACKING_PAGE, TRACKING_PAGE2]) {
+        ok(
+          !SiteDataTestUtils.hasLocalStorage(url),
+          "localStorage should have been removed."
+        );
+      }
     }
 
     if (indexedDB) {
-      Assert.greater(
-        await SiteDataTestUtils.getQuotaUsage(BENIGN_PAGE),
-        0,
-        "quota storage for benign page was not deleted"
-      );
-      Assert.equal(
-        await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
-        0,
-        "quota storage was deleted"
-      );
+      for (let url of [
+        BENIGN_PAGE,
+        FOREIGN_PAGE,
+        FOREIGN_PAGE2,
+        FOREIGN_PAGE3,
+      ]) {
+        Assert.greater(
+          await SiteDataTestUtils.getQuotaUsage(url),
+          0,
+          "quota storage for non-tracking page was not deleted"
+        );
+      }
+
+      for (let url of [TRACKING_PAGE, TRACKING_PAGE2]) {
+        Assert.equal(
+          await SiteDataTestUtils.getQuotaUsage(url),
+          0,
+          "quota storage was deleted"
+        );
+      }
     }
 
     await SiteDataTestUtils.clear();
@@ -248,26 +389,42 @@ add_task(async function() {
     Date.now() + 500
   );
 
-  SiteDataTestUtils.addToLocalStorage(TRACKING_PAGE);
-  SiteDataTestUtils.addToCookies(TRACKING_PAGE);
-  await SiteDataTestUtils.addToIndexedDB(TRACKING_PAGE);
+  for (let url of [
+    TRACKING_PAGE,
+    TRACKING_PAGE2,
+    FOREIGN_PAGE,
+    FOREIGN_PAGE2,
+    FOREIGN_PAGE3,
+  ]) {
+    SiteDataTestUtils.addToLocalStorage(url);
+    SiteDataTestUtils.addToCookies(url);
+    await SiteDataTestUtils.addToIndexedDB(url);
+  }
 
   // Purge while storage access permission exists.
   await PurgeTrackerService.purgeTrackingCookieJars();
 
-  ok(
-    SiteDataTestUtils.hasCookies(TRACKING_PAGE),
-    "cookie remains while storage access permission exists."
-  );
-  ok(
-    SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
-    "localStorage should not have been removed while storage access permission exists."
-  );
-  Assert.greater(
-    await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
-    0,
-    `We have data for ${TRACKING_PAGE}`
-  );
+  for (let url of [
+    TRACKING_PAGE,
+    TRACKING_PAGE2,
+    FOREIGN_PAGE,
+    FOREIGN_PAGE2,
+    FOREIGN_PAGE3,
+  ]) {
+    ok(
+      SiteDataTestUtils.hasCookies(url),
+      "cookie remains while storage access permission exists."
+    );
+    ok(
+      SiteDataTestUtils.hasLocalStorage(url),
+      "localStorage should not have been removed while storage access permission exists."
+    );
+    Assert.greater(
+      await SiteDataTestUtils.getQuotaUsage(url),
+      0,
+      `We have data for ${url}`
+    );
+  }
 
   // Run purge after storage access permission has been removed.
   // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
@@ -275,19 +432,33 @@ add_task(async function() {
   await PurgeTrackerService.purgeTrackingCookieJars();
 
   // Cookie should have been removed.
-  ok(
-    !SiteDataTestUtils.hasCookies(TRACKING_PAGE),
-    "cookie is removed after purge with no storage access permission."
-  );
-  ok(
-    !SiteDataTestUtils.hasLocalStorage(TRACKING_PAGE),
-    "localStorage should not have been removed while storage access permission exists."
-  );
-  Assert.equal(
-    await SiteDataTestUtils.getQuotaUsage(TRACKING_PAGE),
-    0,
-    "quota storage was deleted"
-  );
+  for (let url of [TRACKING_PAGE, TRACKING_PAGE2]) {
+    ok(
+      !SiteDataTestUtils.hasCookies(url),
+      "cookie is removed after purge with no storage access permission."
+    );
+    ok(
+      !SiteDataTestUtils.hasLocalStorage(url),
+      "localStorage should not have been removed while storage access permission exists."
+    );
+    Assert.equal(
+      await SiteDataTestUtils.getQuotaUsage(url),
+      0,
+      "quota storage was deleted"
+    );
+  }
+
+  // Cookie should not have been removed.
+  for (let url of [FOREIGN_PAGE, FOREIGN_PAGE2, FOREIGN_PAGE3]) {
+    ok(
+      SiteDataTestUtils.hasCookies(url),
+      "cookie remains while storage access permission exists."
+    );
+    ok(
+      SiteDataTestUtils.hasLocalStorage(url),
+      "localStorage should not have been removed while storage access permission exists."
+    );
+  }
 
   UrlClassifierTestUtils.cleanupTestTrackers();
 });

@@ -219,7 +219,8 @@ class Browsertime(Perftest):
             # screenrecord` as well.  (There's no harm setting Firefox options for other browsers.)
             browsertime_options.extend([
                 "--video", "true",
-                "--firefox.windowRecorder", "true",
+                # Bug 1635749, disable window recorder temporarily
+                "--firefox.windowRecorder", "false",
             ])
         else:
             browsertime_options.extend([

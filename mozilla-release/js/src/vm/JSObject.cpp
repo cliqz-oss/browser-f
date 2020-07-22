@@ -1606,8 +1606,12 @@ void JSObject::swap(JSContext* cx, HandleObject a, HandleObject b) {
    * nursery pointers in either object.
    */
   MOZ_ASSERT(!IsInsideNursery(a) && !IsInsideNursery(b));
-  cx->runtime()->gc.storeBuffer().putWholeCell(a);
-  cx->runtime()->gc.storeBuffer().putWholeCell(b);
+  gc::StoreBuffer& storeBuffer = cx->runtime()->gc.storeBuffer();
+  storeBuffer.putWholeCell(a);
+  storeBuffer.putWholeCell(b);
+  if (a->zone()->wasGCStarted() || b->zone()->wasGCStarted()) {
+    storeBuffer.setMayHavePointersToDeadCells();
+  }
 
   unsigned r = NotifyGCPreSwap(a, b);
 
@@ -2835,9 +2839,17 @@ extern bool PropertySpecNameToId(JSContext* cx, JSPropertySpec::Name name,
 // JSPropertySpec list, but omit the definition if the preference is off.
 JS_FRIEND_API bool js::ShouldIgnorePropertyDefinition(JSContext* cx,
                                                       JSProtoKey key, jsid id) {
-  if (!cx->realm()->creationOptions().getToSourceEnabled()) {
-    return id == NameToId(cx->names().toSource) ||
-           id == NameToId(cx->names().uneval);
+  if (!cx->realm()->creationOptions().getToSourceEnabled() &&
+      (id == NameToId(cx->names().toSource) ||
+       id == NameToId(cx->names().uneval))) {
+    return true;
+  }
+
+  if (key == JSProto_FinalizationRegistry &&
+      cx->realm()->creationOptions().getWeakRefsEnabled() ==
+          JS::WeakRefSpecifier::EnabledWithoutCleanupSome &&
+      id == NameToId(cx->names().cleanupSome)) {
+    return true;
   }
 
   return false;
@@ -3104,6 +3116,25 @@ JSObject* js::PrimitiveToObject(JSContext* cx, const Value& v) {
   return BigIntObject::create(cx, bigInt);
 }
 
+// Like PrimitiveToObject, but returns the JSProtoKey of the prototype that
+// would be used without actually creating the object.
+JSProtoKey js::PrimitiveToProtoKey(JSContext* cx, const Value& v) {
+  if (v.isString()) {
+    return JSProto_String;
+  }
+  if (v.isNumber()) {
+    return JSProto_Number;
+  }
+  if (v.isBoolean()) {
+    return JSProto_Boolean;
+  }
+  if (v.isSymbol()) {
+    return JSProto_Symbol;
+  }
+  MOZ_ASSERT(v.isBigInt());
+  return JSProto_BigInt;
+}
+
 /*
  * Invokes the ES5 ToObject algorithm on vp, returning the result. If vp might
  * already be an object, use ToObject. reportScanStack controls how null and
@@ -3175,11 +3206,11 @@ JSObject* js::ToObjectSlowForPropertyAccess(JSContext* cx, JS::HandleValue val,
   return PrimitiveToObject(cx, val);
 }
 
-Value js::GetThisValue(JSObject* obj) {
+JSObject* js::GetThisObject(JSObject* obj) {
   // Use the WindowProxy if the global is a Window, as Window must never be
   // exposed to script.
   if (obj->is<GlobalObject>()) {
-    return ObjectValue(*ToWindowProxyIfWindow(obj));
+    return ToWindowProxyIfWindow(obj);
   }
 
   // We should not expose any environments except NSVOs to script. The NSVO is
@@ -3187,17 +3218,17 @@ Value js::GetThisValue(JSObject* obj) {
   MOZ_ASSERT(obj->is<NonSyntacticVariablesObject>() ||
              !obj->is<EnvironmentObject>());
 
-  return ObjectValue(*obj);
+  return obj;
 }
 
-Value js::GetThisValueOfLexical(JSObject* env) {
+JSObject* js::GetThisObjectOfLexical(JSObject* env) {
   MOZ_ASSERT(IsExtensibleLexicalEnvironment(env));
-  return env->as<LexicalEnvironmentObject>().thisValue();
+  return env->as<LexicalEnvironmentObject>().thisObject();
 }
 
-Value js::GetThisValueOfWith(JSObject* env) {
+JSObject* js::GetThisObjectOfWith(JSObject* env) {
   MOZ_ASSERT(env->is<WithEnvironmentObject>());
-  return GetThisValue(env->as<WithEnvironmentObject>().withThis());
+  return GetThisObject(env->as<WithEnvironmentObject>().withThis());
 }
 
 class GetObjectSlotNameFunctor : public JS::CallbackTracer::ContextFunctor {

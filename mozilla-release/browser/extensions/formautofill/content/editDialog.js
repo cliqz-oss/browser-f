@@ -159,7 +159,7 @@ class EditAddressDialog extends AutofillEditDialog {
   }
 
   localizeDocument() {
-    if (this._record) {
+    if (this._record?.guid) {
       this._elements.title.dataset.localization = "editAddressTitle";
     }
   }
@@ -175,11 +175,12 @@ class EditAddressDialog extends AutofillEditDialog {
 
 class EditCreditCardDialog extends AutofillEditDialog {
   constructor(elements, record) {
+    elements.fieldContainer._elements.billingAddress.disabled = true;
     super("creditCards", elements, record);
   }
 
   localizeDocument() {
-    if (this._record) {
+    if (this._record?.guid) {
       this._elements.title.dataset.localization = "editCreditCardTitle";
     }
   }

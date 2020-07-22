@@ -242,14 +242,12 @@ already_AddRefed<mozilla::gl::GLContext> CompositorOGL::CreateContext() {
 
   // Allow to create offscreen GL context for main Layer Manager
   if (!context && gfxEnv::LayersPreferOffscreen()) {
-    SurfaceCaps caps = SurfaceCaps::ForRGB();
-    caps.preserve = false;
-    caps.bpp16 = gfxVars::OffscreenFormat() == SurfaceFormat::R5G6B5_UINT16;
-
     nsCString discardFailureId;
-    context = GLContextProvider::CreateOffscreen(
-        mSurfaceSize, caps, CreateContextFlags::REQUIRE_COMPAT_PROFILE,
-        &discardFailureId);
+    context = GLContextProvider::CreateHeadless(
+        {CreateContextFlags::REQUIRE_COMPAT_PROFILE}, &discardFailureId);
+    if (!context->CreateOffscreenDefaultFb(mSurfaceSize)) {
+      context = nullptr;
+    }
   }
 
   if (!context) {
@@ -762,8 +760,8 @@ CompositorOGL::RenderTargetForNativeLayer(NativeLayer* aNativeLayer,
   IntRect layerRect = aNativeLayer->GetRect();
   IntRegion invalidRelativeToLayer =
       aInvalidRegion.MovedBy(-layerRect.TopLeft());
-  Maybe<GLuint> fbo =
-      aNativeLayer->NextSurfaceAsFramebuffer(invalidRelativeToLayer, false);
+  Maybe<GLuint> fbo = aNativeLayer->NextSurfaceAsFramebuffer(
+      gfx::IntRect({}, aNativeLayer->GetSize()), invalidRelativeToLayer, false);
   if (!fbo) {
     return nullptr;
   }

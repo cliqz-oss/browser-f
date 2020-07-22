@@ -12,15 +12,12 @@
 import { sortBy } from "lodash";
 import { createSelector } from "reselect";
 
-import { features } from "../utils/prefs";
-
 import type { Selector, State } from "./types";
 import type { Thread, ThreadList, Worker } from "../types";
 import type { Action } from "../actions/types";
 
 export type ThreadsState = {
   threads: ThreadList,
-  mainThread: Thread,
   traits: Object,
   isWebExtension: boolean,
 };
@@ -28,12 +25,6 @@ export type ThreadsState = {
 export function initialThreadsState(): ThreadsState {
   return {
     threads: [],
-    mainThread: {
-      actor: "",
-      url: "",
-      type: "mainThread",
-      name: "",
-    },
     traits: {},
     isWebExtension: false,
   };
@@ -47,24 +38,22 @@ export default function update(
     case "CONNECT":
       return {
         ...state,
-        mainThread: action.mainThread,
         traits: action.traits,
         isWebExtension: action.isWebExtension,
       };
-    case "INSERT_THREADS":
+    case "INSERT_THREAD":
       return {
         ...state,
-        threads: [
-          ...state.threads,
-          // This excludes the mainThread from being added in the list of threads. This change will also go away in the next set because the main thread will be in this list.
-          ...action.threads.filter(thread => thread.type != "mainThread"),
-        ],
+        threads: [...state.threads, action.newThread],
       };
-    case "REMOVE_THREADS":
-      const { threads } = action;
+
+    case "REMOVE_THREAD":
+      const { oldThread } = action;
       return {
         ...state,
-        threads: state.threads.filter(w => !threads.includes(w.actor)),
+        threads: state.threads.filter(
+          thread => oldThread.actor != thread.actor
+        ),
       };
     case "UPDATE_SERVICE_WORKER_STATUS":
       const { thread, status } = action;
@@ -77,43 +66,44 @@ export default function update(
           return t;
         }),
       };
-    case "NAVIGATE":
-      return {
-        ...initialThreadsState(),
-        mainThread: action.mainThread,
-      };
+
     default:
       return state;
   }
 }
 
-export const getThreads = (state: OuterState) => state.threads.threads;
+export const getWorkerCount = (state: State) => getThreads(state).length;
 
-export const getWorkerCount = (state: OuterState) => getThreads(state).length;
-
-export function getWorkerByThread(state: OuterState, thread: string): ?Worker {
+export function getWorkerByThread(state: State, thread: string): ?Worker {
   return getThreads(state).find(worker => worker.actor == thread);
 }
 
-export function getMainThread(state: OuterState): Thread {
-  return state.threads.mainThread;
+function isMainThread(thread: Thread) {
+  return thread.type === "mainThread";
 }
 
-export function getDebuggeeUrl(state: OuterState): string {
-  return getMainThread(state).url;
+export function getMainThread(state: State): ?Thread {
+  return state.threads.threads.find(isMainThread);
 }
+
+export function getDebuggeeUrl(state: State): string {
+  return getMainThread(state)?.url || "";
+}
+
+export const getThreads: Selector<Thread[]> = createSelector(
+  state => state.threads.threads,
+  threads => threads.filter(thread => !isMainThread(thread))
+);
 
 export const getAllThreads: Selector<Thread[]> = createSelector(
   getMainThread,
   getThreads,
-  (mainThread, threads) => [
-    mainThread,
-    ...sortBy(threads, thread => thread.name),
-  ]
+  (mainThread, threads) =>
+    [mainThread, ...sortBy(threads, thread => thread.name)].filter(Boolean)
 );
 
-export function supportsWasm(state: State): boolean {
-  return features.wasm && state.threads.traits.wasmBinarySource;
+export function getThread(state: State, threadActor: string) {
+  return getAllThreads(state).find(thread => thread.actor === threadActor);
 }
 
 // checks if a path begins with a thread actor
@@ -123,5 +113,3 @@ export function startsWithThreadActor(state: State, path: string): ?string {
   const match = path.match(new RegExp(`(${threadActors.join("|")})\/(.*)`));
   return match?.[1];
 }
-
-type OuterState = { threads: ThreadsState };

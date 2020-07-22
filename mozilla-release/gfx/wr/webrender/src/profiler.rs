@@ -635,6 +635,8 @@ pub struct TextureCacheProfileCounters {
     pub pages_color8_nearest: ResourceProfileCounter,
     pub pages_picture: ResourceProfileCounter,
     pub rasterized_blob_pixels: ResourceProfileCounter,
+    pub standalone_bytes: IntProfileCounter,
+    pub shared_bytes: IntProfileCounter,
 }
 
 impl TextureCacheProfileCounters {
@@ -650,6 +652,8 @@ impl TextureCacheProfileCounters {
                 Some(expected::NUM_RASTERIZED_BLOBS),
                 Some(expected::RASTERIZED_BLOBS_MB),
             ),
+            standalone_bytes: IntProfileCounter::new("Standalone", None),
+            shared_bytes: IntProfileCounter::new("Shared", None),
         }
     }
 }
@@ -920,6 +924,10 @@ impl RendererProfileCounters {
                 None, Some(expected::TOTAL_PICTURE_CACHE_TILES),
             ),
         }
+    }
+
+    pub fn get_draw_calls(&mut self) -> u64 {
+        self.draw_calls.accum
     }
 
     pub fn reset(&mut self) {
@@ -1561,6 +1569,8 @@ impl Profiler {
                 &renderer_profile.total_picture_cache_tiles,
                 &renderer_profile.texture_data_uploaded,
                 &backend_profile.resources.content_slices,
+                &backend_profile.resources.texture_cache.shared_bytes,
+                &backend_profile.resources.texture_cache.standalone_bytes,
             ],
             None,
             debug_renderer,

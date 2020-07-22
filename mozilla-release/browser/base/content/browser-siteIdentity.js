@@ -57,7 +57,7 @@ var gIdentityHandler = {
    * RegExp used to decide if an about url should be shown as being part of
    * the browser UI.
    */
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|config|crashes|downloads|license|logins|preferences|protections|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
+  _secureInternalPages: /^(?:accounts|addons|cache|certificate|config|crashes|downloads|license|logins|preferences|protections|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
 
   /**
    * Whether the established HTTPS connection is considered "broken".
@@ -131,8 +131,51 @@ var gIdentityHandler = {
     );
   },
 
+  get _isAboutNetErrorPage() {
+    return (
+      gBrowser.selectedBrowser.documentURI &&
+      gBrowser.selectedBrowser.documentURI.scheme == "about" &&
+      gBrowser.selectedBrowser.documentURI.pathQueryRef.startsWith("neterror")
+    );
+  },
+
+  get _isPotentiallyTrustworthy() {
+    return (
+      !this._isBrokenConnection &&
+      (this._isSecureContext ||
+        (gBrowser.selectedBrowser.documentURI &&
+          gBrowser.selectedBrowser.documentURI.scheme == "chrome"))
+    );
+  },
+
+  get _isAboutBlockedPage() {
+    return (
+      gBrowser.selectedBrowser.documentURI &&
+      gBrowser.selectedBrowser.documentURI.scheme == "about" &&
+      gBrowser.selectedBrowser.documentURI.pathQueryRef.startsWith("blocked")
+    );
+  },
+
+  _popupInitialized: false,
+  _initializePopup() {
+    if (!this._popupInitialized) {
+      let wrapper = document.getElementById("template-identity-popup");
+      wrapper.replaceWith(wrapper.content);
+      this._popupInitialized = true;
+    }
+  },
+
+  hidePopup() {
+    if (this._popupInitialized) {
+      PanelMultiView.hidePopup(this._identityPopup);
+    }
+  },
+
   // smart getters
   get _identityPopup() {
+    if (!this._popupInitialized) {
+      return null;
+    }
     delete this._identityPopup;
     return (this._identityPopup = document.getElementById("identity-popup"));
   },
@@ -399,7 +442,9 @@ var gIdentityHandler = {
     histogram.add(kMIXED_CONTENT_UNBLOCK_EVENT);
     // Reload the page with the content unblocked
     BrowserReloadWithFlags(Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_MIXED_CONTENT);
-    PanelMultiView.hidePopup(this._identityPopup);
+    if (this._popupInitialized) {
+      PanelMultiView.hidePopup(this._identityPopup);
+    }
   },
 
   enableMixedContentProtection() {
@@ -409,7 +454,9 @@ var gIdentityHandler = {
       "BrowserTab"
     );
     BrowserReload();
-    PanelMultiView.hidePopup(this._identityPopup);
+    if (this._popupInitialized) {
+      PanelMultiView.hidePopup(this._identityPopup);
+    }
   },
 
   removeCertException() {
@@ -423,7 +470,9 @@ var gIdentityHandler = {
     let port = this._uri.port > 0 ? this._uri.port : 443;
     this._overrideService.clearValidityOverride(host, port);
     BrowserReloadSkipCache();
-    PanelMultiView.hidePopup(this._identityPopup);
+    if (this._popupInitialized) {
+      PanelMultiView.hidePopup(this._identityPopup);
+    }
   },
 
   /**
@@ -484,7 +533,7 @@ var gIdentityHandler = {
     this.refreshIdentityBlock();
     // Handle a location change while the Control Center is focused
     // by closing the popup (bug 1207542)
-    if (shouldHidePopup) {
+    if (shouldHidePopup && this._popupInitialized) {
       PanelMultiView.hidePopup(this._identityPopup);
     }
 
@@ -550,7 +599,7 @@ var gIdentityHandler = {
       }
     }
 
-    if (this._identityPopup.state == "open") {
+    if (this._popupInitialized && this._identityPopup.state != "closed") {
       this.updateSitePermissions();
       PanelView.forNode(
         this._identityPopupMainView
@@ -707,14 +756,12 @@ var gIdentityHandler = {
     } else if (this._isAboutCertErrorPage) {
       // We show a warning lock icon for 'about:certerror' page.
       this._identityBox.className = "certErrorPage";
-    } else if (
-      this._isSecureContext ||
-      (gBrowser.selectedBrowser.documentURI &&
-        (gBrowser.selectedBrowser.documentURI.scheme == "about" ||
-          gBrowser.selectedBrowser.documentURI.scheme == "chrome"))
-    ) {
-      // This is a local resource (and shouldn't be marked insecure).
+    } else if (this._isAboutNetErrorPage || this._isAboutBlockedPage) {
+      // Network errors and blocked pages get a more neutral icon
       this._identityBox.className = "unknownIdentity";
+    } else if (this._isPotentiallyTrustworthy) {
+      // This is a local resource (and shouldn't be marked insecure).
+      this._identityBox.className = "localResource";
     } else {
       // This is an insecure connection.
       let warnOnInsecure =
@@ -893,6 +940,10 @@ var gIdentityHandler = {
       customRoot = this._hasCustomRoot();
     } else if (this._isAboutCertErrorPage) {
       connection = "cert-error-page";
+    } else if (this._isAboutNetErrorPage || this._isAboutBlockedPage) {
+      connection = "not-secure";
+    } else if (this._isPotentiallyTrustworthy) {
+      connection = "file";
     }
 
     // Determine the mixed content state.
@@ -1000,6 +1051,9 @@ var gIdentityHandler = {
   },
 
   setURI(uri) {
+    if (uri.schemeIs("view-source")) {
+      uri = Services.io.newURI(uri.spec.replace(/^view-source:/i, ""));
+    }
     this._uri = uri;
 
     try {
@@ -1010,8 +1064,7 @@ var gIdentityHandler = {
     }
 
     this._isSecureInternalUI =
-      uri.schemeIs("about") &&
-      this._secureInternalUIWhitelist.test(uri.pathQueryRef);
+      uri.schemeIs("about") && this._secureInternalPages.test(uri.pathQueryRef);
 
     this._pageExtensionPolicy = WebExtensionPolicy.getByURI(uri);
 
@@ -1086,9 +1139,8 @@ var gIdentityHandler = {
   },
 
   _openPopup(event) {
-    // Make sure that the display:none style we set in xul is removed now that
-    // the popup is actually needed
-    this._identityPopup.hidden = false;
+    // Make the popup available.
+    this._initializePopup();
 
     // Remove the reload hint that we show after a user has cleared a permission.
     this._permissionReloadHint.setAttribute("hidden", "true");
@@ -1099,9 +1151,10 @@ var gIdentityHandler = {
     // Add the "open" attribute to the identity box for styling
     this._identityBox.setAttribute("open", "true");
 
-    // Check the panel state of the protections panel. Hide it if needed.
-    if (gProtectionsHandler._protectionsPopup.state != "closed") {
-      PanelMultiView.hidePopup(gProtectionsHandler._protectionsPopup);
+    // Check the panel state of other panels. Hide them if needed.
+    let openPanels = Array.from(document.querySelectorAll("panel[openpanel]"));
+    for (let panel of openPanels) {
+      PanelMultiView.hidePopup(panel);
     }
 
     // Now open the popup, anchored off the primary chrome element
@@ -1242,10 +1295,12 @@ var gIdentityHandler = {
   },
 
   onLocationChange() {
-    this._permissionReloadHint.setAttribute("hidden", "true");
+    if (this._popupInitialized && this._identityPopup.state != "closed") {
+      this._permissionReloadHint.setAttribute("hidden", "true");
 
-    if (!this._permissionList.hasChildNodes()) {
-      this._permissionEmptyHint.removeAttribute("hidden");
+      if (!this._permissionList.hasChildNodes()) {
+        this._permissionEmptyHint.removeAttribute("hidden");
+      }
     }
   },
 

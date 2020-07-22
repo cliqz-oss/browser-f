@@ -40,6 +40,16 @@ class Pool extends EventEmitter {
     return this.conn.poolFor(this.actorID);
   }
 
+  /**
+   * A pool is at the top of its pool hierarchy if it has:
+   * - no parent
+   * - or it is its own parent
+   */
+  isTopPool() {
+    const parent = this.getParent();
+    return !parent || parent === this;
+  }
+
   poolFor(actorID) {
     return this.conn.poolFor(actorID);
   }
@@ -122,11 +132,6 @@ class Pool extends EventEmitter {
     return null;
   }
 
-  // True if this pool has no children.
-  isEmpty() {
-    return !this.__poolMap || this._poolMap.size == 0;
-  }
-
   // Generator that yields each non-self child of the pool.
   *poolChildren() {
     if (!this.__poolMap) {
@@ -190,17 +195,9 @@ class Pool extends EventEmitter {
         actor.destroy = destroy;
       }
     }
-    this.conn.removeActorPool(this, true);
+    this.conn.removeActorPool(this);
     this.__poolMap.clear();
     this.__poolMap = null;
-  }
-
-  /**
-   * For getting along with the devtools server pools, should be removable
-   * eventually.
-   */
-  cleanup() {
-    this.destroy();
   }
 }
 

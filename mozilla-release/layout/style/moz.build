@@ -107,6 +107,7 @@ EXPORTS.mozilla += [
     'ServoTypes.h',
     'ServoUtils.h',
     'ShadowParts.h',
+    'SharedStyleSheetCache.h',
     'StyleAnimationValue.h',
     'StyleColorInlines.h',
     'StyleSheet.h',
@@ -222,6 +223,7 @@ UNIFIED_SOURCES += [
     'ServoElementSnapshot.cpp',
     'ServoStyleSet.cpp',
     'ShadowParts.cpp',
+    'SharedStyleSheetCache.cpp',
     'StreamLoader.cpp',
     'StyleAnimationValue.cpp',
     'StyleColor.cpp',
@@ -297,9 +299,8 @@ if CONFIG['COMPILE_ENVIRONMENT']:
                   script='GenerateCSSPropsGenerated.py',
                   entry_point='generate',
                   inputs=['!ServoCSSPropList.py'])
-    GeneratedFile('ServoStyleConsts.h', script='/build/RunCbindgen.py',
-                  entry_point='generate',
-                  inputs = ['/servo/ports/geckolib', '/servo/components/style'])
+    CbindgenHeader('ServoStyleConsts.h',
+                   inputs=['/servo/ports/geckolib', '/servo/components/style'])
 
     CONFIGURE_SUBST_FILES += [
         'bindgen.toml',

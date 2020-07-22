@@ -1165,7 +1165,7 @@ const menuTracker = {
 
     if (menu.id === "placesContext") {
       const trigger = menu.triggerNode;
-      if (!trigger._placesNode) {
+      if (!trigger._placesNode?.bookmarkGuid) {
         return;
       }
 
@@ -1258,7 +1258,7 @@ this.menusInternal = class extends ExtensionAPI {
             let includeSensitiveData =
               (nativeTab &&
                 extension.tabManager.hasActiveTabPermission(nativeTab)) ||
-              (contextUrl && extension.whiteListedHosts.matches(contextUrl));
+              (contextUrl && extension.allowedOrigins.matches(contextUrl));
 
             addMenuEventInfo(
               info,

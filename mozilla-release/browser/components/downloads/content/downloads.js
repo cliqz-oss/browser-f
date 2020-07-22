@@ -208,6 +208,7 @@ var DownloadsPanel = {
    * only when data is ready.
    */
   showPanel() {
+    Services.telemetry.scalarAdd("downloads.panel_shown", 1);
     DownloadsCommon.log("Opening the downloads panel.");
 
     if (this.isPanelShowing) {
@@ -819,6 +820,7 @@ var DownloadsView = {
       while (target.nodeName != "richlistitem") {
         target = target.parentNode;
       }
+      Services.telemetry.scalarAdd("downloads.file_opened", 1);
       let download = DownloadsView.itemForElement(target).download;
       let command = "downloadsCmd_open";
       if (download.hasBlockedData) {
@@ -935,6 +937,10 @@ var DownloadsView = {
 
     DownloadsViewController.updateCommands();
 
+    let download = element._shell.download;
+    let mimeInfo = DownloadsCommon.getMimeInfo(download);
+    let { preferredAction, useSystemDefault } = mimeInfo ? mimeInfo : {};
+
     // Set the state attribute so that only the appropriate items are displayed.
     let contextMenu = document.getElementById("downloadsContextMenu");
     contextMenu.setAttribute("state", element.getAttribute("state"));
@@ -947,6 +953,30 @@ var DownloadsView = {
       "temporary-block",
       element.classList.contains("temporary-block")
     );
+    if (element.hasAttribute("is-pdf")) {
+      contextMenu.setAttribute("is-pdf", "true");
+      let alwaysUseSystemViewerItem = contextMenu.querySelector(
+        ".downloadAlwaysUseSystemDefaultMenuItem"
+      );
+      if (preferredAction === useSystemDefault) {
+        alwaysUseSystemViewerItem.setAttribute("checked", "true");
+      } else {
+        alwaysUseSystemViewerItem.removeAttribute("checked");
+      }
+      alwaysUseSystemViewerItem.toggleAttribute(
+        "enabled",
+        DownloadsCommon.alwaysOpenInSystemViewerItemEnabled
+      );
+      let useSystemViewerItem = contextMenu.querySelector(
+        ".downloadUseSystemDefaultMenuItem"
+      );
+      useSystemViewerItem.toggleAttribute(
+        "enabled",
+        DownloadsCommon.openInSystemViewerItemEnabled
+      );
+    } else {
+      contextMenu.removeAttribute("is-pdf");
+    }
   },
 
   onDownloadDragStart(aEvent) {
@@ -1088,6 +1118,22 @@ class DownloadsViewItem extends DownloadsViewUI.DownloadElementShell {
     // Otherwise, we'd have to wait for the file-type handler to execute
     // before the panel would close. This also helps to prevent the user from
     // accidentally opening a file several times.
+    DownloadsPanel.hidePanel();
+  }
+
+  downloadsCmd_openInSystemViewer() {
+    super.downloadsCmd_openInSystemViewer();
+
+    // We explicitly close the panel here to give the user the feedback that
+    // their click has been received, and we're handling the action.
+    DownloadsPanel.hidePanel();
+  }
+
+  downloadsCmd_alwaysOpenInSystemViewer() {
+    super.downloadsCmd_alwaysOpenInSystemViewer();
+
+    // We explicitly close the panel here to give the user the feedback that
+    // their click has been received, and we're handling the action.
     DownloadsPanel.hidePanel();
   }
 

@@ -3481,7 +3481,7 @@ bool CacheIRCompiler::emitGuardFunctionHasJitEntry(ObjOperandId funId,
   return true;
 }
 
-bool CacheIRCompiler::emitGuardFunctionIsNative(ObjOperandId funId) {
+bool CacheIRCompiler::emitGuardFunctionHasNoJitEntry(ObjOperandId funId) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
   Register obj = allocator.useRegister(masm, funId);
   AutoScratchRegister scratch(allocator, masm);
@@ -3491,8 +3491,8 @@ bool CacheIRCompiler::emitGuardFunctionIsNative(ObjOperandId funId) {
     return false;
   }
 
-  // Ensure obj is not an interpreted function.
-  masm.branchIfInterpreted(obj, /*isConstructing =*/false, failure->label());
+  masm.branchIfFunctionHasJitEntry(obj, /*isConstructing =*/false,
+                                   failure->label());
   return true;
 }
 
@@ -3848,6 +3848,52 @@ bool CacheIRCompiler::emitMathSqrtNumberResult(NumberOperandId inputId) {
   return true;
 }
 
+bool CacheIRCompiler::emitMathFRoundNumberResult(NumberOperandId inputId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoOutputRegister output(*this);
+  AutoAvailableFloatRegister scratch(*this, FloatReg0);
+  FloatRegister scratchFloat32 = scratch.get().asSingle();
+
+  allocator.ensureDoubleRegister(masm, inputId, scratch);
+
+  masm.convertDoubleToFloat32(scratch, scratchFloat32);
+  masm.convertFloat32ToDouble(scratchFloat32, scratch);
+
+  masm.boxDouble(scratch, output.valueReg(), scratch);
+  return true;
+}
+
+bool CacheIRCompiler::emitMathAtan2NumberResult(NumberOperandId yId,
+                                                NumberOperandId xId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+  AutoOutputRegister output(*this);
+  AutoScratchRegisterMaybeOutput scratch(allocator, masm, output);
+
+  AutoAvailableFloatRegister floatScratch0(*this, FloatReg0);
+  AutoAvailableFloatRegister floatScratch1(*this, FloatReg1);
+
+  allocator.ensureDoubleRegister(masm, yId, floatScratch0);
+  allocator.ensureDoubleRegister(masm, xId, floatScratch1);
+
+  LiveRegisterSet save(GeneralRegisterSet::Volatile(), liveVolatileFloatRegs());
+  masm.PushRegsInMask(save);
+
+  masm.setupUnalignedABICall(scratch);
+  masm.passABIArg(floatScratch0, MoveOp::DOUBLE);
+  masm.passABIArg(floatScratch1, MoveOp::DOUBLE);
+  masm.callWithABI(JS_FUNC_TO_DATA_PTR(void*, js::ecmaAtan2), MoveOp::DOUBLE);
+  masm.storeCallFloatResult(floatScratch0);
+
+  LiveRegisterSet ignore;
+  ignore.add(floatScratch0);
+  masm.PopRegsInMaskIgnore(save, ignore);
+
+  masm.boxDouble(floatScratch0, output.valueReg(), floatScratch0);
+
+  return true;
+}
+
 bool CacheIRCompiler::emitMathFloorToInt32Result(NumberOperandId inputId) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
 
@@ -3910,6 +3956,45 @@ bool CacheIRCompiler::emitMathRoundToInt32Result(NumberOperandId inputId) {
                           failure->label());
 
   EmitStoreResult(masm, scratch, JSVAL_TYPE_INT32, output);
+  return true;
+}
+
+bool CacheIRCompiler::emitInt32MinMax(bool isMax, Int32OperandId firstId,
+                                      Int32OperandId secondId,
+                                      Int32OperandId resultId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  Register first = allocator.useRegister(masm, firstId);
+  Register second = allocator.useRegister(masm, secondId);
+  Register result = allocator.defineRegister(masm, resultId);
+
+  Assembler::Condition cond =
+      isMax ? Assembler::GreaterThan : Assembler::LessThan;
+  masm.move32(first, result);
+  masm.cmp32Move32(cond, second, first, second, result);
+  return true;
+}
+
+bool CacheIRCompiler::emitNumberMinMax(bool isMax, NumberOperandId firstId,
+                                       NumberOperandId secondId,
+                                       NumberOperandId resultId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  ValueOperand output = allocator.defineValueRegister(masm, resultId);
+
+  AutoAvailableFloatRegister scratch1(*this, FloatReg0);
+  AutoAvailableFloatRegister scratch2(*this, FloatReg1);
+
+  allocator.ensureDoubleRegister(masm, firstId, scratch1);
+  allocator.ensureDoubleRegister(masm, secondId, scratch2);
+
+  if (isMax) {
+    masm.maxDouble(scratch2, scratch1, /* handleNaN = */ true);
+  } else {
+    masm.minDouble(scratch2, scratch1, /* handleNaN = */ true);
+  }
+
+  masm.boxDouble(scratch1, output, scratch1);
   return true;
 }
 
@@ -4087,11 +4172,9 @@ static void EmitAllocateBigInt(MacroAssembler& masm, Register result,
   masm.bind(&done);
 }
 
-bool CacheIRCompiler::emitLoadTypedElementResult(ObjOperandId objId,
-                                                 Int32OperandId indexId,
-                                                 TypedThingLayout layout,
-                                                 Scalar::Type elementType,
-                                                 bool handleOOB) {
+bool CacheIRCompiler::emitLoadTypedElementResult(
+    ObjOperandId objId, Int32OperandId indexId, TypedThingLayout layout,
+    Scalar::Type elementType, bool handleOOB, bool allowDoubleForUint32) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
   AutoOutputRegister output(*this);
   Register obj = allocator.useRegister(masm, objId);
@@ -4180,8 +4263,9 @@ bool CacheIRCompiler::emitLoadTypedElementResult(ObjOperandId objId,
 
       masm.tagValue(JSVAL_TYPE_BIGINT, *bigInt, output.valueReg());
     } else {
+      bool allowDouble = *allowDoubleResult_ && allowDoubleForUint32;
       masm.loadFromTypedArray(elementType, source, output.valueReg(),
-                              *allowDoubleResult_, scratch1, failure->label());
+                              allowDouble, scratch1, failure->label());
     }
   } else {
     bool needGpr =
@@ -4216,19 +4300,20 @@ bool CacheIRCompiler::emitLoadTypedElementResult(ObjOperandId objId,
   return true;
 }
 
-bool CacheIRCompiler::emitLoadTypedArrayElementResult(ObjOperandId objId,
-                                                      Int32OperandId indexId,
-                                                      Scalar::Type elementType,
-                                                      bool handleOOB) {
-  return emitLoadTypedElementResult(
-      objId, indexId, TypedThingLayout::TypedArray, elementType, handleOOB);
+bool CacheIRCompiler::emitLoadTypedArrayElementResult(
+    ObjOperandId objId, Int32OperandId indexId, Scalar::Type elementType,
+    bool handleOOB, bool allowDoubleForUint32) {
+  return emitLoadTypedElementResult(objId, indexId,
+                                    TypedThingLayout::TypedArray, elementType,
+                                    handleOOB, allowDoubleForUint32);
 }
 
 bool CacheIRCompiler::emitLoadTypedObjectElementResult(
     ObjOperandId objId, Int32OperandId indexId, TypedThingLayout layout,
     Scalar::Type elementType) {
   return emitLoadTypedElementResult(objId, indexId, layout, elementType,
-                                    /* handleOOB = */ false);
+                                    /* handleOOB = */ false,
+                                    /* allowDoubleForUint32 = */ true);
 }
 
 bool CacheIRCompiler::emitStoreTypedObjectScalarProperty(
@@ -4430,6 +4515,20 @@ bool CacheIRCompiler::emitLoadStringResult(StringOperandId strId) {
     masm.tagValue(JSVAL_TYPE_STRING, str, output.valueReg());
   } else {
     masm.mov(str, output.typedReg().gpr());
+  }
+
+  return true;
+}
+
+bool CacheIRCompiler::emitLoadSymbolResult(SymbolOperandId symId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+  AutoOutputRegister output(*this);
+  Register sym = allocator.useRegister(masm, symId);
+
+  if (output.hasValue()) {
+    masm.tagValue(JSVAL_TYPE_SYMBOL, sym, output.valueReg());
+  } else {
+    masm.mov(sym, output.typedReg().gpr());
   }
 
   return true;
@@ -5825,6 +5924,15 @@ bool CacheIRCompiler::emitLoadObject(ObjOperandId resultId,
   return true;
 }
 
+bool CacheIRCompiler::emitLoadInt32Constant(uint32_t valOffset,
+                                            Int32OperandId resultId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+  Register reg = allocator.defineRegister(masm, resultId);
+  StubFieldOffset val(valOffset, StubField::Type::RawWord);
+  emitLoadStubField(val, reg);
+  return true;
+}
+
 bool CacheIRCompiler::emitCallInt32ToString(Int32OperandId inputId,
                                             StringOperandId resultId) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
@@ -5957,10 +6065,12 @@ bool CacheIRCompiler::emitCallStringConcatResult(StringOperandId lhsId,
 
   callvm.prepare();
 
+  masm.Push(static_cast<js::jit::Imm32>(js::gc::DefaultHeap));
   masm.Push(rhs);
   masm.Push(lhs);
 
-  using Fn = JSString* (*)(JSContext*, HandleString, HandleString);
+  using Fn = JSString* (*)(JSContext*, HandleString, HandleString,
+                           js::gc::InitialHeap);
   callvm.call<Fn, ConcatStrings<CanGC>>();
 
   return true;
@@ -6085,6 +6195,171 @@ bool CacheIRCompiler::emitCallGetSparseElementResult(ObjOperandId objId,
   using Fn = bool (*)(JSContext * cx, HandleArrayObject obj, int32_t int_id,
                       MutableHandleValue result);
   callvm.call<Fn, GetSparseElementHelper>();
+  return true;
+}
+
+bool CacheIRCompiler::emitCallRegExpMatcherResult(ObjOperandId regexpId,
+                                                  StringOperandId inputId,
+                                                  Int32OperandId lastIndexId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoCallVM callvm(masm, this, allocator);
+
+  Register regexp = allocator.useRegister(masm, regexpId);
+  Register input = allocator.useRegister(masm, inputId);
+  Register lastIndex = allocator.useRegister(masm, lastIndexId);
+
+  callvm.prepare();
+  masm.Push(ImmWord(0));  // nullptr MatchPairs.
+  masm.Push(lastIndex);
+  masm.Push(input);
+  masm.Push(regexp);
+
+  using Fn = bool (*)(JSContext*, HandleObject regexp, HandleString input,
+                      int32_t lastIndex, MatchPairs * pairs,
+                      MutableHandleValue output);
+  callvm.call<Fn, RegExpMatcherRaw>();
+  return true;
+}
+
+bool CacheIRCompiler::emitCallRegExpSearcherResult(ObjOperandId regexpId,
+                                                   StringOperandId inputId,
+                                                   Int32OperandId lastIndexId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoCallVM callvm(masm, this, allocator);
+
+  Register regexp = allocator.useRegister(masm, regexpId);
+  Register input = allocator.useRegister(masm, inputId);
+  Register lastIndex = allocator.useRegister(masm, lastIndexId);
+
+  callvm.prepare();
+  masm.Push(ImmWord(0));  // nullptr MatchPairs.
+  masm.Push(lastIndex);
+  masm.Push(input);
+  masm.Push(regexp);
+
+  using Fn = bool (*)(JSContext*, HandleObject regexp, HandleString input,
+                      int32_t lastIndex, MatchPairs * pairs, int32_t * result);
+  callvm.call<Fn, RegExpSearcherRaw>();
+  return true;
+}
+
+bool CacheIRCompiler::emitCallRegExpTesterResult(ObjOperandId regexpId,
+                                                 StringOperandId inputId,
+                                                 Int32OperandId lastIndexId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoCallVM callvm(masm, this, allocator);
+
+  Register regexp = allocator.useRegister(masm, regexpId);
+  Register input = allocator.useRegister(masm, inputId);
+  Register lastIndex = allocator.useRegister(masm, lastIndexId);
+
+  callvm.prepare();
+  masm.Push(lastIndex);
+  masm.Push(input);
+  masm.Push(regexp);
+
+  using Fn = bool (*)(JSContext*, HandleObject regexp, HandleString input,
+                      int32_t lastIndex, int32_t * result);
+  callvm.call<Fn, RegExpTesterRaw>();
+  return true;
+}
+
+bool CacheIRCompiler::emitCallSubstringKernelResult(StringOperandId strId,
+                                                    Int32OperandId beginId,
+                                                    Int32OperandId lengthId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoCallVM callvm(masm, this, allocator);
+
+  Register str = allocator.useRegister(masm, strId);
+  Register begin = allocator.useRegister(masm, beginId);
+  Register length = allocator.useRegister(masm, lengthId);
+
+  callvm.prepare();
+  masm.Push(length);
+  masm.Push(begin);
+  masm.Push(str);
+
+  using Fn = JSString* (*)(JSContext * cx, HandleString str, int32_t begin,
+                           int32_t len);
+  callvm.call<Fn, SubstringKernel>();
+  return true;
+}
+
+bool CacheIRCompiler::emitRegExpPrototypeOptimizableResult(
+    ObjOperandId protoId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoOutputRegister output(*this);
+  Register proto = allocator.useRegister(masm, protoId);
+  AutoScratchRegisterMaybeOutput scratch(allocator, masm, output);
+
+  Label slow, done;
+  masm.branchIfNotRegExpPrototypeOptimizable(proto, scratch, &slow);
+  masm.moveValue(BooleanValue(true), output.valueReg());
+  masm.jump(&done);
+
+  {
+    masm.bind(&slow);
+
+    LiveRegisterSet volatileRegs(GeneralRegisterSet::Volatile(),
+                                 liveVolatileFloatRegs());
+    volatileRegs.takeUnchecked(scratch);
+    masm.PushRegsInMask(volatileRegs);
+
+    masm.setupUnalignedABICall(scratch);
+    masm.loadJSContext(scratch);
+    masm.passABIArg(scratch);
+    masm.passABIArg(proto);
+    masm.callWithABI(JS_FUNC_TO_DATA_PTR(void*, RegExpPrototypeOptimizableRaw));
+    masm.storeCallBoolResult(scratch);
+
+    masm.PopRegsInMask(volatileRegs);
+    masm.tagValue(JSVAL_TYPE_BOOLEAN, scratch, output.valueReg());
+  }
+
+  masm.bind(&done);
+  return true;
+}
+
+bool CacheIRCompiler::emitRegExpInstanceOptimizableResult(
+    ObjOperandId regexpId, ObjOperandId protoId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoOutputRegister output(*this);
+  Register regexp = allocator.useRegister(masm, regexpId);
+  Register proto = allocator.useRegister(masm, protoId);
+  AutoScratchRegisterMaybeOutput scratch(allocator, masm, output);
+
+  Label slow, done;
+  masm.branchIfNotRegExpInstanceOptimizable(regexp, scratch, &slow);
+  masm.moveValue(BooleanValue(true), output.valueReg());
+  masm.jump(&done);
+
+  {
+    masm.bind(&slow);
+
+    LiveRegisterSet volatileRegs(GeneralRegisterSet::Volatile(),
+                                 liveVolatileFloatRegs());
+    volatileRegs.takeUnchecked(scratch);
+    masm.PushRegsInMask(volatileRegs);
+
+    masm.setupUnalignedABICall(scratch);
+    masm.loadJSContext(scratch);
+    masm.passABIArg(scratch);
+    masm.passABIArg(regexp);
+    masm.passABIArg(proto);
+    masm.callWithABI(JS_FUNC_TO_DATA_PTR(void*, RegExpInstanceOptimizableRaw));
+    masm.storeCallBoolResult(scratch);
+
+    masm.PopRegsInMask(volatileRegs);
+    masm.tagValue(JSVAL_TYPE_BOOLEAN, scratch, output.valueReg());
+  }
+
+  masm.bind(&done);
   return true;
 }
 
@@ -6224,6 +6499,10 @@ struct ReturnTypeToJSValueType<MutableHandleValue> {
 template <>
 struct ReturnTypeToJSValueType<bool*> {
   static constexpr JSValueType result = JSVAL_TYPE_BOOLEAN;
+};
+template <>
+struct ReturnTypeToJSValueType<int32_t*> {
+  static constexpr JSValueType result = JSVAL_TYPE_INT32;
 };
 template <>
 struct ReturnTypeToJSValueType<JSString*> {

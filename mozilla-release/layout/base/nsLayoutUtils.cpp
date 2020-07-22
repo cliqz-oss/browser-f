@@ -24,6 +24,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/PerfStats.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollOrigin.h"
 #include "mozilla/ServoStyleSetInlines.h"
 #include "mozilla/StaticPrefs_apz.h"
 #include "mozilla/StaticPrefs_dom.h"
@@ -32,6 +33,7 @@
 #include "mozilla/StaticPrefs_image.h"
 #include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/StaticPrefs_layout.h"
+#include "mozilla/SVGTextFrame.h"
 #include "mozilla/Unused.h"
 #include "mozilla/ViewportFrame.h"
 #include "mozilla/ViewportUtils.h"
@@ -107,7 +109,6 @@
 #include "nsSVGIntegrationUtils.h"
 #include "nsSVGUtils.h"
 #include "SVGImageContext.h"
-#include "SVGTextFrame.h"
 #include "nsStyleStructInlines.h"
 #include "nsStyleTransformMatrix.h"
 #include "nsIFrameInlines.h"
@@ -144,6 +145,7 @@
 #include "nsDeckFrame.h"
 #include "mozilla/dom/InspectorFontFace.h"
 #include "ViewportFrame.h"
+#include "MobileViewportManager.h"
 
 #ifdef MOZ_XUL
 #  include "nsXULPopupManager.h"
@@ -843,36 +845,97 @@ static nsRect GetDisplayPortFromMarginsData(
   //   screen resolution; since this is what Layout does most of the time,
   //   this is a good approximation. A proper solution would involve moving
   //   the choosing of the resolution to display-list building time.
-  ScreenSize alignment;
+  // We separate the alignment of the position and size of the displayport in
+  // order to allow moving by large increments with WebRender without enlarging
+  // the displayport.
+  ScreenSize posAlignment;
+  ScreenSize sizeAlignment;
 
   PresShell* presShell = presContext->PresShell();
   MOZ_ASSERT(presShell);
 
+  bool useWebRender = gfxVars::UseWebRender();
+
   if (presShell->IsDisplayportSuppressed()) {
-    alignment = ScreenSize(1, 1);
+    posAlignment = ScreenSize(1, 1);
+    sizeAlignment = ScreenSize(1, 1);
+  } else if (useWebRender) {
+    // tscrollx is very sensitive to the size of the displayport. We could just
+    // accept the regression and change it to something larger if need be,
+    // however smaller displayports also means less CPU work for most stages in
+    // webrender so we generally want to avoid very large displayports.
+    float defaultAlignment = 128.0;
+    sizeAlignment = ScreenSize(defaultAlignment, defaultAlignment);
+
+    // With WebRender we benefit from updating the displaylist and scene less
+    // often during scrolling. For this we need to move the displayport less
+    // often which we achieve by using larger alignments for the displayport's
+    // position.
+
+    // If for whatever reason the displayport does not have margins, we aren't
+    // likely to be in a situation where moving in it large increments will
+    // be beneficial.
+    float xMargin = aMarginsData->mMargins.LeftRight();
+    float yMargin = aMarginsData->mMargins.TopBottom();
+    bool hasXMargins = xMargin > 1.0;
+    bool hasYMargins = yMargin > 1.0;
+
+    // We round the alignment to a multiple of 256 to avoid small fluctuations
+    // that would cause the displaylist to be re-built.
+    float multiple = 256.0;
+
+    if (hasXMargins) {
+      // Scale the alignment so that we never move by more than a quarter of the
+      // total unaligned displayport size. At most (1.0) we move by a screenful
+      // of content.
+      float w = screenRect.width;
+      float sx = fmin(1.0, (xMargin + w) / w * 0.25);
+      posAlignment.width =
+          fmax(defaultAlignment, multiple * round(sx * w / multiple));
+    } else {
+      posAlignment.width = defaultAlignment;
+    }
+
+    if (hasYMargins) {
+      float h = screenRect.height;
+      float sy = fmin(1.0, (yMargin + h) / h * 0.25);
+      posAlignment.height =
+          fmax(defaultAlignment, multiple * round(sy * h / multiple));
+    } else {
+      posAlignment.height = defaultAlignment;
+    }
   } else if (StaticPrefs::layers_enable_tiles_AtStartup()) {
     // Don't align to tiles if they are too large, because we could expand
     // the displayport by a lot which can take more paint time. It's a tradeoff
     // though because if we don't align to tiles we have more waste on upload.
     IntSize tileSize = gfxVars::TileSize();
-    alignment = ScreenSize(std::min(256, tileSize.width),
-                           std::min(256, tileSize.height));
+    posAlignment = ScreenSize(std::min(256, tileSize.width),
+                              std::min(256, tileSize.height));
+    sizeAlignment = posAlignment;
   } else {
     // If we're not drawing with tiles then we need to be careful about not
     // hitting the max texture size and we only need 1 draw call per layer
     // so we can align to a smaller multiple.
-    alignment = ScreenSize(128, 128);
+    posAlignment = ScreenSize(128, 128);
+    sizeAlignment = ScreenSize(128, 128);
   }
 
   // Avoid division by zero.
-  if (alignment.width == 0) {
-    alignment.width = 128;
+  if (posAlignment.width == 0) {
+    posAlignment.width = 128;
   }
-  if (alignment.height == 0) {
-    alignment.height = 128;
+  if (posAlignment.height == 0) {
+    posAlignment.height = 128;
   }
 
-  if (StaticPrefs::layers_enable_tiles_AtStartup()) {
+  if (sizeAlignment.width == 0) {
+    sizeAlignment.width = 128;
+  }
+  if (sizeAlignment.height == 0) {
+    sizeAlignment.height = 128;
+  }
+
+  if (StaticPrefs::layers_enable_tiles_AtStartup() || useWebRender) {
     // Expand the rect by the margins
     screenRect.Inflate(aMarginsData->mMargins);
   } else {
@@ -889,9 +952,9 @@ static nsRect GetDisplayPortFromMarginsData(
     // Find the maximum size in screen pixels.
     int32_t maxSizeDevPx = presContext->AppUnitsToDevPixels(maxSizeAppUnits);
     int32_t maxWidthScreenPx = floor(double(maxSizeDevPx) * res.xScale) -
-                               MAX_ALIGN_ROUNDING * alignment.width;
+                               MAX_ALIGN_ROUNDING * sizeAlignment.width;
     int32_t maxHeightScreenPx = floor(double(maxSizeDevPx) * res.yScale) -
-                                MAX_ALIGN_ROUNDING * alignment.height;
+                                MAX_ALIGN_ROUNDING * sizeAlignment.height;
 
     // For each axis, inflate the margins up to the maximum size.
     const ScreenMargin& margins = aMarginsData->mMargins;
@@ -926,10 +989,12 @@ static nsRect GetDisplayPortFromMarginsData(
 
   // Round-out the display port to the nearest alignment (tiles)
   screenRect += scrollPosScreen;
-  float x = alignment.width * floor(screenRect.x / alignment.width);
-  float y = alignment.height * floor(screenRect.y / alignment.height);
-  float w = alignment.width * ceil(screenRect.width / alignment.width + 1);
-  float h = alignment.height * ceil(screenRect.height / alignment.height + 1);
+  float x = posAlignment.width * floor(screenRect.x / posAlignment.width);
+  float y = posAlignment.height * floor(screenRect.y / posAlignment.height);
+  float w =
+      sizeAlignment.width * ceil(screenRect.width / sizeAlignment.width + 1);
+  float h =
+      sizeAlignment.height * ceil(screenRect.height / sizeAlignment.height + 1);
   screenRect = ScreenRect(x, y, w, h);
   screenRect -= scrollPosScreen;
 
@@ -1427,9 +1492,9 @@ nsContainerFrame* nsLayoutUtils::LastContinuationWithChild(
 FrameChildListID nsLayoutUtils::GetChildListNameFor(nsIFrame* aChildFrame) {
   nsIFrame::ChildListID id = nsIFrame::kPrincipalList;
 
-  MOZ_DIAGNOSTIC_ASSERT(!(aChildFrame->GetStateBits() & NS_FRAME_OUT_OF_FLOW));
+  MOZ_DIAGNOSTIC_ASSERT(!aChildFrame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW));
 
-  if (aChildFrame->GetStateBits() & NS_FRAME_IS_OVERFLOW_CONTAINER) {
+  if (aChildFrame->HasAnyStateBits(NS_FRAME_IS_OVERFLOW_CONTAINER)) {
     nsIFrame* pif = aChildFrame->GetPrevInFlow();
     if (pif->GetParent() == aChildFrame->GetParent()) {
       id = nsIFrame::kExcessOverflowContainersList;
@@ -1596,7 +1661,7 @@ bool nsLayoutUtils::IsPrimaryStyleFrame(const nsIFrame* aFrame) {
 
 nsIFrame* nsLayoutUtils::GetFloatFromPlaceholder(nsIFrame* aFrame) {
   NS_ASSERTION(aFrame->IsPlaceholderFrame(), "Must have a placeholder here");
-  if (aFrame->GetStateBits() & PLACEHOLDER_FOR_FLOAT) {
+  if (aFrame->HasAnyStateBits(PLACEHOLDER_FOR_FLOAT)) {
     nsIFrame* outOfFlowFrame =
         nsPlaceholderFrame::GetRealFrameForPlaceholder(aFrame);
     NS_ASSERTION(outOfFlowFrame && outOfFlowFrame->IsFloating(),
@@ -2723,6 +2788,49 @@ const nsIFrame* nsLayoutUtils::FindNearestCommonAncestorFrame(
   return commonAncestor;
 }
 
+const nsIFrame* nsLayoutUtils::FindNearestCommonAncestorFrameWithinBlock(
+    const nsTextFrame* aFrame1, const nsTextFrame* aFrame2) {
+  MOZ_ASSERT(aFrame1);
+  MOZ_ASSERT(aFrame2);
+
+  const nsIFrame* f1 = aFrame1;
+  const nsIFrame* f2 = aFrame2;
+
+  int n1 = 1;
+  int n2 = 1;
+
+  for (auto f = f1->GetParent(); !f->IsBlockFrameOrSubclass();
+       f = f->GetParent()) {
+    ++n1;
+  }
+
+  for (auto f = f2->GetParent(); !f->IsBlockFrameOrSubclass();
+       f = f->GetParent()) {
+    ++n2;
+  }
+
+  if (n1 > n2) {
+    std::swap(n1, n2);
+    std::swap(f1, f2);
+  }
+
+  while (n2 > n1) {
+    f2 = f2->GetParent();
+    --n2;
+  }
+
+  while (n2 >= 0) {
+    if (f1 == f2) {
+      return f1;
+    }
+    f1 = f1->GetParent();
+    f2 = f2->GetParent();
+    --n2;
+  }
+
+  return nullptr;
+}
+
 nsLayoutUtils::TransformResult nsLayoutUtils::TransformPoints(
     nsIFrame* aFromFrame, nsIFrame* aToFrame, uint32_t aPointCount,
     CSSPoint* aPoints) {
@@ -3825,6 +3933,9 @@ nsresult nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext,
   if (aFlags & (PaintFrameFlags::WidgetLayers | PaintFrameFlags::ToWindow)) {
     builder->SetPaintingToWindow(true);
   }
+  if (aFlags & PaintFrameFlags::UseHighQualityScaling) {
+    builder->SetUseHighQualityScaling(true);
+  }
   if (aFlags & PaintFrameFlags::ForWebRender) {
     builder->SetPaintingForWebRender(true);
   }
@@ -4150,7 +4261,9 @@ nsresult nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext,
       list->PaintRoot(builder, aRenderingContext, flags);
   Telemetry::AccumulateTimeDelta(Telemetry::PAINT_RASTERIZE_TIME, paintStart);
 
-  presShell->EndPaint();
+  if (builder->IsPaintingToWindow()) {
+    presShell->EndPaint();
+  }
   builder->Check();
 
   if (StaticPrefs::gfx_logging_painted_pixel_count_enabled()) {
@@ -4797,7 +4910,7 @@ already_AddRefed<nsFontMetrics> nsLayoutUtils::GetFontMetricsForComputedStyle(
   }
 
   nsFont font = styleFont->mFont;
-  font.size = NSToCoordRound(font.size * aInflation);
+  font.size.ScaleBy(aInflation);
   font.variantWidth = aVariantWidth;
   return aPresContext->DeviceContext()->GetMetricsFor(font, params);
 }
@@ -4830,17 +4943,17 @@ nsBlockFrame* nsLayoutUtils::FindNearestBlockAncestor(nsIFrame* aFrame) {
 }
 
 nsIFrame* nsLayoutUtils::GetNonGeneratedAncestor(nsIFrame* aFrame) {
-  if (!(aFrame->GetStateBits() & NS_FRAME_GENERATED_CONTENT)) return aFrame;
+  if (!aFrame->HasAnyStateBits(NS_FRAME_GENERATED_CONTENT)) return aFrame;
 
   nsIFrame* f = aFrame;
   do {
     f = GetParentOrPlaceholderFor(f);
-  } while (f->GetStateBits() & NS_FRAME_GENERATED_CONTENT);
+  } while (f->HasAnyStateBits(NS_FRAME_GENERATED_CONTENT));
   return f;
 }
 
 nsIFrame* nsLayoutUtils::GetParentOrPlaceholderFor(const nsIFrame* aFrame) {
-  if ((aFrame->GetStateBits() & NS_FRAME_OUT_OF_FLOW) &&
+  if (aFrame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW) &&
       !aFrame->GetPrevInFlow()) {
     return aFrame->GetProperty(nsIFrame::PlaceholderFrameProperty());
   }
@@ -4854,7 +4967,7 @@ nsIFrame* nsLayoutUtils::GetParentOrPlaceholderForCrossDoc(nsIFrame* aFrame) {
 }
 
 nsIFrame* nsLayoutUtils::GetDisplayListParent(nsIFrame* aFrame) {
-  if (aFrame->GetStateBits() & NS_FRAME_IS_PUSHED_FLOAT) {
+  if (aFrame->HasAnyStateBits(NS_FRAME_IS_PUSHED_FLOAT)) {
     return aFrame->GetParent();
   }
   return nsLayoutUtils::GetParentOrPlaceholderForCrossDoc(aFrame);
@@ -4894,7 +5007,7 @@ nsIFrame* nsLayoutUtils::FirstContinuationOrIBSplitSibling(
     const nsIFrame* aFrame) {
   nsIFrame* result = aFrame->FirstContinuation();
 
-  if (result->GetStateBits() & NS_FRAME_PART_OF_IBSPLIT) {
+  if (result->HasAnyStateBits(NS_FRAME_PART_OF_IBSPLIT)) {
     while (auto* f = result->GetProperty(nsIFrame::IBSplitPrevSibling())) {
       result = f;
     }
@@ -4907,7 +5020,7 @@ nsIFrame* nsLayoutUtils::LastContinuationOrIBSplitSibling(
     const nsIFrame* aFrame) {
   nsIFrame* result = aFrame->FirstContinuation();
 
-  if (result->GetStateBits() & NS_FRAME_PART_OF_IBSPLIT) {
+  if (result->HasAnyStateBits(NS_FRAME_PART_OF_IBSPLIT)) {
     while (auto* f = result->GetProperty(nsIFrame::IBSplitSibling())) {
       result = f;
     }
@@ -4921,7 +5034,7 @@ bool nsLayoutUtils::IsFirstContinuationOrIBSplitSibling(
   if (aFrame->GetPrevContinuation()) {
     return false;
   }
-  if ((aFrame->GetStateBits() & NS_FRAME_PART_OF_IBSPLIT) &&
+  if (aFrame->HasAnyStateBits(NS_FRAME_PART_OF_IBSPLIT) &&
       aFrame->GetProperty(nsIFrame::IBSplitPrevSibling())) {
     return false;
   }
@@ -7426,7 +7539,8 @@ nsIFrame* nsLayoutUtils::GetReferenceFrame(nsIFrame* aFrame) {
       result |= gfx::ShapedTextFlags::TEXT_OPTIMIZE_SPEED;
       break;
     case StyleTextRendering::Auto:
-      if (aStyleFont->mFont.size < aPresContext->GetAutoQualityMinFontSize()) {
+      if (aStyleFont->mFont.size.ToCSSPixels() <
+          aPresContext->GetAutoQualityMinFontSize()) {
         result |= gfx::ShapedTextFlags::TEXT_OPTIMIZE_SPEED;
       }
       break;
@@ -8310,7 +8424,7 @@ float nsLayoutUtils::FontSizeInflationInner(const nsIFrame* aFrame,
   // Note that line heights should be inflated by the same ratio as the
   // font size of the same text; thus we operate only on the font size
   // even when we're scaling a line height.
-  nscoord styleFontSize = aFrame->StyleFont()->mFont.size;
+  nscoord styleFontSize = aFrame->StyleFont()->mFont.size.ToAppUnits();
   if (styleFontSize <= 0) {
     // Never scale zero font size.
     return 1.0;
@@ -8408,7 +8522,7 @@ static bool ShouldInflateFontsForContainer(const nsIFrame* aFrame) {
   const nsStyleText* styleText = aFrame->StyleText();
 
   return styleText->mTextSizeAdjust != StyleTextSizeAdjust::None &&
-         !(aFrame->GetStateBits() & NS_FRAME_IN_CONSTRAINED_BSIZE) &&
+         !aFrame->HasAnyStateBits(NS_FRAME_IN_CONSTRAINED_BSIZE) &&
          // We also want to disable font inflation for containers that have
          // preformatted text.
          // MathML cells need special treatment. See bug 1002526 comment 56.
@@ -8522,8 +8636,9 @@ nsRect nsLayoutUtils::GetBoxShadowRectForFrame(nsIFrame* aFrame,
 }
 
 /* static */
-bool nsLayoutUtils::GetContentViewerSize(nsPresContext* aPresContext,
-                                         LayoutDeviceIntSize& aOutSize) {
+bool nsLayoutUtils::GetContentViewerSize(
+    nsPresContext* aPresContext, LayoutDeviceIntSize& aOutSize,
+    SubtractDynamicToolbar aSubtractDynamicToolbar) {
   nsCOMPtr<nsIDocShell> docShell = aPresContext->GetDocShell();
   if (!docShell) {
     return false;
@@ -8538,7 +8653,8 @@ bool nsLayoutUtils::GetContentViewerSize(nsPresContext* aPresContext,
   nsIntRect bounds;
   cv->GetBounds(bounds);
 
-  if (aPresContext->HasDynamicToolbar() && !bounds.IsEmpty()) {
+  if (aSubtractDynamicToolbar == SubtractDynamicToolbar::Yes &&
+      aPresContext->HasDynamicToolbar() && !bounds.IsEmpty()) {
     MOZ_ASSERT(aPresContext->IsRootContentDocumentCrossProcess());
     bounds.height -= aPresContext->GetDynamicToolbarMaxHeight();
     // Collapse the size in the case the dynamic toolbar max height is greater
@@ -8553,43 +8669,17 @@ bool nsLayoutUtils::GetContentViewerSize(nsPresContext* aPresContext,
   return true;
 }
 
-static bool UpdateCompositionBoundsForRCDRSF(ParentLayerRect& aCompBounds,
-                                             nsPresContext* aPresContext,
-                                             bool aScaleContentViewerSize) {
-  nsIFrame* rootFrame = aPresContext->PresShell()->GetRootFrame();
-  if (!rootFrame) {
+bool nsLayoutUtils::UpdateCompositionBoundsForRCDRSF(
+    ParentLayerRect& aCompBounds, nsPresContext* aPresContext) {
+  LayoutDeviceIntSize contentSize;
+  if (!GetContentViewerSize(aPresContext, contentSize,
+                            SubtractDynamicToolbar::No)) {
     return false;
   }
-
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
-  nsIWidget* widget = rootFrame->GetNearestWidget();
-#else
-  nsView* view = rootFrame->GetView();
-  nsIWidget* widget = view ? view->GetWidget() : nullptr;
-#endif
-
-  if (widget) {
-    aCompBounds = ParentLayerRect(ViewAs<ParentLayerPixel>(
-        LayoutDeviceIntRect(LayoutDeviceIntPoint(),
-                            widget->GetCompositionSize()),
-        PixelCastJustification::LayoutDeviceIsParentLayerForRCDRSF));
-    return true;
-  }
-
-  LayoutDeviceIntSize contentSize;
-  if (nsLayoutUtils::GetContentViewerSize(aPresContext, contentSize)) {
-    LayoutDeviceToParentLayerScale scale;
-    if (aScaleContentViewerSize && aPresContext->GetParentPresContext()) {
-      scale =
-          LayoutDeviceToParentLayerScale(aPresContext->GetParentPresContext()
-                                             ->PresShell()
-                                             ->GetCumulativeResolution());
-    }
-    aCompBounds.SizeTo(contentSize * scale);
-    return true;
-  }
-
-  return false;
+  aCompBounds = ParentLayerRect(ViewAs<ParentLayerPixel>(
+      LayoutDeviceIntRect(LayoutDeviceIntPoint(), contentSize),
+      PixelCastJustification::LayoutDeviceIsParentLayerForRCDRSF));
+  return true;
 }
 
 /* static */
@@ -8609,7 +8699,7 @@ nsMargin nsLayoutUtils::ScrollbarAreaToExcludeFromCompositionBoundsFor(
   if (!isRootContentDocRootScrollFrame) {
     return nsMargin();
   }
-  if (LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars)) {
+  if (LookAndFeel::GetInt(LookAndFeel::IntID::UseOverlayScrollbars)) {
     return nsMargin();
   }
   nsIScrollableFrame* scrollableFrame = aScrollFrame->GetScrollTargetFrame();
@@ -8621,14 +8711,16 @@ nsMargin nsLayoutUtils::ScrollbarAreaToExcludeFromCompositionBoundsFor(
 
 /* static */
 nsSize nsLayoutUtils::CalculateCompositionSizeForFrame(
-    nsIFrame* aFrame, bool aSubtractScrollbars) {
+    nsIFrame* aFrame, bool aSubtractScrollbars,
+    const nsSize* aOverrideScrollPortSize) {
   // If we have a scrollable frame, restrict the composition bounds to its
   // scroll port. The scroll port excludes the frame borders and the scroll
   // bars, which we don't want to be part of the composition bounds.
   nsIScrollableFrame* scrollableFrame = aFrame->GetScrollTargetFrame();
   nsRect rect = scrollableFrame ? scrollableFrame->GetScrollPortRect()
                                 : aFrame->GetRect();
-  nsSize size = rect.Size();
+  nsSize size =
+      aOverrideScrollPortSize ? *aOverrideScrollPortSize : rect.Size();
 
   nsPresContext* presContext = aFrame->PresContext();
   PresShell* presShell = presContext->PresShell();
@@ -8638,7 +8730,7 @@ nsSize nsLayoutUtils::CalculateCompositionSizeForFrame(
       aFrame == presShell->GetRootScrollFrame();
   if (isRootContentDocRootScrollFrame) {
     ParentLayerRect compBounds;
-    if (UpdateCompositionBoundsForRCDRSF(compBounds, presContext, false)) {
+    if (UpdateCompositionBoundsForRCDRSF(compBounds, presContext)) {
       int32_t auPerDevPixel = presContext->AppUnitsPerDevPixel();
       size = nsSize(compBounds.width * auPerDevPixel,
                     compBounds.height * auPerDevPixel);
@@ -8679,7 +8771,7 @@ CSSSize nsLayoutUtils::CalculateRootCompositionSize(
           rootPresShell->GetCumulativeResolution() *
           nsLayoutUtils::GetTransformToAncestorScale(rootFrame));
       ParentLayerRect compBounds;
-      if (UpdateCompositionBoundsForRCDRSF(compBounds, rootPresContext, true)) {
+      if (UpdateCompositionBoundsForRCDRSF(compBounds, rootPresContext)) {
         rootCompositionSize = ViewAs<ScreenPixel>(
             compBounds.Size(),
             PixelCastJustification::ScreenIsParentLayerForRoot);
@@ -8973,66 +9065,17 @@ bool nsLayoutUtils::HasDocumentLevelListenersForApzAwareEvents(
   return false;
 }
 
-static void MaybeReflowForInflationScreenSizeChange(
-    nsPresContext* aPresContext) {
-  if (aPresContext) {
-    PresShell* presShell = aPresContext->GetPresShell();
-    const bool fontInflationWasEnabled = presShell->FontSizeInflationEnabled();
-    presShell->RecomputeFontSizeInflationEnabled();
-    bool changed = false;
-    if (presShell->FontSizeInflationEnabled() &&
-        presShell->FontSizeInflationMinTwips() != 0) {
-      aPresContext->ScreenSizeInchesForFontInflation(&changed);
-    }
-
-    changed = changed ||
-              fontInflationWasEnabled != presShell->FontSizeInflationEnabled();
-    if (changed) {
-      nsCOMPtr<nsIDocShell> docShell = aPresContext->GetDocShell();
-      if (docShell) {
-        nsCOMPtr<nsIContentViewer> cv;
-        docShell->GetContentViewer(getter_AddRefs(cv));
-        if (cv) {
-          nsTArray<nsCOMPtr<nsIContentViewer>> array;
-          cv->AppendSubtree(array);
-          for (uint32_t i = 0, iEnd = array.Length(); i < iEnd; ++i) {
-            nsCOMPtr<nsIContentViewer> cv = array[i];
-            if (RefPtr<PresShell> descendantPresShell = cv->GetPresShell()) {
-              nsIFrame* rootFrame = descendantPresShell->GetRootFrame();
-              if (rootFrame) {
-                descendantPresShell->FrameNeedsReflow(
-                    rootFrame, IntrinsicDirty::StyleChange, NS_FRAME_IS_DIRTY);
-              }
-            }
-          }
-        }
-      }
-    }
+/* static */
+bool nsLayoutUtils::CanScrollOriginClobberApz(ScrollOrigin aScrollOrigin) {
+  switch (aScrollOrigin) {
+    case ScrollOrigin::None:
+    case ScrollOrigin::NotSpecified:
+    case ScrollOrigin::Apz:
+    case ScrollOrigin::Restore:
+      return false;
+    default:
+      return true;
   }
-}
-
-/* static */
-void nsLayoutUtils::SetVisualViewportSize(PresShell* aPresShell,
-                                          CSSSize aSize) {
-  MOZ_ASSERT(aSize.width >= 0.0 && aSize.height >= 0.0);
-
-  aPresShell->SetVisualViewportSize(
-      nsPresContext::CSSPixelsToAppUnits(aSize.width),
-      nsPresContext::CSSPixelsToAppUnits(aSize.height));
-
-  // When the "font.size.inflation.minTwips" preference is set, the
-  // layout depends on the size of the screen.  Since when the size
-  // of the screen changes, the scroll position clamping scroll port
-  // size also changes, we hook in the needed updates here rather
-  // than adding a separate notification just for this change.
-  nsPresContext* presContext = aPresShell->GetPresContext();
-  MaybeReflowForInflationScreenSizeChange(presContext);
-}
-
-/* static */
-bool nsLayoutUtils::CanScrollOriginClobberApz(nsAtom* aScrollOrigin) {
-  return aScrollOrigin != nullptr && aScrollOrigin != nsGkAtoms::apz &&
-         aScrollOrigin != nsGkAtoms::restore;
 }
 
 /* static */
@@ -9049,6 +9092,16 @@ ScrollMetadata nsLayoutUtils::ComputeScrollMetadata(
   ScrollMetadata metadata;
   FrameMetrics& metrics = metadata.GetMetrics();
   metrics.SetLayoutViewport(CSSRect::FromAppUnits(aViewport));
+
+  nsIDocShell* docShell = presContext->GetDocShell();
+  BrowsingContext* bc = docShell ? docShell->GetBrowsingContext() : nullptr;
+  bool isTouchEventsEnabled =
+      docShell && docShell->GetTouchEventsOverride() ==
+                      nsIDocShell::TOUCHEVENTS_OVERRIDE_ENABLED;
+
+  if (bc && bc->InRDMPane() && isTouchEventsEnabled) {
+    metadata.SetIsRDMTouchSimulationActive(true);
+  }
 
   ViewID scrollId = ScrollableLayerGuid::NULL_SCROLL_ID;
   if (aContent) {
@@ -9127,7 +9180,7 @@ ScrollMetadata nsLayoutUtils::ComputeScrollMetadata(
       // in FrameMetrics::KeepLayoutViewportEnclosingVisualViewport.
       if (presContext->HasDynamicToolbar()) {
         CSSRect viewport = metrics.GetLayoutViewport();
-        viewport.SizeTo(nsLayoutUtils::ExpandHeightForViewportUnits(
+        viewport.SizeTo(nsLayoutUtils::ExpandHeightForDynamicToolbar(
             presContext, viewport.Size()));
         metrics.SetLayoutViewport(viewport);
 
@@ -9160,20 +9213,21 @@ ScrollMetadata nsLayoutUtils::ComputeScrollMetadata(
     // its scroll offset. We want to distinguish the case where the scroll
     // offset was "restored" because in that case the restored scroll position
     // should not overwrite a user-driven scroll.
-    nsAtom* lastOrigin = scrollableFrame->LastScrollOrigin();
-    if (lastOrigin == nsGkAtoms::restore) {
+    ScrollOrigin lastOrigin = scrollableFrame->LastScrollOrigin();
+    if (lastOrigin == ScrollOrigin::Restore) {
       metrics.SetScrollGeneration(scrollableFrame->CurrentScrollGeneration());
       metrics.SetScrollOffsetUpdateType(FrameMetrics::eRestore);
     } else if (CanScrollOriginClobberApz(lastOrigin)) {
-      if (lastOrigin == nsGkAtoms::relative) {
+      if (lastOrigin == ScrollOrigin::Relative) {
         metrics.SetIsRelative(true);
       }
       metrics.SetScrollGeneration(scrollableFrame->CurrentScrollGeneration());
       metrics.SetScrollOffsetUpdateType(FrameMetrics::eMainThread);
     }
 
-    nsAtom* lastSmoothScrollOrigin = scrollableFrame->LastSmoothScrollOrigin();
-    if (lastSmoothScrollOrigin) {
+    ScrollOrigin lastSmoothScrollOrigin =
+        scrollableFrame->LastSmoothScrollOrigin();
+    if (lastSmoothScrollOrigin != ScrollOrigin::None) {
       metrics.SetSmoothScrollOffsetUpdated(
           scrollableFrame->CurrentScrollGeneration());
     }
@@ -9335,7 +9389,7 @@ ScrollMetadata nsLayoutUtils::ComputeScrollMetadata(
   bool isRootContentDocRootScrollFrame =
       isRootScrollFrame && presContext->IsRootContentDocumentCrossProcess();
   if (isRootContentDocRootScrollFrame) {
-    UpdateCompositionBoundsForRCDRSF(frameBounds, presContext, true);
+    UpdateCompositionBoundsForRCDRSF(frameBounds, presContext);
   }
 
   nsMargin sizes = ScrollbarAreaToExcludeFromCompositionBoundsFor(aScrollFrame);
@@ -10144,7 +10198,7 @@ nsLayoutUtils::ControlCharVisibilityDefault() {
 /* static */
 already_AddRefed<nsFontMetrics> nsLayoutUtils::GetMetricsFor(
     nsPresContext* aPresContext, bool aIsVertical,
-    const nsStyleFont* aStyleFont, nscoord aFontSize, bool aUseUserFontSet) {
+    const nsStyleFont* aStyleFont, Length aFontSize, bool aUseUserFontSet) {
   nsFont font = aStyleFont->mFont;
   font.size = aFontSize;
   gfxFont::Orientation orientation =
@@ -10177,7 +10231,7 @@ void nsLayoutUtils::ComputeSystemFont(nsFont* aSystemFont,
     aSystemFont->systemFont = fontStyle.systemFont;
     aSystemFont->weight = fontStyle.weight;
     aSystemFont->stretch = fontStyle.stretch;
-    aSystemFont->size = CSSPixel::ToAppUnits(fontStyle.size);
+    aSystemFont->size = Length::FromPixels(fontStyle.size);
     // aSystemFont->langGroup = fontStyle.langGroup;
     aSystemFont->sizeAdjust = fontStyle.sizeAdjust;
 
@@ -10187,9 +10241,9 @@ void nsLayoutUtils::ComputeSystemFont(nsFont* aSystemFont,
     // XXXzw Should we even still *have* this code?  It looks to be making
     // old, probably obsolete assumptions.
 
-    if (aFontID == LookAndFeel::eFont_Field ||
-        aFontID == LookAndFeel::eFont_Button ||
-        aFontID == LookAndFeel::eFont_List) {
+    if (aFontID == LookAndFeel::FontID::Field ||
+        aFontID == LookAndFeel::FontID::Button ||
+        aFontID == LookAndFeel::FontID::List) {
       // As far as I can tell the system default fonts and sizes
       // on MS-Windows for Buttons, Listboxes/Comboxes and Text Fields are
       // all pre-determined and cannot be changed by either the control panel
@@ -10201,9 +10255,9 @@ void nsLayoutUtils::ComputeSystemFont(nsFont* aSystemFont,
       //    always use 2 points smaller than what the browser has defined as
       //    the default proportional font.
       // Assumption: system defined font is proportional
-      aSystemFont->size = std::max(
-          aDefaultVariableFont->size - nsPresContext::CSSPointsToAppUnits(2),
-          0);
+      auto newSize =
+          aDefaultVariableFont->size.ToCSSPixels() - CSSPixel::FromPoints(2.0f);
+      aSystemFont->size = Length::FromPixels(std::max(float(newSize), 0.0f));
     }
 #endif
   }
@@ -10353,4 +10407,49 @@ bool nsLayoutUtils::FrameIsMostlyScrolledOutOfViewInCrossProcess(
 
   return visibleRect->width < margin.width ||
          visibleRect->height < margin.height;
+}
+
+// static
+nsSize nsLayoutUtils::ExpandHeightForViewportUnits(nsPresContext* aPresContext,
+                                                   const nsSize& aSize) {
+  nsSize sizeForViewportUnits = aPresContext->GetSizeForViewportUnits();
+
+  // |aSize| might be the size expanded to the minimum-scale size whereas the
+  // size for viewport units is not scaled so that we need to expand the |aSize|
+  // height by multiplying by the ratio of the viewport units height to the
+  // visible area height.
+  float vhExpansionRatio = (float)sizeForViewportUnits.height /
+                           aPresContext->GetVisibleArea().height;
+
+  MOZ_ASSERT(aSize.height <= NSCoordSaturatingNonnegativeMultiply(
+                                 aSize.height, vhExpansionRatio));
+  return nsSize(aSize.width, NSCoordSaturatingNonnegativeMultiply(
+                                 aSize.height, vhExpansionRatio));
+}
+
+template <typename SizeType>
+/* static */ SizeType ExpandHeightForDynamicToolbarImpl(
+    nsPresContext* aPresContext, const SizeType& aSize) {
+  RefPtr<MobileViewportManager> MVM =
+      aPresContext->PresShell()->GetMobileViewportManager();
+  MOZ_ASSERT(MVM);
+  float toolbarHeightRatio =
+      mozilla::ScreenCoord(aPresContext->GetDynamicToolbarMaxHeight()) /
+      mozilla::ViewAs<mozilla::ScreenPixel>(
+          MVM->DisplaySize(),
+          mozilla::PixelCastJustification::LayoutDeviceIsScreenForBounds)
+          .height;
+
+  return SizeType(
+      aSize.width,
+      NSCoordSaturatingAdd(aSize.height, aSize.height * toolbarHeightRatio));
+}
+
+CSSSize nsLayoutUtils::ExpandHeightForDynamicToolbar(
+    nsPresContext* aPresContext, const CSSSize& aSize) {
+  return ExpandHeightForDynamicToolbarImpl(aPresContext, aSize);
+}
+nsSize nsLayoutUtils::ExpandHeightForDynamicToolbar(nsPresContext* aPresContext,
+                                                    const nsSize& aSize) {
+  return ExpandHeightForDynamicToolbarImpl(aPresContext, aSize);
 }

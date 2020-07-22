@@ -10,8 +10,8 @@
 
 #include "mozilla/WeakPtr.h"
 
+#include "GLScreenBuffer.h"
 #include "WebGLObjectModel.h"
-#include "WebGLRenderbuffer.h"
 #include "WebGLStrongTypes.h"
 #include "WebGLTexture.h"
 #include "WebGLTypes.h"
@@ -58,11 +58,9 @@ class WebGLFBAttachPoint final {
 
   ////
 
-  WebGLFBAttachPoint() = default;
+  WebGLFBAttachPoint();
+  explicit WebGLFBAttachPoint(WebGLFBAttachPoint&);  // Make this private.
   WebGLFBAttachPoint(const WebGLContext* webgl, GLenum attachmentPoint);
-
-  explicit WebGLFBAttachPoint(WebGLFBAttachPoint&) =
-      default;  // Make this private.
 
  public:
   ~WebGLFBAttachPoint();
@@ -140,6 +138,7 @@ class WebGLFramebuffer final : public WebGLContextBoundObject,
   const GLuint mGLName;
   bool mHasBeenBound = false;
   const UniquePtr<gl::MozFramebuffer> mOpaque;
+  gl::SwapChain mOpaqueSwapChain;
   bool mInOpaqueRAF = false;
 
  private:

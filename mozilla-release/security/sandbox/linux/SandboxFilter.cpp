@@ -70,6 +70,9 @@ using namespace sandbox::bpf_dsl;
 // actual value because it shows up in file flags.
 #define O_LARGEFILE_REAL 00100000
 
+// Not part of UAPI, but userspace sees it in F_GETFL; see bug 1650751.
+#define FMODE_NONOTIFY 0x4000000
+
 #ifndef F_LINUX_SPECIFIC_BASE
 #  define F_LINUX_SPECIFIC_BASE 1024
 #else
@@ -532,6 +535,31 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
       CASES_FOR_fstat:
         return Allow();
 
+      CASES_FOR_fcntl : {
+        Arg<int> cmd(1);
+        Arg<int> flags(2);
+        // Typical use of F_SETFL is to modify the flags returned by
+        // F_GETFL and write them back, including some flags that
+        // F_SETFL ignores.  This is a default-deny policy in case any
+        // new SETFL-able flags are added.  (In particular we want to
+        // forbid O_ASYNC; see bug 1328896, but also see bug 1408438.)
+        static const int ignored_flags =
+            O_ACCMODE | O_LARGEFILE_REAL | O_CLOEXEC | FMODE_NONOTIFY;
+        static const int allowed_flags = ignored_flags | O_APPEND | O_NONBLOCK;
+        return Switch(cmd)
+            // Close-on-exec is meaningless when execve isn't allowed, but
+            // NSPR reads the bit and asserts that it has the expected value.
+            .Case(F_GETFD, Allow())
+            .Case(
+                F_SETFD,
+                If((flags & ~FD_CLOEXEC) == 0, Allow()).Else(InvalidSyscall()))
+            // F_GETFL is also used by fdopen
+            .Case(F_GETFL, Allow())
+            .Case(F_SETFL, If((flags & ~allowed_flags) == 0, Allow())
+                               .Else(InvalidSyscall()))
+            .Default(SandboxPolicyBase::EvaluateSyscall(sysno));
+      }
+
         // Simple I/O
       case __NR_pread64:
       case __NR_write:
@@ -685,6 +713,13 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
       case __NR_sysinfo:
         return Error(EPERM);
 #endif
+
+        // Bug 1651701: an API for restartable atomic sequences and
+        // per-CPU data; exposing information about CPU numbers and
+        // when threads are migrated or preempted isn't great but the
+        // risk should be relatively low.
+      case __NR_rseq:
+        return Allow();
 
 #ifdef MOZ_ASAN
         // ASAN's error reporter wants to know if stderr is a tty.
@@ -1105,25 +1140,7 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
 
       CASES_FOR_fcntl : {
         Arg<int> cmd(1);
-        Arg<int> flags(2);
-        // Typical use of F_SETFL is to modify the flags returned by
-        // F_GETFL and write them back, including some flags that
-        // F_SETFL ignores.  This is a default-deny policy in case any
-        // new SETFL-able flags are added.  (In particular we want to
-        // forbid O_ASYNC; see bug 1328896, but also see bug 1408438.)
-        static const int ignored_flags =
-            O_ACCMODE | O_LARGEFILE_REAL | O_CLOEXEC;
-        static const int allowed_flags = ignored_flags | O_APPEND | O_NONBLOCK;
         return Switch(cmd)
-            // Close-on-exec is meaningless when execve isn't allowed, but
-            // NSPR reads the bit and asserts that it has the expected value.
-            .Case(F_GETFD, Allow())
-            .Case(
-                F_SETFD,
-                If((flags & ~FD_CLOEXEC) == 0, Allow()).Else(InvalidSyscall()))
-            .Case(F_GETFL, Allow())
-            .Case(F_SETFL, If((flags & ~allowed_flags) == 0, Allow())
-                               .Else(InvalidSyscall()))
             .Case(F_DUPFD_CLOEXEC, Allow())
             // Nvidia GL and fontconfig (newer versions) use fcntl file locking.
             .Case(F_SETLK, Allow())
@@ -1486,28 +1503,10 @@ class RDDSandboxPolicy final : public SandboxPolicyCommon {
       : SandboxPolicyCommon(aBroker, ShmemUsage::MAY_CREATE,
                             AllowUnsafeSocketPair::NO) {}
 
-  static intptr_t FcntlTrap(const sandbox::arch_seccomp_data& aArgs,
-                            void* aux) {
-    const auto cmd = static_cast<int>(aArgs.args[1]);
-    switch (cmd) {
-        // This process can't exec, so the actual close-on-exec flag
-        // doesn't matter; have it always read as true and ignore writes.
-      case F_GETFD:
-        return O_CLOEXEC;
-      case F_SETFD:
-        return 0;
-      default:
-        return -ENOSYS;
-    }
-  }
-
   ResultExpr EvaluateSyscall(int sysno) const override {
     switch (sysno) {
       case __NR_getrusage:
         return Allow();
-
-      CASES_FOR_fcntl:
-        return Trap(FcntlTrap, nullptr);
 
       // Pass through the common policy.
       default:
@@ -1618,25 +1617,7 @@ class SocketProcessSandboxPolicy final : public SandboxPolicyCommon {
 
       CASES_FOR_fcntl : {
         Arg<int> cmd(1);
-        Arg<int> flags(2);
-        // Typical use of F_SETFL is to modify the flags returned by
-        // F_GETFL and write them back, including some flags that
-        // F_SETFL ignores.  This is a default-deny policy in case any
-        // new SETFL-able flags are added.  (In particular we want to
-        // forbid O_ASYNC; see bug 1328896, but also see bug 1408438.)
-        static const int ignored_flags =
-            O_ACCMODE | O_LARGEFILE_REAL | O_CLOEXEC;
-        static const int allowed_flags = ignored_flags | O_APPEND | O_NONBLOCK;
         return Switch(cmd)
-            // Close-on-exec is meaningless when execve isn't allowed, but
-            // NSPR reads the bit and asserts that it has the expected value.
-            .Case(F_GETFD, Allow())
-            .Case(
-                F_SETFD,
-                If((flags & ~FD_CLOEXEC) == 0, Allow()).Else(InvalidSyscall()))
-            .Case(F_GETFL, Allow())
-            .Case(F_SETFL, If((flags & ~allowed_flags) == 0, Allow())
-                               .Else(InvalidSyscall()))
             .Case(F_DUPFD_CLOEXEC, Allow())
             // Nvidia GL and fontconfig (newer versions) use fcntl file locking.
             .Case(F_SETLK, Allow())

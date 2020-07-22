@@ -1506,14 +1506,8 @@ void HyperTextAccessible::GetSelectionDOMRanges(SelectionType aSelectionType,
   NS_ENSURE_SUCCESS_VOID(rv);
 
   // Remove collapsed ranges
-  uint32_t numRanges = aRanges->Length();
-  for (uint32_t idx = 0; idx < numRanges; idx++) {
-    if ((*aRanges)[idx]->Collapsed()) {
-      aRanges->RemoveElementAt(idx);
-      --numRanges;
-      --idx;
-    }
-  }
+  aRanges->RemoveElementsBy(
+      [](const auto& range) { return range->Collapsed(); });
 }
 
 int32_t HyperTextAccessible::SelectionCount() {
@@ -1709,32 +1703,12 @@ void HyperTextAccessible::EnclosingRange(a11y::TextRange& aRange) const {
 
 void HyperTextAccessible::SelectionRanges(
     nsTArray<a11y::TextRange>* aRanges) const {
-  MOZ_ASSERT(aRanges->Length() == 0, "TextRange array supposed to be empty");
-
   dom::Selection* sel = DOMSelection();
-  if (!sel) return;
-
-  aRanges->SetCapacity(sel->RangeCount());
-
-  for (uint32_t idx = 0; idx < sel->RangeCount(); idx++) {
-    const nsRange* DOMRange = sel->GetRangeAt(idx);
-    HyperTextAccessible* startContainer =
-        nsAccUtils::GetTextContainer(DOMRange->GetStartContainer());
-    HyperTextAccessible* endContainer =
-        nsAccUtils::GetTextContainer(DOMRange->GetEndContainer());
-    if (!startContainer || !endContainer) {
-      continue;
-    }
-
-    int32_t startOffset = startContainer->DOMPointToOffset(
-        DOMRange->GetStartContainer(), DOMRange->StartOffset(), false);
-    int32_t endOffset = endContainer->DOMPointToOffset(
-        DOMRange->GetEndContainer(), DOMRange->EndOffset(), true);
-
-    TextRange tr(IsTextField() ? const_cast<HyperTextAccessible*>(this) : mDoc,
-                 startContainer, startOffset, endContainer, endOffset);
-    *(aRanges->AppendElement()) = std::move(tr);
+  if (!sel) {
+    return;
   }
+
+  TextRange::TextRangesFromSelection(sel, aRanges);
 }
 
 void HyperTextAccessible::VisibleRanges(
@@ -1812,18 +1786,20 @@ void HyperTextAccessible::Shutdown() {
 }
 
 bool HyperTextAccessible::RemoveChild(Accessible* aAccessible) {
-  int32_t childIndex = aAccessible->IndexInParent();
-  int32_t count = mOffsets.Length() - childIndex;
-  if (count > 0) mOffsets.RemoveElementsAt(childIndex, count);
+  const int32_t childIndex = aAccessible->IndexInParent();
+  if (childIndex < static_cast<int64_t>(mOffsets.Length())) {
+    mOffsets.RemoveLastElements(mOffsets.Length() -
+                                aAccessible->IndexInParent());
+  }
 
   return AccessibleWrap::RemoveChild(aAccessible);
 }
 
 bool HyperTextAccessible::InsertChildAt(uint32_t aIndex, Accessible* aChild) {
-  int32_t count = mOffsets.Length() - aIndex;
-  if (count > 0) {
-    mOffsets.RemoveElementsAt(aIndex, count);
+  if (aIndex < mOffsets.Length()) {
+    mOffsets.RemoveLastElements(mOffsets.Length() - aIndex);
   }
+
   return AccessibleWrap::InsertChildAt(aIndex, aChild);
 }
 

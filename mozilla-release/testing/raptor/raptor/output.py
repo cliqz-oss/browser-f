@@ -132,7 +132,7 @@ class PerftestOutput(object):
                     break
 
             support_data_by_type[data_type]["suites"].append(suite)
-            for measurement_name, value_info in data_set["values"].iteritems():
+            for measurement_name, value_info in data_set["values"].items():
                 # Subtests are expected to be specified in a dictionary, this
                 # provides backwards compatibility with the old method
                 if not isinstance(value_info, dict):
@@ -148,6 +148,9 @@ class PerftestOutput(object):
                 new_subtest["lowerIsBetter"] = value_info.get("lowerIsBetter", True)
                 new_subtest["alertThreshold"] = value_info.get("alertThreshold", 2.0)
                 new_subtest["unit"] = value_info.get("unit", data_set["unit"])
+
+                if "shouldAlert" in value_info:
+                    new_subtest["shouldAlert"] = value_info.get("shouldAlert")
 
                 subtests.append(new_subtest)
                 vals.append([new_subtest["value"], new_subtest["name"]])
@@ -445,7 +448,7 @@ class PerftestOutput(object):
         _subtests = {}
         data = test["measurements"]["speedometer"]
         for page_cycle in data:
-            for sub, replicates in page_cycle[0].iteritems():
+            for sub, replicates in page_cycle[0].items():
                 # for each pagecycle, build a list of subtests and append all related replicates
                 if sub not in _subtests.keys():
                     # subtest not added yet, first pagecycle, so add new one
@@ -552,7 +555,7 @@ class PerftestOutput(object):
         data = test["measurements"]["ares6"]
 
         for page_cycle in data:
-            for sub, replicates in page_cycle[0].iteritems():
+            for sub, replicates in page_cycle[0].items():
                 # for each pagecycle, build a list of subtests and append all related replicates
                 if sub not in _subtests.keys():
                     # subtest not added yet, first pagecycle, so add new one
@@ -630,7 +633,7 @@ class RaptorOutput(PerftestOutput):
                 # u'https://www.amazon.com/s/url=search-alias%3Daps&field-keywords=laptop',
                 # u'unit': u'ms', u'alert_threshold': 2}
 
-                for measurement_name, replicates in test["measurements"].iteritems():
+                for measurement_name, replicates in test["measurements"].items():
                     new_subtest = {}
                     new_subtest["name"] = measurement_name
                     new_subtest["replicates"] = replicates
@@ -683,6 +686,7 @@ class RaptorOutput(PerftestOutput):
                 # to reduce the conditions in the if below, i will use this list
                 # to check if we are running an youtube playback perf test
                 youtube_playback_tests = [
+                    "youtube-playbackperf-test",
                     "youtube-playbackperf-sfr-vp9-test",
                     "youtube-playbackperf-sfr-h264-test",
                     "youtube-playbackperf-sfr-av1-test",
@@ -889,7 +893,7 @@ class RaptorOutput(PerftestOutput):
         _subtests = {}
         data = test["measurements"]["jetstream2"]
         for page_cycle in data:
-            for sub, replicates in page_cycle[0].iteritems():
+            for sub, replicates in page_cycle[0].items():
                 # for each pagecycle, build a list of subtests and append all related replicates
                 if sub not in _subtests.keys():
                     # subtest not added yet, first pagecycle, so add new one
@@ -1111,7 +1115,7 @@ class RaptorOutput(PerftestOutput):
         _subtests = {}
         data = test["measurements"]["sunspider"]
         for page_cycle in data:
-            for sub, replicates in page_cycle[0].iteritems():
+            for sub, replicates in page_cycle[0].items():
                 # for each pagecycle, build a list of subtests and append all related replicates
                 if sub not in _subtests.keys():
                     # subtest not added yet, first pagecycle, so add new one
@@ -1200,7 +1204,7 @@ class RaptorOutput(PerftestOutput):
         _subtests = {}
         data = test["measurements"]["assorted-dom"]
         for pagecycle in data:
-            for _sub, _value in pagecycle[0].iteritems():
+            for _sub, _value in pagecycle[0].items():
                 # build a list of subtests and append all related replicates
                 if _sub not in _subtests.keys():
                     # subtest not added yet, first pagecycle, so add new one
@@ -1269,7 +1273,7 @@ class RaptorOutput(PerftestOutput):
                     _subtests[name]["shouldAlert"] = True
 
         for pagecycle in data:
-            for _sub, _value in pagecycle[0].iteritems():
+            for _sub, _value in pagecycle[0].items():
                 try:
                     percent_dropped = (
                         float(_value["droppedFrames"]) / _value["decodedFrames"] * 100.0
@@ -1280,6 +1284,8 @@ class RaptorOutput(PerftestOutput):
 
                 # Remove the not needed "PlaybackPerf." prefix from each test
                 _sub = _sub.split("PlaybackPerf", 1)[-1]
+                if _sub.startswith("."):
+                    _sub = _sub[1:]
 
                 # build a list of subtests and append all related replicates
                 create_subtest_entry(
@@ -1454,7 +1460,7 @@ class BrowsertimeOutput(PerftestOutput):
                 suite = suites[test["name"]]
 
             if ("pageload" or "scenario") in test["type"]:
-                for measurement_name, replicates in test["measurements"].iteritems():
+                for measurement_name, replicates in test["measurements"].items():
                     if measurement_name not in suite["subtests"]:
                         subtest = {}
                         subtest["name"] = measurement_name

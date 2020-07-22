@@ -157,7 +157,8 @@ already_AddRefed<Promise> RTCRtpReceiver::GetStats() {
 }
 
 static UniquePtr<dom::RTCStatsCollection> GetReceiverStats_s(
-    const RefPtr<MediaPipelineReceive>& aPipeline) {
+    const RefPtr<MediaPipelineReceive>& aPipeline,
+    const nsString& aRecvTrackId) {
   UniquePtr<dom::RTCStatsCollection> report(new dom::RTCStatsCollection);
   auto asVideo = aPipeline->Conduit()->AsVideoSessionConduit();
 
@@ -166,24 +167,34 @@ static UniquePtr<dom::RTCStatsCollection> GetReceiverStats_s(
   nsString idstr = kind + NS_LITERAL_STRING("_");
   idstr.AppendInt(static_cast<uint32_t>(aPipeline->Level()));
 
-  // TODO(@@NG):ssrcs handle Conduits having multiple stats at the same level
-  // This is pending spec work
-  // Gather pipeline stats.
-  nsString localId = NS_LITERAL_STRING("inbound_rtp_") + idstr;
-  nsString remoteId;
   Maybe<uint32_t> ssrc;
   unsigned int ssrcval;
   if (aPipeline->Conduit()->GetRemoteSSRC(&ssrcval)) {
     ssrc = Some(ssrcval);
   }
 
+  // Add frame history
+  asVideo.apply([&](const auto& conduit) {
+    if (conduit->AddFrameHistory(&report->mVideoFrameHistories)) {
+      auto& history = report->mVideoFrameHistories.LastElement();
+      history.mTrackIdentifier = aRecvTrackId;
+    }
+  });
+
+  // TODO(@@NG):ssrcs handle Conduits having multiple stats at the same level
+  // This is pending spec work
+  // Gather pipeline stats.
+  nsString localId = NS_LITERAL_STRING("inbound_rtp_") + idstr;
+  nsString remoteId;
+
   // First, fill in remote stat with rtcp sender data, if present.
   uint32_t packetsSent;
   uint64_t bytesSent;
+  DOMHighResTimeStamp remoteTimestamp;
   Maybe<DOMHighResTimeStamp> timestamp =
       aPipeline->Conduit()->LastRtcpReceived();
-  if (timestamp.isSome() &&
-      aPipeline->Conduit()->GetRTCPSenderReport(&packetsSent, &bytesSent)) {
+  if (timestamp.isSome() && aPipeline->Conduit()->GetRTCPSenderReport(
+                                &packetsSent, &bytesSent, &remoteTimestamp)) {
     RTCRemoteOutboundRtpStreamStats s;
     remoteId = NS_LITERAL_STRING("inbound_rtcp_") + idstr;
     s.mTimestamp.Construct(*timestamp);
@@ -195,6 +206,7 @@ static UniquePtr<dom::RTCStatsCollection> GetReceiverStats_s(
     s.mLocalId.Construct(localId);
     s.mPacketsSent.Construct(packetsSent);
     s.mBytesSent.Construct(bytesSent);
+    s.mRemoteTimestamp.Construct(remoteTimestamp);
     if (!report->mRemoteOutboundRtpStreamStats.AppendElement(s, fallible)) {
       mozalloc_handle_oom(0);
     }
@@ -202,8 +214,8 @@ static UniquePtr<dom::RTCStatsCollection> GetReceiverStats_s(
 
   // Then, fill in local side (with cross-link to remote only if present)
   RTCInboundRtpStreamStats s;
-  // TODO(bug 1496533): Should we use the time of the most-recently received RTP
-  // packet? If so, what do we use if we haven't received any RTP? Now?
+  // TODO(bug 1496533): Should we use the time of the most-recently received
+  // RTP packet? If so, what do we use if we haven't received any RTP? Now?
   s.mTimestamp.Construct(aPipeline->GetNow());
   s.mId.Construct(localId);
   s.mType.Construct(RTCStatsType::Inbound_rtp);
@@ -264,10 +276,15 @@ static UniquePtr<dom::RTCStatsCollection> GetReceiverStats_s(
 nsTArray<RefPtr<RTCStatsPromise>> RTCRtpReceiver::GetStatsInternal() {
   nsTArray<RefPtr<RTCStatsPromise>> promises;
   if (mPipeline && mHaveStartedReceiving) {
-    promises.AppendElement(
-        InvokeAsync(mStsThread, __func__, [pipeline = mPipeline]() {
-          return RTCStatsPromise::CreateAndResolve(GetReceiverStats_s(pipeline),
-                                                   __func__);
+    nsString recvTrackId;
+    MOZ_ASSERT(mTrack);
+    if (mTrack) {
+      mTrack->GetId(recvTrackId);
+    }
+    promises.AppendElement(InvokeAsync(
+        mStsThread, __func__, [pipeline = mPipeline, recvTrackId]() {
+          return RTCStatsPromise::CreateAndResolve(
+              GetReceiverStats_s(pipeline, recvTrackId), __func__);
         }));
 
     if (mJsepTransceiver->mTransport.mComponents) {
@@ -377,9 +394,9 @@ nsresult RTCRtpReceiver::UpdateVideoConduit() {
       static_cast<VideoSessionConduit*>(mPipeline->Conduit());
 
   // NOTE(pkerr) - this is new behavior. Needed because the
-  // CreateVideoReceiveStream method of the Call API will assert (in debug) and
-  // fail if a value is not provided for the remote_ssrc that will be used by
-  // the far-end sender.
+  // CreateVideoReceiveStream method of the Call API will assert (in debug)
+  // and fail if a value is not provided for the remote_ssrc that will be used
+  // by the far-end sender.
   if (!mJsepTransceiver->mRecvTrack.GetSsrcs().empty()) {
     MOZ_LOG(gReceiverLog, LogLevel::Debug,
             ("%s[%s]: %s Setting remote SSRC %u", mPCHandle.c_str(),
@@ -392,9 +409,9 @@ nsresult RTCRtpReceiver::UpdateVideoConduit() {
                            rtxSsrc);
   }
 
-  // TODO (bug 1423041) once we pay attention to receiving MID's in RTP packets
-  // (see bug 1405495) we could make this depending on the presence of MID in
-  // the RTP packets instead of relying on the signaling.
+  // TODO (bug 1423041) once we pay attention to receiving MID's in RTP
+  // packets (see bug 1405495) we could make this depending on the presence of
+  // MID in the RTP packets instead of relying on the signaling.
   if (mJsepTransceiver->HasBundleLevel() &&
       (!mJsepTransceiver->mRecvTrack.GetNegotiatedDetails() ||
        !mJsepTransceiver->mRecvTrack.GetNegotiatedDetails()->GetExt(

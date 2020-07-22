@@ -800,11 +800,11 @@ TEST(TArray, RemoveElementAt_ByIterator)
   ASSERT_EQ(expected, array);
 }
 
-TEST(TArray, RemoveElementsAt_ByIterator)
+TEST(TArray, RemoveElementsRange_ByIterator)
 {
   nsTArray<int> array{1, 2, 3, 4};
   const auto it = std::find(array.begin(), array.end(), 3);
-  const auto itAfter = array.RemoveElementsAt(it, array.end());
+  const auto itAfter = array.RemoveElementsRange(it, array.end());
 
   // Based on the implementation of the iterator, we could compare it and
   // itAfter, but we should not rely on such implementation details.
@@ -812,6 +812,39 @@ TEST(TArray, RemoveElementsAt_ByIterator)
   ASSERT_EQ(2, std::distance(array.cbegin(), itAfter));
   const nsTArray<int> expected{1, 2};
   ASSERT_EQ(expected, array);
+}
+
+TEST(TArray, RemoveLastElements_None)
+{
+  const nsTArray<int> original{1, 2, 3, 4};
+  nsTArray<int> array = original.Clone();
+  array.RemoveLastElements(0);
+
+  ASSERT_EQ(original, array);
+}
+
+TEST(TArray, RemoveLastElements_Empty_None)
+{
+  nsTArray<int> array;
+  array.RemoveLastElements(0);
+
+  ASSERT_EQ(0u, array.Length());
+}
+
+TEST(TArray, RemoveLastElements_All)
+{
+  nsTArray<int> array{1, 2, 3, 4};
+  array.RemoveLastElements(4);
+
+  ASSERT_EQ(0u, array.Length());
+}
+
+TEST(TArray, RemoveLastElements_One)
+{
+  nsTArray<int> array{1, 2, 3, 4};
+  array.RemoveLastElements(1);
+
+  ASSERT_EQ((nsTArray<int>{1, 2, 3}), array);
 }
 
 static_assert(std::is_copy_assignable<decltype(

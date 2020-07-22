@@ -177,12 +177,13 @@ class Doctor(MachCommandBase):
 @CommandProvider
 class Clobber(MachCommandBase):
     NO_AUTO_LOG = True
-    CLOBBER_CHOICES = ['objdir', 'python', 'gradle']
+    CLOBBER_CHOICES = set(['objdir', 'python', 'gradle'])
 
     @Command('clobber', category='build',
              description='Clobber the tree (delete the object directory).')
-    @CommandArgument('what', default=['objdir'], nargs='*',
-                     help='Target to clobber, must be one of {{{}}} (default objdir).'.format(
+    @CommandArgument('what', default=['objdir', 'python'], nargs='*',
+                     help='Target to clobber, must be one of {{{}}} (default '
+                     'objdir and python).'.format(
              ', '.join(CLOBBER_CHOICES)))
     @CommandArgument('--full', action='store_true',
                      help='Perform a full clobber')
@@ -194,23 +195,26 @@ class Clobber(MachCommandBase):
         Sometimes it is necessary to clean up these files in order to make
         things work again. This command can be used to perform that cleanup.
 
-        By default, this command removes most files in the current object
-        directory (where build output is stored). Some files (like Visual
-        Studio project files) are not removed by default. If you would like
-        to remove the object directory in its entirety, run with `--full`.
+        The `objdir` target removes most files in the current object directory
+        (where build output is stored). Some files (like Visual Studio project
+        files) are not removed by default. If you would like to remove the
+        object directory in its entirety, run with `--full`.
 
         The `python` target will clean up various generated Python files from
         the source directory and will remove untracked files from well-known
         directories containing Python packages. Run this to remove .pyc files,
         compiled C extensions, etc. Note: all files not tracked or ignored by
-        version control in well-known Python package directories will be
-        deleted. Run the `status` command of your VCS to see if any untracked
-        files you haven't committed yet will be deleted.
+        version control in third_party/python will be deleted. Run the `status`
+        command of your VCS to see if any untracked files you haven't committed
+        yet will be deleted.
 
         The `gradle` target will remove the "gradle" subdirectory of the object
         directory.
+
+        By default, the command clobbers the `objdir` and `python` targets.
         """
-        invalid = set(what) - set(self.CLOBBER_CHOICES)
+        what = set(what)
+        invalid = what - self.CLOBBER_CHOICES
         if invalid:
             print('Unknown clobber target(s): {}'.format(', '.join(invalid)))
             return 1
@@ -233,10 +237,10 @@ class Clobber(MachCommandBase):
             if conditions.is_hg(self):
                 cmd = ['hg', '--config', 'extensions.purge=', 'purge', '--all',
                        '-I', 'glob:**.py[cdo]', '-I', 'glob:**/__pycache__',
-                       '-I', 'path:python/', '-I', 'path:third_party/python/']
+                       '-I', 'path:third_party/python/']
             elif conditions.is_git(self):
                 cmd = ['git', 'clean', '-d', '-f', '-x', '*.py[cdo]', '*/__pycache__',
-                       'python/', 'third_party/python/']
+                       'third_party/python/']
             else:
                 # We don't know what is tracked/untracked if we don't have VCS.
                 # So we can't clean python/ and third_party/python/.
@@ -808,6 +812,8 @@ def _get_desktop_run_parser():
                        help='Run the program with electrolysis disabled.')
     group.add_argument('--enable-crash-reporter', action='store_true',
                        help='Run the program with the crash reporter enabled.')
+    group.add_argument('--enable-fission', action='store_true',
+                       help='Run the program with fission (site isolation) enabled.')
     group.add_argument('--setpref', action='append', default=[],
                        help='Set the specified pref before starting the program. Can be set '
                        'multiple times. Prefs can also be set in ~/.mozbuild/machrc in the '
@@ -1007,8 +1013,9 @@ class RunProgram(MachCommandBase):
                                 pass_thru=True, append_env=extra_env)
 
     def _run_desktop(self, params, remote, background, noprofile, disable_e10s,
-                     enable_crash_reporter, setpref, temp_profile, macos_open, debug, debugger,
-                     debugger_args, dmd, mode, stacks, show_dump_stats):
+                     enable_crash_reporter, enable_fission, setpref, temp_profile,
+                     macos_open, debug, debugger, debugger_args, dmd, mode, stacks,
+                     show_dump_stats):
         from mozprofile import Profile, Preferences
 
         try:
@@ -1092,6 +1099,23 @@ class RunProgram(MachCommandBase):
                 args = [unicode(a, encoding) if not isinstance(a, unicode) else a
                         for a in args]
 
+        some_debugging_option = debug or debugger or debugger_args
+
+        # By default, because Firefox is a GUI app, on Windows it will not
+        # 'create' a console to which stdout/stderr is printed. This means
+        # printf/dump debugging is invisible. We default to adding the
+        # -attach-console argument to fix this. We avoid this if we're launched
+        # under a debugger (which can do its own picking up of stdout/stderr).
+        # We also check for both the -console and -attach-console flags:
+        # -console causes Firefox to create a separate window;
+        # -attach-console just ends us up with output that gets relayed via mach.
+        # We shouldn't override the user using -console. For more info, see
+        # https://bugzilla.mozilla.org/show_bug.cgi?id=1257155
+        if sys.platform.startswith('win') and not some_debugging_option and \
+                '-console' not in args and '--console' not in args and \
+                '-attach-console' not in args and '--attach-console' not in args:
+            args.append('-attach-console')
+
         extra_env = {
             'MOZ_DEVELOPER_REPO_DIR': self.topsrcdir,
             'MOZ_DEVELOPER_OBJ_DIR': self.topobjdir,
@@ -1106,7 +1130,10 @@ class RunProgram(MachCommandBase):
         if disable_e10s:
             extra_env['MOZ_FORCE_DISABLE_E10S'] = '1'
 
-        if debug or debugger or debugger_args:
+        if enable_fission:
+            extra_env['MOZ_FORCE_ENABLE_FISSION'] = '1'
+
+        if some_debugging_option:
             if 'INSIDE_EMACS' in os.environ:
                 self.log_manager.terminal_handler.setLevel(logging.WARNING)
 
@@ -1164,63 +1191,6 @@ class Buildsymbols(MachCommandBase):
              description='Produce a package of Breakpad-format symbols.')
     def buildsymbols(self):
         return self._run_make(directory=".", target='buildsymbols', ensure_exit_code=False)
-
-
-@CommandProvider
-class Makefiles(MachCommandBase):
-    @Command('empty-makefiles', category='build-dev',
-             description='Find empty Makefile.in in the tree.')
-    def empty(self):
-        import pymake.parser
-        import pymake.parserdata
-
-        IGNORE_VARIABLES = {
-            'DEPTH': ('@DEPTH@',),
-            'topsrcdir': ('@top_srcdir@',),
-            'srcdir': ('@srcdir@',),
-            'relativesrcdir': ('@relativesrcdir@',),
-            'VPATH': ('@srcdir@',),
-        }
-
-        IGNORE_INCLUDES = [
-            'include $(DEPTH)/config/autoconf.mk',
-            'include $(topsrcdir)/config/config.mk',
-            'include $(topsrcdir)/config/rules.mk',
-        ]
-
-        def is_statement_relevant(s):
-            if isinstance(s, pymake.parserdata.SetVariable):
-                exp = s.vnameexp
-                if not exp.is_static_string:
-                    return True
-
-                if exp.s not in IGNORE_VARIABLES:
-                    return True
-
-                return s.value not in IGNORE_VARIABLES[exp.s]
-
-            if isinstance(s, pymake.parserdata.Include):
-                if s.to_source() in IGNORE_INCLUDES:
-                    return False
-
-            return True
-
-        for path in self._makefile_ins():
-            relpath = os.path.relpath(path, self.topsrcdir)
-            try:
-                statements = [s for s in pymake.parser.parsefile(path)
-                              if is_statement_relevant(s)]
-
-                if not statements:
-                    print(relpath)
-            except pymake.parser.SyntaxError:
-                print('Warning: Could not parse %s' % relpath, file=sys.stderr)
-
-    def _makefile_ins(self):
-        for root, dirs, files in os.walk(self.topsrcdir):
-            for f in files:
-                if f == 'Makefile.in':
-                    yield os.path.join(root, f)
 
 
 @CommandProvider
@@ -1315,90 +1285,6 @@ class MachDebug(MachCommandBase):
                     return list(obj)
                 return json.JSONEncoder.default(self, obj)
         json.dump(self, cls=EnvironmentEncoder, sort_keys=True, fp=out)
-
-
-@CommandProvider
-class Vendor(MachCommandBase):
-    """Vendor third-party dependencies into the source repository."""
-
-    @Command('vendor', category='misc',
-             description='Vendor third-party dependencies into the source repository.')
-    def vendor(self):
-        self._sub_mach(['help', 'vendor'])
-        return 1
-
-    @SubCommand('vendor', 'rust',
-                description='Vendor rust crates from crates.io into third_party/rust')
-    @CommandArgument('--ignore-modified', action='store_true',
-                     help='Ignore modified files in current checkout',
-                     default=False)
-    @CommandArgument(
-        '--build-peers-said-large-imports-were-ok', action='store_true',
-        help=('Permit overly-large files to be added to the repository. '
-              'To get permission to set this, raise a question in the #build '
-              'channel at https://chat.mozilla.org.'),
-        default=False)
-    def vendor_rust(self, **kwargs):
-        from mozbuild.vendor_rust import VendorRust
-        vendor_command = self._spawn(VendorRust)
-        vendor_command.vendor(**kwargs)
-
-    @SubCommand('vendor', 'aom',
-                description='Vendor av1 video codec reference implementation into the '
-                'source repository.')
-    @CommandArgument('-r', '--revision',
-                     help='Repository tag or commit to update to.')
-    @CommandArgument('--repo',
-                     help='Repository url to pull a snapshot from. '
-                     'Supports github and googlesource.')
-    @CommandArgument('--ignore-modified', action='store_true',
-                     help='Ignore modified files in current checkout',
-                     default=False)
-    def vendor_aom(self, **kwargs):
-        from mozbuild.vendor_aom import VendorAOM
-        vendor_command = self._spawn(VendorAOM)
-        vendor_command.vendor(**kwargs)
-
-    @SubCommand('vendor', 'dav1d',
-                description='Vendor dav1d implementation of AV1 into the source repository.')
-    @CommandArgument('-r', '--revision',
-                     help='Repository tag or commit to update to.')
-    @CommandArgument('--repo',
-                     help='Repository url to pull a snapshot from. Supports gitlab.')
-    @CommandArgument('--ignore-modified', action='store_true',
-                     help='Ignore modified files in current checkout',
-                     default=False)
-    def vendor_dav1d(self, **kwargs):
-        from mozbuild.vendor_dav1d import VendorDav1d
-        vendor_command = self._spawn(VendorDav1d)
-        vendor_command.vendor(**kwargs)
-
-    @SubCommand('vendor', 'python',
-                description='Vendor Python packages from pypi.org into third_party/python')
-    @CommandArgument('--with-windows-wheel', action='store_true',
-                     help='Vendor a wheel for Windows along with the source package',
-                     default=False)
-    @CommandArgument('packages', default=None, nargs='*',
-                     help='Packages to vendor. If omitted, packages and their dependencies '
-                     'defined in Pipfile.lock will be vendored. If Pipfile has been modified, '
-                     'then Pipfile.lock will be regenerated. Note that transient dependencies '
-                     'may be updated when running this command.')
-    def vendor_python(self, **kwargs):
-        from mozbuild.vendor_python import VendorPython
-        vendor_command = self._spawn(VendorPython)
-        vendor_command.vendor(**kwargs)
-
-    @SubCommand('vendor', 'manifest',
-                description='Vendor externally hosted repositories into this '
-                            'repository.')
-    @CommandArgument('files', nargs='+',
-                     help='Manifest files to work on')
-    @CommandArgumentGroup('verify')
-    @CommandArgument('--verify', '-v', action='store_true', group='verify',
-                     required=True, help='Verify manifest')
-    def vendor_manifest(self, files, verify):
-        from mozbuild.vendor_manifest import verify_manifests
-        verify_manifests(files)
 
 
 @CommandProvider
@@ -1502,21 +1388,17 @@ class Repackage(MachCommandBase):
                      help='Mar binary path')
     @CommandArgument('--output', '-o', type=str, required=True,
                      help='Output filename')
-    @CommandArgument('--format', type=str, default='lzma',
-                     choices=('lzma', 'bz2'),
-                     help='Mar format')
     @CommandArgument('--arch', type=str, required=True,
                      help='The archtecture you are building.')
     @CommandArgument('--mar-channel-id', type=str,
                      help='Mar channel id')
-    def repackage_mar(self, input, mar, output, format, arch, mar_channel_id):
+    def repackage_mar(self, input, mar, output, arch, mar_channel_id):
         from mozbuild.repackaging.mar import repackage_mar
         repackage_mar(
             self.topsrcdir,
             input,
             mar,
             output,
-            format,
             arch=arch,
             mar_channel_id=mar_channel_id,
         )
@@ -1542,13 +1424,6 @@ class L10NCommands(MachCommandBase):
     @CommandArgument('--verbose', action='store_true',
                      help='Log informative status messages.')
     def package_l10n(self, verbose=False, locales=[]):
-        backends = self.substs['BUILD_BACKENDS']
-        if 'RecursiveMake' not in backends:
-            self.log(logging.ERROR, 'package-multi-locale', {'backends': backends},
-                     "Multi-locale packaging requires the full (non-artifact) "
-                     "'RecursiveMake' build backend; got {backends}.")
-            return 1
-
         if 'en-US' not in locales:
             self.log(logging.WARN, 'package-multi-locale', {'locales': locales},
                      'List of locales does not include default locale "en-US": '
@@ -1599,7 +1474,7 @@ class L10NCommands(MachCommandBase):
                      'Invoking `mach android archive-geckoview`')
             self.run_process(
                 [mozpath.join(self.topsrcdir, 'mach'), 'android',
-                 'archive-geckoview'.format(locale)],
+                 'archive-geckoview'],
                 append_env=append_env,
                 pass_thru=True,
                 ensure_exit_code=True,

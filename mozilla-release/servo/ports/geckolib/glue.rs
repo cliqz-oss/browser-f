@@ -126,7 +126,6 @@ use style::stylesheets::{StyleRule, StylesheetContents, SupportsRule, UrlExtraDa
 use style::stylesheets::{SanitizationData, SanitizationKind, AllowImportRules};
 use style::stylist::{add_size_of_ua_cache, AuthorStylesEnabled, RuleInclusion, Stylist};
 use style::thread_state;
-use style::timer::Timer;
 use style::traversal::resolve_style;
 use style::traversal::DomTraversal;
 use style::traversal_flags::{self, TraversalFlags};
@@ -217,7 +216,7 @@ fn create_shared_context<'a>(
         visited_styles_enabled: per_doc_data.visited_styles_enabled(),
         options: global_style_data.options.clone(),
         guards: StylesheetGuards::same(guard),
-        timer: Timer::new(),
+        current_time_for_animations: 0.0, // Unused for Gecko, at least for now.
         traversal_flags,
         snapshot_map,
     }
@@ -3984,6 +3983,41 @@ pub extern "C" fn Servo_ComputedValues_EqualForCachedAnonymousContentStyle(
 }
 
 #[no_mangle]
+pub extern "C" fn Servo_ComputedValues_HasOverriddenAppearance(
+    cv: &ComputedValues,
+    appearance: specified::Appearance,
+) -> bool {
+    use style::properties::{CSSWideKeyword, PropertyDeclaration};
+
+    let rules = match cv.rules {
+        Some(ref rules) => rules,
+        None => return false,
+    };
+
+    let global_style_data = &*GLOBAL_STYLE_DATA;
+    let guard = global_style_data.shared_lock.read();
+
+    let id = PropertyDeclarationId::Longhand(LonghandId::MozAppearance);
+
+    // Look for any -moz-appearance declarations on rules at the Author level
+    // which set some non-default value.  revert would cause us to revert to
+    // the default value, so don't count that.  Declarations with variables
+    // could resolve to a default or non-default value depending on computed
+    // style, but should be rare enough on -moz-appearance to be OK to count
+    // as a non-default value.
+    rules
+        .self_and_ancestors()
+        .filter(|n| n.cascade_level().origin() == Origin::Author)
+        .flat_map(|n| n.style_source().unwrap().read(&guard).get_at_importance(id, n.importance()))
+        .any(|declaration| {
+            match declaration {
+                PropertyDeclaration::MozAppearance(a) => *a != appearance,
+                _ => declaration.get_css_wide_keyword() != Some(CSSWideKeyword::Revert),
+            }
+        })
+}
+
+#[no_mangle]
 pub extern "C" fn Servo_StyleSet_Init(doc: &structs::Document) -> *mut RawServoStyleSet {
     let data = Box::new(PerDocumentStyleData::new(doc));
 
@@ -5461,7 +5495,7 @@ fn create_context_for_animation<'a>(
 ) -> Context<'a> {
     Context {
         builder: StyleBuilder::for_animation(per_doc_data.stylist.device(), style, parent_style),
-        font_metrics_provider: font_metrics_provider,
+        font_metrics_provider,
         cached_system_font: None,
         in_media_query: false,
         quirks_mode: per_doc_data.stylist.quirks_mode(),
@@ -6325,7 +6359,7 @@ pub extern "C" fn Servo_HasPendingRestyleAncestor(
     let mut has_yet_to_be_styled = false;
     let mut element = Some(GeckoElement(element));
     while let Some(e) = element {
-        if e.has_animations() {
+        if e.has_any_animation() {
             return true;
         }
 

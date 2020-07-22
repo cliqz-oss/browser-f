@@ -112,18 +112,20 @@ using mozilla::ipc::SharedMemoryBasic::Handle from "mozilla/ipc/SharedMemoryBasi
 using mozilla::fontlist::Pointer from "SharedFontList.h";
 using gfxSparseBitSet from "gfxFontUtils.h";
 using FontVisibility from "gfxFontEntry.h";
-using mozilla::dom::MediaControlKeysEvent from "ipc/MediaControlIPC.h";
+using mozilla::dom::MediaControlKey from "ipc/MediaControlIPC.h";
 using mozilla::dom::MediaPlaybackState from "ipc/MediaControlIPC.h";
 using mozilla::dom::MediaAudibleState from "ipc/MediaControlIPC.h";
 using mozilla::dom::MaybeMediaMetadataBase from "mozilla/dom/MediaSessionIPCUtils.h";
-using mozilla::dom::MediaSessionPlaybackState from "mozilla/dom/MediaSessionBinding.h";
+using mozilla::dom::MediaSessionAction from "mozilla/dom/MediaSessionIPCUtils.h";
+using mozilla::dom::MediaSessionPlaybackState from "mozilla/dom/MediaSessionIPCUtils.h";
 using refcounted class nsDocShellLoadState from "nsDocShellLoadState.h";
 using mozilla::dom::ServiceWorkerShutdownState::Progress from "mozilla/dom/ServiceWorkerShutdownState.h";
-using mozilla::ContentBlockingNotifier::StorageAccessGrantedReason from "mozilla/ContentBlockingNotifier.h";
+using mozilla::ContentBlockingNotifier::StorageAccessPermissionGrantedReason from "mozilla/ContentBlockingNotifier.h";
 using mozilla::ContentBlockingNotifier::BlockingDecision from "mozilla/ContentBlockingNotifier.h";
 using mozilla::ContentBlocking::StorageAccessPromptChoices from "mozilla/ContentBlocking.h";
 using JSActorMessageKind from "mozilla/dom/JSActor.h";
 using JSActorMessageMeta from "mozilla/dom/PWindowGlobal.h";
+using mozilla::PermissionDelegateHandler::DelegatedPermissionList from "mozilla/PermissionDelegateIPCUtils.h";
 
 union ChromeRegistryItem
 {
@@ -169,6 +171,16 @@ struct SystemFontListEntry {
     bool      appFontFamily;
 };
 #endif
+
+union SystemParameterValue {
+  bool;
+  float;
+};
+
+struct SystemParameterKVPair {
+  uint8_t id;
+  SystemParameterValue value;
+};
 
 struct ClipboardCapabilities {
   bool supportsSelectionClipboard;
@@ -299,6 +311,7 @@ struct XPCOMInitData
     nsCString[] appLocales;
     nsCString[] requestedLocales;
     DynamicScalarDefinition[] dynamicScalarDefs;
+    SystemParameterKVPair[] systemParameters;
 };
 
 struct VisitedQueryResult
@@ -543,6 +556,8 @@ child:
      */
     async ThemeChanged(LookAndFeelInt[] lookAndFeelIntCache);
 
+    async UpdateSystemParameters(SystemParameterKVPair[] aUpdates);
+
     async PreferenceUpdate(Pref pref);
     async VarUpdate(GfxVarUpdate var);
 
@@ -734,13 +749,6 @@ child:
     async GMPsChanged(GMPCapabilityData[] capabilities);
 
 
-    /**
-     * Sending an activate message moves focus to the child.
-     */
-    async Activate(PBrowser aTab);
-
-    async Deactivate(PBrowser aTab);
-
     async PParentToChildStream();
 
     async ProvideAnonymousTemporaryFile(uint64_t aID, FileDescOrError aFD);
@@ -853,11 +861,11 @@ child:
     async StartDelayedAutoplayMediaComponents(MaybeDiscardedBrowsingContext aContext);
 
     /**
-     * This method is used to dispatch MediaControlKeysEvent to content process
-     * in order to control media within a specific browsing context tree.
+     * This method is used to dispatch MediaControlKey to content process in
+     * order to control media within a specific browsing context tree.
      */
-    async UpdateMediaControlKeysEvent(MaybeDiscardedBrowsingContext aContext,
-                                      MediaControlKeysEvent aEvent);
+    async UpdateMediaControlKey(MaybeDiscardedBrowsingContext aContext,
+                                MediaControlKey aKey);
 
     // Begin subscribing to a new BrowsingContextGroup, sending down the current
     // value for every individual BrowsingContext.
@@ -878,7 +886,7 @@ child:
     async OnAllowAccessFor(MaybeDiscardedBrowsingContext aParentContext,
                            nsCString aTrackingOrigin,
                            uint32_t aCookieBehavior,
-                           StorageAccessGrantedReason aReason);
+                           StorageAccessPermissionGrantedReason aReason);
 
     async OnContentBlockingDecision(MaybeDiscardedBrowsingContext aContext,
                                     BlockingDecision aReason,
@@ -972,7 +980,7 @@ parent:
     async SetURITitle(nsIURI uri, nsString title);
 
     async LoadURIExternal(nsIURI uri, nsIPrincipal triggeringPrincipal, MaybeDiscardedBrowsingContext browsingContext);
-    async ExtProtocolChannelConnectParent(uint32_t registrarId);
+    async ExtProtocolChannelConnectParent(uint64_t registrarId);
 
     // PrefService message
     sync GetGfxVars() returns (GfxVarUpdate[] vars);
@@ -1492,14 +1500,14 @@ parent:
      * Determines whether storage access can be granted automatically by the
      * storage access API without showing a user prompt.
      */
-    async AutomaticStorageAccessCanBeGranted(Principal aPrincipal)
+    async AutomaticStorageAccessPermissionCanBeGranted(Principal aPrincipal)
           returns (bool success);
 
     /*
      * A 3rd party tracking origin (aTrackingOrigin) has received the permission
      * granted to have access to aGrantedOrigin when loaded by aParentWindowId.
      */
-    async FirstPartyStorageAccessGrantedForOrigin(uint64_t aTopLevelWindowId,
+    async StorageAccessPermissionGrantedForOrigin(uint64_t aTopLevelWindowId,
                                                   MaybeDiscardedBrowsingContext aParentContext,
                                                   Principal aTrackingPrincipal,
                                                   nsCString aTrackingOrigin,
@@ -1511,7 +1519,7 @@ parent:
                                  Principal aTrackingPrincipal,
                                  nsCString aTrackingOrigin,
                                  uint32_t aCookieBehavior,
-                                 StorageAccessGrantedReason aReason)
+                                 StorageAccessPermissionGrantedReason aReason)
           returns (StorageAccessPromptChoices? choice);
 
     async StoreUserInteractionAsPermission(Principal aPrincipal);
@@ -1562,6 +1570,23 @@ parent:
         MediaSessionPlaybackState aMetadata);
 
     /**
+     * This method is used to update media session's supported media session
+     * action when the action becomes supported or unsupported.
+     */
+    async NotifyMediaSessionSupportedActionChanged(
+        MaybeDiscardedBrowsingContext aContext,
+        MediaSessionAction aAction,
+        bool aEnabled);
+
+    /**
+     * This method is used to notify the media controller in chrome process that
+     * the media element in the browsing context entered fullscreen.
+     */
+    async NotifyMediaFullScreenState(
+        MaybeDiscardedBrowsingContext aContext,
+        bool aIsInFullScreen);
+
+    /**
      * Due to sandboxing, a child process's UntrustedModulesProcessor cannot
      * obtain enough information about a DLL file to determine its
      * trustworthiness. This API asks the chrome process to perform that
@@ -1584,6 +1609,10 @@ parent:
      * reject the orientationPendingPromises in other processes.
      */
     async AbortOtherOrientationPendingPromises(MaybeDiscardedBrowsingContext aContext);
+
+    async NotifyOnHistoryReload(MaybeDiscardedBrowsingContext aContext)
+            returns (bool canReload, nsDocShellLoadState? loadState,
+                     bool? reloadActiveEntry);
 
     async HistoryCommit(MaybeDiscardedBrowsingContext aContext,
                         uint64_t aSessionHistoryEntryID);
@@ -1685,6 +1714,18 @@ child:
     // WindowContext is managed using the PWindowGlobal actor's lifecycle.
     async CreateWindowContext(WindowContextInitializer aInit);
     async DiscardWindowContext(uint64_t aContextId) returns (bool unused);
+
+parent:
+    // Temporary (bug 1641989) conduit for Glean data in content processes.
+    // Sent from time-to-time to limit the amount of data vulnerable to loss.
+    // Buffer contains bincoded Rust structs.
+    async FOGData(ByteBuf buf);
+
+child:
+    // Temporary (bug 1641989) conduit for Glean data in content processes.
+    // Tells the child to flush any pending data. Used in tests and ping
+    // assembly. Buffer contains bincoded Rust structs.
+    async FlushFOGData() returns (ByteBuf buf);
 };
 
 }

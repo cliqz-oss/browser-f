@@ -46,16 +46,17 @@
 #include "mozilla/ipc/URIUtils.h"
 #include "mozilla/net/DNS.h"
 #include "mozilla/net/DocumentLoadListener.h"
+#include "mozilla/net/DocumentChannel.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
 
 enum nsMixedContentBlockerMessageType { eBlocked = 0x00, eUserOverride = 0x01 };
 
-// Whitelist of hostnames that should be considered secure contexts even when
+// Allowlist of hostnames that should be considered secure contexts even when
 // served over http:// or ws://
-nsCString* nsMixedContentBlocker::sSecurecontextWhitelist = nullptr;
-bool nsMixedContentBlocker::sSecurecontextWhitelistCached = false;
+nsCString* nsMixedContentBlocker::sSecurecontextAllowlist = nullptr;
+bool nsMixedContentBlocker::sSecurecontextAllowlistCached = false;
 
 enum MixedContentHSTSState {
   MCB_HSTS_PASSIVE_NO_HSTS = 0,
@@ -140,6 +141,16 @@ nsMixedContentBlocker::AsyncOnChannelRedirect(
   RefPtr<net::DocumentLoadListener> docListener =
       do_QueryObject(is_ipc_channel);
   if (is_ipc_channel && !docListener) {
+    return NS_OK;
+  }
+
+  // Don't do these checks if we're switching from DocumentChannel
+  // to a real channel. In that case, we should already have done
+  // the checks in the parent process. AsyncOnChannelRedirect
+  // isn't called in the content process if we switch process,
+  // so checking here would just hide bugs in the process switch
+  // cases.
+  if (RefPtr<net::DocumentChannel> docChannel = do_QueryObject(aOldChannel)) {
     return NS_OK;
   }
 
@@ -246,7 +257,7 @@ bool nsMixedContentBlocker::IsPotentiallyTrustworthyLoopbackURL(nsIURI* aURL) {
   return IsPotentiallyTrustworthyLoopbackHost(asciiHost);
 }
 
-/* Maybe we have a .onion URL. Treat it as whitelisted as well if
+/* Maybe we have a .onion URL. Treat it as trustworthy as well if
  * `dom.securecontext.whitelist_onions` is `true`.
  */
 bool nsMixedContentBlocker::IsPotentiallyTrustworthyOnion(nsIURI* aURL) {
@@ -265,27 +276,27 @@ void nsMixedContentBlocker::OnPrefChange(const char* aPref, void* aClosure) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!strcmp(aPref, "dom.securecontext.whitelist"));
   Preferences::GetCString("dom.securecontext.whitelist",
-                          *sSecurecontextWhitelist);
+                          *sSecurecontextAllowlist);
 }
 
 // static
-void nsMixedContentBlocker::GetSecureContextWhiteList(nsACString& aList) {
+void nsMixedContentBlocker::GetSecureContextAllowList(nsACString& aList) {
   MOZ_ASSERT(NS_IsMainThread());
-  if (!sSecurecontextWhitelistCached) {
-    MOZ_ASSERT(!sSecurecontextWhitelist);
-    sSecurecontextWhitelistCached = true;
-    sSecurecontextWhitelist = new nsCString();
+  if (!sSecurecontextAllowlistCached) {
+    MOZ_ASSERT(!sSecurecontextAllowlist);
+    sSecurecontextAllowlistCached = true;
+    sSecurecontextAllowlist = new nsCString();
     Preferences::RegisterCallbackAndCall(OnPrefChange,
                                          "dom.securecontext.whitelist");
   }
-  aList = *sSecurecontextWhitelist;
+  aList = *sSecurecontextAllowlist;
 }
 
 // static
 void nsMixedContentBlocker::Shutdown() {
-  if (sSecurecontextWhitelist) {
-    delete sSecurecontextWhitelist;
-    sSecurecontextWhitelist = nullptr;
+  if (sSecurecontextAllowlist) {
+    delete sSecurecontextAllowlist;
+    sSecurecontextAllowlist = nullptr;
   }
 }
 
@@ -334,17 +345,17 @@ bool nsMixedContentBlocker::IsPotentiallyTrustworthyOrigin(nsIURI* aURI) {
   }
 
   // If a host is not considered secure according to the default algorithm, then
-  // check to see if it has been whitelisted by the user.  We only apply this
-  // whitelist for network resources, i.e., those with scheme "http" or "ws".
+  // check to see if it has been allowlisted by the user.  We only apply this
+  // allowlist for network resources, i.e., those with scheme "http" or "ws".
   // The pref should contain a comma-separated list of hostnames.
 
   if (!scheme.EqualsLiteral("http") && !scheme.EqualsLiteral("ws")) {
     return false;
   }
 
-  nsAutoCString whitelist;
-  GetSecureContextWhiteList(whitelist);
-  nsCCharSeparatedTokenizer tokenizer(whitelist, ',');
+  nsAutoCString allowlist;
+  GetSecureContextAllowList(allowlist);
+  nsCCharSeparatedTokenizer tokenizer(allowlist, ',');
   while (tokenizer.hasMoreTokens()) {
     const nsACString& allowedHost = tokenizer.nextToken();
     if (host.Equals(allowedHost)) {
@@ -352,7 +363,7 @@ bool nsMixedContentBlocker::IsPotentiallyTrustworthyOrigin(nsIURI* aURI) {
     }
   }
 
-  // Maybe we have a .onion URL. Treat it as whitelisted as well if
+  // Maybe we have a .onion URL. Treat it as trustworthy as well if
   // `dom.securecontext.whitelist_onions` is `true`.
   if (nsMixedContentBlocker::IsPotentiallyTrustworthyOnion(aURI)) {
     return true;
@@ -375,7 +386,6 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
   MOZ_ASSERT(NS_IsMainThread());
 
   uint32_t contentType = aLoadInfo->InternalContentPolicyType();
-  nsCOMPtr<nsISupports> requestingContext = aLoadInfo->GetLoadingContext();
   nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadInfo->GetLoadingPrincipal();
   nsCOMPtr<nsIPrincipal> triggeringPrincipal = aLoadInfo->TriggeringPrincipal();
   RefPtr<WindowContext> requestingWindow =
@@ -511,7 +521,7 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
     case TYPE_SPECULATIVE:
       break;
 
-    // This content policy works as a whitelist.
+    // This content policy works as a allowlist.
     default:
       MOZ_ASSERT(false, "Mixed content of unknown type");
   }

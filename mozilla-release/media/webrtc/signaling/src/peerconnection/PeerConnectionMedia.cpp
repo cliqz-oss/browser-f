@@ -56,9 +56,12 @@ void PeerConnectionMedia::StunAddrsHandler::OnMDNSQueryComplete(
           }
         }
         std::string mungedCandidate = o.str();
+        pcm_->mParent->StampTimecard("Done looking up mDNS name");
         pcm_->mTransportHandler->AddIceCandidate(
             cand.mTransportId, mungedCandidate, cand.mUfrag, obfuscatedAddr);
       }
+    } else {
+      pcm_->mParent->StampTimecard("Failed looking up mDNS name");
     }
     pcm_->mQueriedMDNSHostnames.erase(itor);
   }
@@ -328,88 +331,6 @@ bool PeerConnectionMedia::GetPrefDefaultAddressOnly() const {
   return default_address_only;
 }
 
-static bool HostInDomain(const nsCString& aHost, const nsCString& aPattern) {
-  int32_t patternOffset = 0;
-  int32_t hostOffset = 0;
-
-  // Act on '*.' wildcard in the left-most position in a domain pattern.
-  if (aPattern.Length() > 2 && aPattern[0] == '*' && aPattern[1] == '.') {
-    patternOffset = 2;
-
-    // Ignore the lowest level sub-domain for the hostname.
-    hostOffset = aHost.FindChar('.') + 1;
-
-    if (hostOffset <= 1) {
-      // Reject a match between a wildcard and a TLD or '.foo' form.
-      return false;
-    }
-  }
-
-  nsDependentCString hostRoot(aHost, hostOffset);
-  return hostRoot.EqualsIgnoreCase(aPattern.BeginReading() + patternOffset);
-}
-
-static bool HostInObfuscationWhitelist(nsIURI* docURI) {
-  if (!docURI) {
-    return false;
-  }
-
-  nsCString hostName;
-  docURI->GetAsciiHost(hostName);  // normalize UTF8 to ASCII equivalent
-  nsCString domainWhiteList;
-  nsresult nr = Preferences::GetCString(
-      "media.peerconnection.ice.obfuscate_host_addresses.whitelist",
-      domainWhiteList);
-
-  if (NS_FAILED(nr)) {
-    return false;
-  }
-
-  domainWhiteList.StripWhitespace();
-
-  if (domainWhiteList.IsEmpty() || hostName.IsEmpty()) {
-    return false;
-  }
-
-  // Get UTF8 to ASCII domain name normalization service
-  nsresult rv;
-  nsCOMPtr<nsIIDNService> idnService =
-      do_GetService("@mozilla.org/network/idn-service;1", &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return false;
-  }
-
-  uint32_t begin = 0;
-  uint32_t end = 0;
-  nsCString domainName;
-  /*
-     Test each domain name in the comma separated list
-     after converting from UTF8 to ASCII. Each domain
-     must match exactly or have a single leading '*.' wildcard
-  */
-  do {
-    end = domainWhiteList.FindChar(',', begin);
-    if (end == (uint32_t)-1) {
-      // Last or only domain name in the comma separated list
-      end = domainWhiteList.Length();
-    }
-
-    rv = idnService->ConvertUTF8toACE(
-        Substring(domainWhiteList, begin, end - begin), domainName);
-    if (NS_SUCCEEDED(rv)) {
-      if (HostInDomain(hostName, domainName)) {
-        return true;
-      }
-    } else {
-      NS_WARNING("Failed to convert UTF-8 host to ASCII");
-    }
-
-    begin = end + 1;
-  } while (end < domainWhiteList.Length());
-
-  return false;
-}
-
 bool PeerConnectionMedia::GetPrefObfuscateHostAddresses() const {
   ASSERT_ON_THREAD(mMainThread);  // will crash on STS thread
 
@@ -419,8 +340,9 @@ bool PeerConnectionMedia::GetPrefObfuscateHostAddresses() const {
       "media.peerconnection.ice.obfuscate_host_addresses", false);
   obfuscate_host_addresses &=
       !MediaManager::Get()->IsActivelyCapturingOrHasAPermission(winId);
-  obfuscate_host_addresses &=
-      !HostInObfuscationWhitelist(mParent->GetWindow()->GetDocumentURI());
+  obfuscate_host_addresses &= !PeerConnectionImpl::HostnameInPref(
+      "media.peerconnection.ice.obfuscate_host_addresses.blocklist",
+      mParent->GetWindow()->GetDocumentURI());
   obfuscate_host_addresses &= XRE_IsContentProcess();
 
   return obfuscate_host_addresses;
@@ -470,6 +392,7 @@ void PeerConnectionMedia::AddIceCandidate(const std::string& aCandidate,
               "PeerConnectionMedia::SendQueryMDNSHostname",
               [self = RefPtr<PeerConnectionMedia>(this), addr]() mutable {
                 if (self->mStunAddrsRequest) {
+                  self->mParent->StampTimecard("Look up mDNS name");
                   self->mStunAddrsRequest->SendQueryMDNSHostname(
                       nsCString(nsAutoCString(addr.c_str())));
                 }

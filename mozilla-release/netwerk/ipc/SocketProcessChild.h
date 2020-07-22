@@ -74,8 +74,9 @@ class SocketProcessChild final
       PChildToParentStreamChild* aActor) override;
   PFileDescriptorSetChild* SendPFileDescriptorSetConstructor(
       const FileDescriptor& aFD) override;
-  already_AddRefed<PHttpConnectionMgrChild> AllocPHttpConnectionMgrChild();
-
+  already_AddRefed<PHttpConnectionMgrChild> AllocPHttpConnectionMgrChild(
+      const HttpHandlerInitArgs& aArgs);
+  mozilla::ipc::IPCResult RecvUpdateDeviceModelId(const nsCString& aModelId);
   mozilla::ipc::IPCResult RecvOnHttpActivityDistributorActivated(
       const bool& aIsActivated);
 
@@ -113,6 +114,17 @@ class SocketProcessChild final
       PTRRServiceChild* aActor, const bool& aCaptiveIsPassed,
       const bool& aParentalControlEnabled,
       nsTArray<nsCString>&& aDNSSuffixList) override;
+
+  already_AddRefed<PNativeDNSResolverOverrideChild>
+  AllocPNativeDNSResolverOverrideChild();
+  mozilla::ipc::IPCResult RecvPNativeDNSResolverOverrideConstructor(
+      PNativeDNSResolverOverrideChild* aActor) override;
+
+  mozilla::ipc::IPCResult RecvNotifyObserver(const nsCString& aTopic,
+                                             const nsString& aData);
+
+  virtual already_AddRefed<PIPCBlobInputStreamChild>
+  AllocPIPCBlobInputStreamChild(const nsID& aID, const uint64_t& aSize);
 
  protected:
   friend class SocketProcessImpl;

@@ -280,7 +280,7 @@ var _ui_utils = __webpack_require__(2);
 
 var _app_options = __webpack_require__(3);
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 var _pdf_cursor_tools = __webpack_require__(6);
 
@@ -974,7 +974,18 @@ const PDFViewerApplication = {
     }).catch(downloadByUrl);
   },
 
+  _recordFallbackErrorTelemetry(featureId) {
+    this.externalServices.reportTelemetry({
+      type: "unsupportedFeature",
+      featureId
+    });
+  },
+
   fallback(featureId) {
+    if (featureId) {
+      this._recordFallbackErrorTelemetry(featureId);
+    }
+
     if (this._delayedFallbackFeatureIds.length >= 1 && this._hasInteracted) {
       featureId = this._delayedFallbackFeatureIds[0];
       this._delayedFallbackFeatureIds = [];
@@ -1230,6 +1241,8 @@ const PDFViewerApplication = {
 
         this._delayedFallbackFeatureIds.push(_pdfjsLib.UNSUPPORTED_FEATURES.javaScript);
 
+        this._recordFallbackErrorTelemetry(_pdfjsLib.UNSUPPORTED_FEATURES.javaScript);
+
         return true;
       });
 
@@ -1294,6 +1307,8 @@ const PDFViewerApplication = {
       console.warn("Warning: AcroForm/XFA is not supported");
 
       this._delayedFallbackFeatureIds.push(_pdfjsLib.UNSUPPORTED_FEATURES.forms);
+
+      this._recordFallbackErrorTelemetry(_pdfjsLib.UNSUPPORTED_FEATURES.forms);
     }
 
     let versionId = "other";
@@ -3397,9 +3412,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.OptionKind = exports.AppOptions = void 0;
 
-var _pdfjsLib = __webpack_require__(4);
-
-var _viewer_compatibility = __webpack_require__(5);
+var _viewer_compatibility = __webpack_require__(4);
 
 const OptionKind = {
   VIEWER: 0x02,
@@ -3420,6 +3433,11 @@ const defaultOptions = {
   defaultZoomValue: {
     value: "",
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE
+  },
+  disableCreateObjectURL: {
+    value: false,
+    compatibility: _viewer_compatibility.viewerCompatibilityParams.disableCreateObjectURL,
+    kind: OptionKind.VIEWER
   },
   disableHistory: {
     value: false,
@@ -3517,11 +3535,6 @@ const defaultOptions = {
   disableAutoFetch: {
     value: false,
     kind: OptionKind.API + OptionKind.PREFERENCE
-  },
-  disableCreateObjectURL: {
-    value: false,
-    compatibility: _pdfjsLib.apiCompatibilityParams.disableCreateObjectURL,
-    kind: OptionKind.API
   },
   disableFontFace: {
     value: false,
@@ -3642,6 +3655,22 @@ exports.AppOptions = AppOptions;
 "use strict";
 
 
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.viewerCompatibilityParams = void 0;
+const compatibilityParams = Object.create(null);
+;
+const viewerCompatibilityParams = Object.freeze(compatibilityParams);
+exports.viewerCompatibilityParams = viewerCompatibilityParams;
+
+/***/ }),
+/* 5 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
 let pdfjsLib;
 
 if (typeof window !== "undefined" && window["pdfjs-dist/build/pdf"]) {
@@ -3651,22 +3680,6 @@ if (typeof window !== "undefined" && window["pdfjs-dist/build/pdf"]) {
 }
 
 module.exports = pdfjsLib;
-
-/***/ }),
-/* 5 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.viewerCompatibilityParams = void 0;
-const compatibilityParams = Object.create(null);
-;
-const viewerCompatibilityParams = Object.freeze(compatibilityParams);
-exports.viewerCompatibilityParams = viewerCompatibilityParams;
 
 /***/ }),
 /* 6 */
@@ -4600,7 +4613,7 @@ exports.PasswordPrompt = void 0;
 
 var _ui_utils = __webpack_require__(2);
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 class PasswordPrompt {
   constructor(options, overlayManager, l10n = _ui_utils.NullL10n) {
@@ -4677,7 +4690,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.PDFAttachmentViewer = void 0;
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 class PDFAttachmentViewer {
   constructor({
@@ -4712,10 +4725,6 @@ class PDFAttachmentViewer {
   }
 
   _bindPdfLink(button, content, filename) {
-    if (this.downloadManager.disableCreateObjectURL) {
-      throw new Error('bindPdfLink: Unsupported "disableCreateObjectURL" value.');
-    }
-
     let blobUrl;
 
     button.onclick = () => {
@@ -4837,7 +4846,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.PDFDocumentProperties = void 0;
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 var _ui_utils = __webpack_require__(2);
 
@@ -5343,7 +5352,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.PDFFindController = exports.FindState = void 0;
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 var _pdf_find_utils = __webpack_require__(16);
 
@@ -7147,7 +7156,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.PDFOutlineViewer = void 0;
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 const DEFAULT_TITLE = "\u2013";
 
@@ -8152,7 +8161,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.PDFThumbnailView = void 0;
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 var _ui_utils = __webpack_require__(2);
 
@@ -8511,14 +8520,18 @@ class PDFThumbnailView {
   }
 
   get _thumbPageTitle() {
+    var _this$pageLabel;
+
     return this.l10n.get("thumb_page_title", {
-      page: this.pageLabel !== null ? this.pageLabel : this.id
+      page: (_this$pageLabel = this.pageLabel) != null ? _this$pageLabel : this.id
     }, "Page {{page}}");
   }
 
   get _thumbPageCanvas() {
+    var _this$pageLabel2;
+
     return this.l10n.get("thumb_page_canvas", {
-      page: this.pageLabel !== null ? this.pageLabel : this.id
+      page: (_this$pageLabel2 = this.pageLabel) != null ? _this$pageLabel2 : this.id
     }, "Thumbnail of Page {{page}}");
   }
 
@@ -8564,7 +8577,7 @@ exports.PDFViewer = void 0;
 
 var _base_viewer = __webpack_require__(25);
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 class PDFViewer extends _base_viewer.BaseViewer {
   get _viewerElement() {
@@ -8655,7 +8668,7 @@ var _pdf_rendering_queue = __webpack_require__(8);
 
 var _annotation_layer_builder = __webpack_require__(26);
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 var _pdf_page_view = __webpack_require__(27);
 
@@ -9769,7 +9782,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.DefaultAnnotationLayerFactory = exports.AnnotationLayerBuilder = void 0;
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 var _ui_utils = __webpack_require__(2);
 
@@ -9882,11 +9895,11 @@ exports.PDFPageView = void 0;
 
 var _ui_utils = __webpack_require__(2);
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 var _pdf_rendering_queue = __webpack_require__(8);
 
-var _viewer_compatibility = __webpack_require__(5);
+var _viewer_compatibility = __webpack_require__(4);
 
 const MAX_CANVAS_PIXELS = _viewer_compatibility.viewerCompatibilityParams.maxCanvasPixels || 16777216;
 
@@ -10449,7 +10462,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.DefaultTextLayerFactory = exports.TextLayerBuilder = void 0;
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 const EXPAND_DIVS_TIMEOUT = 300;
 
@@ -11131,7 +11144,7 @@ exports.PDFSinglePageViewer = void 0;
 
 var _base_viewer = __webpack_require__(25);
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 class PDFSinglePageViewer extends _base_viewer.BaseViewer {
   constructor(options) {
@@ -11621,7 +11634,7 @@ __webpack_require__(34);
 
 var _app = __webpack_require__(1);
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 var _preferences = __webpack_require__(35);
 
@@ -12254,7 +12267,7 @@ var _ui_utils = __webpack_require__(2);
 
 var _app = __webpack_require__(1);
 
-var _pdfjsLib = __webpack_require__(4);
+var _pdfjsLib = __webpack_require__(5);
 
 function composePage(pdfDocument, pageNumber, size, printContainer) {
   const canvas = document.createElement("canvas");

@@ -55,10 +55,7 @@ class Connection final : public mozIStorageConnection,
    * Structure used to describe user functions on the database connection.
    */
   struct FunctionInfo {
-    enum FunctionType { SIMPLE, AGGREGATE };
-
-    nsCOMPtr<nsISupports> function;
-    FunctionType type;
+    nsCOMPtr<mozIStorageFunction> function;
     int32_t numArgs;
   };
 
@@ -353,7 +350,7 @@ class Connection final : public mozIStorageConnection,
   nsresult databaseElementExists(enum DatabaseElementType aElementType,
                                  const nsACString& aElementName, bool* _exists);
 
-  bool findFunctionByInstance(nsISupports* aInstance);
+  bool findFunctionByInstance(mozIStorageFunction* aInstance);
 
   static int sProgressHelper(void* aArg);
   // Generic progress handler

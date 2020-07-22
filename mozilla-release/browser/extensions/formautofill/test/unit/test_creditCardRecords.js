@@ -44,11 +44,13 @@ const TEST_CREDIT_CARD_3 = {
   "cc-number": "3589993783099582",
   "cc-exp-month": 1,
   "cc-exp-year": 2000,
+  "cc-type": "amex",
 };
 
 const TEST_CREDIT_CARD_4 = {
   "cc-name": "Foo Bar",
   "cc-number": "3589993783099582",
+  "cc-type": "amex",
 };
 
 const TEST_CREDIT_CARD_WITH_BILLING_ADDRESS = {
@@ -333,7 +335,7 @@ add_task(async function test_add() {
   do_check_credit_card_matches(creditCards[1], TEST_CREDIT_CARD_2);
 
   Assert.notEqual(creditCards[0].guid, undefined);
-  Assert.equal(creditCards[0].version, 2);
+  Assert.equal(creditCards[0].version, 3);
   Assert.notEqual(creditCards[0].timeCreated, undefined);
   Assert.equal(creditCards[0].timeLastModified, creditCards[0].timeCreated);
   Assert.equal(creditCards[0].timeLastUsed, 0);
@@ -450,7 +452,7 @@ add_task(async function test_update() {
     TEST_CREDIT_CARD_WITH_EMPTY_FIELD["cc-exp-month"]
   );
   Assert.equal(creditCard["cc-name"], undefined);
-  Assert.equal(creditCard["cc-type"], undefined);
+  Assert.equal(creditCard["cc-type"], "amex");
   Assert.equal(creditCard.billingAddressGUID, undefined);
 
   // Empty computed fields shouldn't cause any problem.

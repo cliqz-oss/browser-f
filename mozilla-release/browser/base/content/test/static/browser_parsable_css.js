@@ -35,7 +35,7 @@ let whitelist = [
     isFromDevTools: false,
   },
   {
-    sourceName: /\b(html|mathml|ua)\.css$/i,
+    sourceName: /\b(html|mathml|ua|forms|svg)\.css$/i,
     errorMessage: /Unknown property.*-moz-/i,
     isFromDevTools: false,
   },
@@ -85,14 +85,6 @@ if (
   whitelist.push({
     sourceName: /(skin\/shared\/Heartbeat|((?:res|gre-resources)\/(ua|html)))\.css$/i,
     errorMessage: /Error in parsing value for .*\bdisplay\b/i,
-    isFromDevTools: false,
-  });
-}
-
-if (!Services.prefs.getBoolPref("layout.css.scrollbar-width.enabled")) {
-  whitelist.push({
-    sourceName: /(?:res|gre-resources)\/forms\.css$/i,
-    errorMessage: /Unknown property .*\bscrollbar-width\b/i,
     isFromDevTools: false,
   });
 }

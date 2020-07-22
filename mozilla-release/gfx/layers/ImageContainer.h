@@ -116,7 +116,7 @@ class nsAutoRefTraits<nsOwningThreadSourceSurfaceRef> {
   }
   void AddRef(RawRef aRawRef) {
     MOZ_ASSERT(!mOwningEventTarget);
-    mOwningEventTarget = mozilla::GetCurrentThreadSerialEventTarget();
+    mOwningEventTarget = mozilla::GetCurrentSerialEventTarget();
     aRawRef->AddRef();
   }
 
@@ -169,7 +169,7 @@ class SurfaceTextureImage;
 #elif defined(XP_MACOSX)
 class MacIOSurfaceImage;
 #elif MOZ_WAYLAND
-class WaylandDMABUFSurfaceImage;
+class DMABUFSurfaceImage;
 #endif
 
 /**
@@ -231,9 +231,7 @@ class Image {
 #endif
   virtual PlanarYCbCrImage* AsPlanarYCbCrImage() { return nullptr; }
 #ifdef MOZ_WAYLAND
-  virtual WaylandDMABUFSurfaceImage* AsWaylandDMABUFSurfaceImage() {
-    return nullptr;
-  }
+  virtual DMABUFSurfaceImage* AsDMABUFSurfaceImage() { return nullptr; }
 #endif
 
   virtual NVImage* AsNVImage() { return nullptr; }
@@ -769,16 +767,16 @@ struct PlanarYCbCrData {
  * formats from hardware decoder. They are per-pixel skips in the
  * source image.
  *
- * For example when image width is 640, mYStride is 670, mYSkip is 3,
+ * For example when image width is 640, mYStride is 670, mYSkip is 2,
  * the mYChannel buffer looks like:
  *
  * |<----------------------- mYStride ----------------------------->|
  * |<----------------- mYSize.width --------------->|
- *  0   3   6   9   12  15  18  21                659             669
+ *  0   3   6   9   12  15  18  21                639             669
  * |----------------------------------------------------------------|
- * |Y___Y___Y___Y___Y___Y___Y___Y...                      |%%%%%%%%%|
- * |Y___Y___Y___Y___Y___Y___Y___Y...                      |%%%%%%%%%|
- * |Y___Y___Y___Y___Y___Y___Y___Y...                      |%%%%%%%%%|
+ * |Y___Y___Y___Y___Y___Y___Y___Y...                |%%%%%%%%%%%%%%%|
+ * |Y___Y___Y___Y___Y___Y___Y___Y...                |%%%%%%%%%%%%%%%|
+ * |Y___Y___Y___Y___Y___Y___Y___Y...                |%%%%%%%%%%%%%%%|
  * |            |<->|
  *                mYSkip
  */

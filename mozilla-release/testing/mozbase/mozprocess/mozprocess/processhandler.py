@@ -1165,7 +1165,18 @@ class StreamOutput(object):
 
     def __call__(self, line):
         ensure = six.ensure_text if self.text else six.ensure_binary
-        self.stream.write(ensure(line) + ensure('\n'))
+        try:
+            self.stream.write(ensure(line) + ensure('\n'))
+        except TypeError:
+            print("HEY! If you're reading this, you're about to encounter a "
+                  "type error, probably as a result of a conversion from "
+                  "Python 2 to Python 3. This is almost definitely because "
+                  "you're trying to write binary data to a text-encoded "
+                  "stream, or text data to a binary-encoded stream. Check how "
+                  "you're instantiating your ProcessHandler and if the output "
+                  "should be text-encoded, make sure you pass "
+                  "universal_newlines=True.", file=sys.stderr)
+            raise
         self.stream.flush()
 
 
@@ -1213,21 +1224,24 @@ class ProcessHandler(ProcessHandlerMixin):
             logoutput = LogOutput(logfile)
             kwargs['processOutputLine'].append(logoutput)
 
+        text = kwargs.get("universal_newlines", False) or kwargs.get("text", False)
+
         if stream is True:
             # Print to standard output only if no outputline provided
             stdout = sys.stdout
-            if six.PY2 and kwargs.get('universal_newlines'):
+            if six.PY2 and text:
                 stdout = codecs.getwriter('utf-8')(sys.stdout)
-            if six.PY3 and kwargs.get('universal_newlines'):
+            elif six.PY3 and text:
                 # The encoding of stdout isn't guaranteed to be utf-8. Fix that.
-                stdout = codecs.getwriter('utf-8')(sys.stdout.buffer)
+                stdout = codecs.getwriter("utf-8")(sys.stdout.buffer)
+            elif six.PY3 and not text:
+                stdout = sys.stdout.buffer
+
             if not kwargs['processOutputLine']:
                 kwargs['processOutputLine'].append(
-                    StreamOutput(stdout,
-                                 kwargs.get('universal_newlines', False)))
+                    StreamOutput(stdout, text))
         elif stream:
-            streamoutput = StreamOutput(stream,
-                                        kwargs.get('universal_newlines', False))
+            streamoutput = StreamOutput(stream, text)
             kwargs['processOutputLine'].append(streamoutput)
 
         self.output = None

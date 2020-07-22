@@ -33,6 +33,7 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_dom.h"
+#include "mozilla/StoragePrincipalHelper.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/ClientIPCTypes.h"
 #include "mozilla/dom/DOMTypes.h"
@@ -45,6 +46,7 @@
 #include "mozilla/dom/ServiceWorkerBinding.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/IPCStreamUtils.h"
+#include "mozilla/net/CookieJarSettings.h"
 
 namespace mozilla {
 
@@ -128,7 +130,6 @@ nsresult ServiceWorkerPrivateImpl::Initialize() {
 
   PrincipalInfo principalInfo;
   rv = PrincipalToPrincipalInfo(principal, &principalInfo);
-
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -147,8 +148,27 @@ nsresult ServiceWorkerPrivateImpl::Initialize() {
   }
 
   nsCOMPtr<nsICookieJarSettings> cookieJarSettings =
-      mozilla::net::CookieJarSettings::Create();
+      net::CookieJarSettings::Create();
   MOZ_ASSERT(cookieJarSettings);
+
+  net::CookieJarSettings::Cast(cookieJarSettings)->SetPartitionKey(uri);
+
+  net::CookieJarSettingsArgs cjsData;
+  net::CookieJarSettings::Cast(cookieJarSettings)->Serialize(cjsData);
+
+  nsCOMPtr<nsIPrincipal> partitionedPrincipal;
+  rv = StoragePrincipalHelper::CreatePartitionedPrincipalForServiceWorker(
+      principal, cookieJarSettings, getter_AddRefs(partitionedPrincipal));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  PrincipalInfo partitionedPrincipalInfo;
+  rv =
+      PrincipalToPrincipalInfo(partitionedPrincipal, &partitionedPrincipalInfo);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   StorageAccess storageAccess =
       StorageAllowedForServiceWorker(principal, cookieJarSettings);
@@ -160,26 +180,33 @@ nsresult ServiceWorkerPrivateImpl::Initialize() {
                             nsIChannel::LOAD_BYPASS_SERVICE_WORKER);
   serviceWorkerData.id() = std::move(id);
 
-  mRemoteWorkerData.originalScriptURL() =
-      NS_ConvertUTF8toUTF16(mOuter->mInfo->ScriptSpec());
-  mRemoteWorkerData.baseScriptURL() = baseScriptURL;
-  mRemoteWorkerData.resolvedScriptURL() = baseScriptURL;
-  mRemoteWorkerData.name() = VoidString();
+  nsAutoCString domain;
+  rv = uri->GetHost(domain);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
-  mRemoteWorkerData.loadingPrincipalInfo() = principalInfo;
-  mRemoteWorkerData.principalInfo() = principalInfo;
-  // storagePrincipalInfo for ServiceWorkers is equal to principalInfo because,
-  // at the moment, ServiceWorkers are not exposed in partitioned contexts.
-  mRemoteWorkerData.storagePrincipalInfo() = principalInfo;
+  mRemoteWorkerData = RemoteWorkerData(
+      NS_ConvertUTF8toUTF16(mOuter->mInfo->ScriptSpec()), baseScriptURL,
+      baseScriptURL, /* name */ VoidString(),
+      /* loading principal */ principalInfo, principalInfo,
+      partitionedPrincipalInfo,
+      /* useRegularPrincipal */ true,
 
-  rv = uri->GetHost(mRemoteWorkerData.domain());
-  NS_ENSURE_SUCCESS(rv, rv);
-  mRemoteWorkerData.isSecureContext() = true;
+      // ServiceWorkers run as first-party, no storage-access permission needed.
+      /* hasStorageAccessPermissionGranted */ false,
+
+      cjsData, domain,
+      /* isSecureContext */ true,
+      /* clientInfo*/ Nothing(),
+
+      // The RemoteWorkerData CTOR doesn't allow to set the referrerInfo via
+      // already_AddRefed<>. Let's set it to null.
+      /* referrerInfo */ nullptr,
+
+      storageAccess, std::move(serviceWorkerData), regInfo->AgentClusterId());
+
   mRemoteWorkerData.referrerInfo() = MakeAndAddRef<ReferrerInfo>();
-  mRemoteWorkerData.storageAccess() = storageAccess;
-  mRemoteWorkerData.serviceWorkerData() = std::move(serviceWorkerData);
-
-  mRemoteWorkerData.agentClusterId() = regInfo->AgentClusterId();
 
   // This fills in the rest of mRemoteWorkerData.serviceWorkerData().
   RefreshRemoteWorkerData(regInfo);
@@ -374,7 +401,7 @@ nsresult ServiceWorkerPrivateImpl::CheckScriptEvaluation(
         // If a termination operation was already issued using `holder`...
         if (self->mControllerChild != holder) {
           holder->OnDestructor()->Then(
-              GetCurrentThreadSerialEventTarget(), __func__,
+              GetCurrentSerialEventTarget(), __func__,
               [callback = std::move(callback)](
                   const GenericPromise::ResolveOrRejectValue&) {
                 callback->SetResult(false);
@@ -395,7 +422,7 @@ nsresult ServiceWorkerPrivateImpl::CheckScriptEvaluation(
         swm->BlockShutdownOn(promise, shutdownStateId);
 
         promise->Then(
-            GetCurrentThreadSerialEventTarget(), __func__,
+            GetCurrentSerialEventTarget(), __func__,
             [callback = std::move(callback)](
                 const GenericNonExclusivePromise::ResolveOrRejectValue&) {
               callback->SetResult(false);
@@ -747,8 +774,14 @@ nsresult MaybeStoreStreamForBackgroundThread(nsIInterceptedChannel* aChannel,
       MOZ_TRY(nsContentUtils::GenerateUUIDInPlace(
           body->get_ParentToParentStream().uuid()));
 
-      IPCBlobInputStreamStorage::Get()->AddStream(
-          uploadStream, body->get_ParentToParentStream().uuid(), bodySize, 0);
+      auto storageOrErr = IPCBlobInputStreamStorage::Get();
+      if (NS_WARN_IF(storageOrErr.isErr())) {
+        return storageOrErr.unwrapErr();
+      }
+
+      auto storage = storageOrErr.unwrap();
+      storage->AddStream(uploadStream, body->get_ParentToParentStream().uuid(),
+                         bodySize, 0);
     }
   }
 
@@ -827,7 +860,7 @@ nsresult ServiceWorkerPrivateImpl::SendFetchEventInternal(
   FetchEventOpChild::SendFetchEvent(
       mControllerChild->get(), std::move(aArgs), std::move(aChannel),
       std::move(aRegistration), mOuter->CreateEventKeepAliveToken())
-      ->Then(GetCurrentThreadSerialEventTarget(), __func__,
+      ->Then(GetCurrentSerialEventTarget(), __func__,
              [holder = std::move(holder)](
                  const GenericPromise::ResolveOrRejectValue& aResult) {
                Unused << NS_WARN_IF(aResult.IsReject());
@@ -1021,7 +1054,7 @@ nsresult ServiceWorkerPrivateImpl::ExecServiceWorkerOp(
    * can accept rvalue references rather than just const references.
    */
   mControllerChild->get()->SendExecServiceWorkerOp(aArgs)->Then(
-      GetCurrentThreadSerialEventTarget(), __func__,
+      GetCurrentSerialEventTarget(), __func__,
       [self = std::move(self), holder = std::move(holder),
        token = std::move(token), onSuccess = std::move(aSuccessCallback),
        onFailure = std::move(aFailureCallback)](

@@ -10,9 +10,11 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
   IDBHelpers: "resource://services-settings/IDBHelpers.jsm",
+  Utils: "resource://services-settings/Utils.jsm",
   CommonUtils: "resource://services-common/utils.js",
   ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
 });
+XPCOMUtils.defineLazyGetter(this, "console", () => Utils.log);
 
 var EXPORTED_SYMBOLS = ["Database"];
 
@@ -52,7 +54,7 @@ class Database {
               const cursor = event.target.result;
               if (cursor) {
                 const { value } = cursor;
-                if (filterObject(objFilters, value)) {
+                if (Utils.filterObject(objFilters, value)) {
                   results.push(value);
                 }
                 cursor.continue();
@@ -71,54 +73,90 @@ class Database {
     for (const result of results) {
       delete result._cid;
     }
-    return sort ? sortObjects(sort, results) : results;
+    return sort ? Utils.sortObjects(sort, results) : results;
   }
 
-  async importBulk(toInsert) {
+  async importChanges(metadata, timestamp, records = [], options = {}) {
+    const { clear = false } = options;
     const _cid = this.identifier;
     try {
       await executeIDB(
-        "records",
-        (store, rejectTransaction) => {
-          IDBHelpers.bulkOperationHelper(
-            store,
-            {
-              reject: rejectTransaction,
-            },
-            "put",
-            toInsert.map(item => {
-              return Object.assign({ _cid }, item);
-            })
+        ["collections", "timestamps", "records"],
+        (stores, rejectTransaction) => {
+          const [storeMetadata, storeTimestamps, storeRecords] = stores;
+
+          if (clear) {
+            // Our index is over the _cid and id fields. We want to remove
+            // all of the items in the collection for which the object was
+            // created, ie with _cid == this.identifier.
+            // We would like to just tell IndexedDB:
+            // store.index(IDBKeyRange.only(this.identifier)).delete();
+            // to delete all records matching the first part of the 2-part key.
+            // Unfortunately such an API does not exist.
+            // While we could iterate over the index with a cursor, we'd do
+            // a roundtrip to PBackground for each item. Once you have 1000
+            // items, the result is very slow because of all the overhead of
+            // jumping between threads and serializing/deserializing.
+            // So instead, we tell the store to delete everything between
+            // "our" _cid identifier, and what would be the next identifier
+            // (via lexicographical sorting). Unfortunately there does not
+            // seem to be a way to specify bounds for all items that share
+            // the same first part of the key using just that first part, hence
+            // the use of the hypothetical [] for the second part of the end of
+            // the bounds.
+            storeRecords.delete(
+              IDBKeyRange.bound([_cid], [_cid, []], false, true)
+            );
+          }
+
+          // Store or erase metadata.
+          if (metadata === null) {
+            storeMetadata.delete(_cid);
+          } else if (metadata) {
+            storeMetadata.put({ cid: _cid, metadata });
+          }
+          // Store or erase timestamp.
+          if (timestamp === null) {
+            storeTimestamps.delete(_cid);
+          } else if (timestamp) {
+            storeTimestamps.put({ cid: _cid, value: timestamp });
+          }
+
+          if (records.length == 0) {
+            return;
+          }
+
+          // Separate tombstones from creations/updates.
+          const toDelete = records.filter(r => r.deleted);
+          const toInsert = records.filter(r => !r.deleted);
+          console.debug(
+            `${_cid} ${toDelete.length} to delete, ${toInsert.length} to insert`
           );
-        },
-        { desc: "importBulk() in " + this.identifier }
-      );
-    } catch (e) {
-      throw new IDBHelpers.IndexedDBError(e, "importBulk()", this.identifier);
-    }
-  }
-
-  async deleteBulk(toDelete) {
-    const _cid = this.identifier;
-    try {
-      await executeIDB(
-        "records",
-        (store, rejectTransaction) => {
+          // Delete local records for each tombstone.
           IDBHelpers.bulkOperationHelper(
-            store,
+            storeRecords,
             {
               reject: rejectTransaction,
+              completion() {
+                // Overwrite all other data.
+                IDBHelpers.bulkOperationHelper(
+                  storeRecords,
+                  {
+                    reject: rejectTransaction,
+                  },
+                  "put",
+                  toInsert.map(item => ({ ...item, _cid }))
+                );
+              },
             },
             "delete",
-            toDelete.map(item => {
-              return [_cid, item.id];
-            })
+            toDelete.map(item => [_cid, item.id])
           );
         },
-        { desc: "deleteBulk() in " + this.identifier }
+        { desc: "importChanges() in " + _cid }
       );
     } catch (e) {
-      throw new IDBHelpers.IndexedDBError(e, "deleteBulk()", this.identifier);
+      throw new IDBHelpers.IndexedDBError(e, "importChanges()", _cid);
     }
   }
 
@@ -142,30 +180,6 @@ class Database {
     return entry ? entry.value : null;
   }
 
-  async saveLastModified(lastModified) {
-    const value = parseInt(lastModified, 10) || null;
-    try {
-      await executeIDB(
-        "timestamps",
-        store => {
-          if (value === null) {
-            store.delete(this.identifier);
-          } else {
-            store.put({ cid: this.identifier, value });
-          }
-        },
-        { desc: "saveLastModified() in " + this.identifier }
-      );
-    } catch (e) {
-      throw new IDBHelpers.IndexedDBError(
-        e,
-        "saveLastModified()",
-        this.identifier
-      );
-    }
-    return value;
-  }
-
   async getMetadata() {
     let entry = null;
     try {
@@ -180,25 +194,6 @@ class Database {
       throw new IDBHelpers.IndexedDBError(e, "getMetadata()", this.identifier);
     }
     return entry ? entry.metadata : null;
-  }
-
-  async saveMetadata(metadata) {
-    try {
-      await executeIDB(
-        "collections",
-        store => {
-          if (metadata === null) {
-            store.delete(this.identifier);
-          } else {
-            store.put({ cid: this.identifier, metadata });
-          }
-        },
-        { desc: "saveMetadata() in " + this.identifier }
-      );
-      return metadata;
-    } catch (e) {
-      throw new IDBHelpers.IndexedDBError(e, "saveMetadata()", this.identifier);
-    }
   }
 
   async getAttachment(attachmentId) {
@@ -247,40 +242,7 @@ class Database {
 
   async clear() {
     try {
-      await this.saveLastModified(null);
-      await this.saveMetadata(null);
-      await executeIDB(
-        "records",
-        store => {
-          // Our index is over the _cid and id fields. We want to remove
-          // all of the items in the collection for which the object was
-          // created, ie with _cid == this.identifier.
-          // We would like to just tell IndexedDB:
-          // store.index(IDBKeyRange.only(this.identifier)).delete();
-          // to delete all records matching the first part of the 2-part key.
-          // Unfortunately such an API does not exist.
-          // While we could iterate over the index with a cursor, we'd do
-          // a roundtrip to PBackground for each item. Once you have 1000
-          // items, the result is very slow because of all the overhead of
-          // jumping between threads and serializing/deserializing.
-          // So instead, we tell the store to delete everything between
-          // "our" _cid identifier, and what would be the next identifier
-          // (via lexicographical sorting). Unfortunately there does not
-          // seem to be a way to specify bounds for all items that share
-          // the same first part of the key using just that first part, hence
-          // the use of the hypothetical [] for the second part of the end of
-          // the bounds.
-          return store.delete(
-            IDBKeyRange.bound(
-              [this.identifier],
-              [this.identifier, []],
-              false,
-              true
-            )
-          );
-        },
-        { desc: "clear() in " + this.identifier }
-      );
+      await this.importChanges(null, null, [], { clear: true });
     } catch (e) {
       throw new IDBHelpers.IndexedDBError(e, "clear()", this.identifier);
     }
@@ -366,13 +328,13 @@ const gPendingWriteOperations = new Set();
  * Helper to wrap some IDBObjectStore operations into a promise.
  *
  * @param {IDBDatabase} db
- * @param {String} storeName
+ * @param {String|String[]} storeNames - either a string or an array of strings.
  * @param {function} callback
  * @param {Object} options
  * @param {String} options.mode
  * @param {String} options.desc   for shutdown tracking.
  */
-async function executeIDB(storeName, callback, options = {}) {
+async function executeIDB(storeNames, callback, options = {}) {
   if (!gDB) {
     // Check if we're shutting down. Services.startup.shuttingDown will
     // be true sooner, but is never true in xpcshell tests, so we check
@@ -403,7 +365,7 @@ async function executeIDB(storeName, callback, options = {}) {
   const { mode = "readwrite", desc = "" } = options;
   let { promise, transaction } = IDBHelpers.executeIDB(
     gDB,
-    storeName,
+    storeNames,
     mode,
     callback,
     desc
@@ -427,10 +389,6 @@ async function executeIDB(storeName, callback, options = {}) {
   return promise.finally(finishedFn);
 }
 
-function _isUndefined(value) {
-  return typeof value === "undefined";
-}
-
 function makeNestedObjectFromArr(arr, val, nestedFiltersObj) {
   const last = arr.length - 1;
   return arr.reduce((acc, cv, i) => {
@@ -450,52 +408,6 @@ function transformSubObjectFilters(filtersObj) {
     makeNestedObjectFromArr(keysArr, val, transformedFilters);
   }
   return transformedFilters;
-}
-
-/**
- * Test if a single object matches all given filters.
- *
- * @param  {Object} filters  The filters object.
- * @param  {Object} entry    The object to filter.
- * @return {Boolean}
- */
-function filterObject(filters, entry) {
-  return Object.entries(filters).every(([filter, value]) => {
-    if (Array.isArray(value)) {
-      return value.some(candidate => candidate === entry[filter]);
-    } else if (typeof value === "object") {
-      return filterObject(value, entry[filter]);
-    } else if (!Object.prototype.hasOwnProperty.call(entry, filter)) {
-      console.error(`The property ${filter} does not exist`);
-      return false;
-    }
-    return entry[filter] === value;
-  });
-}
-
-/**
- * Sorts records in a list according to a given ordering.
- *
- * @param  {String} order The ordering, eg. `-last_modified`.
- * @param  {Array}  list  The collection to order.
- * @return {Array}
- */
-function sortObjects(order, list) {
-  const hasDash = order[0] === "-";
-  const field = hasDash ? order.slice(1) : order;
-  const direction = hasDash ? -1 : 1;
-  return list.slice().sort((a, b) => {
-    if (a[field] && _isUndefined(b[field])) {
-      return direction;
-    }
-    if (b[field] && _isUndefined(a[field])) {
-      return -direction;
-    }
-    if (_isUndefined(a[field]) && _isUndefined(b[field])) {
-      return 0;
-    }
-    return a[field] > b[field] ? direction : -direction;
-  });
 }
 
 // We need to expose this wrapper function so we can test

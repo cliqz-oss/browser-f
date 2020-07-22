@@ -517,6 +517,11 @@ TextInputSelectionController::SetCaretReadOnly(bool aReadOnly) {
   if (!caret) {
     return NS_ERROR_FAILURE;
   }
+
+  if (!mFrameSelection) {
+    return NS_ERROR_FAILURE;
+  }
+
   Selection* selection = mFrameSelection->GetSelection(SelectionType::eNormal);
   if (selection) {
     caret->SetCaretReadOnly(aReadOnly);
@@ -1389,8 +1394,7 @@ TextControlState::TextControlState(TextControlElement* aOwningElement)
 TextControlState* TextControlState::Construct(
     TextControlElement* aOwningElement) {
   if (sReleasedInstances && !sReleasedInstances->IsEmpty()) {
-    TextControlState* state = sReleasedInstances->LastElement();
-    sReleasedInstances->RemoveLastElement();
+    TextControlState* state = sReleasedInstances->PopLastElement();
     state->mTextCtrlElement = aOwningElement;
     state->mBoundFrame = nullptr;
     state->mSelectionProperties = SelectionProperties();

@@ -47,6 +47,7 @@ class gfxVarReceiver;
   _(UseWebRenderProgramBinaryDisk, bool, false)                    \
   _(UseWebRenderOptimizedShaders, bool, false)                     \
   _(UseWebRenderMultithreading, bool, false)                       \
+  _(UseWebRenderScissoredCacheClears, bool, true)                  \
   _(WebRenderMaxPartialPresentRects, int32_t, 0)                   \
   _(WebRenderDebugFlags, int32_t, 0)                               \
   _(WebRenderBatchingLookback, int32_t, 10)                        \
@@ -62,7 +63,8 @@ class gfxVarReceiver;
   _(UseDoubleBufferingWithCompositor, bool, false)                 \
   _(UseGLSwizzle, bool, true)                                      \
   _(ForceSubpixelAAWherePossible, bool, false)                     \
-  _(DwmCompositionEnabled, bool, true)
+  _(DwmCompositionEnabled, bool, true)                             \
+  _(FxREmbedded, bool, false)
 
 /* Add new entries above this line. */
 

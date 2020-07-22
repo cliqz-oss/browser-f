@@ -20,7 +20,7 @@ profiler_helper = { path = "../../../../tools/profiler/rust-helper", optional = 
 mozurl = { path = "../../../../netwerk/base/mozurl" }
 webrender_bindings = { path = "../../../../gfx/webrender_bindings", optional = true }
 cubeb-coreaudio = { git = "https://github.com/ChunMinChang/cubeb-coreaudio-rs", rev = "4cdbceadae88c77dfc77183b7edda183f32cd28c", optional = true }
-cubeb-pulse = { git = "https://github.com/djg/cubeb-pulse-rs", rev="70431f444cf164177cb3c0f060698fc35f811be5", optional = true, features=["pulse-dlopen"] }
+cubeb-pulse = { git = "https://github.com/djg/cubeb-pulse-rs", rev="3224e2dee65c0726c448484d4c3c43956b9330ec", optional = true, features=["pulse-dlopen"] }
 cubeb-sys = { version = "0.7", optional = true, features=["gecko-in-tree"] }
 encoding_glue = { path = "../../../../intl/encoding_glue" }
 audioipc-client = { path = "../../../../media/audioipc/client", optional = true }
@@ -49,6 +49,7 @@ wgpu_bindings = { path = "../../../../gfx/wgpu_bindings", optional = true }
 mapped_hyph = { git = "https://github.com/jfkthame/mapped_hyph.git", tag = "v0.3.0" }
 remote = { path = "../../../../remote", optional = true }
 fog = { path = "../../../components/glean", optional = true }
+app_services_logger = { path = "../../../../services/common/app_services_logger" }
 
 unic-langid = { version = "0.8", features = ["likelysubtags"] }
 unic-langid-ffi = { path = "../../../../intl/locale/rust/unic-langid-ffi" }
@@ -100,6 +101,7 @@ wasm_library_sandboxing = ["rlbox_lucet_sandbox"]
 webgpu = ["wgpu_bindings"]
 remote_agent = ["remote"]
 glean = ["fog"]
+glean_with_gecko = ["fog/with_gecko"]
 rust_fxa_client = ["firefox-accounts-bridge"]
 
 [lib]

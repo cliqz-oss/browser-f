@@ -410,11 +410,8 @@ already_AddRefed<PreloaderBase> FetchDriver::FindPreload(nsIURI* aURI) {
 
   // OK, this request can be satisfied by a preloaded response, try to find one.
 
-  // TODO - check if we need to perform step 5 and 6 before using
-  // mRequest->ReferrerPolicy_() here.
-  auto preloadKey =
-      PreloadHashKey::CreateAsFetch(aURI, cors, mRequest->ReferrerPolicy_());
-  return mDocument->Preloads().LookupPreload(&preloadKey);
+  auto preloadKey = PreloadHashKey::CreateAsFetch(aURI, cors);
+  return mDocument->Preloads().LookupPreload(preloadKey);
 }
 
 void FetchDriver::UpdateReferrerInfoFromNewChannel(nsIChannel* aChannel) {
@@ -526,10 +523,8 @@ nsresult FetchDriver::HttpFetch(
       mFromPreload = true;
 
       mChannel = fetchPreload->Channel();
-      if (mChannel) {
-        // Still in progress, monitor redirects.
-        mChannel->SetNotificationCallbacks(this);
-      }
+      MOZ_ASSERT(mChannel);
+      mChannel->SetNotificationCallbacks(this);
 
       // Copied from AsyncOnChannelRedirect.
       for (const auto& redirect : fetchPreload->Redirects()) {
@@ -905,14 +900,9 @@ FetchDriver::OnStartRequest(nsIRequest* aRequest) {
   // In that case we will get a simulated OnStartRequest() and then the real
   // channel will call in with an errored OnStartRequest().
 
-  if (mFromPreload && !mChannel) {
-    if (mAborted) {
-      aRequest->Cancel(NS_BINDING_ABORTED);
-      return NS_BINDING_ABORTED;
-    }
-
-    mChannel = do_QueryInterface(aRequest);
-    UpdateReferrerInfoFromNewChannel(mChannel);
+  if (mFromPreload && mAborted) {
+    aRequest->Cancel(NS_BINDING_ABORTED);
+    return NS_BINDING_ABORTED;
   }
 
   if (!mChannel) {
@@ -1432,20 +1422,13 @@ FetchDriver::AsyncOnChannelRedirect(nsIChannel* aOldChannel,
   nsCOMPtr<nsIHttpChannel> oldHttpChannel = do_QueryInterface(aOldChannel);
   nsCOMPtr<nsIHttpChannel> newHttpChannel = do_QueryInterface(aNewChannel);
   if (newHttpChannel) {
-    uint32_t responseCode = 0;
-    bool rewriteToGET = false;
-    if (oldHttpChannel &&
-        NS_SUCCEEDED(oldHttpChannel->GetResponseStatus(&responseCode))) {
-      nsAutoCString method;
-      mRequest->GetMethod(method);
+    nsAutoCString method;
+    mRequest->GetMethod(method);
 
-      // Fetch 4.4.11
-      rewriteToGET =
-          ((responseCode == 301 || responseCode == 302) &&
-           method.LowerCaseEqualsASCII("post")) ||
-          (responseCode == 303 && !method.LowerCaseEqualsASCII("get") &&
-           !method.LowerCaseEqualsASCII("head"));
-    }
+    // Fetch 4.4.11
+    bool rewriteToGET = false;
+    Unused << oldHttpChannel->ShouldStripRequestBodyHeader(method,
+                                                           &rewriteToGET);
 
     SetRequestHeaders(newHttpChannel, rewriteToGET);
   }

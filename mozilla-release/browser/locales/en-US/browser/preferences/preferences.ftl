@@ -53,6 +53,13 @@ pane-sync-title2 = { -sync-brand-short-name }
 category-sync2 =
     .tooltiptext = { pane-sync-title2 }
 
+pane-experimental-title = { -brand-short-name } Experiments
+category-experimental =
+    .tooltiptext = { -brand-short-name } Experiments
+pane-experimental-subtitle = Proceed with Caution
+pane-experimental-search-results-header = { -brand-short-name } Experiments: Proceed with Caution
+pane-experimental-description = Changing advanced configuration preferences can impact { -brand-short-name } performance or security.
+
 help-button-label = { -brand-short-name } Support
 addons-button-label = Extensions & Themes
 
@@ -1053,9 +1060,9 @@ sitedata-settings =
     .label = Manage Data…
     .accesskey = M
 
-sitedata-cookies-permissions =
-    .label = Manage Permissions…
-    .accesskey = P
+sitedata-cookies-exceptions =
+    .label = Manage Exceptions…
+    .accesskey = x
 
 ## Privacy Section - Address Bar
 
@@ -1229,7 +1236,7 @@ collection-header = { -brand-short-name } Data Collection and Use
 collection-description = We strive to provide you with choices and collect only what we need to provide and improve { -brand-short-name } for everyone. We always ask permission before receiving personal information.
 collection-privacy-notice = Privacy Notice
 
-collection-health-report-telemetry-disabled = You’re no longer allowing { -vendor-short-name } to capture technical and interaction data. All past data will be deleted within 30 days. 
+collection-health-report-telemetry-disabled = You’re no longer allowing { -vendor-short-name } to capture technical and interaction data. All past data will be deleted within 30 days.
 collection-health-report-telemetry-disabled-link = Learn more
 
 collection-health-report =

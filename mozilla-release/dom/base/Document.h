@@ -464,6 +464,17 @@ class ExternalResourceMap {
   bool mHaveShutDown;
 };
 
+// The current status for a preload.
+enum class SheetPreloadStatus : uint8_t {
+  // There's no need to preload anything, the sheet is already in-memory.
+  AlreadyComplete,
+  // The load is in-progress. There's no guarantee that a load was started, it
+  // could be coalesced with other redundant loads.
+  InProgress,
+  // Something went wrong, and we errored out.
+  Errored,
+};
+
 //----------------------------------------------------------------------
 
 // Document interface.  This is implemented by all document objects in
@@ -514,8 +525,7 @@ class Document : public nsINode,
 
 #define NS_DOCUMENT_NOTIFY_OBSERVERS(func_, params_)                          \
   do {                                                                        \
-    NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mObservers, nsIDocumentObserver, \
-                                             func_, params_);                 \
+    NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mObservers, func_, params_);     \
     /* FIXME(emilio): Apparently we can keep observing from the BFCache? That \
        looks bogus. */                                                        \
     if (PresShell* presShell = GetObservingPresShell()) {                     \
@@ -578,13 +588,11 @@ class Document : public nsINode,
     return EffectiveStoragePrincipal();
   }
 
-  // You should probably not be using this function, since it performs no
-  // checks to ensure that the intrinsic storage principal should really be
-  // used here.  It is only designed to be used in very specific circumstances,
-  // such as when inheriting the document/storage principal.
-  nsIPrincipal* IntrinsicStoragePrincipal() final {
-    return mIntrinsicStoragePrincipal;
-  }
+  // You should probably not be using this function, since it performs no checks
+  // to ensure that the partitioned principal should really be used here.  It is
+  // only designed to be used in very specific circumstances, such as when
+  // inheriting the document/storage principal.
+  nsIPrincipal* PartitionedPrincipal() final { return mPartitionedPrincipal; }
 
   void ClearActiveStoragePrincipal() { mActiveStoragePrincipal = nullptr; }
 
@@ -855,32 +863,13 @@ class Document : public nsINode,
    * Set the principals responsible for this document.  Chances are, you do not
    * want to be using this.
    */
-  void SetPrincipals(nsIPrincipal* aPrincipal, nsIPrincipal* aStoragePrincipal);
-
-  /**
-   * Get the list of ancestor principals for a document.  This is the same as
-   * the ancestor list for the document's docshell the last time SetContainer()
-   * was called with a non-null argument. See the documentation for the
-   * corresponding getter in docshell for how this list is determined.  We store
-   * a copy of the list, because we may lose the ability to reach our docshell
-   * before people stop asking us for this information.
-   */
-  const nsTArray<nsCOMPtr<nsIPrincipal>>& AncestorPrincipals() const {
-    return mAncestorPrincipals;
-  }
+  void SetPrincipals(nsIPrincipal* aPrincipal,
+                     nsIPrincipal* aPartitionedPrincipal);
 
   /**
    * Returns true if exempt from HTTPS-Only Mode upgrade.
    */
   uint32_t HttpsOnlyStatus() const { return mHttpsOnlyStatus; }
-
-  /**
-   * Get the list of ancestor outerWindowIDs for a document that correspond to
-   * the ancestor principals (see above for more details).
-   */
-  const nsTArray<uint64_t>& AncestorOuterWindowIDs() const {
-    return mAncestorOuterWindowIDs;
-  }
 
   /**
    * Return the LoadGroup for the document. May return null.
@@ -1090,9 +1079,13 @@ class Document : public nsINode,
    */
   uint32_t GetSandboxFlags() const { return mSandboxFlags; }
 
-  Maybe<nsILoadInfo::CrossOriginEmbedderPolicy> GetEmbedderPolicyFromHTTP()
-      const {
-    return mEmbedderPolicyFromHTTP;
+  Maybe<nsILoadInfo::CrossOriginEmbedderPolicy> GetEmbedderPolicy() const {
+    return mEmbedderPolicy;
+  }
+
+  void SetEmbedderPolicy(
+      const Maybe<nsILoadInfo::CrossOriginEmbedderPolicy>& aCOEP) {
+    mEmbedderPolicy = aCOEP;
   }
 
   /**
@@ -1236,6 +1229,8 @@ class Document : public nsINode,
 
   already_AddRefed<Promise> HasStorageAccess(ErrorResult& aRv);
   already_AddRefed<Promise> RequestStorageAccess(ErrorResult& aRv);
+
+  bool UseRegularPrincipal() const;
 
   /**
    * Gets the event target to dispatch key events to if there is no focused
@@ -1389,8 +1384,8 @@ class Document : public nsINode,
   // Returns the cookie jar settings for this and sub contexts.
   nsICookieJarSettings* CookieJarSettings();
 
-  // Returns whether this document has the storage permission.
-  bool HasStoragePermission();
+  // Returns whether this document has the storage access permission.
+  bool HasStorageAccessPermissionGranted();
 
   // Increments the document generation.
   inline void Changed() { ++mGeneration; }
@@ -1811,6 +1806,13 @@ class Document : public nsINode,
                             : nullptr;
   }
 
+  /**
+   * Return WindowContext associated with the inner window.
+   */
+  WindowContext* GetWindowContext() {
+    return GetInnerWindow() ? GetInnerWindow()->GetWindowContext() : nullptr;
+  }
+
   bool IsTopLevelWindowInactive() const;
 
   /**
@@ -2021,6 +2023,8 @@ class Document : public nsINode,
   void NotifyLoading(bool aNewParentIsLoading, const ReadyState& aCurrentState,
                      ReadyState aNewState);
 
+  void NotifyAbortedLoad();
+
   // notify that a content node changed state.  This must happen under
   // a scriptblocker but NOT within a begin/end update.
   void ContentStateChanged(nsIContent* aContent, EventStates aStateMask);
@@ -2087,13 +2091,13 @@ class Document : public nsINode,
   virtual void Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup);
 
   /**
-   * Reset this document to aURI, aLoadGroup, aPrincipal and aStoragePrincipal.
-   * aURI must not be null.  If aPrincipal is null, a content principal based
-   * on aURI will be used.
+   * Reset this document to aURI, aLoadGroup, aPrincipal and
+   * aPartitionedPrincipal.  aURI must not be null.  If aPrincipal is null, a
+   * content principal based on aURI will be used.
    */
   virtual void ResetToURI(nsIURI* aURI, nsILoadGroup* aLoadGroup,
                           nsIPrincipal* aPrincipal,
-                          nsIPrincipal* aStoragePrincipal);
+                          nsIPrincipal* aPartitionedPrincipal);
 
   /**
    * Set the container (docshell) for this document. Virtual so that
@@ -2883,10 +2887,11 @@ class Document : public nsINode,
    * Called by nsParser to preload style sheets.  aCrossOriginAttr should be a
    * void string if the attr is not present.
    */
-  void PreloadStyle(nsIURI* aURI, const Encoding* aEncoding,
-                    const nsAString& aCrossOriginAttr,
-                    ReferrerPolicyEnum aReferrerPolicy,
-                    const nsAString& aIntegrity, bool aIsLinkPreload);
+  SheetPreloadStatus PreloadStyle(nsIURI* aURI, const Encoding* aEncoding,
+                                  const nsAString& aCrossOriginAttr,
+                                  ReferrerPolicyEnum aReferrerPolicy,
+                                  const nsAString& aIntegrity,
+                                  bool aIsLinkPreload);
 
   /**
    * Called by the chrome registry to load style sheets.
@@ -3113,8 +3118,9 @@ class Document : public nsINode,
   };
 #undef DEPRECATED_OPERATION
   bool HasWarnedAbout(DeprecatedOperations aOperation) const;
-  void WarnOnceAbout(DeprecatedOperations aOperation,
-                     bool asError = false) const;
+  void WarnOnceAbout(
+      DeprecatedOperations aOperation, bool asError = false,
+      const nsTArray<nsString>& aParams = nsTArray<nsString>()) const;
 
 #define DOCUMENT_WARNING(_op) e##_op,
   enum DocumentWarnings {
@@ -3323,7 +3329,11 @@ class Document : public nsINode,
   void MozSetImageElement(const nsAString& aImageElementId, Element* aElement);
   nsIURI* GetDocumentURIObject() const;
   // Not const because all the fullscreen goop is not const
-  bool FullscreenEnabled(CallerType aCallerType);
+  const char* GetFullscreenError(CallerType);
+  bool FullscreenEnabled(CallerType aCallerType) {
+    return !GetFullscreenError(aCallerType);
+  }
+
   Element* GetTopLayerTop();
   // Return the fullscreen element in the top layer
   Element* GetUnretargetedFullScreenElement();
@@ -3759,11 +3769,14 @@ class Document : public nsINode,
  private:
   void DoCacheAllKnownLangPrefs();
   void RecomputeLanguageFromCharset();
+  bool GetSHEntryHasUserInteraction();
 
  public:
   void SetMayNeedFontPrefsUpdate() { mMayNeedFontPrefsUpdate = true; }
 
   bool MayNeedFontPrefsUpdate() { return mMayNeedFontPrefsUpdate; }
+
+  void SetSHEntryHasUserInteraction(bool aHasInteraction);
 
   already_AddRefed<nsAtom> GetContentLanguageAsAtomForStyle() const;
   already_AddRefed<nsAtom> GetLanguageForStyle() const;
@@ -3877,7 +3890,8 @@ class Document : public nsINode,
 
   static bool HasRecentlyStartedForegroundLoads();
 
-  static bool AutomaticStorageAccessCanBeGranted(nsIPrincipal* aPrincipal);
+  static bool AutomaticStorageAccessPermissionCanBeGranted(
+      nsIPrincipal* aPrincipal);
 
   already_AddRefed<Promise> AddCertException(bool aIsTemporary);
 
@@ -4171,9 +4185,10 @@ class Document : public nsINode,
 
   void MaybeResolveReadyForIdle();
 
-  typedef MozPromise<bool, bool, true> AutomaticStorageAccessGrantPromise;
-  MOZ_MUST_USE RefPtr<AutomaticStorageAccessGrantPromise>
-  AutomaticStorageAccessCanBeGranted();
+  typedef MozPromise<bool, bool, true>
+      AutomaticStorageAccessPermissionGrantPromise;
+  MOZ_MUST_USE RefPtr<AutomaticStorageAccessPermissionGrantPromise>
+  AutomaticStorageAccessPermissionCanBeGranted();
 
   static void AddToplevelLoadingDocument(Document* aDoc);
   static void RemoveToplevelLoadingDocument(Document* aDoc);
@@ -4587,6 +4602,13 @@ class Document : public nsINode,
   // While we're handling an execCommand call, set to true.
   bool mIsRunningExecCommand : 1;
 
+  // True if we should change the readystate to complete after we fire
+  // DOMContentLoaded. This happens when we abort a load and
+  // nsDocumentViewer::EndLoad runs while we still have things blocking
+  // DOMContentLoaded. We wait for those to complete, and then update the
+  // readystate when they finish.
+  bool mSetCompleteAfterDOMContentLoaded : 1;
+
   uint8_t mPendingFullscreenRequests;
 
   uint8_t mXMLDeclarationBits;
@@ -4655,8 +4677,9 @@ class Document : public nsINode,
   // possible flags.
   uint32_t mSandboxFlags;
 
-  // The embedder policy obtained from parsing the HTTP response header.
-  Maybe<nsILoadInfo::CrossOriginEmbedderPolicy> mEmbedderPolicyFromHTTP;
+  // The embedder policy obtained from parsing the HTTP response header or from
+  // our opener if this is the initial about:blank document.
+  Maybe<nsILoadInfo::CrossOriginEmbedderPolicy> mEmbedderPolicy;
 
   nsCString mContentLanguage;
 
@@ -4814,12 +4837,6 @@ class Document : public nsINode,
   // calling NoteScriptTrackingStatus().  Currently we assume that a URL not
   // existing in the set means the corresponding script isn't a tracking script.
   nsTHashtable<nsCStringHashKey> mTrackingScripts;
-
-  // List of ancestor principals.  This is set at the point a document
-  // is connected to a docshell and not mutated thereafter.
-  nsTArray<nsCOMPtr<nsIPrincipal>> mAncestorPrincipals;
-  // List of ancestor outerWindowIDs that correspond to the ancestor principals.
-  nsTArray<uint64_t> mAncestorOuterWindowIDs;
 
   // Pointer to our parser if we're currently in the process of being
   // parsed into.
@@ -5037,8 +5054,9 @@ class Document : public nsINode,
   int32_t mCachedTabSizeGeneration;
   nsTabSizes mCachedTabSizes;
 
-  // The principal to use for the storage area of this document.
-  nsCOMPtr<nsIPrincipal> mIntrinsicStoragePrincipal;
+  // This is equal to document's principal but with an isolation key. See
+  // StoragePrincipalHelper.h to know more.
+  nsCOMPtr<nsIPrincipal> mPartitionedPrincipal;
 
   // The cached storage principal for this document.
   // This is mutable so that we can keep EffectiveStoragePrincipal() const

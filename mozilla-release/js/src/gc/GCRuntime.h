@@ -569,6 +569,12 @@ class GCRuntime {
   void checkHashTablesAfterMovingGC();
 #endif
 
+#ifdef DEBUG
+  // Crawl the heap to check whether an arbitary pointer is within a cell of
+  // the given kind.
+  bool isPointerWithinTenuredCell(void* ptr, JS::TraceKind traceKind);
+#endif
+
   // Queue memory memory to be freed on a background thread if possible.
   void queueUnusedLifoBlocksForFree(LifoAlloc* lifo);
   void queueAllLifoBlocksForFree(LifoAlloc* lifo);
@@ -615,8 +621,7 @@ class GCRuntime {
 
   // WeakRefs
   bool registerWeakRef(HandleObject target, HandleObject weakRef);
-  bool unregisterWeakRef(JSContext* cx, JSObject* target,
-                         js::WeakRefObject* weakRef);
+  void unregisterWeakRef(js::WeakRefObject* weakRef);
   void traceKeptObjects(JSTracer* trc);
 
  private:
@@ -705,6 +710,8 @@ class GCRuntime {
                         JS::GCReason reason, AutoGCSession& session);
   MOZ_MUST_USE bool shouldCollectNurseryForSlice(bool nonincrementalByAPI,
                                                  SliceBudget& budget);
+  bool mightSweepInThisSlice(bool nonIncremental);
+  bool mightCompactInThisSlice(bool nonIncremental);
   void collectNursery(JS::GCReason reason, gcstats::PhaseKind phase);
 
   friend class AutoCallGCCallbacks;
@@ -759,6 +766,7 @@ class GCRuntime {
   void markIncomingCrossCompartmentPointers(MarkColor color);
   IncrementalProgress beginSweepingSweepGroup(JSFreeOp* fop,
                                               SliceBudget& budget);
+  IncrementalProgress markDuringSweeping(JSFreeOp* fop, SliceBudget& budget);
   void updateAtomsBitmap();
   void sweepCCWrappers();
   void sweepObjectGroups();
@@ -1200,7 +1208,10 @@ class GCRuntime {
 
  private:
   MainThreadData<Nursery> nursery_;
-  MainThreadData<gc::StoreBuffer> storeBuffer_;
+
+  // The store buffer used to track tenured to nursery edges for generational
+  // GC. This is accessed off main thread when sweeping WeakCaches.
+  MainThreadOrGCTaskData<gc::StoreBuffer> storeBuffer_;
 
   mozilla::TimeStamp lastLastDitchTime;
 

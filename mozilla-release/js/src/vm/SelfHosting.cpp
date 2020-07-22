@@ -159,6 +159,26 @@ static bool intrinsic_IsCrossRealmArrayConstructor(JSContext* cx, unsigned argc,
   return true;
 }
 
+static bool intrinsic_ToLength(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  MOZ_ASSERT(args.length() == 1);
+
+  // Inline fast path for the common case.
+  if (args[0].isInt32()) {
+    int32_t i = args[0].toInt32();
+    args.rval().setInt32(i < 0 ? 0 : i);
+    return true;
+  }
+
+  uint64_t length = 0;
+  if (!ToLength(cx, args[0], &length)) {
+    return false;
+  }
+
+  args.rval().setNumber(double(length));
+  return true;
+}
+
 static bool intrinsic_ToInteger(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   double result;
@@ -166,16 +186,6 @@ static bool intrinsic_ToInteger(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
   args.rval().setNumber(result);
-  return true;
-}
-
-static bool intrinsic_ToString(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  JSString* str = ToString<CanGC>(cx, args[0]);
-  if (!str) {
-    return false;
-  }
-  args.rval().setString(str);
   return true;
 }
 
@@ -917,7 +927,7 @@ bool js::intrinsic_NewRegExpStringIterator(JSContext* cx, unsigned argc,
   return true;
 }
 
-static JSAtom* GetUnclonedSelfHostedFunctionName(JSFunction* fun) {
+static js::PropertyName* GetUnclonedSelfHostedFunctionName(JSFunction* fun) {
   if (!fun->isExtended()) {
     return nullptr;
   }
@@ -925,10 +935,10 @@ static JSAtom* GetUnclonedSelfHostedFunctionName(JSFunction* fun) {
   if (!name.isString()) {
     return nullptr;
   }
-  return &name.toString()->asAtom();
+  return name.toString()->asAtom().asPropertyName();
 }
 
-JSAtom* js::GetClonedSelfHostedFunctionName(JSFunction* fun) {
+js::PropertyName* js::GetClonedSelfHostedFunctionName(const JSFunction* fun) {
   if (!fun->isExtended()) {
     return nullptr;
   }
@@ -936,15 +946,16 @@ JSAtom* js::GetClonedSelfHostedFunctionName(JSFunction* fun) {
   if (!name.isString()) {
     return nullptr;
   }
-  return &name.toString()->asAtom();
+  return name.toString()->asAtom().asPropertyName();
 }
 
-JSAtom* js::GetClonedSelfHostedFunctionNameOffMainThread(JSFunction* fun) {
+js::PropertyName* js::GetClonedSelfHostedFunctionNameOffMainThread(
+    JSFunction* fun) {
   Value name = fun->getExtendedSlotOffMainThread(LAZY_FUNCTION_NAME_SLOT);
   if (!name.isString()) {
     return nullptr;
   }
-  return &name.toString()->asAtom();
+  return name.toString()->asAtom().asPropertyName();
 }
 
 bool js::IsExtendedUnclonedSelfHostedFunctionName(JSAtom* name) {
@@ -2060,6 +2071,20 @@ static bool intrinsic_ToBigInt(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
+static bool intrinsic_NewWrapForValidIterator(JSContext* cx, unsigned argc,
+                                              Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  MOZ_ASSERT(args.length() == 0);
+
+  JSObject* obj = NewWrapForValidIterator(cx);
+  if (!obj) {
+    return false;
+  }
+
+  args.rval().setObject(*obj);
+  return true;
+}
+
 // The self-hosting global isn't initialized with the normal set of builtins.
 // Instead, individual C++-implemented functions that're required by
 // self-hosted code are defined as global functions. Accessing these
@@ -2089,7 +2114,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_INLINABLE_FN("std_Math_min", math_min, 2, 0, MathMin),
     JS_INLINABLE_FN("std_Math_abs", math_abs, 1, 0, MathAbs),
 
-    JS_FN("std_Map_iterator", MapObject::entries, 0, 0),
+    JS_FN("std_Map_entries", MapObject::entries, 0, 0),
 
     JS_FN("std_Number_valueOf", num_valueOf, 0, 0),
 
@@ -2103,7 +2128,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("std_Reflect_isExtensible", Reflect_isExtensible, 1, 0),
     JS_FN("std_Reflect_ownKeys", Reflect_ownKeys, 1, 0),
 
-    JS_FN("std_Set_iterator", SetObject::values, 0, 0),
+    JS_FN("std_Set_values", SetObject::values, 0, 0),
 
     JS_INLINABLE_FN("std_String_fromCharCode", str_fromCharCode, 1, 0,
                     StringFromCharCode),
@@ -2126,7 +2151,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
                     intrinsic_IsCrossRealmArrayConstructor, 1, 0,
                     IntrinsicIsCrossRealmArrayConstructor),
     JS_INLINABLE_FN("ToInteger", intrinsic_ToInteger, 1, 0, IntrinsicToInteger),
-    JS_INLINABLE_FN("ToString", intrinsic_ToString, 1, 0, IntrinsicToString),
+    JS_INLINABLE_FN("ToLength", intrinsic_ToLength, 1, 0, IntrinsicToLength),
     JS_FN("ToSource", intrinsic_ToSource, 1, 0),
     JS_FN("ToPropertyKey", intrinsic_ToPropertyKey, 1, 0),
     JS_INLINABLE_FN("IsCallable", intrinsic_IsCallable, 1, 0,
@@ -2209,6 +2234,9 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_INLINABLE_FN("GuardToRegExpStringIterator",
                     intrinsic_GuardToBuiltin<RegExpStringIteratorObject>, 1, 0,
                     IntrinsicGuardToRegExpStringIterator),
+    JS_INLINABLE_FN("GuardToWrapForValidIterator",
+                    intrinsic_GuardToBuiltin<WrapForValidIteratorObject>, 1, 0,
+                    IntrinsicGuardToWrapForValidIterator),
 
     JS_FN("_CreateMapIterationResultPair",
           intrinsic_CreateMapIterationResultPair, 0, 0),
@@ -2397,8 +2425,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("intl_IsValidTimeZoneName", intl_IsValidTimeZoneName, 1, 0),
     JS_FN("intl_NumberFormat", intl_NumberFormat, 2, 0),
     JS_FN("intl_numberingSystem", intl_numberingSystem, 1, 0),
-    JS_FN("intl_patternForSkeleton", intl_patternForSkeleton, 2, 0),
-    JS_FN("intl_patternForStyle", intl_patternForStyle, 3, 0),
+    JS_FN("intl_patternForSkeleton", intl_patternForSkeleton, 3, 0),
+    JS_FN("intl_patternForStyle", intl_patternForStyle, 6, 0),
     JS_FN("intl_GetPluralCategories", intl_GetPluralCategories, 1, 0),
     JS_FN("intl_SelectPluralRule", intl_SelectPluralRule, 2, 0),
     JS_FN("intl_FormatRelativeTime", intl_FormatRelativeTime, 4, 0),
@@ -2515,6 +2543,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("PromiseResolve", intrinsic_PromiseResolve, 2, 0),
 
     JS_FN("ToBigInt", intrinsic_ToBigInt, 1, 0),
+
+    JS_FN("NewWrapForValidIterator", intrinsic_NewWrapForValidIterator, 0, 0),
 
     JS_FS_END};
 
@@ -2748,19 +2778,22 @@ void JSRuntime::traceSelfHostingGlobal(JSTracer* trc) {
   }
 }
 
+GeneratorKind JSRuntime::getSelfHostedFunctionGeneratorKind(JSAtom* name) {
+  JSFunction* fun = getUnclonedSelfHostedFunction(name->asPropertyName());
+  return fun->generatorKind();
+}
+
 static bool CloneValue(JSContext* cx, HandleValue selfHostedValue,
                        MutableHandleValue vp);
 
-static bool GetUnclonedValue(JSContext* cx, HandleNativeObject selfHostedObject,
-                             HandleId id, MutableHandleValue vp) {
-  vp.setUndefined();
-
+static void GetUnclonedValue(NativeObject* selfHostedObject,
+                             const JS::PropertyKey& id, Value* vp) {
   if (JSID_IS_INT(id)) {
     size_t index = JSID_TO_INT(id);
     if (index < selfHostedObject->getDenseInitializedLength() &&
         !selfHostedObject->getDenseElement(index).isMagic(JS_ELEMENTS_HOLE)) {
-      vp.set(selfHostedObject->getDenseElement(JSID_TO_INT(id)));
-      return true;
+      *vp = selfHostedObject->getDenseElement(JSID_TO_INT(id));
+      return;
     }
   }
 
@@ -2771,11 +2804,10 @@ static bool GetUnclonedValue(JSContext* cx, HandleNativeObject selfHostedObject,
   // non-permanent atoms here should be impossible.
   MOZ_ASSERT_IF(JSID_IS_STRING(id), JSID_TO_STRING(id)->isPermanentAtom());
 
-  RootedShape shape(cx, selfHostedObject->lookupPure(id));
+  Shape* shape = selfHostedObject->lookupPure(id);
   MOZ_ASSERT(shape);
   MOZ_ASSERT(shape->isDataProperty());
-  vp.set(selfHostedObject->getSlot(shape->slot()));
-  return true;
+  *vp = selfHostedObject->getSlot(shape->slot());
 }
 
 static bool CloneProperties(JSContext* cx, HandleNativeObject selfHostedObject,
@@ -2824,9 +2856,7 @@ static bool CloneProperties(JSContext* cx, HandleNativeObject selfHostedObject,
   RootedValue selfHostedValue(cx);
   for (uint32_t i = 0; i < ids.length(); i++) {
     id = ids[i];
-    if (!GetUnclonedValue(cx, selfHostedObject, id, &selfHostedValue)) {
-      return false;
-    }
+    GetUnclonedValue(selfHostedObject, id, selfHostedValue.address());
     if (!CloneValue(cx, selfHostedValue, &val) ||
         !JS_DefinePropertyById(cx, clone, id, val, attrs[i])) {
       return false;
@@ -3024,12 +3054,11 @@ static bool CloneValue(JSContext* cx, HandleValue selfHostedValue,
 
 bool JSRuntime::createLazySelfHostedFunctionClone(
     JSContext* cx, HandlePropertyName selfHostedName, HandleAtom name,
-    unsigned nargs, HandleObject proto, NewObjectKind newKind,
-    MutableHandleFunction fun) {
+    unsigned nargs, NewObjectKind newKind, MutableHandleFunction fun) {
   MOZ_ASSERT(newKind != GenericObject);
 
   RootedAtom funName(cx, name);
-  JSFunction* selfHostedFun = getUnclonedSelfHostedFunction(cx, selfHostedName);
+  JSFunction* selfHostedFun = getUnclonedSelfHostedFunction(selfHostedName);
   if (!selfHostedFun) {
     return false;
   }
@@ -3040,6 +3069,12 @@ bool JSRuntime::createLazySelfHostedFunctionClone(
     MOZ_ASSERT(GetUnclonedSelfHostedFunctionName(selfHostedFun) ==
                selfHostedName);
     funName = selfHostedFun->explicitName();
+  }
+
+  RootedObject proto(cx);
+  if (!GetFunctionPrototype(cx, selfHostedFun->generatorKind(),
+                            selfHostedFun->asyncKind(), &proto)) {
+    return false;
   }
 
   fun.set(NewScriptedFunction(cx, nargs, FunctionFlags::BASESCRIPT, funName,
@@ -3057,13 +3092,10 @@ bool JSRuntime::createLazySelfHostedFunctionClone(
 bool JSRuntime::cloneSelfHostedFunctionScript(JSContext* cx,
                                               HandlePropertyName name,
                                               HandleFunction targetFun) {
-  RootedFunction sourceFun(cx, getUnclonedSelfHostedFunction(cx, name));
+  RootedFunction sourceFun(cx, getUnclonedSelfHostedFunction(name));
   if (!sourceFun) {
     return false;
   }
-  // JSFunction::generatorKind can't handle lazy self-hosted functions, so we
-  // make sure there aren't any.
-  MOZ_ASSERT(!sourceFun->isGenerator() && !sourceFun->isAsync());
   MOZ_ASSERT(targetFun->isExtended());
   MOZ_ASSERT(targetFun->hasSelfHostedLazyScript());
 
@@ -3112,31 +3144,21 @@ bool JSRuntime::cloneSelfHostedFunctionScript(JSContext* cx,
   return true;
 }
 
-bool JSRuntime::getUnclonedSelfHostedValue(JSContext* cx,
-                                           HandlePropertyName name,
-                                           MutableHandleValue vp) {
-  RootedId id(cx, NameToId(name));
-  return GetUnclonedValue(
-      cx, HandleNativeObject::fromMarkedLocation(&selfHostingGlobal_.ref()), id,
-      vp);
+void JSRuntime::getUnclonedSelfHostedValue(PropertyName* name, Value* vp) {
+  JS::PropertyKey id = NameToId(name);
+  GetUnclonedValue(selfHostingGlobal_, id, vp);
 }
 
-JSFunction* JSRuntime::getUnclonedSelfHostedFunction(JSContext* cx,
-                                                     HandlePropertyName name) {
-  RootedValue selfHostedValue(cx);
-  if (!getUnclonedSelfHostedValue(cx, name, &selfHostedValue)) {
-    return nullptr;
-  }
-
+JSFunction* JSRuntime::getUnclonedSelfHostedFunction(PropertyName* name) {
+  Value selfHostedValue;
+  getUnclonedSelfHostedValue(name, &selfHostedValue);
   return &selfHostedValue.toObject().as<JSFunction>();
 }
 
 bool JSRuntime::cloneSelfHostedValue(JSContext* cx, HandlePropertyName name,
                                      MutableHandleValue vp) {
   RootedValue selfHostedValue(cx);
-  if (!getUnclonedSelfHostedValue(cx, name, &selfHostedValue)) {
-    return false;
-  }
+  getUnclonedSelfHostedValue(name, selfHostedValue.address());
 
   /*
    * We don't clone if we're operating in the self-hosting global, as that
@@ -3154,7 +3176,7 @@ bool JSRuntime::cloneSelfHostedValue(JSContext* cx, HandlePropertyName name,
 void JSRuntime::assertSelfHostedFunctionHasCanonicalName(
     JSContext* cx, HandlePropertyName name) {
 #ifdef DEBUG
-  JSFunction* selfHostedFun = getUnclonedSelfHostedFunction(cx, name);
+  JSFunction* selfHostedFun = getUnclonedSelfHostedFunction(name);
   MOZ_ASSERT(selfHostedFun);
   MOZ_ASSERT(GetUnclonedSelfHostedFunctionName(selfHostedFun) == name);
 #endif

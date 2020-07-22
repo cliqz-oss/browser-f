@@ -32,9 +32,13 @@ class Localization : public nsIObserver,
                                                          nsIObserver)
   NS_DECL_NSIOBSERVER
 
-  explicit Localization(nsIGlobalObject* aGlobal);
-  void Activate(const bool aSync, const bool aEager,
-                const BundleGenerator& aBundleGenerator);
+  static already_AddRefed<Localization> Create(
+      nsIGlobalObject* aGlobal, const bool aSync,
+      const BundleGenerator& aBundleGenerator);
+
+  void Activate(const bool aEager);
+
+  void Destroy();
 
   static already_AddRefed<Localization> Constructor(
       const GlobalObject& aGlobal, const Sequence<nsString>& aResourceIds,
@@ -62,26 +66,32 @@ class Localization : public nsIObserver,
                                         const Optional<L10nArgs>& aArgs,
                                         ErrorResult& aRv);
 
-  already_AddRefed<Promise> FormatValues(JSContext* aCx,
-                                         const Sequence<L10nKey>& aKeys,
-                                         ErrorResult& aRv);
+  already_AddRefed<Promise> FormatValues(
+      JSContext* aCx, const Sequence<OwningUTF8StringOrL10nIdArgs>& aKeys,
+      ErrorResult& aRv);
 
-  already_AddRefed<Promise> FormatMessages(JSContext* aCx,
-                                           const Sequence<L10nKey>& aKeys,
-                                           ErrorResult& aRv);
+  already_AddRefed<Promise> FormatMessages(
+      JSContext* aCx, const Sequence<OwningUTF8StringOrL10nIdArgs>& aKeys,
+      ErrorResult& aRv);
 
   void SetIsSync(const bool aIsSync);
 
   void FormatValueSync(JSContext* aCx, const nsACString& aId,
                        const Optional<L10nArgs>& aArgs, nsACString& aRetVal,
                        ErrorResult& aRv);
-  void FormatValuesSync(JSContext* aCx, const Sequence<L10nKey>& aKeys,
+  void FormatValuesSync(JSContext* aCx,
+                        const Sequence<OwningUTF8StringOrL10nIdArgs>& aKeys,
                         nsTArray<nsCString>& aRetVal, ErrorResult& aRv);
-  void FormatMessagesSync(JSContext* aCx, const Sequence<L10nKey>& aKeys,
+  void FormatMessagesSync(JSContext* aCx,
+                          const Sequence<OwningUTF8StringOrL10nIdArgs>& aKeys,
                           nsTArray<Nullable<L10nMessage>>& aRetVal,
                           ErrorResult& aRv);
 
  protected:
+  Localization(nsIGlobalObject* aGlobal, const bool aSync,
+               const BundleGenerator& aBundleGenerator);
+  virtual bool Init();
+
   virtual ~Localization();
   void RegisterObservers();
   virtual void OnChange();
@@ -92,7 +102,13 @@ class Localization : public nsIObserver,
 
   nsCOMPtr<nsIGlobalObject> mGlobal;
   nsCOMPtr<mozILocalization> mLocalization;
+
   bool mIsSync;
+  nsTArray<nsString> mResourceIds;
+
+  JS::Heap<JS::Value> mBundles;
+  JS::Heap<JS::Value> mGenerateBundles;
+  JS::Heap<JS::Value> mGenerateBundlesSync;
 };
 
 }  // namespace intl

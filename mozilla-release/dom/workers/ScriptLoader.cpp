@@ -1119,6 +1119,22 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
       }
     }
 
+    if (StaticPrefs::browser_tabs_remote_useCrossOriginEmbedderPolicy()) {
+      nsILoadInfo::CrossOriginEmbedderPolicy respectedCOEP =
+          mWorkerPrivate->GetEmbedderPolicy();
+      if (mWorkerPrivate->IsDedicatedWorker() &&
+          respectedCOEP == nsILoadInfo::EMBEDDER_POLICY_NULL) {
+        respectedCOEP = mWorkerPrivate->GetOwnerEmbedderPolicy();
+      }
+
+      nsCOMPtr<nsILoadInfo> channelLoadInfo;
+      rv = channel->GetLoadInfo(getter_AddRefs(channelLoadInfo));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+      channelLoadInfo->SetLoadingEmbedderPolicy(respectedCOEP);
+    }
+
     if (loadInfo.mCacheStatus != ScriptLoadInfo::ToBeCached) {
       rv = channel->AsyncOpen(loader);
       if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -1279,14 +1295,20 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
     rv = NS_GetFinalChannelURI(channel, getter_AddRefs(finalURI));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsCString filename;
-    rv = finalURI->GetSpec(filename);
+    bool isSameOrigin = false;
+    rv = principal->IsSameOrigin(finalURI, false, &isSameOrigin);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    if (!filename.IsEmpty()) {
-      // This will help callers figure out what their script url resolved to in
-      // case of errors.
-      aLoadInfo.mURL.Assign(NS_ConvertUTF8toUTF16(filename));
+    if (isSameOrigin) {
+      nsCString filename;
+      rv = finalURI->GetSpec(filename);
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      if (!filename.IsEmpty()) {
+        // This will help callers figure out what their script url resolved to
+        // in case of errors.
+        aLoadInfo.mURL.Assign(NS_ConvertUTF8toUTF16(filename));
+      }
     }
 
     // Update the principal of the worker and its base URI if we just loaded the
@@ -1430,8 +1452,8 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
       // referrer logic depends on the WorkerPrivate principal having a URL
       // that matches the worker script URL.  If bug 1340694 is ever fixed
       // this can be removed.
-      // XXX: force the storagePrincipal to be equal to the response one. This
-      // is OK for now because we don't want to expose storagePrincipal
+      // XXX: force the partitionedPrincipal to be equal to the response one.
+      // This is OK for now because we don't want to expose partitionedPrincipal
       // functionality in ServiceWorkers yet.
       rv = mWorkerPrivate->SetPrincipalsAndCSPOnMainThread(
           responsePrincipal, responsePrincipal, loadGroup, nullptr);
@@ -1473,33 +1495,38 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
       mWorkerPrivate->WorkerScriptLoaded();
     }
 
-    uint32_t firstIndex = UINT32_MAX;
-    uint32_t lastIndex = UINT32_MAX;
+    const auto [firstIndex,
+                lastIndex] = [this]() -> std::pair<uint32_t, uint32_t> {
+      // Find firstIndex based on whether mExecutionScheduled is unset.
+      const auto begin = mLoadInfos.begin();
+      const auto end = mLoadInfos.end();
+      auto foundFirstIt =
+          std::find_if(begin, end, [](const ScriptLoadInfo& loadInfo) {
+            return !loadInfo.mExecutionScheduled;
+          });
 
-    // Find firstIndex based on whether mExecutionScheduled is unset.
-    for (uint32_t index = 0; index < mLoadInfos.Length(); index++) {
-      if (!mLoadInfos[index].mExecutionScheduled) {
-        firstIndex = index;
-        break;
+      // Find lastIndex based on whether mChannel is set, and update
+      // mExecutionScheduled on the ones we're about to schedule.
+      if (foundFirstIt == end) {
+        return std::pair(UINT32_MAX, UINT32_MAX);
       }
-    }
 
-    // Find lastIndex based on whether mChannel is set, and update
-    // mExecutionScheduled on the ones we're about to schedule.
-    if (firstIndex != UINT32_MAX) {
-      for (uint32_t index = firstIndex; index < mLoadInfos.Length(); index++) {
-        ScriptLoadInfo& loadInfo = mLoadInfos[index];
+      const auto foundLastIt =
+          std::find_if(foundFirstIt, end, [](ScriptLoadInfo& loadInfo) {
+            if (!loadInfo.Finished()) {
+              return true;
+            }
 
-        if (!loadInfo.Finished()) {
-          break;
-        }
+            // We can execute this one.
+            loadInfo.mExecutionScheduled = true;
 
-        // We can execute this one.
-        loadInfo.mExecutionScheduled = true;
+            return false;
+          });
 
-        lastIndex = index;
-      }
-    }
+      return std::pair(foundFirstIt - begin, foundLastIt == foundFirstIt
+                                                 ? UINT32_MAX
+                                                 : foundLastIt - begin - 1);
+    }();
 
     // This is the last index, we can unused things before the exection of the
     // script and the stopping of the sync loop.

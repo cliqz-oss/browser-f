@@ -630,6 +630,18 @@ public class WebExtension {
                                                    @NonNull CreateTabDetails createDetails) {
             return null;
         }
+
+        /**
+         * Called when runtime.openOptionsPage is invoked with
+         * options_ui.open_in_tab = false.
+         * In this case, GeckoView delegates options page handling to the app.
+         * With options_ui.open_in_tab = true, {@link #onNewTab} is called
+         * instead.
+         *
+         * @param source An instance of {@link WebExtension}.
+         */
+        @UiThread
+        default void onOpenOptionsPage(@NonNull WebExtension source) {}
     }
 
     /**
@@ -824,9 +836,6 @@ public class WebExtension {
         private boolean mActionDelegateRegistered = false;
         private boolean mTabDelegateRegistered = false;
 
-        // TODO: remove Bug 1618987
-        private WebExtensionController.TabDelegate mLegacyTabDelegate;
-
         public GeckoRuntime runtime;
 
         public Listener(final GeckoRuntime runtime) {
@@ -835,14 +844,15 @@ public class WebExtension {
 
         public Listener(final GeckoSession session) {
             this(session, null);
-            // TODO: Remove Bug 1618987
+
             // Close tab event is forwarded to the main listener so we need to listen
             // to it here.
             mEventDispatcher.registerUiThreadListener(
                     this,
                     "GeckoView:WebExtension:NewTab",
                     "GeckoView:WebExtension:UpdateTab",
-                    "GeckoView:WebExtension:CloseTab"
+                    "GeckoView:WebExtension:CloseTab",
+                    "GeckoView:WebExtension:OpenOptionsPage"
             );
             mTabDelegateRegistered = true;
         }
@@ -866,28 +876,6 @@ public class WebExtension {
                     "GeckoView:WebExtension:Disconnect");
         }
 
-        // TODO: remove Bug 1618987
-        @Deprecated
-        public void setTabDelegate(final WebExtensionController.TabDelegate delegate) {
-            if (!mTabDelegateRegistered && delegate != null) {
-                mEventDispatcher.registerUiThreadListener(
-                        this,
-                        "GeckoView:WebExtension:NewTab",
-                        "GeckoView:WebExtension:UpdateTab",
-                        "GeckoView:WebExtension:CloseTab"
-                );
-                mTabDelegateRegistered = true;
-            }
-
-            mLegacyTabDelegate = delegate;
-        }
-
-        // TODO: remove Bug 1618987
-        @Deprecated
-        public WebExtensionController.TabDelegate getTabDelegate() {
-            return mLegacyTabDelegate;
-        }
-
         public void unregisterWebExtension(final WebExtension extension) {
             mMessageDelegates.remove(extension.id);
             mActionDelegates.remove(extension.id);
@@ -901,7 +889,8 @@ public class WebExtension {
                         this,
                         "GeckoView:WebExtension:NewTab",
                         "GeckoView:WebExtension:UpdateTab",
-                        "GeckoView:WebExtension:CloseTab"
+                        "GeckoView:WebExtension:CloseTab",
+                        "GeckoView:WebExtension:OpenOptionsPage"
                 );
                 mTabDelegateRegistered = true;
             }
@@ -947,19 +936,6 @@ public class WebExtension {
                                   final EventCallback callback) {
             if (runtime == null) {
                 return;
-            }
-
-            // TODO: remove Bug 1618987
-            final WebExtensionController controller = runtime.getWebExtensionController();
-            WebExtensionController.TabDelegate delegate = controller.getTabDelegate();
-            if (delegate != null) {
-                if ("GeckoView:WebExtension:CloseTab".equals(event)) {
-                    controller.closeTab(message, callback, mSession, delegate);
-                    return;
-                } else if ("GeckoView:WebExtension:NewTab".equals(event)) {
-                    controller.newTab(message, callback, delegate);
-                    return;
-                }
             }
 
             runtime.getWebExtensionController().handleMessage(event, message, callback, mSession);
@@ -1378,6 +1354,9 @@ public class WebExtension {
                     ? source.badgeBackgroundColor : defaultValue.badgeBackgroundColor;
         }
 
+        /**
+         * Notifies the extension that the user has clicked on this Action.
+         */
         @UiThread
         public void click() {
             if (mPopupUri != null && !mPopupUri.isEmpty()) {

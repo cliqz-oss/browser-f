@@ -61,7 +61,6 @@
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ResultExtensions.h"
-#include "mozilla/StaticPrefs_fission.h"
 #include "mozilla/StaticPrefs_full_screen_api.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/dom/Element.h"
@@ -472,7 +471,7 @@ nsWindowWatcher::OpenWindowWithRemoteTab(nsIRemoteTab* aRemoteTab,
     return NS_ERROR_UNEXPECTED;
   }
 
-  bool isFissionWindow = StaticPrefs::fission_autostart();
+  bool isFissionWindow = FissionAutostart();
   bool isPrivateBrowsingWindow =
       Preferences::GetBool("browser.privatebrowsing.autostart");
 
@@ -794,7 +793,14 @@ nsresult nsWindowWatcher::OpenWindowInternal(
         !nsContentUtils::IsSystemOrExpandedPrincipal(subjectPrincipal)) {
       openWindowInfo->mOriginAttributes =
           subjectPrincipal->OriginAttributesRef();
+    } else if (parentBC) {
+      openWindowInfo->mOriginAttributes = parentBC->OriginAttributesRef();
     }
+
+    MOZ_DIAGNOSTIC_ASSERT(
+        !parentBC || openWindowInfo->mOriginAttributes.EqualsIgnoringFPD(
+                         parentBC->OriginAttributesRef()),
+        "subject principal origin attributes doesn't match opener");
   }
 
   uint32_t activeDocsSandboxFlags = 0;
@@ -1104,14 +1110,17 @@ nsresult nsWindowWatcher::OpenWindowInternal(
     // SetInitialPrincipalToSubject is safe to call multiple times.
     if (win) {
       nsCOMPtr<nsIContentSecurityPolicy> cspToInheritForAboutBlank;
+      Maybe<nsILoadInfo::CrossOriginEmbedderPolicy> coepToInheritForAboutBlank;
       nsCOMPtr<mozIDOMWindowProxy> targetOpener = win->GetSameProcessOpener();
       nsCOMPtr<nsIDocShell> openerDocShell(do_GetInterface(targetOpener));
       if (openerDocShell) {
         RefPtr<Document> openerDoc =
             static_cast<nsDocShell*>(openerDocShell.get())->GetDocument();
         cspToInheritForAboutBlank = openerDoc ? openerDoc->GetCsp() : nullptr;
+        coepToInheritForAboutBlank = openerDoc->GetEmbedderPolicy();
       }
-      win->SetInitialPrincipalToSubject(cspToInheritForAboutBlank);
+      win->SetInitialPrincipalToSubject(cspToInheritForAboutBlank,
+                                        coepToInheritForAboutBlank);
 
       if (aIsPopupSpam) {
         MOZ_ASSERT(!newBC->GetIsPopupSpam(),
@@ -1868,7 +1877,7 @@ uint32_t nsWindowWatcher::CalculateChromeFlagsForSystem(
   }
 
   // Determine whether the window should have remote subframes
-  bool fission = StaticPrefs::fission_autostart();
+  bool fission = FissionAutostart();
 
   if (fission) {
     fission =

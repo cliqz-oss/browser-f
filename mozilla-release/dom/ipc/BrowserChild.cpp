@@ -178,28 +178,6 @@ PresShell* BrowserChild::GetTopLevelPresShell() const {
   return nullptr;
 }
 
-void BrowserChild::DispatchMessageManagerMessage(const nsAString& aMessageName,
-                                                 const nsAString& aJSONData) {
-  AutoSafeJSContext cx;
-  JS::Rooted<JS::Value> json(cx, JS::NullValue());
-  dom::ipc::StructuredCloneData data;
-  if (JS_ParseJSON(cx, static_cast<const char16_t*>(aJSONData.BeginReading()),
-                   aJSONData.Length(), &json)) {
-    ErrorResult rv;
-    data.Write(cx, json, rv);
-    if (NS_WARN_IF(rv.Failed())) {
-      rv.SuppressException();
-      return;
-    }
-  }
-
-  RefPtr<BrowserChildMessageManager> kungFuDeathGrip(
-      mBrowserChildMessageManager);
-  RefPtr<nsFrameMessageManager> mm = kungFuDeathGrip->GetMessageManager();
-  mm->ReceiveMessage(static_cast<EventTarget*>(kungFuDeathGrip), nullptr,
-                     aMessageName, false, &data, nullptr, IgnoreErrors());
-}
-
 bool BrowserChild::UpdateFrame(const RepaintRequest& aRequest) {
   MOZ_ASSERT(aRequest.GetScrollId() != ScrollableLayerGuid::NULL_SCROLL_ID);
 
@@ -208,7 +186,7 @@ bool BrowserChild::UpdateFrame(const RepaintRequest& aRequest) {
       // Guard against stale updates (updates meant for a pres shell which
       // has since been torn down and destroyed).
       if (aRequest.GetPresShellId() == presShell->GetPresShellId()) {
-        ProcessUpdateFrame(aRequest);
+        APZCCallbackHelper::UpdateRootFrame(aRequest);
         return true;
       }
     }
@@ -219,14 +197,6 @@ bool BrowserChild::UpdateFrame(const RepaintRequest& aRequest) {
     return true;
   }
   return true;
-}
-
-void BrowserChild::ProcessUpdateFrame(const RepaintRequest& aRequest) {
-  if (!mBrowserChildMessageManager) {
-    return;
-  }
-
-  APZCCallbackHelper::UpdateRootFrame(aRequest);
 }
 
 NS_IMETHODIMP
@@ -353,7 +323,6 @@ BrowserChild::BrowserChild(ContentChild* aManager, const TabId& aTabId,
       mParentIsActive(false),
       mDidSetRealShowInfo(false),
       mDidLoadURLInit(false),
-      mAwaitingLA(false),
       mSkipKeyPress(false),
       mLayersObserverEpoch{1},
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
@@ -1175,9 +1144,10 @@ mozilla::ipc::IPCResult BrowserChild::RecvUpdateDimensions(
   ScreenIntSize screenSize = GetInnerSize();
   ScreenIntRect screenRect = GetOuterRect();
 
-  // Set the size on the document viewer before we update the widget and
-  // trigger a reflow. Otherwise the MobileViewportManager reads the stale
-  // size from the content viewer when it computes a new CSS viewport.
+  // Make sure to set the size on the document viewer first.  The
+  // MobileViewportManager needs the content viewer size to be updated before
+  // the reflow, otherwise it gets a stale size when it computes a new CSS
+  // viewport.
   nsCOMPtr<nsIBaseWindow> baseWin = do_QueryInterface(WebNavigation());
   baseWin->SetPositionAndSize(0, 0, screenSize.width, screenSize.height,
                               nsIBaseWindow::eRepaint);
@@ -3166,13 +3136,15 @@ mozilla::ipc::IPCResult BrowserChild::RecvUIResolutionChanged(
   ScreenIntSize screenSize = GetInnerSize();
   if (mHasValidInnerSize && oldScreenSize != screenSize) {
     ScreenIntRect screenRect = GetOuterRect();
-    mPuppetWidget->Resize(screenRect.x + mClientOffset.x + mChromeOffset.x,
-                          screenRect.y + mClientOffset.y + mChromeOffset.y,
-                          screenSize.width, screenSize.height, true);
 
+    // See RecvUpdateDimensions for the order of these operations.
     nsCOMPtr<nsIBaseWindow> baseWin = do_QueryInterface(WebNavigation());
     baseWin->SetPositionAndSize(0, 0, screenSize.width, screenSize.height,
                                 nsIBaseWindow::eRepaint);
+
+    mPuppetWidget->Resize(screenRect.x + mClientOffset.x + mChromeOffset.x,
+                          screenRect.y + mClientOffset.y + mChromeOffset.y,
+                          screenSize.width, screenSize.height, true);
   }
 
   return IPC_OK();
@@ -3214,19 +3186,6 @@ mozilla::ipc::IPCResult BrowserChild::RecvSafeAreaInsetsChanged(
   // same as Blink that safe area insets isn't set on sub document.
 
   return IPC_OK();
-}
-
-mozilla::ipc::IPCResult BrowserChild::RecvAwaitLargeAlloc() {
-  mAwaitingLA = true;
-  return IPC_OK();
-}
-
-bool BrowserChild::IsAwaitingLargeAlloc() { return mAwaitingLA; }
-
-bool BrowserChild::StopAwaitingLargeAlloc() {
-  bool awaiting = mAwaitingLA;
-  mAwaitingLA = false;
-  return awaiting;
 }
 
 mozilla::ipc::IPCResult BrowserChild::RecvAllowScriptsToClose() {
@@ -3522,29 +3481,6 @@ NS_IMETHODIMP BrowserChild::OnStateChange(nsIWebProgress* aWebProgress,
   MOZ_TRY(PrepareProgressListenerData(aWebProgress, aRequest, webProgressData,
                                       requestData));
 
-  /*
-   * If
-   * 1) this is a document,
-   * 2) the document is top-level,
-   * 3) the document is completely loaded (STATE_STOP), and
-   * 4) this is the end of activity for the document
-   *    (STATE_IS_WINDOW, STATE_IS_NETWORK),
-   * then record the elapsed time that it took to load.
-   */
-  if (document && webProgressData->isTopLevel() &&
-      (aStateFlags & nsIWebProgressListener::STATE_STOP) &&
-      (aStateFlags & nsIWebProgressListener::STATE_IS_WINDOW) &&
-      (aStateFlags & nsIWebProgressListener::STATE_IS_NETWORK)) {
-    RefPtr<nsDOMNavigationTiming> navigationTiming =
-        document->GetNavigationTiming();
-    if (navigationTiming) {
-      TimeDuration elapsedLoadTimeMS =
-          TimeStamp::Now() - navigationTiming->GetNavigationStartTimeStamp();
-      requestData.elapsedLoadTimeMS() =
-          Some(elapsedLoadTimeMS.ToMilliseconds());
-    }
-  }
-
   if (webProgressData->isTopLevel()) {
     stateChangeData.emplace();
 
@@ -3647,8 +3583,8 @@ NS_IMETHODIMP BrowserChild::OnLocationChange(nsIWebProgress* aWebProgress,
         docShell->GetCharsetAutodetected();
 
     locationChangeData->contentPrincipal() = document->NodePrincipal();
-    locationChangeData->contentStoragePrincipal() =
-        document->EffectiveStoragePrincipal();
+    locationChangeData->contentPartitionedPrincipal() =
+        document->PartitionedPrincipal();
     locationChangeData->csp() = document->GetCsp();
     locationChangeData->referrerInfo() = document->ReferrerInfo();
     locationChangeData->isSyntheticDocument() = document->IsSyntheticDocument();
@@ -3774,17 +3710,6 @@ nsresult BrowserChild::PrepareProgressListenerData(
     rv = aWebProgress->GetLoadType(&loadType);
     NS_ENSURE_SUCCESS(rv, rv);
     aWebProgressData->loadType() = loadType;
-
-    uint64_t outerDOMWindowID = 0;
-    uint64_t innerDOMWindowID = 0;
-    // The DOM Window ID getters here may throw if the inner or outer windows
-    // aren't created yet or are destroyed at the time we're making this call
-    // but that isn't fatal so ignore the exceptions here.
-    Unused << aWebProgress->GetDOMWindowID(&outerDOMWindowID);
-    aWebProgressData->outerDOMWindowID() = outerDOMWindowID;
-
-    Unused << aWebProgress->GetInnerDOMWindowID(&innerDOMWindowID);
-    aWebProgressData->innerDOMWindowID() = innerDOMWindowID;
   }
 
   nsCOMPtr<nsIChannel> channel = do_QueryInterface(aRequest);
@@ -3869,7 +3794,7 @@ BrowserChild::DoesWindowSupportProtectedMedia() {
   // the result and use that for future calls.
   return SendIsWindowSupportingProtectedMedia(ChromeOuterWindowID())
       ->Then(
-          GetCurrentThreadSerialEventTarget(), __func__,
+          GetCurrentSerialEventTarget(), __func__,
           [self](bool isSupported) {
             // If a result was cached while this check was inflight, ensure the
             // results match.
@@ -3893,7 +3818,8 @@ void BrowserChild::NotifyContentBlockingEvent(
     uint32_t aEvent, nsIChannel* aChannel, bool aBlocked,
     const nsACString& aTrackingOrigin,
     const nsTArray<nsCString>& aTrackingFullHashes,
-    const Maybe<mozilla::ContentBlockingNotifier::StorageAccessGrantedReason>&
+    const Maybe<
+        mozilla::ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
         aReason) {
   if (!IPCOpen()) {
     return;

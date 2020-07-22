@@ -63,7 +63,7 @@ PrincipalVerifier::PrincipalVerifier(Listener* aListener,
     : Runnable("dom::cache::PrincipalVerifier"),
       mActor(BackgroundParent::GetContentParent(aActor)),
       mPrincipalInfo(aPrincipalInfo),
-      mInitiatingEventTarget(GetCurrentThreadSerialEventTarget()),
+      mInitiatingEventTarget(GetCurrentSerialEventTarget()),
       mResult(NS_OK) {
   AssertIsOnBackgroundThread();
   MOZ_DIAGNOSTIC_ASSERT(mInitiatingEventTarget);
@@ -167,9 +167,9 @@ void PrincipalVerifier::VerifyOnMainThread() {
 
 void PrincipalVerifier::CompleteOnInitiatingThread() {
   AssertIsOnBackgroundThread();
-  ListenerList::ForwardIterator iter(mListenerList);
-  while (iter.HasMore()) {
-    iter.GetNext()->OnPrincipalVerified(mResult, mManagerId);
+
+  for (auto* listener : mListenerList.ForwardRange()) {
+    listener->OnPrincipalVerified(mResult, mManagerId);
   }
 
   // The listener must clear its reference in OnPrincipalVerified()

@@ -60,7 +60,7 @@ maybe_start_pulse() {
     if $NEED_PULSEAUDIO; then
         # call pulseaudio for Ubuntu only
         if [ $DISTRIBUTION == "Ubuntu" ]; then
-            pulseaudio --fail --daemonize --start
+            pulseaudio --daemonize --log-level=4 --log-time=1 --log-target=stderr --start --fail -vvvvv --exit-idle-time=-1 --cleanup-shm --dump-conf
         fi
     fi
 }
@@ -187,6 +187,11 @@ fi
 
 maybe_start_pulse
 
+# Bug 1607713 - set cursor position to 0,0 to avoid odd libx11 interaction
+if [ ! -z $DISPLAY ]; then
+    xwit -root -warp 0 0
+fi
+
 # For telemetry purposes, the build process wants information about the
 # source it is running
 export MOZ_SOURCE_REPO="${GECKO_HEAD_REPOSITORY}"
@@ -207,7 +212,7 @@ fi
 
 # Use |mach python| if a source checkout exists so in-tree packages are
 # available.
-[[ -x "${GECKO_PATH}/mach" ]] && python="${GECKO_PATH}/mach python" || python="python2.7"
+[[ -x "${GECKO_PATH}/mach" ]] && python="python2.7 ${GECKO_PATH}/mach python" || python="python2.7"
 
 # Save the computed mozharness command to a binary which is useful for
 # interactive mode.

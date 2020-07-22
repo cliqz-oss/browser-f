@@ -1143,16 +1143,43 @@ bool TryPreserveWrapper(JS::Handle<JSObject*> obj) {
   MOZ_RELEASE_ASSERT(!clasp->isProxy(),
                      "Should not call addProperty for proxies.");
 
-  // The class should have an addProperty hook iff it is a CC participant.
-  MOZ_RELEASE_ASSERT(bool(domClass->mParticipant) == bool(addProperty));
-
   if (!addProperty) {
     return true;
   }
 
+  // The class should have an addProperty hook iff it is a CC participant.
+  MOZ_RELEASE_ASSERT(domClass->mParticipant);
+
   JS::Rooted<jsid> dummyId(RootingCx());
   JS::Rooted<JS::Value> dummyValue(RootingCx());
   return addProperty(nullptr, obj, dummyId, dummyValue);
+}
+
+bool HasReleasedWrapper(JS::Handle<JSObject*> obj) {
+  MOZ_ASSERT(obj);
+  MOZ_ASSERT(IsDOMObject(obj));
+
+  nsWrapperCache* cache = nullptr;
+  if (nsISupports* native = UnwrapDOMObjectToISupports(obj)) {
+    CallQueryInterface(native, &cache);
+  } else {
+    const DOMJSClass* domClass = GetDOMClass(obj);
+
+    // We expect all proxies to be nsISupports.
+    MOZ_RELEASE_ASSERT(!domClass->ToJSClass()->isProxy(),
+                       "Should not call getWrapperCache for proxies.");
+
+    WrapperCacheGetter getter = domClass->mWrapperCacheGetter;
+
+    if (getter) {
+      // If the class has a wrapper cache getter it must be a CC participant.
+      MOZ_RELEASE_ASSERT(domClass->mParticipant);
+
+      cache = getter(obj);
+    }
+  }
+
+  return cache && !cache->PreservingWrapper();
 }
 
 // Can only be called with a DOM JSClass.
@@ -4157,12 +4184,18 @@ void DeprecationWarning(const GlobalObject& aGlobal,
 }
 
 namespace binding_detail {
-JSObject* UnprivilegedJunkScopeOrWorkerGlobal() {
+JSObject* UnprivilegedJunkScopeOrWorkerGlobal(const fallible_t&) {
   if (NS_IsMainThread()) {
-    return xpc::UnprivilegedJunkScope();
+    return xpc::UnprivilegedJunkScope(fallible);
   }
 
   return GetCurrentThreadWorkerGlobal();
+}
+
+JSObject* UnprivilegedJunkScopeOrWorkerGlobal() {
+  JSObject* scope = UnprivilegedJunkScopeOrWorkerGlobal(fallible);
+  MOZ_RELEASE_ASSERT(scope);
+  return scope;
 }
 }  // namespace binding_detail
 

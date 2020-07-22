@@ -162,13 +162,5 @@ class RaptorGatherer(FrameworkGatherer):
 
         return self._test_list
 
-    def build_test_description(self, test_name, test_description=""):
-        # As we expect browsertime to become its own framework and its test names
-        # are not standardized, add 'browsertime-tp6(m) temporarily to the test name
-        if 'Browsertime' in test_description and \
-                ('Desktop' in test_description or 'Android' in test_description):
-            title = 'Browsertime ' + test_name
-        else:
-            title = test_name
-
-        return self._build_section_with_header(title, test_description, header_type="H5")
+    def build_test_description(self, title, test_description=""):
+        return ["* " + title + " (" + test_description + ")"]

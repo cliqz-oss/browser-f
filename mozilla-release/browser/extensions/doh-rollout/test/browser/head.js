@@ -8,6 +8,12 @@ ChromeUtils.defineModuleGetter(
 
 ChromeUtils.defineModuleGetter(
   this,
+  "ASRouter",
+  "resource://activity-stream/lib/ASRouter.jsm"
+);
+
+ChromeUtils.defineModuleGetter(
+  this,
   "Preferences",
   "resource://gre/modules/Preferences.jsm"
 );
@@ -36,15 +42,16 @@ const EXAMPLE_URL = "https://example.com/";
 
 const prefs = {
   DOH_ENABLED_PREF: "doh-rollout.enabled",
-  TRR_MODE_PREF: "network.trr.mode",
+  ROLLOUT_TRR_MODE_PREF: "doh-rollout.mode",
+  NETWORK_TRR_MODE_PREF: "network.trr.mode",
   DOH_SELF_ENABLED_PREF: "doh-rollout.self-enabled",
-  DOH_PREVIOUS_TRR_MODE_PREF: "doh-rollout.previous.trr.mode",
   DOH_DOORHANGER_SHOWN_PREF: "doh-rollout.doorhanger-shown",
   DOH_DOORHANGER_USER_DECISION_PREF: "doh-rollout.doorhanger-decision",
   DOH_DISABLED_PREF: "doh-rollout.disable-heuristics",
   DOH_SKIP_HEURISTICS_PREF: "doh-rollout.skipHeuristicsCheck",
   DOH_DONE_FIRST_RUN_PREF: "doh-rollout.doneFirstRun",
   DOH_BALROG_MIGRATION_PREF: "doh-rollout.balrog-migration-done",
+  DOH_PREVIOUS_TRR_MODE_PREF: "doh-rollout.previous.trr.mode",
   DOH_DEBUG_PREF: "doh-rollout.debug",
   DOH_TRR_SELECT_ENABLED_PREF: "doh-rollout.trr-selection.enabled",
   DOH_TRR_SELECT_URI_PREF: "doh-rollout.uri",
@@ -57,6 +64,15 @@ const prefs = {
   PROFILE_CREATION_THRESHOLD_PREF: "doh-rollout.profileCreationThreshold",
 };
 
+const CFR_PREF = "browser.newtabpage.activity-stream.asrouter.providers.cfr";
+const CFR_JSON = {
+  id: "cfr",
+  enabled: true,
+  type: "local",
+  localProvider: "CFRMessageProvider",
+  categories: ["cfrAddons", "cfrFeatures"],
+};
+
 async function setup() {
   SpecialPowers.pushPrefEnv({
     set: [["security.notification_enable_delay", 0]],
@@ -65,10 +81,8 @@ async function setup() {
   Services.telemetry.canRecordExtended = true;
   Services.telemetry.clearEvents();
 
-  // Set the profile creation threshold to very far in the future by defualt,
-  // so that we can test the doorhanger. browser_doorhanger_newProfile.js
-  // overrides this.
-  Preferences.set(prefs.PROFILE_CREATION_THRESHOLD_PREF, "99999999999999");
+  // Enable the CFR.
+  Preferences.set(CFR_PREF, JSON.stringify(CFR_JSON));
 
   // Enable trr selection for tests. This is off by default so it can be
   // controlled via Normandy.
@@ -108,6 +122,12 @@ async function setup() {
     Services.telemetry.canRecordExtended = oldCanRecord;
     Services.telemetry.clearEvents();
     gDNSOverride.clearOverrides();
+    if (ASRouter.state.messageBlockList.includes("DOH_ROLLOUT_CONFIRMATION")) {
+      await ASRouter.unblockMessageById("DOH_ROLLOUT_CONFIRMATION");
+    }
+    // The CFR pref is set to an empty array in user.js for testing profiles,
+    // so "reset" it back to that value.
+    Preferences.set(CFR_PREF, "[]");
     await resetPrefsAndRestartAddon();
   });
 }
@@ -244,7 +264,8 @@ async function resetPrefsAndRestartAddon() {
 }
 
 async function waitForDoorhanger() {
-  const notificationID = "doh-first-time";
+  const popupID = "contextual-feature-recommendation";
+  const bucketID = "DOH_ROLLOUT_CONFIRMATION";
   let panel;
   await BrowserTestUtils.waitForEvent(document, "popupshown", true, event => {
     panel = event.originalTarget;
@@ -252,7 +273,8 @@ async function waitForDoorhanger() {
     return (
       popupNotification &&
       popupNotification.notification &&
-      popupNotification.notification.id == notificationID
+      popupNotification.notification.id == popupID &&
+      popupNotification.getAttribute("data-notification-bucket") == bucketID
     );
   });
   return panel;
@@ -270,9 +292,9 @@ function simulateNetworkChange() {
 
 async function ensureTRRMode(mode) {
   await BrowserTestUtils.waitForCondition(() => {
-    return Preferences.get(prefs.TRR_MODE_PREF) == mode;
+    return Preferences.get(prefs.ROLLOUT_TRR_MODE_PREF) === mode;
   });
-  is(Preferences.get(prefs.TRR_MODE_PREF), mode, `TRR mode is ${mode}`);
+  is(Preferences.get(prefs.ROLLOUT_TRR_MODE_PREF), mode, `TRR mode is ${mode}`);
 }
 
 async function ensureNoTRRModeChange(mode) {
@@ -280,12 +302,16 @@ async function ensureNoTRRModeChange(mode) {
     // Try and wait for the TRR pref to change... waitForCondition should throw
     // after trying for a while.
     await BrowserTestUtils.waitForCondition(() => {
-      return Preferences.get(prefs.TRR_MODE_PREF, -1) !== mode;
+      return Preferences.get(prefs.ROLLOUT_TRR_MODE_PREF) !== mode;
     });
     // If we reach this, the waitForCondition didn't throw. Fail!
     ok(false, "TRR mode changed when it shouldn't have!");
   } catch (e) {
     // Assert for clarity.
-    is(Preferences.get(prefs.TRR_MODE_PREF, -1), mode, "No change in TRR mode");
+    is(
+      Preferences.get(prefs.ROLLOUT_TRR_MODE_PREF),
+      mode,
+      "No change in TRR mode"
+    );
   }
 }

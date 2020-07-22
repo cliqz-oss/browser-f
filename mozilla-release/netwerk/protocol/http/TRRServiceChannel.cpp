@@ -89,7 +89,7 @@ TRRServiceChannel::TRRServiceChannel()
       mTopWindowOriginComputed(false),
       mPushedStreamId(0),
       mProxyRequest(nullptr, "TRRServiceChannel::mProxyRequest"),
-      mCurrentEventTarget(GetCurrentThreadEventTarget()) {
+      mCurrentEventTarget(GetCurrentEventTarget()) {
   LOG(("TRRServiceChannel ctor [this=%p]\n", this));
 }
 
@@ -476,13 +476,13 @@ nsresult TRRServiceChannel::BeginConnect() {
     // just the initial document resets the whole pool
     if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI) {
       gHttpHandler->AltServiceCache()->ClearAltServiceMappings();
-      rv = gHttpHandler->ConnMgr()->DoShiftReloadConnectionCleanup(
+      rv = gHttpHandler->ConnMgr()->DoShiftReloadConnectionCleanupWithConnInfo(
           mConnectionInfo);
       if (NS_FAILED(rv)) {
-        LOG(
-            ("TRRServiceChannel::BeginConnect "
-             "DoShiftReloadConnectionCleanup failed: %08x [this=%p]",
-             static_cast<uint32_t>(rv), this));
+        LOG((
+            "TRRServiceChannel::BeginConnect "
+            "DoShiftReloadConnectionCleanupWithConnInfo failed: %08x [this=%p]",
+            static_cast<uint32_t>(rv), this));
       }
     }
   }

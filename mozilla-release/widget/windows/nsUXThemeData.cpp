@@ -12,6 +12,7 @@
 #include "nsDebug.h"
 #include "nsToolkit.h"
 #include "nsUXThemeConstants.h"
+#include "WinContentSystemParameters.h"
 
 using namespace mozilla;
 using namespace mozilla::widget;
@@ -23,8 +24,6 @@ SIZE nsUXThemeData::sCommandButtonMetrics[NUM_COMMAND_BUTTONS];
 bool nsUXThemeData::sCommandButtonMetricsInitialized = false;
 SIZE nsUXThemeData::sCommandButtonBoxMetrics;
 bool nsUXThemeData::sCommandButtonBoxMetricsInitialized = false;
-
-bool nsUXThemeData::sFlatMenus = false;
 
 bool nsUXThemeData::sTitlebarInfoPopulatedAero = false;
 bool nsUXThemeData::sTitlebarInfoPopulatedThemed = false;
@@ -52,17 +51,10 @@ nsUXThemeData::ThemeHandle::operator HANDLE() {
   return mHandle.isSome() ? mHandle.value() : nullptr;
 }
 
-void nsUXThemeData::Teardown() { Invalidate(); }
-
-void nsUXThemeData::Initialize() { Invalidate(); }
-
 void nsUXThemeData::Invalidate() {
   for (auto& theme : sThemes) {
     theme.Close();
   }
-  BOOL useFlat = FALSE;
-  sFlatMenus =
-      ::SystemParametersInfo(SPI_GETFLATMENU, 0, &useFlat, 0) ? useFlat : false;
 }
 
 HANDLE
@@ -316,7 +308,7 @@ void nsUXThemeData::UpdateNativeThemeInfo() {
     sIsHighContrastOn = false;
   }
 
-  if (!IsAppThemed()) {
+  if (!nsUXThemeData::IsAppThemed()) {
     sThemeId = LookAndFeel::eWindowsTheme_Classic;
     return;
   }
@@ -396,4 +388,23 @@ void nsUXThemeData::UpdateNativeThemeInfo() {
       NS_WARNING("unhandled theme color.");
       return;
   }
+}
+
+// static
+bool nsUXThemeData::AreFlatMenusEnabled() {
+  if (XRE_IsContentProcess()) {
+    return WinContentSystemParameters::GetSingleton()->AreFlatMenusEnabled();
+  }
+
+  BOOL useFlat = FALSE;
+  return !!::SystemParametersInfo(SPI_GETFLATMENU, 0, &useFlat, 0) ? useFlat
+                                                                   : false;
+}
+
+// static
+bool nsUXThemeData::IsAppThemed() {
+  if (XRE_IsContentProcess()) {
+    return WinContentSystemParameters::GetSingleton()->IsAppThemed();
+  }
+  return !!::IsAppThemed();
 }

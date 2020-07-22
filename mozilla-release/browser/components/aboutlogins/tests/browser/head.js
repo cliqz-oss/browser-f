@@ -81,14 +81,14 @@ async function addLogin(login) {
 
 let EXPECTED_BREACH = null;
 let EXPECTED_ERROR_MESSAGE = null;
-add_task(async function setup() {
+add_task(async function setup_head() {
   const db = await RemoteSettings(LoginBreaches.REMOTE_SETTINGS_COLLECTION).db;
   if (EXPECTED_BREACH) {
     await db.create(EXPECTED_BREACH, {
       useRecordId: true,
     });
   }
-  await db.saveLastModified(42);
+  await db.importChanges({}, 42);
   if (EXPECTED_BREACH) {
     await RemoteSettings(LoginBreaches.REMOTE_SETTINGS_COLLECTION).emit(
       "sync",
@@ -101,6 +101,12 @@ add_task(async function setup() {
       // Ignore warnings and non-errors.
       return;
     }
+
+    if (msg.errorMessage.includes('Unknown event: ["jsonfile", "load"')) {
+      // Ignore telemetry errors from JSONFile.jsm.
+      return;
+    }
+
     if (
       msg.errorMessage == "Refreshing device list failed." ||
       msg.errorMessage == "Skipping device list refresh; not signed in"
@@ -147,6 +153,7 @@ add_task(async function setup() {
   registerCleanupFunction(async () => {
     EXPECTED_ERROR_MESSAGE = null;
     await db.clear();
+    Services.telemetry.clearEvents();
     SpecialPowers.postConsoleSentinel();
   });
 });

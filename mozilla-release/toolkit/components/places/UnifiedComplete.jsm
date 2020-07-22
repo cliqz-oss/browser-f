@@ -21,9 +21,6 @@ const QUERYTYPE_ADAPTIVE = 3;
 // The default frecency value used when inserting matches with unknown frecency.
 const FRECENCY_DEFAULT = 1000;
 
-// After this time, we'll give up waiting for the extension to return matches.
-const MAXIMUM_ALLOWED_EXTENSION_TIME_MS = 3000;
-
 // By default we add remote tabs that have been used less than this time ago.
 // Any remaining remote tabs are added in queue if no other results are found.
 const RECENT_REMOTE_TAB_THRESHOLD_MS = 259200000; // 72 hours.
@@ -347,8 +344,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
   PlacesRemoteTabsAutocompleteProvider:
     "resource://gre/modules/PlacesRemoteTabsAutocompleteProvider.jsm",
-  PlacesSearchAutocompleteProvider:
-    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   ProfileAge: "resource://gre/modules/ProfileAge.jsm",
@@ -357,6 +352,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarProviderOpenTabs: "resource:///modules/UrlbarProviderOpenTabs.jsm",
   UrlbarProvidersManager: "resource:///modules/UrlbarProvidersManager.jsm",
+  UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.jsm",
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
 });
@@ -961,17 +957,6 @@ Search.prototype = {
       }
     };
 
-    if (UrlbarPrefs.get("restyleSearches")) {
-      // This explicit initialization is only necessary for
-      // _maybeRestyleSearchMatch, because it calls the synchronous
-      // parseSubmissionURL that can't wait for async initialization of
-      // PlacesSearchAutocompleteProvider.
-      await PlacesSearchAutocompleteProvider.ensureReady();
-      if (!this.pending) {
-        return;
-      }
-    }
-
     // For any given search, we run many queries/heuristics:
     // 1) by alias (as defined in SearchService)
     // 2) inline completion from search engine resultDomains
@@ -999,7 +984,7 @@ Search.prototype = {
 
     // If the query is simply "@" and we have tokenAliasEngines then return
     // early. UrlbarProviderTokenAliasEngines will add engine results.
-    let tokenAliasEngines = await PlacesSearchAutocompleteProvider.tokenAliasEngines();
+    let tokenAliasEngines = await UrlbarSearchUtils.tokenAliasEngines();
     if (this._trimmedOriginalSearchString == "@" && tokenAliasEngines.length) {
       this._autocompleteSearch.finishSearch(true);
       return;
@@ -1044,22 +1029,6 @@ Search.prototype = {
         this._autocompleteSearch.finishSearch(true);
         return;
       }
-    }
-
-    // Only add extension suggestions if the first token is a registered keyword
-    // and the search string has characters after the first token.
-    let extensionsCompletePromise = Promise.resolve();
-    if (
-      this._heuristicToken &&
-      ExtensionSearchHandler.isKeywordRegistered(this._heuristicToken) &&
-      substringAfter(this._originalSearchString, this._heuristicToken) &&
-      !this._searchEngineAliasMatch
-    ) {
-      // Do not await on this, since extensions cannot notify when they are done
-      // adding results, it may take too long.
-      extensionsCompletePromise = this._matchExtensionSuggestions();
-    } else if (ExtensionSearchHandler.hasActiveInputSession()) {
-      ExtensionSearchHandler.handleInputCancelled();
     }
 
     // Run the adaptive query first.
@@ -1136,9 +1105,6 @@ Search.prototype = {
     }
 
     this._matchPreloadedSites();
-
-    // Ensure to fill any remaining space.
-    await extensionsCompletePromise;
   },
 
   _shouldMatchAboutPages() {
@@ -1256,7 +1222,7 @@ Search.prototype = {
     }
 
     // See if any engine has a token alias that starts with the heuristic token.
-    let engines = await PlacesSearchAutocompleteProvider.tokenAliasEngines();
+    let engines = await UrlbarSearchUtils.tokenAliasEngines();
     for (let { engine, tokenAliases } of engines) {
       for (let alias of tokenAliases) {
         if (alias.startsWith(token.toLocaleLowerCase())) {
@@ -1378,8 +1344,9 @@ Search.prototype = {
 
       // We may not have auto-filled, but this may still look like a URL.
       // However, even if the input is a valid URL, we may not want to use
-      // it as such. This can happen if the host would require whitelisting,
-      // but isn't in the whitelist.
+      // it as such. This can happen if the host isn't using a known TLD
+      // and hasn't been added to a user-controlled list of known domains,
+      // and/or if it looks like an email address.
       let matched = await this._matchUnknownUrl();
       if (matched) {
         // Since we can't tell if this is a real URL and whether the user wants
@@ -1427,7 +1394,7 @@ Search.prototype = {
     let query, params;
     if (
       UrlbarTokenizer.looksLikeOrigin(this._searchString, {
-        ignoreWhitelist: true,
+        ignoreKnownDomains: true,
       })
     ) {
       [query, params] = this._originQuery;
@@ -1521,7 +1488,7 @@ Search.prototype = {
       return false;
     }
 
-    // PlacesSearchAutocompleteProvider only matches against engine domains.
+    // engineForDomainPrefix only matches against engine domains.
     // Remove an eventual trailing slash from the search string (without the
     // prefix) and check if the resulting string is worth matching.
     // Later, we'll verify that the found result matches the original
@@ -1532,14 +1499,12 @@ Search.prototype = {
     }
     // If the search string looks more like a url than a domain, bail out.
     if (
-      !UrlbarTokenizer.looksLikeOrigin(searchStr, { ignoreWhitelist: true })
+      !UrlbarTokenizer.looksLikeOrigin(searchStr, { ignoreKnownDomains: true })
     ) {
       return false;
     }
 
-    let engine = await PlacesSearchAutocompleteProvider.engineForDomainPrefix(
-      searchStr
-    );
+    let engine = await UrlbarSearchUtils.engineForDomainPrefix(searchStr);
     if (!engine) {
       return false;
     }
@@ -1581,7 +1546,7 @@ Search.prototype = {
   },
 
   async _matchSearchEngineAlias(alias) {
-    let engine = await PlacesSearchAutocompleteProvider.engineForAlias(alias);
+    let engine = await UrlbarSearchUtils.engineForAlias(alias);
     if (!engine) {
       return false;
     }
@@ -1600,14 +1565,19 @@ Search.prototype = {
   },
 
   async _matchCurrentSearchEngine() {
-    let engine = this._engineName
-      ? Services.search.getEngineByName(this._engineName)
-      : await PlacesSearchAutocompleteProvider.currentEngine(
-          this._inPrivateWindow
-        );
+    let engine;
+    if (this._engineName) {
+      engine = Services.search.getEngineByName(this._engineName);
+    } else if (this._inPrivateWindow) {
+      engine = Services.search.defaultPrivateEngine;
+    } else {
+      engine = Services.search.defaultEngine;
+    }
+
     if (!engine || !this.pending) {
       return false;
     }
+
     // Strip a leading search restriction char, because we prepend it to text
     // when the search shortcut is used and it's not user typed. Don't strip
     // other restriction chars, so that it's possible to search for things
@@ -1621,13 +1591,6 @@ Search.prototype = {
   },
 
   _addExtensionMatch(content, comment) {
-    let count =
-      this._counts[UrlbarUtils.RESULT_GROUP.EXTENSION] +
-      this._counts[UrlbarUtils.RESULT_GROUP.HEURISTIC];
-    if (count >= UrlbarUtils.MAXIMUM_ALLOWED_EXTENSION_MATCHES) {
-      return;
-    }
-
     this._addMatch({
       value: makeActionUrl("extension", {
         content,
@@ -1688,30 +1651,6 @@ Search.prototype = {
 
     match.value = makeActionUrl("searchengine", actionURLParams);
     this._addMatch(match);
-  },
-
-  _matchExtensionSuggestions() {
-    let data = {
-      keyword: this._heuristicToken,
-      text: this._originalSearchString,
-      inPrivateWindow: this._inPrivateWindow,
-    };
-    let promise = ExtensionSearchHandler.handleSearch(data, suggestions => {
-      for (let suggestion of suggestions) {
-        let content = `${this._heuristicToken} ${suggestion.content}`;
-        this._addExtensionMatch(content, suggestion.description);
-      }
-    });
-
-    // Since the extension has no way to signal when it's done pushing
-    // results, we add a timeout racing with the addition.
-    let timeoutPromise = new Promise(resolve => {
-      let timer = setTimeout(resolve, MAXIMUM_ALLOWED_EXTENSION_TIME_MS);
-      // TODO Bug 1531268: Figure out why this cancel helps makes the tests
-      // stable.
-      promise.then(timer.cancel);
-    });
-    return Promise.race([timeoutPromise, promise]).catch(Cu.reportError);
   },
 
   async _matchRemoteTabs() {
@@ -1894,9 +1833,7 @@ Search.prototype = {
 
   _maybeRestyleSearchMatch(match) {
     // Return if the URL does not represent a search result.
-    let parseResult = PlacesSearchAutocompleteProvider.parseSubmissionURL(
-      match.value
-    );
+    let parseResult = Services.search.parseSubmissionURL(match.value);
     if (!parseResult) {
       return;
     }

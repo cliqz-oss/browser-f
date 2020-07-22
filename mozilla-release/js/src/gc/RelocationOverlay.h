@@ -34,6 +34,7 @@ class RelocatedCellHeader : public CellHeader {
  * its new location. It's used during generational and compacting GC.
  */
 class RelocationOverlay : public Cell {
+ protected:
   // First word of a Cell has additional requirements from GC. The GC flags
   // determine if a Cell is a normal entry or is a RelocationOverlay.
   //                3         0
@@ -45,7 +46,7 @@ class RelocationOverlay : public Cell {
   /* A list entry to track all relocated things. */
   RelocationOverlay* next_;
 
-  RelocationOverlay(Cell* dst, uintptr_t flags);
+  explicit RelocationOverlay(Cell* dst);
 
  public:
   static const RelocationOverlay* fromCell(const Cell* cell) {

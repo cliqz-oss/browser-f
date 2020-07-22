@@ -27,8 +27,15 @@ already_AddRefed<IPCBlobInputStreamParent> IPCBlobInputStreamParent::Create(
     return nullptr;
   }
 
-  IPCBlobInputStreamStorage::Get()->AddStream(aInputStream, id, aSize,
-                                              aChildID);
+  auto storageOrErr = IPCBlobInputStreamStorage::Get();
+
+  if (NS_WARN_IF(storageOrErr.isErr())) {
+    *aRv = storageOrErr.unwrapErr();
+    return nullptr;
+  }
+
+  auto storage = storageOrErr.unwrap();
+  storage->AddStream(aInputStream, id, aSize, aChildID);
 
   RefPtr<IPCBlobInputStreamParent> parent =
       new IPCBlobInputStreamParent(id, aSize, aManager);
@@ -41,15 +48,41 @@ already_AddRefed<IPCBlobInputStreamParent> IPCBlobInputStreamParent::Create(
   RefPtr<IPCBlobInputStreamParent> actor =
       new IPCBlobInputStreamParent(aID, aSize, aManager);
 
-  actor->mCallback = IPCBlobInputStreamStorage::Get()->TakeCallback(aID);
+  auto storage = IPCBlobInputStreamStorage::Get().unwrapOr(nullptr);
 
-  return actor.forget();
+  if (storage) {
+    actor->mCallback = storage->TakeCallback(aID);
+    return actor.forget();
+  }
+
+  return nullptr;
 }
 
 template already_AddRefed<IPCBlobInputStreamParent>
 IPCBlobInputStreamParent::Create<mozilla::ipc::PBackgroundParent>(
     nsIInputStream*, uint64_t, uint64_t, nsresult*,
     mozilla::ipc::PBackgroundParent*);
+
+/* static */
+already_AddRefed<IPCBlobInputStreamParent> IPCBlobInputStreamParent::Create(
+    const nsID& aID, uint64_t aSize, SocketProcessParent* aManager) {
+  RefPtr<IPCBlobInputStreamParent> actor =
+      new IPCBlobInputStreamParent(aID, aSize, aManager);
+
+  auto storage = IPCBlobInputStreamStorage::Get().unwrapOr(nullptr);
+
+  if (storage) {
+    actor->mCallback = storage->TakeCallback(aID);
+    return actor.forget();
+  }
+
+  return nullptr;
+}
+
+template already_AddRefed<IPCBlobInputStreamParent>
+IPCBlobInputStreamParent::Create<mozilla::net::SocketProcessParent>(
+    nsIInputStream*, uint64_t, uint64_t, nsresult*,
+    mozilla::net::SocketProcessParent*);
 
 template already_AddRefed<IPCBlobInputStreamParent>
 IPCBlobInputStreamParent::Create<ContentParent>(nsIInputStream*, uint64_t,
@@ -63,6 +96,7 @@ IPCBlobInputStreamParent::IPCBlobInputStreamParent(const nsID& aID,
       mSize(aSize),
       mContentManager(aManager),
       mPBackgroundManager(nullptr),
+      mSocketProcessManager(nullptr),
       mMigrating(false) {}
 
 IPCBlobInputStreamParent::IPCBlobInputStreamParent(const nsID& aID,
@@ -72,19 +106,30 @@ IPCBlobInputStreamParent::IPCBlobInputStreamParent(const nsID& aID,
       mSize(aSize),
       mContentManager(nullptr),
       mPBackgroundManager(aManager),
+      mSocketProcessManager(nullptr),
+      mMigrating(false) {}
+
+IPCBlobInputStreamParent::IPCBlobInputStreamParent(
+    const nsID& aID, uint64_t aSize, SocketProcessParent* aManager)
+    : mID(aID),
+      mSize(aSize),
+      mContentManager(nullptr),
+      mPBackgroundManager(nullptr),
+      mSocketProcessManager(aManager),
       mMigrating(false) {}
 
 void IPCBlobInputStreamParent::ActorDestroy(
     IProtocol::ActorDestroyReason aReason) {
-  MOZ_ASSERT(mContentManager || mPBackgroundManager);
+  MOZ_ASSERT(mContentManager || mPBackgroundManager || mSocketProcessManager);
 
   mContentManager = nullptr;
   mPBackgroundManager = nullptr;
+  mSocketProcessManager = nullptr;
 
   RefPtr<IPCBlobInputStreamParentCallback> callback;
   mCallback.swap(callback);
 
-  RefPtr<IPCBlobInputStreamStorage> storage = IPCBlobInputStreamStorage::Get();
+  auto storage = IPCBlobInputStreamStorage::Get().unwrapOr(nullptr);
 
   if (mMigrating) {
     if (callback && storage) {
@@ -112,11 +157,14 @@ void IPCBlobInputStreamParent::SetCallback(
 }
 
 mozilla::ipc::IPCResult IPCBlobInputStreamParent::RecvStreamNeeded() {
-  MOZ_ASSERT(mContentManager || mPBackgroundManager);
+  MOZ_ASSERT(mContentManager || mPBackgroundManager || mSocketProcessManager);
 
   nsCOMPtr<nsIInputStream> stream;
-  IPCBlobInputStreamStorage::Get()->GetStream(mID, 0, mSize,
-                                              getter_AddRefs(stream));
+  auto storage = IPCBlobInputStreamStorage::Get().unwrapOr(nullptr);
+  if (storage) {
+    storage->GetStream(mID, 0, mSize, getter_AddRefs(stream));
+  }
+
   if (!stream) {
     if (!SendStreamReady(Nothing())) {
       return IPC_FAIL(this, "SendStreamReady failed");
@@ -131,9 +179,11 @@ mozilla::ipc::IPCResult IPCBlobInputStreamParent::RecvStreamNeeded() {
   if (mContentManager) {
     MOZ_ASSERT(NS_IsMainThread());
     ok = ipcStream.Serialize(stream, mContentManager);
-  } else {
-    MOZ_ASSERT(mPBackgroundManager);
+  } else if (mPBackgroundManager) {
     ok = ipcStream.Serialize(stream, mPBackgroundManager);
+  } else {
+    MOZ_ASSERT(mSocketProcessManager);
+    ok = ipcStream.Serialize(stream, mSocketProcessManager);
   }
 
   if (NS_WARN_IF(!ok)) {
@@ -148,11 +198,14 @@ mozilla::ipc::IPCResult IPCBlobInputStreamParent::RecvStreamNeeded() {
 }
 
 mozilla::ipc::IPCResult IPCBlobInputStreamParent::RecvLengthNeeded() {
-  MOZ_ASSERT(mContentManager || mPBackgroundManager);
+  MOZ_ASSERT(mContentManager || mPBackgroundManager || mSocketProcessManager);
 
   nsCOMPtr<nsIInputStream> stream;
-  IPCBlobInputStreamStorage::Get()->GetStream(mID, 0, mSize,
-                                              getter_AddRefs(stream));
+  auto storage = IPCBlobInputStreamStorage::Get().unwrapOr(nullptr);
+  if (storage) {
+    storage->GetStream(mID, 0, mSize, getter_AddRefs(stream));
+  }
+
   if (!stream) {
     if (!SendLengthReady(-1)) {
       return IPC_FAIL(this, "SendLengthReady failed");
@@ -169,7 +222,8 @@ mozilla::ipc::IPCResult IPCBlobInputStreamParent::RecvLengthNeeded() {
 
   RefPtr<IPCBlobInputStreamParent> self = this;
   InputStreamLengthHelper::GetAsyncLength(stream, [self](int64_t aLength) {
-    if (self->mContentManager || self->mPBackgroundManager) {
+    if (self->mContentManager || self->mPBackgroundManager ||
+        self->mSocketProcessManager) {
       Unused << self->SendLengthReady(aLength);
     }
   });
@@ -178,20 +232,21 @@ mozilla::ipc::IPCResult IPCBlobInputStreamParent::RecvLengthNeeded() {
 }
 
 mozilla::ipc::IPCResult IPCBlobInputStreamParent::RecvClose() {
-  MOZ_ASSERT(mContentManager || mPBackgroundManager);
+  MOZ_ASSERT(mContentManager || mPBackgroundManager || mSocketProcessManager);
 
   Unused << Send__delete__(this);
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult IPCBlobInputStreamParent::Recv__delete__() {
-  MOZ_ASSERT(mContentManager || mPBackgroundManager);
+  MOZ_ASSERT(mContentManager || mPBackgroundManager || mSocketProcessManager);
   mMigrating = true;
   return IPC_OK();
 }
 
 bool IPCBlobInputStreamParent::HasValidStream() const {
-  return IPCBlobInputStreamStorage::Get()->HasStream(mID);
+  auto storage = IPCBlobInputStreamStorage::Get().unwrapOr(nullptr);
+  return storage ? storage->HasStream(mID) : false;
 }
 
 }  // namespace dom

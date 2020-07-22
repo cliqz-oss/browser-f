@@ -392,7 +392,7 @@ nsresult HttpBaseChannel::Init(nsIURI* aURI, uint32_t aCaps,
       !type.EqualsLiteral("unknown"))
     mProxyInfo = aProxyInfo;
 
-  mCurrentThread = GetCurrentThreadEventTarget();
+  mCurrentThread = GetCurrentEventTarget();
   return rv;
 }
 
@@ -702,6 +702,12 @@ HttpBaseChannel::SetContentDispositionFilename(
     const nsAString& aContentDispositionFilename) {
   mContentDispositionFilename =
       MakeUnique<nsString>(aContentDispositionFilename);
+
+  // For safety reasons ensure the filename doesn't contain null characters and
+  // replace them with underscores. We may later pass the extension to system
+  // MIME APIs that expect null terminated strings.
+  mContentDispositionFilename->ReplaceChar(char16_t(0), '_');
+
   return NS_OK;
 }
 
@@ -1911,12 +1917,16 @@ HttpBaseChannel::RedirectTo(nsIURI* targetURI) {
   NS_ENSURE_FALSE(mOnStartRequestCalled, NS_ERROR_NOT_AVAILABLE);
 
   mAPIRedirectToURI = targetURI;
-  // Only Web Extensions are allowed to redirect a channel to a data URI
-  // and to bypass CORS for early redirects.
-  // To avoid any bypasses after the channel was flagged by
+  // Only Web Extensions are allowed to redirect a channel to a data:
+  // URI. To avoid any bypasses after the channel was flagged by
   // the WebRequst API, we are dropping the flag here.
-  mLoadInfo->SetBypassCORSChecks(false);
   mLoadInfo->SetAllowInsecureRedirectToDataURI(false);
+
+  // We may want to rewrite origin allowance, hence we need an
+  // artificial response head.
+  if (!mResponseHead) {
+    mResponseHead.reset(new nsHttpResponseHead());
+  }
   return NS_OK;
 }
 
@@ -2166,10 +2176,22 @@ nsresult HttpBaseChannel::ProcessCrossOriginResourcePolicyHeader() {
   if (mLoadInfo->GetExternalContentPolicyType() ==
           nsIContentPolicy::TYPE_DOCUMENT ||
       mLoadInfo->GetExternalContentPolicyType() ==
-          nsIContentPolicy::TYPE_SUBDOCUMENT ||
-      mLoadInfo->GetExternalContentPolicyType() ==
           nsIContentPolicy::TYPE_WEBSOCKET) {
     return NS_OK;
+  }
+
+  if (mLoadInfo->GetExternalContentPolicyType() ==
+      nsIContentPolicy::TYPE_SUBDOCUMENT) {
+    // COEP pref off, skip CORP checking for subdocument.
+    if (!StaticPrefs::browser_tabs_remote_useCrossOriginEmbedderPolicy()) {
+      return NS_OK;
+    }
+    // COEP 3.2.1.2 when request targets a nested browsing context then embedder
+    // policy value is "unsafe-none", then return allowed.
+    if (mLoadInfo->GetLoadingEmbedderPolicy() ==
+        nsILoadInfo::EMBEDDER_POLICY_NULL) {
+      return NS_OK;
+    }
   }
 
   MOZ_ASSERT(mLoadInfo->GetLoadingPrincipal(),
@@ -2182,9 +2204,9 @@ nsresult HttpBaseChannel::ProcessCrossOriginResourcePolicyHeader() {
   Unused << mResponseHead->GetHeader(nsHttp::Cross_Origin_Resource_Policy,
                                      content);
 
-  // 3.2.1.6 If policy is null, and embedder policy is "require-corp", set
-  // policy to "same-origin".
   if (StaticPrefs::browser_tabs_remote_useCrossOriginEmbedderPolicy()) {
+    // COEP 3.2.1.6 If policy is null, and embedder policy is "require-corp",
+    // set policy to "same-origin".
     // Note that we treat invalid value as "cross-origin", which spec
     // indicates. We might want to make that stricter.
     if (content.IsEmpty() && mLoadInfo->GetLoadingEmbedderPolicy() ==
@@ -3356,6 +3378,27 @@ bool HttpBaseChannel::ShouldRewriteRedirectToGET(
   return false;
 }
 
+NS_IMETHODIMP
+HttpBaseChannel::ShouldStripRequestBodyHeader(const nsACString& aMethod,
+                                              bool* aResult) {
+  *aResult = false;
+  uint32_t httpStatus = 0;
+  if (NS_FAILED(GetResponseStatus(&httpStatus))) {
+    return NS_OK;
+  }
+
+  nsAutoCString method(aMethod);
+  nsHttpRequestHead::ParsedMethodType parsedMethod;
+  nsHttpRequestHead::ParseMethod(method, parsedMethod);
+  // Fetch 4.4.11, which is slightly different than the perserved method
+  // algrorithm: strip request-body-header for GET->GET redirection for 303.
+  *aResult =
+      ShouldRewriteRedirectToGET(httpStatus, parsedMethod) &&
+      !(httpStatus == 303 && parsedMethod == nsHttpRequestHead::kMethod_Get);
+
+  return NS_OK;
+}
+
 HttpBaseChannel::ReplacementChannelConfig
 HttpBaseChannel::CloneReplacementChannelConfig(bool aPreserveMethod,
                                                uint32_t aRedirectFlags,
@@ -3758,7 +3801,7 @@ nsresult HttpBaseChannel::SetupReplacementChannel(nsIURI* newURI,
     httpInternal->SetLastRedirectFlags(redirectFlags);
 
     if (mRequireCORSPreflight) {
-      httpInternal->SetCorsPreflightParameters(mUnsafeHeaders);
+      httpInternal->SetCorsPreflightParameters(mUnsafeHeaders, false);
     }
   }
 
@@ -4523,11 +4566,20 @@ void HttpBaseChannel::EnsureTopLevelOuterContentWindowId() {
 }
 
 void HttpBaseChannel::SetCorsPreflightParameters(
-    const nsTArray<nsCString>& aUnsafeHeaders) {
+    const nsTArray<nsCString>& aUnsafeHeaders,
+    bool aShouldStripRequestBodyHeader) {
   MOZ_RELEASE_ASSERT(!mRequestObserversCalled);
 
   mRequireCORSPreflight = true;
   mUnsafeHeaders = aUnsafeHeaders.Clone();
+  if (aShouldStripRequestBodyHeader) {
+    mUnsafeHeaders.RemoveElementsBy([&](const nsCString& aHeader) {
+      return aHeader.LowerCaseEqualsASCII("content-type") ||
+             aHeader.LowerCaseEqualsASCII("content-encoding") ||
+             aHeader.LowerCaseEqualsASCII("content-language") ||
+             aHeader.LowerCaseEqualsASCII("content-location");
+    });
+  }
 }
 
 void HttpBaseChannel::SetAltDataForChild(bool aIsForChild) {

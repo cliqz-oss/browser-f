@@ -79,14 +79,17 @@ NS_IMETHODIMP JSProcessActorProtocol::Observe(nsISupports* aSubject,
                                               const char16_t* aData) {
   MOZ_ASSERT(nsContentUtils::IsSafeToRunScript());
 
-  ErrorResult error;
-  RefPtr<JSProcessActorChild> actor =
-      ContentChild::GetSingleton()->GetActor(mName, error);
+  nsCOMPtr<nsIDOMProcessChild> manager;
+  if (XRE_IsParentProcess()) {
+    manager = InProcessChild::Singleton();
+  } else {
+    manager = ContentChild::GetSingleton();
+  }
 
-  // Don't raise an error if creation of our actor was vetoed.
-  if (NS_WARN_IF(error.Failed())) {
-    nsresult rv = error.StealNSResult();
-
+  RefPtr<JSProcessActorChild> actor;
+  nsresult rv = manager->GetActor(mName, getter_AddRefs(actor));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    // Don't raise an error if creation of our actor was vetoed.
     if (rv == NS_ERROR_NOT_AVAILABLE) {
       return NS_OK;
     }

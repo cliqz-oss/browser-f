@@ -49,8 +49,7 @@ jobs:
             toolchain:
                 - linux64-binutils
                 - linux64-clang
-                # bug 1632735
-                - linux64-rust-1.41
+                - linux64-rust
                 - linux64-cbindgen
                 - linux64-sccache
                 - linux64-nasm
@@ -58,5 +57,4 @@ jobs:
                 - linux64-lucetc
                 - wasi-sysroot
         optimization:
-            push-interval-10:
-                - linux
+            push-interval-10: null

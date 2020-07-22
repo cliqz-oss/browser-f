@@ -3534,7 +3534,7 @@ bool BytecodeEmitter::emitDestructuringOpsArray(ListNode* pattern,
 
 bool BytecodeEmitter::emitComputedPropertyName(UnaryNode* computedPropName) {
   MOZ_ASSERT(computedPropName->isKind(ParseNodeKind::ComputedName));
-  return emitTree(computedPropName->kid()) && emit1(JSOp::ToId);
+  return emitTree(computedPropName->kid()) && emit1(JSOp::ToPropertyKey);
 }
 
 bool BytecodeEmitter::emitDestructuringOpsObject(ListNode* pattern,
@@ -4458,9 +4458,7 @@ bool BytecodeEmitter::emitShortCircuitAssignment(AssignmentNode* node) {
     return false;
   }
 
-  // TODO: Open spec issue about setting inferred function names.
-  // <https://github.com/tc39/proposal-logical-assignment/issues/23>
-  if (!emitTree(rhs)) {
+  if (!emitAssignmentRhs(rhs, name)) {
     //              [stack] ... RHS
     return false;
   }
@@ -5656,6 +5654,8 @@ MOZ_NEVER_INLINE bool BytecodeEmitter::emitFunction(
     // NOTE: For a lazy function, this will be applied to any existing function
     //       in FunctionBox::finish().
     if (classContentsIfConstructor) {
+      MOZ_ASSERT(funbox->fieldInitializers.isNothing(),
+                 "FieldInitializers should only be set once");
       funbox->fieldInitializers = setupFieldInitializers(
           classContentsIfConstructor, FieldPlacement::Instance);
       if (!funbox->fieldInitializers) {
@@ -5701,13 +5701,7 @@ MOZ_NEVER_INLINE bool BytecodeEmitter::emitFunction(
       return false;
     }
 
-    EmitterMode nestedMode = emitterMode;
-    if (nestedMode == BytecodeEmitter::LazyFunction) {
-      MOZ_ASSERT(compilationInfo.sourceObject->source()->hasBinASTSource());
-      nestedMode = BytecodeEmitter::Normal;
-    }
-
-    BytecodeEmitter bce2(this, parser, funbox, compilationInfo, nestedMode);
+    BytecodeEmitter bce2(this, parser, funbox, compilationInfo, emitterMode);
     if (!bce2.init(funNode->pn_pos)) {
       return false;
     }
@@ -7255,6 +7249,48 @@ bool BytecodeEmitter::emitSelfHostedToNumeric(BinaryNode* callNode) {
   return emit1(JSOp::ToNumeric);
 }
 
+bool BytecodeEmitter::emitSelfHostedToString(BinaryNode* callNode) {
+  ListNode* argsList = &callNode->right()->as<ListNode>();
+
+  if (argsList->count() != 1) {
+    reportNeedMoreArgsError(callNode, "ToString", "1", "", argsList);
+    return false;
+  }
+
+  ParseNode* argNode = argsList->head();
+
+  if (!emitTree(argNode)) {
+    return false;
+  }
+
+  return emit1(JSOp::ToString);
+}
+
+#ifdef DEBUG
+bool BytecodeEmitter::checkSelfHostedUnsafeGetReservedSlot(
+    BinaryNode* callNode) {
+  ListNode* argsList = &callNode->right()->as<ListNode>();
+
+  if (argsList->count() != 2) {
+    reportNeedMoreArgsError(callNode, "UnsafeGetReservedSlot", "2", "",
+                            argsList);
+    return false;
+  }
+
+  ParseNode* objNode = argsList->head();
+  ParseNode* slotNode = objNode->pn_next;
+
+  // Ensure that the slot argument is fixed, this is required by the JITs.
+  if (!slotNode->isKind(ParseNodeKind::NumberExpr)) {
+    reportError(callNode, JSMSG_UNEXPECTED_TYPE, "slot argument",
+                "not a constant");
+    return false;
+  }
+
+  return true;
+}
+#endif
+
 bool BytecodeEmitter::isRestParameter(ParseNode* expr) {
   if (!sc->isFunctionBox()) {
     return false;
@@ -7731,6 +7767,21 @@ bool BytecodeEmitter::emitCallOrNew(
     if (calleeName == cx->names().ToNumeric) {
       return emitSelfHostedToNumeric(callNode);
     }
+    if (calleeName == cx->names().ToString) {
+      return emitSelfHostedToString(callNode);
+    }
+#ifdef DEBUG
+    if (calleeName == cx->names().UnsafeGetReservedSlot ||
+        calleeName == cx->names().UnsafeGetObjectFromReservedSlot ||
+        calleeName == cx->names().UnsafeGetInt32FromReservedSlot ||
+        calleeName == cx->names().UnsafeGetStringFromReservedSlot ||
+        calleeName == cx->names().UnsafeGetBooleanFromReservedSlot) {
+      // Make sure that this call is correct, but don't emit any special code.
+      if (!checkSelfHostedUnsafeGetReservedSlot(callNode)) {
+        return false;
+      }
+    }
+#endif
     // Fall through
   }
 
@@ -7960,7 +8011,7 @@ bool BytecodeEmitter::emitCalleeAndThisForOptionalChain(
     //              [stack] UNDEFINED UNDEFINED
     //              [stack] # otherwise
     //              [stack] CALLEE THIS
-    return true;
+    return false;
   }
   return true;
 }
@@ -7981,7 +8032,7 @@ bool BytecodeEmitter::emitOptionalChain(UnaryNode* optionalChain,
     //              [stack] UNDEFINED
     //              [stack] # otherwise
     //              [stack] VAL
-    return true;
+    return false;
   }
 
   return true;
@@ -8354,7 +8405,7 @@ bool BytecodeEmitter::emitPropertyList(ListNode* obj, PropertyEmitter& pe,
           return false;
         }
 
-        if (!emit1(JSOp::ToId)) {
+        if (!emit1(JSOp::ToPropertyKey)) {
           //        [stack] CTOR? OBJ ARRAY KEY
           return false;
         }
@@ -8453,17 +8504,6 @@ bool BytecodeEmitter::emitPropertyList(ListNode* obj, PropertyEmitter& pe,
             //      [stack] CTOR? OBJ CTOR? KEY VAL
             return false;
           }
-        } else if (key->isKind(ParseNodeKind::BigIntExpr)) {
-          MOZ_ASSERT(accessorType == AccessorType::None);
-
-          RootedAtom keyAtom(cx, key->as<BigIntLiteral>().toAtom(cx));
-          if (!keyAtom) {
-            return false;
-          }
-          if (!emitAnonymousFunctionWithName(propVal, keyAtom)) {
-            //      [stack] CTOR? OBJ CTOR? KEY VAL
-            return false;
-          }
         } else if (key->isKind(ParseNodeKind::ObjectPropertyName) ||
                    key->isKind(ParseNodeKind::StringExpr)) {
           MOZ_ASSERT(accessorType == AccessorType::None);
@@ -8474,7 +8514,17 @@ bool BytecodeEmitter::emitPropertyList(ListNode* obj, PropertyEmitter& pe,
             return false;
           }
         } else {
-          MOZ_ASSERT(key->isKind(ParseNodeKind::ComputedName));
+          MOZ_ASSERT(key->isKind(ParseNodeKind::ComputedName) ||
+                     key->isKind(ParseNodeKind::BigIntExpr));
+
+          // If a function name is a BigInt, then treat it as a computed name
+          // equivalent to `[ToString(B)]` for some big-int value `B`.
+          if (key->isKind(ParseNodeKind::BigIntExpr)) {
+            MOZ_ASSERT(accessorType == AccessorType::None);
+            if (!emit1(JSOp::ToString)) {
+              return false;
+            }
+          }
 
           FunctionPrefixKind prefix = accessorType == AccessorType::None
                                           ? FunctionPrefixKind::None
@@ -10776,15 +10826,8 @@ bool BytecodeEmitter::intoScriptStencil(ScriptStencil* stencil) {
     // FunctionBox.
     stencil->immutableFlags.setFlag(ImmutableFlags::HasMappedArgsObj,
                                     funbox->hasMappedArgsObj());
-
-    // While IsLikelyConstructorWrapper is required to be the same between
-    // syntax and normal parsing, BinAST cannot ensure this. Work around this by
-    // using the existing value if this is delazification.
-    if (emitterMode != BytecodeEmitter::LazyFunction) {
-      stencil->immutableFlags.setFlag(
-          ImmutableFlags::IsLikelyConstructorWrapper,
-          funbox->isLikelyConstructorWrapper());
-    }
+    stencil->immutableFlags.setFlag(ImmutableFlags::IsLikelyConstructorWrapper,
+                                    funbox->isLikelyConstructorWrapper());
   } /* isFunctionBox */
 
   return true;

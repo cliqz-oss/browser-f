@@ -16,8 +16,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   FormHistory: "resource://gre/modules/FormHistory.jsm",
-  PlacesSearchAutocompleteProvider:
-    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
   setTimeout: "resource://gre/modules/Timer.jsm",
   TestUtils: "resource://testing-common/TestUtils.jsm",
   UrlbarController: "resource:///modules/UrlbarController.jsm",
@@ -27,6 +25,16 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 });
 
 var UrlbarTestUtils = {
+  /**
+   * Running this init allows helpers to access test scope helpers, like Assert
+   * and SimpleTest. Note this initialization is not enforced, thus helpers
+   * should always check _testScope and provide a fallback path.
+   * @param {object} scope The global scope where tests are being run.
+   */
+  init(scope) {
+    this._testScope = scope;
+  },
+
   /**
    * Waits to a search to be complete.
    * @param {object} win The window containing the urlbar
@@ -57,7 +65,11 @@ var UrlbarTestUtils = {
     selectionStart = -1,
     selectionEnd = -1,
   } = {}) {
-    await new Promise(resolve => waitForFocus(resolve, window));
+    if (this._testScope) {
+      await this._testScope.SimpleTest.promiseFocus(window);
+    } else {
+      await new Promise(resolve => waitForFocus(resolve, window));
+    }
     window.gURLBar.inputField.focus();
     // Using the value setter in some cases may trim and fetch unexpected
     // results, then pick an alternate path.
@@ -284,6 +296,9 @@ var UrlbarTestUtils = {
     if (win.gURLBar.view.isOpen) {
       return;
     }
+    if (this._testScope) {
+      this._testScope.info("Awaiting for the urlbar panel to open");
+    }
     await new Promise(resolve => {
       win.gURLBar.controller.addQueryListener({
         onViewOpen() {
@@ -309,6 +324,9 @@ var UrlbarTestUtils = {
     }
     if (!win.gURLBar.view.isOpen) {
       return;
+    }
+    if (this._testScope) {
+      this._testScope.info("Awaiting for the urlbar panel to close");
     }
     await new Promise(resolve => {
       win.gURLBar.controller.addQueryListener({
@@ -388,9 +406,8 @@ var UrlbarTestUtils = {
       .getService(Ci.nsIObserver)
       .observe(null, "profile-after-change", null);
 
-    // These two calls are necessary because UrlbarMuxerUnifiedComplete.sort
-    // calls PlacesSearchAutocompleteProvider.parseSubmissionURL, so we need
-    // engines and PlacesSearchAutocompleteProvider.
+    // This is necessary because UrlbarMuxerUnifiedComplete.sort calls
+    // Services.search.parseSubmissionURL, so we need engines.
     try {
       await AddonTestUtils.promiseStartupManager();
     } catch (error) {
@@ -398,7 +415,6 @@ var UrlbarTestUtils = {
         throw error;
       }
     }
-    await PlacesSearchAutocompleteProvider.ensureReady();
   },
 };
 

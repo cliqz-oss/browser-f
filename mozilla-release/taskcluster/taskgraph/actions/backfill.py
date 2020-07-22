@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 @register_callback_action(
     title='Backfill',
     name='backfill',
-    generic=True,
     symbol='Bk',
     description=('Take the label of the current task, '
                  'and trigger the task with that label '
@@ -148,7 +147,7 @@ def backfill_action(parameters, graph_config, input, task_group_id, task_id):
                         task.task['payload']['env']['MOZHARNESS_TEST_PATHS'] = six.ensure_text(
                             json.dumps({
                                 task.task['extra']['suite']['flavor']: [input['testPath']]
-                            }))
+                            }, sort_keys=True))
 
                     cmd_parts = task.task['payload']['command']
                     keep_args = ['--installer-url', '--download-symbols', '--test-packages-url']

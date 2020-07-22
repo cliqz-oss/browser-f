@@ -94,31 +94,18 @@ static MOZ_ALWAYS_INLINE bool LooseEqualityOp(JSContext* cx,
   return true;
 }
 
-bool js::BoxNonStrictThis(JSContext* cx, HandleValue thisv,
-                          MutableHandleValue vp) {
-  /*
-   * Check for SynthesizeFrame poisoning and fast constructors which
-   * didn't check their callee properly.
-   */
+JSObject* js::BoxNonStrictThis(JSContext* cx, HandleValue thisv) {
   MOZ_ASSERT(!thisv.isMagic());
 
   if (thisv.isNullOrUndefined()) {
-    vp.set(cx->global()->lexicalEnvironment().thisValue());
-    return true;
+    return cx->global()->lexicalEnvironment().thisObject();
   }
 
   if (thisv.isObject()) {
-    vp.set(thisv);
-    return true;
+    return &thisv.toObject();
   }
 
-  JSObject* obj = PrimitiveToObject(cx, thisv);
-  if (!obj) {
-    return false;
-  }
-
-  vp.setObject(*obj);
-  return true;
+  return PrimitiveToObject(cx, thisv);
 }
 
 bool js::GetFunctionThis(JSContext* cx, AbstractFramePtr frame,
@@ -147,21 +134,27 @@ bool js::GetFunctionThis(JSContext* cx, AbstractFramePtr frame,
     RootedObject env(cx, frame.environmentChain());
     while (true) {
       if (IsNSVOLexicalEnvironment(env) || IsGlobalLexicalEnvironment(env)) {
-        res.set(GetThisValueOfLexical(env));
+        res.setObject(*GetThisObjectOfLexical(env));
         return true;
       }
       if (!env->enclosingEnvironment()) {
         // This can only happen in Debugger eval frames: in that case we
         // don't always have a global lexical env, see EvaluateInEnv.
         MOZ_ASSERT(env->is<GlobalObject>());
-        res.set(GetThisValue(env));
+        res.setObject(*GetThisObject(env));
         return true;
       }
       env = env->enclosingEnvironment();
     }
   }
 
-  return BoxNonStrictThis(cx, thisv, res);
+  JSObject* obj = BoxNonStrictThis(cx, thisv);
+  if (!obj) {
+    return false;
+  }
+
+  res.setObject(*obj);
+  return true;
 }
 
 void js::GetNonSyntacticGlobalThis(JSContext* cx, HandleObject envChain,
@@ -169,14 +162,14 @@ void js::GetNonSyntacticGlobalThis(JSContext* cx, HandleObject envChain,
   RootedObject env(cx, envChain);
   while (true) {
     if (IsExtensibleLexicalEnvironment(env)) {
-      res.set(GetThisValueOfLexical(env));
+      res.setObject(*GetThisObjectOfLexical(env));
       return;
     }
     if (!env->enclosingEnvironment()) {
       // This can only happen in Debugger eval frames: in that case we
       // don't always have a global lexical env, see EvaluateInEnv.
       MOZ_ASSERT(env->is<GlobalObject>());
-      res.set(GetThisValue(env));
+      res.setObject(*GetThisObject(env));
       return;
     }
     env = env->enclosingEnvironment();
@@ -302,10 +295,8 @@ JSFunction* js::MakeDefaultConstructor(JSContext* cx, HandleScript script,
       cx, derived ? cx->names().DefaultDerivedClassConstructor
                   : cx->names().DefaultBaseClassConstructor);
   RootedFunction sourceFun(
-      cx, cx->runtime()->getUnclonedSelfHostedFunction(cx, selfHostedName));
-  if (!sourceFun) {
-    return nullptr;
-  }
+      cx, cx->runtime()->getUnclonedSelfHostedFunction(selfHostedName.get()));
+  MOZ_ASSERT(sourceFun);
   RootedScript sourceScript(cx, sourceFun->nonLazyScript());
 
   // Create the new class constructor function.
@@ -640,8 +631,8 @@ static bool InternalCall(JSContext* cx, const AnyInvokeArgs& args,
             .as<JSFunction>()
             .jitInfo()
             ->needsOuterizedThisObject()) {
-      JSObject* thisObj = &args.thisv().toObject();
-      args.mutableThisv().set(GetThisValue(thisObj));
+      JSObject* thisObj = GetThisObject(&args.thisv().toObject());
+      args.mutableThisv().setObject(*thisObj);
     }
   }
 
@@ -1393,7 +1384,7 @@ static inline Value ComputeImplicitThis(JSObject* env) {
 
   // WithEnvironmentObjects have an actual implicit |this|
   if (env->is<WithEnvironmentObject>()) {
-    return GetThisValueOfWith(env);
+    return ObjectValue(*GetThisObjectOfWith(env));
   }
 
   // Debugger environments need special casing, as despite being
@@ -2910,19 +2901,14 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
     }
     END_CASE(DelElem)
 
-    CASE(ToId) {
-      /*
-       * Increment or decrement requires use to lookup the same property twice,
-       * but we need to avoid the observable stringification the second time.
-       * There must be an object value below the id, which will not be popped.
-       */
+    CASE(ToPropertyKey) {
       ReservedRooted<Value> idval(&rootValue1, REGS.sp[-1]);
       MutableHandleValue res = REGS.stackHandleAt(-1);
-      if (!ToIdOperation(cx, idval, res)) {
+      if (!ToPropertyKeyOperation(cx, idval, res)) {
         goto error;
       }
     }
-    END_CASE(ToId)
+    END_CASE(ToPropertyKey)
 
     CASE(TypeofExpr)
     CASE(Typeof) {
@@ -2947,7 +2933,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
         GetNonSyntacticGlobalThis(cx, REGS.fp()->environmentChain(),
                                   REGS.stackHandleAt(-1));
       } else {
-        PUSH_COPY(cx->global()->lexicalEnvironment().thisValue());
+        PUSH_OBJECT(*cx->global()->lexicalEnvironment().thisObject());
       }
     }
     END_CASE(GlobalThis)

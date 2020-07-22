@@ -38,7 +38,8 @@ const PerformanceController = {
    * Listen for events emitted by the current tab target and
    * main UI events.
    */
-  async initialize(targetFront, performanceFront) {
+  async initialize(toolbox, targetFront, performanceFront) {
+    this.toolbox = toolbox;
     this.target = targetFront;
     this.front = performanceFront;
 
@@ -432,6 +433,12 @@ const PerformanceController = {
    */
   getTraits: function() {
     return this.front.traits;
+  },
+
+  viewSourceInDebugger(url, line, column) {
+    // Currently, the line and column values are strings, so we have to convert
+    // them to numbers before passing them on to the toolbox.
+    return this.toolbox.viewSourceInDebugger(url, +line, +column);
   },
 
   /**

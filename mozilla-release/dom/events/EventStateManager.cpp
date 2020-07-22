@@ -35,9 +35,11 @@
 #include "mozilla/dom/UIEventBinding.h"
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/dom/WheelEventBinding.h"
+#include "mozilla/StaticPrefs_accessibility.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_mousewheel.h"
+#include "mozilla/StaticPrefs_plugin.h"
 #include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/StaticPrefs_zoom.h"
 
@@ -226,9 +228,6 @@ nsCOMPtr<nsIContent> EventStateManager::sDragOverContent = nullptr;
 
 EventStateManager::WheelPrefs* EventStateManager::WheelPrefs::sInstance =
     nullptr;
-bool EventStateManager::WheelPrefs::sWheelEventsEnabledOnPlugins = true;
-bool EventStateManager::WheelPrefs::sIsAutoDirEnabled = false;
-bool EventStateManager::WheelPrefs::sHonoursRootForAutoDir = false;
 EventStateManager::DeltaAccumulator*
     EventStateManager::DeltaAccumulator::sInstance = nullptr;
 
@@ -280,10 +279,6 @@ nsresult EventStateManager::Init() {
 
   observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, true);
 
-  if (sESMInstanceCount == 1) {
-    Prefs::Init();
-  }
-
   return NS_OK;
 }
 
@@ -293,9 +288,14 @@ EventStateManager::~EventStateManager() {
   if (sActiveESM == this) {
     sActiveESM = nullptr;
   }
-  if (Prefs::ClickHoldContextMenu()) KillClickHoldTimer();
 
-  if (mDocument == sMouseOverDocument) sMouseOverDocument = nullptr;
+  if (StaticPrefs::ui_click_hold_context_menus()) {
+    KillClickHoldTimer();
+  }
+
+  if (mDocument == sMouseOverDocument) {
+    sMouseOverDocument = nullptr;
+  }
 
   --sESMInstanceCount;
   if (sESMInstanceCount == 0) {
@@ -580,7 +580,7 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       break;
     case eMouseDown: {
       switch (mouseEvent->mButton) {
-        case MouseButton::eLeft:
+        case MouseButton::ePrimary:
           BeginTrackingDragGesture(aPresContext, mouseEvent, aTargetFrame);
           mLClickCount = mouseEvent->mClickCount;
           SetClickCount(mouseEvent, aStatus);
@@ -590,7 +590,7 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
           mMClickCount = mouseEvent->mClickCount;
           SetClickCount(mouseEvent, aStatus);
           break;
-        case MouseButton::eRight:
+        case MouseButton::eSecondary:
           mRClickCount = mouseEvent->mClickCount;
           SetClickCount(mouseEvent, aStatus);
           break;
@@ -600,8 +600,8 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
     }
     case eMouseUp: {
       switch (mouseEvent->mButton) {
-        case MouseButton::eLeft:
-          if (Prefs::ClickHoldContextMenu()) {
+        case MouseButton::ePrimary:
+          if (StaticPrefs::ui_click_hold_context_menus()) {
             KillClickHoldTimer();
           }
           mInTouchDrag = false;
@@ -609,7 +609,7 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
           sNormalLMouseEventInProcess = false;
           // then fall through...
           [[fallthrough]];
-        case MouseButton::eRight:
+        case MouseButton::eSecondary:
         case MouseButton::eMiddle:
           RefPtr<EventStateManager> esm =
               ESMFromContentOrThis(aOverrideClickTarget);
@@ -701,7 +701,7 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       GenerateMouseEnterExit(mouseEvent);
       break;
     case eDragStart:
-      if (Prefs::ClickHoldContextMenu()) {
+      if (StaticPrefs::ui_click_hold_context_menus()) {
         // an external drag gesture event came in, not generated internally
         // by Gecko. Make sure we get rid of the click-hold timer.
         KillClickHoldTimer();
@@ -735,7 +735,7 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
         // back to this process.  So, only when this process receives a reply
         // eKeyPress event in BrowserParent, we should handle accesskey in this
         // process.
-        if (IsRemoteTarget(GetFocusedContent())) {
+        if (IsTopLevelRemoteTarget(GetFocusedContent())) {
           // However, if there is no accesskey target for the key combination,
           // we don't need to wait reply from the remote process.  Otherwise,
           // Mark the event as waiting reply from remote process and stop
@@ -789,7 +789,7 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       // because PresShell needs to check if it's marked as so before
       // dispatching events into the DOM tree.
       if (aEvent->IsWaitingReplyFromRemoteProcess() &&
-          !aEvent->PropagationStopped() && !IsRemoteTarget(content)) {
+          !aEvent->PropagationStopped() && !IsTopLevelRemoteTarget(content)) {
         aEvent->ResetWaitingReplyFromRemoteProcessState();
       }
     } break;
@@ -1056,7 +1056,8 @@ bool EventStateManager::LookForAccessKeyAndExecute(
         if (!aExecute) {
           return true;
         }
-        bool shouldActivate = Prefs::KeyCausesActivation();
+        bool shouldActivate =
+            StaticPrefs::accessibility_accesskeycausesactivation();
 
         if (aIsRepeat && nsContentUtils::IsChromeDoc(element->OwnerDoc())) {
           shouldActivate = false;
@@ -1319,12 +1320,14 @@ void EventStateManager::DispatchCrossProcessEvent(WidgetEvent* aEvent,
       // https://bugzilla.mozilla.org/show_bug.cgi?id=1549355), we probably
       // don't need to check mReason then.
       BrowserParent* oldRemote = BrowserParent::GetLastMouseRemoteTarget();
-      if (mouseEvent->mReason == WidgetMouseEvent::eReal && oldRemote &&
+      if (mouseEvent->mReason == WidgetMouseEvent::eReal &&
           remote != oldRemote) {
-        UniquePtr<WidgetMouseEvent> mouseExitEvent =
-            CreateMouseOrPointerWidgetEvent(mouseEvent, eMouseExitFromWidget,
-                                            mouseEvent->mRelatedTarget);
-        oldRemote->SendRealMouseEvent(*mouseExitEvent);
+        if (oldRemote) {
+          UniquePtr<WidgetMouseEvent> mouseExitEvent =
+              CreateMouseOrPointerWidgetEvent(mouseEvent, eMouseExitFromWidget,
+                                              mouseEvent->mRelatedTarget);
+          oldRemote->SendRealMouseEvent(*mouseExitEvent);
+        }
 
         if (mouseEvent->mMessage != eMouseExitFromWidget &&
             mouseEvent->mMessage != eMouseEnterIntoWidget) {
@@ -1389,6 +1392,10 @@ void EventStateManager::DispatchCrossProcessEvent(WidgetEvent* aEvent,
 }
 
 bool EventStateManager::IsRemoteTarget(nsIContent* target) {
+  return BrowserParent::GetFrom(target) || BrowserBridgeChild::GetFrom(target);
+}
+
+bool EventStateManager::IsTopLevelRemoteTarget(nsIContent* target) {
   return !!BrowserParent::GetFrom(target);
 }
 
@@ -1468,8 +1475,8 @@ bool EventStateManager::HandleCrossProcessEvent(WidgetEvent* aEvent,
 void EventStateManager::CreateClickHoldTimer(nsPresContext* inPresContext,
                                              nsIFrame* inDownFrame,
                                              WidgetGUIEvent* inMouseDownEvent) {
-  if (!inMouseDownEvent->IsTrusted() || IsRemoteTarget(mGestureDownContent) ||
-      sIsPointerLocked) {
+  if (!inMouseDownEvent->IsTrusted() ||
+      IsTopLevelRemoteTarget(mGestureDownContent) || sIsPointerLocked) {
     return;
   }
 
@@ -1487,8 +1494,7 @@ void EventStateManager::CreateClickHoldTimer(nsPresContext* inPresContext,
     return;
   }
 
-  int32_t clickHoldDelay =
-      Preferences::GetInt("ui.click_hold_context_menus.delay", 500);
+  int32_t clickHoldDelay = StaticPrefs::ui_click_hold_context_menus_delay();
   NS_NewTimerWithFuncCallback(
       getter_AddRefs(mClickHoldTimer), sClickHoldCallback, this, clickHoldDelay,
       nsITimer::TYPE_ONE_SHOT, "EventStateManager::CreateClickHoldTimer");
@@ -1680,7 +1686,7 @@ void EventStateManager::BeginTrackingDragGesture(nsPresContext* aPresContext,
   mGestureDownButtons = inDownEvent->mButtons;
 
   if (inDownEvent->mMessage != eMouseTouchDrag &&
-      Prefs::ClickHoldContextMenu()) {
+      StaticPrefs::ui_click_hold_context_menus()) {
     // fire off a timer to track click-hold
     CreateClickHoldTimer(aPresContext, inDownFrame, inDownEvent);
   }
@@ -1797,9 +1803,9 @@ bool EventStateManager::IsEventOutsideDragThreshold(
 
   if (!sPixelThresholdX) {
     sPixelThresholdX =
-        LookAndFeel::GetInt(LookAndFeel::eIntID_DragThresholdX, 0);
+        LookAndFeel::GetInt(LookAndFeel::IntID::DragThresholdX, 0);
     sPixelThresholdY =
-        LookAndFeel::GetInt(LookAndFeel::eIntID_DragThresholdY, 0);
+        LookAndFeel::GetInt(LookAndFeel::IntID::DragThresholdY, 0);
     if (!sPixelThresholdX) sPixelThresholdX = 5;
     if (!sPixelThresholdY) sPixelThresholdY = 5;
   }
@@ -1824,6 +1830,8 @@ void EventStateManager::GenerateDragGesture(nsPresContext* aPresContext,
     return;
   }
 
+  AutoWeakFrame targetFrameBefore = mCurrentTarget;
+  auto autoRestore = MakeScopeExit([&] { mCurrentTarget = targetFrameBefore; });
   mCurrentTarget = mGestureDownFrameOwner->GetPrimaryFrame();
 
   if (!mCurrentTarget || !mCurrentTarget->GetNearestWidget()) {
@@ -1853,7 +1861,7 @@ void EventStateManager::GenerateDragGesture(nsPresContext* aPresContext,
     return;
   }
 
-  if (Prefs::ClickHoldContextMenu()) {
+  if (StaticPrefs::ui_click_hold_context_menus()) {
     // stop the click-hold before we fire off the drag gesture, in case
     // it takes a long time
     KillClickHoldTimer();
@@ -1944,10 +1952,7 @@ void EventStateManager::GenerateDragGesture(nsPresContext* aPresContext,
   // out the ESM and telling it that the current target frame is
   // actually where the mouseDown occurred, otherwise it will use
   // the frame the mouse is currently over which may or may not be
-  // the same. (Note: saari and I have decided that we don't have
-  // to reset |mCurrentTarget| when we're through because no one
-  // else is doing anything more with this event and it will get
-  // reset on the very next event to the correct frame).
+  // the same.
 
   // Hold onto old target content through the event and reset after.
   nsCOMPtr<nsIContent> targetBeforeEvent = mCurrentTargetContent;
@@ -2228,10 +2233,12 @@ void EventStateManager::DoScrollHistory(int32_t direction) {
     nsCOMPtr<nsIWebNavigation> webNav(do_QueryInterface(pcContainer));
     if (webNav) {
       // positive direction to go back one step, nonpositive to go forward
+      // This is doing user-initiated history traversal, hence we want
+      // to require that history entries we navigate to have user interaction.
       if (direction > 0)
-        webNav->GoBack();
+        webNav->GoBack(/* aRequireUserInteraction = */ true);
       else
-        webNav->GoForward();
+        webNav->GoForward(/* aRequireUserInteraction = */ true);
     }
   }
 }
@@ -2467,7 +2474,7 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
     nsIFrame* aTargetFrame, double aDirectionX, double aDirectionY,
     WidgetWheelEvent* aEvent, ComputeScrollTargetOptions aOptions) {
   if ((aOptions & INCLUDE_PLUGIN_AS_TARGET) &&
-      !WheelPrefs::WheelEventsEnabledOnPlugins()) {
+      !StaticPrefs::plugin_mousewheel_enabled()) {
     aOptions = RemovePluginFromTarget(aOptions);
   }
 
@@ -2734,18 +2741,18 @@ void EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
 
   nsIScrollbarMediator::ScrollSnapMode snapMode =
       nsIScrollbarMediator::DISABLE_SNAP;
-  nsAtom* origin = nullptr;
+  mozilla::ScrollOrigin origin = mozilla::ScrollOrigin::NotSpecified;
   switch (aEvent->mDeltaMode) {
     case WheelEvent_Binding::DOM_DELTA_LINE:
-      origin = nsGkAtoms::mouseWheel;
+      origin = mozilla::ScrollOrigin::MouseWheel;
       snapMode = nsIScrollableFrame::ENABLE_SNAP;
       break;
     case WheelEvent_Binding::DOM_DELTA_PAGE:
-      origin = nsGkAtoms::pages;
+      origin = mozilla::ScrollOrigin::Pages;
       snapMode = nsIScrollableFrame::ENABLE_SNAP;
       break;
     case WheelEvent_Binding::DOM_DELTA_PIXEL:
-      origin = nsGkAtoms::pixels;
+      origin = mozilla::ScrollOrigin::Pixels;
       break;
     default:
       MOZ_CRASH("Invalid deltaMode value comes");
@@ -2880,7 +2887,7 @@ void EventStateManager::DecideGestureEvent(WidgetGestureNotifyEvent* aEvent,
     // e10s - mark remote content as pannable. This is a work around since
     // we don't have access to remote frame scroll info here. Apz data may
     // assist is solving this.
-    if (current && IsRemoteTarget(current->GetContent())) {
+    if (current && IsTopLevelRemoteTarget(current->GetContent())) {
       panDirection = WidgetGestureNotifyEvent::ePanBoth;
       // We don't know when we reach bounds, so just disable feedback for now.
       displayPanFeedback = false;
@@ -3122,7 +3129,7 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
   switch (aEvent->mMessage) {
     case eMouseDown: {
       WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent();
-      if (mouseEvent->mButton == MouseButton::eLeft &&
+      if (mouseEvent->mButton == MouseButton::ePrimary &&
           !sNormalLMouseEventInProcess) {
         // We got a mouseup event while a mousedown event was being processed.
         // Make sure that the capturing content is cleared.
@@ -3271,7 +3278,7 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
         }
 
         // The rest is left button-specific.
-        if (mouseEvent->mButton != MouseButton::eLeft) {
+        if (mouseEvent->mButton != MouseButton::ePrimary) {
           break;
         }
 
@@ -4209,7 +4216,7 @@ nsIFrame* EventStateManager::DispatchMouseOrPointerEvent(
 
     // If we are entering/leaving remote content, dispatch a mouse enter/exit
     // event to the remote frame.
-    if (IsRemoteTarget(targetContent)) {
+    if (IsTopLevelRemoteTarget(targetContent)) {
       if (aMessage == eMouseOut) {
         // For remote content, send a "top-level" widget mouse exit event.
         UniquePtr<WidgetMouseEvent> remoteEvent =
@@ -4708,7 +4715,8 @@ void EventStateManager::GenerateDragDropEnterExit(nsPresContext* aPresContext,
           nsIContent* target = sLastDragOverFrame
                                    ? sLastDragOverFrame.GetFrame()->GetContent()
                                    : nullptr;
-          if (IsRemoteTarget(target)) {
+          // XXXedgar, look like we need to consider fission OOP iframe, too.
+          if (IsTopLevelRemoteTarget(target)) {
             // Dragging something and moving from web content to chrome only
             // fires dragexit and dragleave to xul:browser. We have to forward
             // dragexit to sLastDragOverFrame when its content is a remote
@@ -4845,7 +4853,7 @@ nsresult EventStateManager::SetClickCount(WidgetMouseEvent* aEvent,
   }
 
   switch (aEvent->mButton) {
-    case MouseButton::eLeft:
+    case MouseButton::ePrimary:
       if (aEvent->mMessage == eMouseDown) {
         mLastLeftMouseDownContent = mouseContent;
       } else if (aEvent->mMessage == eMouseUp) {
@@ -4879,7 +4887,7 @@ nsresult EventStateManager::SetClickCount(WidgetMouseEvent* aEvent,
       }
       break;
 
-    case MouseButton::eRight:
+    case MouseButton::eSecondary:
       if (aEvent->mMessage == eMouseDown) {
         mLastRightMouseDownContent = mouseContent;
       } else if (aEvent->mMessage == eMouseUp) {
@@ -5057,7 +5065,7 @@ nsresult EventStateManager::DispatchClickEvents(
 
   bool notDispatchToContents =
       (aMouseUpEvent->mButton == MouseButton::eMiddle ||
-       aMouseUpEvent->mButton == MouseButton::eRight);
+       aMouseUpEvent->mButton == MouseButton::eSecondary);
 
   bool fireAuxClick = notDispatchToContents;
 
@@ -5568,7 +5576,7 @@ void EventStateManager::ContentRemoved(Document* aDocument,
 
 bool EventStateManager::EventStatusOK(WidgetGUIEvent* aEvent) {
   return !(aEvent->mMessage == eMouseDown &&
-           aEvent->AsMouseEvent()->mButton == MouseButton::eLeft &&
+           aEvent->AsMouseEvent()->mButton == MouseButton::ePrimary &&
            !sNormalLMouseEventInProcess);
 }
 
@@ -5989,12 +5997,6 @@ void EventStateManager::WheelPrefs::OnPrefChanged(const char* aPrefName,
 EventStateManager::WheelPrefs::WheelPrefs() {
   Reset();
   Preferences::RegisterPrefixCallback(OnPrefChanged, "mousewheel.");
-  Preferences::AddBoolVarCache(&sWheelEventsEnabledOnPlugins,
-                               "plugin.mousewheel.enabled", true);
-  Preferences::AddBoolVarCache(&sIsAutoDirEnabled, "mousewheel.autodir.enabled",
-                               true);
-  Preferences::AddBoolVarCache(&sHonoursRootForAutoDir,
-                               "mousewheel.autodir.honourroot", false);
 }
 
 EventStateManager::WheelPrefs::~WheelPrefs() {
@@ -6240,30 +6242,6 @@ void EventStateManager::WheelPrefs::GetUserPrefsForEvent(
 }
 
 // static
-bool EventStateManager::WheelPrefs::WheelEventsEnabledOnPlugins() {
-  if (!sInstance) {
-    GetInstance();  // initializing sWheelEventsEnabledOnPlugins
-  }
-  return sWheelEventsEnabledOnPlugins;
-}
-
-// static
-bool EventStateManager::WheelPrefs::IsAutoDirEnabled() {
-  if (!sInstance) {
-    GetInstance();  // initializing sIsAutoDirEnabled
-  }
-  return sIsAutoDirEnabled;
-}
-
-// static
-bool EventStateManager::WheelPrefs::HonoursRootForAutoDir() {
-  if (!sInstance) {
-    GetInstance();  // initializing sHonoursRootForAutoDir
-  }
-  return sHonoursRootForAutoDir;
-}
-
-// static
 Maybe<layers::APZWheelAction> EventStateManager::APZWheelActionFor(
     const WidgetWheelEvent* aEvent) {
   if (aEvent->mMessage != eWheel) {
@@ -6290,8 +6268,8 @@ WheelDeltaAdjustmentStrategy EventStateManager::GetWheelDeltaAdjustmentStrategy(
   }
   switch (WheelPrefs::GetInstance()->ComputeActionFor(&aEvent)) {
     case WheelPrefs::ACTION_SCROLL:
-      if (WheelPrefs::IsAutoDirEnabled() && 0 == aEvent.mDeltaZ) {
-        if (WheelPrefs::HonoursRootForAutoDir()) {
+      if (StaticPrefs::mousewheel_autodir_enabled() && 0 == aEvent.mDeltaZ) {
+        if (StaticPrefs::mousewheel_autodir_honourroot()) {
           return WheelDeltaAdjustmentStrategy::eAutoDirWithRootHonour;
         }
         return WheelDeltaAdjustmentStrategy::eAutoDir;
@@ -6326,29 +6304,6 @@ bool EventStateManager::WheelPrefs::IsOverOnePageScrollAllowedY(
   Init(index);
   return Abs(mMultiplierY[index]) >=
          MIN_MULTIPLIER_VALUE_ALLOWING_OVER_ONE_PAGE_SCROLL;
-}
-
-/******************************************************************/
-/* mozilla::EventStateManager::Prefs                              */
-/******************************************************************/
-
-bool EventStateManager::Prefs::sKeyCausesActivation = true;
-bool EventStateManager::Prefs::sClickHoldContextMenu = false;
-
-// static
-void EventStateManager::Prefs::Init() {
-  static bool sPrefsAlreadyCached = false;
-  if (sPrefsAlreadyCached) {
-    return;
-  }
-
-  Preferences::AddBoolVarCache(&sKeyCausesActivation,
-                               "accessibility.accesskeycausesactivation",
-                               sKeyCausesActivation);
-  Preferences::AddBoolVarCache(&sClickHoldContextMenu,
-                               "ui.click_hold_context_menus",
-                               sClickHoldContextMenu);
-  sPrefsAlreadyCached = true;
 }
 
 }  // namespace mozilla

@@ -4,9 +4,15 @@
     "description": "A mirror for Services.prefs.",
     "events": [
       {
-        "name": "onPrefChanged",
+        "name": "onEnabledChanged",
         "type": "function",
-        "description": "Fired upon changes to `doh-rollout.enabled` and `doh-rollout.debug`.",
+        "description": "Fired upon changes to `doh-rollout.enabled`.",
+        "parameters": []
+      },
+      {
+        "name": "onTRRPrefChanged",
+        "type": "function",
+        "description": "Fired upon changes to `network.trr.uri` and `network.trr.mode`.",
         "parameters": []
       }
     ],
@@ -18,7 +24,8 @@
         "parameters": [
           {
             "type": "string",
-            "name": "name"
+            "name": "name",
+            "enum": ["doh-rollout.previous.trr.mode"]
           },
           {
             "type": "integer",
@@ -34,7 +41,7 @@
         "parameters": [
           {
             "type": "string",
-            "enum": ["network.trr.mode", "doh-rollout.previous.trr.mode"]
+            "enum": ["doh-rollout.mode"]
           },
           {
             "type": "integer",
@@ -50,7 +57,19 @@
         "parameters": [
           {
             "type": "string",
-            "name": "name"
+            "name": "name",
+            "enum": [
+              "doh-rollout.enabled",
+              "doh-rollout.self-enabled",
+              "doh-rollout.doorhanger-shown",
+              "doh-rollout.disable-heuristics",
+              "doh-rollout.skipHeuristicsCheck",
+              "doh-rollout.doneFirstRun",
+              "doh-rollout.balrog-migration-done",
+              "doh-rollout.debug",
+              "doh-rollout.provider-steering.enabled",
+              "security.enterprise_roots.enabled"
+            ]
           },
           {
             "type": "boolean",
@@ -66,7 +85,14 @@
         "parameters": [
           {
             "type": "string",
-            "enum": ["doh-rollout.doorhanger-shown", "doh-rollout.self-enabled", "doh-rollout.disable-heuristics", "doh-rollout.doneFirstRun", "doh-rollout.skipHeuristicsCheck", "doh-rollout.balrog-migration-done"]
+            "enum": [
+              "doh-rollout.doorhanger-shown",
+              "doh-rollout.self-enabled",
+              "doh-rollout.disable-heuristics",
+              "doh-rollout.doneFirstRun",
+              "doh-rollout.skipHeuristicsCheck",
+              "doh-rollout.balrog-migration-done"
+            ]
           },
           {
             "type": "boolean",
@@ -82,7 +108,11 @@
         "parameters": [
           {
             "type": "string",
-            "enum": ["doh-rollout.doorhanger-decision", "doh-rollout.heuristics.mockValues", "doh-rollout.provider-steering.provider-list"]
+            "enum": [
+              "doh-rollout.doorhanger-decision",
+              "doh-rollout.heuristics.mockValues",
+              "doh-rollout.provider-steering.provider-list"
+            ]
           },
           {
             "type": "string",
@@ -114,7 +144,12 @@
         "parameters": [
           {
             "type": "string",
-            "enum": ["doh-rollout.self-enabled"]
+            "enum": [
+              "doh-rollout.self-enabled",
+              "doh-rollout.mode",
+              "network.trr.mode",
+              "doh-rollout.previous.trr.mode"
+            ]
           }
         ],
         "async": true
@@ -126,7 +161,8 @@
         "parameters": [
           {
             "type": "string",
-            "name": "name"
+            "name": "name",
+            "enum": ["network.trr.mode", "network.trr.uri"]
           }
         ],
         "async": true

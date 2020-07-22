@@ -207,6 +207,10 @@ class TransactionWrapper final {
  public:
   explicit TransactionWrapper(Transaction* aTxn);
 
+  void UpdateDynamicProperties(
+      const nsTArray<wr::WrOpacityProperty>& aOpacityArray,
+      const nsTArray<wr::WrTransformProperty>& aTransformArray,
+      const nsTArray<wr::WrColorProperty>& aColorArray);
   void AppendTransformProperties(
       const nsTArray<wr::WrTransformProperty>& aTransformArray);
   void UpdateScrollPosition(
@@ -357,6 +361,7 @@ struct MOZ_STACK_CLASS StackingContextParams : public WrStackingContextParams {
   StackingContextParams()
       : WrStackingContextParams{
             WrStackingContextClip::None(),
+            nullptr,
             nullptr,
             nullptr,
             wr::TransformStyle::Flat,

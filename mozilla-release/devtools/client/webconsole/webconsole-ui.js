@@ -4,6 +4,7 @@
 
 "use strict";
 
+const { gDevTools } = require("devtools/client/framework/devtools");
 const EventEmitter = require("devtools/shared/event-emitter");
 const Services = require("Services");
 const {
@@ -65,6 +66,10 @@ class WebConsoleUI {
       this.hud.currentTarget &&
       this.hud.currentTarget.isParentProcess &&
       !this.hud.currentTarget.isAddon;
+    this.fissionSupport = Services.prefs.getBoolPref(
+      constants.PREFS.FEATURES.BROWSER_TOOLBOX_FISSION
+    );
+
     this.window = this.hud.iframeWindow;
 
     this._onPanelSelected = this._onPanelSelected.bind(this);
@@ -342,7 +347,26 @@ class WebConsoleUI {
     );
   }
 
+  async watchCssMessages() {
+    const { resourceWatcher } = this.hud;
+    await resourceWatcher.watchResources([resourceWatcher.TYPES.CSS_MESSAGE], {
+      onAvailable: this._onResourceAvailable,
+    });
+  }
+
   _onResourceAvailable({ resourceType, targetFront, resource }) {
+    const { TYPES } = this.hud.resourceWatcher;
+    // Ignore messages forwarded from content processes if we're in fission browser toolbox.
+    if (
+      !this.wrapper ||
+      ((resourceType === TYPES.ERROR_MESSAGE ||
+        resourceType === TYPES.CSS_MESSAGE) &&
+        resource.pageError?.isForwardedFromContentProcess &&
+        (this.isBrowserToolboxConsole || this.isBrowserConsole) &&
+        this.fissionSupport)
+    ) {
+      return;
+    }
     this.wrapper.dispatchMessageAdd(resource);
   }
 
@@ -370,11 +394,10 @@ class WebConsoleUI {
     // This is a top level target. It may update on process switches
     // when navigating to another domain.
     if (targetFront.isTopLevel) {
-      const fissionSupport = Services.prefs.getBoolPref(
-        constants.PREFS.FEATURES.BROWSER_TOOLBOX_FISSION
-      );
       const needContentProcessMessagesListener =
-        targetFront.isParentProcess && !targetFront.isAddon && !fissionSupport;
+        targetFront.isParentProcess &&
+        !targetFront.isAddon &&
+        !this.fissionSupport;
       this.proxy = new WebConsoleConnectionProxy(
         this,
         targetFront,
@@ -391,8 +414,7 @@ class WebConsoleUI {
     // Also ignore workers as they are not supported yet. (see bug 1592584)
     const isContentToolbox = this.hud.targetList.targetFront.isLocalTab;
     const listenForFrames =
-      isContentToolbox &&
-      Services.prefs.getBoolPref("devtools.contenttoolbox.fission");
+      isContentToolbox && gDevTools.isFissionContentToolboxEnabled();
     if (
       targetFront.targetType != this.hud.targetList.TYPES.PROCESS &&
       (targetFront.targetType != this.hud.targetList.TYPES.FRAME ||

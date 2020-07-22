@@ -8,6 +8,7 @@ from unittest import mock
 import tempfile
 import shutil
 from contextlib import contextmanager
+from pathlib import Path
 
 from mach.registrar import Registrar
 
@@ -22,8 +23,16 @@ from mozperftest.tests.support import EXAMPLE_TESTS_DIR  # noqa
 from mozperftest.utils import temporary_env, silence  # noqa
 
 
+ITERATION_HOOKS = Path(__file__).parent / "data" / "hooks_iteration.py"
+
+
 class _TestMachEnvironment(MachEnvironment):
+    def __init__(self, mach_cmd, flavor="desktop-browser", hooks=None, **kwargs):
+        MachEnvironment.__init__(self, mach_cmd, flavor, hooks, **kwargs)
+        self.runs = 0
+
     def run(self, metadata):
+        self.runs += 1
         return metadata
 
     def __enter__(self):
@@ -43,7 +52,7 @@ def _get_command(klass=Perftest):
         topdir = config.topobjdir
         cwd = os.getcwd()
         settings = {}
-        log_manager = {}
+        log_manager = mock.Mock()
         state_dir = tempfile.mkdtemp()
 
     try:
@@ -56,8 +65,23 @@ def _get_command(klass=Perftest):
 @mock.patch("mozperftest.mach_commands.MachCommandBase._activate_virtualenv")
 def test_command(mocked_func):
     with _get_command() as test, silence(test):
-        test.run_perftest(tests=[EXAMPLE_TESTS_DIR], flavor="script")
+        test.run_perftest(tests=[EXAMPLE_TESTS_DIR], flavor="desktop-browser")
         # XXX add assertions
+
+
+@mock.patch("mozperftest.MachEnvironment")
+@mock.patch("mozperftest.mach_commands.MachCommandBase._activate_virtualenv")
+def test_command_iterations(venv, env):
+    kwargs = {
+        "tests": [EXAMPLE_TESTS_DIR],
+        "hooks": ITERATION_HOOKS,
+        "flavor": "desktop-browser",
+    }
+    with _get_command() as test, silence(test):
+        test.run_perftest(**kwargs)
+    # the hook changes the iteration value to 5.
+    # each iteration generates 5 calls, so we want to see 25
+    assert len(env.mock_calls) == 25
 
 
 @mock.patch("mozperftest.MachEnvironment", new=_TestMachEnvironment)
@@ -67,7 +91,7 @@ def test_push_command(push_to_try, venv):
     with _get_command() as test, silence(test):
         test.run_perftest(
             tests=[EXAMPLE_TESTS_DIR],
-            flavor="script",
+            flavor="desktop-browser",
             push_to_try=True,
             try_platform="g5",
         )

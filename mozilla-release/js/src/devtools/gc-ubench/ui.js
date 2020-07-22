@@ -12,6 +12,7 @@ var numSamples = 500;
 
 var gHistogram = new Map(); // {ms: count}
 var gHistory = new FrameHistory(numSamples);
+var gPerf = new PerfTracker();
 
 var latencyGraph;
 var memoryGraph;
@@ -407,10 +408,10 @@ function handler(timestamp) {
     return;
   }
 
-  const events = gLoadMgr.tick(timestamp);
-  if (events & gLoadMgr.LOAD_ENDED) {
+  const completed = gLoadMgr.tick(timestamp);
+  if (completed) {
     end_test(timestamp, gLoadMgr.lastActive);
-    if (!gLoadMgr.cycleStopped()) {
+    if (!gLoadMgr.stopped()) {
       start_test();
     }
     update_load_display();
@@ -502,7 +503,7 @@ function onload() {
   }
 
   // Load the initial test.
-  gLoadMgr.setActiveLoadByName("noAllocation");
+  gLoadMgr.setActiveLoad(gLoadMgr.getByName("noAllocation"));
   update_load_display();
   document.getElementById("test-selection").value = "noAllocation";
 
@@ -538,12 +539,15 @@ function run_one_test() {
 }
 
 function run_all_tests() {
-  start_test_cycle(tests.keys());
+  start_test_cycle([...tests.keys()]);
 }
 
 function start_test_cycle(tests_to_run) {
   // Convert from an iterable to an array for pop.
-  gLoadMgr.startCycle(tests_to_run);
+  const duration = gLoadMgr.testDurationMS / 1000;
+  const mutators = tests_to_run.map(name => new SingleMutatorSequencer(gLoadMgr.getByName(name), gPerf, duration));
+  const sequencer = new ChainSequencer(mutators);
+  gLoadMgr.startSequencer(sequencer);
   testState = "running";
   gHistogram.clear();
   reset_draw_state();
@@ -574,7 +578,7 @@ function end_test(timestamp, load) {
   report_test_result(load, gHistogram);
   gHistogram.clear();
   console.log(`Ending test ${load.name}`);
-  if (gLoadMgr.cycleStopped()) {
+  if (gLoadMgr.stopped()) {
     testState = "idle";
   }
   update_load_state_indicator();
@@ -640,7 +644,7 @@ function duration_changed() {
 function onLoadChange() {
   var select = document.getElementById("test-selection");
   console.log(`Switching to test: ${select.value}`);
-  gLoadMgr.setActiveLoadByName(select.value);
+  gLoadMgr.setActiveLoad(gLoadMgr.getByName(select.value));
   update_load_display();
   gHistogram.clear();
   reset_draw_state();

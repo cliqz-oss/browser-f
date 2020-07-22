@@ -266,6 +266,10 @@ RefPtr<ClientOpPromise> ClientNavigateOpChild::DoNavigate(
     /// the spec, but does match the current behavior of both us and Chrome.
     /// https://github.com/w3c/ServiceWorker/issues/1500 tracks sorting that
     /// out.
+    /// We now run security checks asynchronously, so these tests now
+    /// just fail to load rather than hitting this failure path. I've
+    /// marked them as failing for now until they get fixed to match the
+    /// spec.
     nsPrintfCString err("Invalid URL \"%s\"", aArgs.url().get());
     CopyableErrorResult result;
     result.ThrowTypeError(err);
@@ -306,7 +310,7 @@ void ClientNavigateOpChild::Init(const ClientNavigateOpConstructorArgs& aArgs) {
   // failure occurred, though, we may need to fall back to the current thread
   // target.
   if (!mSerialEventTarget) {
-    mSerialEventTarget = GetCurrentThreadSerialEventTarget();
+    mSerialEventTarget = GetCurrentSerialEventTarget();
   }
 
   // Capturing `this` is safe here since we clear the mPromiseRequestHolder in

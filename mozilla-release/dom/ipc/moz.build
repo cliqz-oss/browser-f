@@ -8,18 +8,12 @@ with Files("**"):
     BUG_COMPONENT = ("Core", "DOM: Content Processes")
 
 XPIDL_SOURCES += [
-    'nsIContentChild.idl',
-    'nsIContentParent.idl',
+    'nsIDOMProcessChild.idl',
+    'nsIDOMProcessParent.idl',
     'nsIHangReport.idl',
-    'nsIRemoteWebProgress.idl',
-    'nsIRemoteWebProgressRequest.idl',
 ]
 
 XPIDL_MODULE = 'dom'
-
-XPCOM_MANIFESTS += [
-    'components.conf',
-]
 
 EXTRA_JS_MODULES += [
     'ManifestMessagesChild.jsm',
@@ -54,6 +48,8 @@ EXPORTS.mozilla.dom += [
     'DocShellMessageUtils.h',
     'EffectsInfo.h',
     'FilePickerParent.h',
+    'InProcessChild.h',
+    'InProcessParent.h',
     'JSActor.h',
     'JSActorService.h',
     'JSProcessActorChild.h',
@@ -111,6 +107,7 @@ UNIFIED_SOURCES += [
     'CSPMessageUtils.cpp',
     'DocShellMessageUtils.cpp',
     'FilePickerParent.cpp',
+    'InProcessImpl.cpp',
     'JSActor.cpp',
     'JSActorService.cpp',
     'JSProcessActorChild.cpp',
@@ -164,6 +161,7 @@ IPDL_SOURCES += [
     'PContentPermissionRequest.ipdl',
     'PCycleCollectWithLogs.ipdl',
     'PFilePicker.ipdl',
+    'PInProcess.ipdl',
     'PLoginReputation.ipdl',
     'PPluginWidget.ipdl',
     'PProcessHangMonitor.ipdl',

@@ -224,6 +224,18 @@ class AboutLoginsParent extends JSWindowActorParent {
     let ownerGlobal = this.browsingContext.embedderElement.ownerGlobal;
     switch (message.name) {
       case "AboutLogins:CreateLogin": {
+        if (!Services.policies.isAllowed("removeMasterPassword")) {
+          if (!LoginHelper.isMasterPasswordSet()) {
+            ownerGlobal.openDialog(
+              "chrome://mozapps/content/preferences/changemp.xhtml",
+              "",
+              "centerscreen,chrome,modal,titlebar"
+            );
+            if (!LoginHelper.isMasterPasswordSet()) {
+              return;
+            }
+          }
+        }
         let newLogin = message.data.login;
         // Remove the path from the origin, if it was provided.
         let origin = LoginHelper.getLoginOrigin(newLogin.origin);
@@ -465,12 +477,53 @@ class AboutLoginsParent extends JSWindowActorParent {
         break;
       }
       case "AboutLogins:ExportPasswords": {
+        let messageText = { value: "NOT SUPPORTED" };
+        let captionText = { value: "" };
+
+        // This feature is only supported on Windows and macOS
+        // but we still call in to OSKeyStore on Linux to get
+        // the proper auth_details for Telemetry.
+        // See bug 1614874 for Linux support.
+        if (OSKeyStore.canReauth()) {
+          let messageId =
+            "about-logins-export-password-os-auth-dialog-message-" +
+            AppConstants.platform;
+          [messageText, captionText] = await AboutLoginsL10n.formatMessages([
+            {
+              id: messageId,
+            },
+            {
+              id: "about-logins-os-auth-dialog-caption",
+            },
+          ]);
+        }
+
+        let { isAuthorized, telemetryEvent } = await LoginHelper.requestReauth(
+          this.browsingContext.embedderElement,
+          true,
+          null, // Prompt regardless of a recent prompt
+          messageText.value,
+          captionText.value
+        );
+
+        let { method, object, extra = {}, value = null } = telemetryEvent;
+        Services.telemetry.recordEvent("pwmgr", method, object, value, extra);
+
+        if (!isAuthorized) {
+          return;
+        }
+
         let fp = Cc["@mozilla.org/filepicker;1"].createInstance(
           Ci.nsIFilePicker
         );
         let fpCallback = function fpCallback_done(aResult) {
           if (aResult != Ci.nsIFilePicker.returnCancel) {
             LoginExport.exportAsCSV(fp.file.path);
+            Services.telemetry.recordEvent(
+              "pwmgr",
+              "mgmt_menu_item_used",
+              "export_complete"
+            );
           }
         };
         let [

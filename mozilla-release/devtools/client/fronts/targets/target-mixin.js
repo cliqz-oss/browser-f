@@ -62,6 +62,14 @@ function TargetMixin(parentClass) {
     }
 
     /**
+     * Boolean flag to help distinguish Target Fronts from other Fronts.
+     * As we are using a Mixin, we can't easily distinguish these fronts via instanceof().
+     */
+    get isTargetFront() {
+      return true;
+    }
+
+    /**
      * Get the descriptor front for this target.
      *
      * TODO: Should be removed. This is misleading as only the top level target should have a descriptor.
@@ -158,8 +166,8 @@ function TargetMixin(parentClass) {
      * @return {TargetMixin} the requested target.
      */
     async getBrowsingContextTarget(browsingContextID) {
-      // Starting with FF77, Tab and Process Descriptor exposes a Watcher,
-      // which is creating the targets and should be used to fetch any.
+      // Tab and Process Descriptors expose a Watcher, which is creating the
+      // targets and should be used to fetch any.
       const watcher = await this.getWatcher();
       if (watcher) {
         // Safety check, in theory all watcher should support frames.
@@ -169,12 +177,13 @@ function TargetMixin(parentClass) {
         return null;
       }
 
-      // Otherwise, on older server FF<=76, or for target whose descriptor don't have a Watcher like WebExtension,
-      // we have to go through the Root Actor, which is still the one to create the descriptors and targets.
-      const descriptor = await this.client.mainRoot.getBrowsingContextDescriptor(
-        browsingContextID
+      // For descriptors which don't expose a watcher (e.g. WebExtension)
+      // we used to call RootActor::getBrowsingContextDescriptor, but it was
+      // removed in FF77.
+      // Support for watcher in WebExtension descriptors is Bug 1644341.
+      throw new Error(
+        `Unable to call getBrowsingContextTarget for ${this.actorID}`
       );
-      return descriptor.getTarget();
     }
 
     /**

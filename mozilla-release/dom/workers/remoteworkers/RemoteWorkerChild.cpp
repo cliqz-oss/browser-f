@@ -21,6 +21,7 @@
 #include "nsXULAppAPI.h"
 
 #include "RemoteWorkerService.h"
+#include "mozilla/ArrayAlgorithm.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/BasePrincipal.h"
@@ -251,7 +252,7 @@ RemoteWorkerChild::RemoteWorkerChild(const RemoteWorkerData& aData)
     : mState(VariantType<Pending>(), "RemoteWorkerChild::mState"),
       mIsServiceWorker(aData.serviceWorkerData().type() ==
                        OptionalServiceWorkerData::TServiceWorkerData),
-      mOwningEventTarget(GetCurrentThreadSerialEventTarget()) {
+      mOwningEventTarget(GetCurrentSerialEventTarget()) {
   MOZ_ASSERT(RemoteWorkerService::Thread()->IsOnCurrentThread());
   MOZ_ASSERT(mOwningEventTarget);
 }
@@ -325,10 +326,10 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
     return loadingPrincipalOrErr.unwrapErr();
   }
 
-  auto storagePrincipalOrErr =
-      PrincipalInfoToPrincipal(aData.storagePrincipalInfo());
-  if (NS_WARN_IF(storagePrincipalOrErr.isErr())) {
-    return storagePrincipalOrErr.unwrapErr();
+  auto partitionedPrincipalOrErr =
+      PrincipalInfoToPrincipal(aData.partitionedPrincipalInfo());
+  if (NS_WARN_IF(partitionedPrincipalOrErr.isErr())) {
+    return partitionedPrincipalOrErr.unwrapErr();
   }
 
   WorkerLoadInfo info;
@@ -336,18 +337,22 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
   info.mResolvedScriptURI = DeserializeURI(aData.resolvedScriptURL());
 
   info.mPrincipalInfo = MakeUnique<PrincipalInfo>(aData.principalInfo());
-  info.mStoragePrincipalInfo =
-      MakeUnique<PrincipalInfo>(aData.storagePrincipalInfo());
+  info.mPartitionedPrincipalInfo =
+      MakeUnique<PrincipalInfo>(aData.partitionedPrincipalInfo());
 
   info.mReferrerInfo = aData.referrerInfo();
   info.mDomain = aData.domain();
   info.mPrincipal = principal;
-  info.mStoragePrincipal = storagePrincipalOrErr.unwrap();
+  info.mPartitionedPrincipal = partitionedPrincipalOrErr.unwrap();
   info.mLoadingPrincipal = loadingPrincipalOrErr.unwrap();
   info.mStorageAccess = aData.storageAccess();
+  info.mUseRegularPrincipal = aData.useRegularPrincipal();
+  info.mHasStorageAccessPermissionGranted =
+      aData.hasStorageAccessPermissionGranted();
   info.mOriginAttributes =
       BasePrincipal::Cast(principal)->OriginAttributesRef();
-  info.mCookieJarSettings = net::CookieJarSettings::Create();
+  net::CookieJarSettings::Deserialize(aData.cookieJarSettings(),
+                                      getter_AddRefs(info.mCookieJarSettings));
 
   // Default CSP permissions for now.  These will be overrided if necessary
   // based on the script CSP headers during load in ScriptLoader.
@@ -383,7 +388,7 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
   }
 
   rv = info.SetPrincipalsAndCSPOnMainThread(
-      info.mPrincipal, info.mStoragePrincipal, info.mLoadGroup, info.mCSP);
+      info.mPrincipal, info.mPartitionedPrincipal, info.mLoadGroup, info.mCSP);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -654,16 +659,13 @@ void RemoteWorkerChild::ErrorPropagationOnMainThread(
 
   ErrorValue value;
   if (aIsErrorEvent) {
-    nsTArray<ErrorDataNote> notes;
-    for (size_t i = 0, len = aReport->mNotes.Length(); i < len; i++) {
-      const WorkerErrorNote& note = aReport->mNotes.ElementAt(i);
-      notes.AppendElement(ErrorDataNote(note.mLineNumber, note.mColumnNumber,
-                                        note.mMessage, note.mFilename));
-    }
-
-    ErrorData data(aReport->mIsWarning, aReport->mLineNumber,
-                   aReport->mColumnNumber, aReport->mMessage,
-                   aReport->mFilename, aReport->mLine, notes);
+    ErrorData data(
+        aReport->mIsWarning, aReport->mLineNumber, aReport->mColumnNumber,
+        aReport->mMessage, aReport->mFilename, aReport->mLine,
+        TransformIntoNewArray(aReport->mNotes, [](const WorkerErrorNote& note) {
+          return ErrorDataNote(note.mLineNumber, note.mColumnNumber,
+                               note.mMessage, note.mFilename);
+        }));
     value = data;
   } else {
     value = void_t();
@@ -1015,7 +1017,7 @@ RemoteWorkerChild::MaybeSendSetServiceWorkerSkipWaitingFlag() {
     }
 
     self->SendSetServiceWorkerSkipWaitingFlag()->Then(
-        GetCurrentThreadSerialEventTarget(), __func__,
+        GetCurrentSerialEventTarget(), __func__,
         [promise](
             const SetServiceWorkerSkipWaitingFlagPromise::ResolveOrRejectValue&
                 aResult) {

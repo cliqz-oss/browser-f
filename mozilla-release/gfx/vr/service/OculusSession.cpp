@@ -211,8 +211,11 @@ OculusSession::~OculusSession() { Shutdown(); }
 
 bool OculusSession::Initialize(mozilla::gfx::VRSystemState& aSystemState,
                                bool aDetectRuntimesOnly) {
-  if (!StaticPrefs::dom_vr_enabled() ||
-      !StaticPrefs::dom_vr_oculus_enabled_AtStartup()) {
+  if (StaticPrefs::dom_vr_puppet_enabled()) {
+    // Ensure that tests using the VR Puppet do not find real hardware
+    return false;
+  }
+  if (!StaticPrefs::dom_vr_enabled() || !StaticPrefs::dom_vr_oculus_enabled()) {
     return false;
   }
 
@@ -1128,9 +1131,9 @@ void OculusSession::UpdateEyeParameters(VRSystemState& aState) {
 
     Matrix4x4 pose;
     pose.SetRotationFromQuaternion(
-        gfx::Quaternion(renderDesc.HmdToEyePose.Orientation.x,
-                        renderDesc.HmdToEyePose.Orientation.y,
-                        renderDesc.HmdToEyePose.Orientation.z,
+        gfx::Quaternion(-renderDesc.HmdToEyePose.Orientation.x,
+                        -renderDesc.HmdToEyePose.Orientation.y,
+                        -renderDesc.HmdToEyePose.Orientation.z,
                         renderDesc.HmdToEyePose.Orientation.w));
     pose.PreTranslate(renderDesc.HmdToEyePose.Position.x,
                       renderDesc.HmdToEyePose.Position.y,
@@ -1154,6 +1157,7 @@ void OculusSession::UpdateEyeParameters(VRSystemState& aState) {
       NS_WARNING("Failed to decompose eye pose matrix for Oculus");
     }
 
+    eyeRotation.Invert();
     mFrameStartPose[eye].Orientation.x = eyeRotation.x;
     mFrameStartPose[eye].Orientation.y = eyeRotation.y;
     mFrameStartPose[eye].Orientation.z = eyeRotation.z;

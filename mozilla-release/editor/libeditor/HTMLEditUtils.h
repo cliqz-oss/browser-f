@@ -7,9 +7,13 @@
 #define HTMLEditUtils_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/EditorDOMPoint.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/dom/AbstractRange.h"
 #include "mozilla/dom/AncestorIterator.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/Text.h"
+#include "nsCRT.h"
 #include "nsGkAtoms.h"
 #include "nsHTMLTags.h"
 
@@ -24,6 +28,9 @@ class HTMLEditUtils final {
   using Selection = dom::Selection;
 
  public:
+  static const char16_t kSpace = 0x0020;
+  static const char16_t kNBSP = 0x00A0;
+
   /**
    * IsSimplyEditableNode() returns true when aNode is simply editable.
    * This does NOT means that aNode can be removed from current parent nor
@@ -255,8 +262,8 @@ class HTMLEditUtils final {
    *                            aStartContent is not a descendant of this.
    */
   static nsIContent* GetNextLeafContentOrNextBlockElement(
-      nsIContent& aStartContent, nsIContent& aCurrentBlock,
-      Element* aAncestorLimiter = nullptr) {
+      const nsIContent& aStartContent, const nsIContent& aCurrentBlock,
+      const Element* aAncestorLimiter = nullptr) {
     if (&aStartContent == aAncestorLimiter) {
       return nullptr;
     }
@@ -308,8 +315,9 @@ class HTMLEditUtils final {
    */
   template <typename PT, typename CT>
   static nsIContent* GetNextLeafContentOrNextBlockElement(
-      const EditorDOMPointBase<PT, CT>& aStartPoint, nsIContent& aCurrentBlock,
-      Element* aAncestorLimiter = nullptr) {
+      const EditorDOMPointBase<PT, CT>& aStartPoint,
+      const nsIContent& aCurrentBlock,
+      const Element* aAncestorLimiter = nullptr) {
     MOZ_ASSERT(aStartPoint.IsSet());
 
     if (!aStartPoint.IsInContentNode()) {
@@ -367,8 +375,8 @@ class HTMLEditUtils final {
    *                            aStartContent is not a descendant of this.
    */
   static nsIContent* GetPreviousLeafContentOrPreviousBlockElement(
-      nsIContent& aStartContent, nsIContent& aCurrentBlock,
-      Element* aAncestorLimiter = nullptr) {
+      const nsIContent& aStartContent, const nsIContent& aCurrentBlock,
+      const Element* aAncestorLimiter = nullptr) {
     if (&aStartContent == aAncestorLimiter) {
       return nullptr;
     }
@@ -420,8 +428,9 @@ class HTMLEditUtils final {
    */
   template <typename PT, typename CT>
   static nsIContent* GetPreviousLeafContentOrPreviousBlockElement(
-      const EditorDOMPointBase<PT, CT>& aStartPoint, nsIContent& aCurrentBlock,
-      Element* aAncestorLimiter = nullptr) {
+      const EditorDOMPointBase<PT, CT>& aStartPoint,
+      const nsIContent& aCurrentBlock,
+      const Element* aAncestorLimiter = nullptr) {
     MOZ_ASSERT(aStartPoint.IsSet());
 
     if (!aStartPoint.IsInContentNode()) {
@@ -580,6 +589,128 @@ class HTMLEditUtils final {
                                                const nsAtom* aAttribute,
                                                bool aToSetStyle);
   static EditAction GetEditActionForAlignment(const nsAString& aAlignType);
+
+  /**
+   * GetPreviousCharOffsetExceptASCIIWhiteSpace() returns offset of previous
+   * character which is not ASCII white-space characters.
+   */
+  static Maybe<uint32_t> GetPreviousCharOffsetExceptASCIIWhiteSpaces(
+      const EditorDOMPointInText& aPoint) {
+    MOZ_ASSERT(aPoint.IsSetAndValid());
+    return GetPreviousCharOffsetExceptASCIIWhiteSpaces(
+        *aPoint.ContainerAsText(), aPoint.Offset());
+  }
+  static Maybe<uint32_t> GetPreviousCharOffsetExceptASCIIWhiteSpaces(
+      const dom::Text& aTextNode, uint32_t aOffset) {
+    const nsTextFragment& textFragment = aTextNode.TextFragment();
+    MOZ_ASSERT(aOffset <= textFragment.GetLength());
+    for (uint32_t i = aOffset; i; i--) {
+      if (!nsCRT::IsAsciiSpace(textFragment.CharAt(i - 1))) {
+        return Some(i - 1);
+      }
+    }
+    return Nothing();
+  }
+
+  /**
+   * GetNextCharOffsetExceptASCIIWhiteSpace() returns offset of next character
+   * which is not ASCII white-space characters.
+   */
+  static Maybe<uint32_t> GetNextCharOffsetExceptASCIIWhiteSpaces(
+      const EditorDOMPointInText& aPoint) {
+    MOZ_ASSERT(aPoint.IsSetAndValid());
+    return GetNextCharOffsetExceptASCIIWhiteSpaces(*aPoint.ContainerAsText(),
+                                                   aPoint.Offset());
+  }
+  static Maybe<uint32_t> GetNextCharOffsetExceptASCIIWhiteSpaces(
+      const dom::Text& aTextNode, uint32_t aOffset) {
+    const nsTextFragment& textFragment = aTextNode.TextFragment();
+    MOZ_ASSERT(aOffset <= textFragment.GetLength());
+    for (uint32_t i = aOffset + 1; i < textFragment.GetLength(); i++) {
+      if (!nsCRT::IsAsciiSpace(textFragment.CharAt(i))) {
+        return Some(i);
+      }
+    }
+    return Nothing();
+  }
+
+  /**
+   * GetPreviousCharOffsetExceptWhiteSpaces() returns first offset where
+   * the character is neither an ASCII white-space nor an NBSP before aPoint.
+   */
+  static Maybe<uint32_t> GetPreviousCharOffsetExceptWhiteSpaces(
+      const EditorDOMPointInText& aPoint) {
+    MOZ_ASSERT(aPoint.IsSetAndValid());
+    return GetPreviousCharOffsetExceptWhiteSpaces(*aPoint.ContainerAsText(),
+                                                  aPoint.Offset());
+  }
+  static Maybe<uint32_t> GetPreviousCharOffsetExceptWhiteSpaces(
+      const dom::Text& aTextNode, uint32_t aOffset) {
+    if (!aOffset) {
+      return Nothing();
+    }
+    const nsTextFragment& textFragment = aTextNode.TextFragment();
+    MOZ_ASSERT(aOffset <= textFragment.GetLength());
+    for (uint32_t i = aOffset; i; i--) {
+      char16_t ch = textFragment.CharAt(i - 1);
+      if (!nsCRT::IsAsciiSpace(ch) && ch != kNBSP) {
+        return Some(i - 1);
+      }
+    }
+    return Nothing();
+  }
+
+  /**
+   * GetInclusiveNextCharOffsetExceptWhiteSpaces() returns first offset where
+   * the character is neither an ASCII white-space nor an NBSP at aPoint or
+   * after it.
+   */
+  static Maybe<uint32_t> GetInclusiveNextCharOffsetExceptWhiteSpaces(
+      const EditorDOMPointInText& aPoint) {
+    MOZ_ASSERT(aPoint.IsSetAndValid());
+    return GetInclusiveNextCharOffsetExceptWhiteSpaces(
+        *aPoint.ContainerAsText(), aPoint.Offset());
+  }
+  static Maybe<uint32_t> GetInclusiveNextCharOffsetExceptWhiteSpaces(
+      const dom::Text& aTextNode, uint32_t aOffset) {
+    const nsTextFragment& textFragment = aTextNode.TextFragment();
+    MOZ_ASSERT(aOffset <= textFragment.GetLength());
+    for (uint32_t i = aOffset; i < textFragment.GetLength(); i++) {
+      char16_t ch = textFragment.CharAt(i);
+      if (!nsCRT::IsAsciiSpace(ch) && ch != kNBSP) {
+        return Some(i);
+      }
+    }
+    return Nothing();
+  }
+
+  /**
+   * GetFirstASCIIWhiteSpaceOffsetCollapsedWith() returns first ASCII
+   * white-space offset which is collapsed with a white-space at the given
+   * position.  I.e., the character at the position must be an ASCII
+   * white-space.
+   */
+  static uint32_t GetFirstASCIIWhiteSpaceOffsetCollapsedWith(
+      const EditorDOMPointInText& aPoint) {
+    MOZ_ASSERT(aPoint.IsSetAndValid());
+    MOZ_ASSERT(!aPoint.IsEndOfContainer());
+    MOZ_ASSERT(aPoint.IsCharASCIISpace());
+    return GetFirstASCIIWhiteSpaceOffsetCollapsedWith(*aPoint.ContainerAsText(),
+                                                      aPoint.Offset());
+  }
+  static uint32_t GetFirstASCIIWhiteSpaceOffsetCollapsedWith(
+      const dom::Text& aTextNode, uint32_t aOffset) {
+    MOZ_ASSERT(aOffset < aTextNode.TextLength());
+    MOZ_ASSERT(nsCRT::IsAsciiSpace(aTextNode.TextFragment().CharAt(aOffset)));
+    if (!aOffset) {
+      return 0;
+    }
+    Maybe<uint32_t> previousVisibleCharOffset =
+        GetPreviousCharOffsetExceptASCIIWhiteSpaces(aTextNode, aOffset);
+    return previousVisibleCharOffset.isSome()
+               ? previousVisibleCharOffset.value() + 1
+               : 0;
+  }
 
  private:
   static bool CanNodeContain(nsHTMLTag aParentTagId, nsHTMLTag aChildTagId);

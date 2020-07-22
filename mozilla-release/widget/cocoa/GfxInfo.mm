@@ -120,6 +120,9 @@ NS_IMETHODIMP GfxInfo::GetHasBattery(bool* aHasBattery) { return NS_ERROR_NOT_IM
 NS_IMETHODIMP
 GfxInfo::GetDWriteVersion(nsAString& aDwriteVersion) { return NS_ERROR_FAILURE; }
 
+NS_IMETHODIMP
+GfxInfo::GetEmbeddedInFirefoxReality(bool* aEmbeddedInFirefoxReality) { return NS_ERROR_FAILURE; }
+
 /* readonly attribute DOMString cleartypeParameters; */
 NS_IMETHODIMP
 GfxInfo::GetCleartypeParameters(nsAString& aCleartypeParams) { return NS_ERROR_FAILURE; }
@@ -298,6 +301,17 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
                                    nsIGfxInfo::FEATURE_GL_SWIZZLE,
                                    nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
                                    "FEATURE_FAILURE_MAC_INTELHD4000_NO_SWIZZLE");
+#ifdef NIGHTLY_BUILD
+    IMPLEMENT_MAC_DRIVER_BLOCKLIST(
+        OperatingSystem::OSX, DeviceFamily::IntelRolloutWebRender, nsIGfxInfo::FEATURE_WEBRENDER,
+        nsIGfxInfo::FEATURE_ALLOW_QUALIFIED, "FEATURE_ROLLOUT_INTEL_MAC");
+    IMPLEMENT_MAC_DRIVER_BLOCKLIST(
+        OperatingSystem::OSX, DeviceFamily::AtiRolloutWebRender, nsIGfxInfo::FEATURE_WEBRENDER,
+        nsIGfxInfo::FEATURE_ALLOW_QUALIFIED, "FEATURE_ROLLOUT_AMD_MAC");
+    IMPLEMENT_MAC_DRIVER_BLOCKLIST(
+        OperatingSystem::OSX, DeviceFamily::NvidiaRolloutWebRender, nsIGfxInfo::FEATURE_WEBRENDER,
+        nsIGfxInfo::FEATURE_ALLOW_QUALIFIED, "FEATURE_ROLLOUT_NVIDIA_MAC");
+#endif
   }
   return *sDriverInfo;
 }
@@ -333,11 +347,14 @@ nsresult GfxInfo::GetFeatureStatusImpl(int32_t aFeature, int32_t* aStatus,
           break;
       }
       return NS_OK;
-    } else if (aFeature == nsIGfxInfo::FEATURE_WEBRENDER) {
+    }
+#ifndef NIGHTLY_BUILD
+    else if (aFeature == nsIGfxInfo::FEATURE_WEBRENDER) {
       *aStatus = nsIGfxInfo::FEATURE_BLOCKED_OS_VERSION;
       aFailureId = "FEATURE_UNQUALIFIED_WEBRENDER_MAC";
       return NS_OK;
     }
+#endif
   }
 
   return GfxInfoBase::GetFeatureStatusImpl(aFeature, aStatus, aSuggestedDriverVersion, aDriverInfo,

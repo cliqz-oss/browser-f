@@ -161,7 +161,7 @@ void nsTreeBodyFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   // Call GetBaseElement so that mTree is assigned.
   GetBaseElement();
 
-  if (LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars) != 0) {
+  if (LookAndFeel::GetInt(LookAndFeel::IntID::UseOverlayScrollbars) != 0) {
     mScrollbarActivity =
         new ScrollbarActivity(static_cast<nsIScrollbarMediator*>(this));
   }
@@ -2351,7 +2351,7 @@ nsresult nsTreeBodyFrame::HandleEvent(nsPresContext* aPresContext,
         }
 
         // Set a timer to trigger the tree scrolling.
-        CreateTimer(LookAndFeel::eIntID_TreeLazyScrollDelay, LazyScrollCallback,
+        CreateTimer(LookAndFeel::IntID::TreeLazyScrollDelay, LazyScrollCallback,
                     nsITimer::TYPE_ONE_SHOT, getter_AddRefs(mSlots->mTimer),
                     "nsTreeBodyFrame::LazyScrollCallback");
       }
@@ -2390,7 +2390,7 @@ nsresult nsTreeBodyFrame::HandleEvent(nsPresContext* aPresContext,
             mView->IsContainerOpen(mSlots->mDropRow, &isOpen);
             if (!isOpen) {
               // This node isn't expanded, set a timer to expand it.
-              CreateTimer(LookAndFeel::eIntID_TreeOpenDelay, OpenCallback,
+              CreateTimer(LookAndFeel::IntID::TreeOpenDelay, OpenCallback,
                           nsITimer::TYPE_ONE_SHOT,
                           getter_AddRefs(mSlots->mTimer),
                           "nsTreeBodyFrame::OpenCallback");
@@ -2462,7 +2462,7 @@ nsresult nsTreeBodyFrame::HandleEvent(nsPresContext* aPresContext,
 
     if (!mSlots->mArray.IsEmpty()) {
       // Close all spring loaded folders except the drop folder.
-      CreateTimer(LookAndFeel::eIntID_TreeCloseDelay, CloseCallback,
+      CreateTimer(LookAndFeel::IntID::TreeCloseDelay, CloseCallback,
                   nsITimer::TYPE_ONE_SHOT, getter_AddRefs(mSlots->mTimer),
                   "nsTreeBodyFrame::CloseCallback");
     }
@@ -2481,7 +2481,7 @@ class nsDisplayTreeBody final : public nsPaintedDisplayItem {
 
   nsDisplayItemGeometry* AllocateGeometry(
       nsDisplayListBuilder* aBuilder) override {
-    return new nsDisplayItemGenericImageGeometry(this, aBuilder);
+    return new nsDisplayTreeBodyGeometry(this, aBuilder, IsWindowActive());
   }
 
   void Destroy(nsDisplayListBuilder* aBuilder) override {
@@ -2489,14 +2489,20 @@ class nsDisplayTreeBody final : public nsPaintedDisplayItem {
     nsPaintedDisplayItem::Destroy(aBuilder);
   }
 
+  bool IsWindowActive() const {
+    EventStates docState =
+        mFrame->PresContext()->Document()->GetDocumentState();
+    return !docState.HasState(NS_DOCUMENT_STATE_WINDOW_INACTIVE);
+  }
+
   void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                  const nsDisplayItemGeometry* aGeometry,
                                  nsRegion* aInvalidRegion) const override {
-    auto geometry =
-        static_cast<const nsDisplayItemGenericImageGeometry*>(aGeometry);
+    auto geometry = static_cast<const nsDisplayTreeBodyGeometry*>(aGeometry);
 
-    if (aBuilder->ShouldSyncDecodeImages() &&
-        geometry->ShouldInvalidateToSyncDecodeImages()) {
+    if ((aBuilder->ShouldSyncDecodeImages() &&
+         geometry->ShouldInvalidateToSyncDecodeImages()) ||
+        IsWindowActive() != geometry->mWindowIsActive) {
       bool snap;
       aInvalidRegion->Or(*aInvalidRegion, GetBounds(aBuilder, &snap));
     }
@@ -2514,7 +2520,7 @@ class nsDisplayTreeBody final : public nsPaintedDisplayItem {
     ImgDrawResult result = static_cast<nsTreeBodyFrame*>(mFrame)->PaintTreeBody(
         *aCtx, GetPaintRect(), ToReferenceFrame(), aBuilder);
 
-    nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, result);
+    nsDisplayTreeBodyGeometry::UpdateDrawResult(this, result);
   }
 
   NS_DISPLAY_DECL_NAME("XULTreeBody", TYPE_XUL_TREE_BODY)
@@ -2525,6 +2531,19 @@ class nsDisplayTreeBody final : public nsPaintedDisplayItem {
     return GetBounds(aBuilder, &snap);
   }
 };
+
+#ifdef XP_MACOSX
+static bool IsInSourceList(nsIFrame* aFrame) {
+  for (nsIFrame* frame = aFrame; frame;
+       frame = nsLayoutUtils::GetCrossDocParentFrame(frame)) {
+    if (frame->StyleDisplay()->mAppearance ==
+        StyleAppearance::MozMacSourceList) {
+      return true;
+    }
+  }
+  return false;
+}
+#endif
 
 // Painting routines
 void nsTreeBodyFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -2554,10 +2573,8 @@ void nsTreeBodyFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   // On Mac, we support native theming of selected rows. On 10.10 and higher,
   // this means applying vibrancy which require us to register the theme
   // geometrics for the row. In order to make the vibrancy effect to work
-  // properly, we also need the tree to be themed as a source list.
-  if (selection && treeFrame && theme &&
-      treeFrame->StyleDisplay()->mAppearance ==
-          StyleAppearance::MozMacSourceList) {
+  // properly, we also need an ancestor frame to be themed as a source list.
+  if (selection && theme && IsInSourceList(treeFrame)) {
     // Loop through our onscreen rows. If the row is selected and a
     // -moz-appearance is provided, RegisterThemeGeometry might be necessary.
     const auto end = std::min(mRowCount, LastVisibleRow() + 1);
@@ -3355,7 +3372,7 @@ ImgDrawResult nsTreeBodyFrame::PaintImage(
                                               opacity);
     }
 
-    uint32_t drawFlags = aBuilder && aBuilder->IsPaintingToWindow()
+    uint32_t drawFlags = aBuilder && aBuilder->UseHighQualityScaling()
                              ? imgIContainer::FLAG_HIGH_QUALITY_SCALING
                              : imgIContainer::FLAG_NONE;
     result &= nsLayoutUtils::DrawImage(
@@ -4067,7 +4084,7 @@ void nsTreeBodyFrame::ComputeDropPosition(WidgetGUIEvent* aEvent, int32_t* aRow,
   if (CanAutoScroll(*aRow)) {
     // Get the max value from the look and feel service.
     int32_t scrollLinesMax =
-        LookAndFeel::GetInt(LookAndFeel::eIntID_TreeScrollLinesMax, 0);
+        LookAndFeel::GetInt(LookAndFeel::IntID::TreeScrollLinesMax, 0);
     scrollLinesMax--;
     if (scrollLinesMax < 0) scrollLinesMax = 0;
 
@@ -4120,7 +4137,7 @@ void nsTreeBodyFrame::LazyScrollCallback(nsITimer* aTimer, void* aClosure) {
 
     if (self->mView) {
       // Set a new timer to scroll the tree repeatedly.
-      self->CreateTimer(LookAndFeel::eIntID_TreeScrollDelay, ScrollCallback,
+      self->CreateTimer(LookAndFeel::IntID::TreeScrollDelay, ScrollCallback,
                         nsITimer::TYPE_REPEATING_SLACK,
                         getter_AddRefs(self->mSlots->mTimer),
                         "nsTreeBodyFrame::ScrollCallback");

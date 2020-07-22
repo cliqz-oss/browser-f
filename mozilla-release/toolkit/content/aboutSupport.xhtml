@@ -24,6 +24,9 @@
     <link rel="localization" href="toolkit/about/aboutSupport.ftl"/>
     <link rel="localization" href="toolkit/global/resetProfile.ftl"/>
     <link rel="localization" href="toolkit/global/processTypes.ftl"/>
+#ifndef ANDROID
+    <link rel="localization" href="toolkit/featuregates/features.ftl"/>
+#endif
   </head>
 
   <body class="wide-container">
@@ -37,6 +40,10 @@
       <div id="safe-mode-box">
         <h3 data-l10n-id="safe-mode-title"/>
         <button id="restart-in-safe-mode-button" data-l10n-id="restart-in-safe-mode-label"/>
+      </div>
+      <div id="clear-startup-cache-box">
+        <h3 data-l10n-id="clear-startup-cache-title"/>
+        <button id="clear-startup-cache-button" data-l10n-id="clear-startup-cache-label"/>
       </div>
     </div>
 #endif
@@ -313,18 +320,19 @@
 
       <!-- - - - - - - - - - - - - - - - - - - - - -->
 
-      <h2 class="major-section" data-l10n-id="extensions-title"/>
+      <h2 class="major-section" data-l10n-id="support-addons-title"/>
 
       <table>
         <thead>
           <tr>
-            <th data-l10n-id="extensions-name"/>
-            <th data-l10n-id="extensions-version"/>
-            <th data-l10n-id="extensions-enabled"/>
-            <th data-l10n-id="extensions-id"/>
+            <th data-l10n-id="support-addons-name"/>
+            <th data-l10n-id="support-addons-type"/>
+            <th data-l10n-id="support-addons-version"/>
+            <th data-l10n-id="support-addons-enabled"/>
+            <th data-l10n-id="support-addons-id"/>
           </tr>
         </thead>
-        <tbody id="extensions-tbody">
+        <tbody id="addons-tbody">
         </tbody>
       </table>
 
@@ -472,6 +480,22 @@
 
       </table>
 
+#ifndef ANDROID
+      <!-- - - - - - - - - - - - - - - - - - - - - -->
+
+      <h2 class="major-section" data-l10n-id="experimental-features-title"/>
+
+      <table class="prefs-table">
+        <thead class="no-copy">
+          <th class="name" data-l10n-id="experimental-features-name"/>
+
+          <th class="value" data-l10n-id="experimental-features-value"/>
+        </thead>
+
+        <tbody id="experimental-features-tbody">
+        </tbody>
+      </table>
+#endif
       <!-- - - - - - - - - - - - - - - - - - - - - -->
 
       <h2 class="major-section" data-l10n-id="modified-key-prefs-title"/>

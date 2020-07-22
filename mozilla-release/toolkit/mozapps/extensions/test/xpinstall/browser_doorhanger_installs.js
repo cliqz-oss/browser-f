@@ -8,6 +8,9 @@ const { AddonTestUtils } = ChromeUtils.import(
 const { ExtensionPermissions } = ChromeUtils.import(
   "resource://gre/modules/ExtensionPermissions.jsm"
 );
+const { Management } = ChromeUtils.import(
+  "resource://gre/modules/Extension.jsm"
+);
 
 const SECUREROOT =
   "https://example.com/browser/toolkit/mozapps/extensions/test/xpinstall/";
@@ -123,12 +126,17 @@ async function waitForProgressNotification(
 
 function acceptAppMenuNotificationWhenShown(
   id,
-  { dismiss = false, checkIncognito = false, incognitoChecked = false } = {}
+  extensionId,
+  {
+    dismiss = false,
+    checkIncognito = false,
+    incognitoChecked = false,
+    global = window,
+  } = {}
 ) {
-  const { AppMenuNotifications } = ChromeUtils.import(
-    "resource://gre/modules/AppMenuNotifications.jsm"
-  );
+  const { AppMenuNotifications, PanelUI, document } = global;
   return new Promise(resolve => {
+    let permissionChangePromise = null;
     function appMenuPopupHidden() {
       PanelUI.panel.removeEventListener("popuphidden", appMenuPopupHidden);
       is(
@@ -136,7 +144,7 @@ function acceptAppMenuNotificationWhenShown(
         false,
         "badge is not set after addon-installed"
       );
-      resolve();
+      resolve(permissionChangePromise);
     }
     function appMenuPopupShown() {
       PanelUI.panel.removeEventListener("popupshown", appMenuPopupShown);
@@ -164,6 +172,26 @@ function acceptAppMenuNotificationWhenShown(
         "checkbox visibility is correct"
       );
       is(checkbox.checked, incognitoChecked, "checkbox is marked as expected");
+
+      // If we're unchecking or checking the incognito property, this will
+      // trigger an update in ExtensionPermission, let's wait for it before
+      // returning from this promise.
+      if (incognitoChecked != checkIncognito) {
+        permissionChangePromise = new Promise(resolve => {
+          const listener = (type, change) => {
+            if (extensionId == change.extensionId) {
+              // Let's make sure we received the right message
+              let { permissions } = checkIncognito
+                ? change.added
+                : change.removed;
+              ok(permissions.includes("internal:privateBrowsingAllowed"));
+              resolve();
+            }
+          };
+          Management.once("change-permissions", listener);
+        });
+      }
+
       checkbox.checked = checkIncognito;
 
       if (dismiss) {
@@ -179,7 +207,7 @@ function acceptAppMenuNotificationWhenShown(
       let popupnotification = document.getElementById(popupnotificationID);
 
       popupnotification.button.click();
-      resolve();
+      resolve(permissionChangePromise);
     }
     PanelUI.notificationPanel.addEventListener("popupshown", popupshown);
   });
@@ -387,7 +415,11 @@ var TESTS = [
 
     let installDialog = await dialogPromise;
 
-    notificationPromise = acceptAppMenuNotificationWhenShown("addon-installed");
+    notificationPromise = acceptAppMenuNotificationWhenShown(
+      "addon-installed",
+      "amosigned-xpi@tests.mozilla.org"
+    );
+
     installDialog.button.click();
     await notificationPromise;
 
@@ -511,6 +543,7 @@ var TESTS = [
 
     let notificationPromise = acceptAppMenuNotificationWhenShown(
       "addon-installed",
+      "amosigned-xpi@tests.mozilla.org",
       { dismiss: true }
     );
     acceptInstallDialog(installDialog);
@@ -700,6 +733,7 @@ var TESTS = [
 
     let notificationPromise = acceptAppMenuNotificationWhenShown(
       "addon-installed",
+      "amosigned-xpi@tests.mozilla.org",
       { checkIncognito: true }
     );
     installDialog.button.click();
@@ -972,6 +1006,7 @@ var TESTS = [
 
     let notificationPromise = acceptAppMenuNotificationWhenShown(
       "addon-installed",
+      "amosigned-xpi@tests.mozilla.org",
       { incognitoChecked: true }
     );
     installDialog.button.click();
@@ -1067,38 +1102,12 @@ var TESTS = [
     let panel = win.PopupNotifications.panel;
     let installDialog = panel.childNodes[0];
 
-    let notificationPromise = new Promise(resolve => {
-      function popupshown() {
-        let notification = win.AppMenuNotifications.activeNotification;
-        if (!notification) {
-          return;
-        }
-
-        ok(win.PanelUI.isNotificationPanelOpen, "notification panel open");
-
-        win.PanelUI.notificationPanel.removeEventListener(
-          "popupshown",
-          popupshown
-        );
-
-        let checkbox = win.document.getElementById("addon-incognito-checkbox");
-        ok(!checkbox.hidden, "checkbox visibility is correct");
-        ok(checkbox.checked, "checkbox is marked as expected");
-        checkbox.checked = false;
-
-        // Dismiss the panel by clicking the primary button.
-        let popupnotificationID = win.PanelUI._getPopupId(notification);
-        let popupnotification = win.document.getElementById(
-          popupnotificationID
-        );
-        popupnotification.button.click();
-        resolve();
-      }
-      win.document.addEventListener("popupshown", popupshown);
-    });
-
-    installDialog.button.click();
-
+    let notificationPromise = acceptAppMenuNotificationWhenShown(
+      "addon-installed",
+      "amosigned-xpi@tests.mozilla.org",
+      { incognitoChecked: true, global: win }
+    );
+    acceptInstallDialog(installDialog);
     await notificationPromise;
 
     let installs = await AddonManager.getAllInstalls();

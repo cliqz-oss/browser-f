@@ -64,8 +64,14 @@ class Page extends ContentProcessDomain {
 
   async enable() {
     if (!this.enabled) {
-      this.session.contextObserver.on("frame-attached", this._onFrameAttached);
-      this.session.contextObserver.on("frame-detached", this._onFrameDetached);
+      this.session.contextObserver.on(
+        "docshell-created",
+        this._onFrameAttached
+      );
+      this.session.contextObserver.on(
+        "docshell-destroyed",
+        this._onFrameDetached
+      );
       this.session.contextObserver.on(
         "frame-navigated",
         this._onFrameNavigated
@@ -99,8 +105,14 @@ class Page extends ContentProcessDomain {
 
   disable() {
     if (this.enabled) {
-      this.session.contextObserver.off("frame-attached", this._onFrameAttached);
-      this.session.contextObserver.off("frame-detached", this._onFrameDetached);
+      this.session.contextObserver.off(
+        "docshell-created",
+        this._onFrameAttached
+      );
+      this.session.contextObserver.off(
+        "docshell-destroyed",
+        this._onFrameDetached
+      );
       this.session.contextObserver.off(
         "frame-navigated",
         this._onFrameNavigated
@@ -143,7 +155,7 @@ class Page extends ContentProcessDomain {
   getFrameTree() {
     const getFrames = context => {
       const frameTree = {
-        frame: this._getFrameDetails(context),
+        frame: this._getFrameDetails({ context }),
       };
 
       if (context.children.length > 0) {
@@ -256,28 +268,44 @@ class Page extends ContentProcessDomain {
     return this.content.location.href;
   }
 
-  _onFrameAttached(name, { frameId, parentFrameId }) {
+  _onFrameAttached(name, { id }) {
+    const bc = BrowsingContext.get(id);
+
+    // Don't emit for top-level browsing contexts
+    if (!bc.parent) {
+      return;
+    }
+
+    // TODO: Use a unique identifier for frames (bug 1605359)
     this.emit("Page.frameAttached", {
-      frameId,
-      parentFrameId,
+      frameId: bc.id.toString(),
+      parentFrameId: bc.parent.id.toString(),
       stack: null,
     });
+
+    const loaderId = this.frameIdToLoaderId.get(bc.id);
+    const timestamp = Date.now() / 1000;
+    this.emit("Page.frameStartedLoading", { frameId: bc.id.toString() });
+    this.emitLifecycleEvent(bc.id, loaderId, "init", timestamp);
   }
 
-  _onFrameDetached(name, { frameId }) {
-    this.emit("Page.frameDetached", { frameId });
+  _onFrameDetached(name, { id }) {
+    const bc = BrowsingContext.get(id);
+
+    // Don't emit for top-level browsing contexts
+    if (!bc.parent) {
+      return;
+    }
+
+    // TODO: Use a unique identifier for frames (bug 1605359)
+    this.emit("Page.frameDetached", { frameId: bc.id.toString() });
   }
 
-  _onFrameNavigated(name, { frameId, window }) {
-    const url = window.location.href;
+  _onFrameNavigated(name, { frameId }) {
+    const bc = BrowsingContext.get(frameId);
+
     this.emit("Page.frameNavigated", {
-      frame: {
-        id: frameId,
-        // frameNavigated is only emitted for the top level document
-        // so that it never has a parent.
-        parentId: null,
-        url,
-      },
+      frame: this._getFrameDetails({ context: bc }),
     });
   }
 
@@ -306,24 +334,27 @@ class Page extends ContentProcessDomain {
 
   emitLifecycleEvent(frameId, loaderId, name, timestamp) {
     if (this.lifecycleEnabled) {
-      this.emit("Page.lifecycleEvent", { frameId, loaderId, name, timestamp });
+      this.emit("Page.lifecycleEvent", {
+        frameId: frameId.toString(),
+        loaderId,
+        name,
+        timestamp,
+      });
     }
   }
 
   handleEvent({ type, target }) {
-    if (target.defaultView != this.content) {
-      // Ignore iframes for now
-      return;
-    }
-
-    const frameId = target.defaultView.docShell.browsingContext.id.toString();
-    const loaderId = this.frameIdToLoaderId.get(frameId);
     const timestamp = Date.now() / 1000;
+    const frameId = target.defaultView.docShell.browsingContext.id;
+    const isFrame = !!target.defaultView.docShell.browsingContext.parent;
+    const loaderId = this.frameIdToLoaderId.get(frameId);
     const url = target.location.href;
 
     switch (type) {
       case "DOMContentLoaded":
-        this.emit("Page.domContentEventFired", { timestamp });
+        if (!isFrame) {
+          this.emit("Page.domContentEventFired", { timestamp });
+        }
         this.emitLifecycleEvent(
           frameId,
           loaderId,
@@ -334,21 +365,28 @@ class Page extends ContentProcessDomain {
 
       case "pagehide":
         // Maybe better to bound to "unload" once we can register for this event
-        this.emit("Page.frameStartedLoading", { frameId });
+        this.emit("Page.frameStartedLoading", { frameId: frameId.toString() });
         this.emitLifecycleEvent(frameId, loaderId, "init", timestamp);
         break;
 
       case "load":
-        this.emit("Page.loadEventFired", { timestamp });
+        if (!isFrame) {
+          this.emit("Page.loadEventFired", { timestamp });
+        }
         this.emitLifecycleEvent(frameId, loaderId, "load", timestamp);
 
+        // Todo: Only to be emitted for hashchange events (bug 1636453)
+        this.emit("Page.navigatedWithinDocument", {
+          frameId: frameId.toString(),
+          url,
+        });
+
         // XXX this should most likely be sent differently
-        this.emit("Page.navigatedWithinDocument", { frameId, url });
-        this.emit("Page.frameStoppedLoading", { frameId });
+        this.emit("Page.frameStoppedLoading", { frameId: frameId.toString() });
         break;
 
       case "readystatechange":
-        if (this.content.document.readState === "loading") {
+        if (this.content.document.readyState === "loading") {
           this.emitLifecycleEvent(frameId, loaderId, "init", timestamp);
         }
     }
@@ -375,21 +413,19 @@ class Page extends ContentProcessDomain {
     return this.content.devicePixelRatio;
   }
 
-  _getFrameDetails(context) {
-    const frame = {
-      id: context.id.toString(),
-      loaderId: null,
-      name: null,
-      url: context.docShell.domWindow.location.href,
+  _getFrameDetails({ context, id }) {
+    const bc = context || BrowsingContext.get(id);
+    const frame = bc.embedderElement;
+
+    return {
+      id: bc.id.toString(),
+      parentId: bc.parent?.id.toString(),
+      loaderId: this.frameIdToLoaderId.get(bc.id),
+      url: bc.docShell.domWindow.location.href,
+      name: frame?.id || frame?.name,
       securityOrigin: null,
       mimeType: null,
     };
-
-    if (context.parent) {
-      frame.parentId = context.parent.id.toString();
-    }
-
-    return frame;
   }
 
   _getScrollbarSize() {

@@ -108,6 +108,32 @@ class CookieCommons final {
       nsIChannel* aChannel);
 
   static bool ShouldIncludeCrossSiteCookieForDocument(Cookie* aCookie);
+
+  static bool MaybeCompareSchemeWithLogging(nsIConsoleReportCollector* aCRC,
+                                            nsIURI* aHostURI, Cookie* aCookie,
+                                            nsICookie::schemeType aSchemeType);
+
+  static bool MaybeCompareScheme(Cookie* aCookie,
+                                 nsICookie::schemeType aSchemeType);
+
+  static bool IsSchemeSupported(nsIPrincipal* aPrincipal);
+  static bool IsSchemeSupported(nsIURI* aURI);
+  static bool IsSchemeSupported(const nsACString& aScheme);
+
+  static nsICookie::schemeType URIToSchemeType(nsIURI* aURI);
+
+  static nsICookie::schemeType PrincipalToSchemeType(nsIPrincipal* aPrincipal);
+
+  static nsICookie::schemeType SchemeToSchemeType(const nsACString& aScheme);
+
+  // Returns true if the channel is a safe top-level navigation or if it's a
+  // download request
+  static bool IsSafeTopLevelNav(nsIChannel* aChannel);
+
+  // Returns true if the channel is a foreign with respect to the host-uri.
+  // For loads of TYPE_DOCUMENT, this function returns true if it's a cross
+  // origin navigation.
+  static bool IsSameSiteForeign(nsIChannel* aChannel, nsIURI* aHostURI);
 };
 
 }  // namespace net

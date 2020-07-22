@@ -43,25 +43,30 @@ class Http3Stream final : public nsAHttpSegmentReader,
   void SetQueued(bool aStatus) { mQueued = aStatus; }
   bool Queued() const { return mQueued; }
 
-  bool Done() const { return mState == DONE; }
+  bool Done() const { return mRecvState == RECV_DONE; }
 
   void Close(nsresult aResult);
   bool RecvdData() const { return mDataReceived; }
 
   nsAHttpTransaction* Transaction() { return mTransaction; }
-  bool RecvdFin() const { return mState == RECEIVED_FIN; }
-  bool RecvdReset() const { return mState == RECEIVED_RESET; }
-  void SetRecvdReset() { mState = RECEIVED_RESET; }
+  bool RecvdFin() const { return mFin; }
+  bool RecvdReset() const { return mResetRecv; }
+  void SetRecvdReset() {
+    mResetRecv = true;
+    mRecvState = RECEIVED_RESET;
+  }
+
+  void SetResponseHeaders(nsTArray<uint8_t>& aResponseHeaders, bool fin);
 
  private:
   ~Http3Stream() = default;
 
-  void GetHeadersString(const char* buf, uint32_t avail, uint32_t* countUsed);
+  bool GetHeadersString(const char* buf, uint32_t avail, uint32_t* countUsed);
   nsresult StartRequest();
   void FindRequestContentLength();
 
   /**
-   * StreamState:
+   * SendStreamState:
    *  While sending request:
    *  - PREPARING_HEADERS:
    *      In this state we are collecting the headers and in some cases also
@@ -82,7 +87,17 @@ class Http3Stream final : public nsAHttpSegmentReader,
    *      The server may send STOP_SENDING frame with error HTTP_EARLY_RESPONSE.
    *      That error means that the server is not interested in the request
    *      body. In this state the server will just ignore the request body.
-   *  After sending a request, the transaction reads data:
+   **/
+  enum SendStreamState {
+    PREPARING_HEADERS,
+    WAITING_TO_ACTIVATE,
+    SENDING_BODY,
+    EARLY_RESPONSE,
+    SEND_DONE
+  } mSendState;
+
+  /**
+   * RecvStreamState:
    *  - READING_HEADERS:
    *      In this state Http3Session::ReadResponseHeaders will be called to read
    *      the response headers. All headers will be read at once into
@@ -95,56 +110,30 @@ class Http3Stream final : public nsAHttpSegmentReader,
    *      In this state Http3Session::ReadResponseData will be called and the
    *      response body will be given to the transaction.
    *      This state may transfer to RECEIVED_FIN or DONE state.
-   *  - RECEIVED_FIN:
-   *      The stream is in this state when the receiving side is closed by the
-   *      server and this information is not given to the transaction yet.
-   *      (example 1: ReadResponseData(Http3Stream is in READING_DATA state)
-   *      returns 10 bytes and fin set to true (the server has closed the
-   *      stream). The transaction will get this 10 bytes, but it cannot get
-   *      the information about the fin at the same time. The Http3Stream
-   *      transit into RECEIVED_FIN state. The transaction will need to call
-   *      OnWriteSegment again and the Http3Stream::OnWriteSegment will return
-   *      NS_BASE_STREAM_CLOSED which means that the stream has been closed.
-   *      example 2: if ReadResponseData(Http3Stream is in READING_DATA state)
-   *      returns 0 bytes and a fin set to true. Http3Stream::OnWriteSegment
-   *      will return NS_BASE_STREAM_CLOSED to the transaction and transfer to
-   *      state DONE.)
-   *  - RECEIVED_RESET:
-   *      The stream has been reset by the server.
    *  - DONE:
    *      The transaction is done.
    **/
-  enum StreamState {
-    PREPARING_HEADERS,
-    SENDING_BODY,
-    EARLY_RESPONSE,
+  enum RecvStreamState {
     READING_HEADERS,
     READING_DATA,
     RECEIVED_FIN,
     RECEIVED_RESET,
-    DONE
-  } mState;
+    RECV_DONE
+  } mRecvState;
 
   uint64_t mStreamId;
   Http3Session* mSession;
   RefPtr<nsAHttpTransaction> mTransaction;
   nsCString mFlatHttpRequestHeaders;
-  bool mRequestHeadersDone;
-  bool mRequestStarted;
   bool mQueued;
   bool mRequestBlockedOnRead;
   bool mDataReceived;
+  bool mResetRecv;
   nsTArray<uint8_t> mFlatResponseHeaders;
   uint32_t mRequestBodyLenRemaining;
 
   // The underlying socket transport object is needed to propogate some events
   RefPtr<nsISocketTransport> mSocketTransport;
-
-  // True if TryActivating() failed and the stream was queued. In this case we
-  // return fake count of bytes read by OnReadSegment() to ensure that
-  // OnReadSegment() is called again. Otherwise we wouldn't call TryActivating()
-  // again and the stream would hang.
-  bool mActivatingFailed;
 
   // For Progress Events
   uint64_t mTotalSent;

@@ -67,6 +67,7 @@
 }
 
 #PanelUI-menu-button[badge-status="update-available"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
+#PanelUI-menu-button[badge-status="update-downloading"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
 #PanelUI-menu-button[badge-status="update-manual"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
 #PanelUI-menu-button[badge-status="update-restart"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
 #PanelUI-menu-button[badge-status="update-unsupported"] > .toolbarbutton-badge-stack > .toolbarbutton-badge {
@@ -80,6 +81,7 @@
 }
 
 #PanelUI-menu-button[badge-status="update-available"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
+#PanelUI-menu-button[badge-status="update-downloading"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
 #PanelUI-menu-button[badge-status="update-manual"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
 #PanelUI-menu-button[badge-status="update-restart"] > .toolbarbutton-badge-stack > .toolbarbutton-badge {
   background: #74BF43 url(chrome://browser/skin/update-badge.svg) no-repeat center;
@@ -90,6 +92,7 @@
 }
 
 .panel-banner-item[notificationid="update-available"]::after,
+.panel-banner-item[notificationid="update-downloading"]::after,
 .panel-banner-item[notificationid="update-manual"]::after,
 .panel-banner-item[notificationid="update-restart"]::after {
   background: #74BF43 url(chrome://browser/skin/update-badge.svg) no-repeat center;
@@ -1166,7 +1169,7 @@ panelview .toolbarbutton-1,
   fill-opacity: 0.4;
   float: inline-end;
   /* Centers the icon and resizes it to 12px square. */
-  transform: translateY(2px) scaleX(.75);
+  transform: translateY(2px) scale(.75);
 }
 
 .subviewbutton[checked="true"] {
@@ -1856,6 +1859,11 @@ panelview[mainview] #PanelUI-whatsNew-content {
   height: 43em;
 }
 
+/* Hide the What's New header when the panel is a subview */
+panelview:not([mainview]) #PanelUI-whatsNew-title {
+  display: none;
+}
+
 #PanelUI-whatsNew .panel-subview-body {
   padding-top: 0;
 }
@@ -1899,7 +1907,7 @@ panelview[mainview] #PanelUI-whatsNew-content {
   border: 1px solid #A9A9A9;
   border-radius: 2px;
   margin: 0;
-  margin-inline-end: 10px;
+  margin-inline-end: 6px;
   background-color: #FFF;
   background-position: center;
   background-repeat: no-repeat;
@@ -1915,7 +1923,7 @@ panelview[mainview] #PanelUI-whatsNew-content {
 
 #PanelUI-whatsNew .whatsNew-message {
   cursor: pointer;
-  margin: 0 12px;
+  margin: 0;
   padding: 0;
 }
 
@@ -1932,6 +1940,11 @@ panelview[mainview] #PanelUI-whatsNew-content {
   background: var(--panel-separator-color);
 }
 
+#PanelUI-whatsNew .has-icon::before {
+  /* the width of the icon + the grid margin */
+  width: calc(104% + 40px);
+}
+
 #PanelUI-whatsNew .whatsNew-message-date + .whatsNew-message-body::before {
   display: none;
 }
@@ -1940,12 +1953,14 @@ panelview[mainview] #PanelUI-whatsNew-content {
   font-size: .85em;
   margin: -12px;
   margin-top: 0;
+  margin-inline-start: 0;
   padding: 6px 16px;
   background: var(--arrowpanel-dimmed);
 }
 
 #PanelUI-whatsNew .whatsNew-message-body {
-  padding: 6px 6px 10px;
+  padding: 5px 0 10px;
+  margin: 0 16px;
   text-align: inherit;
   text-decoration: none;
   color: inherit;
@@ -1961,33 +1976,35 @@ panelview[mainview] #PanelUI-whatsNew-content {
 }
 
 #PanelUI-whatsNew .whatsNew-message-body.has-icon {
-  position: relative;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto 32px;
+  grid-template-rows: 0;
+  grid-gap: 0 8px;
 }
 
 #PanelUI-whatsNew .whatsNew-message-icon {
-  inset-inline-end: 6px;
   height: 32px;
-  position: absolute;
-  top: 22px;
   width: 32px;
+  margin: 14px auto;
+  display: grid;
+  grid-column-start: 2;
 }
 
 #PanelUI-whatsNew .whatsNew-message-title,
 #protections-popup-message .whatsNew-message-title {
-  display: block;
-  padding-inline-end: 46px;
+  display: grid;
   font-size: 1.3em;
   font-weight: 600;
   line-height: 1.4em;
   margin: 14px 0 0;
+  grid-column-start: 1;
 }
 
 #PanelUI-whatsNew .whatsNew-message-title-large {
   font-size: 2.1em;
   margin: 2px 0;
   font-weight: 300;
+  grid-column-start: 1;
 }
 
 #PanelUI-whatsNew .whatsNew-message-subtitle {
@@ -1995,11 +2012,13 @@ panelview[mainview] #PanelUI-whatsNew-content {
   font-size: .8em;
   color: #949494;
   font-weight: normal;
+  grid-column-start: 1;
 }
 
 #PanelUI-whatsNew .whatsNew-message-content {
-  display: block;
-  margin: 10px 0;
+  display: grid;
+  margin: 5px 0 10px;
+  grid-column-start: 1;
 }
 
 #PanelUI-whatsNew .text-link {
@@ -2008,6 +2027,7 @@ panelview[mainview] #PanelUI-whatsNew-content {
   color: #45a1ff;
   cursor: pointer;
   font-size: .9em;
+  grid-column-start: 1;
 }
 
 #protections-popup-message .text-link {
@@ -2154,6 +2174,7 @@ panelview[mainview] #PanelUI-whatsNew-content {
 
 #PanelUI-profiler-presets {
   -moz-appearance: none;
+  position: relative; /* Ensure there is a stacking context for the dropdown arrow. */
   width: 100%;
   min-height: 24px;
   background-color: #EDEDF0;
@@ -2202,14 +2223,24 @@ panelview[mainview] #PanelUI-whatsNew-content {
   background-color: #0060DF;
 }
 
-/* The dropmarker is generated by the menulist element */
-#PanelUI-profiler-presets dropmarker {
-  -moz-appearance: none;
+#PanelUI-profiler-presets::after {
+  width: 12px;
+  height: 12px;
+  position: absolute;
   display: block;
+  content: "";
   margin-block-start: 5px;
   -moz-context-properties: fill;
-  list-style-image: url("chrome://global/skin/icons/arrow-dropdown-12.svg");
   fill: currentColor;
+  background: url("chrome://global/skin/icons/arrow-dropdown-12.svg") center center no-repeat;
+}
+
+#PanelUI-profiler-presets:-moz-locale-dir(ltr)::after {
+  right: 22px;
+}
+
+#PanelUI-profiler-presets:-moz-locale-dir(rtl)::after {
+  left: 22px;
 }
 
 #PanelUI-profiler-content-custom-button {

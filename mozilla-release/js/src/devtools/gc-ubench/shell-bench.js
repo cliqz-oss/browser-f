@@ -10,6 +10,7 @@ var gNumSamples = 500;
 
 loadRelativeToScript("argparse.js");
 loadRelativeToScript("harness.js");
+loadRelativeToScript("sequencer.js");
 loadRelativeToScript("scheduler.js");
 loadRelativeToScript("perf.js");
 loadRelativeToScript("test_list.js");
@@ -33,15 +34,6 @@ function tick(loadMgr, timestamp) {
   return events;
 }
 
-function report_events(events, loadMgr) {
-  if (events & loadMgr.LOAD_ENDED) {
-    print(`${loadMgr.lastActive.name} ended`);
-  }
-  if (events & loadMgr.LOAD_STARTED) {
-    print(`${loadMgr.activeLoad().name} starting`);
-  }
-}
-
 function run(opts, loads) {
   const sequence = [];
   for (const mut of loads) {
@@ -60,7 +52,15 @@ function run(opts, loads) {
   const loadMgr = new AllocationLoadManager(tests);
   const perf = new FrameHistory(gNumSamples);
 
-  loadMgr.startCycle(sequence);
+  const mutators = sequence.map(name => new SingleMutatorSequencer(loadMgr.getByName(name), gPerf, opts.duration));
+  let sequencer;
+  if (opts.sequencer == 'cycle') {
+    sequencer = new ChainSequencer(mutators);
+  } else if (opts.sequencer == 'find50') {
+    const seekers = mutators.map(s => new Find50Sequencer(s, loadMgr));
+    sequencer = new ChainSequencer(seekers);
+  }
+
   const schedulerCtors = {
     keepup: OptimizeForFrameRate,
     vsync: VsyncScheduler,
@@ -73,18 +73,24 @@ function run(opts, loads) {
 
   let possible = 0;
   let frames = 0;
+  loadMgr.startSequencer(sequencer);
+  print(`${loadMgr.activeLoad().name} starting`);
   while (loadMgr.load_running()) {
     const timestamp = gHost.now();
-    const events = scheduler.tick(loadMgr, timestamp);
+    const completed = scheduler.tick(loadMgr, timestamp);
     const after_tick = gHost.now();
 
     perf.on_frame(timestamp);
 
-    report_events(events, loadMgr);
+    if (completed) {
+      print(`${loadMgr.lastActive.name} ended`);
+      if (loadMgr.load_running()) {
+        print(`${loadMgr.activeLoad().name} starting`);
+      }
+    }
 
     frames++;
-    gPerf.handle_tick_events(events, loadMgr, timestamp, gHost.now());
-    if (events & loadMgr.LOAD_ENDED) {
+    if (completed) {
       possible += (loadMgr.testDurationMS / 1000) * FPS;
       const elapsed = ((after_tick - t0) / 1000).toFixed(2);
       print(`  observed ${frames} / ${possible} frames in ${elapsed} seconds`);
@@ -125,8 +131,17 @@ function report_results() {
 }
 
 var argparse = new ArgParser("JS shell microbenchmark runner");
+argparse.add_argument(["--duration", "-d"], {
+  default: gDefaultTestDuration,
+  help: "how long to run mutators for (in seconds)"
+});
 argparse.add_argument("--sched", {
   default: "keepup",
   options: ["keepup", "vsync"],
   help: "frame scheduler"
+});
+argparse.add_argument("--sequencer", {
+  default: "cycle",
+  options: ["cycle", "find50"],
+  help: "mutator sequencer"
 });

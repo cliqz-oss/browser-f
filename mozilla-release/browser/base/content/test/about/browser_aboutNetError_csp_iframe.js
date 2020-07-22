@@ -92,7 +92,22 @@ async function setupPage(htmlPageName, blockedPage) {
   // to open the blocked page in a new window/tab
   await SpecialPowers.spawn(iframe, [], async function() {
     let doc = content.document;
+
+    // aboutNetError.js is using async localization to format several messages
+    // and in result the translation may be applied later.
+    // We want to return the textContent of the element only after
+    // the translation completes, so let's wait for it here.
+    let elements = [
+      doc.getElementById("errorLongDesc"),
+      doc.getElementById("openInNewWindowButton"),
+    ];
+    await ContentTaskUtils.waitForCondition(() => {
+      return elements.every(elem => !!elem.textContent.trim().length);
+    });
+
     let textLongDescription = doc.getElementById("errorLongDesc").textContent;
+    let learnMoreLinkLocation = doc.getElementById("learnMoreLink").href;
+
     Assert.ok(
       textLongDescription.includes(
         "To see this page, you need to open it in a new window."
@@ -105,6 +120,12 @@ async function setupPage(htmlPageName, blockedPage) {
       button.textContent.includes("Open Site in New Window"),
       "We see the correct button to open the site in a new window"
     );
+
+    Assert.ok(
+      learnMoreLinkLocation.includes("xframe-neterror-page"),
+      "Correct Learn More URL for CSP error page"
+    );
+
     // We click on the button
     await EventUtils.synthesizeMouseAtCenter(button, {}, content);
   });

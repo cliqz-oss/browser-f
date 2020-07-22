@@ -5,7 +5,7 @@
 <!ENTITY autoconfigWizard2.title         "Konto für eine bestehende E-Mail-Adresse einrichten">
 
 <!ENTITY emailWizard.title               "Bestehende E-Mail-Adresse einrichten">
-<!ENTITY emailWizard.caption             "Richten Sie Ihre derzeitige E-Mail-Adresse ein">
+<!ENTITY emailWizard.caption             "Richten Sie Ihre derzeitige E-Mail-Adresse ein.">
 <!ENTITY name.label                      "Ihr Name:">
 <!ENTITY name.accesskey                  "n">
 <!ENTITY name.placeholder                "Vorname Nachname">

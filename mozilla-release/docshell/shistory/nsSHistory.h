@@ -171,13 +171,13 @@ class nsSHistory : public mozilla::LinkedListElement<nsSHistory>,
  private:
   friend class nsSHistoryObserver;
 
-  nsresult LoadDifferingEntries(nsISHEntry* aPrevEntry, nsISHEntry* aNextEntry,
-                                mozilla::dom::BrowsingContext* aRootBC,
-                                long aLoadType, bool& aDifferenceFound,
-                                nsTArray<LoadEntryResult>& aLoadResults);
-  nsresult InitiateLoad(nsISHEntry* aFrameEntry,
-                        mozilla::dom::BrowsingContext* aFrameBC, long aLoadType,
-                        nsTArray<LoadEntryResult>& aLoadResult);
+  bool LoadDifferingEntries(nsISHEntry* aPrevEntry, nsISHEntry* aNextEntry,
+                            mozilla::dom::BrowsingContext* aParent,
+                            long aLoadType,
+                            nsTArray<LoadEntryResult>& aLoadResults);
+  void InitiateLoad(nsISHEntry* aFrameEntry,
+                    mozilla::dom::BrowsingContext* aFrameBC, long aLoadType,
+                    nsTArray<LoadEntryResult>& aLoadResult);
 
   nsresult LoadEntry(int32_t aIndex, long aLoadType, uint32_t aHistCmd,
                      nsTArray<LoadEntryResult>& aLoadResults);

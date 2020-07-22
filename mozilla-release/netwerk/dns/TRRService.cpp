@@ -66,9 +66,15 @@ TRRService::TRRService()
 }
 
 // static
-void TRRService::AddObserver(nsIObserver* aObserver) {
-  nsCOMPtr<nsIObserverService> observerService =
-      mozilla::services::GetObserverService();
+void TRRService::AddObserver(nsIObserver* aObserver,
+                             nsIObserverService* aObserverService) {
+  nsCOMPtr<nsIObserverService> observerService;
+  if (aObserverService) {
+    observerService = aObserverService;
+  } else {
+    observerService = mozilla::services::GetObserverService();
+  }
+
   if (observerService) {
     observerService->AddObserver(aObserver, NS_CAPTIVE_PORTAL_CONNECTIVITY,
                                  true);
@@ -271,9 +277,11 @@ nsresult TRRService::ReadPrefs(const char* name) {
     nsAutoCString old(mConfirmationNS);
     Preferences::GetCString(TRR_PREF("confirmationNS"), mConfirmationNS);
     if (name && !old.IsEmpty() && !mConfirmationNS.Equals(old) &&
-        (mConfirmationState > CONFIRM_TRYING)) {
+        (mConfirmationState > CONFIRM_TRYING) &&
+        (mMode == MODE_TRRFIRST || mMode == MODE_TRRONLY)) {
       LOG(("TRR::ReadPrefs: restart confirmationNS state\n"));
       mConfirmationState = CONFIRM_TRYING;
+      MaybeConfirm_locked();
     }
   }
   if (!name || !strcmp(name, TRR_PREF("bootstrapAddress"))) {
@@ -484,6 +492,33 @@ bool TRRService::IsOnTRRThread() {
   return thread->IsOnCurrentThread();
 }
 
+void TRRService::InitTRRBLStorage(DataStorage* aInitedStorage) {
+  if (mTRRBLStorage) {
+    return;
+  }
+
+  // We need a lock if we modify mTRRBLStorage variable because it is
+  // access off the main thread as well.
+  MutexAutoLock lock(mLock);
+  if (aInitedStorage) {
+    mTRRBLStorage = aInitedStorage;
+  } else {
+    mTRRBLStorage = DataStorage::Get(DataStorageClass::TRRBlacklist);
+    if (mTRRBLStorage) {
+      if (NS_FAILED(mTRRBLStorage->Init(nullptr))) {
+        mTRRBLStorage = nullptr;
+      }
+    }
+  }
+
+  if (mClearTRRBLStorage) {
+    if (mTRRBLStorage) {
+      mTRRBLStorage->Clear();
+    }
+    mClearTRRBLStorage = false;
+  }
+}
+
 NS_IMETHODIMP
 TRRService::Observe(nsISupports* aSubject, const char* aTopic,
                     const char16_t* aData) {
@@ -507,22 +542,10 @@ TRRService::Observe(nsISupports* aSubject, const char* aTopic,
   } else if (!strcmp(aTopic, NS_CAPTIVE_PORTAL_CONNECTIVITY)) {
     nsAutoCString data = NS_ConvertUTF16toUTF8(aData);
     LOG(("TRRservice captive portal was %s\n", data.get()));
-    if (!mTRRBLStorage) {
-      // We need a lock if we modify mTRRBLStorage variable because it is
-      // access off the main thread as well.
-      MutexAutoLock lock(mLock);
-      mTRRBLStorage = DataStorage::Get(DataStorageClass::TRRBlacklist);
-      if (mTRRBLStorage) {
-        if (NS_FAILED(mTRRBLStorage->Init(nullptr))) {
-          mTRRBLStorage = nullptr;
-        }
-        if (mClearTRRBLStorage) {
-          if (mTRRBLStorage) {
-            mTRRBLStorage->Clear();
-          }
-          mClearTRRBLStorage = false;
-        }
-      }
+    // When TRRService is in socket process, InitTRRBLStorage() will be called
+    // by TRRServiceChild.
+    if (XRE_IsParentProcess()) {
+      InitTRRBLStorage(nullptr);
     }
 
     // We should avoid doing calling MaybeConfirm in response to a pref change
@@ -899,12 +922,8 @@ TRRService::Notify(nsITimer* aTimer) {
 }
 
 void TRRService::TRRIsOkay(enum TrrOkay aReason) {
-  MOZ_ASSERT_IF(StaticPrefs::network_trr_fetch_off_main_thread() &&
-                    !XRE_IsSocketProcess(),
-                IsOnTRRThread());
-  MOZ_ASSERT_IF(!StaticPrefs::network_trr_fetch_off_main_thread() ||
-                    XRE_IsSocketProcess(),
-                NS_IsMainThread());
+  MOZ_ASSERT_IF(XRE_IsParentProcess(), NS_IsMainThread() || IsOnTRRThread());
+  MOZ_ASSERT_IF(XRE_IsSocketProcess(), NS_IsMainThread());
 
   Telemetry::AccumulateCategoricalKeyed(
       AutoDetectedKey(),
@@ -934,12 +953,8 @@ AHostResolver::LookupStatus TRRService::CompleteLookup(
     const nsACString& aOriginSuffix) {
   // this is an NS check for the TRR blacklist or confirmationNS check
 
-  MOZ_ASSERT_IF(StaticPrefs::network_trr_fetch_off_main_thread() &&
-                    !XRE_IsSocketProcess(),
-                IsOnTRRThread());
-  MOZ_ASSERT_IF(!StaticPrefs::network_trr_fetch_off_main_thread() ||
-                    XRE_IsSocketProcess(),
-                NS_IsMainThread());
+  MOZ_ASSERT_IF(XRE_IsParentProcess(), NS_IsMainThread() || IsOnTRRThread());
+  MOZ_ASSERT_IF(XRE_IsSocketProcess(), NS_IsMainThread());
   MOZ_ASSERT(!rec);
 
   RefPtr<AddrInfo> newRRSet(aNewRRSet);

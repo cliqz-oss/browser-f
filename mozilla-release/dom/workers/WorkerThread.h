@@ -10,6 +10,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/CondVar.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/dom/SafeRefPtr.h"
 #include "nsISupportsImpl.h"
 #include "mozilla/RefPtr.h"
 #include "nsThread.h"
@@ -17,7 +18,6 @@
 class nsIRunnable;
 
 namespace mozilla {
-class AbstractThread;
 namespace dom {
 
 class WorkerRunnable;
@@ -56,20 +56,19 @@ class WorkerThread final : public nsThread {
   // Protected by nsThread::mLock and waited on with mWorkerPrivateCondVar.
   uint32_t mOtherThreadsDispatchingViaEventTarget;
 
-  // We create an AbstractThread for this current nsThread instance in order to
-  // support direct task dispatching. Direct tasks work in a similar fashion to
-  // microtasks and allow an IPDL MozPromise to behave like JS promise.
-  // An AbstractThread only need to exist on the current thread for Direct Task
-  // dispatch to be available.
-  RefPtr<AbstractThread> mAbstractThread;
 #ifdef DEBUG
   // Protected by nsThread::mLock.
   bool mAcceptingNonWorkerRunnables;
 #endif
 
+  // Using this struct we restrict access to the constructor while still being
+  // able to use MakeSafeRefPtr.
+  struct ConstructorKey {};
+
  public:
-  static already_AddRefed<WorkerThread> Create(
-      const WorkerThreadFriendKey& aKey);
+  explicit WorkerThread(ConstructorKey);
+
+  static SafeRefPtr<WorkerThread> Create(const WorkerThreadFriendKey& aKey);
 
   void SetWorker(const WorkerThreadFriendKey& aKey,
                  WorkerPrivate* aWorkerPrivate);
@@ -84,12 +83,9 @@ class WorkerThread final : public nsThread {
 
   PerformanceCounter* GetPerformanceCounter(nsIRunnable* aEvent) const override;
 
-  NS_IMETHODIMP Shutdown() override;
-
   NS_INLINE_DECL_REFCOUNTING_INHERITED(WorkerThread, nsThread)
 
  private:
-  WorkerThread();
   ~WorkerThread();
 
   // This should only be called by consumers that have an

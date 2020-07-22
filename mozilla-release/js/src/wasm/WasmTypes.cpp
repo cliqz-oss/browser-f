@@ -45,11 +45,9 @@ using mozilla::MakeEnumeratedRange;
 #  endif
 #endif
 
-// More sanity checks.
-
-static_assert(MaxMemoryInitialPages <=
+static_assert(MaxMemoryPages ==
                   ArrayBufferObject::MaxBufferByteLength / PageSize,
-              "Memory sizing constraint");
+              "invariant");
 
 // All plausible targets must be able to do at least IEEE754 double
 // loads/stores, hence the lower limit of 8.  Some Intel processors support
@@ -591,8 +589,10 @@ bool wasm::IsValidARMImmediate(uint32_t i) {
   return valid;
 }
 
-uint32_t wasm::RoundUpToNextValidARMImmediate(uint32_t i) {
-  MOZ_ASSERT(i <= 0xff000000);
+uint64_t wasm::RoundUpToNextValidARMImmediate(uint64_t i) {
+  MOZ_ASSERT(i <= HighestValidARMImmediate);
+  static_assert(HighestValidARMImmediate == 0xff000000,
+                "algorithm relies on specific constant");
 
   if (i <= 16 * 1024 * 1024) {
     i = i ? mozilla::RoundUpPow2(i) : 0;
@@ -613,7 +613,7 @@ bool wasm::IsValidBoundsCheckImmediate(uint32_t i) {
 #endif
 }
 
-size_t wasm::ComputeMappedSize(uint32_t maxSize) {
+size_t wasm::ComputeMappedSize(uint64_t maxSize) {
   MOZ_ASSERT(maxSize % PageSize == 0);
 
   // It is the bounds-check limit, not the mapped size, that gets baked into
@@ -621,9 +621,9 @@ size_t wasm::ComputeMappedSize(uint32_t maxSize) {
   // *before* adding in the guard page.
 
 #ifdef JS_CODEGEN_ARM
-  uint32_t boundsCheckLimit = RoundUpToNextValidARMImmediate(maxSize);
+  uint64_t boundsCheckLimit = RoundUpToNextValidARMImmediate(maxSize);
 #else
-  uint32_t boundsCheckLimit = maxSize;
+  uint64_t boundsCheckLimit = maxSize;
 #endif
   MOZ_ASSERT(IsValidBoundsCheckImmediate(boundsCheckLimit));
 
@@ -634,7 +634,7 @@ size_t wasm::ComputeMappedSize(uint32_t maxSize) {
 
 /* static */
 DebugFrame* DebugFrame::from(Frame* fp) {
-  MOZ_ASSERT(fp->tls->instance->code().metadata().debugEnabled);
+  MOZ_ASSERT(fp->instance()->code().metadata().debugEnabled);
   auto* df =
       reinterpret_cast<DebugFrame*>((uint8_t*)fp - DebugFrame::offsetOfFrame());
   MOZ_ASSERT(fp->instance() == df->instance());
@@ -848,7 +848,7 @@ CodeRange::CodeRange(Kind kind, uint32_t funcIndex, Offsets offsets)
     : begin_(offsets.begin), ret_(0), end_(offsets.end), kind_(kind) {
   u.funcIndex_ = funcIndex;
   u.func.lineOrBytecode_ = 0;
-  u.func.beginToNormalEntry_ = 0;
+  u.func.beginToUncheckedCallEntry_ = 0;
   u.func.beginToTierEntry_ = 0;
   MOZ_ASSERT(isEntry());
   MOZ_ASSERT(begin_ <= end_);
@@ -877,7 +877,7 @@ CodeRange::CodeRange(Kind kind, uint32_t funcIndex, CallableOffsets offsets)
   MOZ_ASSERT(ret_ < end_);
   u.funcIndex_ = funcIndex;
   u.func.lineOrBytecode_ = 0;
-  u.func.beginToNormalEntry_ = 0;
+  u.func.beginToUncheckedCallEntry_ = 0;
   u.func.beginToTierEntry_ = 0;
 }
 
@@ -904,11 +904,11 @@ CodeRange::CodeRange(uint32_t funcIndex, uint32_t funcLineOrBytecode,
       kind_(Function) {
   MOZ_ASSERT(begin_ < ret_);
   MOZ_ASSERT(ret_ < end_);
-  MOZ_ASSERT(offsets.normalEntry - begin_ <= UINT8_MAX);
+  MOZ_ASSERT(offsets.uncheckedCallEntry - begin_ <= UINT8_MAX);
   MOZ_ASSERT(offsets.tierEntry - begin_ <= UINT8_MAX);
   u.funcIndex_ = funcIndex;
   u.func.lineOrBytecode_ = funcLineOrBytecode;
-  u.func.beginToNormalEntry_ = offsets.normalEntry - begin_;
+  u.func.beginToUncheckedCallEntry_ = offsets.uncheckedCallEntry - begin_;
   u.func.beginToTierEntry_ = offsets.tierEntry - begin_;
 }
 

@@ -311,19 +311,15 @@ class BrowserParent final : public PBrowserParent,
       const uint32_t& aEvent, const RequestData& aRequestData,
       const bool aBlocked, const nsACString& aTrackingOrigin,
       nsTArray<nsCString>&& aTrackingFullHashes,
-      const Maybe<mozilla::ContentBlockingNotifier::StorageAccessGrantedReason>&
-          aReason);
-
-  mozilla::ipc::IPCResult RecvReportBlockedEmbedderNodeByClassifier();
+      const Maybe<mozilla::ContentBlockingNotifier::
+                      StorageAccessPermissionGrantedReason>& aReason);
 
   mozilla::ipc::IPCResult RecvNavigationFinished();
 
-  bool GetWebProgressListener(nsIBrowser** aOutBrowser,
-                              nsIWebProgress** aOutManager,
-                              nsIWebProgressListener** aOutListener);
+  already_AddRefed<nsIBrowser> GetBrowser();
 
   void ReconstructWebProgressAndRequest(
-      nsIWebProgress* aManager, const Maybe<WebProgressData>& aWebProgressData,
+      const Maybe<WebProgressData>& aWebProgressData,
       const RequestData& aRequestData, nsIWebProgress** aOutWebProgress,
       nsIRequest** aOutRequest);
 
@@ -962,8 +958,8 @@ class BrowserParent final : public PBrowserParent,
   // anymore.
   bool mIsDestroyed : 1;
   // True if the cursor changes from the BrowserChild should change the widget
-  // cursor.  This happens whenever the cursor is in the tab's region.
-  bool mTabSetsCursor : 1;
+  // cursor.  This happens whenever the cursor is in the remote target's region.
+  bool mRemoteTargetSetsCursor : 1;
 
   // If this flag is set, then the tab's layers will be preserved even when
   // the tab's docshell is inactive.

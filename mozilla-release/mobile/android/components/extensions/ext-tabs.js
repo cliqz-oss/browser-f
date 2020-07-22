@@ -21,7 +21,7 @@ ChromeUtils.defineModuleGetter(
 );
 
 const getBrowserWindow = window => {
-  return window.docShell.rootTreeItem.domWindow;
+  return window.browsingContext.topChromeWindow;
 };
 
 const tabListener = {
@@ -463,18 +463,6 @@ this.tabs = class extends ExtensionAPI {
               });
             }
           }
-
-          queryInfo = Object.assign({}, queryInfo);
-
-          if (queryInfo.url !== null) {
-            queryInfo.url = new MatchPatternSet([].concat(queryInfo.url), {
-              restrictSchemes: false,
-            });
-          }
-          if (queryInfo.title !== null) {
-            queryInfo.title = new MatchGlob(queryInfo.title);
-          }
-
           return Array.from(tabManager.query(queryInfo, context), tab =>
             tab.convert()
           );

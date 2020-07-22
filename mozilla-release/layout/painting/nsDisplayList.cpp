@@ -78,6 +78,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/StyleAnimationValue.h"
 #include "mozilla/ServoBindings.h"
+#include "mozilla/SVGMaskFrame.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
@@ -93,7 +94,6 @@
 #include "nsCaret.h"
 #include "nsDOMTokenList.h"
 #include "nsCSSProps.h"
-#include "nsSVGMaskFrame.h"
 #include "nsTableCellFrame.h"
 #include "nsTableColFrame.h"
 #include "nsTextFrame.h"
@@ -546,6 +546,7 @@ nsDisplayListBuilder::nsDisplayListBuilder(nsIFrame* aReferenceFrame,
       mIsInChromePresContext(false),
       mSyncDecodeImages(false),
       mIsPaintingToWindow(false),
+      mUseHighQualityScaling(false),
       mIsPaintingForWebRender(false),
       mIsCompositingCheap(false),
       mContainsPluginItem(false),
@@ -565,6 +566,7 @@ nsDisplayListBuilder::nsDisplayListBuilder(nsIFrame* aReferenceFrame,
       mBuildAsyncZoomContainer(false),
       mContainsBackdropFilter(false),
       mIsRelativeToLayoutViewport(false),
+      mUseOverlayScrollbars(false),
       mHitTestArea(),
       mHitTestInfo(CompositorHitTestInvisibleToHit) {
   MOZ_COUNT_CTOR(nsDisplayListBuilder);
@@ -572,6 +574,9 @@ nsDisplayListBuilder::nsDisplayListBuilder(nsIFrame* aReferenceFrame,
   mBuildCompositorHitTestInfo = mAsyncPanZoomEnabled && IsForPainting();
 
   ShouldRebuildDisplayListDueToPrefChange();
+
+  mUseOverlayScrollbars =
+      (LookAndFeel::GetInt(LookAndFeel::IntID::UseOverlayScrollbars) != 0);
 
   static_assert(
       static_cast<uint32_t>(DisplayItemType::TYPE_MAX) < (1 << TYPE_BITS),
@@ -599,6 +604,7 @@ void nsDisplayListBuilder::BeginFrame() {
   mFrameToAnimatedGeometryRootMap.Put(mReferenceFrame, mRootAGR);
 
   mIsPaintingToWindow = false;
+  mUseHighQualityScaling = false;
   mIgnoreSuppression = false;
   mInTransform = false;
   mInFilter = false;
@@ -643,7 +649,7 @@ void nsDisplayListBuilder::MarkFrameForDisplay(nsIFrame* aFrame,
   mFramesMarkedForDisplay.AppendElement(aFrame);
   for (nsIFrame* f = aFrame; f;
        f = nsLayoutUtils::GetParentOrPlaceholderForCrossDoc(f)) {
-    if (f->GetStateBits() & NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO) {
+    if (f->HasAnyStateBits(NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO)) {
       return;
     }
     f->AddStateBits(NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO);
@@ -710,7 +716,7 @@ void nsDisplayListBuilder::SetGlassDisplayItem(nsDisplayItem* aItem) {
 
 bool nsDisplayListBuilder::NeedToForceTransparentSurfaceForItem(
     nsDisplayItem* aItem) {
-  return aItem == mGlassDisplayItem || aItem->ClearsBackground();
+  return aItem == mGlassDisplayItem;
 }
 
 AnimatedGeometryRoot* nsDisplayListBuilder::WrapAGRForFrame(
@@ -807,7 +813,16 @@ bool nsDisplayListBuilder::ShouldRebuildDisplayListDueToPrefChange() {
   // (manually by the user, or during test setup).
   bool didBuildAsyncZoomContainer = mBuildAsyncZoomContainer;
   UpdateShouldBuildAsyncZoomContainer();
+
+  bool hadOverlayScrollbarsLastTime = mUseOverlayScrollbars;
+  mUseOverlayScrollbars =
+      (LookAndFeel::GetInt(LookAndFeel::IntID::UseOverlayScrollbars) != 0);
+
   if (didBuildAsyncZoomContainer != mBuildAsyncZoomContainer) {
+    return true;
+  }
+
+  if (hadOverlayScrollbarsLastTime != mUseOverlayScrollbars) {
     return true;
   }
 
@@ -821,7 +836,7 @@ bool nsDisplayListBuilder::MarkOutOfFlowFrameForDisplay(
   nsRect dirty;
   nsRect visible = OutOfFlowDisplayData::ComputeVisibleRectForFrame(
       this, aFrame, aVisibleRect, aDirtyRect, &dirty);
-  if (!(aFrame->GetStateBits() & NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO) &&
+  if (!aFrame->HasAnyStateBits(NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO) &&
       visible.IsEmpty()) {
     return false;
   }
@@ -840,7 +855,7 @@ static void UnmarkFrameForDisplay(nsIFrame* aFrame,
                                   const nsIFrame* aStopAtFrame) {
   for (nsIFrame* f = aFrame; f;
        f = nsLayoutUtils::GetParentOrPlaceholderForCrossDoc(f)) {
-    if (!(f->GetStateBits() & NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO)) {
+    if (!f->HasAnyStateBits(NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO)) {
       return;
     }
     f->RemoveStateBits(NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO);
@@ -886,6 +901,9 @@ uint32_t nsDisplayListBuilder::GetBackgroundPaintFlags() {
   if (mIsPaintingToWindow) {
     flags |= nsCSSRendering::PAINTBG_TO_WINDOW;
   }
+  if (mUseHighQualityScaling) {
+    flags |= nsCSSRendering::PAINTBG_HIGH_QUALITY_SCALING;
+  }
   return flags;
 }
 
@@ -896,7 +914,7 @@ uint32_t nsDisplayListBuilder::GetImageDecodeFlags() const {
   } else {
     flags |= imgIContainer::FLAG_SYNC_DECODE_IF_FAST;
   }
-  if (mIsPaintingToWindow) {
+  if (mIsPaintingToWindow || mUseHighQualityScaling) {
     flags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
   }
   return flags;
@@ -3551,13 +3569,6 @@ bool nsDisplayBackgroundImage::AppendBackgroundItemsToTop(
   }
 
   if (isThemed) {
-    nsITheme* theme = presContext->Theme();
-    if (theme->NeedToClearBackgroundBehindWidget(
-            aFrame, aFrame->StyleDisplay()->mAppearance) &&
-        aBuilder->IsInChromeDocumentOrPopup() && !aBuilder->IsInTransform()) {
-      bgItemList.AppendNewToTop<nsDisplayClearBackground>(aBuilder, aFrame);
-    }
-
     nsDisplayThemedBackground* bgItem = CreateThemedBackground(
         aBuilder, aFrame, aSecondaryReferenceFrame, bgRect);
 
@@ -4660,48 +4671,6 @@ void nsDisplayBackgroundColor::WriteDebugInfo(std::stringstream& aStream) {
   aStream << " (rgba " << mColor.r << "," << mColor.g << "," << mColor.b << ","
           << mColor.a << ")";
   aStream << " backgroundRect" << mBackgroundRect;
-}
-
-already_AddRefed<Layer> nsDisplayClearBackground::BuildLayer(
-    nsDisplayListBuilder* aBuilder, LayerManager* aManager,
-    const ContainerLayerParameters& aParameters) {
-  RefPtr<ColorLayer> layer = static_cast<ColorLayer*>(
-      aManager->GetLayerBuilder()->GetLeafLayerFor(aBuilder, this));
-  if (!layer) {
-    layer = aManager->CreateColorLayer();
-    if (!layer) {
-      return nullptr;
-    }
-  }
-  layer->SetColor(DeviceColor());
-  layer->SetMixBlendMode(gfx::CompositionOp::OP_SOURCE);
-
-  bool snap;
-  nsRect bounds = GetBounds(aBuilder, &snap);
-  int32_t appUnitsPerDevPixel = mFrame->PresContext()->AppUnitsPerDevPixel();
-  layer->SetBounds(bounds.ToNearestPixels(appUnitsPerDevPixel));  // XXX Do we
-                                                                  // need to
-                                                                  // respect the
-                                                                  // parent
-                                                                  // layer's
-                                                                  // scale here?
-
-  return layer.forget();
-}
-
-bool nsDisplayClearBackground::CreateWebRenderCommands(
-    mozilla::wr::DisplayListBuilder& aBuilder,
-    mozilla::wr::IpcResourceUpdateQueue& aResources,
-    const StackingContextHelper& aSc,
-    mozilla::layers::RenderRootStateManager* aManager,
-    nsDisplayListBuilder* aDisplayListBuilder) {
-  LayoutDeviceRect bounds = LayoutDeviceRect::FromAppUnits(
-      nsRect(ToReferenceFrame(), mFrame->GetSize()),
-      mFrame->PresContext()->AppUnitsPerDevPixel());
-
-  aBuilder.PushClearRect(wr::ToLayoutRect(bounds));
-
-  return true;
 }
 
 nsRect nsDisplayOutline::GetBounds(nsDisplayListBuilder* aBuilder,
@@ -7441,7 +7410,7 @@ Point3D nsDisplayTransform::GetDeltaToTransformOrigin(
   CSSPoint origin = nsStyleTransformMatrix::Convert2DPosition(
       transformOrigin.horizontal, transformOrigin.vertical, aRefBox);
 
-  if (aFrame->GetStateBits() & NS_FRAME_SVG_LAYOUT) {
+  if (aFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
     // SVG frames (unlike other frames) have a reference box that can be (and
     // typically is) offset from the TopLeft() of the frame. We need to account
     // for that here.
@@ -7540,7 +7509,6 @@ nsDisplayTransform::FrameTransformProperties::FrameTransformProperties(
 Matrix4x4 nsDisplayTransform::GetResultingTransformMatrix(
     const FrameTransformProperties& aProperties, TransformReferenceBox& aRefBox,
     float aAppUnitsPerPixel) {
-  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   return GetResultingTransformMatrixInternal(aProperties, aRefBox, nsPoint(),
                                              aAppUnitsPerPixel, 0);
 }
@@ -9035,7 +9003,7 @@ void nsDisplayEffectsBase::ComputeInvalidationRegion(
 
 bool nsDisplayEffectsBase::ValidateSVGFrame() {
   const nsIContent* content = mFrame->GetContent();
-  bool hasSVGLayout = (mFrame->GetStateBits() & NS_FRAME_SVG_LAYOUT);
+  bool hasSVGLayout = mFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT);
   if (hasSVGLayout) {
     nsSVGDisplayableFrame* svgFrame = do_QueryFrame(mFrame);
     if (!svgFrame || !mFrame->GetContent()->IsSVGElement()) {
@@ -9060,7 +9028,7 @@ static void ComputeMaskGeometry(PaintFramesParams& aParams) {
 
   const nsStyleSVGReset* svgReset = firstFrame->StyleSVGReset();
 
-  nsTArray<nsSVGMaskFrame*> maskFrames;
+  nsTArray<SVGMaskFrame*> maskFrames;
   // XXX check return value?
   SVGObserverUtils::GetAndObserveMasks(firstFrame, &maskFrames);
 
@@ -9089,7 +9057,7 @@ static void ComputeMaskGeometry(PaintFramesParams& aParams) {
   // Union all mask layer rectangles in user space.
   gfxRect maskInUserSpace;
   for (size_t i = 0; i < maskFrames.Length(); i++) {
-    nsSVGMaskFrame* maskFrame = maskFrames[i];
+    SVGMaskFrame* maskFrame = maskFrames[i];
     gfxRect currentMaskSurfaceRect;
 
     if (maskFrame) {
@@ -9567,7 +9535,7 @@ void nsDisplayMasksAndClipPaths::PrintEffects(nsACString& aTo) {
     first = false;
   }
 
-  nsTArray<nsSVGMaskFrame*> masks;
+  nsTArray<SVGMaskFrame*> masks;
   // XXX check return value?
   SVGObserverUtils::GetAndObserveMasks(firstFrame, &masks);
   if (!masks.IsEmpty() && masks[0]) {
@@ -10081,11 +10049,11 @@ PaintTelemetry::AutoRecord::~AutoRecord() {
 }  // namespace mozilla
 
 static nsIFrame* GetSelfOrPlaceholderFor(nsIFrame* aFrame) {
-  if (aFrame->GetStateBits() & NS_FRAME_IS_PUSHED_FLOAT) {
+  if (aFrame->HasAnyStateBits(NS_FRAME_IS_PUSHED_FLOAT)) {
     return aFrame;
   }
 
-  if ((aFrame->GetStateBits() & NS_FRAME_OUT_OF_FLOW) &&
+  if (aFrame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW) &&
       !aFrame->GetPrevInFlow()) {
     return aFrame->GetPlaceholderFrame();
   }

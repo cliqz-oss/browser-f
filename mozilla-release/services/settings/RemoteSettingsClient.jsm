@@ -21,6 +21,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
   PerformanceCounters: "resource://gre/modules/PerformanceCounters.jsm",
   RemoteSettingsWorker: "resource://services-settings/RemoteSettingsWorker.jsm",
+  SharedUtils: "resource://services-settings/SharedUtils.jsm",
   UptakeTelemetry: "resource://services-common/uptake-telemetry.js",
   Utils: "resource://services-settings/Utils.jsm",
 });
@@ -96,6 +97,10 @@ class EventEmitter {
     if (lastError) {
       throw lastError;
     }
+  }
+
+  hasListeners(event) {
+    return this._listeners.has(event) && this._listeners.get(event).length > 0;
   }
 
   on(event, callback) {
@@ -264,7 +269,11 @@ class RemoteSettingsClient extends EventEmitter {
     XPCOMUtils.defineLazyPreferenceGetter(
       this,
       "bucketName",
-      this.bucketNamePref
+      this.bucketNamePref,
+      null,
+      () => {
+        this.db.identifier = this.identifier;
+      }
     );
 
     XPCOMUtils.defineLazyGetter(
@@ -325,6 +334,7 @@ class RemoteSettingsClient extends EventEmitter {
    * @param  {Object} options                  The options object.
    * @param  {Object} options.filters          Filter the results (default: `{}`).
    * @param  {String} options.order            The order to apply (eg. `"-last_modified"`).
+   * @param  {boolean} options.dumpFallback    Fallback to dump data if read of local DB fails (default: `true`).
    * @param  {boolean} options.syncIfEmpty     Synchronize from server if local data is empty (default: `true`).
    * @param  {boolean} options.verifySignature Verify the signature of the local data (default: `false`).
    * @return {Promise}
@@ -333,35 +343,74 @@ class RemoteSettingsClient extends EventEmitter {
     const {
       filters = {},
       order = "", // not sorted by default.
+      dumpFallback = true,
       syncIfEmpty = true,
     } = options;
     let { verifySignature = false } = options;
 
-    if (syncIfEmpty && !(await Utils.hasLocalData(this))) {
-      try {
-        // .get() was called before we had the chance to synchronize the local database.
-        // We'll try to avoid returning an empty list.
-        if (
-          gLoadDump &&
-          (await Utils.hasLocalDump(this.bucketName, this.collectionName))
-        ) {
-          // Since there is a JSON dump, load it as default data.
-          console.debug(`${this.identifier} Local DB is empty, load JSON dump`);
-          await this._importJSONDump();
-        } else {
-          // There is no JSON dump, force a synchronization from the server.
-          console.debug(
-            `${this.identifier} Local DB is empty, pull data from server`
-          );
-          await this.sync({ loadDump: false });
-        }
-        // Either from trusted dump, or already done during sync.
-        verifySignature = false;
-      } catch (e) {
-        // Report but return an empty list since there will be no data anyway.
-        Cu.reportError(e);
-        return [];
+    let hasLocalData;
+    try {
+      hasLocalData = await Utils.hasLocalData(this);
+    } catch (e) {
+      // If the local DB cannot be read (for unknown reasons, Bug 1649393)
+      // We fallback to the packaged data, and filter/sort in memory.
+      if (!dumpFallback) {
+        throw e;
       }
+      Cu.reportError(e);
+      let { data } = await SharedUtils.loadJSONDump(
+        this.bucketName,
+        this.collectionName
+      );
+      if (data !== null) {
+        console.info(`${this.identifier} falling back to JSON dump`);
+      } else {
+        console.info(`${this.identifier} no dump fallback, return empty list`);
+        data = [];
+      }
+      if (!ObjectUtils.isEmpty(filters)) {
+        data = data.filter(r => Utils.filterObject(filters, r));
+      }
+      if (order) {
+        data = Utils.sortObjects(order, data);
+      }
+      // No need to verify signature on JSON dumps.
+      // If local DB cannot be read, then we don't even try to do anything,
+      // we return results early.
+      return this._filterEntries(data);
+    }
+
+    if (syncIfEmpty && !hasLocalData) {
+      // .get() was called before we had the chance to synchronize the local database.
+      // We'll try to avoid returning an empty list.
+      if (!this._importingPromise) {
+        // Prevent parallel loading when .get() is called multiple times.
+        this._importingPromise = (async () => {
+          const importedFromDump = gLoadDump
+            ? await this._importJSONDump()
+            : -1;
+          if (importedFromDump < 0) {
+            // There is no JSON dump to load, force a synchronization from the server.
+            console.debug(
+              `${this.identifier} Local DB is empty, pull data from server`
+            );
+            await this.sync({ loadDump: false });
+          }
+        })();
+      }
+      try {
+        await this._importingPromise;
+      } catch (e) {
+        // Report error, but continue because there could have been data
+        // loaded from a parrallel call.
+        Cu.reportError(e);
+      } finally {
+        // then delete this promise again, as now we should have local data:
+        delete this._importingPromise;
+      }
+      // No need to verify signature, because either we've just load a trusted
+      // dump (here or in a parallel call), or it was verified during sync.
+      verifySignature = false;
     }
 
     // Read from the local DB.
@@ -510,7 +559,7 @@ class RemoteSettingsClient extends EventEmitter {
             const metadata = await this.httpClient().getData({
               query: { _expected: expectedTimestamp },
             });
-            await this.db.saveMetadata(metadata);
+            await this.db.importChanges(metadata);
             // We don't bother validating the signature if the dump was just loaded. We do
             // if the dump was loaded at some other point (eg. from .get()).
             if (this.verifySignature && importedFromDump.length == 0) {
@@ -556,23 +605,26 @@ class RemoteSettingsClient extends EventEmitter {
               "duration"
             );
           }
-          // The records imported from the dump should be considered as "created" for the
-          // listeners.
-          const importedById = importedFromDump.reduce((acc, r) => {
-            acc.set(r.id, r);
-            return acc;
-          }, new Map());
-          // Deleted records should not appear as created.
-          syncResult.deleted.forEach(r => importedById.delete(r.id));
-          // Records from dump that were updated should appear in their newest form.
-          syncResult.updated.forEach(u => {
-            if (importedById.has(u.old.id)) {
-              importedById.set(u.old.id, u.new);
-            }
-          });
-          syncResult.created = syncResult.created.concat(
-            Array.from(importedById.values())
-          );
+          if (this.hasListeners("sync")) {
+            // If we have listeners for the "sync" event, then compute the lists of changes.
+            // The records imported from the dump should be considered as "created" for the
+            // listeners.
+            const importedById = importedFromDump.reduce((acc, r) => {
+              acc.set(r.id, r);
+              return acc;
+            }, new Map());
+            // Deleted records should not appear as created.
+            syncResult.deleted.forEach(r => importedById.delete(r.id));
+            // Records from dump that were updated should appear in their newest form.
+            syncResult.updated.forEach(u => {
+              if (importedById.has(u.old.id)) {
+                importedById.set(u.old.id, u.new);
+              }
+            });
+            syncResult.created = syncResult.created.concat(
+              Array.from(importedById.values())
+            );
+          }
         }
       } catch (e) {
         if (e instanceof InvalidSignatureError) {
@@ -720,10 +772,15 @@ class RemoteSettingsClient extends EventEmitter {
    * Import the JSON files from services/settings/dump into the local DB.
    */
   async _importJSONDump() {
+    console.info(`${this.identifier} try to restore dump`);
+
     const start = Cu.now() * 1000;
     const result = await RemoteSettingsWorker.importJSONDump(
       this.bucketName,
       this.collectionName
+    );
+    console.info(
+      `${this.identifier} imported ${result} records from JSON dump`
     );
     if (gTimingEnabled) {
       const end = Cu.now() * 1000;
@@ -733,6 +790,11 @@ class RemoteSettingsClient extends EventEmitter {
         end - start,
         "duration"
       );
+    }
+    if (result < 0) {
+      console.debug(`${this.identifier} no dump available`);
+    } else {
+      console.info(`${this.identifier} imported ${result} records from dump`);
     }
     return result;
   }
@@ -841,20 +903,10 @@ class RemoteSettingsClient extends EventEmitter {
       return syncResult;
     }
 
-    // Separate tombstones from creations/updates.
-    const toDelete = remoteRecords.filter(r => r.deleted);
-    const toInsert = remoteRecords.filter(r => !r.deleted);
-    console.debug(
-      `${this.identifier} ${toDelete.length} to delete, ${toInsert.length} to insert`
-    );
-
     const start = Cu.now() * 1000;
-    // Delete local records for each tombstone.
-    await this.db.deleteBulk(toDelete);
-    // Overwrite all other data.
-    await this.db.importBulk(toInsert);
-    await this.db.saveLastModified(remoteTimestamp);
-    await this.db.saveMetadata(metadata);
+    await this.db.importChanges(metadata, remoteTimestamp, remoteRecords, {
+      clear: retry,
+    });
     if (gTimingEnabled) {
       const end = Cu.now() * 1000;
       PerformanceCounters.storeExecutionTime(
@@ -906,12 +958,11 @@ class RemoteSettingsClient extends EventEmitter {
           console.debug(`${this.identifier} previous data was invalid`);
         }
 
-        // Signature failed, clear local DB because it contains
-        // bad data (local + remote changes).
-        console.debug(`${this.identifier} clear local data`);
-        await this.db.clear();
-
         if (!localTrustworthy && !retry) {
+          // Signature failed, clear local DB because it contains
+          // bad data (local + remote changes).
+          console.debug(`${this.identifier} clear local data`);
+          await this.db.clear();
           // Local data was tampered, throw and it will retry from empty DB.
           console.error(`${this.identifier} local data was corrupted`);
           throw new CorruptedDataError(this.identifier);
@@ -919,19 +970,22 @@ class RemoteSettingsClient extends EventEmitter {
           // We retried already, we will restore the previous local data
           // before throwing eventually.
           if (localTrustworthy) {
-            // Signature of data before importing changes was good.
-            console.debug(
-              `${this.identifier} Restore previous data (timestamp=${localTimestamp})`
+            await this.db.importChanges(
+              localMetadata,
+              localTimestamp,
+              localRecords,
+              {
+                clear: true, // clear before importing.
+              }
             );
-            await this.db.importBulk(localRecords);
-            await this.db.saveLastModified(localTimestamp);
-            await this.db.saveMetadata(localMetadata);
-          } else if (
-            // So restore the dump if available.
-            await Utils.hasLocalDump(this.bucketName, this.collectionName)
-          ) {
-            console.info(`${this.identifier} restore dump`);
-            await this._importJSONDump();
+          } else {
+            // Restore the dump if available (no-op if no dump)
+            const imported = await this._importJSONDump();
+            // _importJSONDump() only clears DB if dump is available,
+            // therefore do it here!
+            if (imported < 0) {
+              await this.db.clear();
+            }
           }
         }
         throw e;
@@ -940,26 +994,29 @@ class RemoteSettingsClient extends EventEmitter {
       console.warn(`${this.identifier} has signature disabled`);
     }
 
-    // Compute the changes, comparing records before and after.
-    syncResult.current = newRecords;
-    const oldById = new Map(localRecords.map(e => [e.id, e]));
-    for (const r of newRecords) {
-      const old = oldById.get(r.id);
-      if (old) {
-        oldById.delete(r.id);
-        if (r.last_modified != old.last_modified) {
-          syncResult.updated.push({ old, new: r });
+    if (this.hasListeners("sync")) {
+      // If we have some listeners for the "sync" event,
+      // Compute the changes, comparing records before and after.
+      syncResult.current = newRecords;
+      const oldById = new Map(localRecords.map(e => [e.id, e]));
+      for (const r of newRecords) {
+        const old = oldById.get(r.id);
+        if (old) {
+          oldById.delete(r.id);
+          if (r.last_modified != old.last_modified) {
+            syncResult.updated.push({ old, new: r });
+          }
+        } else {
+          syncResult.created.push(r);
         }
-      } else {
-        syncResult.created.push(r);
       }
+      syncResult.deleted = syncResult.deleted.concat(
+        Array.from(oldById.values())
+      );
+      console.debug(
+        `${this.identifier} ${syncResult.created.length} created. ${syncResult.updated.length} updated. ${syncResult.deleted.length} deleted.`
+      );
     }
-    syncResult.deleted = syncResult.deleted.concat(
-      Array.from(oldById.values())
-    );
-    console.debug(
-      `${this.identifier} ${syncResult.created.length} created. ${syncResult.updated.length} updated. ${syncResult.deleted.length} deleted.`
-    );
 
     return syncResult;
   }

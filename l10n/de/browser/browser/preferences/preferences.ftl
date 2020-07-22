@@ -50,6 +50,12 @@ category-privacy =
 pane-sync-title2 = { -sync-brand-short-name }
 category-sync2 =
     .tooltiptext = { pane-sync-title2 }
+pane-experimental-title = { -brand-short-name }-Experimente
+category-experimental =
+    .tooltiptext = { -brand-short-name }-Experimente
+pane-experimental-subtitle = Vorsicht!
+pane-experimental-search-results-header = { -brand-short-name } Experimente: Vorsicht!
+pane-experimental-description = Das Ändern von erweiterten Konfigurationseinstellungen kann sich auf die Leistung und Sicherheit von { -brand-short-name } auswirken.
 help-button-label = Hilfe für { -brand-short-name }
 addons-button-label = Erweiterungen & Themes
 focus-search =
@@ -499,7 +505,6 @@ home-prefs-topsites-description = Die von Ihnen am meisten besuchten Websites
 
 home-prefs-recommended-by-header =
     .label = Empfohlen von { $provider }
-home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für Sie personalisiert
 home-prefs-recommended-by-description-update = Besondere Inhalte aus dem ganzen Internet, ausgewählt von { $provider }
 
 ##
@@ -563,7 +568,6 @@ search-show-suggestions-above-history-option =
     .label = In Adressleiste Suchvorschläge vor Einträgen aus der Browser-Chronik anzeigen
 search-show-suggestions-private-windows =
     .label = Suchvorschläge in privaten Fenstern anzeigen
-suggestions-addressbar-settings = Einstellungen für Chronik, Lesezeichen und vorgeschlagene offene Tabs ändern
 suggestions-addressbar-settings-generic = Einstellungen für andere Vorschläge in der Adressleiste ändern
 search-suggestions-cant-show = Suchvorschläge werden nicht in der Adressleiste angezeigt, weil { -brand-short-name } angewiesen wurde, keine Chronik zu speichern.
 search-one-click-header = Ein-Klick-Suchmaschinen
@@ -1161,6 +1165,18 @@ space-alert-under-5gb-ok-button =
     .label = OK
     .accesskey = O
 space-alert-under-5gb-message = { -brand-short-name } verfügt über nur noch wenig freien Speicherplatz. Website-Inhalte werden vielleicht nicht richtig angezeigt. Besuchen Sie "Weitere Informationen", um die Speichernutzung für ein besseres Weberlebnis zu optimieren.
+
+## Privacy Section - HTTPS-Only
+
+httpsonly-header = Nur-HTTPS-Modus
+httpsonly-description = HTTPS bietet eine sichere, verschlüsselte Verbindung zwischen { -brand-short-name } und den von Ihnen besuchten Websites. Die meisten Websites unterstützen HTTPS und wenn der Nur-HTTPS-Modus aktiviert ist, wird { -brand-short-name } alle Verbindungen zu HTTPS aufrüsten.
+httpsonly-learn-more = Weitere Informationen
+httpsonly-radio-enabled =
+    .label = Nur-HTTPS-Modus in allen Fenstern aktivieren
+httpsonly-radio-enabled-pbm =
+    .label = Nur-HTTPS-Modus nur in privaten Fenstern aktivieren
+httpsonly-radio-disabled =
+    .label = Nur-HTTPS-Modus nicht aktivieren
 
 ## The following strings are used in the Download section of settings
 

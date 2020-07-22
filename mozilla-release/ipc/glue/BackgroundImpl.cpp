@@ -14,7 +14,6 @@
 #include "FileDescriptor.h"
 #include "GeckoProfiler.h"
 #include "InputStreamUtils.h"
-#include "mozilla/AbstractThread.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -117,7 +116,6 @@ class ParentImpl final : public BackgroundParentImpl {
   // This is only modified on the main thread. It is null if the thread does not
   // exist or is shutting down.
   static StaticRefPtr<nsIThread> sBackgroundThread;
-  static StaticRefPtr<AbstractThread> sBackgroundAbstractThread;
 
   // This is created and destroyed on the main thread but only modified on the
   // background thread. It is specific to each instance of sBackgroundThread.
@@ -470,7 +468,7 @@ class ChildImpl final : public BackgroundChildImpl {
 
   explicit ChildImpl()
 #if defined(DEBUG) || !defined(RELEASE_OR_BETA)
-      : mOwningEventTarget(GetCurrentThreadSerialEventTarget())
+      : mOwningEventTarget(GetCurrentSerialEventTarget())
 #endif
 #ifdef DEBUG
         ,
@@ -617,7 +615,7 @@ class ChildImpl::SendInitBackgroundRunnable final : public CancelableRunnable {
       std::function<void(Endpoint<PBackgroundParent>&& aParent)>&& aFunc,
       unsigned int aThreadLocalIndex)
       : CancelableRunnable("Background::ChildImpl::SendInitBackgroundRunnable"),
-        mOwningEventTarget(GetCurrentThreadSerialEventTarget()),
+        mOwningEventTarget(GetCurrentSerialEventTarget()),
         mParent(std::move(aParent)),
         mMutex("SendInitBackgroundRunnable::mMutex"),
         mSentInitBackground(false),
@@ -737,7 +735,6 @@ BackgroundChildImpl::GetThreadLocalForCurrentThread() {
 // -----------------------------------------------------------------------------
 
 StaticRefPtr<nsIThread> ParentImpl::sBackgroundThread;
-StaticRefPtr<AbstractThread> ParentImpl::sBackgroundAbstractThread;
 
 nsTArray<ParentImpl*>* ParentImpl::sLiveActorsForBackgroundThread;
 
@@ -1247,12 +1244,6 @@ bool ParentImpl::CreateBackgroundThread() {
     return false;
   }
 
-  // We create an AbstractThread for this thread so that we can
-  // use direct task
-  // dispatching with MozPromise, which is similar (but not
-  // identical to) the microtask semantics of JS promises.
-  sBackgroundAbstractThread = AbstractThread::CreateXPCOMThreadWrapper(
-      thread, false /* require tail dispatch */);
   sBackgroundThread = thread.forget();
 
   sLiveActorsForBackgroundThread = new nsTArray<ParentImpl*>(1);
@@ -1279,7 +1270,6 @@ void ParentImpl::ShutdownBackgroundThread() {
   if (sBackgroundThread) {
     nsCOMPtr<nsIThread> thread = sBackgroundThread.get();
     sBackgroundThread = nullptr;
-    sBackgroundAbstractThread = nullptr;
 
     UniquePtr<nsTArray<ParentImpl*>> liveActors(sLiveActorsForBackgroundThread);
     sLiveActorsForBackgroundThread = nullptr;
@@ -1344,7 +1334,7 @@ void ParentImpl::ShutdownTimerCallback(nsITimer* aTimer, void* aClosure) {
                 }
                 return GenericPromise::CreateAndResolve(true, __func__);
               })
-      ->Then(GetCurrentThreadSerialEventTarget(), __func__, []() {
+      ->Then(GetCurrentSerialEventTarget(), __func__, []() {
         MOZ_ASSERT(sLiveActorCount);
         sLiveActorCount--;
       });

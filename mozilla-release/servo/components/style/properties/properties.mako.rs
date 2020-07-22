@@ -1655,7 +1655,7 @@ impl UnparsedValue {
         let mut input = ParserInput::new(&css);
         let mut input = Parser::new(&mut input);
         input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
-        if let Ok(keyword) = input.try(CSSWideKeyword::parse) {
+        if let Ok(keyword) = input.try_parse(CSSWideKeyword::parse) {
             return PropertyDeclaration::css_wide_keyword(longhand_id, keyword);
         }
 
@@ -2111,7 +2111,8 @@ impl PropertyId {
 pub struct WideKeywordDeclaration {
     #[css(skip)]
     id: LonghandId,
-    keyword: CSSWideKeyword,
+    /// The CSS-wide keyword.
+    pub keyword: CSSWideKeyword,
 }
 
 /// An unparsed declaration that contains `var()` functions.
@@ -2380,7 +2381,7 @@ impl PropertyDeclaration {
                 // FIXME: fully implement https://github.com/w3c/csswg-drafts/issues/774
                 // before adding skip_whitespace here.
                 // This probably affects some test results.
-                let value = match input.try(CSSWideKeyword::parse) {
+                let value = match input.try_parse(CSSWideKeyword::parse) {
                     Ok(keyword) => CustomDeclarationValue::CSSWideKeyword(keyword),
                     Err(()) => CustomDeclarationValue::Value(
                         crate::custom_properties::SpecifiedValue::parse(input)?
@@ -2395,7 +2396,7 @@ impl PropertyDeclaration {
             PropertyId::LonghandAlias(id, _) |
             PropertyId::Longhand(id) => {
                 input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
-                input.try(CSSWideKeyword::parse).map(|keyword| {
+                input.try_parse(CSSWideKeyword::parse).map(|keyword| {
                     PropertyDeclaration::css_wide_keyword(id, keyword)
                 }).or_else(|()| {
                     input.look_for_var_or_env_functions();
@@ -2425,7 +2426,7 @@ impl PropertyDeclaration {
             PropertyId::ShorthandAlias(id, _) |
             PropertyId::Shorthand(id) => {
                 input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
-                if let Ok(keyword) = input.try(CSSWideKeyword::parse) {
+                if let Ok(keyword) = input.try_parse(CSSWideKeyword::parse) {
                     if id == ShorthandId::All {
                         declarations.all_shorthand = AllShorthand::CSSWideKeyword(keyword)
                     } else {
@@ -2602,6 +2603,7 @@ pub mod style_structs {
     % for style_struct in data.active_style_structs():
         % if style_struct.name == "Font":
         #[derive(Clone, Debug, MallocSizeOf)]
+        #[cfg_attr(feature = "servo", derive(Serialize, Deserialize))]
         % else:
         #[derive(Clone, Debug, MallocSizeOf, PartialEq)]
         % endif
@@ -2828,10 +2830,28 @@ pub mod style_structs {
             /// Returns whether there are any transitions specified.
             #[cfg(feature = "servo")]
             pub fn specifies_transitions(&self) -> bool {
-                self.transition_duration_iter()
-                    .take(self.transition_property_count())
-                    .any(|t| t.seconds() > 0.)
+                (0..self.transition_property_count()).any(|index| {
+                    let combined_duration =
+                        self.transition_duration_mod(index).seconds().max(0.) +
+                        self.transition_delay_mod(index).seconds();
+                    combined_duration > 0.
+                })
             }
+
+            /// Returns true if animation properties are equal between styles, but without
+            /// considering keyframe data.
+            #[cfg(feature = "servo")]
+            pub fn animations_equals(&self, other: &Self) -> bool {
+                self.animation_name_iter().eq(other.animation_name_iter()) &&
+                self.animation_delay_iter().eq(other.animation_delay_iter()) &&
+                self.animation_direction_iter().eq(other.animation_direction_iter()) &&
+                self.animation_duration_iter().eq(other.animation_duration_iter()) &&
+                self.animation_fill_mode_iter().eq(other.animation_fill_mode_iter()) &&
+                self.animation_iteration_count_iter().eq(other.animation_iteration_count_iter()) &&
+                self.animation_play_state_iter().eq(other.animation_play_state_iter()) &&
+                self.animation_timing_function_iter().eq(other.animation_timing_function_iter())
+            }
+
         % elif style_struct.name == "Column":
             /// Whether this is a multicol style.
             #[cfg(feature = "servo")]
@@ -2922,6 +2942,12 @@ impl ComputedValues {
     #[cfg(feature = "servo")]
     pub fn pseudo(&self) -> Option<<&PseudoElement> {
         self.pseudo.as_ref()
+    }
+
+    /// Returns true if this is the style for a pseudo-element.
+    #[cfg(feature = "servo")]
+    pub fn is_pseudo_style(&self) -> bool {
+        self.pseudo().is_some()
     }
 
     /// Returns whether this style's display value is equal to contents.

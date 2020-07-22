@@ -1163,6 +1163,12 @@ nsDocumentViewer::LoadComplete(nsresult aStatus) {
     }
   } else {
     // XXX: Should fire error event to the document...
+
+    // If our load was explicitly aborted, then we want to set our
+    // readyState to COMPLETE, and fire a readystatechange event.
+    if (aStatus == NS_BINDING_ABORTED && mDocument) {
+      mDocument->NotifyAbortedLoad();
+    }
   }
 
   // Notify the document that it has been shown (regardless of whether
@@ -1676,6 +1682,8 @@ nsDocumentViewer::Destroy() {
     // DisallowBFCaching() after CanSavePresentation() already ran.  Ensure that
     // the SHEntry has no viewer and its state is synced up.  We want to do this
     // via a stack reference, in case those calls mess with our members.
+    MOZ_LOG(gPageCacheLog, LogLevel::Debug,
+            ("BFCache not allowed, dropping SHEntry"));
     nsCOMPtr<nsISHEntry> shEntry = std::move(mSHEntry);
     shEntry->SetContentViewer(nullptr);
     shEntry->SyncPresentationState();
@@ -1733,6 +1741,8 @@ nsDocumentViewer::Destroy() {
     nsCOMPtr<nsISHEntry> shEntry =
         std::move(mSHEntry);  // we'll need this below
 
+    MOZ_LOG(gPageCacheLog, LogLevel::Debug,
+            ("Storing content viewer into cache entry"));
     shEntry->SetContentViewer(this);
 
     // Always sync the presentation state.  That way even if someone screws up
@@ -2730,8 +2740,6 @@ nsDocumentViewer::EmulatePrefersColorScheme(PrefersColorScheme aScheme) {
         return Some(StylePrefersColorScheme::Light);
       case PREFERS_COLOR_SCHEME_DARK:
         return Some(StylePrefersColorScheme::Dark);
-      case PREFERS_COLOR_SCHEME_NO_PREFERENCE:
-        return Some(StylePrefersColorScheme::NoPreference);
       case PREFERS_COLOR_SCHEME_NONE:
         return Nothing();
       default:

@@ -270,11 +270,13 @@ var SessionHistoryInternal = {
       );
     }
 
-    if (shEntry.storagePrincipalToInherit) {
-      entry.storagePrincipalToInherit_base64 = E10SUtils.serializePrincipal(
-        shEntry.storagePrincipalToInherit
+    if (shEntry.partitionedPrincipalToInherit) {
+      entry.partitionedPrincipalToInherit_base64 = E10SUtils.serializePrincipal(
+        shEntry.partitionedPrincipalToInherit
       );
     }
+
+    entry.hasUserInteraction = shEntry.hasUserInteraction;
 
     if (shEntry.triggeringPrincipal) {
       entry.triggeringPrincipal_base64 = E10SUtils.serializePrincipal(
@@ -375,10 +377,21 @@ var SessionHistoryInternal = {
         continue;
       }
       let persist = "persist" in entry ? entry.persist : true;
-      history.addEntry(
-        this.deserializeEntry(entry, idMap, docIdentMap, history),
-        persist
-      );
+      let shEntry = this.deserializeEntry(entry, idMap, docIdentMap, history);
+
+      // To enable a smooth migration, we treat values of null/undefined as having
+      // user interaction (because we don't want to hide all session history that was
+      // added before we started recording user interaction).
+      //
+      // This attribute is only set on top-level SH history entries, so we set it
+      // outside of deserializeEntry since that is called recursively.
+      if (entry.hasUserInteraction == undefined) {
+        shEntry.hasUserInteraction = true;
+      } else {
+        shEntry.hasUserInteraction = entry.hasUserInteraction;
+      }
+
+      history.addEntry(shEntry, persist);
     }
 
     // Select the right history entry.
@@ -551,11 +564,11 @@ var SessionHistoryInternal = {
         return Services.scriptSecurityManager.createNullPrincipal({});
       }
     );
-    // As both storagePrincipal and principalToInherit are both not required to load
+    // As both partitionedPrincipal and principalToInherit are both not required to load
     // it's ok to keep these undefined when we don't have a previously defined principal.
-    if (entry.storagePrincipalToInherit_base64) {
-      shEntry.storagePrincipalToInherit = E10SUtils.deserializePrincipal(
-        entry.storagePrincipalToInherit_base64
+    if (entry.partitionedPrincipalToInherit_base64) {
+      shEntry.partitionedPrincipalToInherit = E10SUtils.deserializePrincipal(
+        entry.partitionedPrincipalToInherit_base64
       );
     }
     if (entry.principalToInherit_base64) {

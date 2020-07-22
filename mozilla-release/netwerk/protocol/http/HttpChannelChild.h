@@ -37,6 +37,7 @@ using mozilla::Telemetry::LABELS_HTTP_CHILD_OMT_STATS;
 
 class nsIEventTarget;
 class nsInputStreamPump;
+class nsISerialEventTarget;
 class nsIInterceptedBodyCallback;
 
 #define HTTP_CHANNEL_CHILD_IID                       \
@@ -155,8 +156,6 @@ class HttpChannelChild final : public PHttpChannelChild,
       const NetAddr& oldPeerAddr,
       const ResourceTimingStructArgs& aTiming) override;
   mozilla::ipc::IPCResult RecvRedirect3Complete() override;
-  mozilla::ipc::IPCResult RecvAssociateApplicationCache(
-      const nsCString& groupID, const nsCString& clientID) override;
   mozilla::ipc::IPCResult RecvDeleteSelf() override;
   mozilla::ipc::IPCResult RecvFinishInterceptedRedirect() override;
 
@@ -173,16 +172,11 @@ class HttpChannelChild final : public PHttpChannelChild,
 
   mozilla::ipc::IPCResult RecvCancelDiversion() override;
 
-  mozilla::ipc::IPCResult RecvCancelRedirected() override;
-
   mozilla::ipc::IPCResult RecvOriginalCacheInputStreamAvailable(
       const Maybe<IPCStream>& aStream) override;
 
   mozilla::ipc::IPCResult RecvAltDataCacheInputStreamAvailable(
       const Maybe<IPCStream>& aStream) override;
-
-  mozilla::ipc::IPCResult RecvOverrideReferrerInfoDuringBeginConnect(
-      nsIReferrerInfo* aReferrerInfo) override;
 
   mozilla::ipc::IPCResult RecvNotifyClassificationFlags(
       const uint32_t& aClassificationFlags, const bool& aIsThirdParty) override;
@@ -215,7 +209,7 @@ class HttpChannelChild final : public PHttpChannelChild,
   };
 
   // Get event target for processing network events.
-  already_AddRefed<nsIEventTarget> GetNeckoTarget() override;
+  already_AddRefed<nsISerialEventTarget> GetNeckoTarget() override;
 
   virtual mozilla::ipc::IPCResult RecvLogBlockedCORSRequest(
       const nsString& aMessage, const nsCString& aCategory) override;
@@ -426,6 +420,16 @@ class HttpChannelChild final : public PHttpChannelChild,
   bool mDoDiagnosticAssertWhenOnStopNotCalledOnDestroy = false;
   bool mAsyncOpenSucceeded = false;
   bool mSuccesfullyRedirected = false;
+  // State of the HttpBackgroundChannelChild's event queue during destruction.
+  enum BckChildQueueStatus {
+    // BckChild never told us
+    BCKCHILD_UNKNOWN,
+    // BckChild was empty at the time of destruction
+    BCKCHILD_EMPTY,
+    // BckChild was keeping events in the queue at the destruction time!
+    BCKCHILD_NON_EMPTY
+  };
+  Atomic<BckChildQueueStatus> mBackgroundChildQueueFinalState;
   Maybe<ActorDestroyReason> mActorDestroyReason;
 #endif
 

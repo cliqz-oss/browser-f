@@ -570,7 +570,7 @@ void nsTableFrame::InsertCol(nsTableColFrame& aColFrame, int32_t aColIndex) {
           nsTableColType lastColType = lastCol->GetColType();
           if (eColAnonymousCell == lastColType) {
             // remove the col from the cache
-            mColFrames.RemoveElementAt(numCacheCols - 1);
+            mColFrames.RemoveLastElement();
             // remove the col from the synthetic col group
             nsTableColGroupFrame* lastColGroup =
                 (nsTableColGroupFrame*)mColGroups.LastChild();
@@ -1924,7 +1924,7 @@ void nsTableFrame::Reflow(nsPresContext* aPresContext,
   // make sure the table overflow area does include the table rect.
   nsRect tableRect(0, 0, aDesiredSize.Width(), aDesiredSize.Height());
 
-  if (!ShouldApplyOverflowClipping(this, aReflowInput.mStyleDisplay)) {
+  if (!ShouldApplyOverflowClipping(aReflowInput.mStyleDisplay)) {
     // collapsed border may leak out
     LogicalMargin bcMargin = GetExcludedOuterBCBorder(wm);
     tableRect.Inflate(bcMargin.GetPhysicalMargin(wm));
@@ -2000,7 +2000,7 @@ void nsTableFrame::FixupPositionedTableParts(nsPresContext* aPresContext,
 bool nsTableFrame::ComputeCustomOverflow(nsOverflowAreas& aOverflowAreas) {
   // As above in Reflow, make sure the table overflow area includes the table
   // rect, and check for collapsed borders leaking out.
-  if (!ShouldApplyOverflowClipping(this, StyleDisplay())) {
+  if (!ShouldApplyOverflowClipping(StyleDisplay())) {
     nsRect bounds(nsPoint(0, 0), GetSize());
     WritingMode wm = GetWritingMode();
     LogicalMargin bcMargin = GetExcludedOuterBCBorder(wm);
@@ -7490,6 +7490,6 @@ void nsTableFrame::UpdateStyleOfOwnedAnonBoxesForTableWrapper(
     cur->SetComputedStyle(newStyle);
   }
 
-  MOZ_ASSERT(!(aWrapperFrame->GetStateBits() & NS_FRAME_OWNS_ANON_BOXES),
+  MOZ_ASSERT(!aWrapperFrame->HasAnyStateBits(NS_FRAME_OWNS_ANON_BOXES),
              "Wrapper frame doesn't have any anon boxes of its own!");
 }

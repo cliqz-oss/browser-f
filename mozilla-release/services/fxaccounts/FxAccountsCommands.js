@@ -31,6 +31,7 @@ class FxAccountsCommands {
   constructor(fxAccountsInternal) {
     this._fxai = fxAccountsInternal;
     this.sendTab = new SendTab(this, fxAccountsInternal);
+    this._invokeRateLimitExpiry = 0;
   }
 
   async availableCommands() {
@@ -53,8 +54,35 @@ class FxAccountsCommands {
     const { sessionToken } = await this._fxai.getUserAccountData([
       "sessionToken",
     ]);
+    let pushState;
+    if (!device.pushCallback) {
+      pushState = "noCallback";
+    } else if (device.pushEndpointExpired) {
+      pushState = "expiredCallback";
+    } else {
+      pushState = "ok";
+    }
+    Services.telemetry.keyedScalarAdd(
+      "identity.fxaccounts.push_state_command_target",
+      pushState,
+      1
+    );
     const client = this._fxai.fxAccountsClient;
-    await client.invokeCommand(sessionToken, command, device.id, payload);
+    const now = Date.now();
+    if (now < this._invokeRateLimitExpiry) {
+      const remaining = (this._invokeRateLimitExpiry - now) / 1000;
+      throw new Error(
+        `Invoke for ${command} is rate-limited for ${remaining} seconds.`
+      );
+    }
+    try {
+      await client.invokeCommand(sessionToken, command, device.id, payload);
+    } catch (err) {
+      if (err.code && err.code === 429 && err.retryAfter) {
+        this._invokeRateLimitExpiry = Date.now() + err.retryAfter * 1000;
+      }
+      throw err;
+    }
     log.info(`Payload sent to device ${device.id}.`);
   }
 
@@ -195,21 +223,24 @@ class SendTab {
     const flowID = this._fxai.telemetry.generateFlowID();
     const encoder = new TextEncoder("utf8");
     const data = { entries: [{ title: tab.title, url: tab.url }] };
-    const bytes = encoder.encode(JSON.stringify(data));
     const report = {
       succeeded: [],
       failed: [],
     };
     for (let device of to) {
       try {
+        const streamID = this._fxai.telemetry.generateFlowID();
+        const targetData = Object.assign({ flowID, streamID }, data);
+        const bytes = encoder.encode(JSON.stringify(targetData));
         const encrypted = await this._encrypt(bytes, device);
+        // TODO: remove flowID from the payload.
         const payload = { encrypted, flowID };
         await this._commands.invoke(COMMAND_SENDTAB, device, payload); // FxA needs an object.
         this._fxai.telemetry.recordEvent(
           "command-sent",
           COMMAND_SENDTAB_TAIL,
           this._fxai.telemetry.sanitizeDeviceId(device.id),
-          { flowID }
+          { flowID, streamID }
         );
         report.succeeded.push(device);
       } catch (error) {
@@ -233,19 +264,23 @@ class SendTab {
   }
 
   // Handle incoming send tab payload, called by FxAccountsCommands.
-  async handle(senderID, { encrypted, flowID }) {
+  async handle(senderID, { encrypted, flowID: deprecatedFlowID }) {
     const bytes = await this._decrypt(encrypted);
     const decoder = new TextDecoder("utf8");
     const data = JSON.parse(decoder.decode(bytes));
+    const { flowID, streamID, entries } = data;
     const current = data.hasOwnProperty("current")
       ? data.current
-      : data.entries.length - 1;
-    const { title, url: uri } = data.entries[current];
+      : entries.length - 1;
+    const { title, url: uri } = entries[current];
+    // `flowID` and `streamID` are in the top-level of the JSON, `entries` is
+    // an array of "tabs" with `current` being what index is the one we care
+    // about, or the last one if not specified.
     this._fxai.telemetry.recordEvent(
       "command-received",
       COMMAND_SENDTAB_TAIL,
       this._fxai.telemetry.sanitizeDeviceId(senderID),
-      { flowID }
+      { flowID: flowID || deprecatedFlowID, streamID }
     );
 
     return {

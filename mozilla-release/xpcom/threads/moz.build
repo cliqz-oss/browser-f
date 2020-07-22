@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 XPIDL_SOURCES += [
+    'nsIDirectTaskDispatcher.idl',
     'nsIEnvironment.idl',
     'nsIEventTarget.idl',
     'nsIIdlePeriod.idl',
@@ -69,6 +70,7 @@ EXPORTS.mozilla += [
     'SynchronizedEventQueue.h',
     'SyncRunnable.h',
     'TaskCategory.h',
+    'TaskController.h',
     'TaskDispatcher.h',
     'TaskQueue.h',
     'ThreadBound.h',
@@ -106,6 +108,7 @@ UNIFIED_SOURCES += [
     'SchedulerGroup.cpp',
     'SharedThreadPool.cpp',
     'SynchronizedEventQueue.cpp',
+    'TaskController.cpp',
     'TaskQueue.cpp',
     'ThreadEventQueue.cpp',
     'ThreadEventTarget.cpp',

@@ -41,7 +41,7 @@ from taskgraph.util.scriptworker import (
 )
 from taskgraph.util.signed_artifacts import get_signed_artifacts
 from taskgraph.util.workertypes import worker_type_implementation
-from voluptuous import Any, Required, Optional, Extra, Match
+from voluptuous import Any, Required, Optional, Extra, Match, All, NotIn
 from taskgraph import GECKO, MAX_DEPENDENCIES
 from ..util import docker as dockerutil
 from ..util.workertypes import get_worker_type
@@ -82,7 +82,12 @@ task_description_schema = Schema({
     # dependencies of this task, keyed by name; these are passed through
     # verbatim and subject to the interpretation of the Task's get_dependencies
     # method.
-    Optional('dependencies'): {text_type: object},
+    Optional('dependencies'): {
+        All(
+            text_type,
+            NotIn(["self", "decision"], "Can't use 'self` or 'decision' as depdency names."),
+        ): object,
+    },
 
     # Soft dependencies of this task, as a list of tasks labels
     Optional('soft-dependencies'): [text_type],
@@ -1764,7 +1769,7 @@ def build_task(config, tasks):
 
         # set up extra
         extra = task.get('extra', {})
-        extra['parent'] = os.environ.get('TASK_ID', '')
+        extra['parent'] = {'task-reference': '<decision>'}
         task_th = task.get('treeherder')
         if task_th:
             extra.setdefault('treeherder-platform', task_th['platform'])
@@ -1844,10 +1849,15 @@ def build_task(config, tasks):
 
         if task_th:
             # link back to treeherder in description
-            th_push_link = 'https://treeherder.mozilla.org/#/jobs?repo={}&revision={}'.format(
-                config.params['project'], branch_rev)
-            task_def['metadata']['description'] += ' ([Treeherder push]({}))'.format(
-                th_push_link)
+            th_job_link = (
+                'https://treeherder.mozilla.org/#/jobs?repo={}&revision={}&selectedTaskRun=<self>'
+            ).format(config.params['project'], branch_rev)
+            task_def['metadata']['description'] = {
+                'task-reference': '{description} ([Treeherder job]({th_job_link}))'.format(
+                    description=task_def['metadata']['description'],
+                    th_job_link=th_job_link
+                )
+            }
 
         # add the payload and adjust anything else as required (e.g., scopes)
         payload_builders[task['worker']['implementation']].builder(config, task, task_def)

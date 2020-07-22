@@ -166,7 +166,8 @@ enum class TextureType : int8_t {
   X11,
   MacIOSurface,
   AndroidNativeWindow,
-  WaylandDMABUF,
+  DMABUF,
+  EGLImage,
   Last
 };
 

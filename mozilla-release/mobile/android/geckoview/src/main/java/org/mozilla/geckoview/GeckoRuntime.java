@@ -166,17 +166,18 @@ public final class GeckoRuntime implements Parcelable {
     private Delegate mDelegate;
     private ServiceWorkerDelegate mServiceWorkerDelegate;
     private WebNotificationDelegate mNotificationDelegate;
-    private RuntimeTelemetry mTelemetry;
     private StorageController mStorageController;
     private final WebExtensionController mWebExtensionController;
     private WebPushController mPushController;
     private final ContentBlockingController mContentBlockingController;
     private final Autocomplete.LoginStorageProxy mLoginStorageProxy;
+    private final ProfilerController mProfilerController;
 
     private GeckoRuntime() {
         mWebExtensionController = new WebExtensionController(this);
         mContentBlockingController = new ContentBlockingController();
         mLoginStorageProxy = new Autocomplete.LoginStorageProxy();
+        mProfilerController = new ProfilerController();
 
         if (sRuntime != null) {
             throw new IllegalStateException("Only one GeckoRuntime instance is allowed");
@@ -453,6 +454,16 @@ public final class GeckoRuntime implements Parcelable {
     }
 
     /**
+     * Returns a ProfilerController for this GeckoRuntime.
+     *
+     * @return an instance of {@link ProfilerController}.
+     */
+    @UiThread
+    public @NonNull ProfilerController getProfilerController() {
+        return mProfilerController;
+    }
+
+    /**
      * Register a {@link WebExtension} that will be run with this GeckoRuntime.
      *
      * <p>At this time, WebExtensions don't have access to any UI element and
@@ -685,6 +696,19 @@ public final class GeckoRuntime implements Parcelable {
         mNotificationDelegate = delegate;
     }
 
+    @WrapForJNI
+    private boolean usesDarkTheme() {
+        switch (getSettings().getPreferredColorScheme()) {
+            case GeckoRuntimeSettings.COLOR_SCHEME_SYSTEM:
+                return GeckoSystemStateListener.getInstance().isNightMode();
+            case GeckoRuntimeSettings.COLOR_SCHEME_DARK:
+                return true;
+            case GeckoRuntimeSettings.COLOR_SCHEME_LIGHT:
+            default:
+                return false;
+        }
+    }
+
     /**
      * Returns the current WebNotificationDelegate, if any
      *
@@ -717,28 +741,13 @@ public final class GeckoRuntime implements Parcelable {
     }
 
     @AnyThread
+    @SuppressWarnings("checkstyle:javadocmethod")
     public @NonNull GeckoRuntimeSettings getSettings() {
         return mSettings;
     }
 
     /* package */ void setPref(final String name, final Object value) {
         PrefsHelper.setPref(name, value, /* flush */ false);
-    }
-
-    /**
-     * Return the telemetry object for this runtime.
-     *
-     * @return The telemetry object.
-     */
-    @UiThread
-    public @NonNull RuntimeTelemetry getTelemetry() {
-        ThreadUtils.assertOnUiThread();
-
-        if (mTelemetry == null) {
-            mTelemetry = new RuntimeTelemetry(this);
-        }
-        return mTelemetry;
-
     }
 
     /**
@@ -851,6 +860,7 @@ public final class GeckoRuntime implements Parcelable {
 
     // AIDL code may call readFromParcel even though it's not part of Parcelable.
     @AnyThread
+    @SuppressWarnings("checkstyle:javadocmethod")
     public void readFromParcel(final @NonNull Parcel source) {
         mSettings = source.readParcelable(getClass().getClassLoader());
     }

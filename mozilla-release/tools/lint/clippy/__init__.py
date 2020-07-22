@@ -4,22 +4,29 @@
 
 import json
 import os
+import re
 import signal
 import six
 import subprocess
 
+from distutils.version import StrictVersion
 from mozfile import which
 from mozlint import result
 from mozlint.pathutils import get_ancestors_by_name
 from mozprocess import ProcessHandler
 
 
-CLIPPY_NOT_FOUND = """
-Could not find clippy! Install clippy and try again.
+CLIPPY_WRONG_VERSION = """
+You are probably using an old version of clippy.
+Expected version is {version}.
 
+To install it:
     $ rustup component add clippy
 
-And make sure that it is in the PATH
+Or to update it:
+    $ rustup update
+
+And make sure that 'cargo' is in the PATH
 """.strip()
 
 
@@ -47,6 +54,16 @@ def parse_issues(log, config, issues, path, onlyIn):
                         log.debug("File = {} / Detail = {}".format(p, detail))
                         continue
                     # We are in a clippy warning
+                    if len(detail["spans"]) == 0:
+                        # For some reason, at the end of the summary, we can
+                        # get the following line
+                        # {'rendered': 'warning: 5 warnings emitted\n\n', 'children':
+                        # [], 'code': None, 'level': 'warning', 'message':
+                        # '5 warnings emitted', 'spans': []}
+                        # if this is the case, skip it
+                        log.debug("Skipping the summary line {} for file {}".format(detail, p))
+                        continue
+
                     l = detail["spans"][0]
                     if onlyIn and onlyIn not in p:
                         # Case when we have a .rs in the include list in the yaml file
@@ -88,23 +105,29 @@ def get_cargo_binary(log):
     return which("cargo")
 
 
-def is_clippy_installed(binary):
+def get_clippy_version(log, binary):
     """
     Check if we are running the deprecated rustfmt
     """
     try:
         output = subprocess.check_output(
-            [binary, "clippy", "--help"],
+            [binary, "clippy", "--version"],
             stderr=subprocess.STDOUT,
             universal_newlines=True,
         )
-    except subprocess.CalledProcessError as e:
-        output = e.output
+    except subprocess.CalledProcessError:
+        # --version failed, clippy isn't installed.
+        return False
 
-    if "Checks a package" in output:
-        return True
+    log.debug(
+        "Found version: {}".format(
+            output
+        )
+    )
 
-    return False
+    version = re.findall(r'(\d+-\d+-\d+)', output)[0].replace("-", ".")
+    version = StrictVersion(version)
+    return version
 
 
 class clippyProcess(ProcessHandler):
@@ -141,11 +164,18 @@ def lint(paths, config, fix=None, **lintargs):
             return 1
         return []
 
-    if not is_clippy_installed(cargo):
-        print(CLIPPY_NOT_FOUND)
-        if 'MOZ_AUTOMATION' in os.environ:
-            return 1
-        return []
+    min_version_str = config.get('min_clippy_version')
+    min_version = StrictVersion(min_version_str)
+    actual_version = get_clippy_version(log, cargo)
+    log.debug(
+        "Found version: {}. Minimal expected version: {}".format(
+            actual_version, min_version
+        )
+    )
+
+    if actual_version < min_version:
+        print(CLIPPY_WRONG_VERSION.format(version=min_version_str))
+        return 1
 
     cmd_args_clean = [cargo]
     cmd_args_clean.append("clean")

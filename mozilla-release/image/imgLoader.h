@@ -39,8 +39,6 @@ namespace image {}  // namespace image
 
 class imgCacheEntry {
  public:
-  static uint32_t SecondsFromPRTime(PRTime prTime);
-
   imgCacheEntry(imgLoader* loader, imgRequest* request,
                 bool aForcePrincipalCheck);
   ~imgCacheEntry();
@@ -485,8 +483,6 @@ class imgCacheValidator : public nsIStreamListener,
 
   void AddProxy(imgRequestProxy* aProxy);
   void RemoveProxy(imgRequestProxy* aProxy);
-
-  void PrioritizeAsPreload();
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSITHREADRETARGETABLESTREAMLISTENER

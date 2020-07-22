@@ -3,6 +3,12 @@ use crate::cdsl::settings::{PredicateNode, SettingGroup, SettingGroupBuilder};
 pub(crate) fn define(shared: &SettingGroup) -> SettingGroup {
     let mut settings = SettingGroupBuilder::new("x86");
 
+    settings.add_bool(
+        "use_new_backend",
+        "Whether to use the new codegen backend using the new isel",
+        false,
+    );
+
     // CPUID.01H:ECX
     let has_sse3 = settings.add_bool("has_sse3", "SSE3: CPUID.01H:ECX.SSE3[bit 0]", false);
     let has_ssse3 = settings.add_bool("has_ssse3", "SSSE3: CPUID.01H:ECX.SSSE3[bit 9]", false);
@@ -17,7 +23,12 @@ pub(crate) fn define(shared: &SettingGroup) -> SettingGroup {
     );
     let has_avx512vl = settings.add_bool(
         "has_avx512vl",
-        "AVX512DQ: CPUID.07H:EBX.AVX512VL[bit 31]",
+        "AVX512VL: CPUID.07H:EBX.AVX512VL[bit 31]",
+        false,
+    );
+    let has_avx512f = settings.add_bool(
+        "has_avx512f",
+        "AVX512F: CPUID.07H:EBX.AVX512F[bit 16]",
         false,
     );
     let has_popcnt = settings.add_bool("has_popcnt", "POPCNT: CPUID.01H:ECX.POPCNT[bit 23]", false);
@@ -69,6 +80,10 @@ pub(crate) fn define(shared: &SettingGroup) -> SettingGroup {
     settings.add_predicate(
         "use_avx512vl_simd",
         predicate!(shared_enable_simd && has_avx512vl),
+    );
+    settings.add_predicate(
+        "use_avx512f_simd",
+        predicate!(shared_enable_simd && has_avx512f),
     );
 
     settings.add_predicate("use_popcnt", predicate!(has_popcnt && has_sse42));

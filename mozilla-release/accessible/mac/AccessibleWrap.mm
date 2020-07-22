@@ -12,6 +12,7 @@
 #include "gfxPlatform.h"
 
 #import "MOXMathAccessibles.h"
+#import "MOXWebAreaAccessible.h"
 #import "mozAccessible.h"
 #import "mozActionElements.h"
 #import "mozHTMLAccessible.h"
@@ -32,7 +33,7 @@ mozAccessible* AccessibleWrap::GetNativeObject() {
 
   if (!mNativeInited && !mNativeObject) {
     // We don't creat OSX accessibles for xul tooltips, defunct accessibles,
-    // or pruned children.
+    // <br> (whitespace) elements, or pruned children.
     //
     // We also don't create a native object if we're child of a "flat" accessible;
     // for example, on OS X buttons shouldn't have any children, because that
@@ -43,7 +44,7 @@ mozAccessible* AccessibleWrap::GetNativeObject() {
     // though.
     Accessible* parent = Parent();
     bool mustBePruned = parent && nsAccUtils::MustPrune(parent);
-    if (!IsXULTooltip() && !IsDefunct() && !mustBePruned) {
+    if (!IsXULTooltip() && !IsDefunct() && !mustBePruned && Role() != roles::WHITESPACE) {
       mNativeObject = [[GetNativeType() alloc] initWithAccessible:this];
     }
   }
@@ -173,6 +174,9 @@ Class a11y::GetTypeFromRole(roles::Role aRole) {
   switch (aRole) {
     case roles::COMBOBOX:
       return [mozPopupButtonAccessible class];
+
+    case roles::DOCUMENT:
+      return [MOXWebAreaAccessible class];
 
     case roles::PUSHBUTTON:
       return [mozButtonAccessible class];

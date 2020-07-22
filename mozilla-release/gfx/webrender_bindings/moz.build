@@ -11,6 +11,7 @@ EXPORTS.mozilla.webrender += [
     'RenderBufferTextureHost.h',
     'RenderCompositor.h',
     'RenderCompositorOGL.h',
+    'RenderCompositorSWGL.h',
     'RenderEGLImageTextureHost.h',
     'RendererOGL.h',
     'RendererScreenshotGrabber.h',
@@ -29,6 +30,7 @@ UNIFIED_SOURCES += [
     'RenderBufferTextureHost.cpp',
     'RenderCompositor.cpp',
     'RenderCompositorOGL.cpp',
+    'RenderCompositorSWGL.cpp',
     'RenderEGLImageTextureHost.cpp',
     'RendererOGL.cpp',
     'RendererScreenshotGrabber.cpp',
@@ -43,9 +45,11 @@ UNIFIED_SOURCES += [
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     EXPORTS.mozilla.webrender += [
+        'RenderCompositorNative.h',
         'RenderMacIOSurfaceTextureHostOGL.h',
     ]
     UNIFIED_SOURCES += [
+        'RenderCompositorNative.cpp',
         'RenderMacIOSurfaceTextureHostOGL.cpp',
     ]
 
@@ -77,11 +81,11 @@ if CONFIG['MOZ_ENABLE_D3D10_LAYER']:
 if CONFIG['MOZ_WAYLAND']:
     EXPORTS.mozilla.webrender += [
         'RenderCompositorEGL.h',
-        'RenderWaylandDMABUFTextureHostOGL.h',
+        'RenderDMABUFTextureHostOGL.h',
     ]
     SOURCES += [
         'RenderCompositorEGL.cpp',
-        'RenderWaylandDMABUFTextureHostOGL.cpp',
+        'RenderDMABUFTextureHostOGL.cpp',
     ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk'):
@@ -93,13 +97,12 @@ if CONFIG['COMPILE_ENVIRONMENT']:
         '!webrender_ffi_generated.h',
     ]
 
-    GeneratedFile('webrender_ffi_generated.h',
-                  script='/build/RunCbindgen.py', entry_point='generate',
-                  inputs=[
-                      '/gfx/webrender_bindings',
-                      '/gfx/wr/webrender',
-                      '/gfx/wr/webrender_api',
-                  ])
+    CbindgenHeader('webrender_ffi_generated.h',
+                   inputs=[
+                       '/gfx/webrender_bindings',
+                       '/gfx/wr/webrender',
+                       '/gfx/wr/webrender_api',
+                   ])
 
 
 include('/ipc/chromium/chromium-config.mozbuild')

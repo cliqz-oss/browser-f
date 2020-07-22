@@ -15,8 +15,6 @@ const { XPCOMUtils } = ChromeUtils.import(
 );
 XPCOMUtils.defineLazyModuleGetters(this, {
   Log: "resource://gre/modules/Log.jsm",
-  PlacesSearchAutocompleteProvider:
-    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
   SearchSuggestionController:
     "resource://gre/modules/SearchSuggestionController.jsm",
   Services: "resource://gre/modules/Services.jsm",
@@ -24,6 +22,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarProvider: "resource:///modules/UrlbarUtils.jsm",
   UrlbarResult: "resource:///modules/UrlbarResult.jsm",
+  UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.jsm",
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
 });
@@ -48,38 +47,6 @@ function looksLikeUrl(str, ignoreAlphanumericHosts = false) {
         ? /^([\[\]A-Z0-9-]+\.){3,}[^.]+$/i.test(str)
         : str.includes(".")))
   );
-}
-
-/**
- * Returns the portion of a string starting at the index where another string
- * begins.
- *
- * @param   {string} sourceStr
- *          The string to search within.
- * @param   {string} targetStr
- *          The string to search for.
- * @returns {string} The substring within sourceStr starting at targetStr, or
- *          the empty string if targetStr does not occur in sourceStr.
- */
-function substringAt(sourceStr, targetStr) {
-  let index = sourceStr.indexOf(targetStr);
-  return index < 0 ? "" : sourceStr.substr(index);
-}
-
-/**
- * Returns the portion of a string starting at the index where another string
- * ends.
- *
- * @param   {string} sourceStr
- *          The string to search within.
- * @param   {string} targetStr
- *          The string to search for.
- * @returns {string} The substring within sourceStr where targetStr ends, or the
- *          empty string if targetStr does not occur in sourceStr.
- */
-function substringAfter(sourceStr, targetStr) {
-  let index = sourceStr.indexOf(targetStr);
-  return index < 0 ? "" : sourceStr.substr(index + targetStr.length);
 }
 
 /**
@@ -138,6 +105,25 @@ class ProviderSearchSuggestions extends UrlbarProvider {
   }
 
   /**
+   * Returns whether the user typed a token alias or a restriction token. We use
+   * this value to override the pref to disable search suggestions in the
+   * Urlbar.
+   * @param {UrlbarQueryContext} queryContext  The query context object.
+   * @returns {boolean} True if the user typed a token alias or search
+   *   restriction token.
+   */
+  _isTokenOrRestrictionPresent(queryContext) {
+    return (
+      queryContext.searchString.startsWith("@") ||
+      (queryContext.restrictSource &&
+        queryContext.restrictSource == UrlbarUtils.RESULT_SOURCE.SEARCH) ||
+      queryContext.tokens.some(
+        t => t.type == UrlbarTokenizer.TYPE.RESTRICT_SEARCH
+      )
+    );
+  }
+
+  /**
    * Returns whether suggestions in general are allowed for a given query
    * context.  If this returns false, then we shouldn't fetch either form
    * history or remote suggestions.  Otherwise further checks are necessary to
@@ -151,7 +137,10 @@ class ProviderSearchSuggestions extends UrlbarProvider {
   _allowSuggestions(queryContext) {
     if (
       !queryContext.allowSearchSuggestions ||
-      !UrlbarPrefs.get("suggest.searches") ||
+      // If the user typed a restriction token or token alias, we ignore the
+      // pref to disable suggestions in the Urlbar.
+      (!UrlbarPrefs.get("suggest.searches") &&
+        !this._isTokenOrRestrictionPresent(queryContext)) ||
       !UrlbarPrefs.get("browser.search.suggest.enabled") ||
       (queryContext.isPrivate &&
         !UrlbarPrefs.get("browser.search.suggest.enabled.private"))
@@ -174,10 +163,10 @@ class ProviderSearchSuggestions extends UrlbarProvider {
     }
 
     // Skip all remaining checks and allow remote suggestions at this point if
-    // the user used a search engine token alias.  We want "@engine query" to
-    // return suggestions from the engine.  We'll return early from startQuery
+    // the user used a token alias or restriction token. We want "@engine query"
+    // to return suggestions from the engine. We'll return early from startQuery
     // if the query doesn't match an alias.
-    if (queryContext.searchString.startsWith("@")) {
+    if (this._isTokenOrRestrictionPresent(queryContext)) {
       return true;
     }
 
@@ -198,7 +187,9 @@ class ProviderSearchSuggestions extends UrlbarProvider {
     }
 
     // Disallow remote suggestions if only an origin is typed to avoid
-    // disclosing information about sites the user visits.
+    // disclosing information about sites the user visits. This also catches
+    // partially-typed origins, like mozilla.o, because the URIFixup check
+    // below can't validate those.
     if (
       queryContext.tokens.length == 1 &&
       queryContext.tokens[0].type == UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN
@@ -207,15 +198,10 @@ class ProviderSearchSuggestions extends UrlbarProvider {
     }
 
     // Disallow remote suggestions for strings containing tokens that look like
-    // URLs or non-alphanumeric origins, to avoid disclosing information about
-    // networks or passwords.
+    // URIs, to avoid disclosing information about networks or passwords.
     if (
-      queryContext.tokens.some(
-        t =>
-          t.type == UrlbarTokenizer.TYPE.POSSIBLE_URL ||
-          (t.type == UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN &&
-            !UrlbarTokenizer.REGEXP_SINGLE_WORD_HOST.test(t.value))
-      )
+      queryContext.fixupInfo.fixedURI &&
+      !queryContext.fixupInfo.keywordAsSent
     ) {
       return false;
     }
@@ -253,7 +239,10 @@ class ProviderSearchSuggestions extends UrlbarProvider {
 
     let query = aliasEngine
       ? aliasEngine.query
-      : substringAt(queryContext.searchString, queryContext.tokens[0].value);
+      : UrlbarUtils.substringAt(
+          queryContext.searchString,
+          queryContext.tokens[0].value
+        );
     if (!query) {
       return;
     }
@@ -289,22 +278,23 @@ class ProviderSearchSuggestions extends UrlbarProvider {
     // other restriction chars, so that it's possible to search for things
     // including one of those (e.g. "c#").
     if (leadingRestrictionToken === UrlbarTokenizer.RESTRICT.SEARCH) {
-      query = substringAfter(query, leadingRestrictionToken).trim();
+      query = UrlbarUtils.substringAfter(query, leadingRestrictionToken).trim();
     }
 
     // Find our search engine. It may have already been set with an alias.
     let engine;
     if (aliasEngine) {
       engine = aliasEngine.engine;
+    } else if (queryContext.engineName) {
+      engine = Services.search.getEngineByName(queryContext.engineName);
+    } else if (queryContext.isPrivate) {
+      engine = Services.search.defaultPrivateEngine;
     } else {
-      engine = queryContext.engineName
-        ? Services.search.getEngineByName(queryContext.engineName)
-        : await PlacesSearchAutocompleteProvider.currentEngine(
-            queryContext.isPrivate
-          );
-      if (!engine) {
-        return;
-      }
+      engine = Services.search.defaultEngine;
+    }
+
+    if (!engine) {
+      return;
     }
 
     let alias = (aliasEngine && aliasEngine.alias) || "";
@@ -535,37 +525,19 @@ class ProviderSearchSuggestions extends UrlbarProvider {
     }
 
     // Check if the user entered an engine alias directly.
-    let engineMatch = await PlacesSearchAutocompleteProvider.engineForAlias(
-      possibleAlias
-    );
+    let engineMatch = await UrlbarSearchUtils.engineForAlias(possibleAlias);
     if (engineMatch) {
       return {
         engine: engineMatch,
         alias: possibleAlias,
-        query: substringAfter(queryContext.searchString, possibleAlias).trim(),
+        query: UrlbarUtils.substringAfter(
+          queryContext.searchString,
+          possibleAlias
+        ).trim(),
         isTokenAlias: possibleAlias.startsWith("@"),
       };
     }
 
-    // Check if the user is matching a token alias.
-    let engines = await PlacesSearchAutocompleteProvider.tokenAliasEngines();
-    if (!engines || !engines.length) {
-      return null;
-    }
-
-    for (let { engine, tokenAliases } of engines) {
-      if (tokenAliases.includes(possibleAlias)) {
-        return {
-          engine,
-          alias: possibleAlias,
-          query: substringAfter(
-            queryContext.searchString,
-            possibleAlias
-          ).trim(),
-          isTokenAlias: true,
-        };
-      }
-    }
     return null;
   }
 }

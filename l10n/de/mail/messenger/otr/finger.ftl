@@ -6,7 +6,7 @@ otr-finger =
     .buttonlabelaccept = Schließen
     .title = Zuletzt gesehene OTR-Fingerabdrücke
 
-finger-intro = Fingerabdrücke von OTR-Schlüsseln, welche für die letzten Ende-zu-End-Verschlüsselungen verwendet wurden.
+finger-intro = Fingerabdrücke von OTR-Schlüsseln, welche für die letzten Ende-zu-Ende-Verschlüsselungen verwendet wurden.
 
 finger-screenName =
     .label = Kontakt

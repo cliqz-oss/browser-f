@@ -2,26 +2,51 @@ from __future__ import annotations
 # mypy: disallow-untyped-defs, disallow-incomplete-defs, disallow-untyped-calls
 
 import typing
+import dataclasses
 
-from .grammar import Element, InitNt, Nt
+from .grammar import Element, ErrorSymbol, InitNt, Nt
 from . import types, grammar
+
+# Avoid circular reference between this module and parse_table.py
+if typing.TYPE_CHECKING:
+    from .parse_table import StateId
+
+@dataclasses.dataclass(frozen=True)
+class StackDiff:
+    """StackDiff represent stack mutations which have to be performed when executing an action.
+    """
+    __slots__ = ['pop', 'nt', 'replay']
+
+    # Number of elements to be popped from the stack, this is used when
+    # reducing the stack with a non-terminal.
+    #
+    # This number is always positive or zero.
+    pop: int
+
+    # When reducing, a non-terminal is pushed after removing all replayed and
+    # popped elements. If not None, this is the non-terminal which is produced
+    # by reducing the action.
+    nt: typing.Union[Nt, ErrorSymbol, None]
+
+    # When executing actions, some lookahead might have been used to make the
+    # parse table consistent. Replayed terms are popped before popping any
+    # elements from the stack, and they are added in reversed order in the
+    # replay list, such that they would be shifted after shfting the `reduced`
+    # non-terminal.
+    #
+    # This number might also be negative, in which case some lookahead terms
+    # are expected to exists in the replay list, and they are shifted back.
+    # This case can should only exists when follow_edge is True.
+    replay: int
 
 
 class Action:
-    __slots__ = ["read", "write", "_hash"]
-
-    # Set of trait names which are consumed by this action.
-    read: typing.List[str]
-
-    # Set of trait names which are mutated by this action.
-    write: typing.List[str]
+    __slots__ = ["_hash"]
 
     # Cached hash.
     _hash: typing.Optional[int]
 
-    def __init__(self, read: typing.List[str], write: typing.List[str]) -> None:
-        self.read = read
-        self.write = write
+    def __init__(self) -> None:
         self._hash = None
 
     def is_inconsistent(self) -> bool:
@@ -39,15 +64,21 @@ class Action:
         "Return the conditional action."
         raise TypeError("Action.condition not implemented")
 
+    def follow_edge(self) -> bool:
+        """Whether the execution of this action resume following the epsilon transition
+        (True) or if it breaks the graph epsilon transition (False) and returns
+        at a different location, defined by the top of the stack."""
+        return True
+
     def update_stack(self) -> bool:
-        """Change the parser stack, and resume at a different location. If this function
-        is defined, then the function reduce_with should be implemented."""
+        """Whether the execution of this action changes the parser stack."""
         return False
 
-    def reduce_with(self) -> Reduce:
-        """Returns the Reduce action with which this action is reducing."""
+    def update_stack_with(self) -> StackDiff:
+        """Returns a StackDiff which represents the mutation to be applied to the
+        parser stack."""
         assert self.update_stack()
-        raise TypeError("Action.reduce_with not implemented.")
+        raise TypeError("Action::update_stack_with not implemented")
 
     def shifted_action(self, shifted_term: Element) -> ShiftedAction:
         """Transpose this action with shifting the given terminal or Nt.
@@ -70,14 +101,15 @@ class Action:
         "Returns whether the current action stops the parser."
         return False
 
+    def rewrite_state_indexes(self, state_map: typing.Dict[StateId, StateId]) -> Action:
+        """If the action contains any state index, use the map to map the old index to
+        the new indexes"""
+        return self
+
     def __eq__(self, other: object) -> bool:
         if self.__class__ != other.__class__:
             return False
         assert isinstance(other, Action)
-        if sorted(self.read) != sorted(other.read):
-            return False
-        if sorted(self.write) != sorted(other.write):
-            return False
         for s in self.__slots__:
             if getattr(self, s) != getattr(other, s):
                 return False
@@ -89,12 +121,6 @@ class Action:
 
         def hashed_content() -> typing.Iterator[object]:
             yield self.__class__
-            yield "rd"
-            for alias in self.read:
-                yield alias
-            yield "wd"
-            for alias in self.write:
-                yield alias
             for s in self.__slots__:
                 yield repr(getattr(self, s))
 
@@ -114,11 +140,11 @@ class Action:
 ShiftedAction = typing.Union[Action, bool]
 
 
-class Reduce(Action):
-    """Define a reduce operation which pops N elements of he stack and pushes one
-    non-terminal. The replay attribute of a reduce action corresponds to the
+class Unwind(Action):
+    """Define an unwind operation which pops N elements of the stack and pushes one
+    non-terminal. The replay argument of an unwind action corresponds to the
     number of stack elements which would have to be popped and pushed again
-    using the parser table after reducing this operation. """
+    using the parser table after executing this operation."""
     __slots__ = ['nt', 'replay', 'pop']
 
     nt: Nt
@@ -126,27 +152,53 @@ class Reduce(Action):
     replay: int
 
     def __init__(self, nt: Nt, pop: int, replay: int = 0) -> None:
-        nt_name = nt.name
-        if isinstance(nt_name, InitNt):
-            name = "Start_" + str(nt_name.goal.name)
-        else:
-            name = nt_name
-        super().__init__([], ["nt_" + name])
+        super().__init__()
         self.nt = nt    # Non-terminal which is reduced
         self.pop = pop  # Number of stack elements which should be replayed.
         self.replay = replay  # List of terms to shift back
 
     def __str__(self) -> str:
-        return "Reduce({}, {}, {})".format(self.nt, self.pop, self.replay)
+        return "Unwind({}, {}, {})".format(self.nt, self.pop, self.replay)
 
     def update_stack(self) -> bool:
         return True
 
-    def reduce_with(self) -> Reduce:
-        return self
+    def update_stack_with(self) -> StackDiff:
+        return StackDiff(self.pop, self.nt, self.replay)
+
+    def shifted_action(self, shifted_term: Element) -> Unwind:
+        return Unwind(self.nt, self.pop, replay=self.replay + 1)
+
+
+class Reduce(Action):
+    """Prevent the fall-through to the epsilon transition and returns to the shift
+    table execution to resume shifting or replaying terms."""
+    __slots__ = ['unwind']
+
+    def __init__(self, unwind: Unwind) -> None:
+        nt_name = unwind.nt.name
+        if isinstance(nt_name, InitNt):
+            name = "Start_" + str(nt_name.goal.name)
+        else:
+            name = nt_name
+        super().__init__()
+        self.unwind = unwind
+
+    def __str__(self) -> str:
+        return "Reduce({})".format(str(self.unwind))
+
+    def follow_edge(self) -> bool:
+        return False
+
+    def update_stack(self) -> bool:
+        return self.unwind.update_stack()
+
+    def update_stack_with(self) -> StackDiff:
+        return self.unwind.update_stack_with()
 
     def shifted_action(self, shifted_term: Element) -> Reduce:
-        return Reduce(self.nt, self.pop, replay=self.replay + 1)
+        unwind = self.unwind.shifted_action(shifted_term)
+        return Reduce(unwind)
 
 
 class Accept(Action):
@@ -155,7 +207,7 @@ class Accept(Action):
     __slots__: typing.List[str] = []
 
     def __init__(self) -> None:
-        super().__init__([], [])
+        super().__init__()
 
     def __str__(self) -> str:
         return "Accept()"
@@ -167,6 +219,7 @@ class Accept(Action):
     def shifted_action(self, shifted_term: Element) -> Accept:
         return Accept()
 
+
 class Lookahead(Action):
     """Define a Lookahead assertion which is meant to either accept or reject
     sequences of terminal/non-terminals sequences."""
@@ -176,7 +229,7 @@ class Lookahead(Action):
     accept: bool
 
     def __init__(self, terms: typing.FrozenSet[str], accept: bool):
-        super().__init__([], [])
+        super().__init__()
         self.terms = terms
         self.accept = accept
 
@@ -212,7 +265,7 @@ class CheckNotOnNewLine(Action):
 
     def __init__(self, offset: int = 0) -> None:
         # assert offset >= -1 and "Smaller offsets are not supported on all backends."
-        super().__init__([], [])
+        super().__init__()
         self.offset = offset
 
     def is_inconsistent(self) -> bool:
@@ -246,7 +299,7 @@ class FilterFlag(Action):
     value: object
 
     def __init__(self, flag: str, value: object) -> None:
-        super().__init__(["flag_" + flag], [])
+        super().__init__()
         self.flag = flag
         self.value = value
 
@@ -272,7 +325,7 @@ class PushFlag(Action):
     value: object
 
     def __init__(self, flag: str, value: object) -> None:
-        super().__init__([], ["flag_" + flag])
+        super().__init__()
         self.flag = flag
         self.value = value
 
@@ -287,7 +340,7 @@ class PopFlag(Action):
     flag: str
 
     def __init__(self, flag: str) -> None:
-        super().__init__(["flag_" + flag], ["flag_" + flag])
+        super().__init__()
         self.flag = flag
 
     def __str__(self) -> str:
@@ -326,10 +379,8 @@ class FunCall(Action):
             fallible: bool = False,
             set_to: str = "val",
             offset: int = 0,
-            alias_read: typing.List[str] = [],
-            alias_write: typing.List[str] = []
     ) -> None:
-        super().__init__(alias_read, alias_write)
+        super().__init__()
         self.trait = trait        # Trait on which this method is implemented.
         self.method = method      # Method and argument to be read for calling it.
         self.fallible = fallible  # Whether the function call can fail.
@@ -346,7 +397,7 @@ class FunCall(Action):
 
     def __repr__(self) -> str:
         return "FunCall({})".format(', '.join(map(repr, [
-            self.trait, self.method, self.fallible, self.read, self.write,
+            self.trait, self.method, self.fallible,
             self.args, self.set_to, self.offset
         ])))
 
@@ -356,9 +407,7 @@ class FunCall(Action):
                        trait=self.trait,
                        fallible=self.fallible,
                        set_to=self.set_to,
-                       offset=self.offset + 1,
-                       alias_read=self.read,
-                       alias_write=self.write)
+                       offset=self.offset + 1)
 
 
 class Seq(Action):
@@ -370,12 +419,11 @@ class Seq(Action):
     actions: typing.Tuple[Action, ...]
 
     def __init__(self, actions: typing.Sequence[Action]) -> None:
-        read = [rd for a in actions for rd in a.read]
-        write = [wr for a in actions for wr in a.write]
-        super().__init__(read, write)
+        super().__init__()
         self.actions = tuple(actions)   # Ordered list of actions to execute.
         assert all([not a.is_condition() for a in actions])
         assert all([not isinstance(a, Seq) for a in actions])
+        assert all([a.follow_edge() for a in actions[:-1]])
         assert all([not a.update_stack() for a in actions[:-1]])
 
     def __str__(self) -> str:
@@ -384,17 +432,14 @@ class Seq(Action):
     def __repr__(self) -> str:
         return "Seq({})".format(repr(self.actions))
 
-    def is_condition(self) -> bool:
-        return self.actions[0].is_condition()
-
-    def condition(self) -> Action:
-        return self.actions[0]
+    def follow_edge(self) -> bool:
+        return self.actions[-1].follow_edge()
 
     def update_stack(self) -> bool:
         return self.actions[-1].update_stack()
 
-    def reduce_with(self) -> Reduce:
-        return self.actions[-1].reduce_with()
+    def update_stack_with(self) -> StackDiff:
+        return self.actions[-1].update_stack_with()
 
     def shifted_action(self, shift: Element) -> ShiftedAction:
         actions: typing.List[Action] = []
@@ -409,3 +454,7 @@ class Seq(Action):
 
     def contains_accept(self) -> bool:
         return any(a.contains_accept() for a in self.actions)
+
+    def rewrite_state_indexes(self, state_map: typing.Dict[StateId, StateId]) -> Seq:
+        actions = list(map(lambda a: a.rewrite_state_indexes(state_map), self.actions))
+        return Seq(actions)

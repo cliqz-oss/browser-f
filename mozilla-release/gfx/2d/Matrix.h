@@ -837,10 +837,6 @@ class Matrix4x4Typed {
   size_t TransformAndClipRect(const RectTyped<SourceUnits, F>& aRect,
                               const RectTyped<TargetUnits, F>& aClip,
                               PointTyped<TargetUnits, F>* aVerts) const {
-    if (aRect.IsEmpty() || aClip.IsEmpty()) {
-      return 0;
-    }
-
     typedef Point4DTyped<UnknownUnits, F> P4D;
 
     // The initial polygon is made up by the corners of aRect in homogenous
@@ -1437,21 +1433,9 @@ class Matrix4x4Typed {
       // We do not support matrices with a zero scale component
       return false;
     }
-    T invXS = 1.0f / scale.x;
-    T invYS = 1.0f / scale.y;
-    T invZS = 1.0f / scale.z;
-    mat._11 *= invXS;
-    mat._21 *= invXS;
-    mat._31 *= invXS;
-    mat._12 *= invYS;
-    mat._22 *= invYS;
-    mat._32 *= invYS;
-    mat._13 *= invZS;
-    mat._23 *= invZS;
-    mat._33 *= invZS;
 
     // Extract rotation
-    rotation.SetFromRotationMatrix(mat);
+    rotation.SetFromRotationMatrix(*this);
     return true;
   }
 
@@ -1465,17 +1449,17 @@ class Matrix4x4Typed {
     const T wx = q.w * x2, wy = q.w * y2, wz = q.w * z2;
 
     _11 = 1.0f - (yy + zz);
-    _21 = xy + wz;
-    _31 = xz - wy;
+    _21 = xy - wz;
+    _31 = xz + wy;
     _41 = 0.0f;
 
-    _12 = xy - wz;
+    _12 = xy + wz;
     _22 = 1.0f - (xx + zz);
-    _32 = yz + wx;
+    _32 = yz - wx;
     _42 = 0.0f;
 
-    _13 = xz + wy;
-    _23 = yz - wx;
+    _13 = xz - wy;
+    _23 = yz + wx;
     _33 = 1.0f - (xx + yy);
     _43 = 0.0f;
 

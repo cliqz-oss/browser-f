@@ -215,7 +215,7 @@ BrowserParent::BrowserParent(ContentParent* aManager, const TabId& aTabId,
       mDocShellIsActive(false),
       mMarkedDestroying(false),
       mIsDestroyed(false),
-      mTabSetsCursor(false),
+      mRemoteTargetSetsCursor(false),
       mPreserveLayers(false),
       mRenderLayers(true),
       mActiveInPriorityManager(false),
@@ -455,20 +455,14 @@ ParentShowInfo BrowserParent::GetShowInfo() {
   if (mFrameElement) {
     nsAutoString name;
     mFrameElement->GetAttr(kNameSpaceID_None, nsGkAtoms::name, name);
-    // FIXME(emilio, bug 1606660): allowfullscreen should probably move to
-    // OwnerShowInfo.
-    bool allowFullscreen =
-        mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::allowfullscreen) ||
-        mFrameElement->HasAttr(kNameSpaceID_None,
-                               nsGkAtoms::mozallowfullscreen);
     bool isTransparent =
         nsContentUtils::IsChromeDoc(mFrameElement->OwnerDoc()) &&
         mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::transparent);
-    return ParentShowInfo(name, allowFullscreen, false, isTransparent, mDPI,
-                          mRounding, mDefaultScale.scale);
+    return ParentShowInfo(name, false, isTransparent, mDPI, mRounding,
+                          mDefaultScale.scale);
   }
 
-  return ParentShowInfo(EmptyString(), false, false, false, mDPI, mRounding,
+  return ParentShowInfo(EmptyString(), false, false, mDPI, mRounding,
                         mDefaultScale.scale);
 }
 
@@ -1149,7 +1143,7 @@ void BrowserParent::Activate() {
   LOGBROWSERFOCUS(("Activate %p", this));
   if (!mIsDestroyed) {
     SetTopLevelWebFocus(this);  // Intentionally inside "if"
-    Unused << Manager()->SendActivate(this);
+    Unused << SendActivate();
   }
 }
 
@@ -1159,7 +1153,7 @@ void BrowserParent::Deactivate(bool aWindowLowering) {
     UnsetTopLevelWebFocus(this);  // Intentionally outside the next "if"
   }
   if (!mIsDestroyed) {
-    Unused << Manager()->SendDeactivate(this);
+    Unused << SendDeactivate();
   }
 }
 
@@ -1358,9 +1352,9 @@ void BrowserParent::SendMouseEvent(const nsAString& aType, float aX, float aY,
 void BrowserParent::MouseEnterIntoWidget() {
   nsCOMPtr<nsIWidget> widget = GetWidget();
   if (widget) {
-    // When we mouseenter the tab, the tab's cursor should
+    // When we mouseenter the remote target, the remote target's cursor should
     // become the current cursor.  When we mouseexit, we stop.
-    mTabSetsCursor = true;
+    mRemoteTargetSetsCursor = true;
     if (mCursor != eCursorInvalid) {
       widget->SetCursor(mCursor, mCustomCursor, mCustomCursorHotspotX,
                         mCustomCursorHotspotY);
@@ -1399,16 +1393,16 @@ void BrowserParent::SendRealMouseEvent(WidgetMouseEvent& aEvent) {
 
   nsCOMPtr<nsIWidget> widget = GetWidget();
   if (widget) {
-    // When we mouseenter the tab, the tab's cursor should
+    // When we mouseenter the remote target, the remote target's cursor should
     // become the current cursor.  When we mouseexit, we stop.
     if (eMouseEnterIntoWidget == aEvent.mMessage) {
-      mTabSetsCursor = true;
+      mRemoteTargetSetsCursor = true;
       if (mCursor != eCursorInvalid) {
         widget->SetCursor(mCursor, mCustomCursor, mCustomCursorHotspotX,
                           mCustomCursorHotspotY);
       }
     } else if (eMouseExitFromWidget == aEvent.mMessage) {
-      mTabSetsCursor = false;
+      mRemoteTargetSetsCursor = false;
     }
   }
   if (!mIsReadyToHandleInputEvents) {
@@ -1839,11 +1833,8 @@ void BrowserParent::SendRealTouchEvent(WidgetTouchEvent& aEvent) {
   // that the added touches are part of the touchend/cancel, when actually
   // they're not.
   if (aEvent.mMessage == eTouchEnd || aEvent.mMessage == eTouchCancel) {
-    for (int i = aEvent.mTouches.Length() - 1; i >= 0; i--) {
-      if (!aEvent.mTouches[i]->mChanged) {
-        aEvent.mTouches.RemoveElementAt(i);
-      }
-    }
+    aEvent.mTouches.RemoveElementsBy(
+        [](const auto& touch) { return !touch->mChanged; });
   }
 
   APZData apzData;
@@ -2060,10 +2051,6 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetCursor(
     widget->ClearCachedCursor();
   }
 
-  if (!mTabSetsCursor) {
-    return IPC_OK();
-  }
-
   nsCOMPtr<imgIContainer> cursorImage;
   if (aHasCustomCursor) {
     if (aHeight * aStride != aCursorData.Length() ||
@@ -2081,12 +2068,16 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetCursor(
     cursorImage = image::ImageOps::CreateFromDrawable(drawable);
   }
 
-  widget->SetCursor(aCursor, cursorImage, aHotspotX, aHotspotY);
   mCursor = aCursor;
   mCustomCursor = cursorImage;
   mCustomCursorHotspotX = aHotspotX;
   mCustomCursorHotspotY = aHotspotY;
 
+  if (!mRemoteTargetSetsCursor) {
+    return IPC_OK();
+  }
+
+  widget->SetCursor(aCursor, cursorImage, aHotspotX, aHotspotY);
   return IPC_OK();
 }
 
@@ -2590,17 +2581,14 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnStateChange(
     return IPC_OK();
   }
 
-  nsCOMPtr<nsIBrowser> browser;
-  nsCOMPtr<nsIWebProgress> manager;
-  nsCOMPtr<nsIWebProgressListener> managerAsListener;
-  if (!GetWebProgressListener(getter_AddRefs(browser), getter_AddRefs(manager),
-                              getter_AddRefs(managerAsListener))) {
+  nsCOMPtr<nsIBrowser> browser = GetBrowser();
+  if (!GetBrowsingContext()->GetWebProgress() || !browser) {
     return IPC_OK();
   }
 
   nsCOMPtr<nsIWebProgress> webProgress;
   nsCOMPtr<nsIRequest> request;
-  ReconstructWebProgressAndRequest(manager, aWebProgressData, aRequestData,
+  ReconstructWebProgressAndRequest(aWebProgressData, aRequestData,
                                    getter_AddRefs(webProgress),
                                    getter_AddRefs(request));
 
@@ -2620,9 +2608,8 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnStateChange(
         "Unexpected WebProgressStateChangeData for non-top-level WebProgress");
   }
 
-  Unused << managerAsListener->OnStateChange(webProgress, request, aStateFlags,
-                                             aStatus);
-
+  GetBrowsingContext()->Top()->GetWebProgress()->OnStateChange(
+      webProgress, request, aStateFlags, aStatus);
   return IPC_OK();
 }
 
@@ -2635,21 +2622,17 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnProgressChange(
     return IPC_OK();
   }
 
-  nsCOMPtr<nsIBrowser> browser;
-  nsCOMPtr<nsIWebProgress> manager;
-  nsCOMPtr<nsIWebProgressListener> managerAsListener;
-  if (!GetWebProgressListener(getter_AddRefs(browser), getter_AddRefs(manager),
-                              getter_AddRefs(managerAsListener))) {
+  if (!GetBrowsingContext()->GetWebProgress()) {
     return IPC_OK();
   }
 
   nsCOMPtr<nsIWebProgress> webProgress;
   nsCOMPtr<nsIRequest> request;
-  ReconstructWebProgressAndRequest(manager, aWebProgressData, aRequestData,
+  ReconstructWebProgressAndRequest(aWebProgressData, aRequestData,
                                    getter_AddRefs(webProgress),
                                    getter_AddRefs(request));
 
-  Unused << managerAsListener->OnProgressChange(
+  GetBrowsingContext()->Top()->GetWebProgress()->OnProgressChange(
       webProgress, request, aCurSelfProgress, aMaxSelfProgress,
       aCurTotalProgress, aMaxTotalProgress);
 
@@ -2665,17 +2648,14 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnLocationChange(
     return IPC_OK();
   }
 
-  nsCOMPtr<nsIBrowser> browser;
-  nsCOMPtr<nsIWebProgress> manager;
-  nsCOMPtr<nsIWebProgressListener> managerAsListener;
-  if (!GetWebProgressListener(getter_AddRefs(browser), getter_AddRefs(manager),
-                              getter_AddRefs(managerAsListener))) {
+  nsCOMPtr<nsIBrowser> browser = GetBrowser();
+  if (!GetBrowsingContext()->GetWebProgress() || !browser) {
     return IPC_OK();
   }
 
   nsCOMPtr<nsIWebProgress> webProgress;
   nsCOMPtr<nsIRequest> request;
-  ReconstructWebProgressAndRequest(manager, aWebProgressData, aRequestData,
+  ReconstructWebProgressAndRequest(aWebProgressData, aRequestData,
                                    getter_AddRefs(webProgress),
                                    getter_AddRefs(request));
 
@@ -2692,17 +2672,16 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnLocationChange(
         aLocationChangeData->charsetAutodetected(),
         aLocationChangeData->documentURI(), aLocationChangeData->title(),
         aLocationChangeData->contentPrincipal(),
-        aLocationChangeData->contentStoragePrincipal(),
+        aLocationChangeData->contentPartitionedPrincipal(),
         aLocationChangeData->csp(), aLocationChangeData->referrerInfo(),
         aLocationChangeData->isSyntheticDocument(),
-        aWebProgressData->innerDOMWindowID(),
         aLocationChangeData->requestContextID().isSome(),
         aLocationChangeData->requestContextID().valueOr(0),
         aLocationChangeData->contentType());
   }
 
-  Unused << managerAsListener->OnLocationChange(webProgress, request, aLocation,
-                                                aFlags);
+  GetBrowsingContext()->Top()->GetWebProgress()->OnLocationChange(
+      webProgress, request, aLocation, aFlags);
 
   // Since we've now changed Documents, notify the BrowsingContext that we've
   // changed. Ideally we'd just let the BrowsingContext do this when it changes
@@ -2722,22 +2701,18 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnStatusChange(
     return IPC_OK();
   }
 
-  nsCOMPtr<nsIBrowser> browser;
-  nsCOMPtr<nsIWebProgress> manager;
-  nsCOMPtr<nsIWebProgressListener> managerAsListener;
-  if (!GetWebProgressListener(getter_AddRefs(browser), getter_AddRefs(manager),
-                              getter_AddRefs(managerAsListener))) {
+  if (!GetBrowsingContext()->GetWebProgress()) {
     return IPC_OK();
   }
 
   nsCOMPtr<nsIWebProgress> webProgress;
   nsCOMPtr<nsIRequest> request;
-  ReconstructWebProgressAndRequest(manager, aWebProgressData, aRequestData,
+  ReconstructWebProgressAndRequest(aWebProgressData, aRequestData,
                                    getter_AddRefs(webProgress),
                                    getter_AddRefs(request));
 
-  Unused << managerAsListener->OnStatusChange(webProgress, request, aStatus,
-                                              aMessage.get());
+  GetBrowsingContext()->Top()->GetWebProgress()->OnStatusChange(
+      webProgress, request, aStatus, aMessage.get());
 
   return IPC_OK();
 }
@@ -2757,10 +2732,9 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyContentBlockingEvent(
     const uint32_t& aEvent, const RequestData& aRequestData,
     const bool aBlocked, const nsACString& aTrackingOrigin,
     nsTArray<nsCString>&& aTrackingFullHashes,
-    const Maybe<mozilla::ContentBlockingNotifier::StorageAccessGrantedReason>&
+    const Maybe<
+        mozilla::ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
         aReason) {
-  MOZ_ASSERT(aRequestData.elapsedLoadTimeMS().isNothing());
-
   RefPtr<BrowsingContext> bc = GetBrowsingContext();
 
   if (!bc || bc->IsDiscarded()) {
@@ -2781,7 +2755,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyContentBlockingEvent(
 
   nsCOMPtr<nsIRequest> request = MakeAndAddRef<RemoteWebProgressRequest>(
       aRequestData.requestURI(), aRequestData.originalRequestURI(),
-      aRequestData.matchedList(), aRequestData.elapsedLoadTimeMS());
+      aRequestData.matchedList());
 
   wgp->NotifyContentBlockingEvent(aEvent, request, aBlocked, aTrackingOrigin,
                                   aTrackingFullHashes, aReason);
@@ -2789,25 +2763,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyContentBlockingEvent(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-BrowserParent::RecvReportBlockedEmbedderNodeByClassifier() {
-  BrowserBridgeParent* bridge = GetBrowserBridgeParent();
-
-  if (!bridge) {
-    return IPC_OK();
-  }
-
-  Unused << bridge->SendAddBlockedNodeByClassifier();
-  return IPC_OK();
-}
-
-bool BrowserParent::GetWebProgressListener(
-    nsIBrowser** aOutBrowser, nsIWebProgress** aOutManager,
-    nsIWebProgressListener** aOutListener) {
-  MOZ_ASSERT(aOutBrowser);
-  MOZ_ASSERT(aOutManager);
-  MOZ_ASSERT(aOutListener);
-
+already_AddRefed<nsIBrowser> BrowserParent::GetBrowser() {
   nsCOMPtr<nsIBrowser> browser;
   RefPtr<Element> currentElement = mFrameElement;
 
@@ -2825,31 +2781,11 @@ bool BrowserParent::GetWebProgressListener(
         browsingContext ? browsingContext->GetEmbedderElement() : nullptr;
   }
 
-  if (!browser) {
-    return false;
-  }
-
-  nsCOMPtr<nsIWebProgress> manager;
-  nsresult rv = browser->GetRemoteWebProgressManager(getter_AddRefs(manager));
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-
-  nsCOMPtr<nsIWebProgressListener> listener = do_QueryInterface(manager);
-  if (!listener) {
-    // We are no longer remote so we cannot forward this event.
-    return false;
-  }
-
-  browser.forget(aOutBrowser);
-  manager.forget(aOutManager);
-  listener.forget(aOutListener);
-
-  return true;
+  return browser.forget();
 }
 
 void BrowserParent::ReconstructWebProgressAndRequest(
-    nsIWebProgress* aManager, const Maybe<WebProgressData>& aWebProgressData,
+    const Maybe<WebProgressData>& aWebProgressData,
     const RequestData& aRequestData, nsIWebProgress** aOutWebProgress,
     nsIRequest** aOutRequest) {
   MOZ_DIAGNOSTIC_ASSERT(aOutWebProgress,
@@ -2858,19 +2794,18 @@ void BrowserParent::ReconstructWebProgressAndRequest(
 
   nsCOMPtr<nsIWebProgress> webProgress;
   if (aWebProgressData) {
-    webProgress = new RemoteWebProgress(
-        aManager, aWebProgressData->outerDOMWindowID(),
-        aWebProgressData->innerDOMWindowID(), aWebProgressData->loadType(),
-        aWebProgressData->isLoadingDocument(), aWebProgressData->isTopLevel());
+    webProgress = new RemoteWebProgress(aWebProgressData->loadType(),
+                                        aWebProgressData->isLoadingDocument(),
+                                        aWebProgressData->isTopLevel());
   } else {
-    webProgress = new RemoteWebProgress(aManager, 0, 0, 0, false, false);
+    webProgress = new RemoteWebProgress(0, false, false);
   }
   webProgress.forget(aOutWebProgress);
 
   if (aRequestData.requestURI()) {
     nsCOMPtr<nsIRequest> request = MakeAndAddRef<RemoteWebProgressRequest>(
         aRequestData.requestURI(), aRequestData.originalRequestURI(),
-        aRequestData.matchedList(), aRequestData.elapsedLoadTimeMS());
+        aRequestData.matchedList());
     request.forget(aOutRequest);
   } else {
     *aOutRequest = nullptr;
@@ -3951,7 +3886,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvVisitURI(nsIURI* aURI,
   if (NS_WARN_IF(!widget)) {
     return IPC_OK();
   }
-  nsCOMPtr<IHistory> history = services::GetHistoryService();
+  nsCOMPtr<IHistory> history = services::GetHistory();
   if (history) {
     Unused << history->VisitURI(widget, aURI, aLastVisitedURI, aFlags);
   }
@@ -3961,7 +3896,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvVisitURI(nsIURI* aURI,
 mozilla::ipc::IPCResult BrowserParent::RecvQueryVisitedState(
     const nsTArray<RefPtr<nsIURI>>&& aURIs) {
 #ifdef MOZ_ANDROID_HISTORY
-  nsCOMPtr<IHistory> history = services::GetHistoryService();
+  nsCOMPtr<IHistory> history = services::GetHistory();
   if (NS_WARN_IF(!history)) {
     return IPC_OK();
   }

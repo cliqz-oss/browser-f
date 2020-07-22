@@ -159,9 +159,6 @@ pref("browser.formfill.enable", true);
 /* spellcheck */
 pref("layout.spellcheckDefault", 0);
 
-/* new html5 forms */
-pref("dom.forms.datetime.others", true);
-
 /* extension manager and xpinstall */
 pref("xpinstall.whitelist.fileRequest", false);
 pref("xpinstall.whitelist.add", "https://addons.mozilla.org");
@@ -334,21 +331,6 @@ pref("devtools.debugger.unix-domain-socket", "@ANDROID_PACKAGE_NAME@/firefox-deb
 
 pref("devtools.remote.usb.enabled", false);
 pref("devtools.remote.wifi.enabled", false);
-
-pref("ui.touch.radius.enabled", false);
-pref("ui.touch.radius.leftmm", 3);
-pref("ui.touch.radius.topmm", 5);
-pref("ui.touch.radius.rightmm", 3);
-pref("ui.touch.radius.bottommm", 2);
-pref("ui.touch.radius.visitedWeight", 120);
-
-pref("ui.mouse.radius.enabled", true);
-pref("ui.mouse.radius.leftmm", 3);
-pref("ui.mouse.radius.topmm", 5);
-pref("ui.mouse.radius.rightmm", 3);
-pref("ui.mouse.radius.bottommm", 2);
-pref("ui.mouse.radius.visitedWeight", 120);
-pref("ui.mouse.radius.reposition", true);
 
 // Maximum distance from the point where the user pressed where we still
 // look for text to select
@@ -702,3 +684,6 @@ pref("browser.tabs.remote.enforceRemoteTypeRestrictions", false);
 // Allow Web Authentication
 pref("security.webauth.webauthn_enable_android_fido2", true);
 pref("browser.tabs.remote.separatePrivilegedMozillaWebContentProcess", false);
+
+// Enable deprecated TLS only in GV 79
+pref("security.tls.version.enable-deprecated", true);

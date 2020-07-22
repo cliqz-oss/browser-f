@@ -55,6 +55,12 @@ ChromeUtils.defineModuleGetter(
   "resource://gre/modules/DeferredTask.jsm"
 );
 
+ChromeUtils.defineModuleGetter(
+  this,
+  "FeatureGate",
+  "resource://featuregates/FeatureGate.jsm"
+);
+
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "PushService",
@@ -181,6 +187,21 @@ let JSWINDOWACTORS = {
     matches: ["about:protections"],
   },
 
+  AboutReader: {
+    parent: {
+      moduleURI: "resource:///actors/AboutReaderParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/AboutReaderChild.jsm",
+      events: {
+        DOMContentLoaded: {},
+        pageshow: { mozSystemGroup: true },
+        pagehide: { mozSystemGroup: true },
+      },
+    },
+    messageManagerGroups: ["browsers"],
+  },
+
   AboutTabCrashed: {
     parent: {
       moduleURI: "resource:///actors/AboutTabCrashedParent.jsm",
@@ -244,6 +265,8 @@ let JSWINDOWACTORS = {
         "MozDOMPointerLock:Exited": {},
       },
     },
+
+    messageManagerGroups: ["browsers"],
   },
 
   ClickHandler: {
@@ -421,6 +444,17 @@ let JSWINDOWACTORS = {
     allFrames: true,
   },
 
+  Pdfjs: {
+    parent: {
+      moduleURI: "resource://pdf.js/PdfjsParent.jsm",
+    },
+    child: {
+      moduleURI: "resource://pdf.js/PdfjsChild.jsm",
+    },
+    enablePreference: PREF_PDFJS_ISDEFAULT_CACHE_STATE,
+    allFrames: true,
+  },
+
   Plugin: {
     parent: {
       moduleURI: "resource:///actors/PluginParent.jsm",
@@ -537,20 +571,6 @@ let JSWINDOWACTORS = {
 };
 
 let LEGACY_ACTORS = {
-  AboutReader: {
-    child: {
-      module: "resource:///actors/AboutReaderChild.jsm",
-      group: "browsers",
-      events: {
-        AboutReaderContentLoaded: { wantUntrusted: true },
-        DOMContentLoaded: {},
-        pageshow: { mozSystemGroup: true },
-        pagehide: { mozSystemGroup: true },
-      },
-      messages: ["Reader:ToggleReaderMode", "Reader:PushState"],
-    },
-  },
-
   URIFixup: {
     child: {
       module: "resource:///actors/URIFixupChild.jsm",
@@ -657,7 +677,6 @@ XPCOMUtils.defineLazyGetter(
 // lazy module getters
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  AboutCertViewerHandler: "resource://gre/modules/AboutCertViewerHandler.jsm",
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
@@ -716,7 +735,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AboutLoginsParent: "resource:///modules/AboutLoginsParent.jsm",
   AsyncPrefs: "resource://gre/modules/AsyncPrefs.jsm",
   PluginManager: "resource:///actors/PluginParent.jsm",
-  ReaderParent: "resource:///modules/ReaderParent.jsm",
 });
 
 /**
@@ -769,6 +787,7 @@ const global = this;
 
 const listeners = {
   observers: {
+    "update-downloading": ["UpdateListener"],
     "update-staged": ["UpdateListener"],
     "update-downloaded": ["UpdateListener"],
     "update-available": ["UpdateListener"],
@@ -788,30 +807,6 @@ const listeners = {
     "AsyncPrefs:SetPref": ["AsyncPrefs"],
     "AsyncPrefs:ResetPref": ["AsyncPrefs"],
     // PLEASE KEEP THIS LIST IN SYNC WITH THE LISTENERS ADDED IN AsyncPrefs.init
-  },
-
-  mm: {
-    "AboutLogins:CreateLogin": ["AboutLoginsParent"],
-    "AboutLogins:DeleteLogin": ["AboutLoginsParent"],
-    "AboutLogins:DismissBreachAlert": ["AboutLoginsParent"],
-    "AboutLogins:HideFooter": ["AboutLoginsParent"],
-    "AboutLogins:Import": ["AboutLoginsParent"],
-    "AboutLogins:MasterPasswordRequest": ["AboutLoginsParent"],
-    "AboutLogins:OpenFAQ": ["AboutLoginsParent"],
-    "AboutLogins:GetHelp": ["AboutLoginsParent"],
-    "AboutLogins:OpenPreferences": ["AboutLoginsParent"],
-    "AboutLogins:OpenMobileAndroid": ["AboutLoginsParent"],
-    "AboutLogins:OpenMobileIos": ["AboutLoginsParent"],
-    "AboutLogins:OpenSite": ["AboutLoginsParent"],
-    "AboutLogins:SortChanged": ["AboutLoginsParent"],
-    "AboutLogins:Subscribe": ["AboutLoginsParent"],
-    "AboutLogins:SyncEnable": ["AboutLoginsParent"],
-    "AboutLogins:SyncOptions": ["AboutLoginsParent"],
-    "AboutLogins:TestOnlyResetOSAuth": ["AboutLoginsParent"],
-    "AboutLogins:UpdateLogin": ["AboutLoginsParent"],
-    "AboutLogins:VulnerableLogins": ["AboutLoginsParent"],
-    "Reader:FaviconRequest": ["ReaderParent"],
-    "Reader:UpdateReaderButton": ["ReaderParent"],
   },
 
   observe(subject, topic, data) {
@@ -839,11 +834,6 @@ const listeners = {
   init() {
     for (let observer of Object.keys(this.observers)) {
       Services.obs.addObserver(this, observer);
-    }
-
-    let receiveMessageMM = this.receiveMessage.bind(this, this.mm);
-    for (let message of Object.keys(this.mm)) {
-      Services.mm.addMessageListener(message, receiveMessageMM);
     }
 
     let receiveMessagePPMM = this.receiveMessage.bind(this, this.ppmm);
@@ -1787,8 +1777,6 @@ BrowserGlue.prototype = {
 
     NewTabUtils.init();
 
-    AboutCertViewerHandler.init();
-
     Services.telemetry.setEventRecordingEnabled(
       "security.ui.protections",
       true
@@ -2041,7 +2029,6 @@ BrowserGlue.prototype = {
     SearchTelemetry.uninit();
     PageThumbs.uninit();
     NewTabUtils.uninit();
-    AboutCertViewerHandler.uninit();
 
     Normandy.uninit();
     RFPHelper.uninit();
@@ -2131,6 +2118,52 @@ BrowserGlue.prototype = {
     _checkPioneerPref();
   },
 
+  _monitorPioneerStudies() {
+    const STUDY_ADDON_COLLECTION_KEY = "pioneer-study-addons";
+    const PREF_PIONEER_NEW_STUDIES_AVAILABLE =
+      "toolkit.telemetry.pioneer-new-studies-available";
+
+    const _badgeIcon = async () => {
+      for (let win of Services.wm.getEnumerator("navigator:browser")) {
+        win.document
+          .getElementById("pioneer-button")
+          .querySelector(".toolbarbutton-badge")
+          .classList.add("feature-callout");
+      }
+    };
+
+    const windowListener = {
+      onOpenWindow(xulWindow) {
+        const win = xulWindow.docShell.domWindow;
+        win.addEventListener("load", () => {
+          const pioneerButton = win.document.getElementById("pioneer-button");
+          if (pioneerButton) {
+            const badge = pioneerButton.querySelector(".toolbarbutton-badge");
+            if (
+              Services.prefs.getBoolPref(
+                PREF_PIONEER_NEW_STUDIES_AVAILABLE,
+                false
+              )
+            ) {
+              badge.classList.add("feature-callout");
+            } else {
+              badge.classList.remove("feature-callout");
+            }
+          }
+        });
+      },
+      onCloseWindow() {},
+    };
+
+    Services.prefs.addObserver(PREF_PIONEER_NEW_STUDIES_AVAILABLE, _badgeIcon);
+
+    RemoteSettings(STUDY_ADDON_COLLECTION_KEY).on("sync", async event => {
+      Services.prefs.setBoolPref(PREF_PIONEER_NEW_STUDIES_AVAILABLE, true);
+    });
+
+    Services.wm.addListener(windowListener);
+  },
+
   _showNewInstallModal() {
     // Allow other observers of the same topic to run while we open the dialog.
     Services.tm.dispatchToMainThread(() => {
@@ -2190,6 +2223,8 @@ BrowserGlue.prototype = {
     if (AppConstants.MOZ_CRASHREPORTER) {
       UnsubmittedCrashHandler.init();
       UnsubmittedCrashHandler.scheduleCheckForUnsubmittedCrashReports();
+      FeatureGate.annotateCrashReporter();
+      FeatureGate.observePrefChangesForCrashReportAnnotation();
     }
 
     if (AppConstants.ASAN_REPORTER) {
@@ -2220,6 +2255,7 @@ BrowserGlue.prototype = {
     this._monitorWebcompatReporterPref();
     this._monitorHTTPSOnlyPref();
     this._monitorPioneerPref();
+    this._monitorPioneerStudies();
 
     let pService = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
       Ci.nsIToolkitProfileService
@@ -4939,11 +4975,9 @@ var AboutHomeStartupCache = {
   // we want to invalidate any pre-existing caches. We do this by setting
   // this meta key in the nsICacheEntry for the page.
   //
-  // If you want to invalidate the cache, simply bump the CACHE_VERSION,
-  // and the existing cache will be ignored and discarded, and a new one
-  // eventually created.
+  // The version is currently set to the build ID, meaning that the cache
+  // is invalidated after every upgrade (like the main startup cache).
   CACHE_VERSION_META_KEY: "version",
-  CACHE_VERSION: 1,
 
   LOG_NAME: "AboutHomeStartupCache",
 
@@ -5018,7 +5052,13 @@ var AboutHomeStartupCache = {
     }
 
     Services.obs.addObserver(this, "ipc:content-created");
+    Services.obs.addObserver(this, "process-type-set");
     Services.obs.addObserver(this, "ipc:content-shutdown");
+    Services.obs.addObserver(this, "intl:app-locales-changed");
+
+    this._cacheEntryPromise = new Promise(resolve => {
+      this._cacheEntryResolver = resolve;
+    });
 
     let lci = Services.loadContextInfo.default;
     let storage = Services.cache2.diskCacheStorage(lci, false);
@@ -5056,7 +5096,9 @@ var AboutHomeStartupCache = {
     }
 
     Services.obs.removeObserver(this, "ipc:content-created");
+    Services.obs.removeObserver(this, "process-type-set");
     Services.obs.removeObserver(this, "ipc:content-shutdown");
+    Services.obs.removeObserver(this, "intl:app-locales-changed");
 
     if (this._cacheTask) {
       this._cacheTask.disarm();
@@ -5068,6 +5110,9 @@ var AboutHomeStartupCache = {
     this._initted = false;
     this._cacheEntry = null;
     this._hasWrittenThisSession = false;
+    this._cacheEntryPromise = null;
+    this._cacheEntryResolver = null;
+
     this.log.trace("Uninitialized.");
     this.log.removeAppender(this._appender);
     this.log = null;
@@ -5125,7 +5170,7 @@ var AboutHomeStartupCache = {
    *   Resolves when a fresh version of the cache has been written.
    */
   async cacheNow() {
-    this._hasWrittenThisSession = true;
+    this.log.trace("Caching now.");
     this._cacheProgress = "Getting cache streams";
     let { pageInputStream, scriptInputStream } = await this.requestCache();
 
@@ -5137,6 +5182,8 @@ var AboutHomeStartupCache = {
     this._cacheProgress = "Writing to cache";
     await this.populateCache(pageInputStream, scriptInputStream);
     this._cacheProgress = "Done";
+    this.log.trace("Done writing to cache.");
+    this._hasWrittenThisSession = true;
   },
 
   /**
@@ -5251,10 +5298,10 @@ var AboutHomeStartupCache = {
 
     this.log.info("Version retrieved is", version);
 
-    if (parseInt(version, 10) != this.CACHE_VERSION) {
+    if (version != Services.appinfo.appBuildID) {
       this.log.info("Version does not match! Dooming and closing streams.\n");
       // This cache is no good - doom it, and prepare for a new one.
-      this._cacheEntry = this._cacheEntry.recreate();
+      this.clearCache();
       this.pagePipe.outputStream.close();
       this.scriptPipe.outputStream.close();
       return;
@@ -5355,38 +5402,118 @@ var AboutHomeStartupCache = {
    *   A stream containing the HTML markup to be saved to the cache.
    * @param scriptInputStream (nsIInputStream)
    *   A stream containing the JS hydration script to be saved to the cache.
+   * @returns Promise
+   * @resolves undefined
+   *   When the cache has been successfully written to.
+   * @rejects Error
+   *   Rejects with a JS Error if writing any part of the cache happens to
+   *   fail.
    */
-  populateCache(pageInputStream, scriptInputStream) {
-    // Doom the old cache entry, so we can start writing to a new one.
-    this.log.trace("Populating the cache. Dooming old entry.");
-    this._cacheEntry = this._cacheEntry.recreate();
+  async populateCache(pageInputStream, scriptInputStream) {
+    await this.ensureCacheEntry();
 
-    this.log.trace("Opening the page output stream.");
-    let pageOutputStream = this._cacheEntry.openOutputStream(0, -1);
+    await new Promise((resolve, reject) => {
+      // Doom the old cache entry, so we can start writing to a new one.
+      this.log.trace("Populating the cache. Dooming old entry.");
+      this.clearCache();
 
-    this.log.info("Writing the page cache.");
-    NetUtil.asyncCopy(pageInputStream, pageOutputStream, () => {
-      this.log.trace(
-        "Writing the page data is complete. Now opening the " +
-          "script output stream."
-      );
+      this.log.trace("Opening the page output stream.");
+      let pageOutputStream;
+      try {
+        pageOutputStream = this._cacheEntry.openOutputStream(0, -1);
+      } catch (e) {
+        reject(e);
+        return;
+      }
 
-      let scriptOutputStream = this._cacheEntry.openAlternativeOutputStream(
-        "script",
-        -1
-      );
+      this.log.info("Writing the page cache.");
+      NetUtil.asyncCopy(pageInputStream, pageOutputStream, pageResult => {
+        if (!Components.isSuccessCode(pageResult)) {
+          this.log.error("Failed to write page. Result: " + pageResult);
+          reject(new Error(pageResult));
+          return;
+        }
 
-      this.log.info("Writing the script cache.");
-      NetUtil.asyncCopy(scriptInputStream, scriptOutputStream, () => {
-        this.log.trace("Writing the script cache is done. Setting version.");
-        this._cacheEntry.setMetaDataElement(
-          "version",
-          String(this.CACHE_VERSION)
+        this.log.trace(
+          "Writing the page data is complete. Now opening the " +
+            "script output stream."
         );
-        this.log.trace(`Version is set to ${this.CACHE_VERSION}.`);
-        this.log.info("Caching of page and script is done.");
+
+        let scriptOutputStream;
+        try {
+          scriptOutputStream = this._cacheEntry.openAlternativeOutputStream(
+            "script",
+            -1
+          );
+        } catch (e) {
+          reject(e);
+          return;
+        }
+
+        this.log.info("Writing the script cache.");
+        NetUtil.asyncCopy(
+          scriptInputStream,
+          scriptOutputStream,
+          scriptResult => {
+            if (!Components.isSuccessCode(scriptResult)) {
+              this.log.error("Failed to write script. Result: " + scriptResult);
+              reject(new Error(scriptResult));
+              return;
+            }
+
+            this.log.trace(
+              "Writing the script cache is done. Setting version."
+            );
+            try {
+              this._cacheEntry.setMetaDataElement(
+                "version",
+                Services.appinfo.appBuildID
+              );
+            } catch (e) {
+              this.log.error("Failed to write version.");
+              reject(e);
+              return;
+            }
+            this.log.trace(`Version is set to ${Services.appinfo.appBuildID}.`);
+            this.log.info("Caching of page and script is done.");
+            resolve();
+          }
+        );
       });
     });
+  },
+
+  /**
+   * Returns a Promise that resolves once the nsICacheEntry for the cache
+   * is available to write to and read from.
+   *
+   * @returns Promise
+   * @resolves nsICacheEntry
+   *   Once the cache entry has become available.
+   * @rejects String
+   *   Rejects with an error message if getting the cache entry is attempted
+   *   before the AboutHomeStartupCache component has been initialized.
+   */
+  ensureCacheEntry() {
+    if (!this._initted) {
+      return Promise.reject(
+        "Cannot ensureCacheEntry - AboutHomeStartupCache is not initted"
+      );
+    }
+
+    return this._cacheEntryPromise;
+  },
+
+  /**
+   * Clears the contents of the cache.
+   */
+  clearCache() {
+    this.log.trace("Clearing the cache.");
+    this._cacheEntry = this._cacheEntry.recreate();
+    this._cacheEntryPromise = new Promise(resolve => {
+      resolve(this._cacheEntry);
+    });
+    this._hasWrittenThisSession = false;
   },
 
   /**
@@ -5480,6 +5607,12 @@ var AboutHomeStartupCache = {
 
   observe(aSubject, aTopic, aData) {
     switch (aTopic) {
+      case "intl:app-locales-changed": {
+        this.clearCache();
+        break;
+      }
+      case "process-type-set":
+      // Intentional fall-through
       case "ipc:content-created": {
         let childID = aData;
         let procManager = aSubject
@@ -5509,5 +5642,7 @@ var AboutHomeStartupCache = {
     this._cacheEntry = aEntry;
     this.makePipes();
     this.maybeConnectToPipes();
+
+    this._cacheEntryResolver(this._cacheEntry);
   },
 };

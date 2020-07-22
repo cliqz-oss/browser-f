@@ -151,7 +151,7 @@ class AudioContext final : public DOMEventTargetHelper,
 
   virtual void DisconnectFromOwner() override;
 
-  void Shutdown();  // idempotent
+  void OnWindowDestroy();  // idempotent
 
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
@@ -353,7 +353,7 @@ class AudioContext final : public DOMEventTargetHelper,
 
   friend struct ::mozilla::WebAudioDecodeJob;
 
-  nsTArray<mozilla::MediaTrack*> GetAllTracks() const;
+  nsTArray<RefPtr<mozilla::MediaTrack>> GetAllTracks() const;
 
   void ResumeInternal(AudioContextOperationFlags aFlags);
   void SuspendInternal(void* aPromise, AudioContextOperationFlags aFlags);

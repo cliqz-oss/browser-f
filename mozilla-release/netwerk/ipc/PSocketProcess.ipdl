@@ -18,6 +18,8 @@ include protocol PAltService;
 include protocol PAltSvcTransaction;
 include protocol PTRRService;
 include protocol PProxyConfigLookup;
+include protocol PNativeDNSResolverOverride;
+include protocol PIPCBlobInputStream;
 
 include MemoryReportTypes;
 include NeckoChannelParams;
@@ -36,9 +38,26 @@ using base::ProcessId from "base/process.h";
 using mozilla::OriginAttributes from "mozilla/ipc/BackgroundUtils.h";
 using PRTime from "prtime.h";
 using refcounted class nsIURI from "mozilla/ipc/URIUtils.h";
+using struct nsID from "nsID.h";
 
 namespace mozilla {
 namespace net {
+
+struct HttpHandlerInitArgs {
+  bool mFastOpenSupported;
+  nsCString mLegacyAppName;
+  nsCString mLegacyAppVersion;
+  nsCString mPlatform;
+  nsCString mOscpu;
+  nsCString mMisc;
+  nsCString mProduct;
+  nsCString mProductSub;
+  nsCString mAppName;
+  nsCString mAppVersion;
+  nsCString mCompatFirefox;
+  nsCString mCompatDevice;
+  nsCString mDeviceModelId;
+};
 
 sync protocol PSocketProcess
 {
@@ -54,6 +73,8 @@ sync protocol PSocketProcess
   manages PAltSvcTransaction;
   manages PTRRService;
   manages PProxyConfigLookup;
+  manages PNativeDNSResolverOverride;
+  manages PIPCBlobInputStream;
 
 parent:
   async InitCrashReporter(NativeThreadId threadId);
@@ -108,7 +129,8 @@ child:
 
   async PHttpTransaction();
   async PParentToChildStream();
-  async PHttpConnectionMgr();
+  async PHttpConnectionMgr(HttpHandlerInitArgs aArgs);
+  async UpdateDeviceModelId(nsCString aModelId);
 
   async OnHttpActivityDistributorActivated(bool aIsActivated);
   async PInputChannelThrottleQueue(uint32_t meanBytesPerSecond,
@@ -119,6 +141,10 @@ child:
   async PTRRService(bool aCaptiveIsPassed,
                     bool aParentalControlEnabled,
                     nsCString[] aDNSSuffixList);
+  async PNativeDNSResolverOverride();
+  async NotifyObserver(nsCString aTopic, nsString aData);
+
+  async PIPCBlobInputStream(nsID aID, uint64_t aSize);
 
 both:
   async PFileDescriptorSet(FileDescriptor fd);

@@ -201,6 +201,12 @@ template nsresult HTMLEditor::DeleteTextAndTextNodesWithTransaction(
 template nsresult HTMLEditor::DeleteTextAndTextNodesWithTransaction(
     const EditorDOMPointInText& aStartPoint,
     const EditorDOMPointInText& aEndPoint);
+template nsresult
+HTMLEditor::InsertBRElementIfHardLineIsEmptyAndEndsWithBlockBoundary(
+    const EditorDOMPoint& aPointToInsert);
+template nsresult
+HTMLEditor::InsertBRElementIfHardLineIsEmptyAndEndsWithBlockBoundary(
+    const EditorDOMPointInText& aPointToInsert);
 
 nsresult HTMLEditor::InitEditorContentAndSelection() {
   MOZ_ASSERT(IsEditActionDataAvailable());
@@ -422,7 +428,7 @@ nsresult HTMLEditor::OnEndHandlingTopLevelEditSubActionInternal() {
       case EditSubAction::eInsertParagraphSeparator:
       case EditSubAction::eDeleteText: {
         // XXX We should investigate whether this is really needed because it
-        //     seems that the following code does not handle the whitespaces.
+        //     seems that the following code does not handle the white-spaces.
         RefPtr<nsRange> extendedChangedRange =
             CreateRangeIncludingAdjuscentWhiteSpaces(
                 *TopLevelEditSubActionDataRef().mChangedRange);
@@ -524,8 +530,8 @@ nsresult HTMLEditor::OnEndHandlingTopLevelEditSubActionInternal() {
       case EditSubAction::eInsertParagraphSeparator:
       case EditSubAction::ePasteHTMLContent:
       case EditSubAction::eInsertHTMLSource: {
-        // TODO: Temporarily, WSRunObject replaces ASCII whitespaces with NPSPs
-        //       and then, we'll replace them with ASCII whitespaces here.  We
+        // TODO: Temporarily, WSRunObject replaces ASCII white-spaces with NPSPs
+        //       and then, we'll replace them with ASCII white-spaces here.  We
         //       should avoid this overwriting things as far as possible because
         //       replacing characters in text nodes causes running mutation
         //       event listeners which are really expensive.
@@ -538,17 +544,17 @@ nsresult HTMLEditor::OnEndHandlingTopLevelEditSubActionInternal() {
             return NS_ERROR_FAILURE;
           }
         }
-        rv = WSRunObject(*this, pointToAdjust).AdjustWhitespace();
+        rv = WSRunObject(*this, pointToAdjust).AdjustWhiteSpace();
         if (NS_WARN_IF(Destroyed())) {
           return NS_ERROR_EDITOR_DESTROYED;
         }
         if (NS_FAILED(rv)) {
-          NS_WARNING("WSRunObject::AdjustWhitespace() failed");
+          NS_WARNING("WSRunObject::AdjustWhiteSpace() failed");
           return rv;
         }
 
         // also do this for original selection endpoints.
-        // XXX Hmm, if `AdjustWhitespace()` runs mutation event listener
+        // XXX Hmm, if `AdjustWhiteSpace()` runs mutation event listener
         //     and that causes changing `mSelectedRange`, what we should do?
         if (NS_WARN_IF(
                 !TopLevelEditSubActionDataRef().mSelectedRange->IsSet())) {
@@ -558,13 +564,13 @@ nsresult HTMLEditor::OnEndHandlingTopLevelEditSubActionInternal() {
             WSRunObject(
                 *this,
                 TopLevelEditSubActionDataRef().mSelectedRange->StartRawPoint())
-                .AdjustWhitespace();
+                .AdjustWhiteSpace();
         if (NS_WARN_IF(Destroyed())) {
           return NS_ERROR_EDITOR_DESTROYED;
         }
         NS_WARNING_ASSERTION(
             NS_SUCCEEDED(rvIgnored),
-            "WSRunObject::AdjustWhitespace() failed, but ignored");
+            "WSRunObject::AdjustWhiteSpace() failed, but ignored");
         // we only need to handle old selection endpoint if it was different
         // from start
         if (TopLevelEditSubActionDataRef().mSelectedRange->IsCollapsed()) {
@@ -572,13 +578,13 @@ nsresult HTMLEditor::OnEndHandlingTopLevelEditSubActionInternal() {
               WSRunObject(
                   *this,
                   TopLevelEditSubActionDataRef().mSelectedRange->EndRawPoint())
-                  .AdjustWhitespace();
+                  .AdjustWhiteSpace();
           if (NS_WARN_IF(Destroyed())) {
             return NS_ERROR_EDITOR_DESTROYED;
           }
           NS_WARNING_ASSERTION(
               NS_SUCCEEDED(rvIgnored),
-              "WSRunObject::AdjustWhitespace() failed, but ignored");
+              "WSRunObject::AdjustWhiteSpace() failed, but ignored");
         }
         break;
       }
@@ -3200,7 +3206,7 @@ EditActionResult HTMLEditor::HandleDeleteNonCollapsedSelection(
   }
 
   // Figure out if the endpoints are in nodes that can be merged.  Adjust
-  // surrounding whitespace in preparation to delete selection.
+  // surrounding white-space in preparation to delete selection.
   if (!IsPlaintextEditor()) {
     AutoTransactionsConserveSelection dontChangeMySelection(*this);
     nsresult rv = WSRunObject::PrepareToDeleteRange(*this, &firstRangeStart,
@@ -3520,7 +3526,7 @@ nsresult HTMLEditor::DeleteUnnecessaryNodesAndCollapseSelection(
     return NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE;
   }
 
-  // We might have left only collapsed whitespace in the start/end nodes
+  // We might have left only collapsed white-space in the start/end nodes
   {
     AutoTrackDOMPoint startTracker(RangeUpdaterRef(), &atCaret);
     AutoTrackDOMPoint endTracker(RangeUpdaterRef(), &selectionEndPoint);
@@ -3667,8 +3673,384 @@ nsresult HTMLEditor::DeleteTextAndTextNodesWithTransaction(
   return NS_OK;
 }
 
+HTMLEditor::CharPointData
+HTMLEditor::GetPreviousCharPointDataForNormalizingWhiteSpaces(
+    const EditorDOMPointInText& aPoint) const {
+  MOZ_ASSERT(aPoint.IsSetAndValid());
+
+  if (!aPoint.IsStartOfContainer()) {
+    return CharPointData::InSameTextNode(
+        HTMLEditor::GetPreviousCharPointType(aPoint));
+  }
+  EditorDOMPointInText previousCharPoint =
+      WSRunScanner::GetPreviousEditableCharPoint(*this, aPoint);
+  if (!previousCharPoint.IsSet()) {
+    return CharPointData::InDifferentTextNode(CharPointType::TextEnd);
+  }
+  return CharPointData::InDifferentTextNode(
+      HTMLEditor::GetCharPointType(previousCharPoint));
+}
+
+HTMLEditor::CharPointData
+HTMLEditor::GetInclusiveNextCharPointDataForNormalizingWhiteSpaces(
+    const EditorDOMPointInText& aPoint) const {
+  MOZ_ASSERT(aPoint.IsSetAndValid());
+
+  if (!aPoint.IsEndOfContainer()) {
+    return CharPointData::InSameTextNode(HTMLEditor::GetCharPointType(aPoint));
+  }
+  EditorDOMPointInText nextCharPoint =
+      WSRunScanner::GetInclusiveNextEditableCharPoint(*this, aPoint);
+  if (!nextCharPoint.IsSet()) {
+    return CharPointData::InDifferentTextNode(CharPointType::TextEnd);
+  }
+  return CharPointData::InDifferentTextNode(
+      HTMLEditor::GetCharPointType(nextCharPoint));
+}
+
+// static
+void HTMLEditor::GenerateWhiteSpaceSequence(
+    nsAString& aResult, uint32_t aLength,
+    const CharPointData& aPreviousCharPointData,
+    const CharPointData& aNextCharPointData) {
+  MOZ_ASSERT(aResult.IsEmpty());
+  MOZ_ASSERT(aLength);
+  // For now, this method does not assume that result will be append to
+  // white-space sequence in the text node.
+  MOZ_ASSERT(aPreviousCharPointData.AcrossTextNodeBoundary() ||
+             !aPreviousCharPointData.IsWhiteSpace());
+  // For now, this method does not assume that the result will be inserted
+  // into white-space sequence nor start of white-space sequence.
+  MOZ_ASSERT(aNextCharPointData.AcrossTextNodeBoundary() ||
+             !aNextCharPointData.IsWhiteSpace());
+
+  if (aLength == 1) {
+    // Even if previous/next char is in different text node, we should put
+    // an ASCII white-space between visible characters.
+    // XXX This means that this does not allow to put an NBSP in HTML editor
+    //     without preformatted style.  However, Chrome has same issue too.
+    if (aPreviousCharPointData.Type() == CharPointType::VisibleChar &&
+        aNextCharPointData.Type() == CharPointType::VisibleChar) {
+      aResult.Assign(HTMLEditUtils::kSpace);
+      return;
+    }
+    // If it's start or end of text, put an NBSP.
+    if (aPreviousCharPointData.Type() == CharPointType::TextEnd ||
+        aNextCharPointData.Type() == CharPointType::TextEnd) {
+      aResult.Assign(HTMLEditUtils::kNBSP);
+      return;
+    }
+    // Now, the white-space will be inserted to a white-space sequence, but not
+    // end of text.  We can put an ASCII white-space only when both sides are
+    // not ASCII white-spaces.
+    aResult.Assign(
+        aPreviousCharPointData.Type() == CharPointType::ASCIIWhiteSpace ||
+                aNextCharPointData.Type() == CharPointType::ASCIIWhiteSpace
+            ? HTMLEditUtils::kNBSP
+            : HTMLEditUtils::kSpace);
+    return;
+  }
+
+  // Generate pairs of NBSP and ASCII white-space.
+  aResult.SetLength(aLength);
+  bool appendNBSP = true;  // Basically, starts with an NBSP.
+  char16_t* lastChar = aResult.EndWriting() - 1;
+  for (char16_t* iter = aResult.BeginWriting(); iter != lastChar; iter++) {
+    *iter = appendNBSP ? HTMLEditUtils::kNBSP : HTMLEditUtils::kSpace;
+    appendNBSP = !appendNBSP;
+  }
+
+  // If the final one is expected to an NBSP, we can put an NBSP simply.
+  if (appendNBSP) {
+    *lastChar = HTMLEditUtils::kNBSP;
+    return;
+  }
+
+  // If next char point is end of text node or an ASCII white-space, we need to
+  // put an NBSP.
+  *lastChar =
+      aNextCharPointData.AcrossTextNodeBoundary() ||
+              aNextCharPointData.Type() == CharPointType::ASCIIWhiteSpace
+          ? HTMLEditUtils::kNBSP
+          : HTMLEditUtils::kSpace;
+}
+
+void HTMLEditor::ExtendRangeToDeleteWithNormalizingWhiteSpaces(
+    EditorDOMPointInText& aStartToDelete, EditorDOMPointInText& aEndToDelete,
+    nsAString& aNormalizedWhiteSpacesInStartNode,
+    nsAString& aNormalizedWhiteSpacesInEndNode) const {
+  MOZ_ASSERT(aStartToDelete.IsSetAndValid());
+  MOZ_ASSERT(aEndToDelete.IsSetAndValid());
+  MOZ_ASSERT(aStartToDelete.EqualsOrIsBefore(aEndToDelete));
+  MOZ_ASSERT(aNormalizedWhiteSpacesInStartNode.IsEmpty());
+  MOZ_ASSERT(aNormalizedWhiteSpacesInEndNode.IsEmpty());
+
+  // First, check whether there is surrounding white-spaces or not, and if there
+  // are, check whether they are collapsible or not.  Note that we shouldn't
+  // touch white-spaces in different text nodes for performance, but we need
+  // adjacent text node's first or last character information in some cases.
+  EditorDOMPointInText precedingCharPoint =
+      WSRunScanner::GetPreviousEditableCharPoint(*this, aStartToDelete);
+  bool maybeNormalizePrecedingWhiteSpaces =
+      precedingCharPoint.IsSet() && !precedingCharPoint.IsEndOfContainer() &&
+      precedingCharPoint.ContainerAsText() ==
+          aStartToDelete.ContainerAsText() &&
+      precedingCharPoint.IsCharASCIISpaceOrNBSP() &&
+      !EditorUtils::IsContentPreformatted(
+          *precedingCharPoint.ContainerAsText());
+  EditorDOMPointInText followingCharPoint =
+      WSRunScanner::GetInclusiveNextEditableCharPoint(*this, aEndToDelete);
+  const bool maybeNormalizeFollowingWhiteSpaces =
+      followingCharPoint.IsSet() && !followingCharPoint.IsEndOfContainer() &&
+      followingCharPoint.ContainerAsText() == aEndToDelete.ContainerAsText() &&
+      followingCharPoint.IsCharASCIISpaceOrNBSP() &&
+      !EditorUtils::IsContentPreformatted(
+          *followingCharPoint.ContainerAsText());
+
+  if (!maybeNormalizePrecedingWhiteSpaces &&
+      !maybeNormalizeFollowingWhiteSpaces) {
+    return;  // There are no white-spaces.
+  }
+
+  // Next, consider the range to normalize.
+  EditorDOMPointInText startToNormalize, endToNormalize;
+  if (maybeNormalizePrecedingWhiteSpaces) {
+    Maybe<uint32_t> previousCharOffsetOfWhiteSpaces =
+        HTMLEditUtils::GetPreviousCharOffsetExceptWhiteSpaces(
+            precedingCharPoint);
+    startToNormalize.Set(precedingCharPoint.ContainerAsText(),
+                         previousCharOffsetOfWhiteSpaces.isSome()
+                             ? previousCharOffsetOfWhiteSpaces.value() + 1
+                             : 0);
+    MOZ_ASSERT(!startToNormalize.IsEndOfContainer());
+  }
+  if (maybeNormalizeFollowingWhiteSpaces) {
+    Maybe<uint32_t> nextCharOffsetOfWhiteSpaces =
+        HTMLEditUtils::GetInclusiveNextCharOffsetExceptWhiteSpaces(
+            followingCharPoint);
+    if (nextCharOffsetOfWhiteSpaces.isSome()) {
+      endToNormalize.Set(followingCharPoint.ContainerAsText(),
+                         nextCharOffsetOfWhiteSpaces.value());
+    } else {
+      endToNormalize.SetToEndOf(followingCharPoint.ContainerAsText());
+    }
+    MOZ_ASSERT(!endToNormalize.IsStartOfContainer());
+  }
+
+  // Next, retrieve surrounding information of white-space sequence.
+  CharPointData previousCharPointData =
+      GetPreviousCharPointDataForNormalizingWhiteSpaces(
+          startToNormalize.IsSet() ? startToNormalize : aStartToDelete);
+  CharPointData nextCharPointData =
+      GetInclusiveNextCharPointDataForNormalizingWhiteSpaces(
+          endToNormalize.IsSet() ? endToNormalize : aEndToDelete);
+
+  // Next, compute number of white-spaces in start/end node.
+  uint32_t lengthInStartNode = 0, lengthInEndNode = 0;
+  if (startToNormalize.IsSet()) {
+    MOZ_ASSERT(startToNormalize.ContainerAsText() ==
+               aStartToDelete.ContainerAsText());
+    lengthInStartNode = aStartToDelete.Offset() - startToNormalize.Offset();
+    MOZ_ASSERT(lengthInStartNode);
+  }
+  if (endToNormalize.IsSet()) {
+    MOZ_ASSERT(endToNormalize.ContainerAsText() ==
+               aEndToDelete.ContainerAsText());
+    lengthInEndNode = endToNormalize.Offset() - aEndToDelete.Offset();
+    MOZ_ASSERT(lengthInEndNode);
+    // If we normalize white-spaces in a text node, we can replace all of them
+    // with one ReplaceTextTransaction.
+    if (endToNormalize.ContainerAsText() == aStartToDelete.ContainerAsText()) {
+      lengthInStartNode += lengthInEndNode;
+      lengthInEndNode = 0;
+    }
+  }
+
+  MOZ_ASSERT(lengthInStartNode + lengthInEndNode);
+
+  // Next, generate normalized white-spaces.
+  if (!lengthInEndNode) {
+    HTMLEditor::GenerateWhiteSpaceSequence(
+        aNormalizedWhiteSpacesInStartNode, lengthInStartNode,
+        previousCharPointData, nextCharPointData);
+  } else if (!lengthInStartNode) {
+    HTMLEditor::GenerateWhiteSpaceSequence(
+        aNormalizedWhiteSpacesInEndNode, lengthInEndNode, previousCharPointData,
+        nextCharPointData);
+  } else {
+    // For making `GenerateWhiteSpaceSequence()` simpler, we should create
+    // whole white-space sequence first, then, copy to the out params.
+    nsAutoString whiteSpaces;
+    HTMLEditor::GenerateWhiteSpaceSequence(
+        whiteSpaces, lengthInStartNode + lengthInEndNode, previousCharPointData,
+        nextCharPointData);
+    aNormalizedWhiteSpacesInStartNode =
+        Substring(whiteSpaces, 0, lengthInStartNode);
+    aNormalizedWhiteSpacesInEndNode = Substring(whiteSpaces, lengthInStartNode);
+    MOZ_ASSERT(aNormalizedWhiteSpacesInEndNode.Length() == lengthInEndNode);
+  }
+
+  // TODO: Shrink the replacing range and string as far as possible because
+  //       this may run a lot, i.e., HTMLEditor creates ReplaceTextTransaction
+  //       a lot for normalizing white-spaces.  Then, each transaction shouldn't
+  //       have all white-spaces every time because once it's normalized, we
+  //       don't need to normalize all of the sequence again, but currently
+  //       we do.
+
+  // Finally, extend the range.
+  if (startToNormalize.IsSet()) {
+    aStartToDelete = startToNormalize;
+  }
+  if (endToNormalize.IsSet()) {
+    aEndToDelete = endToNormalize;
+  }
+}
+
+nsresult HTMLEditor::DeleteTextAndNormalizeSurroundingWhiteSpaces(
+    const EditorDOMPointInText& aStartToDelete,
+    const EditorDOMPointInText& aEndToDelete) {
+  MOZ_ASSERT(aStartToDelete.IsSetAndValid());
+  MOZ_ASSERT(aEndToDelete.IsSetAndValid());
+  MOZ_ASSERT(aStartToDelete.EqualsOrIsBefore(aEndToDelete));
+
+  // Use nsString for these replacing string because we should avoid to copy
+  // the buffer from auto storange to ReplaceTextTransaction.
+  nsString normalizedWhiteSpacesInFirstNode, normalizedWhiteSpacesInLastNode;
+
+  // First, check whether we need to normalize white-spaces after deleting
+  // the given range.
+  EditorDOMPointInText startToDelete(aStartToDelete);
+  EditorDOMPointInText endToDelete(aEndToDelete);
+  ExtendRangeToDeleteWithNormalizingWhiteSpaces(
+      startToDelete, endToDelete, normalizedWhiteSpacesInFirstNode,
+      normalizedWhiteSpacesInLastNode);
+
+  // If given range is collapsed, i.e., the caller just wants to normalize
+  // white-space sequence, but there is no white-spaces which need to be
+  // replaced, we need to do nothing here.
+  if (startToDelete == endToDelete) {
+    return NS_OK;
+  }
+
+  // Then, modify the text nodes in the range.
+  while (true) {
+    // Use ReplaceTextTransaction if we need to normalize white-spaces in
+    // the first text node.
+    if (!normalizedWhiteSpacesInFirstNode.IsEmpty()) {
+      EditorDOMPoint trackingEndToDelete(endToDelete.ContainerAsText(),
+                                         endToDelete.Offset());
+      {
+        AutoTrackDOMPoint trackEndToDelete(RangeUpdaterRef(),
+                                           &trackingEndToDelete);
+        uint32_t lengthToReplaceInFirstTextNode =
+            startToDelete.ContainerAsText() ==
+                    trackingEndToDelete.ContainerAsText()
+                ? trackingEndToDelete.Offset() - startToDelete.Offset()
+                : startToDelete.ContainerAsText()->TextLength() -
+                      startToDelete.Offset();
+        nsresult rv = ReplaceTextWithTransaction(
+            MOZ_KnownLive(*startToDelete.ContainerAsText()),
+            startToDelete.Offset(), lengthToReplaceInFirstTextNode,
+            normalizedWhiteSpacesInFirstNode);
+        if (NS_FAILED(rv)) {
+          NS_WARNING("HTMLEditor::ReplaceTextWithTransaction() failed");
+          return rv;
+        }
+        if (startToDelete.ContainerAsText() ==
+            trackingEndToDelete.ContainerAsText()) {
+          MOZ_ASSERT(normalizedWhiteSpacesInLastNode.IsEmpty());
+          break;  // There is no more text which we need to delete.
+        }
+      }
+      if (MaybeHasMutationEventListeners(
+              NS_EVENT_BITS_MUTATION_CHARACTERDATAMODIFIED) &&
+          (NS_WARN_IF(!endToDelete.IsSetAndValid()) ||
+           NS_WARN_IF(!endToDelete.IsInTextNode()))) {
+        return NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE;
+      }
+      endToDelete.Set(trackingEndToDelete.ContainerAsText(),
+                      trackingEndToDelete.Offset());
+      // If the remaining range was modified by mutation event listener,
+      // we should stop handling the deletion.
+      startToDelete =
+          EditorDOMPointInText::AtEndOf(*startToDelete.ContainerAsText());
+      if (MaybeHasMutationEventListeners(
+              NS_EVENT_BITS_MUTATION_CHARACTERDATAMODIFIED) &&
+          NS_WARN_IF(!startToDelete.IsBefore(endToDelete))) {
+        return NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE;
+      }
+    }
+    // Delete ASCII whiteSpaces in the range simpley if there are some text
+    // nodes which we don't need to replace their text.
+    if (normalizedWhiteSpacesInLastNode.IsEmpty() ||
+        startToDelete.ContainerAsText() != endToDelete.ContainerAsText()) {
+      // If we need to replace text in the last text node, we should
+      // delete text before its previous text node.
+      EditorDOMPointInText endToDeleteExceptReplaceRange =
+          normalizedWhiteSpacesInLastNode.IsEmpty()
+              ? endToDelete
+              : EditorDOMPointInText(endToDelete.ContainerAsText(), 0);
+      if (startToDelete != endToDeleteExceptReplaceRange) {
+        nsresult rv = DeleteTextAndTextNodesWithTransaction(
+            startToDelete, endToDeleteExceptReplaceRange);
+        if (NS_FAILED(rv)) {
+          NS_WARNING(
+              "HTMLEditor::DeleteTextAndTextNodesWithTransaction() failed");
+          return rv;
+        }
+        if (normalizedWhiteSpacesInLastNode.IsEmpty()) {
+          break;  // There is no more text which we need to delete.
+        }
+        if (MaybeHasMutationEventListeners(
+                NS_EVENT_BITS_MUTATION_CHARACTERDATAMODIFIED |
+                NS_EVENT_BITS_MUTATION_NODEREMOVED |
+                NS_EVENT_BITS_MUTATION_NODEREMOVEDFROMDOCUMENT |
+                NS_EVENT_BITS_MUTATION_SUBTREEMODIFIED) &&
+            (NS_WARN_IF(!endToDeleteExceptReplaceRange.IsSetAndValid()) ||
+             NS_WARN_IF(!endToDelete.IsSetAndValid()) ||
+             NS_WARN_IF(endToDelete.IsStartOfContainer()))) {
+          return NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE;
+        }
+        // Then, replace the text in the last text node.
+        startToDelete = endToDeleteExceptReplaceRange;
+      }
+    }
+
+    // Replace ASCII whiteSpaces in the range and following character in the
+    // last text node.
+    MOZ_ASSERT(!normalizedWhiteSpacesInLastNode.IsEmpty());
+    MOZ_ASSERT(startToDelete.ContainerAsText() ==
+               endToDelete.ContainerAsText());
+    nsresult rv = ReplaceTextWithTransaction(
+        MOZ_KnownLive(*startToDelete.ContainerAsText()), startToDelete.Offset(),
+        endToDelete.Offset() - startToDelete.Offset(),
+        normalizedWhiteSpacesInLastNode);
+    if (NS_FAILED(rv)) {
+      NS_WARNING("HTMLEditor::ReplaceTextWithTransaction() failed");
+      return rv;
+    }
+    break;
+  }
+
+  if (!startToDelete.IsSetAndValid() ||
+      !startToDelete.ContainerAsText()->IsInComposedDoc()) {
+    NS_WARNING(
+        "Mutation event listener modified the first text node unexpectedly");
+    return NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE;
+  }
+
+  nsresult rv =
+      InsertBRElementIfHardLineIsEmptyAndEndsWithBlockBoundary(startToDelete);
+  NS_WARNING_ASSERTION(
+      NS_SUCCEEDED(rv),
+      "HTMLEditor::InsertBRElementIfHardLineIsEmptyAndEndsWithBlockBoundary() "
+      "failed");
+  return rv;
+}
+
+template <typename EditorDOMPointType>
 nsresult HTMLEditor::InsertBRElementIfHardLineIsEmptyAndEndsWithBlockBoundary(
-    const EditorDOMPoint& aPointToInsert) {
+    const EditorDOMPointType& aPointToInsert) {
   MOZ_ASSERT(IsEditActionDataAvailable());
   MOZ_ASSERT(aPointToInsert.IsSet());
 
@@ -4171,7 +4553,7 @@ EditActionResult HTMLEditor::TryToJoinBlocksWithTransaction(
   // first li and the p are not true siblings, but we still want to join them
   // if you backspace from li into p.
 
-  // Adjust whitespace at block boundaries
+  // Adjust white-space at block boundaries
   nsresult rv = WSRunObject::PrepareToJoinBlocks(*this, *leftBlockElement,
                                                  *rightBlockElement);
   if (NS_FAILED(rv)) {
@@ -5577,7 +5959,7 @@ nsresult HTMLEditor::IndentListChild(RefPtr<Element>* aCurList,
   // We do this if the next element is a list, and the list is of the
   // same type (li/ol) as aContent was a part it.
   if (nsIContent* nextEditableSibling =
-          GetNextHTMLSibling(&aContent, SkipWhitespace::Yes)) {
+          GetNextHTMLSibling(&aContent, SkipWhiteSpace::Yes)) {
     if (HTMLEditUtils::IsList(nextEditableSibling) &&
         aCurPoint.GetContainer()->NodeInfo()->NameAtom() ==
             nextEditableSibling->NodeInfo()->NameAtom() &&
@@ -5598,7 +5980,7 @@ nsresult HTMLEditor::IndentListChild(RefPtr<Element>* aCurList,
   // We do this if the previous element is a list, and the list is of
   // the same type (li/ol) as aContent was a part of.
   if (nsCOMPtr<nsIContent> previousEditableSibling =
-          GetPriorHTMLSibling(&aContent, SkipWhitespace::Yes)) {
+          GetPriorHTMLSibling(&aContent, SkipWhiteSpace::Yes)) {
     if (HTMLEditUtils::IsList(previousEditableSibling) &&
         aCurPoint.GetContainer()->NodeInfo()->NameAtom() ==
             previousEditableSibling->NodeInfo()->NameAtom() &&
@@ -5618,7 +6000,7 @@ nsresult HTMLEditor::IndentListChild(RefPtr<Element>* aCurList,
   // check to see if aCurList is still appropriate.  Which it is if
   // aContent is still right after it in the same list.
   nsIContent* previousEditableSibling =
-      *aCurList ? GetPriorHTMLSibling(&aContent, SkipWhitespace::Yes) : nullptr;
+      *aCurList ? GetPriorHTMLSibling(&aContent, SkipWhiteSpace::Yes) : nullptr;
   if (!*aCurList ||
       (previousEditableSibling && previousEditableSibling != *aCurList)) {
     nsAtom* containerName = aCurPoint.GetContainer()->NodeInfo()->NameAtom();
@@ -7890,7 +8272,7 @@ nsresult HTMLEditor::MaybeExtendSelectionToHardLineEdgesForBlockEditAction() {
   EditorDOMPoint newStartPoint(startPoint);
   EditorDOMPoint newEndPoint(endPoint);
 
-  // Is there any intervening visible whitespace?  If so we can't push
+  // Is there any intervening visible white-space?  If so we can't push
   // selection past that, it would visibly change meaning of users selection.
   WSRunScanner wsScannerAtEnd(this, endPoint);
   if (wsScannerAtEnd.ScanPreviousVisibleNodeOrBlockBoundaryFrom(endPoint)
@@ -7919,7 +8301,7 @@ nsresult HTMLEditor::MaybeExtendSelectionToHardLineEdgesForBlockEditAction() {
     }
   }
 
-  // Is there any intervening visible whitespace?  If so we can't push
+  // Is there any intervening visible white-space?  If so we can't push
   // selection past that, it would visibly change meaning of users selection.
   WSRunScanner wsScannerAtStart(this, startPoint);
   if (wsScannerAtStart.ScanNextVisibleNodeOrBlockBoundaryFrom(startPoint)
@@ -8009,11 +8391,11 @@ EditorDOMPoint HTMLEditor::GetWhiteSpaceEndPoint(
     int32_t offset = -1;
     nsCOMPtr<nsIContent> content;
     if (aScanDirection == ScanDirection::Backward) {
-      HTMLEditor::IsPrevCharInNodeWhitespace(newContent, newOffset, &isSpace,
+      HTMLEditor::IsPrevCharInNodeWhiteSpace(newContent, newOffset, &isSpace,
                                              &isNBSP, getter_AddRefs(content),
                                              &offset);
     } else {
-      HTMLEditor::IsNextCharInNodeWhitespace(newContent, newOffset, &isSpace,
+      HTMLEditor::IsNextCharInNodeWhiteSpace(newContent, newOffset, &isSpace,
                                              &isNBSP, getter_AddRefs(content),
                                              &offset);
     }
@@ -8303,13 +8685,13 @@ already_AddRefed<nsRange> HTMLEditor::CreateRangeIncludingAdjuscentWhiteSpaces(
   SelectBRElementIfCollapsedInEmptyBlock(startRef, endRef);
 
   // For text actions, we want to look backwards (or forwards, as
-  // appropriate) for additional whitespace or nbsp's.  We may have to act
+  // appropriate) for additional white-space or nbsp's.  We may have to act
   // on these later even though they are outside of the initial selection.
   // Even if they are in another node!
   // XXX Although the comment mentioned that this may scan other text nodes,
   //     GetWhiteSpaceEndPoint() scans only in given container node.
   // XXX Looks like that we should make GetWhiteSpaceEndPoint() be a
-  //     instance method and stop scanning whitespaces when it reaches
+  //     instance method and stop scanning white-spaces when it reaches
   //     active editing host.
   EditorDOMPoint startPoint = HTMLEditor::GetWhiteSpaceEndPoint(
       startRef, HTMLEditor::ScanDirection::Backward);
@@ -9057,7 +9439,7 @@ EditActionResult HTMLEditor::HandleInsertParagraphInParagraph(
   // splitting middle of it because we assume that users don't want to create
   // *same* anchor element across two or more paragraphs in most cases.
   // So, adjust selection start if it's edge of anchor element(s).
-  // XXX We don't support whitespace collapsing in these cases since it needs
+  // XXX We don't support white-space collapsing in these cases since it needs
   //     some additional work with WSRunObject but it's not usual case.
   //     E.g., |<a href="foo"><b>foo []</b> </a>|
   if (atStartOfSelection.IsStartOfContainer()) {
@@ -9081,7 +9463,7 @@ EditActionResult HTMLEditor::HandleInsertParagraphInParagraph(
   }
   // We also need to check if selection is at invisible <br> element at end
   // of an <a href="foo"> element because editor inserts a <br> element when
-  // user types Enter key after a whitespace which is at middle of
+  // user types Enter key after a white-space which is at middle of
   // <a href="foo"> element and when setting selection at end of the element,
   // selection becomes referring the <br> element.  We may need to change this
   // behavior later if it'd be standardized.

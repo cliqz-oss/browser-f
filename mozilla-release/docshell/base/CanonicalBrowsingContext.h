@@ -8,7 +8,8 @@
 #define mozilla_dom_CanonicalBrowsingContext_h
 
 #include "mozilla/dom/BrowsingContext.h"
-#include "mozilla/dom/MediaControlKeysEvent.h"
+#include "mozilla/dom/MediaControllerBinding.h"
+#include "mozilla/dom/BrowsingContextWebProgress.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/MozPromise.h"
 #include "nsCycleCollectionParticipant.h"
@@ -16,11 +17,12 @@
 #include "nsTArray.h"
 #include "nsTHashtable.h"
 #include "nsHashKeys.h"
-
-class nsISHistory;
 #include "nsISecureBrowserUI.h"
 
+class nsISHistory;
+class nsBrowserStatusFilter;
 class nsSecureBrowserUI;
+
 namespace mozilla {
 namespace net {
 class DocumentLoadListener;
@@ -30,17 +32,9 @@ namespace dom {
 
 class BrowserParent;
 class MediaController;
-struct SessionHistoryInfoAndId;
+class SessionHistoryInfo;
 class SessionHistoryEntry;
 class WindowGlobalParent;
-
-struct SessionHistoryEntryAndId {
-  SessionHistoryEntryAndId(uint64_t aId, SessionHistoryEntry* aEntry)
-      : mId(aId), mEntry(aEntry) {}
-
-  uint64_t mId;
-  RefPtr<SessionHistoryEntry> mEntry;
-};
 
 // CanonicalBrowsingContext is a BrowsingContext living in the parent
 // process, with whatever extra data that a BrowsingContext in the
@@ -94,10 +88,22 @@ class CanonicalBrowsingContext final : public BrowsingContext {
 
   already_AddRefed<CanonicalBrowsingContext> GetParentCrossChromeBoundary();
 
+  Nullable<WindowProxyHolder> GetTopChromeWindow();
+
   nsISHistory* GetSessionHistory();
-  UniquePtr<SessionHistoryInfoAndId> CreateSessionHistoryEntryForLoad(
+  UniquePtr<SessionHistoryInfo> CreateSessionHistoryEntryForLoad(
       nsDocShellLoadState* aLoadState, nsIChannel* aChannel);
   void SessionHistoryCommit(uint64_t aSessionHistoryEntryId);
+
+  // Calls the session history listeners' OnHistoryReload, storing the result in
+  // aCanReload. If aCanReload is set to true and we have an active or a loading
+  // entry then aLoadState will be initialized from that entry, and
+  // aReloadActiveEntry will be true if we have an active entry. If aCanReload
+  // is true and aLoadState and aReloadActiveEntry are not set then we should
+  // attempt to reload based on the current document in the docshell.
+  void NotifyOnHistoryReload(bool& aCanReload,
+                             Maybe<RefPtr<nsDocShellLoadState>>& aLoadState,
+                             Maybe<bool>& aReloadActiveEntry);
 
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
@@ -122,35 +128,51 @@ class CanonicalBrowsingContext final : public BrowsingContext {
       GlobalObject& aGlobal,
       const Sequence<mozilla::OwningNonNull<BrowsingContext>>& aRoots);
 
-  // This function would update the media action for the current outer window
+  // This function would update media control key for the current outer window
   // and propogate the action to other browsing contexts in content processes.
-  void UpdateMediaControlKeysEvent(MediaControlKeysEvent aEvent);
+  void UpdateMediaControlKey(MediaControlKey aKey);
 
   // Triggers a load in the process
   using BrowsingContext::LoadURI;
   void LoadURI(const nsAString& aURI, const LoadURIOptions& aOptions,
                ErrorResult& aError);
 
+  // Internal method to change which process a BrowsingContext is being loaded
+  // in. The returned promise will resolve when the process switch is completed.
+  //
+  // A VoidString() aRemoteType argument will perform a process switch into the
+  // parent process, and the method will resolve with a null BrowserParent.
   using RemotenessPromise = MozPromise<RefPtr<BrowserParent>, nsresult, false>;
-  RefPtr<RemotenessPromise> ChangeFrameRemoteness(const nsAString& aRemoteType,
-                                                  uint64_t aPendingSwitchId);
+  RefPtr<RemotenessPromise> ChangeRemoteness(const nsAString& aRemoteType,
+                                             uint64_t aPendingSwitchId,
+                                             bool aReplaceBrowsingContext);
 
   // Return a media controller from the top-level browsing context that can
   // control all media belonging to this browsing context tree. Return nullptr
   // if the top-level browsing context has been discarded.
   MediaController* GetMediaController();
 
-  bool AttemptLoadURIInParent(nsDocShellLoadState* aLoadState,
-                              uint32_t* aLoadIdentifier);
+  bool AttemptLoadURIInParent(nsDocShellLoadState* aLoadState);
 
   // Get or create a secure browser UI for this BrowsingContext
   nsISecureBrowserUI* GetSecureBrowserUI();
+
+  BrowsingContextWebProgress* GetWebProgress() { return mWebProgress; }
 
   // Called when the current URI changes (from an
   // nsIWebProgressListener::OnLocationChange event, so that we
   // can update our security UI for the new location, or when the
   // mixed content state for our current window is changed.
   void UpdateSecurityStateForLocationOrMixedContentChange();
+
+  void MaybeAddAsProgressListener(nsIWebProgress* aWebProgress);
+
+  // Called when a navigation forces us to recreate our browsing
+  // context (for example, when switching in or out of the parent
+  // process).
+  // aNewContext is the newly created BrowsingContext that is replacing
+  // us.
+  void ReplacedBy(CanonicalBrowsingContext* aNewContext);
 
  protected:
   // Called when the browsing context is being discarded.
@@ -175,22 +197,26 @@ class CanonicalBrowsingContext final : public BrowsingContext {
 
     PendingRemotenessChange(CanonicalBrowsingContext* aTarget,
                             RemotenessPromise::Private* aPromise,
-                            uint64_t aPendingSwitchId)
-        : mTarget(aTarget),
-          mPromise(aPromise),
-          mPendingSwitchId(aPendingSwitchId) {}
+                            uint64_t aPendingSwitchId,
+                            bool aReplaceBrowsingContext);
 
     void Cancel(nsresult aRv);
-    void Complete(ContentParent* aContentParent);
 
    private:
+    friend class CanonicalBrowsingContext;
+
     ~PendingRemotenessChange();
+    void ProcessReady();
+    void Finish();
     void Clear();
 
     RefPtr<CanonicalBrowsingContext> mTarget;
     RefPtr<RemotenessPromise::Private> mPromise;
+    RefPtr<GenericPromise> mPrepareToChangePromise;
+    RefPtr<ContentParent> mContentParent;
 
     uint64_t mPendingSwitchId;
+    bool mReplaceBrowsingContext;
   };
 
   friend class net::DocumentLoadListener;
@@ -200,7 +226,7 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // Called once DocumentLoadListener completes handling a load, and it
   // is either complete, or handed off to the final channel to deliver
   // data to the destination docshell.
-  void EndDocumentLoad(net::DocumentLoadListener* aLoad);
+  void EndDocumentLoad(bool aForProcessSwitch);
 
   // XXX(farre): Store a ContentParent pointer here rather than mProcessId?
   // Indicates which process owns the docshell.
@@ -225,10 +251,12 @@ class CanonicalBrowsingContext final : public BrowsingContext {
 
   RefPtr<net::DocumentLoadListener> mCurrentLoad;
 
-  nsTArray<SessionHistoryEntryAndId> mLoadingEntries;
+  nsTArray<RefPtr<SessionHistoryEntry>> mLoadingEntries;
   RefPtr<SessionHistoryEntry> mActiveEntry;
 
   RefPtr<nsSecureBrowserUI> mSecureBrowserUI;
+  RefPtr<BrowsingContextWebProgress> mWebProgress;
+  RefPtr<nsBrowserStatusFilter> mStatusFilter;
 };
 
 }  // namespace dom

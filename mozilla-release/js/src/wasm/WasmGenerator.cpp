@@ -519,7 +519,7 @@ bool ModuleGenerator::linkCallSites() {
       case CallSiteDesc::Func: {
         if (funcIsCompiled(target.funcIndex())) {
           uint32_t calleeOffset =
-              funcCodeRange(target.funcIndex()).funcNormalEntry();
+              funcCodeRange(target.funcIndex()).funcUncheckedCallEntry();
           if (InRange(callerOffset, calleeOffset)) {
             masm_.patchCall(callerOffset, calleeOffset);
             break;
@@ -560,8 +560,7 @@ bool ModuleGenerator::linkCallSites() {
           // reload the TLS register on this path.
           Offsets offsets;
           offsets.begin = masm_.currentOffset();
-          masm_.loadPtr(Address(FramePointer, offsetof(Frame, tls)),
-                        WasmTlsReg);
+          masm_.loadPtr(Address(FramePointer, Frame::tlsOffset()), WasmTlsReg);
           CodeOffset jumpOffset = masm_.farJumpWithPatch();
           offsets.end = masm_.currentOffset();
           if (masm_.oom()) {
@@ -945,7 +944,7 @@ bool ModuleGenerator::finishCodegen() {
 
   for (CallFarJump far : callFarJumps_) {
     masm_.patchFarJump(far.jump,
-                       funcCodeRange(far.funcIndex).funcNormalEntry());
+                       funcCodeRange(far.funcIndex).funcUncheckedCallEntry());
   }
 
   for (CodeOffset farJump : debugTrapFarJumps_) {

@@ -35,6 +35,11 @@ const { AppConstants } = ChromeUtils.import(
 
 ChromeUtils.defineModuleGetter(
   this,
+  "AsyncPrefs",
+  "resource://gre/modules/AsyncPrefs.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
   "NetUtil",
   "resource://gre/modules/NetUtil.jsm"
 );
@@ -57,11 +62,6 @@ ChromeUtils.defineModuleGetter(
   "resource://pdf.js/PdfJsTelemetry.jsm"
 );
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "PdfjsContentUtils",
-  "resource://pdf.js/PdfjsContentUtils.jsm"
-);
 ChromeUtils.defineModuleGetter(this, "PdfJs", "resource://pdf.js/PdfJs.jsm");
 
 XPCOMUtils.defineLazyGlobalGetters(this, ["XMLHttpRequest"]);
@@ -137,6 +137,14 @@ function getDOMWindow(aChannel, aPrincipal) {
     return null;
   }
   return win;
+}
+
+function getActor(window) {
+  try {
+    return window.windowGlobalChild.getActor("Pdfjs");
+  } catch (ex) {
+    return null;
+  }
 }
 
 function getLocalizedStrings(path) {
@@ -267,6 +275,7 @@ class ChromeActions {
       firstPageInfo: false,
       streamTypesUsed: {},
       fontTypesUsed: {},
+      fallbackErrorsReported: {},
     };
   }
 
@@ -401,7 +410,7 @@ class ChromeActions {
 
   supportsIntegratedFind() {
     // Integrated find is only supported when we're not in a frame
-    return this.domWindow.frameElement === null;
+    return this.domWindow.windowGlobalChild.browsingContext.parent === null;
   }
 
   supportsDocumentFonts() {
@@ -478,6 +487,14 @@ class ChromeActions {
       case "print":
         PdfJsTelemetry.onPrint();
         break;
+      case "unsupportedFeature":
+        if (!this.telemetryState.fallbackErrorsReported[probeInfo.featureId]) {
+          PdfJsTelemetry.onFallbackError(probeInfo.featureId);
+          this.telemetryState.fallbackErrorsReported[
+            probeInfo.featureId
+          ] = true;
+        }
+        break;
     }
   }
 
@@ -496,28 +513,24 @@ class ChromeActions {
     } else {
       message = getLocalizedString(strings, "unsupported_feature");
     }
-    PdfJsTelemetry.onFallback(featureId);
-    PdfjsContentUtils.displayWarning(
-      domWindow,
-      message,
-      getLocalizedString(strings, "open_with_different_viewer"),
-      getLocalizedString(strings, "open_with_different_viewer", "accessKey")
-    );
+    PdfJsTelemetry.onFallbackShown(featureId);
 
-    let winmm = domWindow.docShell.messageManager;
+    // Request the display of a notification warning in the associated window
+    // when the renderer isn't sure a pdf displayed correctly.
+    let actor = getActor(domWindow);
+    if (actor) {
+      actor.sendAsyncMessage("PDFJS:Parent:displayWarning", {
+        message,
+        label: getLocalizedString(strings, "open_with_different_viewer"),
+        accessKey: getLocalizedString(
+          strings,
+          "open_with_different_viewer",
+          "accessKey"
+        ),
+      });
 
-    winmm.addMessageListener(
-      "PDFJS:Child:fallbackDownload",
-      function fallbackDownload(msg) {
-        let data = msg.data;
-        sendResponse(data.download);
-
-        winmm.removeMessageListener(
-          "PDFJS:Child:fallbackDownload",
-          fallbackDownload
-        );
-      }
-    );
+      actor.fallbackCallback = sendResponse;
+    }
   }
 
   updateFindControlState(data) {
@@ -543,8 +556,8 @@ class ChromeActions {
       matchesCount = data.matchesCount;
     }
 
-    var winmm = this.domWindow.docShell.messageManager;
-    winmm.sendAsyncMessage("PDFJS:Parent:updateControlState", {
+    let actor = getActor(this.domWindow);
+    actor?.sendAsyncMessage("PDFJS:Parent:updateControlState", {
       result,
       findPrevious,
       matchesCount,
@@ -560,8 +573,8 @@ class ChromeActions {
       return;
     }
 
-    const winmm = this.domWindow.docShell.messageManager;
-    winmm.sendAsyncMessage("PDFJS:Parent:updateMatchesCount", data);
+    let actor = getActor(this.domWindow);
+    actor?.sendAsyncMessage("PDFJS:Parent:updateMatchesCount", data);
   }
 
   setPreferences(prefs, sendResponse) {
@@ -582,10 +595,10 @@ class ChromeActions {
       prefName = PREF_PREFIX + "." + key;
       switch (typeof prefValue) {
         case "boolean":
-          PdfjsContentUtils.setBoolPref(prefName, prefValue);
+          AsyncPrefs.set(prefName, prefValue);
           break;
         case "number":
-          PdfjsContentUtils.setIntPref(prefName, prefValue);
+          AsyncPrefs.set(prefName, prefValue);
           break;
         case "string":
           if (prefValue.length > MAX_STRING_PREF_LENGTH) {
@@ -594,7 +607,7 @@ class ChromeActions {
                 "for a string preference."
             );
           } else {
-            PdfjsContentUtils.setStringPref(prefName, prefValue);
+            AsyncPrefs.set(prefName, prefValue);
           }
           break;
       }
@@ -916,89 +929,6 @@ class RequestListener {
   }
 }
 
-/**
- * Forwards events from the eventElement to the contentWindow only if the
- * content window matches the currently selected browser window.
- */
-class FindEventManager {
-  constructor(contentWindow) {
-    this.contentWindow = contentWindow;
-    this.winmm = contentWindow.docShell.messageManager;
-  }
-
-  bind() {
-    this.contentWindow.addEventListener(
-      "unload",
-      evt => {
-        this.unbind();
-      },
-      { once: true }
-    );
-
-    // We cannot directly attach listeners to for the find events
-    // since the FindBar is in the parent process. Instead we're
-    // asking the PdfjsChromeUtils to do it for us and forward
-    // all the find events to us.
-    this.winmm.sendAsyncMessage("PDFJS:Parent:addEventListener");
-    this.winmm.addMessageListener("PDFJS:Child:handleEvent", this);
-  }
-
-  receiveMessage(msg) {
-    var detail = msg.data.detail;
-    var type = msg.data.type;
-    var contentWindow = this.contentWindow;
-
-    detail = Cu.cloneInto(detail, contentWindow);
-    var forward = contentWindow.document.createEvent("CustomEvent");
-    forward.initCustomEvent(type, true, true, detail);
-    contentWindow.dispatchEvent(forward);
-  }
-
-  unbind() {
-    this.winmm.sendAsyncMessage("PDFJS:Parent:removeEventListener");
-    this.winmm.removeMessageListener("PDFJS:Child:handleEvent", this);
-  }
-}
-
-/**
- * Forwards zoom events from the browser chrome to the currently active viewer.
- */
-class ZoomEventManager {
-  constructor(contentWindow) {
-    this.contentWindow = contentWindow;
-    this.winmm = contentWindow.docShell.messageManager;
-  }
-
-  bind() {
-    this.contentWindow.addEventListener(
-      "unload",
-      evt => {
-        this.unbind();
-      },
-      { once: true }
-    );
-
-    this.winmm.addMessageListener("PDFJS:ZoomIn", this);
-    this.winmm.addMessageListener("PDFJS:ZoomOut", this);
-    this.winmm.addMessageListener("PDFJS:ZoomReset", this);
-  }
-
-  receiveMessage(msg) {
-    const type = msg.name.split("PDFJS:")[1].toLowerCase();
-    const contentWindow = this.contentWindow;
-
-    const forward = contentWindow.document.createEvent("CustomEvent");
-    forward.initCustomEvent(type, true, true, null);
-    contentWindow.dispatchEvent(forward);
-  }
-
-  unbind() {
-    this.winmm.removeMessageListener("PDFJS:ZoomIn", this);
-    this.winmm.removeMessageListener("PDFJS:ZoomOut", this);
-    this.winmm.removeMessageListener("PDFJS:ZoomReset", this);
-  }
-}
-
 function PdfStreamConverter() {}
 
 PdfStreamConverter.prototype = {
@@ -1289,19 +1219,18 @@ PdfStreamConverter.prototype = {
           false,
           true
         );
-        if (actions.supportsIntegratedFind()) {
-          var findEventManager = new FindEventManager(domWindow);
-          findEventManager.bind();
-        }
-        const zoomEventManager = new ZoomEventManager(domWindow);
-        zoomEventManager.bind();
+
+        let actor = getActor(domWindow);
+        actor?.init(actions.supportsIntegratedFind());
 
         listener.onStopRequest(aRequest, statusCode);
 
-        if (domWindow.frameElement) {
-          var isObjectEmbed =
-            domWindow.frameElement.tagName !== "IFRAME" ||
-            domWindow.frameElement.className === "previewPluginContentFrame";
+        if (domWindow.windowGlobalChild.browsingContext.parent) {
+          // This will need to be changed when fission supports object/embed (bug 1614524)
+          var isObjectEmbed = domWindow.frameElement
+            ? domWindow.frameElement.tagName == "OBJECT" ||
+              domWindow.frameElement.tagName == "EMBED"
+            : false;
           PdfJsTelemetry.onEmbed(isObjectEmbed);
         }
       },

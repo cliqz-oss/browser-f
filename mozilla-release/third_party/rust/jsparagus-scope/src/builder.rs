@@ -33,17 +33,21 @@
 //!
 //! [1]: https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
 
+use crate::data::FunctionDeclarationPropertyMap;
 use crate::free_name_tracker::FreeNameTracker;
-use ast::associated_data::{AssociatedData, Key as AssociatedDataKey};
+use ast::associated_data::AssociatedData;
 use ast::source_atom_set::{CommonSourceAtomSetIndices, SourceAtomSetIndex};
 use ast::source_location_accessor::SourceLocationAccessor;
 use ast::type_id::NodeTypeIdAccessor;
 use indexmap::set::IndexSet;
-use std::collections::HashSet;
+use std::collections::hash_map::Keys;
+use std::collections::{HashMap, HashSet};
+use stencil::function::{FunctionFlags, FunctionSyntaxKind};
 use stencil::scope::{
     BindingName, FunctionScopeData, GlobalScopeData, LexicalScopeData, ScopeData, ScopeDataList,
     ScopeDataMap, ScopeIndex, VarScopeData,
 };
+use stencil::script::{ScriptStencil, ScriptStencilIndex, ScriptStencilList, SourceExtent};
 
 /// The kind of items inside the result of VarScopedDeclarations.
 ///
@@ -313,14 +317,140 @@ enum ScopeKind {
     BlockStatementList,
 }
 
+/// Index into BaseScopeData.bindings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BindingIndex {
+    index: usize,
+}
+impl BindingIndex {
+    fn new(index: usize) -> Self {
+        Self { index }
+    }
+
+    pub fn next(&self) -> Self {
+        Self {
+            index: self.index + 1,
+        }
+    }
+}
+
+impl From<BindingIndex> for usize {
+    fn from(index: BindingIndex) -> usize {
+        index.index
+    }
+}
+
+#[derive(Debug)]
+struct PossiblyAnnexBFunction {
+    name: SourceAtomSetIndex,
+    owner_scope_index: ScopeIndex,
+    binding_index: BindingIndex,
+    stencil_index: ScriptStencilIndex,
+}
+
+#[derive(Debug)]
+struct PossiblyAnnexBFunctionList {
+    functions: HashMap<SourceAtomSetIndex, Vec<PossiblyAnnexBFunction>>,
+}
+
+impl PossiblyAnnexBFunctionList {
+    fn new() -> Self {
+        Self {
+            functions: HashMap::new(),
+        }
+    }
+
+    fn push(
+        &mut self,
+        name: SourceAtomSetIndex,
+        owner_scope_index: ScopeIndex,
+        binding_index: BindingIndex,
+        stencil_index: ScriptStencilIndex,
+    ) {
+        if let Some(functions) = self.functions.get_mut(&name) {
+            functions.push(PossiblyAnnexBFunction {
+                name,
+                owner_scope_index,
+                binding_index,
+                stencil_index,
+            });
+            return;
+        }
+
+        let mut functions = Vec::with_capacity(1);
+        functions.push(PossiblyAnnexBFunction {
+            name,
+            owner_scope_index,
+            binding_index,
+            stencil_index,
+        });
+        self.functions.insert(name, functions);
+    }
+
+    fn remove_if_exists(&mut self, name: SourceAtomSetIndex) {
+        self.functions.remove(&name);
+    }
+
+    fn mark_annex_b(
+        &self,
+        scopes: &mut ScopeDataList,
+        function_declaration_properties: &mut FunctionDeclarationPropertyMap,
+    ) {
+        for functions in &mut self.functions.values() {
+            for fun in functions {
+                let scope = scopes.get_mut(fun.owner_scope_index);
+                match scope {
+                    ScopeData::Lexical(data) => {
+                        data.mark_annex_b_function(fun.name, fun.binding_index.into());
+                    }
+                    _ => panic!("unexpected scope pointed by Annex B function"),
+                }
+
+                function_declaration_properties.mark_annex_b(fun.stencil_index);
+            }
+        }
+    }
+
+    fn names(&self) -> Keys<SourceAtomSetIndex, Vec<PossiblyAnnexBFunction>> {
+        self.functions.keys()
+    }
+
+    fn clear(&mut self) {
+        self.functions.clear();
+    }
+}
+
+/// Common fields across all *ScopeBuilder.
+#[derive(Debug)]
+struct BaseScopeBuilder {
+    name_tracker: FreeNameTracker,
+
+    /// Bindings in this scope can be accessed dynamically by:
+    ///   * direct `eval`
+    ///   * `with` statement
+    ///   * `delete name` statement
+    bindings_accessed_dynamically: bool,
+}
+
+impl BaseScopeBuilder {
+    fn new() -> Self {
+        Self {
+            name_tracker: FreeNameTracker::new(),
+            bindings_accessed_dynamically: false,
+        }
+    }
+}
+
 /// Variables declared/used in GlobalDeclarationInstantiation.
 #[derive(Debug)]
 struct GlobalScopeBuilder {
+    base: BaseScopeBuilder,
+
     /// Runtime Semantics: GlobalDeclarationInstantiation ( script, env )
     /// https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
     ///
     /// Step 8. Let functionsToInitialize be a new empty List.
-    functions_to_initialize: Vec<AssociatedDataKey>,
+    functions_to_initialize: Vec<ScriptStencilIndex>,
 
     /// Step 9. Let declaredFunctionNames be a new empty List.
     declared_function_names: IndexSet<SourceAtomSetIndex>,
@@ -337,20 +467,18 @@ struct GlobalScopeBuilder {
     const_names: Vec<SourceAtomSetIndex>,
 
     scope_index: ScopeIndex,
-
-    name_tracker: FreeNameTracker,
 }
 
 impl GlobalScopeBuilder {
     fn new(scope_index: ScopeIndex) -> Self {
         Self {
+            base: BaseScopeBuilder::new(),
             functions_to_initialize: Vec::new(),
             declared_function_names: IndexSet::new(),
             declared_var_names: IndexSet::new(),
             let_names: Vec::new(),
             const_names: Vec::new(),
             scope_index,
-            name_tracker: FreeNameTracker::new(),
         }
     }
 
@@ -397,10 +525,7 @@ impl GlobalScopeBuilder {
         self.const_names.push(name);
     }
 
-    fn declare_function<T>(&mut self, name: SourceAtomSetIndex, fun: &T)
-    where
-        T: SourceLocationAccessor + NodeTypeIdAccessor,
-    {
+    fn declare_function(&mut self, name: SourceAtomSetIndex, fun_index: ScriptStencilIndex) {
         // Runtime Semantics: GlobalDeclarationInstantiation ( script, env )
         // https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
         //
@@ -434,8 +559,7 @@ impl GlobalScopeBuilder {
 
         // Step 10.a.iv.4. Insert d as the first element of
         //                 functionsToInitialize.
-        self.functions_to_initialize
-            .push(AssociatedDataKey::new(fun));
+        self.functions_to_initialize.push(fun_index);
     }
 
     fn remove_function_names_from_var_names(&mut self) {
@@ -451,7 +575,117 @@ impl GlobalScopeBuilder {
         }
     }
 
-    fn into_scope_data(self) -> ScopeData {
+    fn perform_annex_b(
+        &mut self,
+        scopes: &mut ScopeDataList,
+        function_declaration_properties: &mut FunctionDeclarationPropertyMap,
+        possibly_annex_b_functions: &mut PossiblyAnnexBFunctionList,
+    ) {
+        // Annex B
+        // Changes to GlobalDeclarationInstantiation
+        // https://tc39.es/ecma262/#sec-web-compat-globaldeclarationinstantiation
+        //
+        // Step 1. Let strict be IsStrict of script.
+        //
+        // FIXME: Once directives are supported, reflect it here.
+        let strict = false;
+
+        // Step 2. If strict is false, then
+        if strict {
+            return;
+        }
+
+        // Step 2.a. Let declaredFunctionOrVarNames be a new empty List.
+        // Step 2.b. Append to declaredFunctionOrVarNames the elements of
+        //           declaredFunctionNames.
+        // Step 2.c. Append to declaredFunctionOrVarNames the elements of
+        //           declaredVarNames.
+        //
+        // NOTE: Use `self.declared_var_names` to avoid duplication against
+        //       `declaredVarNames`.
+        //       And duplication against `declaredFunctionNames` will be
+        //       removed in `remove_function_names_from_var_names`.
+
+        // Step 2.d. For each FunctionDeclaration f that is directly contained
+        //           in the StatementList of a Block, CaseClause, or
+        //           DefaultClause Contained within script, do
+        //
+        // NOTE: `possibly_annex_b_functions` contains all of them.
+
+        // Step 2.d.i. Let F be StringValue of the BindingIdentifier of f.
+        // Step 2.d.ii. If replacing the FunctionDeclaration f with a
+        //              VariableStatement that has F as a BindingIdentifier
+        //              would not produce any Early Errors for script, then
+        //
+        // NOTE: Early Errors happen if any of top-level lexical has
+        //       the same name.  Filter out those functions here.
+        for n in &self.let_names {
+            possibly_annex_b_functions.remove_if_exists(*n);
+        }
+        for n in &self.const_names {
+            possibly_annex_b_functions.remove_if_exists(*n);
+        }
+
+        // Step 2.d.ii.1. If env.HasLexicalDeclaration(F) is false, then
+        // Step 2.d.ii.1.a. Let fnDefinable be ? env.CanDeclareGlobalVar(F).
+        // Step 2.d.ii.1.b. If fnDefinable is true, then
+        //
+        // FIXME: Are these steps performed by any implementation?
+        //        https://github.com/tc39/ecma262/issues/2019
+
+        // Step 2.d.ii.1.b.i. NOTE: A var binding for F is only instantiated
+        //                    here if it is neither a VarDeclaredName nor
+        //                    the name of another FunctionDeclaration.
+        // Step 2.d.ii.1.b.ii. If declaredFunctionOrVarNames does not
+        //                     contain F, then
+        // Step 2.d.ii.1.b.ii.1. Perform
+        //                       ?env.CreateGlobalVarBinding(F, false).
+        // Step 2.d.ii.1.b.ii.2. Append F to declaredFunctionOrVarNames.
+        for n in possibly_annex_b_functions.names() {
+            self.declared_var_names.insert(*n);
+        }
+
+        // Step 2.d.ii.1.b.iii. When the FunctionDeclaration f is evaluated,
+        //                      perform the following steps in place of the
+        //                      FunctionDeclaration Evaluation algorithm
+        //                      provided in
+        //                      https://tc39.es/ecma262/#sec-function-definitions-runtime-semantics-evaluation :
+        // Step 2.d.ii.1.b.iii.1. Let genv be the running execution
+        //                        context's VariableEnvironment.
+        // Step 2.d.ii.1.b.iii.2. Let benv be the running execution
+        //                        context's LexicalEnvironment.
+        // Step 2.d.ii.1.b.iii.3. Let fobj be
+        //                        ! benv.GetBindingValue(F, false).
+        // Step 2.d.ii.1.b.iii.4. Perform
+        //                        ? genv.SetMutableBinding(F, fobj, false).
+        // Step 2.d.ii.1.b.iii.5. Return NormalCompletion(empty).
+        possibly_annex_b_functions.mark_annex_b(scopes, function_declaration_properties);
+    }
+
+    fn into_scope_data(
+        mut self,
+        scopes: &mut ScopeDataList,
+        function_declaration_properties: &mut FunctionDeclarationPropertyMap,
+        possibly_annex_b_functions: &mut PossiblyAnnexBFunctionList,
+    ) -> ScopeData {
+        // Runtime Semantics: GlobalDeclarationInstantiation ( script, env )
+        // https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
+        //
+        // NOTE: Steps are reordered to match the order of binding in runtime.
+
+        // Step 13. NOTE: Annex B adds additional steps at this point.
+        //
+        // NOTE: Reordered here to reflect the change to
+        //       self.declared_var_names.
+        self.perform_annex_b(
+            scopes,
+            function_declaration_properties,
+            possibly_annex_b_functions,
+        );
+
+        // Step 12.a.i.i If vn is not an element of declaredFunctionNames, then
+        self.remove_function_names_from_var_names();
+
         let mut data = GlobalScopeData::new(
             self.declared_var_names.len() + self.declared_function_names.len(),
             self.let_names.len(),
@@ -459,16 +693,13 @@ impl GlobalScopeBuilder {
             self.functions_to_initialize,
         );
 
-        // Runtime Semantics: GlobalDeclarationInstantiation ( script, env )
-        // https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
-        //
-        // NOTE: Steps are reordered to match the order of binding in runtime.
-        //
         // Step 18. For each String vn in declaredVarNames, in list order, do
         for n in &self.declared_var_names {
             // 18.a. Perform ? envRec.CreateGlobalVarBinding(vn, false).
-            let is_closed_over = self.name_tracker.is_closed_over_def(n);
-            data.bindings.push(BindingName::new(*n, is_closed_over))
+            let is_closed_over = self.base.name_tracker.is_closed_over_def(n);
+            data.base
+                .bindings
+                .push(BindingName::new(*n, is_closed_over))
         }
 
         // Step 17. For each Parse Node f in functionsToInitialize, do
@@ -478,10 +709,9 @@ impl GlobalScopeBuilder {
             //            argument env.
             // Step 17.c. Perform
             //            ? envRec.CreateGlobalFunctionBinding(fn, fo, false).
-            //
-            // FIXME: for Annex B functions, use `new`.
-            let is_closed_over = self.name_tracker.is_closed_over_def(n);
-            data.bindings
+            let is_closed_over = self.base.name_tracker.is_closed_over_def(n);
+            data.base
+                .bindings
                 .push(BindingName::new_top_level_function(*n, is_closed_over));
         }
 
@@ -492,29 +722,40 @@ impl GlobalScopeBuilder {
         for n in &self.let_names {
             // Step 16.b.ii. Else,
             // Step 16.b.ii.1. Perform ? envRec.CreateMutableBinding(dn, false).
-            let is_closed_over = self.name_tracker.is_closed_over_def(n);
-            data.bindings.push(BindingName::new(*n, is_closed_over))
+            let is_closed_over = self.base.name_tracker.is_closed_over_def(n);
+            data.base
+                .bindings
+                .push(BindingName::new(*n, is_closed_over))
         }
         for n in &self.const_names {
             // Step 16.b.i. If IsConstantDeclaration of d is true, then
             // Step 16.b.i.1. Perform ? envRec.CreateImmutableBinding(dn, true).
-            let is_closed_over = self.name_tracker.is_closed_over_def(n);
-            data.bindings.push(BindingName::new(*n, is_closed_over))
+            let is_closed_over = self.base.name_tracker.is_closed_over_def(n);
+            data.base
+                .bindings
+                .push(BindingName::new(*n, is_closed_over))
         }
 
         ScopeData::Global(data)
     }
 }
 
+#[derive(Debug)]
+struct FunctionNameAndStencilIndex {
+    name: SourceAtomSetIndex,
+    stencil: ScriptStencilIndex,
+}
+
 /// Variables declared/used in BlockDeclarationInstantiation
 #[derive(Debug)]
 struct BlockScopeBuilder {
+    base: BaseScopeBuilder,
+
     /// Runtime Semantics: BlockDeclarationInstantiation ( code, env )
     /// https://tc39.es/ecma262/#sec-blockdeclarationinstantiation
     ///
     /// Step 3. Let declarations be the LexicallyScopedDeclarations of code.
     let_names: Vec<SourceAtomSetIndex>,
-    fun_names: Vec<SourceAtomSetIndex>,
     const_names: Vec<SourceAtomSetIndex>,
 
     /// Runtime Semantics: BlockDeclarationInstantiation ( code, env )
@@ -523,24 +764,20 @@ struct BlockScopeBuilder {
     /// Step 4.b. If d is a FunctionDeclaration, a GeneratorDeclaration, an
     ///           AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration,
     ///           then
-    ///
-    /// FIXME: Support Annex B.
-    functions: Vec<AssociatedDataKey>,
+    functions: Vec<FunctionNameAndStencilIndex>,
 
     /// Scope associated to this builder.
     scope_index: ScopeIndex,
-    name_tracker: FreeNameTracker,
 }
 
 impl BlockScopeBuilder {
     fn new(scope_index: ScopeIndex) -> Self {
         Self {
+            base: BaseScopeBuilder::new(),
             let_names: Vec::new(),
-            fun_names: Vec::new(),
             const_names: Vec::new(),
             functions: Vec::new(),
             scope_index,
-            name_tracker: FreeNameTracker::new(),
         }
     }
 
@@ -560,34 +797,31 @@ impl BlockScopeBuilder {
         self.const_names.push(name);
     }
 
-    fn declare_function<T>(&mut self, name: SourceAtomSetIndex, fun: &T)
-    where
-        T: SourceLocationAccessor + NodeTypeIdAccessor,
-    {
+    fn declare_function(&mut self, name: SourceAtomSetIndex, fun_index: ScriptStencilIndex) {
         // Runtime Semantics: BlockDeclarationInstantiation ( code, env )
         // https://tc39.es/ecma262/#sec-blockdeclarationinstantiation
         //
         // Step 3. Let declarations be the LexicallyScopedDeclarations of code.
-
-        self.fun_names.push(name);
-
-        // Runtime Semantics: BlockDeclarationInstantiation ( code, env )
-        // https://tc39.es/ecma262/#sec-blockdeclarationinstantiation
         //
         // Step 4.b. If d is a FunctionDeclaration, a GeneratorDeclaration, an
         //           AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration,
         //           then
-        self.functions.push(AssociatedDataKey::new(fun));
+        self.functions.push(FunctionNameAndStencilIndex {
+            name,
+            stencil: fun_index,
+        });
     }
 
-    fn into_scope_data(self, enclosing: ScopeIndex) -> ScopeData {
-        // FIXME: Before this, perform Annex B for functions.
-
+    fn into_scope_data(
+        self,
+        enclosing: ScopeIndex,
+        possibly_annex_b_functions: &mut PossiblyAnnexBFunctionList,
+    ) -> ScopeData {
         let mut data = LexicalScopeData::new_block(
-            self.let_names.len() + self.fun_names.len(),
+            self.let_names.len() + self.functions.len(),
             self.const_names.len(),
             enclosing,
-            self.functions,
+            self.functions.iter().map(|n| n.stencil).collect(),
         );
 
         // Runtime Semantics: BlockDeclarationInstantiation ( code, env )
@@ -602,10 +836,12 @@ impl BlockScopeBuilder {
         for n in &self.let_names {
             // Step 4.a.ii. Else,
             // Step 4.a.ii.1. Perform ! envRec.CreateMutableBinding(dn, false).
-            let is_closed_over = self.name_tracker.is_closed_over_def(n);
-            data.bindings.push(BindingName::new(*n, is_closed_over))
+            let is_closed_over = self.base.name_tracker.is_closed_over_def(n);
+            data.base
+                .bindings
+                .push(BindingName::new(*n, is_closed_over));
         }
-        for n in &self.fun_names {
+        for n in &self.functions {
             // Step 4.b. If d is a FunctionDeclaration, a GeneratorDeclaration,
             //           an AsyncFunctionDeclaration,
             //           or an AsyncGeneratorDeclaration, then
@@ -613,14 +849,21 @@ impl BlockScopeBuilder {
             // Step 4.b.ii. Let fo be InstantiateFunctionObject of d with
             //              argument env.
             // Step 4.b.iii. Perform envRec.InitializeBinding(fn, fo).
-            let is_closed_over = self.name_tracker.is_closed_over_def(n);
-            data.bindings.push(BindingName::new(*n, is_closed_over))
+            let is_closed_over = self.base.name_tracker.is_closed_over_def(&n.name);
+            let binding_index = BindingIndex::new(data.base.bindings.len());
+            data.base
+                .bindings
+                .push(BindingName::new(n.name, is_closed_over));
+
+            possibly_annex_b_functions.push(n.name, self.scope_index, binding_index, n.stencil);
         }
         for n in &self.const_names {
             // Step 4.a.i. If IsConstantDeclaration of d is true, then
             // Step 4.a.i.1. Perform ! envRec.CreateImmutableBinding(dn, true).
-            let is_closed_over = self.name_tracker.is_closed_over_def(n);
-            data.bindings.push(BindingName::new(*n, is_closed_over))
+            let is_closed_over = self.base.name_tracker.is_closed_over_def(n);
+            data.base
+                .bindings
+                .push(BindingName::new(*n, is_closed_over));
         }
 
         ScopeData::Lexical(data)
@@ -635,19 +878,19 @@ impl BlockScopeBuilder {
 /// consistency.
 #[derive(Debug)]
 struct FunctionExpressionScopeBuilder {
+    base: BaseScopeBuilder,
+
     function_expression_name: Option<SourceAtomSetIndex>,
 
     scope_index: ScopeIndex,
-
-    name_tracker: FreeNameTracker,
 }
 
 impl FunctionExpressionScopeBuilder {
     fn new(scope_index: ScopeIndex) -> Self {
         Self {
+            base: BaseScopeBuilder::new(),
             function_expression_name: None,
             scope_index,
-            name_tracker: FreeNameTracker::new(),
         }
     }
 
@@ -673,8 +916,10 @@ impl FunctionExpressionScopeBuilder {
 
                 // Step 4. Let name be StringValue of BindingIdentifier .
                 // Step 5. Perform envRec.CreateImmutableBinding(name, false).
-                let is_closed_over = self.name_tracker.is_closed_over_def(name);
-                data.bindings.push(BindingName::new(*name, is_closed_over));
+                let is_closed_over = self.base.name_tracker.is_closed_over_def(name);
+                data.base
+                    .bindings
+                    .push(BindingName::new(*name, is_closed_over));
 
                 ScopeData::Lexical(data)
             }
@@ -749,6 +994,8 @@ enum FunctionParametersState {
 /// FormalParameters
 #[derive(Debug)]
 struct FunctionParametersScopeBuilder {
+    base: BaseScopeBuilder,
+
     /// State of the analysis.
     /// This is used to determine what kind of binding the parameter is.
     state: FunctionParametersState,
@@ -790,13 +1037,24 @@ struct FunctionParametersScopeBuilder {
     has_parameter_expressions: bool,
 
     scope_index: ScopeIndex,
-
-    name_tracker: FreeNameTracker,
 }
 
 impl FunctionParametersScopeBuilder {
-    fn new(scope_index: ScopeIndex) -> Self {
+    fn new(scope_index: ScopeIndex, is_arrow: bool) -> Self {
+        let mut base = BaseScopeBuilder::new();
+
+        if !is_arrow {
+            // Arrow function closes over this/arguments from enclosing
+            // function.
+            base.name_tracker
+                .note_def(CommonSourceAtomSetIndices::this());
+            base.name_tracker
+                .note_def(CommonSourceAtomSetIndices::arguments());
+        }
+
         Self {
+            base,
+
             state: FunctionParametersState::Init,
 
             positional_parameter_names: Vec::new(),
@@ -815,7 +1073,6 @@ impl FunctionParametersScopeBuilder {
             simple_parameter_list: true,
             has_parameter_expressions: false,
             scope_index,
-            name_tracker: FreeNameTracker::new(),
         }
     }
 
@@ -971,10 +1228,84 @@ impl FunctionParametersScopeBuilder {
         }
     }
 
+    fn perform_annex_b(
+        &mut self,
+        scopes: &mut ScopeDataList,
+        function_declaration_properties: &mut FunctionDeclarationPropertyMap,
+        possibly_annex_b_functions: &mut PossiblyAnnexBFunctionList,
+        body_scope_builder: &mut FunctionBodyScopeBuilder,
+    ) {
+        // Annex B
+        // Changes to FunctionDeclarationInstantiation
+        // https://tc39.es/ecma262/#sec-web-compat-functiondeclarationinstantiation
+        //
+        // Step 1. If strict is false, then
+        //
+        // FIXME: Once directives are supported, reflect it here.
+        let strict = false;
+        if strict {
+            return;
+        }
+
+        // Step 1.a. For each FunctionDeclaration f that is directly contained
+        //           in the StatementList of a Block, CaseClause, or
+        //           DefaultClause, do
+        //
+        // NOTE: `possibly_annex_b_functions` contains all of them.
+
+        // Step 1.a.i. Let F be StringValue of the BindingIdentifier of f.
+        // Step 1.a.ii. If replacing the FunctionDeclaration f with a
+        //              VariableStatement that has F as a BindingIdentifier
+        //              would not produce any Early Errors for func and F is
+        //              not an element of parameterNames, then
+        //
+        // NOTE: Early Errors happen if any of top-level lexical has
+        //       the same name.  Filter out those functions here.
+        for n in &body_scope_builder.let_names {
+            possibly_annex_b_functions.remove_if_exists(*n);
+        }
+        for n in &body_scope_builder.const_names {
+            possibly_annex_b_functions.remove_if_exists(*n);
+        }
+
+        // Step 1.a.ii.1. NOTE: A var binding for F is only instantiated here
+        //                if it is neither a VarDeclaredName, the name of a
+        //                formal parameter, or another FunctionDeclaration.
+        //
+        // NOTE: The binding is merged into the list of other var names.
+
+        // Step 1.a.ii.2. If initializedBindings does not contain F and F is
+        //                not "arguments", then
+        possibly_annex_b_functions.remove_if_exists(CommonSourceAtomSetIndices::arguments());
+
+        // Step 1.a.ii.2.a. Perform ! varEnv.CreateMutableBinding(F, false).
+        // Step 1.a.ii.2.b. Perform varEnv.InitializeBinding(F, undefined).
+        // Step 1.a.ii.2.c. Append F to instantiatedVarNames.
+        for n in possibly_annex_b_functions.names() {
+            body_scope_builder.var_names.insert(*n);
+        }
+
+        // Step 1.a.ii.3. When the FunctionDeclaration f is evaluated, perform
+        //                the following steps in place of the
+        //                FunctionDeclaration Evaluation algorithm provided in
+        //                https://tc39.es/ecma262/#sec-function-definitions-runtime-semantics-evaluation
+        // Step 1.a.ii.3.a. Let fenv be the running execution context's
+        //                  VariableEnvironment.
+        // Step 1.a.ii.3.b. Let benv be the running execution context's
+        //                  LexicalEnvironment.
+        // Step 1.a.ii.3.c. Let fobj be ! benv.GetBindingValue(F, false).
+        // Step 1.a.ii.3.d. Perform ! fenv.SetMutableBinding(F, fobj, false).
+        // Step 1.a.ii.3.e. Return NormalCompletion(empty).
+        possibly_annex_b_functions.mark_annex_b(scopes, function_declaration_properties);
+    }
+
     fn into_scope_data_set(
-        self,
+        mut self,
+        scopes: &mut ScopeDataList,
+        function_declaration_properties: &mut FunctionDeclarationPropertyMap,
+        possibly_annex_b_functions: &mut PossiblyAnnexBFunctionList,
         enclosing: ScopeIndex,
-        body_scope_builder: FunctionBodyScopeBuilder,
+        mut body_scope_builder: FunctionBodyScopeBuilder,
     ) -> FunctionScopeDataSet {
         // FunctionDeclarationInstantiation ( func, argumentsList )
         // https://tc39.es/ecma262/#sec-functiondeclarationinstantiation
@@ -1032,8 +1363,26 @@ impl FunctionParametersScopeBuilder {
             // Step 20.f. Set the LexicalEnvironment of calleeContext to env.
         }
 
+        // Step 29. NOTE: Annex B adds additional steps at this point.
+        //
+        // NOTE: Reordered here to reflect the change to
+        //       body_scope_builder.var_names.
+        self.perform_annex_b(
+            scopes,
+            function_declaration_properties,
+            possibly_annex_b_functions,
+            &mut body_scope_builder,
+        );
+
         let has_extra_body_var_scope = self.has_parameter_expressions;
-        let function_var_names_count = if has_extra_body_var_scope {
+
+        // NOTE: Names in `body_scope_builder.var_names` is skipped if
+        //       parameter has the same name, or it's `arguments`,
+        //       at step 27.c.i.
+        //       The count here isn't the exact number of var bindings, but
+        //       it's fine given FunctionScopeData::new doesn't require the
+        //       exact number, but just maximum number.
+        let function_max_var_names_count = if has_extra_body_var_scope {
             0
         } else {
             body_scope_builder.var_names.len()
@@ -1043,10 +1392,13 @@ impl FunctionParametersScopeBuilder {
             self.has_parameter_expressions,
             self.positional_parameter_names.len(),
             self.non_positional_parameter_names.len(),
-            function_var_names_count,
+            function_max_var_names_count,
             enclosing,
         );
 
+        // FunctionDeclarationInstantiation ( func, argumentsList )
+        // https://tc39.es/ecma262/#sec-functiondeclarationinstantiation
+        //
         // Step 21. For each String paramName in parameterNames, do
         // Step 21.a. Let alreadyDeclared be envRec.HasBinding(paramName).
         // Step 21.b. NOTE: Early errors ensure that duplicate parameter names
@@ -1062,21 +1414,23 @@ impl FunctionParametersScopeBuilder {
         for maybe_name in &self.positional_parameter_names {
             match maybe_name {
                 Some(n) => {
-                    let is_closed_over = self.name_tracker.is_closed_over_def(n)
+                    let is_closed_over = self.base.name_tracker.is_closed_over_def(n)
                         || (!has_extra_body_var_scope
-                            && body_scope_builder.name_tracker.is_closed_over_def(n));
+                            && body_scope_builder.base.name_tracker.is_closed_over_def(n));
                     function_scope_data
+                        .base
                         .bindings
                         .push(Some(BindingName::new(*n, is_closed_over)))
                 }
-                None => function_scope_data.bindings.push(None),
+                None => function_scope_data.base.bindings.push(None),
             }
         }
         for n in &self.non_positional_parameter_names {
-            let is_closed_over = self.name_tracker.is_closed_over_def(n)
+            let is_closed_over = self.base.name_tracker.is_closed_over_def(n)
                 || (!has_extra_body_var_scope
-                    && body_scope_builder.name_tracker.is_closed_over_def(n));
+                    && body_scope_builder.base.name_tracker.is_closed_over_def(n));
             function_scope_data
+                .base
                 .bindings
                 .push(Some(BindingName::new(*n, is_closed_over)))
         }
@@ -1137,8 +1491,9 @@ impl FunctionParametersScopeBuilder {
 
                 // Step 27.c.i.2. Perform
                 //                ! envRec.CreateMutableBinding(n, false).
-                let is_closed_over = body_scope_builder.name_tracker.is_closed_over_def(n);
+                let is_closed_over = body_scope_builder.base.name_tracker.is_closed_over_def(n);
                 function_scope_data
+                    .base
                     .bindings
                     .push(Some(BindingName::new(*n, is_closed_over)));
 
@@ -1179,8 +1534,10 @@ impl FunctionParametersScopeBuilder {
 
                 // Step 28.f.i.2. Perform
                 //                ! varEnvRec.CreateMutableBinding(n, false).
-                let is_closed_over = body_scope_builder.name_tracker.is_closed_over_def(n);
-                data.bindings.push(BindingName::new(*n, is_closed_over));
+                let is_closed_over = body_scope_builder.base.name_tracker.is_closed_over_def(n);
+                data.base
+                    .bindings
+                    .push(BindingName::new(*n, is_closed_over));
 
                 // Step 28.f.i.3. If n is not an element of parameterBindings or if
                 //                n is an element of functionNames, let
@@ -1198,9 +1555,6 @@ impl FunctionParametersScopeBuilder {
 
             ScopeData::Var(data)
         };
-
-        // Step 29. NOTE: Annex B.3.3.1 adds additional steps at this point.
-        // FIXME
 
         // Step 30. If strict is false, then
         // Step 30.a. Let lexEnv be NewDeclarativeEnvironment(varEnv).
@@ -1240,15 +1594,19 @@ impl FunctionParametersScopeBuilder {
                     // Step 35.b.ii. Else,
                     // Step 35.b.ii.1. Perform
                     //                 ! lexEnvRec.CreateMutableBinding(dn, false).
-                    let is_closed_over = body_scope_builder.name_tracker.is_closed_over_def(n);
-                    data.bindings.push(BindingName::new(*n, is_closed_over))
+                    let is_closed_over = body_scope_builder.base.name_tracker.is_closed_over_def(n);
+                    data.base
+                        .bindings
+                        .push(BindingName::new(*n, is_closed_over))
                 }
                 for n in &body_scope_builder.const_names {
                     // Step 35.b.i. If IsConstantDeclaration of d is true, then
                     // Step 35.b.i.1. Perform
                     //                ! lexEnvRec.CreateImmutableBinding(dn, true).
-                    let is_closed_over = body_scope_builder.name_tracker.is_closed_over_def(n);
-                    data.bindings.push(BindingName::new(*n, is_closed_over))
+                    let is_closed_over = body_scope_builder.base.name_tracker.is_closed_over_def(n);
+                    data.base
+                        .bindings
+                        .push(BindingName::new(*n, is_closed_over))
                 }
 
                 ScopeData::Lexical(data)
@@ -1270,6 +1628,8 @@ impl FunctionParametersScopeBuilder {
 /// Variables declared/used in FunctionBody.
 #[derive(Debug)]
 struct FunctionBodyScopeBuilder {
+    base: BaseScopeBuilder,
+
     /// FunctionDeclarationInstantiation ( func, argumentsList )
     /// https://tc39.es/ecma262/#sec-functiondeclarationinstantiation
     ///
@@ -1281,7 +1641,7 @@ struct FunctionBodyScopeBuilder {
     const_names: Vec<SourceAtomSetIndex>,
 
     /// Step 13. Let functionsToInitialize be a new empty List.
-    functions_to_initialize: Vec<AssociatedDataKey>,
+    functions_to_initialize: Vec<ScriptStencilIndex>,
 
     /// Step 18. Else if hasParameterExpressions is false, then
     /// Step 18.a. If "arguments" is an element of functionNames or
@@ -1290,13 +1650,12 @@ struct FunctionBodyScopeBuilder {
 
     var_scope_index: ScopeIndex,
     lexical_scope_index: ScopeIndex,
-
-    name_tracker: FreeNameTracker,
 }
 
 impl FunctionBodyScopeBuilder {
     fn new(var_scope_index: ScopeIndex, lexical_scope_index: ScopeIndex) -> Self {
         Self {
+            base: BaseScopeBuilder::new(),
             var_names: IndexSet::new(),
             let_names: Vec::new(),
             const_names: Vec::new(),
@@ -1304,7 +1663,6 @@ impl FunctionBodyScopeBuilder {
             function_or_lexical_has_arguments: false,
             var_scope_index,
             lexical_scope_index,
-            name_tracker: FreeNameTracker::new(),
         }
     }
 
@@ -1347,10 +1705,7 @@ impl FunctionBodyScopeBuilder {
         self.check_lexical_or_function_name(name);
     }
 
-    fn declare_function<T>(&mut self, name: SourceAtomSetIndex, fun: &T)
-    where
-        T: SourceLocationAccessor + NodeTypeIdAccessor,
-    {
+    fn declare_function(&mut self, name: SourceAtomSetIndex, fun_index: ScriptStencilIndex) {
         // FunctionDeclarationInstantiation ( func, argumentsList )
         // https://tc39.es/ecma262/#sec-functiondeclarationinstantiation
         //
@@ -1377,8 +1732,7 @@ impl FunctionBodyScopeBuilder {
 
         // Step 14.a.iii.3. Insert d as the first element of
         //                  functionsToInitialize.
-        self.functions_to_initialize
-            .push(AssociatedDataKey::new(fun));
+        self.functions_to_initialize.push(fun_index);
     }
 }
 
@@ -1403,7 +1757,7 @@ impl ScopeBuilder {
     }
 
     fn declare_var(&mut self, name: SourceAtomSetIndex) {
-        self.name_tracker_mut().note_def(name);
+        self.base_mut().name_tracker.note_def(name);
 
         match self {
             ScopeBuilder::Global(ref mut builder) => builder.declare_var(name),
@@ -1413,7 +1767,7 @@ impl ScopeBuilder {
     }
 
     fn declare_let(&mut self, name: SourceAtomSetIndex) {
-        self.name_tracker_mut().note_def(name);
+        self.base_mut().name_tracker.note_def(name);
 
         match self {
             ScopeBuilder::Global(ref mut builder) => builder.declare_let(name),
@@ -1424,7 +1778,7 @@ impl ScopeBuilder {
     }
 
     fn declare_const(&mut self, name: SourceAtomSetIndex) {
-        self.name_tracker_mut().note_def(name);
+        self.base_mut().name_tracker.note_def(name);
 
         match self {
             ScopeBuilder::Global(ref mut builder) => builder.declare_const(name),
@@ -1435,7 +1789,7 @@ impl ScopeBuilder {
     }
 
     fn set_function_name(&mut self, name: SourceAtomSetIndex) {
-        self.name_tracker_mut().note_def(name);
+        self.base_mut().name_tracker.note_def(name);
 
         match self {
             ScopeBuilder::FunctionExpression(ref mut builder) => builder.set_function_name(name),
@@ -1446,7 +1800,7 @@ impl ScopeBuilder {
     }
 
     fn declare_param(&mut self, name: SourceAtomSetIndex) {
-        self.name_tracker_mut().note_def(name);
+        self.base_mut().name_tracker.note_def(name);
 
         match self {
             ScopeBuilder::FunctionParameters(ref mut builder) => builder.declare_param(name),
@@ -1454,23 +1808,23 @@ impl ScopeBuilder {
         }
     }
 
-    fn name_tracker(&self) -> &FreeNameTracker {
+    fn base(&self) -> &BaseScopeBuilder {
         match self {
-            ScopeBuilder::Global(builder) => &builder.name_tracker,
-            ScopeBuilder::Block(builder) => &builder.name_tracker,
-            ScopeBuilder::FunctionExpression(builder) => &builder.name_tracker,
-            ScopeBuilder::FunctionParameters(builder) => &builder.name_tracker,
-            ScopeBuilder::FunctionBody(builder) => &builder.name_tracker,
+            ScopeBuilder::Global(builder) => &builder.base,
+            ScopeBuilder::Block(builder) => &builder.base,
+            ScopeBuilder::FunctionExpression(builder) => &builder.base,
+            ScopeBuilder::FunctionParameters(builder) => &builder.base,
+            ScopeBuilder::FunctionBody(builder) => &builder.base,
         }
     }
 
-    fn name_tracker_mut(&mut self) -> &mut FreeNameTracker {
+    fn base_mut(&mut self) -> &mut BaseScopeBuilder {
         match self {
-            ScopeBuilder::Global(builder) => &mut builder.name_tracker,
-            ScopeBuilder::Block(builder) => &mut builder.name_tracker,
-            ScopeBuilder::FunctionExpression(builder) => &mut builder.name_tracker,
-            ScopeBuilder::FunctionParameters(builder) => &mut builder.name_tracker,
-            ScopeBuilder::FunctionBody(builder) => &mut builder.name_tracker,
+            ScopeBuilder::Global(builder) => &mut builder.base,
+            ScopeBuilder::Block(builder) => &mut builder.base,
+            ScopeBuilder::FunctionExpression(builder) => &mut builder.base,
+            ScopeBuilder::FunctionParameters(builder) => &mut builder.base,
+            ScopeBuilder::FunctionBody(builder) => &mut builder.base,
         }
     }
 }
@@ -1622,14 +1976,23 @@ impl ScopeBuilderStack {
         let inner = self.stack.pop().expect("unmatching scope builder");
         match self.stack.last_mut() {
             Some(outer) => {
-                let inner_tracker = inner.name_tracker();
-                let outer_tracker = outer.name_tracker_mut();
+                let inner_base = inner.base();
+                let outer_base = outer.base_mut();
+
+                // When construct such as `eval`, `with` and `delete` access
+                // name dynamically in inner scopes, we have to propagate this
+                // flag to the outer scope such that we prevent optimizations.
+                outer_base.bindings_accessed_dynamically |=
+                    inner_base.bindings_accessed_dynamically;
+
                 match inner {
                     ScopeBuilder::Global(_) => {
                         panic!("Global shouldn't be enclosed by other scope");
                     }
                     ScopeBuilder::Block(_) => {
-                        outer_tracker.propagate_from_inner_non_script(inner_tracker);
+                        outer_base
+                            .name_tracker
+                            .propagate_from_inner_non_script(&inner_base.name_tracker);
                     }
                     ScopeBuilder::FunctionExpression(_) => {
                         // NOTE: Function expression's name cannot have any
@@ -1638,19 +2001,198 @@ impl ScopeBuilderStack {
                         //       any closed-over free variables inside this
                         //       function is propagated from FunctionParameters
                         //       to enclosing scope builder.
-                        outer_tracker.propagate_from_inner_non_script(inner_tracker);
+                        outer_base
+                            .name_tracker
+                            .propagate_from_inner_non_script(&inner_base.name_tracker);
                     }
                     ScopeBuilder::FunctionParameters(_) => {
-                        outer_tracker.propagate_from_inner_script(inner_tracker);
+                        outer_base
+                            .name_tracker
+                            .propagate_from_inner_script(&inner_base.name_tracker);
                     }
                     ScopeBuilder::FunctionBody(_) => {
-                        outer_tracker.propagate_from_inner_non_script(inner_tracker);
+                        outer_base
+                            .name_tracker
+                            .propagate_from_inner_non_script(&inner_base.name_tracker);
                     }
                 }
             }
             None => {}
         }
         inner
+    }
+}
+
+/// Builds `ScriptStencil` for all functions (both non-lazy and lazy).
+/// The script is set to lazy function, with inner functions and
+/// closed over bindings populated in gcthings list.
+///
+/// TODO: For non-lazy function, gcthings list should be populated in the
+///       emitter pass, not here.
+#[derive(Debug)]
+pub struct FunctionScriptStencilBuilder {
+    /// The map from function node to ScriptStencil.
+    ///
+    /// The map is separated into `function_stencil_indicies` and `functions`,
+    /// because it can be referred to in different ways from multiple places:
+    ///   * map from Function AST node (`function_stencil_indices`)
+    ///   * enclosing script/function, to list inner functions
+    function_stencil_indices: AssociatedData<ScriptStencilIndex>,
+    functions: ScriptStencilList,
+
+    /// The stack of functions that the current context is in.
+    ///
+    /// The last element in this stack represents the current function, where
+    /// the inner function will be stored
+    function_stack: Vec<ScriptStencilIndex>,
+}
+
+impl FunctionScriptStencilBuilder {
+    fn new() -> Self {
+        Self {
+            function_stencil_indices: AssociatedData::new(),
+            functions: ScriptStencilList::new(),
+            function_stack: Vec::new(),
+        }
+    }
+
+    /// Enter a function.
+    ///
+    /// This creates `ScriptStencil` for the function, and adds it to
+    /// enclosing function if exists.
+    fn enter<T>(&mut self, fun: &T, syntax_kind: FunctionSyntaxKind) -> ScriptStencilIndex
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        let loc = fun.get_loc();
+        let source_start = loc.start as u32;
+
+        // FIXME: Map from offset to line/column.
+        let lineno = 1;
+        let column = 0;
+
+        let function_stencil = ScriptStencil::lazy_function(
+            SourceExtent {
+                source_start,
+                source_end: 0,
+                to_string_start: source_start,
+                to_string_end: 0,
+                lineno,
+                column,
+            },
+            None,
+            syntax_kind.is_generator(),
+            syntax_kind.is_async(),
+            FunctionFlags::interpreted(syntax_kind),
+        );
+        let index = self.functions.push(function_stencil);
+        self.function_stencil_indices.insert(fun, index);
+
+        match self.maybe_current_mut() {
+            Some(enclosing) => {
+                enclosing.push_inner_function(index);
+            }
+            None => {}
+        }
+
+        self.function_stack.push(index);
+
+        index
+    }
+
+    /// Leave a function, setting its source location.
+    fn leave<T>(&mut self, fun: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        let loc = fun.get_loc();
+        let source_end = loc.end;
+
+        self.current_mut().set_source_end(source_end);
+        self.current_mut().set_to_string_end(source_end);
+
+        self.function_stack.pop();
+    }
+
+    /// Returns a immutable reference to the innermost function. None otherwise.
+    fn maybe_current<'a>(&'a self) -> Option<&'a ScriptStencil> {
+        let maybe_index = self.function_stack.last();
+        maybe_index.map(move |index| self.functions.get(*index))
+    }
+
+    /// Returns a immutable reference to the current function.
+    /// Panics if no current function is found.
+    fn current<'a>(&'a self) -> &'a ScriptStencil {
+        self.maybe_current().expect("should be inside function")
+    }
+
+    /// Returns a mutable reference to the innermost function. None otherwise.
+    fn maybe_current_mut<'a>(&'a mut self) -> Option<&'a mut ScriptStencil> {
+        let maybe_index = self.function_stack.last().cloned();
+        maybe_index.map(move |index| self.functions.get_mut(index))
+    }
+
+    /// Returns a mutable reference to the current function.
+    /// Panics if no current function is found.
+    fn current_mut<'a>(&'a mut self) -> &'a mut ScriptStencil {
+        self.maybe_current_mut().expect("should be inside function")
+    }
+
+    /// Sets the name of the current function.
+    fn set_function_name(&mut self, name: SourceAtomSetIndex) {
+        self.current_mut().set_fun_name(name);
+    }
+
+    /// Sets the position of the function parameters.
+    /// `params` should point to the `(` of the function parameters.
+    /// If it's an arrow function without parenthesis, `params` should point
+    /// the parameter binding.
+    fn on_function_parameters<T>(&mut self, params: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        let loc = params.get_loc();
+        let params_start = loc.start;
+        self.current_mut().set_to_string_starts(params_start);
+    }
+
+    fn on_non_rest_parameter(&mut self) {
+        let fun = self.current_mut();
+        fun.add_fun_nargs();
+    }
+
+    /// Flags that the current function has rest parameter.
+    fn on_rest_parameter(&mut self) {
+        let fun = self.current_mut();
+        fun.add_fun_nargs();
+        fun.set_has_rest();
+    }
+
+    /// Add all closed over bindings of the current function,
+    /// that is calculated by `parameter_scope_builder`.
+    fn add_closed_over_bindings(
+        &mut self,
+        parameter_scope_builder: &FunctionParametersScopeBuilder,
+    ) {
+        let closed_over_freevars: HashSet<SourceAtomSetIndex> = parameter_scope_builder
+            .base
+            .name_tracker
+            .closed_over_freevars()
+            .cloned()
+            .collect();
+        let used_freevars: HashSet<SourceAtomSetIndex> = parameter_scope_builder
+            .base
+            .name_tracker
+            .used_freevars()
+            .cloned()
+            .collect();
+        let all_freevars = closed_over_freevars.union(&used_freevars);
+
+        let current = self.current_mut();
+
+        for name in all_freevars {
+            current.push_closed_over_bindings(*name);
+        }
     }
 }
 
@@ -1673,6 +2215,12 @@ pub struct ScopeDataMapBuilder {
 
     /// The map from non-global AST node to scope information.
     non_global: AssociatedData<ScopeIndex>,
+
+    function_stencil_builder: FunctionScriptStencilBuilder,
+
+    function_declaration_properties: FunctionDeclarationPropertyMap,
+
+    possibly_annex_b_functions: PossiblyAnnexBFunctionList,
 }
 
 impl ScopeDataMapBuilder {
@@ -1683,6 +2231,9 @@ impl ScopeDataMapBuilder {
             scopes: ScopeDataList::new(),
             global: None,
             non_global: AssociatedData::new(),
+            function_stencil_builder: FunctionScriptStencilBuilder::new(),
+            function_declaration_properties: FunctionDeclarationPropertyMap::new(),
+            possibly_annex_b_functions: PossiblyAnnexBFunctionList::new(),
         }
     }
 
@@ -1723,7 +2274,7 @@ impl ScopeDataMapBuilder {
     }
 
     pub fn after_script(&mut self) {
-        let mut builder = self.builder_stack.pop_global();
+        let builder = self.builder_stack.pop_global();
 
         // Runtime Semantics: GlobalDeclarationInstantiation ( script, env )
         // https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
@@ -1731,16 +2282,14 @@ impl ScopeDataMapBuilder {
         // Steps 3-6.
         // (done in runtime)
 
-        // Step 12.a.i.i If vn is not an element of declaredFunctionNames, then
-        builder.remove_function_names_from_var_names();
-
-        // Step 14. NOTE: Annex B.3.3.2 adds additional steps at this point.
-        //
-        // FIXME: Implement
-
-        // Steps 15-18.
-        self.scopes
-            .populate(builder.scope_index, builder.into_scope_data());
+        // Steps 12-18.
+        let scope_index = builder.scope_index;
+        let scope = builder.into_scope_data(
+            &mut self.scopes,
+            &mut self.function_declaration_properties,
+            &mut self.possibly_annex_b_functions,
+        );
+        self.scopes.populate(scope_index, scope);
     }
 
     pub fn before_block_statement<T>(&mut self, block: &T)
@@ -1784,8 +2333,10 @@ impl ScopeDataMapBuilder {
         //
         // Step 3. Perform
         //         BlockDeclarationInstantiation(StatementList, blockEnv).
-        self.scopes
-            .populate(builder.scope_index, builder.into_scope_data(enclosing));
+        self.scopes.populate(
+            builder.scope_index,
+            builder.into_scope_data(enclosing, &mut self.possibly_annex_b_functions),
+        );
 
         // Step 6. Set the running execution context's LexicalEnvironment to
         //         oldEnv.
@@ -1830,7 +2381,10 @@ impl ScopeDataMapBuilder {
             ScopeKind::Var => self.builder_stack.innermost_var().declare_var(name),
             ScopeKind::Let => self.builder_stack.innermost_lexical().declare_let(name),
             ScopeKind::Const => self.builder_stack.innermost_lexical().declare_const(name),
-            ScopeKind::FunctionName => self.builder_stack.innermost().set_function_name(name),
+            ScopeKind::FunctionName => {
+                self.builder_stack.innermost().set_function_name(name);
+                self.function_stencil_builder.set_function_name(name);
+            }
             ScopeKind::FormalParameter => self.builder_stack.innermost().declare_param(name),
             _ => panic!("Not implemeneted"),
         }
@@ -1839,23 +2393,50 @@ impl ScopeDataMapBuilder {
     pub fn on_non_binding_identifier(&mut self, name: SourceAtomSetIndex) {
         self.builder_stack
             .innermost()
-            .name_tracker_mut()
+            .base_mut()
+            .name_tracker
             .note_use(name);
     }
 
-    pub fn before_function_declaration<T>(&mut self, name: SourceAtomSetIndex, fun: &T)
+    pub fn before_function_declaration<T>(
+        &mut self,
+        name: SourceAtomSetIndex,
+        fun: &T,
+        is_generator: bool,
+        is_async: bool,
+    ) -> ScriptStencilIndex
     where
         T: SourceLocationAccessor + NodeTypeIdAccessor,
     {
+        let fun_index = self.function_stencil_builder.enter(
+            fun,
+            FunctionSyntaxKind::function_declaration(is_generator, is_async),
+        );
+
         match self.builder_stack.innermost_lexical() {
-            ScopeBuilder::Global(ref mut builder) => builder.declare_function(name, fun),
-            ScopeBuilder::Block(ref mut builder) => builder.declare_function(name, fun),
-            ScopeBuilder::FunctionBody(ref mut builder) => builder.declare_function(name, fun),
+            ScopeBuilder::Global(ref mut builder) => builder.declare_function(name, fun_index),
+            ScopeBuilder::Block(ref mut builder) => builder.declare_function(name, fun_index),
+            ScopeBuilder::FunctionBody(ref mut builder) => {
+                builder.declare_function(name, fun_index)
+            }
             _ => panic!("unexpected lexical for FunctionDeclaration"),
         }
+
+        self.scope_kind_stack.push(ScopeKind::FunctionName);
+
+        fun_index
     }
 
-    pub fn before_function_expression<T>(&mut self, fun: &T)
+    pub fn after_function_declaration<T>(&mut self, fun: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder.leave(fun);
+
+        self.scope_kind_stack.pop(ScopeKind::FunctionName);
+    }
+
+    pub fn before_function_expression<T>(&mut self, fun: &T, is_generator: bool, is_async: bool)
     where
         T: SourceLocationAccessor + NodeTypeIdAccessor,
     {
@@ -1866,9 +2447,19 @@ impl ScopeDataMapBuilder {
         self.builder_stack.push_function_expression(builder);
 
         self.scope_kind_stack.push(ScopeKind::FunctionName);
+
+        self.function_stencil_builder.enter(
+            fun,
+            FunctionSyntaxKind::function_expression(is_generator, is_async),
+        );
     }
 
-    pub fn after_function_expression(&mut self) {
+    pub fn after_function_expression<T>(&mut self, fun: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder.leave(fun);
+
         self.scope_kind_stack.pop(ScopeKind::FunctionName);
 
         let builder = self.builder_stack.pop_function_expression();
@@ -1878,13 +2469,97 @@ impl ScopeDataMapBuilder {
             .populate(builder.scope_index, builder.into_scope_data(enclosing));
     }
 
+    pub fn before_method<T>(&mut self, fun: &T, is_generator: bool, is_async: bool)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder
+            .enter(fun, FunctionSyntaxKind::method(is_generator, is_async));
+    }
+
+    pub fn after_method<T>(&mut self, fun: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder.leave(fun);
+    }
+
+    pub fn before_getter<T>(&mut self, fun: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder
+            .enter(fun, FunctionSyntaxKind::getter());
+    }
+
+    pub fn on_getter_parameter<T>(&mut self, param: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.before_function_parameters(param);
+        self.after_function_parameters();
+    }
+
+    pub fn after_getter<T>(&mut self, fun: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder.leave(fun);
+    }
+
+    pub fn before_setter<T>(&mut self, fun: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder
+            .enter(fun, FunctionSyntaxKind::setter());
+    }
+
+    pub fn before_setter_parameter<T>(&mut self, param: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.before_function_parameters(param);
+        self.before_parameter();
+    }
+
+    pub fn after_setter_parameter(&mut self) {
+        self.after_function_parameters();
+    }
+
+    pub fn after_setter<T>(&mut self, fun: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder.leave(fun);
+    }
+
+    pub fn before_arrow_function<T>(&mut self, is_async: bool, params: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder
+            .enter(params, FunctionSyntaxKind::arrow(is_async));
+    }
+
+    pub fn after_arrow_function<T>(&mut self, body: &T)
+    where
+        T: SourceLocationAccessor + NodeTypeIdAccessor,
+    {
+        self.function_stencil_builder.leave(body);
+    }
+
     pub fn before_function_parameters<T>(&mut self, params: &T)
     where
         T: SourceLocationAccessor + NodeTypeIdAccessor,
     {
+        self.function_stencil_builder.on_function_parameters(params);
+
         let index = self.scopes.allocate();
 
-        let builder = FunctionParametersScopeBuilder::new(index);
+        let is_arrow = self.function_stencil_builder.current().is_arrow_function();
+
+        let builder = FunctionParametersScopeBuilder::new(index, is_arrow);
         self.non_global.insert(params, index);
 
         self.builder_stack.push_function_parameters(builder);
@@ -1898,6 +2573,8 @@ impl ScopeDataMapBuilder {
     pub fn before_parameter(&mut self) {
         let builder = self.builder_stack.get_function_parameters();
         builder.before_parameter();
+
+        self.function_stencil_builder.on_non_rest_parameter();
     }
 
     pub fn before_binding_pattern(&mut self) {
@@ -1928,6 +2605,8 @@ impl ScopeDataMapBuilder {
     }
 
     pub fn before_rest_parameter(&mut self) {
+        self.function_stencil_builder.on_rest_parameter();
+
         let builder = self.builder_stack.get_function_parameters();
         builder.before_rest_parameter();
     }
@@ -1951,9 +2630,44 @@ impl ScopeDataMapBuilder {
         let parameter_scope_builder = self.builder_stack.pop_function_parameters();
         let enclosing = self.builder_stack.current_scope_index();
 
+        self.function_stencil_builder
+            .add_closed_over_bindings(&parameter_scope_builder);
+
         let function_scope_index = parameter_scope_builder.scope_index;
         let var_scope_index = body_scope_builder.var_scope_index;
         let lexical_scope_index = body_scope_builder.lexical_scope_index;
+
+        // Save scope information used by FunctionScriptStencilBuilder into
+        // local variables here before consuming ScopeBuilders.
+        let bindings_accessed_dynamically =
+            parameter_scope_builder.base.bindings_accessed_dynamically;
+
+        let has_used_this = parameter_scope_builder
+            .base
+            .name_tracker
+            .is_used_or_closed_over(CommonSourceAtomSetIndices::this())
+            || bindings_accessed_dynamically;
+        let has_used_arguments = parameter_scope_builder
+            .base
+            .name_tracker
+            .is_used_or_closed_over(CommonSourceAtomSetIndices::arguments())
+            || bindings_accessed_dynamically;
+
+        let parameter_has_arguments = parameter_scope_builder.parameter_has_arguments;
+
+        // NOTE: `var` here doesn't include Annex B functions.
+        //       Also, `var_names_has_arguments` becomes true regardless of
+        //       `arguments` in parameter.
+        let var_names_has_arguments = body_scope_builder
+            .var_names
+            .contains(&CommonSourceAtomSetIndices::arguments());
+
+        let body_has_defined_arguments =
+            var_names_has_arguments || body_scope_builder.function_or_lexical_has_arguments;
+
+        let strict = parameter_scope_builder.strict;
+        let simple_parameter_list = parameter_scope_builder.simple_parameter_list;
+        let has_mapped_arguments = !strict && simple_parameter_list;
 
         // Runtime Semantics: EvaluateBody
         // https://tc39.es/ecma262/#sec-function-definitions-runtime-semantics-evaluatebody
@@ -1964,8 +2678,97 @@ impl ScopeDataMapBuilder {
         //
         // Step 1. Perform ? FunctionDeclarationInstantiation(functionObject,
         //         argumentsList).
-        let scope_data_set =
-            parameter_scope_builder.into_scope_data_set(enclosing, body_scope_builder);
+        let scope_data_set = parameter_scope_builder.into_scope_data_set(
+            &mut self.scopes,
+            &mut self.function_declaration_properties,
+            &mut self.possibly_annex_b_functions,
+            enclosing,
+            body_scope_builder,
+        );
+        self.possibly_annex_b_functions.clear();
+
+        let has_extra_body_var = match &scope_data_set.extra_body_var {
+            ScopeData::Var(_) => true,
+            _ => false,
+        };
+
+        let fun_stencil = self.function_stencil_builder.current_mut();
+
+        if let ScopeData::Function(fun) = &scope_data_set.function {
+            if fun.base.needs_environment_object() {
+                fun_stencil.set_needs_function_environment_objects();
+            }
+        } else {
+            panic!("Unexpected scope data for function");
+        }
+
+        if has_extra_body_var {
+            fun_stencil.set_function_has_extra_body_var_scope();
+        }
+
+        if has_mapped_arguments {
+            fun_stencil.set_has_mapped_args_obj();
+        }
+
+        if !fun_stencil.is_arrow_function() {
+            if has_used_this {
+                fun_stencil.set_function_has_this_binding();
+            }
+
+            let mut uses_arguments = false;
+            let mut try_declare_arguments = has_used_arguments;
+
+            // FunctionDeclarationInstantiation ( func, argumentsList )
+            // https://tc39.es/ecma262/#sec-functiondeclarationinstantiation
+            //
+            // Step 17 (Else if "arguments" is an element of parameterNames...)
+            // and step 18 (Else if hasParameterExpressions is false...) say
+            // formal parameters, lexical bindings, and body-level functions
+            // named 'arguments' shadow the arguments object.
+            //
+            // So even if there wasn't a free use of 'arguments' but there is a
+            // var binding of 'arguments', we still might need the arguments
+            // object.
+            //
+            // If we have an extra var scope due to parameter expressions and
+            // the body declared 'var arguments', we still need to declare
+            // 'arguments' in the function scope.
+            //
+            // NOTE: This is implementation-specfic optimization, and has
+            //       no corresponding steps in the spec.
+            if var_names_has_arguments {
+                if has_extra_body_var {
+                    try_declare_arguments = true;
+                } else if !parameter_has_arguments {
+                    uses_arguments = true;
+                }
+            }
+
+            if try_declare_arguments {
+                let has_defined_arguments = parameter_has_arguments || body_has_defined_arguments;
+                let declare_arguments = if has_extra_body_var {
+                    !parameter_has_arguments
+                } else {
+                    has_defined_arguments
+                };
+
+                if declare_arguments {
+                    fun_stencil.set_should_declare_arguments();
+                    uses_arguments = true;
+                }
+            }
+
+            if uses_arguments {
+                // There is an 'arguments' binding. Is the arguments object
+                // definitely needed?
+                fun_stencil.set_arguments_has_var_binding();
+
+                // Dynamic scope access destroys all hope of optimization.
+                if bindings_accessed_dynamically {
+                    fun_stencil.set_always_needs_args_obj();
+                }
+            }
+        }
 
         self.scopes
             .populate(function_scope_index, scope_data_set.function);
@@ -1976,12 +2779,24 @@ impl ScopeDataMapBuilder {
     }
 }
 
-impl From<ScopeDataMapBuilder> for ScopeDataMap {
-    fn from(builder: ScopeDataMapBuilder) -> ScopeDataMap {
-        ScopeDataMap::new(
-            builder.scopes,
-            builder.global.expect("There should be global scope data"),
-            builder.non_global,
-        )
+pub struct ScopeDataMapAndScriptStencilList {
+    pub scope_data_map: ScopeDataMap,
+    pub function_stencil_indices: AssociatedData<ScriptStencilIndex>,
+    pub function_declaration_properties: FunctionDeclarationPropertyMap,
+    pub functions: ScriptStencilList,
+}
+
+impl From<ScopeDataMapBuilder> for ScopeDataMapAndScriptStencilList {
+    fn from(builder: ScopeDataMapBuilder) -> ScopeDataMapAndScriptStencilList {
+        ScopeDataMapAndScriptStencilList {
+            scope_data_map: ScopeDataMap::new(
+                builder.scopes,
+                builder.global.expect("There should be global scope data"),
+                builder.non_global,
+            ),
+            function_stencil_indices: builder.function_stencil_builder.function_stencil_indices,
+            function_declaration_properties: builder.function_declaration_properties,
+            functions: builder.function_stencil_builder.functions,
+        }
     }
 }

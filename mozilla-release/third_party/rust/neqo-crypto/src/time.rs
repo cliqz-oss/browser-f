@@ -204,7 +204,10 @@ impl Default for TimeHolder {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use super::{get_base, init, Interval, PRTime, Time};
+    use crate::err::Res;
+    use std::convert::{TryFrom, TryInto};
+    use std::time::{Duration, Instant};
 
     #[test]
     fn convert_stable() {
@@ -241,10 +244,9 @@ mod test {
     // We allow replace_consts here because
     // std::u64::max_value() isn't available
     // in all of our targets
-    #[allow(clippy::replace_consts)]
     fn overflow_interval() {
         init();
-        let interval = Interval::from(Duration::from_micros(std::u64::MAX));
+        let interval = Interval::from(Duration::from_micros(u64::max_value()));
         let res: Res<PRTime> = interval.try_into();
         assert!(res.is_err());
     }

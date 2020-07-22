@@ -261,3 +261,18 @@ TEST(Threads, StressNSPR)
     delete[] array;
   }
 }
+
+TEST(Threads, GetCurrentSerialEventTarget)
+{
+  nsCOMPtr<nsIThread> thread;
+  nsresult rv =
+      NS_NewNamedThread("Testing Thread", getter_AddRefs(thread),
+                        NS_NewRunnableFunction("Testing Thread::check", []() {
+                          nsCOMPtr<nsISerialEventTarget> serialEventTarget =
+                              GetCurrentSerialEventTarget();
+                          nsCOMPtr<nsIThread> thread = NS_GetCurrentThread();
+                          EXPECT_EQ(thread.get(), serialEventTarget.get());
+                        }));
+  MOZ_ALWAYS_SUCCEEDS(rv);
+  thread->Shutdown();
+}

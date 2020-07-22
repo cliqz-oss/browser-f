@@ -218,16 +218,16 @@ class MessageChannel : HasResultCodes, MessageLoop::DestructionObserver {
   ChannelFlags GetChannelFlags() { return mFlags; }
 
   // Asynchronously send a message to the other side of the channel
-  bool Send(Message* aMsg);
+  bool Send(UniquePtr<Message> aMsg);
 
   // Asynchronously send a message to the other side of the channel
   // and wait for asynchronous reply.
   template <typename Value>
-  void Send(Message* aMsg, ActorIdType aActorId,
+  void Send(UniquePtr<Message> aMsg, ActorIdType aActorId,
             ResolveCallback<Value>&& aResolve, RejectCallback&& aReject) {
     int32_t seqno = NextSeqno();
     aMsg->set_seqno(seqno);
-    if (!Send(aMsg)) {
+    if (!Send(std::move(aMsg))) {
       aReject(ResponseRejectReason::SendError);
       return;
     }
@@ -242,15 +242,11 @@ class MessageChannel : HasResultCodes, MessageLoop::DestructionObserver {
   bool SendBuildIDsMatchMessage(const char* aParentBuildI);
   bool DoBuildIDsMatch() { return mBuildIDsConfirmedMatch; }
 
-  // Asynchronously deliver a message back to this side of the
-  // channel
-  bool Echo(Message* aMsg);
-
   // Synchronously send |msg| (i.e., wait for |reply|)
-  bool Send(Message* aMsg, Message* aReply);
+  bool Send(UniquePtr<Message> aMsg, Message* aReply);
 
   // Make an Interrupt call to the other side of the channel
-  bool Call(Message* aMsg, Message* aReply);
+  bool Call(UniquePtr<Message> aMsg, Message* aReply);
 
   // Wait until a message is received
   bool WaitForIncomingMessage();
@@ -375,7 +371,7 @@ class MessageChannel : HasResultCodes, MessageLoop::DestructionObserver {
 
  private:
   void CommonThreadOpenInit(MessageChannel* aTargetChan, Side aSide);
-  void OnOpenAsSlave(MessageChannel* aTargetChan, Side aSide);
+  void OpenAsOtherThread(MessageChannel* aTargetChan, Side aSide);
 
   void PostErrorNotifyTask();
   void OnNotifyMaybeChannelError();
@@ -536,7 +532,7 @@ class MessageChannel : HasResultCodes, MessageLoop::DestructionObserver {
 
   // Helper for sending a message via the link. This should only be used for
   // non-special messages that might have to be postponed.
-  void SendMessageToLink(Message* aMsg);
+  void SendMessageToLink(UniquePtr<Message> aMsg);
 
   bool WasTransactionCanceled(int transaction);
   bool ShouldDeferMessage(const Message& aMsg);
@@ -628,7 +624,7 @@ class MessageChannel : HasResultCodes, MessageLoop::DestructionObserver {
   RefPtr<RefCountedMonitor> mMonitor;
   Side mSide;
   bool mIsCrossProcess;
-  MessageLink* mLink;
+  UniquePtr<MessageLink> mLink;
   MessageLoop* mWorkerLoop;  // thread where work is done
   RefPtr<CancelableRunnable>
       mChannelErrorTask;  // NotifyMaybeChannelError runnable

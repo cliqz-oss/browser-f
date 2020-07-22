@@ -17,7 +17,7 @@ namespace mozilla {
 namespace {
 
 bool ChooseOriginAttributes(nsIChannel* aChannel, OriginAttributes& aAttrs,
-                            bool aForceInstrinsicStoragePrincipal) {
+                            bool aForcePartitionedPrincipal) {
   MOZ_ASSERT(aChannel);
 
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
@@ -26,7 +26,7 @@ bool ChooseOriginAttributes(nsIChannel* aChannel, OriginAttributes& aAttrs,
     return false;
   }
 
-  if (!aForceInstrinsicStoragePrincipal) {
+  if (!aForcePartitionedPrincipal) {
     nsCOMPtr<nsIURI> uri;
     nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
     if (NS_FAILED(rv)) {
@@ -47,11 +47,11 @@ bool ChooseOriginAttributes(nsIChannel* aChannel, OriginAttributes& aAttrs,
     }
   }
 
-  nsAutoString domain;
-  Unused << cjs->GetFirstPartyDomain(domain);
+  nsAutoString partitionKey;
+  Unused << cjs->GetPartitionKey(partitionKey);
 
-  if (!domain.IsEmpty()) {
-    aAttrs.SetFirstPartyDomain(false, domain, true /* aForced */);
+  if (!partitionKey.IsEmpty()) {
+    aAttrs.SetPartitionKey(partitionKey);
     return true;
   }
 
@@ -71,7 +71,7 @@ bool ChooseOriginAttributes(nsIChannel* aChannel, OriginAttributes& aAttrs,
     return false;
   }
 
-  aAttrs.SetFirstPartyDomain(false, principalURI, true /* aForced */);
+  aAttrs.SetPartitionKey(principalURI);
   return true;
 }
 
@@ -80,6 +80,7 @@ bool ChooseOriginAttributes(nsIChannel* aChannel, OriginAttributes& aAttrs,
 // static
 nsresult StoragePrincipalHelper::Create(nsIChannel* aChannel,
                                         nsIPrincipal* aPrincipal,
+                                        bool aForceIsolation,
                                         nsIPrincipal** aStoragePrincipal) {
   MOZ_ASSERT(aChannel);
   MOZ_ASSERT(aPrincipal);
@@ -91,7 +92,7 @@ nsresult StoragePrincipalHelper::Create(nsIChannel* aChannel,
   });
 
   OriginAttributes attrs = aPrincipal->OriginAttributesRef();
-  if (!ChooseOriginAttributes(aChannel, attrs, false)) {
+  if (!ChooseOriginAttributes(aChannel, attrs, aForceIsolation)) {
     return NS_OK;
   }
 
@@ -101,6 +102,29 @@ nsresult StoragePrincipalHelper::Create(nsIChannel* aChannel,
       BasePrincipal::Cast(aPrincipal)->CloneForcingOriginAttributes(attrs);
 
   storagePrincipal.forget(aStoragePrincipal);
+  return NS_OK;
+}
+
+// static
+nsresult StoragePrincipalHelper::CreatePartitionedPrincipalForServiceWorker(
+    nsIPrincipal* aPrincipal, nsICookieJarSettings* aCookieJarSettings,
+    nsIPrincipal** aPartitionedPrincipal) {
+  MOZ_ASSERT(aPrincipal);
+  MOZ_ASSERT(aPartitionedPrincipal);
+
+  OriginAttributes attrs = aPrincipal->OriginAttributesRef();
+
+  nsAutoString partitionKey;
+  Unused << aCookieJarSettings->GetPartitionKey(partitionKey);
+
+  if (!partitionKey.IsEmpty()) {
+    attrs.SetPartitionKey(partitionKey);
+  }
+
+  nsCOMPtr<nsIPrincipal> partitionedPrincipal =
+      BasePrincipal::Cast(aPrincipal)->CloneForcingOriginAttributes(attrs);
+
+  partitionedPrincipal.forget(aPartitionedPrincipal);
   return NS_OK;
 }
 
@@ -283,20 +307,7 @@ void StoragePrincipalHelper::GetOriginAttributesForNetworkState(
     return;
   }
 
-  // This part is required because the intrisicStoragePrincipal is not always
-  // partitioned. This should probably change. TODO - bug 1639833.
-  nsCOMPtr<nsICookieJarSettings> cjs = aDocument->CookieJarSettings();
-  MOZ_ASSERT(cjs);
-
-  nsAutoString domain;
-  Unused << cjs->GetFirstPartyDomain(domain);
-
-  if (!domain.IsEmpty()) {
-    aAttributes.SetFirstPartyDomain(false, domain, true /* aForced */);
-    return;
-  }
-
-  aAttributes = aDocument->IntrinsicStoragePrincipal()->OriginAttributesRef();
+  aAttributes = aDocument->PartitionedPrincipal()->OriginAttributesRef();
 }
 
 }  // namespace mozilla

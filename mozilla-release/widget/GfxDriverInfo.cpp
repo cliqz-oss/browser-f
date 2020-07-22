@@ -257,7 +257,7 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x0126); /* IntelSandyBridge_6 */
       APPEND_DEVICE(0x010a); /* IntelSandyBridge_7 */
       break;
-    case DeviceFamily::IntelHDGraphicsToHaswell:
+    case DeviceFamily::IntelHaswell:
       APPEND_DEVICE(0x0402); /* IntelHaswell_GT1_1 */
       APPEND_DEVICE(0x0406); /* IntelHaswell_GT1_2 */
       APPEND_DEVICE(0x040A); /* IntelHaswell_GT1_3 */
@@ -463,27 +463,6 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x160d);
       APPEND_DEVICE(0x160e);
 
-      // broadwell gt2+ (gen8)
-      APPEND_DEVICE(0x1612);
-      APPEND_DEVICE(0x1616);
-      APPEND_DEVICE(0x161a);
-      APPEND_DEVICE(0x161b);
-      APPEND_DEVICE(0x161d);
-      APPEND_DEVICE(0x161e);
-      APPEND_DEVICE(0x1622);
-      APPEND_DEVICE(0x1626);
-      APPEND_DEVICE(0x162a);
-      APPEND_DEVICE(0x162b);
-      APPEND_DEVICE(0x162d);
-      APPEND_DEVICE(0x162e);
-      APPEND_DEVICE(0x1632);
-      APPEND_DEVICE(0x1636);
-      APPEND_DEVICE(0x163a);
-      APPEND_DEVICE(0x163b);
-      APPEND_DEVICE(0x163d);
-      APPEND_DEVICE(0x163e);
-
-#ifdef EARLY_BETA_OR_EARLIER
       // gen7.5 gt2
       APPEND_DEVICE(0x0412);
       APPEND_DEVICE(0x0416);
@@ -518,6 +497,18 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x0d26);
       APPEND_DEVICE(0x0d2b);
       APPEND_DEVICE(0x0d2e);
+
+#ifdef EARLY_BETA_OR_EARLIER
+      // gen7 gt2
+      APPEND_DEVICE(0x0162);
+      APPEND_DEVICE(0x0166);
+      APPEND_DEVICE(0x016a);
+
+      // gen6 gt2
+      APPEND_DEVICE(0x0112);
+      APPEND_DEVICE(0x0116);
+      APPEND_DEVICE(0x0122);
+      APPEND_DEVICE(0x0126);
 #endif
 
 #if defined(MOZ_WIDGET_GTK) || defined(NIGHTLY_BUILD)
@@ -548,17 +539,6 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x0152);
       APPEND_DEVICE(0x0156);
       APPEND_DEVICE(0x015a);
-
-      // gen7 gt2
-      APPEND_DEVICE(0x0162);
-      APPEND_DEVICE(0x0166);
-      APPEND_DEVICE(0x016a);
-
-      // gen6 gt2
-      APPEND_DEVICE(0x0112);
-      APPEND_DEVICE(0x0116);
-      APPEND_DEVICE(0x0122);
-      APPEND_DEVICE(0x0126);
 #endif
       [[fallthrough]];
     case DeviceFamily::IntelModernRolloutWebRender:
@@ -574,6 +554,25 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       APPEND_DEVICE(0x3184);
       APPEND_DEVICE(0x3185);
 #endif
+      // broadwell gt2+ (gen8)
+      APPEND_DEVICE(0x1612);
+      APPEND_DEVICE(0x1616);
+      APPEND_DEVICE(0x161a);
+      APPEND_DEVICE(0x161b);
+      APPEND_DEVICE(0x161d);
+      APPEND_DEVICE(0x161e);
+      APPEND_DEVICE(0x1622);
+      APPEND_DEVICE(0x1626);
+      APPEND_DEVICE(0x162a);
+      APPEND_DEVICE(0x162b);
+      APPEND_DEVICE(0x162d);
+      APPEND_DEVICE(0x162e);
+      APPEND_DEVICE(0x1632);
+      APPEND_DEVICE(0x1636);
+      APPEND_DEVICE(0x163a);
+      APPEND_DEVICE(0x163b);
+      APPEND_DEVICE(0x163d);
+      APPEND_DEVICE(0x163e);
 
       // skylake gt1
       APPEND_DEVICE(0x1902);
@@ -677,6 +676,11 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
       // Raven
       APPEND_DEVICE(0x15dd);
       APPEND_DEVICE(0x15d8);
+
+#ifdef EARLY_BETA_OR_EARLIER
+      // Stoney
+      APPEND_DEVICE(0x98e4);
+#endif
 
 #if defined(NIGHTLY_BUILD)
       // Evergreen
@@ -800,7 +804,7 @@ const nsAString& GfxDriverInfo::GetDeviceVendor(DeviceFamily id) {
     case DeviceFamily::IntelGMAX4500HD:
     case DeviceFamily::IntelHDGraphicsToIvyBridge:
     case DeviceFamily::IntelHDGraphicsToSandyBridge:
-    case DeviceFamily::IntelHDGraphicsToHaswell:
+    case DeviceFamily::IntelHaswell:
     case DeviceFamily::IntelHD3000:
     case DeviceFamily::IntelHD520:
     case DeviceFamily::IntelMobileHDGraphics:
@@ -866,7 +870,11 @@ const nsAString& GfxDriverInfo::GetDeviceVendor(DeviceVendor id) {
     DECLARE_VENDOR_ID(ATI, "0x1002");
     // AMD has 0x1022 but continues to release GPU hardware under ATI.
     DECLARE_VENDOR_ID(Microsoft, "0x1414");
+    DECLARE_VENDOR_ID(MicrosoftBasic, "0x00ba");
+    DECLARE_VENDOR_ID(MicrosoftHyperV, "0x000b");
     DECLARE_VENDOR_ID(Parallels, "0x1ab8");
+    DECLARE_VENDOR_ID(VMWare, "0x15ad");
+    DECLARE_VENDOR_ID(VirtualBox, "0x80ee");
     // Choose an arbitrary Qualcomm PCI VENdor ID for now.
     // TODO: This should be "QCOM" when Windows device ID parsing is reworked.
     DECLARE_VENDOR_ID(Qualcomm, "0x5143");

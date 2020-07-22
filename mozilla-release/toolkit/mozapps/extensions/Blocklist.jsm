@@ -388,7 +388,7 @@ const Utils = {
  * @param {Object} environment the JEXL environment object.
  * @returns {Object} The entry if it matches, `null` otherwise.
  */
-async function targetAppFilter(entry, environment = {}) {
+async function targetAppFilter(entry, environment) {
   // If the entry has a JEXL filter expression, it should prevail.
   // The legacy target app mechanism will be kept in place for old entries.
   // See https://bugzilla.mozilla.org/show_bug.cgi?id=1463377
@@ -703,8 +703,8 @@ this.PluginBlocklistRS = {
     BlocklistTelemetry.recordRSBlocklistLastModified("plugins", this._client);
   },
 
-  async _filterItem(entry) {
-    if (!(await targetAppFilter(entry))) {
+  async _filterItem(entry, environment) {
+    if (!(await targetAppFilter(entry, environment))) {
       return null;
     }
     if (!Utils.matchesOSABI(entry)) {
@@ -1128,8 +1128,8 @@ this.ExtensionBlocklistRS = {
     BlocklistTelemetry.recordRSBlocklistLastModified("addons", this._client);
   },
 
-  async _filterItem(entry) {
-    if (!(await targetAppFilter(entry))) {
+  async _filterItem(entry, environment) {
+    if (!(await targetAppFilter(entry, environment))) {
       return null;
     }
     if (!Utils.matchesOSABI(entry)) {
@@ -1219,7 +1219,7 @@ this.ExtensionBlocklistRS = {
 
       // Ensure that softDisabled is false if the add-on is not soft blocked
       if (state != Ci.nsIBlocklistService.STATE_SOFTBLOCKED) {
-        addon.softDisabled = false;
+        await addon.setSoftDisabled(false);
       }
 
       // If an add-on has dropped from hard to soft blocked just mark it as
@@ -1228,7 +1228,7 @@ this.ExtensionBlocklistRS = {
         state == Ci.nsIBlocklistService.STATE_SOFTBLOCKED &&
         oldState == Ci.nsIBlocklistService.STATE_BLOCKED
       ) {
-        addon.softDisabled = true;
+        await addon.setSoftDisabled(true);
       }
 
       if (
@@ -1243,7 +1243,7 @@ this.ExtensionBlocklistRS = {
           state == Ci.nsIBlocklistService.STATE_SOFTBLOCKED &&
           !addon.userDisabled
         ) {
-          addon.softDisabled = true;
+          await addon.setSoftDisabled(true);
         }
         // It's a block. We must reset certain preferences.
         let entry = this._getEntry(addon, this._entries);
@@ -1579,7 +1579,7 @@ this.ExtensionBlocklistMLBF = {
       // Ensure that softDisabled is false if the add-on is not soft blocked
       // (by a previous implementation of the blocklist).
       if (state != Ci.nsIBlocklistService.STATE_SOFTBLOCKED) {
-        addon.softDisabled = false;
+        await addon.setSoftDisabled(false);
       }
     }
 
@@ -1636,6 +1636,27 @@ this.ExtensionBlocklistMLBF = {
       return null;
     }
     // Add-on blocked, or unknown add-on inadvertently labeled as blocked.
+
+    let { signedState } = addon;
+    if (
+      signedState !== AddonManager.SIGNEDSTATE_PRELIMINARY &&
+      signedState !== AddonManager.SIGNEDSTATE_SIGNED
+    ) {
+      // The block decision can only be relied upon for known add-ons, i.e.
+      // signed via AMO. Anything else is unknown and ignored:
+      //
+      // - SIGNEDSTATE_SYSTEM and SIGNEDSTATE_PRIVILEGED are signed
+      //   independently of AMO.
+      //
+      // - SIGNEDSTATE_NOT_REQUIRED already has an early return above due to
+      //   signedDate being unset for these kinds of add-ons.
+      //
+      // - SIGNEDSTATE_BROKEN, SIGNEDSTATE_UNKNOWN and SIGNEDSTATE_MISSING
+      //   means that the signature cannot be relied upon. It is equivalent to
+      //   removing the signature from the XPI file, which already causes them
+      //   to be disabled on release builds (where MOZ_REQUIRE_SIGNING=true).
+      return null;
+    }
 
     if (signedDate.getTime() > generationTime) {
       // The bloom filter only reports 100% accurate results for known add-ons.

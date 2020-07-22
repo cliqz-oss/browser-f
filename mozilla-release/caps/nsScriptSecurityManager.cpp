@@ -251,13 +251,14 @@ nsScriptSecurityManager::GetChannelResultStoragePrincipal(
     return rv;
   }
 
-  return StoragePrincipalHelper::Create(aChannel, principal, aPrincipal);
+  return StoragePrincipalHelper::Create(
+      aChannel, principal, /* aForceIsolation */ false, aPrincipal);
 }
 
 NS_IMETHODIMP
 nsScriptSecurityManager::GetChannelResultPrincipals(
     nsIChannel* aChannel, nsIPrincipal** aPrincipal,
-    nsIPrincipal** aStoragePrincipal) {
+    nsIPrincipal** aPartitionedPrincipal) {
   nsresult rv = GetChannelResultPrincipal(aChannel, aPrincipal,
                                           /*aIgnoreSandboxing*/ false);
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -269,12 +270,12 @@ nsScriptSecurityManager::GetChannelResultPrincipals(
     // principal for the storage principal too, since attempting to create a
     // storage principal would fail anyway.
     nsCOMPtr<nsIPrincipal> copy = *aPrincipal;
-    copy.forget(aStoragePrincipal);
+    copy.forget(aPartitionedPrincipal);
     return NS_OK;
   }
 
-  return StoragePrincipalHelper::Create(aChannel, *aPrincipal,
-                                        aStoragePrincipal);
+  return StoragePrincipalHelper::Create(
+      aChannel, *aPrincipal, /* aForceIsolation */ true, aPartitionedPrincipal);
 }
 
 nsresult nsScriptSecurityManager::GetChannelResultPrincipal(
@@ -663,12 +664,13 @@ nsScriptSecurityManager::CheckLoadURIWithPrincipal(nsIPrincipal* aPrincipal,
   }
 
   // Check for uris that are only loadable by principals that subsume them
-  bool hasFlags;
-  rv = NS_URIChainHasFlags(
-      targetBaseURI, nsIProtocolHandler::URI_LOADABLE_BY_SUBSUMERS, &hasFlags);
+  bool targetURIIsLoadableBySubsumers = false;
+  rv = NS_URIChainHasFlags(targetBaseURI,
+                           nsIProtocolHandler::URI_LOADABLE_BY_SUBSUMERS,
+                           &targetURIIsLoadableBySubsumers);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (hasFlags) {
+  if (targetURIIsLoadableBySubsumers) {
     // check nothing else in the URI chain has flags that prevent
     // access:
     rv = CheckLoadURIFlags(
@@ -710,11 +712,14 @@ nsScriptSecurityManager::CheckLoadURIWithPrincipal(nsIPrincipal* aPrincipal,
   }
 
   // Check for webextension
-  rv = NS_URIChainHasFlags(
-      aTargetURI, nsIProtocolHandler::URI_LOADABLE_BY_EXTENSIONS, &hasFlags);
+  bool targetURIIsLoadableByExtensions = false;
+  rv = NS_URIChainHasFlags(aTargetURI,
+                           nsIProtocolHandler::URI_LOADABLE_BY_EXTENSIONS,
+                           &targetURIIsLoadableByExtensions);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (hasFlags && BasePrincipal::Cast(aPrincipal)->AddonPolicy()) {
+  if (targetURIIsLoadableByExtensions &&
+      BasePrincipal::Cast(aPrincipal)->AddonPolicy()) {
     return NS_OK;
   }
 
@@ -871,11 +876,11 @@ nsresult nsScriptSecurityManager::CheckLoadURIFlags(
   }
 
   // Check for chrome target URI
-  bool hasFlags = false;
+  bool targetURIIsUIResource = false;
   rv = NS_URIChainHasFlags(aTargetURI, nsIProtocolHandler::URI_IS_UI_RESOURCE,
-                           &hasFlags);
+                           &targetURIIsUIResource);
   NS_ENSURE_SUCCESS(rv, rv);
-  if (hasFlags) {
+  if (targetURIIsUIResource) {
     if (aFlags & nsIScriptSecurityManager::ALLOW_CHROME) {
       // Allow a URI_IS_UI_RESOURCE source to link to a URI_IS_UI_RESOURCE
       // target if ALLOW_CHROME is set.
@@ -947,10 +952,11 @@ nsresult nsScriptSecurityManager::CheckLoadURIFlags(
   }
 
   // Check for target URI pointing to a file
+  bool targetURIIsLocalFile = false;
   rv = NS_URIChainHasFlags(aTargetURI, nsIProtocolHandler::URI_IS_LOCAL_FILE,
-                           &hasFlags);
+                           &targetURIIsLocalFile);
   NS_ENSURE_SUCCESS(rv, rv);
-  if (hasFlags) {
+  if (targetURIIsLocalFile) {
     // Allow domains that were allowlisted in the prefs. In 99.9% of cases,
     // this array is empty.
     bool isAllowlisted;

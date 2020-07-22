@@ -66,6 +66,7 @@ http://127.0.0.1:80               privileged
 http://127.0.0.1:8888             privileged
 http://test:80                    privileged
 http://mochi.test:8888            privileged
+http://mochi.xorigin-test:8888    privileged
 http://test1.mochi.test:8888
 http://sub1.test1.mochi.test:8888
 http://sub2.xn--lt-uia.mochi.test:8888
@@ -284,6 +285,8 @@ http://example.tw:80                privileged
 http://example.cn:80                privileged
 http://example.co.jp:80             privileged
 http://example.fi:80                privileged
+http://example.in:80                privileged
+http://example.lk:80                privileged
 
 # Host for HPKP
 https://include-subdomains.pinning-dynamic.example.com:443        privileged,cert=dynamicPinningGood

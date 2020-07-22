@@ -17,6 +17,7 @@
 #include "frontend/FunctionSyntaxKind.h"  // FunctionSyntaxKind
 #include "frontend/ParseNode.h"
 #include "frontend/Stencil.h"
+#include "js/WasmModule.h"             // JS::WasmModule
 #include "vm/FunctionFlags.h"          // js::FunctionFlags
 #include "vm/GeneratorAndAsyncKind.h"  // js::GeneratorKind, js::FunctionAsyncKind
 #include "vm/JSFunction.h"
@@ -342,6 +343,10 @@ class FunctionBox : public SharedContext {
   // compilation.
   bool emitBytecode : 1;
 
+  // This function is a standalone function that is not syntactically part of
+  // another script. Eg. Created by `new Function("")`.
+  bool isStandalone : 1;
+
   // This is set by the BytecodeEmitter of the enclosing script when a reference
   // to this function is generated. This is also used to determine a hoisted
   // function already is referenced by the bytecode.
@@ -425,7 +430,7 @@ class FunctionBox : public SharedContext {
   // Initialize FunctionBox with a deferred allocation Function
   void initializeFunction(JSFunction* fun) { clobberFunction(fun); }
 
-  void setAsmJSModule(JSFunction* function);
+  MOZ_MUST_USE bool setAsmJSModule(const JS::WasmModule* module);
   bool isAsmJSModule() { return isAsmJSModule_; }
 
   void clobberFunction(JSFunction* function);
@@ -603,14 +608,6 @@ class FunctionBox : public SharedContext {
   void setArgCount(uint16_t args) { nargs_ = args; }
 
   size_t nargs() { return nargs_; }
-
-  // Flush the acquired argCount to the associated function.
-  void synchronizeArgCount() { function()->setArgCount(nargs_); }
-
-  bool setTypeForScriptedFunction(JSContext* cx) {
-    RootedFunction fun(cx, function());
-    return JSFunction::setTypeForScriptedFunction(cx, fun, isSingleton);
-  }
 
   size_t index() { return funcDataIndex_; }
 

@@ -39,8 +39,10 @@ from mozboot.osx import OSXBootstrapper
 from mozboot.openbsd import OpenBSDBootstrapper
 from mozboot.archlinux import ArchlinuxBootstrapper
 from mozboot.solus import SolusBootstrapper
+from mozboot.void import VoidBootstrapper
 from mozboot.windows import WindowsBootstrapper
 from mozboot.mozillabuild import MozillaBuildBootstrapper
+from mozboot.mozconfig import find_mozconfig
 from mozboot.util import (
     get_state_dir,
 )
@@ -110,6 +112,15 @@ FINISHED = '''
 Your system should be ready to build %s!
 '''
 
+MOZCONFIG_SUGGESTION_TEMPLATE = '''
+Paste the lines between the chevrons (>>> and <<<) into
+%s:
+
+>>>
+%s
+<<<
+'''.strip()
+
 SOURCE_ADVERTISE = '''
 Source code can be obtained by running
 
@@ -174,9 +185,10 @@ DEBIAN_DISTROS = (
     'linuxmint',
     'elementary',
     'neon',
+    'pop',
 )
 
-ADD_GIT_TOOLS_PATH = '''
+ADD_GIT_CINNABAR_PATH = '''
 To add git-cinnabar to the PATH, edit your shell initialization script, which
 may be called ~/.bashrc or ~/.bash_profile or ~/.profile, and add the following
 lines:
@@ -279,6 +291,8 @@ class Bootstrapper(object):
                 cls = SolusBootstrapper
             elif dist_id in ('arch') or os.path.exists('/etc/arch-release'):
                 cls = ArchlinuxBootstrapper
+            elif dist_id in ('void'):
+                cls = VoidBootstrapper
             elif os.path.exists('/etc/SUSE-brand'):
                 cls = OpenSUSEBootstrapper
             else:
@@ -422,6 +436,11 @@ class Bootstrapper(object):
                       'any time by editing the config file `{}`\n'.format(cfg_file))
 
     def bootstrap(self):
+        if sys.version_info[0] < 3:
+            print('This script must be run with Python 3. \n'
+                  'Try "python3 bootstrap.py".')
+            sys.exit(1)
+
         if self.choice is None:
             # Like ['1. Firefox for Desktop', '2. Firefox for Android Artifact Mode', ...].
             labels = ['%s. %s' % (i, name) for i, name in enumerate(APPLICATIONS.keys(), 1)]
@@ -456,6 +475,7 @@ class Bootstrapper(object):
                                                         state_dir_available,
                                                         have_clone,
                                                         checkout_root)
+            self._output_mozconfig(application)
             sys.exit(0)
 
         self.instance.install_system_packages()
@@ -512,8 +532,9 @@ class Bootstrapper(object):
                 should_configure_git = self.hg_configure
 
             if should_configure_git:
-                configure_git(self.instance.which('git'), state_dir,
-                              checkout_root)
+                configure_git(self.instance.which('git'),
+                              self.instance.which('git-cinnabar'),
+                              state_dir, checkout_root)
 
         # Offer to clone if we're not inside a clone.
         have_clone = False
@@ -551,8 +572,24 @@ class Bootstrapper(object):
         if not self.instance.which("moz-phab"):
             print(MOZ_PHAB_ADVERTISE)
 
-        # Like 'suggest_browser_mozconfig' or 'suggest_mobile_android_mozconfig'.
-        getattr(self.instance, 'suggest_%s_mozconfig' % application)()
+        self._output_mozconfig(application)
+
+    def _output_mozconfig(self, application):
+        # Like 'generate_browser_mozconfig' or 'generate_mobile_android_mozconfig'.
+        mozconfig = getattr(self.instance, 'generate_%s_mozconfig' % application)()
+
+        if mozconfig:
+            mozconfig_path = find_mozconfig(self.mach_context.topdir)
+            if not mozconfig_path:
+                # No mozconfig file exists yet
+                mozconfig_path = os.path.join(self.mach_context.topdir, 'mozconfig')
+                with open(mozconfig_path, 'w') as mozconfig_file:
+                    mozconfig_file.write(mozconfig)
+                print('Your requested configuration has been written to "%s".'
+                      % mozconfig_path)
+            else:
+                suggestion = MOZCONFIG_SUGGESTION_TEMPLATE % (mozconfig_path, mozconfig)
+                print(suggestion)
 
 
 def update_vct(hg, root_state_dir):
@@ -774,11 +811,12 @@ def update_git_repo(git, url, dest):
         print('=' * 80)
 
 
-def configure_git(git, root_state_dir, top_src_dir):
+def configure_git(git, cinnabar, root_state_dir, top_src_dir):
     """Run the Git configuration steps."""
     cinnabar_dir = update_git_tools(git, root_state_dir, top_src_dir)
 
-    print(ADD_GIT_TOOLS_PATH.format(cinnabar_dir))
+    if not cinnabar:
+        print(ADD_GIT_CINNABAR_PATH.format(cinnabar_dir))
 
 
 def git_clone_firefox(git, dest, watchman=None):

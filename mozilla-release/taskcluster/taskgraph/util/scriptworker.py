@@ -61,6 +61,7 @@ SIGNING_SCOPE_ALIAS_TO_PROJECT = [[
         'mozilla-esr78',
         'comm-beta',
         'comm-esr68',
+        'comm-esr78',
     ])
 ]]
 
@@ -99,6 +100,7 @@ BEETMOVER_SCOPE_ALIAS_TO_PROJECT = [[
         'mozilla-esr78',
         'comm-beta',
         'comm-esr68',
+        'comm-esr78',
     ])
 ]]
 
@@ -141,6 +143,7 @@ BALROG_SCOPE_ALIAS_TO_PROJECT = [[
     'release', set([
         'mozilla-release',
         'comm-esr68',
+        'comm-esr78',
     ])
 ], [
     'esr68', set([
@@ -160,6 +163,7 @@ BALROG_SERVER_SCOPES = {
     'beta': 'balrog:server:beta',
     'release': 'balrog:server:release',
     'esr68': 'balrog:server:esr',
+    'esr78': 'balrog:server:esr',
     'default': 'balrog:server:dep',
 }
 
@@ -445,6 +449,7 @@ def generate_beetmover_upstream_artifacts(
             "locale": locale,
         })
 
+    upstream_artifacts.sort(key=lambda u: u['paths'])
     return upstream_artifacts
 
 
@@ -491,7 +496,7 @@ def generate_beetmover_artifact_map(config, job, **kwargs):
 
     resolve_keyed_by(map_config, 's3_bucket_paths', job['label'], platform=platform)
 
-    for locale, dep in itertools.product(locales, dependencies):
+    for locale, dep in sorted(itertools.product(locales, dependencies)):
         paths = dict()
         for filename in map_config['mapping']:
             # Relevancy checks
@@ -727,4 +732,5 @@ def generate_beetmover_partials_artifact_map(config, job, partials_info, **kwarg
             'paths': paths,
         })
 
+    artifacts.sort(key=lambda a: sorted(a['paths'].items()))
     return artifacts

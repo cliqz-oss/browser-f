@@ -11,6 +11,7 @@ const { XPCOMUtils } = ChromeUtils.import(
 XPCOMUtils.defineLazyModuleGetters(this, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   EveryWindow: "resource:///modules/EveryWindow.jsm",
+  AboutReaderParent: "resource:///actors/AboutReaderParent.jsm",
 });
 
 const FEW_MINUTES = 15 * 60 * 1000; // 15 mins
@@ -98,7 +99,7 @@ this.ASRouterTriggerListeners = new Map([
       init(triggerHandler, hosts, patterns) {
         if (!this._initialized) {
           this.receiveMessage = this.receiveMessage.bind(this);
-          Services.mm.addMessageListener(this.readerModeEvent, this);
+          AboutReaderParent.addMessageListener(this.readerModeEvent, this);
           this._triggerHandler = triggerHandler;
           this._initialized = true;
         }
@@ -127,7 +128,7 @@ this.ASRouterTriggerListeners = new Map([
 
       uninit() {
         if (this._initialized) {
-          Services.mm.removeMessageListener(this.readerModeEvent, this);
+          AboutReaderParent.removeMessageListener(this.readerModeEvent, this);
           this._initialized = false;
           this._triggerHandler = null;
           this._hosts = new Set();

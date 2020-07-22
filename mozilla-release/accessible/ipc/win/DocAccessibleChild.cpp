@@ -84,9 +84,17 @@ HWND DocAccessibleChild::GetNativeWindowHandle() const {
     return mEmulatedWindowHandle;
   }
 
-  auto tab = static_cast<dom::BrowserChild*>(Manager());
-  MOZ_ASSERT(tab);
-  return reinterpret_cast<HWND>(tab->GetNativeWindowHandle());
+  auto browser = static_cast<dom::BrowserChild*>(Manager());
+  MOZ_ASSERT(browser);
+  // Iframe documents use the same window handle as their top level document.
+  auto topDoc = static_cast<DocAccessibleChild*>(
+      browser->GetTopLevelDocAccessibleChild());
+  MOZ_ASSERT(topDoc);
+  if (topDoc != this && topDoc->mEmulatedWindowHandle) {
+    return topDoc->mEmulatedWindowHandle;
+  }
+
+  return reinterpret_cast<HWND>(browser->GetNativeWindowHandle());
 }
 
 void DocAccessibleChild::PushDeferredEvent(UniquePtr<DeferredEvent> aEvent) {

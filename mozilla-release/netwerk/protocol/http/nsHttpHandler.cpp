@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim:set ts=4 sw=2 sts=2 et cin: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -67,6 +67,7 @@
 #include "mozilla/DynamicFpiRedirectHeuristic.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/LazyIdleThread.h"
+#include "mozilla/StaticPrefs_image.h"
 #include "mozilla/SyncRunnable.h"
 
 #include "mozilla/dom/ContentParent.h"
@@ -121,7 +122,6 @@
 
 #define ACCEPT_HEADER_NAVIGATION \
   "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
-#define ACCEPT_HEADER_IMAGE "image/webp,*/*"
 #define ACCEPT_HEADER_STYLE "text/css,*/*;q=0.1"
 #define ACCEPT_HEADER_ALL "*/*"
 
@@ -187,6 +187,25 @@ already_AddRefed<nsHttpHandler> nsHttpHandler::GetInstance() {
   return httpHandler.forget();
 }
 
+/// Derive the HTTP Accept header for image requests based on the enabled prefs
+/// for non-universal image types. This may be overridden in its entirety by
+/// the image.http.accept pref.
+static nsCString ImageAcceptHeader() {
+  nsCString mimeTypes;
+
+  if (mozilla::StaticPrefs::image_avif_enabled()) {
+    mimeTypes.Append("image/avif,");
+  }
+
+  if (mozilla::StaticPrefs::image_webp_enabled()) {
+    mimeTypes.Append("image/webp,");
+  }
+
+  mimeTypes.Append("*/*");
+
+  return mimeTypes;
+}
+
 nsHttpHandler::nsHttpHandler()
     : mHttpVersion(HttpVersion::v1_1),
       mProxyHttpVersion(HttpVersion::v1_1),
@@ -226,7 +245,7 @@ nsHttpHandler::nsHttpHandler()
       mPhishyUserPassLength(1),
       mQoSBits(0x00),
       mEnforceAssocReq(false),
-      mImageAcceptHeader(ACCEPT_HEADER_IMAGE),
+      mImageAcceptHeader(ImageAcceptHeader()),
       mLastUniqueID(NowInSeconds()),
       mSessionStartTime(0),
       mLegacyAppName("Mozilla"),
@@ -310,11 +329,14 @@ nsHttpHandler::nsHttpHandler()
   if (runtime) {
     runtime->GetProcessID(&mProcessId);
   }
-  SetFastOpenOSSupport();
+
+  mFastOpenSupported = false;
+  if (XRE_IsParentProcess()) {
+    SetFastOpenOSSupport();
+  }
 }
 
 void nsHttpHandler::SetFastOpenOSSupport() {
-  mFastOpenSupported = false;
 #if !defined(XP_WIN) && !defined(XP_LINUX) && !defined(ANDROID) && \
     !defined(HAS_CONNECTX)
   return;
@@ -425,6 +447,8 @@ static const char* gCallbackPrefs[] = {
     TCP_FAST_OPEN_STALLS_IDLE,
     TCP_FAST_OPEN_STALLS_TIMEOUT,
     "image.http.accept",
+    "image.avif.enabled",
+    "image.webp.enabled",
     nullptr,
 };
 
@@ -523,7 +547,8 @@ nsresult nsHttpHandler::Init() {
       static_cast<nsISupports*>(static_cast<void*>(this)),
       NS_HTTP_STARTUP_TOPIC);
 
-  nsCOMPtr<nsIObserverService> obsService = services::GetObserverService();
+  nsCOMPtr<nsIObserverService> obsService =
+      static_cast<nsIObserverService*>(gIOService);
   if (obsService) {
     // register the handler object as a weak callback as we don't need to worry
     // about shutdown ordering.
@@ -603,7 +628,15 @@ nsresult nsHttpHandler::InitConnectionMgr() {
       HttpConnectionMgrParent* parent =
           self->mConnMgr->AsHttpConnectionMgrParent();
       Unused << SocketProcessParent::GetSingleton()
-                    ->SendPHttpConnectionMgrConstructor(parent);
+                    ->SendPHttpConnectionMgrConstructor(
+                        parent,
+                        HttpHandlerInitArgs(
+                            self->mFastOpenSupported, self->mLegacyAppName,
+                            self->mLegacyAppVersion, self->mPlatform,
+                            self->mOscpu, self->mMisc, self->mProduct,
+                            self->mProductSub, self->mAppName,
+                            self->mAppVersion, self->mCompatFirefox,
+                            self->mCompatDevice, self->mDeviceModelId));
     };
     gIOService->CallOrWaitForSocketProcess(std::move(task));
   } else {
@@ -931,6 +964,13 @@ void nsHttpHandler::BuildUserAgent() {
 #endif
 
 void nsHttpHandler::InitUserAgentComponents() {
+  // Don't build user agent components in socket process, since the system info
+  // is not available.
+  if (XRE_IsSocketProcess()) {
+    mUserAgentIsDirty = true;
+    return;
+  }
+
 #ifndef MOZ_UA_OS_AGNOSTIC
   // Gather platform.
   mPlatform.AssignLiteral(
@@ -1097,7 +1137,7 @@ void nsHttpHandler::PrefsChanged(const char* pref) {
   if (MULTI_PREF_CHANGED(SECURITY_PREFIX)) {
     LOG(("nsHttpHandler::PrefsChanged Security Pref Changed %s\n", pref));
     if (mConnMgr) {
-      rv = mConnMgr->DoShiftReloadConnectionCleanup(nullptr);
+      rv = mConnMgr->DoShiftReloadConnectionCleanup();
       if (NS_FAILED(rv)) {
         LOG(
             ("nsHttpHandler::PrefsChanged "
@@ -1136,7 +1176,13 @@ void nsHttpHandler::PrefsChanged(const char* pref) {
   // general.useragent.use_device
   if (PREF_CHANGED(UA_PREF("use_device"))) {
     if (Preferences::GetBool(UA_PREF("use_device"), false)) {
-      mDeviceModelId = mozilla::net::GetDeviceModelId();
+      if (!XRE_IsSocketProcess()) {
+        mDeviceModelId = mozilla::net::GetDeviceModelId();
+        if (gIOService->SocketProcessReady()) {
+          Unused << SocketProcessParent::GetSingleton()
+                        ->SendUpdateDeviceModelId(mDeviceModelId);
+        }
+      }
     } else {
       mDeviceModelId = EmptyCString();
     }
@@ -1931,10 +1977,22 @@ void nsHttpHandler::PrefsChanged(const char* pref) {
     }
   }
 
-  if (PREF_CHANGED("image.http.accept")) {
-    rv = Preferences::GetCString("image.http.accept", mImageAcceptHeader);
-    if (NS_FAILED(rv)) {
-      mImageAcceptHeader.Assign(ACCEPT_HEADER_IMAGE);
+  if (PREF_CHANGED("image.http.accept") || PREF_CHANGED("image.avif.enabled") ||
+      PREF_CHANGED("image.webp.enabled")) {
+    nsAutoCString userSetImageAcceptHeader;
+
+    if (Preferences::HasUserValue("image.http.accept")) {
+      rv = Preferences::GetCString("image.http.accept",
+                                   userSetImageAcceptHeader);
+      if (NS_FAILED(rv)) {
+        userSetImageAcceptHeader.Truncate();
+      }
+    }
+
+    if (userSetImageAcceptHeader.IsEmpty()) {
+      mImageAcceptHeader.Assign(ImageAcceptHeader());
+    } else {
+      mImageAcceptHeader.Assign(userSetImageAcceptHeader);
     }
   }
 
@@ -2192,6 +2250,13 @@ nsHttpHandler::GetAltSvcCacheKeys(nsTArray<nsCString>& value) {
   return mAltSvcCache->GetAltSvcCacheKeys(value);
 }
 
+NS_IMETHODIMP
+nsHttpHandler::GetAuthCacheKeys(nsTArray<nsCString>& aValues) {
+  mAuthCache.CollectKeys(aValues);
+  mPrivateAuthCache.CollectKeys(aValues);
+  return NS_OK;
+}
+
 //-----------------------------------------------------------------------------
 // nsHttpHandler::nsIObserver
 //-----------------------------------------------------------------------------
@@ -2221,23 +2286,27 @@ nsHttpHandler::Observe(nsISupports* subject, const char* topic,
     // depend on this value.
     mSessionStartTime = NowInSeconds();
 
-    if (!StaticPrefs::privacy_donottrackheader_enabled()) {
-      Telemetry::Accumulate(Telemetry::DNT_USAGE, 2);
-    } else {
-      Telemetry::Accumulate(Telemetry::DNT_USAGE, 1);
-    }
+    // Since nsHttpHandler::Observe() is also called in socket process, we don't
+    // want to do telemetry twice.
+    if (XRE_IsParentProcess()) {
+      if (!StaticPrefs::privacy_donottrackheader_enabled()) {
+        Telemetry::Accumulate(Telemetry::DNT_USAGE, 2);
+      } else {
+        Telemetry::Accumulate(Telemetry::DNT_USAGE, 1);
+      }
 
-    if (UseFastOpen()) {
-      Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 0);
-    } else if (!mFastOpenSupported) {
-      Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 1);
-    } else if (!mUseFastOpen) {
-      Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 2);
-    } else if (mFastOpenConsecutiveFailureCounter >=
-               mFastOpenConsecutiveFailureLimit) {
-      Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 3);
-    } else {
-      Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 4);
+      if (UseFastOpen()) {
+        Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 0);
+      } else if (!mFastOpenSupported) {
+        Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 1);
+      } else if (!mUseFastOpen) {
+        Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 2);
+      } else if (mFastOpenConsecutiveFailureCounter >=
+                 mFastOpenConsecutiveFailureLimit) {
+        Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 3);
+      } else {
+        Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_STATUS, 4);
+      }
     }
   } else if (!strcmp(topic, "profile-change-net-restore")) {
     // initialize connection manager
@@ -2261,7 +2330,7 @@ nsHttpHandler::Observe(nsISupports* subject, const char* topic,
     }
   } else if (!strcmp(topic, "net:prune-all-connections")) {
     if (mConnMgr) {
-      rv = mConnMgr->DoShiftReloadConnectionCleanup(nullptr);
+      rv = mConnMgr->DoShiftReloadConnectionCleanup();
       if (NS_FAILED(rv)) {
         LOG(("    DoShiftReloadConnectionCleanup failed (%08x)\n",
              static_cast<uint32_t>(rv)));
@@ -2286,9 +2355,9 @@ nsHttpHandler::Observe(nsISupports* subject, const char* topic,
   } else if (!strcmp(topic, "browser:purge-session-history")) {
     if (mConnMgr) {
       Unused << mConnMgr->ClearConnectionHistory();
-      if (mAltSvcCache) {
-        mAltSvcCache->ClearAltServiceMappings();
-      }
+    }
+    if (mAltSvcCache) {
+      mAltSvcCache->ClearAltServiceMappings();
     }
   } else if (!strcmp(topic, NS_NETWORK_LINK_TOPIC)) {
     nsAutoCString converted = NS_ConvertUTF16toUTF8(data);
@@ -2309,26 +2378,29 @@ nsHttpHandler::Observe(nsISupports* subject, const char* topic,
     // going to the background on android means we should close
     // down idle connections for power conservation
     if (mConnMgr) {
-      rv = mConnMgr->DoShiftReloadConnectionCleanup(nullptr);
+      rv = mConnMgr->DoShiftReloadConnectionCleanup();
       if (NS_FAILED(rv)) {
         LOG(("    DoShiftReloadConnectionCleanup failed (%08x)\n",
              static_cast<uint32_t>(rv)));
       }
     }
   } else if (!strcmp(topic, "net:current-toplevel-outer-content-windowid")) {
-    nsCOMPtr<nsISupportsPRUint64> wrapper = do_QueryInterface(subject);
-    MOZ_RELEASE_ASSERT(wrapper);
+    // The window id will be updated by HttpConnectionMgrParent.
+    if (XRE_IsParentProcess()) {
+      nsCOMPtr<nsISupportsPRUint64> wrapper = do_QueryInterface(subject);
+      MOZ_RELEASE_ASSERT(wrapper);
 
-    uint64_t windowId = 0;
-    wrapper->GetData(&windowId);
-    MOZ_ASSERT(windowId);
+      uint64_t windowId = 0;
+      wrapper->GetData(&windowId);
+      MOZ_ASSERT(windowId);
 
-    static uint64_t sCurrentTopLevelOuterContentWindowId = 0;
-    if (sCurrentTopLevelOuterContentWindowId != windowId) {
-      sCurrentTopLevelOuterContentWindowId = windowId;
-      if (mConnMgr) {
-        mConnMgr->UpdateCurrentTopLevelOuterContentWindowId(
-            sCurrentTopLevelOuterContentWindowId);
+      static uint64_t sCurrentTopLevelOuterContentWindowId = 0;
+      if (sCurrentTopLevelOuterContentWindowId != windowId) {
+        sCurrentTopLevelOuterContentWindowId = windowId;
+        if (mConnMgr) {
+          mConnMgr->UpdateCurrentTopLevelOuterContentWindowId(
+              sCurrentTopLevelOuterContentWindowId);
+        }
       }
     }
   } else if (!strcmp(topic, "captive-portal-login") ||
@@ -2387,8 +2459,8 @@ static bool CanEnableSpeculativeConnect() {
 void nsHttpHandler::MaybeEnableSpeculativeConnect() {
   MOZ_ASSERT(NS_IsMainThread(), "Main thread only");
 
-  // We don't need to and can't check this in the child process.
-  if (IsNeckoChild()) {
+  // We don't need to and can't check this in the child and socket process.
+  if (!XRE_IsParentProcess()) {
     return;
   }
 
@@ -2729,8 +2801,13 @@ HttpTrafficAnalyzer* nsHttpHandler::GetHttpTrafficAnalyzer() {
   return &mHttpTrafficAnalyzer;
 }
 
-bool nsHttpHandler::IsHttp3VersionSupportedHex(const nsACString& version) {
-  return version.LowerCaseEqualsLiteral(kHttp3VersionHEX);
+bool nsHttpHandler::IsHttp3VersionSupported(const nsACString& version) {
+  for (uint32_t i = 0; i < kHttp3VersionCount; i++) {
+    if (version.Equals(kHttp3Versions[i])) {
+      return true;
+    }
+  }
+  return false;
 }
 
 nsresult nsHttpHandler::InitiateTransaction(HttpTransactionShell* aTrans,
@@ -2797,9 +2874,10 @@ nsresult nsHttpHandler::CompleteUpgrade(
   return mConnMgr->CompleteUpgrade(aTrans, aUpgradeListener);
 }
 
-nsresult nsHttpHandler::DoShiftReloadConnectionCleanup(
+nsresult nsHttpHandler::DoShiftReloadConnectionCleanupWithConnInfo(
     nsHttpConnectionInfo* aCi) {
-  return mConnMgr->DoShiftReloadConnectionCleanup(aCi);
+  MOZ_ASSERT(aCi);
+  return mConnMgr->DoShiftReloadConnectionCleanupWithConnInfo(aCi);
 }
 
 void nsHttpHandler::ClearHostMapping(nsHttpConnectionInfo* aConnInfo) {
@@ -2809,6 +2887,28 @@ void nsHttpHandler::ClearHostMapping(nsHttpConnectionInfo* aConnInfo) {
   }
 
   AltServiceCache()->ClearHostMapping(aConnInfo);
+}
+
+void nsHttpHandler::SetHttpHandlerInitArgs(const HttpHandlerInitArgs& aArgs) {
+  MOZ_ASSERT(XRE_IsSocketProcess());
+  mFastOpenSupported = aArgs.mFastOpenSupported();
+  mLegacyAppName = aArgs.mLegacyAppName();
+  mLegacyAppVersion = aArgs.mLegacyAppVersion();
+  mPlatform = aArgs.mPlatform();
+  mOscpu = aArgs.mOscpu();
+  mMisc = aArgs.mMisc();
+  mProduct = aArgs.mProduct();
+  mProductSub = aArgs.mProductSub();
+  mAppName = aArgs.mAppName();
+  mAppVersion = aArgs.mAppVersion();
+  mCompatFirefox = aArgs.mCompatFirefox();
+  mCompatDevice = aArgs.mCompatDevice();
+  mDeviceModelId = aArgs.mDeviceModelId();
+}
+
+void nsHttpHandler::SetDeviceModelId(const nsCString& aModelId) {
+  MOZ_ASSERT(XRE_IsSocketProcess());
+  mDeviceModelId = aModelId;
 }
 
 }  // namespace mozilla::net

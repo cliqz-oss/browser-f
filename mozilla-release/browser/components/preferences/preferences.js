@@ -10,6 +10,7 @@
 /* import-globals-from containers.js */
 /* import-globals-from privacy.js */
 /* import-globals-from sync.js */
+/* import-globals-from experimental.js */
 /* import-globals-from findInPage.js */
 /* import-globals-from ../../base/content/utilityOverlay.js */
 /* import-globals-from ../../../toolkit/content/preferencesBindings.js */
@@ -83,12 +84,16 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
+  if (Services.prefs.getBoolPref("browser.preferences.experimental")) {
+    document.getElementById("category-experimental").hidden = false;
+    register_module("paneExperimental", gExperimentalPane);
+  }
+  // The Sync category needs to be the last of the "real" categories
+  // registered and inititalized since many tests wait for the
+  // "sync-pane-loaded" observer notification before starting the test.
   if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     document.getElementById("category-sync").hidden = false;
     register_module("paneSync", gSyncPane);
-  } else {
-    // Remove the pane from the DOM so it doesn't get incorrectly included in search results.
-    document.getElementById("template-paneSync").remove();
   }
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
@@ -122,7 +127,7 @@ function init_all() {
         // Ignore right clicks.
         return;
       }
-      let mainWindow = window.docShell.rootTreeItem.domWindow;
+      let mainWindow = window.browsingContext.topChromeWindow;
       mainWindow.BrowserOpenAddonsMgr();
       AMTelemetry.recordLinkEvent({
         object: "aboutPreferences",

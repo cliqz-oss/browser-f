@@ -337,16 +337,6 @@ AudioDestinationNode::AudioDestinationNode(AudioContext* aContext,
   mTrack->AddAudioOutput(nullptr);
 
   if (aAllowedToStart) {
-    graph->NotifyWhenGraphStarted(mTrack)->Then(
-        aContext->GetMainThread(), "AudioDestinationNode OnRunning",
-        [context = RefPtr<AudioContext>(aContext)] {
-          context->OnStateChanged(nullptr, AudioContextState::Running);
-        },
-        [] {
-          NS_WARNING(
-              "AudioDestinationNode's graph never started processing audio");
-        });
-
     CreateAudioWakeLockIfNeeded();
   }
 }
@@ -498,10 +488,7 @@ void AudioDestinationNode::OfflineShutdown() {
   MOZ_ASSERT(Context() && Context()->IsOffline(),
              "Should only be called on a valid OfflineAudioContext");
 
-  if (mTrack) {
-    mTrack->Graph()->MediaTrackGraph::ForceShutDown();
-    mOfflineRenderingRef.Drop(this);
-  }
+  mOfflineRenderingRef.Drop(this);
 }
 
 JSObject* AudioDestinationNode::WrapObject(JSContext* aCx,

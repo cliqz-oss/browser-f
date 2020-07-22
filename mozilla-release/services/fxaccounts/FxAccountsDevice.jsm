@@ -219,11 +219,26 @@ class FxAccountsDevice {
               accountData.sessionToken
             );
             log.info("got new device list", devices);
-            // Check if our push registration is still good (although background
-            // device registration means it's possible we'll be fetching the device
-            // list before we've actually registered ourself!)
+            // Check if our push registration previously succeeded and is still
+            // good (although background device registration means it's possible
+            // we'll be fetching the device list before we've actually
+            // registered ourself!)
+            // (For a missing subscription we check for an explicit 'null' -
+            // both to help tests and as a safety valve - missing might mean
+            // "no push available" for self-hosters or similar?)
             const ourDevice = devices.find(device => device.isCurrentDevice);
-            if (ourDevice && ourDevice.pushEndpointExpired) {
+            if (
+              ourDevice &&
+              (ourDevice.pushCallback === null || ourDevice.pushEndpointExpired)
+            ) {
+              let pushState = ourDevice.pushEndpointExpired
+                ? "expiredCallback"
+                : "noCallback";
+              Services.telemetry.keyedScalarAdd(
+                "identity.fxaccounts.push_state_this_device",
+                pushState,
+                1
+              );
               await this._fxai.fxaPushService.unsubscribe();
               await this._registerOrUpdateDevice(currentState, accountData);
             }

@@ -29,6 +29,11 @@ ChromeUtils.defineModuleGetter(
   "ReaderMode",
   "resource://gre/modules/ReaderMode.jsm"
 );
+ChromeUtils.defineModuleGetter(
+  this,
+  "AboutReaderParent",
+  "resource:///actors/AboutReaderParent.jsm"
+);
 
 var EXPORTED_SYMBOLS = ["SaveToPocket"];
 
@@ -250,8 +255,8 @@ var SaveToPocket = {
       this.updateElements(false);
       Services.obs.addObserver(this, "browser-delayed-startup-finished");
     }
-    Services.mm.addMessageListener("Reader:OnSetup", this);
-    Services.mm.addMessageListener("Reader:Clicked-pocket-button", this);
+    AboutReaderParent.addMessageListener("Reader:OnSetup", this);
+    AboutReaderParent.addMessageListener("Reader:Clicked-pocket-button", this);
   },
 
   observe(subject, topic, data) {
@@ -274,13 +279,13 @@ var SaveToPocket = {
 
   onPrefChange(pref, oldValue, newValue) {
     if (!newValue) {
-      Services.mm.broadcastAsyncMessage("Reader:RemoveButton", {
+      AboutReaderParent.broadcastAsyncMessage("Reader:RemoveButton", {
         id: "pocket-button",
       });
       PocketOverlay.shutdown();
       Services.obs.addObserver(this, "browser-delayed-startup-finished");
     } else {
-      Services.mm.broadcastAsyncMessage(
+      AboutReaderParent.broadcastAsyncMessage(
         "Reader:AddButton",
         this._readerButtonData
       );
@@ -316,9 +321,10 @@ var SaveToPocket = {
     switch (message.name) {
       case "Reader:OnSetup": {
         // Tell the reader about our button.
-        message.target.messageManager.sendAsyncMessage(
+        message.target.sendMessageToActor(
           "Reader:AddButton",
-          this._readerButtonData
+          this._readerButtonData,
+          "AboutReader"
         );
         break;
       }

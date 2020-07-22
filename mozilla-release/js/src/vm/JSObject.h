@@ -806,17 +806,17 @@ MOZ_ALWAYS_INLINE const char* GetObjectClassName(JSContext* cx,
                                                  HandleObject obj);
 
 /*
- * Prepare a |this| value to be returned to script. This includes replacing
+ * Prepare a |this| object to be returned to script. This includes replacing
  * Windows with their corresponding WindowProxy.
  *
  * Helpers are also provided to first extract the |this| from specific
  * types of environment.
  */
-Value GetThisValue(JSObject* obj);
+JSObject* GetThisObject(JSObject* obj);
 
-Value GetThisValueOfLexical(JSObject* env);
+JSObject* GetThisObjectOfLexical(JSObject* env);
 
-Value GetThisValueOfWith(JSObject* env);
+JSObject* GetThisObjectOfWith(JSObject* env);
 
 } /* namespace js */
 
@@ -981,6 +981,7 @@ extern bool IsPrototypeOf(JSContext* cx, HandleObject protoObj, JSObject* obj,
 
 /* Wrap boolean, number or string as Boolean, Number or String object. */
 extern JSObject* PrimitiveToObject(JSContext* cx, const Value& v);
+extern JSProtoKey PrimitiveToProtoKey(JSContext* cx, const Value& v);
 
 } /* namespace js */
 

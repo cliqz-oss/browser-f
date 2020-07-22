@@ -351,7 +351,10 @@ function fakeNow(...args) {
   const modules = [
     ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", null),
     ChromeUtils.import("resource://gre/modules/TelemetryEnvironment.jsm", null),
-    ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", null),
+    ChromeUtils.import(
+      "resource://gre/modules/TelemetryControllerParent.jsm",
+      null
+    ),
     ChromeUtils.import("resource://gre/modules/TelemetryStorage.jsm", null),
     ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", null),
     ChromeUtils.import(
@@ -398,7 +401,7 @@ function fakeMidnightPingFuzzingDelay(delayMs) {
 
 function fakeGeneratePingId(func) {
   let module = ChromeUtils.import(
-    "resource://gre/modules/TelemetryController.jsm",
+    "resource://gre/modules/TelemetryControllerParent.jsm",
     null
   );
   module.Policy.generatePingId = func;
@@ -406,7 +409,7 @@ function fakeGeneratePingId(func) {
 
 function fakeCachedClientId(uuid) {
   let module = ChromeUtils.import(
-    "resource://gre/modules/TelemetryController.jsm",
+    "resource://gre/modules/TelemetryControllerParent.jsm",
     null
   );
   module.Policy.getCachedClientID = () => uuid;
@@ -525,9 +528,6 @@ if (runningInParent) {
 
   // Speed up child process accumulations
   Services.prefs.setIntPref(TelemetryUtils.Preferences.IPCBatchTimeout, 10);
-
-  // Ensure we're not in a GeckoView-like environment by default
-  Services.prefs.setBoolPref("toolkit.telemetry.isGeckoViewMode", false);
 
   // Make sure ecosystem telemetry is disabled, no matter which build
   // Individual tests will enable it when appropriate

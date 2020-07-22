@@ -725,7 +725,8 @@ void Element::ScrollBy(const ScrollToOptions& aOptions) {
                                 ? ScrollMode::SmoothMsd
                                 : ScrollMode::Instant;
 
-    sf->ScrollByCSSPixels(scrollDelta, scrollMode, nsGkAtoms::relative);
+    sf->ScrollByCSSPixels(scrollDelta, scrollMode,
+                          mozilla::ScrollOrigin::Relative);
   }
 }
 
@@ -837,7 +838,7 @@ nsRect Element::GetClientAreaRect() {
   // document, we have overlay scrollbars, and we aren't embedded in another
   // document
   bool overlayScrollbars =
-      LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars) != 0;
+      LookAndFeel::GetInt(LookAndFeel::IntID::UseOverlayScrollbars) != 0;
   bool rootContentDocument =
       presContext && presContext->IsRootContentDocument();
   if (overlayScrollbars && rootContentDocument &&
@@ -2895,7 +2896,7 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
 
   switch (aVisitor.mEvent->mMessage) {
     case eMouseDown: {
-      if (aVisitor.mEvent->AsMouseEvent()->mButton == MouseButton::eLeft &&
+      if (aVisitor.mEvent->AsMouseEvent()->mButton == MouseButton::ePrimary &&
           OwnerDoc()->LinkHandlingEnabled()) {
         aVisitor.mEvent->mFlags.mMultipleActionsPrevented = true;
 
@@ -3099,10 +3100,8 @@ static const char* GetFullscreenError(CallerType aCallerType,
     return nullptr;
   }
 
-  // Ensure feature policy allows using the fullscreen API
-  if (!FeaturePolicyUtils::IsFeatureAllowed(aDocument,
-                                            NS_LITERAL_STRING("fullscreen"))) {
-    return "FullscreenDeniedFeaturePolicy";
+  if (const char* error = aDocument->GetFullscreenError(aCallerType)) {
+    return error;
   }
 
   // Bypass user interaction checks if preference is set
@@ -3118,7 +3117,7 @@ static const char* GetFullscreenError(CallerType aCallerType,
   // button
   if (StaticPrefs::full_screen_api_mouse_event_allow_left_button_only() &&
       (EventStateManager::sCurrentMouseBtn == MouseButton::eMiddle ||
-       EventStateManager::sCurrentMouseBtn == MouseButton::eRight)) {
+       EventStateManager::sCurrentMouseBtn == MouseButton::eSecondary)) {
     return "FullscreenDeniedMouseEventOnlyLeftBtn";
   }
 

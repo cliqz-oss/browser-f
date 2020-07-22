@@ -74,7 +74,7 @@ const PREF_URLBAR_DEFAULTS = new Map([
   ["filter.javascript", true],
 
   // Applies URL highlighting and other styling to the text in the urlbar input.
-  ["formatting.enabled", false],
+  ["formatting.enabled", true],
 
   // Controls the composition of search results.
   ["matchBuckets", "suggestion:4,general:Infinity"],
@@ -103,7 +103,7 @@ const PREF_URLBAR_DEFAULTS = new Map([
   ["restyleSearches", false],
 
   // If true, we show tail suggestions when available.
-  ["richSuggestions.tail", false],
+  ["richSuggestions.tail", true],
 
   // Hidden pref. Disables checks that prevent search tips being shown, thus
   // showing them every time the newtab page or the default search engine
@@ -143,19 +143,11 @@ const PREF_URLBAR_DEFAULTS = new Map([
   ["trimURLs", true],
 
   // Results will include a built-in set of popular domains when this is true.
-  ["usepreloadedtopurls.enabled", true],
+  ["usepreloadedtopurls.enabled", false],
 
   // After this many days from the profile creation date, the built-in set of
   // popular domains will no longer be included in the results.
   ["usepreloadedtopurls.expire_days", 14],
-
-  // If true, we show actionable tips in the Urlbar when the user is searching
-  // for those actions.
-  ["update1.interventions", true],
-
-  // If true, we show new users and those about to start an organic search a tip
-  // encouraging them to use the Urlbar.
-  ["update1.searchTips", true],
 
   // Whether the urlbar displays a permanent search button in design update 2.
   ["update2.searchButton", false],

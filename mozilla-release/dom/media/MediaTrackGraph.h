@@ -27,6 +27,8 @@ class nsPIDOMWindowInner;
 namespace mozilla {
 class AsyncLogger;
 class AudioCaptureTrack;
+class CrossGraphTransmitter;
+class CrossGraphReceiver;
 };  // namespace mozilla
 
 extern mozilla::AsyncLogger gMTGTraceLogger;
@@ -382,6 +384,8 @@ class MediaTrack : public mozilla::LinkedListElement<MediaTrack> {
   virtual ProcessedMediaTrack* AsProcessedTrack() { return nullptr; }
   virtual AudioNodeTrack* AsAudioNodeTrack() { return nullptr; }
   virtual ForwardedInputTrack* AsForwardedInputTrack() { return nullptr; }
+  virtual CrossGraphTransmitter* AsCrossGraphTransmitter() { return nullptr; }
+  virtual CrossGraphReceiver* AsCrossGraphReceiver() { return nullptr; }
 
   // These Impl methods perform the core functionality of the control methods
   // above, on the media graph thread.
@@ -1065,22 +1069,24 @@ class MediaTrackGraph {
    */
   AudioCaptureTrack* CreateAudioCaptureTrack();
 
+  CrossGraphTransmitter* CreateCrossGraphTransmitter(
+      CrossGraphReceiver* aReceiver);
+  CrossGraphReceiver* CreateCrossGraphReceiver(TrackRate aTransmitterRate);
+
   /**
    * Add a new track to the graph.  Main thread.
    */
   void AddTrack(MediaTrack* aTrack);
 
-  /* From the main thread, ask the MTG to tell us when the graph
-   * thread is running, and audio is being processed, by resolving the returned
-   * promise. The promise is rejected with NS_ERROR_NOT_AVAILABLE if aTrack
+  /* From the main thread, ask the MTG to resolve the returned promise when
+   * the device has started.
+   * The promise is rejected with NS_ERROR_NOT_AVAILABLE if aTrack
    * is destroyed, or NS_ERROR_ILLEGAL_DURING_SHUTDOWN if the graph is shut
-   * down, before the promise could be resolved. */
+   * down, before the promise could be resolved.
+   * (Audio is initially processed in the FallbackDriver's thread while the
+   * device is starting up.)
+   */
   using GraphStartedPromise = GenericPromise;
-  RefPtr<GraphStartedPromise> NotifyWhenGraphStarted(MediaTrack* aTrack);
-  /* Same as above but the promise is resolved when the devices has started.
-   * Audio is initially processed in the FallbackDriver's thread during the
-   * device is start up. In a newly created graph, the promise from this method
-   * will be resolved later than the promise of the method above.*/
   RefPtr<GraphStartedPromise> NotifyWhenDeviceStarted(MediaTrack* aTrack);
 
   /* From the main thread, suspend, resume or close an AudioContext.  Calls
@@ -1102,7 +1108,7 @@ class MediaTrackGraph {
   using AudioContextOperationPromise =
       MozPromise<dom::AudioContextState, bool, true>;
   RefPtr<AudioContextOperationPromise> ApplyAudioContextOperation(
-      MediaTrack* aDestinationTrack, const nsTArray<MediaTrack*>& aTracks,
+      MediaTrack* aDestinationTrack, nsTArray<RefPtr<MediaTrack>> aTracks,
       dom::AudioContextOperation aOperation);
 
   bool IsNonRealtime() const;

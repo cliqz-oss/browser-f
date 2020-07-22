@@ -226,7 +226,7 @@ class ConnectionOperationBase : public Runnable,
  protected:
   ConnectionOperationBase(Connection* aConnection)
       : Runnable("dom::ConnectionOperationBase"),
-        mOwningEventTarget(GetCurrentThreadEventTarget()),
+        mOwningEventTarget(GetCurrentEventTarget()),
         mConnection(aConnection),
         mResultCode(NS_OK),
         mOperationMayProceed(true),
@@ -447,16 +447,19 @@ class QuotaClient final : public mozilla::dom::quota::Client {
 
   Type GetType() override;
 
-  nsresult InitOrigin(PersistenceType aPersistenceType,
-                      const nsACString& aGroup, const nsACString& aOrigin,
-                      const AtomicBool& aCanceled,
-                      UsageInfo* aUsageInfo) override;
+  Result<UsageInfo, nsresult> InitOrigin(PersistenceType aPersistenceType,
+                                         const nsACString& aGroup,
+                                         const nsACString& aOrigin,
+                                         const AtomicBool& aCanceled) override;
 
-  nsresult GetUsageForOrigin(PersistenceType aPersistenceType,
-                             const nsACString& aGroup,
-                             const nsACString& aOrigin,
-                             const AtomicBool& aCanceled,
-                             UsageInfo* aUsageInfo) override;
+  nsresult InitOriginWithoutTracking(PersistenceType aPersistenceType,
+                                     const nsACString& aGroup,
+                                     const nsACString& aOrigin,
+                                     const AtomicBool& aCanceled) override;
+
+  Result<UsageInfo, nsresult> GetUsageForOrigin(
+      PersistenceType aPersistenceType, const nsACString& aGroup,
+      const nsACString& aOrigin, const AtomicBool& aCanceled) override;
 
   void OnOriginClearCompleted(PersistenceType aPersistenceType,
                               const nsACString& aOrigin) override;
@@ -557,7 +560,7 @@ already_AddRefed<mozilla::dom::quota::Client> CreateQuotaClient() {
 
 StreamHelper::StreamHelper(nsIFileStream* aFileStream, nsIRunnable* aCallback)
     : Runnable("dom::StreamHelper"),
-      mOwningEventTarget(GetCurrentThreadEventTarget()),
+      mOwningEventTarget(GetCurrentEventTarget()),
       mFileStream(aFileStream),
       mCallback(aCallback) {
   AssertIsOnBackgroundThread();
@@ -1625,28 +1628,26 @@ mozilla::dom::quota::Client::Type QuotaClient::GetType() {
   return QuotaClient::SDB;
 }
 
-nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
-                                 const nsACString& aGroup,
-                                 const nsACString& aOrigin,
-                                 const AtomicBool& aCanceled,
-                                 UsageInfo* aUsageInfo) {
+Result<UsageInfo, nsresult> QuotaClient::InitOrigin(
+    PersistenceType aPersistenceType, const nsACString& aGroup,
+    const nsACString& aOrigin, const AtomicBool& aCanceled) {
   AssertIsOnIOThread();
 
-  if (!aUsageInfo) {
-    return NS_OK;
-  }
-
-  return GetUsageForOrigin(aPersistenceType, aGroup, aOrigin, aCanceled,
-                           aUsageInfo);
+  return GetUsageForOrigin(aPersistenceType, aGroup, aOrigin, aCanceled);
 }
 
-nsresult QuotaClient::GetUsageForOrigin(PersistenceType aPersistenceType,
-                                        const nsACString& aGroup,
-                                        const nsACString& aOrigin,
-                                        const AtomicBool& aCanceled,
-                                        UsageInfo* aUsageInfo) {
+nsresult QuotaClient::InitOriginWithoutTracking(
+    PersistenceType aPersistenceType, const nsACString& aGroup,
+    const nsACString& aOrigin, const AtomicBool& aCanceled) {
   AssertIsOnIOThread();
-  MOZ_ASSERT(aUsageInfo);
+
+  return NS_OK;
+}
+
+Result<UsageInfo, nsresult> QuotaClient::GetUsageForOrigin(
+    PersistenceType aPersistenceType, const nsACString& aGroup,
+    const nsACString& aOrigin, const AtomicBool& aCanceled) {
+  AssertIsOnIOThread();
 
   QuotaManager* quotaManager = QuotaManager::Get();
   MOZ_ASSERT(quotaManager);
@@ -1655,14 +1656,14 @@ nsresult QuotaClient::GetUsageForOrigin(PersistenceType aPersistenceType,
   nsresult rv = quotaManager->GetDirectoryForOrigin(aPersistenceType, aOrigin,
                                                     getter_AddRefs(directory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    return Err(rv);
   }
 
   MOZ_ASSERT(directory);
 
   rv = directory->Append(NS_LITERAL_STRING(SDB_DIRECTORY_NAME));
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    return Err(rv);
   }
 
   DebugOnly<bool> exists;
@@ -1671,16 +1672,17 @@ nsresult QuotaClient::GetUsageForOrigin(PersistenceType aPersistenceType,
   nsCOMPtr<nsIDirectoryEnumerator> entries;
   rv = directory->GetDirectoryEntries(getter_AddRefs(entries));
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    return Err(rv);
   }
 
+  UsageInfo res;
   bool hasMore;
   while (NS_SUCCEEDED((rv = entries->HasMoreElements(&hasMore))) && hasMore &&
          !aCanceled) {
     nsCOMPtr<nsISupports> entry;
     rv = entries->GetNext(getter_AddRefs(entry));
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+      return Err(rv);
     }
 
     nsCOMPtr<nsIFile> file = do_QueryInterface(entry);
@@ -1689,19 +1691,19 @@ nsresult QuotaClient::GetUsageForOrigin(PersistenceType aPersistenceType,
     nsAutoString leafName;
     rv = file->GetLeafName(leafName);
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+      return Err(rv);
     }
 
     if (StringEndsWith(leafName, kSDBSuffix)) {
       int64_t fileSize;
       rv = file->GetFileSize(&fileSize);
       if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
+        return Err(rv);
       }
 
       MOZ_ASSERT(fileSize >= 0);
 
-      aUsageInfo->AppendToDatabaseUsage(Some(uint64_t(fileSize)));
+      res += DatabaseUsageType(Some(uint64_t(fileSize)));
 
       continue;
     }
@@ -1709,10 +1711,10 @@ nsresult QuotaClient::GetUsageForOrigin(PersistenceType aPersistenceType,
     UNKNOWN_FILE_WARNING(leafName);
   }
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    return Err(rv);
   }
 
-  return NS_OK;
+  return res;
 }
 
 void QuotaClient::OnOriginClearCompleted(PersistenceType aPersistenceType,

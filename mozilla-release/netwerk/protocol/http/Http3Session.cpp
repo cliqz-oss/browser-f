@@ -72,6 +72,7 @@ Http3Session::Http3Session()
 }
 
 nsresult Http3Session::Init(const nsACString& aOrigin,
+                            const nsACString& aAlpnToken,
                             nsISocketTransport* aSocketTransport,
                             HttpConnectionUDP* readerWriter) {
   LOG3(("Http3Session::Init %p", this));
@@ -80,6 +81,7 @@ nsresult Http3Session::Init(const nsACString& aOrigin,
   MOZ_ASSERT(aSocketTransport);
   MOZ_ASSERT(readerWriter);
 
+  mAlpnToken = aAlpnToken;
   mSocketTransport = aSocketTransport;
   mSegmentReaderWriter = readerWriter;
 
@@ -134,12 +136,12 @@ nsresult Http3Session::Init(const nsACString& aOrigin,
   LOG3(
       ("Http3Session::Init origin=%s, alpn=%s, selfAddr=%s, peerAddr=%s,"
        " qpack table size=%u, max blocked streams=%u [this=%p]",
-       PromiseFlatCString(aOrigin).get(),
-       PromiseFlatCString(kHttp3Version).get(), selfAddrStr.get(),
-       peerAddrStr.get(), gHttpHandler->DefaultQpackTableSize(),
+       PromiseFlatCString(aOrigin).get(), PromiseFlatCString(aAlpnToken).get(),
+       selfAddrStr.get(), peerAddrStr.get(),
+       gHttpHandler->DefaultQpackTableSize(),
        gHttpHandler->DefaultHttp3MaxBlockedStreams(), this));
 
-  return NeqoHttp3Conn::Init(aOrigin, kHttp3Version, selfAddrStr, peerAddrStr,
+  return NeqoHttp3Conn::Init(aOrigin, aAlpnToken, selfAddrStr, peerAddrStr,
                              gHttpHandler->DefaultQpackTableSize(),
                              gHttpHandler->DefaultHttp3MaxBlockedStreams(),
                              getter_AddRefs(mHttp3Connection));
@@ -210,10 +212,8 @@ nsresult Http3Session::ProcessInput(uint32_t* aCountRead) {
       *aCountRead += read;
     }
   } while (NS_SUCCEEDED(rv));
-  // Call ProcessHttp3 if there has not been any socket error.
   // NS_BASE_STREAM_WOULD_BLOCK means that there is no more date to read.
   if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
-    mHttp3Connection->ProcessHttp3();
     return NS_OK;
   }
 
@@ -292,21 +292,51 @@ nsresult Http3Session::ProcessEvents(uint32_t count) {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
 
   LOG(("Http3Session::ProcessEvents [this=%p]", this));
-  Http3Event event = mHttp3Connection->GetEvent();
+
+  nsTArray<uint8_t> headerBytes;
+  Http3Event event;
+  event.tag = Http3Event::Tag::NoEvent;
+  bool fin = false;
+
+  nsresult rv = mHttp3Connection->GetEvent(&event, headerBytes, &fin);
+  if (NS_FAILED(rv)) {
+    LOG(("Http3Session::ProcessEvents [this=%p] rv=%" PRIx32, this,
+         static_cast<uint32_t>(rv)));
+    return rv;
+  }
 
   while (event.tag != Http3Event::Tag::NoEvent) {
     switch (event.tag) {
-      case Http3Event::Tag::HeaderReady:
+      case Http3Event::Tag::HeaderReady: {
+        MOZ_ASSERT(mState == CONNECTED);
+        LOG(("Http3Session::ProcessEvents - HeaderReady"));
+        uint64_t id = event.header_ready.stream_id;
+
+        RefPtr<Http3Stream> stream = mStreamIdHash.Get(id);
+        if (!stream) {
+          LOG(
+              ("Http3Session::ProcessEvents - HeaderReady - stream not found "
+               "stream_id=0x%" PRIx64 " [this=%p].",
+               id, this));
+          continue;
+        }
+
+        stream->SetResponseHeaders(headerBytes, fin);
+
+        uint32_t read = 0;
+        rv = ProcessTransactionRead(stream, count, &read);
+
+        if (NS_FAILED(rv)) {
+          LOG(("Http3Session::ProcessEvents [this=%p] rv=%" PRIx32, this,
+               static_cast<uint32_t>(rv)));
+          return rv;
+        }
+        break;
+      }
       case Http3Event::Tag::DataReadable: {
         MOZ_ASSERT(mState == CONNECTED);
-        uint64_t id;
-        if (event.tag == Http3Event::Tag::HeaderReady) {
-          LOG(("Http3Session::ProcessEvents - HeaderReady"));
-          id = event.header_ready.stream_id;
-        } else {
-          LOG(("Http3Session::ProcessEvents - DataReadable"));
-          id = event.data_readable.stream_id;
-        }
+        LOG(("Http3Session::ProcessEvents - DataReadable"));
+        uint64_t id = event.data_readable.stream_id;
 
         uint32_t read = 0;
         nsresult rv = ProcessTransactionRead(id, count, &read);
@@ -386,11 +416,16 @@ nsresult Http3Session::ProcessEvents(uint32_t count) {
       default:
         break;
     }
-    event = mHttp3Connection->GetEvent();
+    rv = mHttp3Connection->GetEvent(&event, headerBytes, &fin);
+    if (NS_FAILED(rv)) {
+      LOG(("Http3Session::ProcessEvents [this=%p] rv=%" PRIx32, this,
+           static_cast<uint32_t>(rv)));
+      return rv;
+    }
   }
 
   return NS_OK;
-}
+}  // namespace net
 
 // This function may return a socket error.
 // It will not return an error if socket error is
@@ -410,7 +445,6 @@ nsresult Http3Session::ProcessOutput() {
        mSegmentReaderWriter.get(), this));
 
   // Process neqo.
-  mHttp3Connection->ProcessHttp3();
   uint64_t timeout = mHttp3Connection->ProcessOutput();
 
   // Check if we have a packet that could not have been sent in a previous
@@ -454,12 +488,10 @@ nsresult Http3Session::ProcessOutput() {
 // properly and close the connection.
 nsresult Http3Session::ProcessOutputAndEvents() {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
-  mHttp3Connection->ProcessTimer();
   nsresult rv = ProcessOutput();
   if (NS_FAILED(rv)) {
     return rv;
   }
-  mHttp3Connection->ProcessHttp3();
   return ProcessEvents(nsIOService::gDefaultSegmentSize);
 }
 
@@ -539,7 +571,7 @@ void Http3Session::ProcessPending() {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
 
   Http3Stream* stream;
-  while ((stream = static_cast<Http3Stream*>(mQueuedStreams.PopFront()))) {
+  while ((stream = mQueuedStreams.PopFront())) {
     LOG3(("Http3Session::ProcessPending %p stream %p woken from queue.", this,
           stream));
     MOZ_ASSERT(stream->Queued());
@@ -551,10 +583,11 @@ void Http3Session::ProcessPending() {
   }
 }
 
-static void RemoveStreamFromQueue(Http3Stream* aStream, nsDeque& queue) {
+static void RemoveStreamFromQueue(Http3Stream* aStream,
+                                  nsDeque<Http3Stream>& queue) {
   size_t size = queue.GetSize();
   for (size_t count = 0; count < size; ++count) {
-    Http3Stream* stream = static_cast<Http3Stream*>(queue.PopFront());
+    Http3Stream* stream = queue.PopFront();
     if (stream != aStream) {
       queue.Push(stream);
     }
@@ -616,7 +649,6 @@ nsresult Http3Session::TryActivating(
 
   MOZ_ASSERT(*aStreamId != UINT64_MAX);
   mStreamIdHash.Put(*aStreamId, RefPtr{aStream});
-  mHttp3Connection->ProcessHttp3();
   return NS_OK;
 }
 
@@ -728,7 +760,7 @@ nsresult Http3Session::ReadSegmentsAgain(nsAHttpSegmentReader* reader,
   while (
       (mState ==
        CONNECTED) &&  // Do not send transaction data untill we are connected.
-      (stream = static_cast<Http3Stream*>(mReadyForWrite.PopFront()))) {
+      (stream = mReadyForWrite.PopFront())) {
     LOG(
         ("Http3Session::ReadSegmentsAgain call ReadSegments from stream=%p "
          "[this=%p]",
@@ -761,6 +793,9 @@ nsresult Http3Session::ReadSegmentsAgain(nsAHttpSegmentReader* reader,
         if (!mReadyForWriteButBlocked.Contains(stream->StreamId())) {
           mReadyForWriteButBlocked.AppendElement(stream->StreamId());
         }
+        // NS_BASE_STREAM_WOULD_BLOCK is not a real error, it is just saying
+        // that the transaction stream is blocked. Therefor overwrite it.
+        rv = NS_OK;
       } else if (ASpdySession::SoftStreamError(rv)) {
         CloseStream(stream, rv);
         LOG3(("Http3Session::ReadSegments %p soft error override\n", this));
@@ -1097,15 +1132,6 @@ nsresult Http3Session::OnWriteSegment(char* buf, uint32_t count,
 }
 
 // This is called by Http3Stream::OnWriteSegment.
-nsresult Http3Session::ReadResponseHeaders(uint64_t aStreamId,
-                                           nsTArray<uint8_t>& aResponseHeaders,
-                                           bool* aFin) {
-  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
-  return mHttp3Connection->ReadResponseHeaders(aStreamId, aResponseHeaders,
-                                               aFin);
-}
-
-// This is called by Http3Stream::OnWriteSegment.
 nsresult Http3Session::ReadResponseData(uint64_t aStreamId, char* aBuf,
                                         uint32_t aCount,
                                         uint32_t* aCountWritten, bool* aFin) {
@@ -1223,11 +1249,11 @@ bool Http3Session::RealJoinConnection(const nsACString& hostname, int32_t port,
 
   bool joinedReturn = false;
   if (justKidding) {
-    rv = sslSocketControl->TestJoinConnection(kHttp3Version, hostname, port,
+    rv = sslSocketControl->TestJoinConnection(mAlpnToken, hostname, port,
                                               &isJoined);
   } else {
-    rv = sslSocketControl->JoinConnection(kHttp3Version, hostname, port,
-                                          &isJoined);
+    rv =
+        sslSocketControl->JoinConnection(mAlpnToken, hostname, port, &isJoined);
   }
   if (NS_SUCCEEDED(rv) && isJoined) {
     joinedReturn = true;

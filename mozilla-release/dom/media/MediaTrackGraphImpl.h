@@ -29,6 +29,7 @@ namespace media {
 class ShutdownBlocker;
 }
 
+class AudioContextOperationControlMessage;
 template <typename T>
 class LinkedList;
 class GraphRunner;
@@ -310,31 +311,18 @@ class MediaTrackGraphImpl : public MediaTrackGraph,
   void RunMessageAfterProcessing(UniquePtr<ControlMessage> aMessage);
 
   /**
-   * Resolve the GraphStartedPromise when the driver has started processing.
-   * Processing of the audio can happen in two different threads, the
-   * FallbackDriver's thread, while the device is starting, and the audio
-   * thread when the device has started.
+   * Resolve the GraphStartedPromise when the driver has started processing on
+   * the audio thread after the device has started.
    */
-  enum class ProcessingThread { FALLBACK_THREAD, AUDIO_THREAD };
   void NotifyWhenGraphStarted(RefPtr<MediaTrack> aTrack,
-                              MozPromiseHolder<GraphStartedPromise>&& aHolder,
-                              ProcessingThread aProcessingThread);
+                              MozPromiseHolder<GraphStartedPromise>&& aHolder);
 
   /**
    * Apply an AudioContext operation (suspend/resume/close), on the graph
    * thread.
    */
   void ApplyAudioContextOperationImpl(
-      MediaTrack* aDestinationTrack, const nsTArray<MediaTrack*>& aTracks,
-      dom::AudioContextOperation aOperation,
-      MozPromiseHolder<AudioContextOperationPromise>&& aHolder);
-
-  /*
-   * Move tracks from mTracks to mSuspendedTracks if suspending/closing an
-   * AudioContext, or the inverse when resuming an AudioContext.
-   */
-  void SuspendOrResumeTracks(dom::AudioContextOperation aAudioContextOperation,
-                             const nsTArray<MediaTrack*>& aTrackSet);
+      AudioContextOperationControlMessage* aMessage);
 
   /**
    * Determine if we have any audio tracks, or are about to add any audiotracks.
@@ -791,6 +779,24 @@ class MediaTrackGraphImpl : public MediaTrackGraph,
   // This is only touched on the graph thread.
   nsDataHashtable<nsVoidPtrHashKey, nsTArray<RefPtr<AudioDataListener>>>
       mInputDeviceUsers;
+
+  /**
+   * List of resume operations waiting for a switch to an AudioCallbackDriver.
+   */
+  class PendingResumeOperation {
+   public:
+    explicit PendingResumeOperation(
+        AudioContextOperationControlMessage* aMessage);
+    void Apply(MediaTrackGraphImpl* aGraph);
+    void Abort();
+    MediaTrack* DestinationTrack() const { return mDestinationTrack; }
+
+   private:
+    RefPtr<MediaTrack> mDestinationTrack;
+    nsTArray<RefPtr<MediaTrack>> mTracks;
+    MozPromiseHolder<AudioContextOperationPromise> mHolder;
+  };
+  AutoTArray<PendingResumeOperation, 1> mPendingResumeOperations;
 
   // mMonitor guards the data below.
   // MediaTrackGraph normally does its work without holding mMonitor, so it is

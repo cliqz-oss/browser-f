@@ -83,6 +83,7 @@ HttpChannelParent::HttpChannelParent(dom::BrowserParent* iframeEmbedding,
       mCacheNeedFlowControlInitialized(false),
       mNeedFlowControl(true),
       mSuspendedForFlowControl(false),
+      mAfterOnStartRequestBegun(false),
       mIsMultiPart(false) {
   LOG(("Creating HttpChannelParent [this=%p]\n", this));
 
@@ -508,7 +509,7 @@ bool HttpChannelParent::DoAsyncOpen(
 
   if (aCorsPreflightArgs.isSome()) {
     const CorsPreflightArgs& args = aCorsPreflightArgs.ref();
-    httpChannel->SetCorsPreflightParameters(args.unsafeHeaders());
+    httpChannel->SetCorsPreflightParameters(args.unsafeHeaders(), false);
   }
 
   nsCOMPtr<nsIInputStream> stream = DeserializeIPCStream(uploadStream);
@@ -895,7 +896,8 @@ mozilla::ipc::IPCResult HttpChannelParent::RecvRedirect2Verify(
             do_QueryInterface(newHttpChannel);
         MOZ_RELEASE_ASSERT(newInternalChannel);
         const CorsPreflightArgs& args = aCorsPreflightArgs.ref();
-        newInternalChannel->SetCorsPreflightParameters(args.unsafeHeaders());
+        newInternalChannel->SetCorsPreflightParameters(args.unsafeHeaders(),
+                                                       false);
       }
 
       if (aReferrerInfo) {
@@ -1396,6 +1398,8 @@ HttpChannelParent::OnStartRequest(nsIRequest* aRequest) {
     return NS_ERROR_UNEXPECTED;
   }
 
+  mAfterOnStartRequestBegun = true;
+
   // Todo: re-enable when bug 1589749 is fixed.
   /*MOZ_ASSERT(mChannel == chan,
              "HttpChannelParent getting OnStartRequest from a different "
@@ -1437,12 +1441,8 @@ HttpChannelParent::OnStartRequest(nsIRequest* aRequest) {
       httpChannelImpl->GetApplicationCache(getter_AddRefs(appCache));
       nsCString appCacheGroupId;
       nsCString appCacheClientId;
-      appCache->GetGroupID(appCacheGroupId);
-      appCache->GetClientID(appCacheClientId);
-      if (mIPCClosed ||
-          !SendAssociateApplicationCache(appCacheGroupId, appCacheClientId)) {
-        return NS_ERROR_UNEXPECTED;
-      }
+      appCache->GetGroupID(args.appCacheGroupId());
+      appCache->GetClientID(args.appCacheClientId());
     }
   }
 
@@ -1514,6 +1514,9 @@ HttpChannelParent::OnStartRequest(nsIRequest* aRequest) {
   args.selfAddr() = chan->GetSelfAddr();
   args.peerAddr() = chan->GetPeerAddr();
   args.timing() = GetTimingAttributes(mChannel);
+  if (mOverrideReferrerInfo) {
+    args.overrideReferrerInfo() = ToRefPtr(std::move(mOverrideReferrerInfo));
+  }
 
   nsHttpRequestHead* requestHead = chan->GetRequestHead();
   // !!! We need to lock headers and please don't forget to unlock them !!!
@@ -1974,6 +1977,17 @@ HttpChannelParent::Delete() {
   return NS_OK;
 }
 
+NS_IMETHODIMP
+HttpChannelParent::GetRemoteType(nsAString& aRemoteType) {
+  if (!CanSend()) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  dom::PContentParent* pcp = Manager()->Manager();
+  aRemoteType = static_cast<dom::ContentParent*>(pcp)->GetRemoteType();
+  return NS_OK;
+}
+
 //-----------------------------------------------------------------------------
 // HttpChannelParent::nsIParentRedirectingChannel
 //-----------------------------------------------------------------------------
@@ -1991,10 +2005,12 @@ HttpChannelParent::StartRedirect(nsIChannel* newChannel, uint32_t redirectFlags,
       RedirectChannelRegistrar::GetOrCreate();
   MOZ_ASSERT(registrar);
 
-  rv = registrar->RegisterChannel(newChannel, &mRedirectChannelId);
+  mRedirectChannelId = nsContentUtils::GenerateLoadIdentifier();
+  rv = registrar->RegisterChannel(newChannel, mRedirectChannelId);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  LOG(("Registered %p channel under id=%d", newChannel, mRedirectChannelId));
+  LOG(("Registered %p channel under id=%" PRIx64, newChannel,
+       mRedirectChannelId));
 
   if (mIPCClosed) {
     return NS_BINDING_ABORTED;
@@ -2585,7 +2601,7 @@ HttpChannelParent::OnRedirectResult(bool succeeded) {
                                      getter_AddRefs(redirectChannel));
     if (NS_FAILED(rv) || !redirectChannel) {
       // Redirect might get canceled before we got AsyncOnChannelRedirect
-      LOG(("Registered parent channel not found under id=%d",
+      LOG(("Registered parent channel not found under id=%" PRIx64,
            mRedirectChannelId));
 
       nsCOMPtr<nsIChannel> newChannel;
@@ -2628,7 +2644,10 @@ HttpChannelParent::OnRedirectResult(bool succeeded) {
 
 void HttpChannelParent::OverrideReferrerInfoDuringBeginConnect(
     nsIReferrerInfo* aReferrerInfo) {
-  Unused << SendOverrideReferrerInfoDuringBeginConnect(aReferrerInfo);
+  MOZ_ASSERT(aReferrerInfo);
+  MOZ_ASSERT(!mAfterOnStartRequestBegun);
+
+  mOverrideReferrerInfo = aReferrerInfo;
 }
 
 }  // namespace net

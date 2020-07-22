@@ -5,14 +5,11 @@ import typing
 from dataclasses import dataclass
 from .grammar import Nt
 from .lr0 import ShiftedTerm, Term
-from .actions import Action, Reduce
+from .actions import Action
 
-
-StateId = int
-
-# Hack to avoid circular reference between this module and parse_table.py
-StateAndTransition = typing.Any
-ParseTable = typing.Any
+# Avoid circular reference between this module and parse_table.py
+if typing.TYPE_CHECKING:
+    from .parse_table import StateId, StateAndTransitions, ParseTable
 
 
 def shifted_path_to(pt: ParseTable, n: int, right_of: Path) -> typing.Iterator[Path]:
@@ -23,10 +20,10 @@ def shifted_path_to(pt: ParseTable, n: int, right_of: Path) -> typing.Iterator[P
     state = right_of[0].src
     assert isinstance(state, int)
     for edge in pt.states[state].backedges:
-        if not pt.is_term_shifted(edge.term):
+        if not pt.term_is_shifted(edge.term):
             print(repr(edge))
             print(pt.states[edge.src])
-        assert pt.is_term_shifted(edge.term)
+        assert pt.term_is_shifted(edge.term)
         if pt.term_is_stacked(edge.term):
             s_n = n - 1
             if n == 0:
@@ -46,10 +43,9 @@ def reduce_path(pt: ParseTable, shifted: Path) -> typing.Iterator[Path]:
     action = shifted[-1].term
     assert isinstance(action, Action)
     assert action.update_stack()
-    reducer = action.reduce_with()
-    assert isinstance(reducer, Reduce)
-    nt = reducer.nt
-    depth = reducer.pop + reducer.replay
+    stack_diff = action.update_stack_with()
+    nt = stack_diff.nt
+    depth = stack_diff.pop + stack_diff.replay
     if depth > 0:
         # We are reducing at least one element from the stack.
         stacked = [i for i, e in enumerate(shifted) if pt.term_is_stacked(e.term)]
@@ -99,7 +95,7 @@ class Edge:
     src: StateId
     term: typing.Optional[Term]
 
-    def stable_str(self, states: typing.List[StateAndTransition]) -> str:
+    def stable_str(self, states: typing.List[StateAndTransitions]) -> str:
         return "{} -- {} -->".format(states[self.src].stable_hash, str(self.term))
 
     def __str__(self) -> str:
@@ -153,7 +149,7 @@ class APS:
     # to be shifted. This list corresponds to terminals and non-terminals which
     # were necessary for removing inconsistencies, but have to be replayed
     # after shifting the reduced non-terminals.
-    replay: typing.List[typing.Union[str, Nt]]
+    replay: typing.List[ShiftedTerm]
 
     # This is the list of edges visited since the starting state.
     history: Path
@@ -199,8 +195,8 @@ class APS:
             for term, to in state.shifted_edges():
                 edge = Edge(last_edge.src, term)
                 new_sh = self.shift[:-1] + [edge]
-                to = Edge(to, None)
-                yield APS(st, new_sh + [to], la + [term], rp, hs + [edge], False)
+                edge_to = Edge(to, None)
+                yield APS(st, new_sh + [edge_to], la + [term], rp, hs + [edge], False)
         else:
             term = self.replay[0]
             rp = self.replay[1:]
@@ -208,10 +204,9 @@ class APS:
                 edge = Edge(last_edge.src, term)
                 new_sh = self.shift[:-1] + [edge]
                 to = state[term]
-                to = Edge(to, None)
-                yield APS(st, new_sh + [to], la, rp, hs + [edge], False)
+                edge_to = Edge(to, None)
+                yield APS(st, new_sh + [edge_to], la, rp, hs + [edge], False)
 
-        term = None
         rp = self.replay
         for a, to in state.epsilon:
             edge = Edge(last_edge.src, a)
@@ -225,14 +220,19 @@ class APS:
                     # we might loop on Optional rules. Which would not match
                     # the expected behaviour of the parser.
                     continue
-                reducer = a.reduce_with()
+                # TODO: When unwinding, do not add the reduced_path back to the
+                # shifted state, but add the non-terminal to the list of terms
+                # to be replayed. This is more accruate with the actual inner
+                # working of the parser and allow to extract the Unwind part of
+                # the Reduce action. This also imply that we might have an
+                # action state which is independent of the stack top.
+                assert not a.follow_edge()  # Not supported yet.
+                stack_diff = a.update_stack_with()
                 for path in reduce_path(pt, prev_sh):
-                    # The reduced path contains the chains of state shifted,
-                    # including epsilon transitions, such that it consume as
-                    # many shifted terms as is expected to be replayed and
-                    # popped by the Reduce action. However, it is not guarantee
-                    # that the path will come back to an edge which can consume
-                    # the non-terminal.
+                    # path contains the chains of state shifted, including
+                    # epsilon transitions. The head of the path should be able
+                    # to shift the reduced nonterminal or any state reachable
+                    # through an epsilon state after it.
 
                     # print(
                     #     "Compare shifted path, with reduced path:\n"
@@ -275,19 +275,24 @@ class APS:
                     # pushed on the stack as our lookahead. These terms are
                     # computed here such that we can traverse the graph from
                     # `to` state, using the replayed terms.
-                    replay = reducer.replay
-                    new_rp = [reducer.nt]
+                    replay = stack_diff.replay
+                    nt = stack_diff.nt
+                    assert nt is not None
+                    new_rp: typing.List[ShiftedTerm] = [nt]
                     if replay > 0:
-                        stacked_terms = [edge.term for edge in path if pt.term_is_stacked(edge.term)]
+                        stacked_terms = [
+                            typing.cast(ShiftedTerm, edge.term)
+                            for edge in path if pt.term_is_stacked(edge.term)
+                        ]
                         new_rp = new_rp + stacked_terms[-replay:]
                     new_rp = new_rp + rp
                     new_la = la[:max(len(la) - replay, 0)]
                     yield APS(new_st, new_sh, new_la, new_rp, hs + [edge], True)
             else:
-                to = Edge(to, None)
-                yield APS(st, prev_sh + [to], la, rp, hs + [edge], self.reducing)
+                edge_to = Edge(to, None)
+                yield APS(st, prev_sh + [edge_to], la, rp, hs + [edge], self.reducing)
 
-    def stable_str(self, states: typing.List[StateAndTransition], name: str = "aps") -> str:
+    def stable_str(self, states: typing.List[StateAndTransitions], name: str = "aps") -> str:
         return """{}.stack = [{}]
 {}.shift = [{}]
 {}.lookahead = [{}]
@@ -325,7 +330,7 @@ class APS:
 
 def stable_aps_lanes_str(
         aps_lanes: typing.List[APS],
-        states: typing.List[StateAndTransition],
+        states: typing.List[StateAndTransitions],
         header: str = "lanes:",
         name: str = "\taps"
 ) -> str:

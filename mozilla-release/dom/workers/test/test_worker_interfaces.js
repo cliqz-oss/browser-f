@@ -28,7 +28,7 @@
 // IMPORTANT: Do not change this list without review from
 //            a JavaScript Engine peer!
 var ecmaGlobals = [
-  { name: "AggregateError", insecureContext: true, nightly: true },
+  { name: "AggregateError", insecureContext: true },
   { name: "Array", insecureContext: true },
   { name: "ArrayBuffer", insecureContext: true },
   { name: "Atomics", insecureContext: true },
@@ -42,6 +42,7 @@ var ecmaGlobals = [
   { name: "Date", insecureContext: true },
   { name: "Error", insecureContext: true },
   { name: "EvalError", insecureContext: true },
+  { name: "FinalizationRegistry", insecureContext: true },
   { name: "Float32Array", insecureContext: true },
   { name: "Float64Array", insecureContext: true },
   { name: "Function", insecureContext: true },
@@ -83,6 +84,7 @@ var ecmaGlobals = [
   { name: "Uint8ClampedArray", insecureContext: true },
   { name: "URIError", insecureContext: true },
   { name: "WeakMap", insecureContext: true },
+  { name: "WeakRef", insecureContext: true },
   { name: "WeakSet", insecureContext: true },
   {
     name: "WebAssembly",

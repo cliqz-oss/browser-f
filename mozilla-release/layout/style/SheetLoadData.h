@@ -10,7 +10,9 @@
 #include "mozilla/css/Loader.h"
 #include "mozilla/css/SheetParsingMode.h"
 #include "mozilla/Encoding.h"
+#include "mozilla/PreloaderBase.h"
 #include "mozilla/NotNull.h"
+#include "mozilla/UniquePtr.h"
 #include "nsIThreadInternal.h"
 #include "nsProxyRelease.h"
 
@@ -22,6 +24,7 @@ class nsINode;
 class nsIPrincipal;
 class nsIURI;
 class nsIReferrerInfo;
+struct StyleUseCounters;
 
 namespace mozilla {
 namespace css {
@@ -35,7 +38,11 @@ static_assert(eAuthorSheetFeatures == 0 && eUserSheetFeatures == 1 &&
               "sheet parsing mode constants won't fit "
               "in SheetLoadData::mParsingMode");
 
-class SheetLoadData final : public nsIRunnable, public nsIThreadObserver {
+class SheetLoadData final : public PreloaderBase,
+                            // FIXME(bug 1653011): This is a bit unfortunate.
+                            public SupportsWeakPtr<SheetLoadData>,
+                            public nsIRunnable,
+                            public nsIThreadObserver {
   using MediaMatched = dom::LinkStyle::MediaMatched;
   using IsAlternate = dom::LinkStyle::IsAlternate;
   using IsPreload = Loader::IsPreload;
@@ -45,6 +52,10 @@ class SheetLoadData final : public nsIRunnable, public nsIThreadObserver {
   virtual ~SheetLoadData();
 
  public:
+  // PreloaderBase
+  static void PrioritizeAsPreload(nsIChannel* aChannel);
+  void PrioritizeAsPreload() final;
+
   // Data for loading a sheet linked from a document
   SheetLoadData(Loader* aLoader, const nsAString& aTitle, nsIURI* aURI,
                 StyleSheet* aSheet, bool aSyncLoad, nsINode* aOwningNode,
@@ -67,12 +78,12 @@ class SheetLoadData final : public nsIRunnable, public nsIThreadObserver {
                 nsIPrincipal* aTriggeringPrincipal,
                 nsIReferrerInfo* aReferrerInfo, nsINode* aRequestingNode);
 
-  nsIReferrerInfo* ReferrerInfo() { return mReferrerInfo; }
+  nsIReferrerInfo* ReferrerInfo() const { return mReferrerInfo; }
 
   void ScheduleLoadEventIfNeeded();
 
-  NotNull<const Encoding*> DetermineNonBOMEncoding(nsACString const& aSegment,
-                                                   nsIChannel* aChannel);
+  NotNull<const Encoding*> DetermineNonBOMEncoding(const nsACString& aSegment,
+                                                   nsIChannel*) const;
 
   // The caller may have the bytes for the stylesheet split across two strings,
   // so aBytes1 and aBytes2 refer to those pieces.
@@ -95,7 +106,7 @@ class SheetLoadData final : public nsIRunnable, public nsIThreadObserver {
   // The encoding we decided to use for the sheet
   const Encoding* mEncoding;
 
-  // URI we're loading.  Null for inline sheets
+  // URI we're loading.  Null for inline or constructable sheets.
   nsCOMPtr<nsIURI> mURI;
 
   // Should be 1 for non-inline sheets.
@@ -110,6 +121,10 @@ class SheetLoadData final : public nsIRunnable, public nsIThreadObserver {
   // Load data for the sheet that @import-ed us if we were @import-ed
   // during the parse
   const RefPtr<SheetLoadData> mParentData;
+
+  // The expiration time of the channel that has loaded this data, if
+  // applicable.
+  uint32_t mExpirationTime = 0;
 
   // Number of sheets we @import-ed that are still loading
   uint32_t mPendingChildren;
@@ -202,9 +217,15 @@ class SheetLoadData final : public nsIRunnable, public nsIThreadObserver {
   // The node that identifies who started loading us.
   const nsCOMPtr<nsINode> mRequestingNode;
 
-  // The encoding to use for preloading Must be empty if mOwningElement
-  // is non-null.
-  const Encoding* const mPreloadEncoding;
+  // The encoding guessed from attributes and the document character set.
+  const NotNull<const Encoding*> mGuessedEncoding;
+
+  // If we've parsed the stylesheet, the use counters for the properties parsed
+  // in this styleshetet.
+  UniquePtr<StyleUseCounters> mUseCounters;
+
+  // The quirks mode of the loader at the time the load was triggered.
+  const nsCompatibility mCompatMode;
 
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   // Whether SheetComplete was called.

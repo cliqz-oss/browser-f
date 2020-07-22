@@ -20,7 +20,8 @@ namespace dom {
 class WebGLChild final : public PWebGLChild,
                          public SyncProducerActor<WebGLChild>,
                          public AsyncConsumerActor<WebGLChild>,
-                         public SupportsWeakPtr<WebGLChild> {
+                         public SupportsWeakPtr<WebGLChild>,
+                         public mozilla::webgl::PcqActor {
  public:
   MOZ_DECLARE_WEAKREFERENCE_TYPENAME(WebGLChild)
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(WebGLChild, override);
@@ -31,7 +32,7 @@ class WebGLChild final : public PWebGLChild,
   explicit WebGLChild(ClientWebGLContext&);
 
   // For SyncProducerActor:
-  static bool ShouldSendSync(size_t aCmd, ...);
+  static IpdlQueueProtocol GetIpdlQueueProtocol(size_t aCmd, ...);
 
  private:
   friend PWebGLChild;

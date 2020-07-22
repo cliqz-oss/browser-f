@@ -10,7 +10,7 @@
 
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/ClearOnShutdown.h"
-#include "mozilla/ipc/InProcessParent.h"
+#include "mozilla/dom/InProcessParent.h"
 #include "mozilla/dom/BrowserBridgeParent.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/ClientInfo.h"
@@ -213,6 +213,13 @@ already_AddRefed<BrowserParent> WindowGlobalParent::GetBrowserParent() {
   return do_AddRef(static_cast<BrowserParent*>(Manager()));
 }
 
+ContentParent* WindowGlobalParent::GetContentParent() {
+  if (IsInProcess() || !CanSend()) {
+    return nullptr;
+  }
+  return static_cast<ContentParent*>(Manager()->Manager());
+}
+
 already_AddRefed<nsFrameLoader> WindowGlobalParent::GetRootFrameLoader() {
   dom::BrowsingContext* top = BrowsingContext()->Top();
 
@@ -305,7 +312,7 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvInternalLoad(
   // FIXME: We should really initiate the load in the parent before bouncing
   // back down to the child.
 
-  targetBC->InternalLoad(aLoadState, nullptr, nullptr);
+  targetBC->InternalLoad(aLoadState);
   return IPC_OK();
 }
 
@@ -447,7 +454,8 @@ void WindowGlobalParent::NotifyContentBlockingEvent(
     uint32_t aEvent, nsIRequest* aRequest, bool aBlocked,
     const nsACString& aTrackingOrigin,
     const nsTArray<nsCString>& aTrackingFullHashes,
-    const Maybe<ContentBlockingNotifier::StorageAccessGrantedReason>& aReason) {
+    const Maybe<ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
+        aReason) {
   MOZ_ASSERT(NS_IsMainThread());
   DebugOnly<bool> isCookiesBlocked =
       aEvent == nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER ||
@@ -471,33 +479,14 @@ void WindowGlobalParent::NotifyContentBlockingEvent(
 
   // Notify the OnContentBlockingEvent if necessary.
   if (event) {
-    // Get the browser parent from the manager directly since the content
-    // blocking event could happen in the early stage of loading, i.e.
-    // accessing cookies for the http header. At this stage, the actor is
-    // not ready, so we would get a nullptr from GetBrowserParent(). But,
-    // we can actually get it from the manager.
-    RefPtr<BrowserParent> browserParent =
-        static_cast<BrowserParent*>(Manager());
-    if (NS_WARN_IF(!browserParent)) {
-      return;
-    }
-
-    nsCOMPtr<nsIBrowser> browser;
-    nsCOMPtr<nsIWebProgress> manager;
-    nsCOMPtr<nsIWebProgressListener> managerAsListener;
-
-    if (!browserParent->GetWebProgressListener(
-            getter_AddRefs(browser), getter_AddRefs(manager),
-            getter_AddRefs(managerAsListener))) {
+    if (!GetBrowsingContext()->GetWebProgress()) {
       return;
     }
 
     nsCOMPtr<nsIWebProgress> webProgress =
-        new RemoteWebProgress(manager, OuterWindowId(), InnerWindowId(), 0,
-                              false, BrowsingContext()->IsTopContent());
-
-    Unused << managerAsListener->OnContentBlockingEvent(webProgress, aRequest,
-                                                        event.value());
+        new RemoteWebProgress(0, false, BrowsingContext()->IsTopContent());
+    GetBrowsingContext()->Top()->GetWebProgress()->OnContentBlockingEvent(
+        webProgress, aRequest, event.value());
   }
 }
 
@@ -841,13 +830,11 @@ nsIGlobalObject* WindowGlobalParent::GetParentObject() {
   return xpc::NativeGlobal(xpc::PrivilegedJunkScope());
 }
 
-nsIContentParent* WindowGlobalParent::GetContentParent() {
-  RefPtr<BrowserParent> browserParent = GetBrowserParent();
-  if (!browserParent) {
-    return nullptr;
+nsIDOMProcessParent* WindowGlobalParent::GetDomProcess() {
+  if (RefPtr<BrowserParent> browserParent = GetBrowserParent()) {
+    return browserParent->Manager();
   }
-
-  return browserParent->Manager();
+  return InProcessParent::Singleton();
 }
 
 void WindowGlobalParent::DidBecomeCurrentWindowGlobal(bool aCurrent) {

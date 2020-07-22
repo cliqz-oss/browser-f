@@ -16,8 +16,8 @@ use crate::gpu_cache::{GpuCache, GpuCacheAddress};
 use crate::gpu_types::{BorderInstance, SvgFilterInstance, BlurDirection, BlurInstance, PrimitiveHeaders, ScalingInstance};
 use crate::gpu_types::{TransformPalette, ZBufferIdGenerator};
 use crate::internal_types::{FastHashMap, TextureSource, LayerIndex, Swizzle, SavedTargetIndex};
-use crate::picture::{SurfaceInfo, ResolvedSurfaceTexture};
-use crate::prim_store::{PrimitiveStore, DeferredResolve, PrimitiveScratchBuffer, PrimitiveVisibilityMask};
+use crate::picture::{SliceId, SurfaceInfo, ResolvedSurfaceTexture, TileCacheInstance};
+use crate::prim_store::{PrimitiveStore, DeferredResolve, PrimitiveScratchBuffer};
 use crate::prim_store::gradient::GRADIENT_FP_STOPS;
 use crate::render_backend::DataStores;
 use crate::render_task::{RenderTaskKind, RenderTaskAddress, ClearMode, BlitSource};
@@ -25,6 +25,7 @@ use crate::render_task::{RenderTask, ScalingTask, SvgFilterInfo};
 use crate::render_task_graph::{RenderTaskGraph, RenderTaskId};
 use crate::resource_cache::ResourceCache;
 use crate::texture_allocator::{ArrayAllocationTracker, FreeRectSlice};
+use crate::visibility::PrimitiveVisibilityMask;
 use std::{cmp, mem};
 
 
@@ -69,6 +70,7 @@ pub struct RenderTargetContext<'a, 'rc> {
     pub scratch: &'a PrimitiveScratchBuffer,
     pub screen_world_rect: WorldRect,
     pub globals: &'a FrameGlobalResources,
+    pub tile_caches: &'a FastHashMap<SliceId, Box<TileCacheInstance>>,
 }
 
 /// Represents a number of rendering operations on a surface.
@@ -377,6 +379,18 @@ impl RenderTarget for ColorRenderTarget {
                         Some(target_rect)
                     };
 
+                    // Typical workloads have a single or a few batch builders with a
+                    // large number of batches (regular pictres) and a higher number
+                    // of batch builders with only a single or two batches (for example
+                    // rendering isolated primitives to compute their shadows).
+                    // We can easily guess which category we are in for each picture
+                    // by checking whether it has multiple clusters.
+                    let prealloc_batch_count = if pic.prim_list.clusters.len() > 1 {
+                        128
+                    } else {
+                        0
+                    };
+
                     // TODO(gw): The type names of AlphaBatchBuilder and BatchBuilder
                     //           are still confusing. Once more of the picture caching
                     //           improvement code lands, the AlphaBatchBuilder and
@@ -389,6 +403,7 @@ impl RenderTarget for ColorRenderTarget {
                         *task_id,
                         render_tasks.get_task_address(*task_id),
                         PrimitiveVisibilityMask::all(),
+                        prealloc_batch_count,
                     );
 
                     let mut batch_builder = BatchBuilder::new(
@@ -674,7 +689,7 @@ impl RenderTarget for AlphaRenderTarget {
                     &ctx.screen_world_rect,
                     task_info.device_pixel_scale,
                     target_rect.origin.to_f32(),
-                    task_info.actual_rect.origin.to_f32(),
+                    task_info.actual_rect.origin,
                 );
             }
             RenderTaskKind::ClipRegion(ref region_task) => {

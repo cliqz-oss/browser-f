@@ -400,28 +400,55 @@ class WarpScriptSnapshot : public TempObject {
 #endif
 };
 
+// Captures information from previous bailouts to prevent bailout/recompile
+// loops. This mostly exists for compatibility with IonBuilder and the MIR
+// backend.
+// TODO: overhaul bailout tracking once IonBuilder is gone.
+class WarpBailoutInfo {
+  // True if any script in the compilation has the failedBoundsCheck flag. In
+  // this case mark bounds checks as non-movable to prevent hoisting them in
+  // TryEliminateBoundsCheck.
+  bool failedBoundsCheck_ = false;
+
+  // True if any script in the compilation has the failedLexicalCheck flag. In
+  // this case mark lexical checks as non-movable.
+  bool failedLexicalCheck_ = false;
+
+ public:
+  bool failedBoundsCheck() const { return failedBoundsCheck_; }
+  void setFailedBoundsCheck() { failedBoundsCheck_ = true; }
+
+  bool failedLexicalCheck() const { return failedLexicalCheck_; }
+  void setFailedLexicalCheck() { failedLexicalCheck_ = true; }
+};
+
 // Data allocated by WarpOracle on the main thread that's used off-thread by
 // WarpBuilder to build the MIR graph.
 class WarpSnapshot : public TempObject {
   // The script to compile.
   WarpScriptSnapshot* script_;
 
-  // The global lexical environment and its thisValue(). We don't inline
+  // The global lexical environment and its thisObject(). We don't inline
   // cross-realm calls so this can be stored once per snapshot.
   WarpGCPtr<LexicalEnvironmentObject*> globalLexicalEnv_;
-  WarpGCPtr<Value> globalLexicalEnvThis_;
+  WarpGCPtr<JSObject*> globalLexicalEnvThis_;
+
+  const WarpBailoutInfo bailoutInfo_;
 
  public:
-  explicit WarpSnapshot(JSContext* cx, WarpScriptSnapshot* script);
+  explicit WarpSnapshot(JSContext* cx, WarpScriptSnapshot* script,
+                        const WarpBailoutInfo& bailoutInfo);
 
   WarpScriptSnapshot* script() const { return script_; }
 
   LexicalEnvironmentObject* globalLexicalEnv() const {
     return globalLexicalEnv_;
   }
-  Value globalLexicalEnvThis() const { return globalLexicalEnvThis_; }
+  JSObject* globalLexicalEnvThis() const { return globalLexicalEnvThis_; }
 
   void trace(JSTracer* trc);
+
+  const WarpBailoutInfo& bailoutInfo() const { return bailoutInfo_; }
 
 #ifdef JS_JITSPEW
   void dump() const;

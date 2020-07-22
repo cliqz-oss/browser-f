@@ -85,12 +85,13 @@ EOF
 mv fzf /usr/local/bin
 
 ###
-# Flake8 Setup
+# Flake8/pylint Setup
 ###
 
 cd /setup
 
 pip3 install --require-hashes -r /tmp/flake8_requirements.txt
+pip3 install --require-hashes -r /tmp/pylint_requirements.txt
 
 ###
 # codespell Setup
@@ -119,6 +120,7 @@ mkdir -p "$CARGO_HOME"
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 "$RUSTUP_HOME"/bin/rustup component add rustfmt
 "$RUSTUP_HOME"/bin/rustup component add clippy
+"$RUSTUP_HOME"/bin/rustc --version
 "$RUSTUP_HOME"/bin/rustfmt --version
 "$CARGO_HOME"/bin/cargo clippy --version
 

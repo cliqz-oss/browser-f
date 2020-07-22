@@ -1182,7 +1182,7 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     this.onNewTargetingParams = this.onNewTargetingParams.bind(this);
     this.handleUpdateWNMessages = this.handleUpdateWNMessages.bind(this);
     this.handleForceWNP = this.handleForceWNP.bind(this);
-    this.pushWNMessage = this.pushWNMessage.bind(this);
+    this.restoreWNMessageState = this.restoreWNMessageState.bind(this);
     this.toggleJSON = this.toggleJSON.bind(this);
     this.toggleAllMessages = this.toggleAllMessages.bind(this);
     this.state = {
@@ -1270,12 +1270,13 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     return () => _asrouter_asrouter_content__WEBPACK_IMPORTED_MODULE_1__["ASRouterUtils"].overrideMessage(id);
   }
 
-  handleUpdateWNMessages() {
+  async handleUpdateWNMessages() {
+    await this.restoreWNMessageState();
     let messages = this.state.WNMessages;
-    _asrouter_asrouter_content__WEBPACK_IMPORTED_MODULE_1__["ASRouterUtils"].sendMessage({
-      type: "RENDER_WHATSNEW_MESSAGES",
-      data: messages
-    });
+
+    for (const msg of messages) {
+      _asrouter_asrouter_content__WEBPACK_IMPORTED_MODULE_1__["ASRouterUtils"].modifyMessageJson(JSON.parse(msg));
+    }
   }
 
   handleForceWNP() {
@@ -1547,27 +1548,23 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     }, JSON.stringify(msg, null, 2)))));
   }
 
-  pushWNMessage(event, msg) {
-    let ele = event.target;
+  restoreWNMessageState() {
+    // check the page for checked boxes, and reset the state of WNMessages based on that.
+    let tempState = [];
+    let messageCheckboxes = document.querySelectorAll('input[type="checkbox"]'); // put the JSON of all the checked checkboxes in the array
 
-    if (ele.checked) {
-      this.setState(prevState => ({
-        WNMessages: prevState.WNMessages.concat(msg)
-      }));
-    } else if (!ele.checked && this.state.WNMessages.length === 1) {
-      this.setState({
-        WNMessages: []
-      });
-    } else {
-      this.setState(prevState => ({
-        WNMessages: prevState.WNMessages.splice(prevState.WNMessages.indexOf(msg), 1)
-      }));
+    for (const checkbox of messageCheckboxes) {
+      let trimmedId = checkbox.id.replace(" checkbox", "");
+      let msg = document.getElementById(`${trimmedId}-textarea`).value;
+
+      if (checkbox.checked) {
+        tempState.push(msg);
+      }
     }
-  }
 
-  modifyJson(content) {
-    let newContent = JSON.parse(content);
-    _asrouter_asrouter_content__WEBPACK_IMPORTED_MODULE_1__["ASRouterUtils"].modifyMessageJson(newContent);
+    this.setState({
+      WNMessages: tempState
+    });
   }
 
   renderWNMessageItem(msg) {
@@ -1592,19 +1589,12 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
     })), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("input", {
       type: "checkbox",
       id: `${msg.id} checkbox`,
-      name: `${msg.id} checkbox` // eslint-disable-next-line react/jsx-no-bind
-      ,
-      onClick: e => this.pushWNMessage(e, msg.id)
+      name: `${msg.id} checkbox`
     })), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", {
       className: `message-summary`
     }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("pre", {
       className: isCollapsed ? "collapsed" : "expanded"
-    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
-      className: "button json-button",
-      name: msg.id // eslint-disable-next-line react/jsx-no-bind
-      ,
-      onClick: e => this.modifyJson(document.getElementById(`${msg.id}-textarea`).value)
-    }, "Modify Template"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("textarea", {
+    }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("textarea", {
       id: `${msg.id}-textarea`,
       className: "wnp-textarea",
       name: msg.id
@@ -1643,7 +1633,7 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
       return null;
     }
 
-    const messagesToShow = this.state.messages.filter(message => message.provider === "whats-new-panel");
+    const messagesToShow = this.state.messages.filter(message => message.provider === "whats-new-panel" && message.content.body);
     return react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("table", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("tbody", null, messagesToShow.map(msg => this.renderWNMessageItem(msg))));
   }
 
@@ -1958,7 +1948,7 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
       className: "helpLink"
     }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", {
       className: "icon icon-small-spacer icon-info"
-    }), " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", null, "To correctly render selected messages, please check \"Disable Popup Auto-Hide\" in the browser toolbox, or set", " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("i", null, "ui.popup.disable_autohide"), " to ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("b", null, "true"), " in", " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("i", null, "about:config"), ". ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null), "To modify a message, render it first using 'Render Selected Messages'. Then, modify the JSON and click 'Modify Template' to see your changes.")), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("div", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
+    }), " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("span", null, "To correctly render selected messages, please check \"Disable Popup Auto-Hide\" in the browser toolbox, or set", " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("i", null, "ui.popup.disable_autohide"), " to ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("b", null, "true"), " in", " ", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("i", null, "about:config"), ". Then, click 'Open What's New Panel', select the messages you want to see, and click 'Render Selected Messages'.", react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("br", null), "To modify a message, select it, modify the JSON and click 'Render Selected Messages' again to see your changes.")), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("div", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
       className: "ASRouterButton primary button",
       onClick: this.handleForceWNP
     }, "Open What's New Panel"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("button", {
@@ -1987,17 +1977,18 @@ class ASRouterAdminInner extends react__WEBPACK_IMPORTED_MODULE_4___default.a.Pu
       case "groups":
         return react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement(react__WEBPACK_IMPORTED_MODULE_4___default.a.Fragment, null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("h2", null, "Message Groups"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("table", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("thead", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("tr", {
           className: "message-item"
-        }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, "Enabled"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, "Impressions count"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, "Custom frequency"))), this.state.groups && this.state.groups.map(({
+        }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, "Enabled"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, "Impressions count"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, "Custom frequency"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, "User preferences"))), this.state.groups && this.state.groups.map(({
           id,
           enabled,
-          frequency
+          frequency,
+          userPreferences = []
         }, index) => react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement(Row, {
           key: id
         }, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement(TogglePrefCheckbox, {
           checked: enabled,
           pref: id,
           onChange: this.toggleGroups
-        })), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, this._getGroupImpressionsCount(id, frequency)), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, JSON.stringify(frequency, null, 2))))));
+        })), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, this._getGroupImpressionsCount(id, frequency)), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, JSON.stringify(frequency, null, 2)), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("td", null, userPreferences.join(", "))))));
 
       case "ds":
         return react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement(react__WEBPACK_IMPORTED_MODULE_4___default.a.Fragment, null, react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement("h2", null, "Discovery Stream"), react__WEBPACK_IMPORTED_MODULE_4___default.a.createElement(DiscoveryStreamAdmin, {
@@ -4344,6 +4335,7 @@ class _DiscoveryStreamBase extends react__WEBPACK_IMPORTED_MODULE_14___default.a
 
       case "Navigation":
         return react__WEBPACK_IMPORTED_MODULE_14___default.a.createElement(content_src_components_DiscoveryStreamComponents_Navigation_Navigation__WEBPACK_IMPORTED_MODULE_13__["Navigation"], {
+          dispatch: this.props.dispatch,
           links: component.properties.links,
           alignment: component.properties.alignment,
           display_variant: component.properties.display_variant,
@@ -10613,23 +10605,43 @@ class HorizontalRule extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureCo
 __webpack_require__.r(__webpack_exports__);
 /* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "Topic", function() { return Topic; });
 /* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "Navigation", function() { return Navigation; });
-/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(9);
-/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var _SafeAnchor_SafeAnchor__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(35);
-/* harmony import */ var content_src_components_FluentOrText_FluentOrText__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(39);
+/* harmony import */ var common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(2);
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(9);
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var _SafeAnchor_SafeAnchor__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(35);
+/* harmony import */ var content_src_components_FluentOrText_FluentOrText__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(39);
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 
 
-class Topic extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureComponent {
+
+class Topic extends react__WEBPACK_IMPORTED_MODULE_1___default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onLinkClick = this.onLinkClick.bind(this);
+  }
+
+  onLinkClick(event) {
+    if (this.props.dispatch) {
+      this.props.dispatch(common_Actions_jsm__WEBPACK_IMPORTED_MODULE_0__["actionCreators"].ImpressionStats({
+        event: "CLICK",
+        source: "POPULAR_TOPICS",
+        value: {
+          topic: event.target.text.toLowerCase().replace(` `, `-`)
+        }
+      }));
+    }
+  }
+
   render() {
     const {
       url,
       name
     } = this.props;
-    return react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(_SafeAnchor_SafeAnchor__WEBPACK_IMPORTED_MODULE_1__["SafeAnchor"], {
+    return react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(_SafeAnchor_SafeAnchor__WEBPACK_IMPORTED_MODULE_2__["SafeAnchor"], {
+      onLinkClick: this.onLinkClick,
       className: this.props.className,
       url: url
     }, name);
@@ -10637,7 +10649,7 @@ class Topic extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureComponent {
 
 }
 
-class ExploreTopics extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureComponent {
+class ExploreTopics extends react__WEBPACK_IMPORTED_MODULE_1___default.a.PureComponent {
   render() {
     const {
       explore_topics
@@ -10647,11 +10659,13 @@ class ExploreTopics extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureCom
       return null;
     }
 
-    return react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(react__WEBPACK_IMPORTED_MODULE_0___default.a.Fragment, null, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(Topic, {
+    return react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(react__WEBPACK_IMPORTED_MODULE_1___default.a.Fragment, null, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(Topic, {
+      dispatch: this.props.dispatch,
       className: "ds-navigation-inline-explore-more",
       url: explore_topics.url,
       name: explore_topics.name
-    }), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(Topic, {
+    }), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(Topic, {
+      dispatch: this.props.dispatch,
       className: "ds-navigation-header-explore-more",
       url: explore_topics.url,
       name: explore_topics.header
@@ -10660,7 +10674,7 @@ class ExploreTopics extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureCom
 
 }
 
-class Navigation extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureComponent {
+class Navigation extends react__WEBPACK_IMPORTED_MODULE_1___default.a.PureComponent {
   render() {
     const {
       links
@@ -10677,18 +10691,20 @@ class Navigation extends react__WEBPACK_IMPORTED_MODULE_0___default.a.PureCompon
     const {
       explore_topics
     } = this.props;
-    return react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("div", {
+    return react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
       className: `ds-navigation ds-navigation-${alignment} ds-navigation-variant-${variant}`
-    }, header.title ? react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(content_src_components_FluentOrText_FluentOrText__WEBPACK_IMPORTED_MODULE_2__["FluentOrText"], {
+    }, header.title ? react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(content_src_components_FluentOrText_FluentOrText__WEBPACK_IMPORTED_MODULE_3__["FluentOrText"], {
       message: header.title
-    }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("span", {
+    }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("span", {
       className: "ds-header"
-    })) : null, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("ul", null, links && links.map(t => react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("li", {
+    })) : null, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("ul", null, links && links.map(t => react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("li", {
       key: t.name
-    }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(Topic, {
+    }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(Topic, {
       url: t.url,
-      name: t.name
-    })))), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(ExploreTopics, {
+      name: t.name,
+      dispatch: this.props.dispatch
+    })))), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(ExploreTopics, {
+      dispatch: this.props.dispatch,
       explore_topics: explore_topics
     }));
   }
@@ -16537,7 +16553,13 @@ const Localized = ({
     textNode = text;
   }
 
-  return children ? external_React_default.a.cloneElement(children, props, textNode) : external_React_default.a.createElement("span", props, textNode);
+  if (!children) {
+    return external_React_default.a.createElement("span", props, textNode);
+  } else if (textNode) {
+    return external_React_default.a.cloneElement(children, props, textNode);
+  }
+
+  return external_React_default.a.cloneElement(children, props);
 };
 // CONCATENATED MODULE: ./content-src/asrouter/templates/OnboardingMessage/OnboardingMessage.jsx
 /* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "OnboardingCard", function() { return OnboardingMessage_OnboardingCard; });

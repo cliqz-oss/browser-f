@@ -15,8 +15,7 @@ const { XPCOMUtils } = ChromeUtils.import(
 );
 XPCOMUtils.defineLazyModuleGetters(this, {
   Log: "resource://gre/modules/Log.jsm",
-  PlacesSearchAutocompleteProvider:
-    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
+  Services: "resource://gre/modules/Services.jsm",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarMuxer: "resource:///modules/UrlbarUtils.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
@@ -69,13 +68,22 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
     // context.results.find(), filter(), sort(), etc., modify one or both passes
     // instead.
 
+    // Capture information about the heuristic result to dedupe results from the
+    // heuristic more quickly.
     let heuristicResultQuery;
-    if (
-      context.heuristicResult &&
-      context.heuristicResult.type == UrlbarUtils.RESULT_TYPE.SEARCH &&
-      context.heuristicResult.payload.query
-    ) {
-      heuristicResultQuery = context.heuristicResult.payload.query.toLocaleLowerCase();
+    let heuristicResultOmniboxContent;
+    if (context.heuristicResult) {
+      if (
+        context.heuristicResult.type == UrlbarUtils.RESULT_TYPE.SEARCH &&
+        context.heuristicResult.payload.query
+      ) {
+        heuristicResultQuery = context.heuristicResult.payload.query.toLocaleLowerCase();
+      } else if (
+        context.heuristicResult.type == UrlbarUtils.RESULT_TYPE.OMNIBOX &&
+        context.heuristicResult.payload.content
+      ) {
+        heuristicResultOmniboxContent = context.heuristicResult.payload.content.toLocaleLowerCase();
+      }
     }
 
     let canShowPrivateSearch = context.results.length > 1;
@@ -185,15 +193,7 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
         result.source == UrlbarUtils.RESULT_SOURCE.HISTORY &&
         result.type == UrlbarUtils.RESULT_TYPE.URL
       ) {
-        let submission;
-        try {
-          // parseSubmissionURL throws if PlacesSearchAutocompleteProvider
-          // hasn't finished initializing, so try-catch this call.  There's no
-          // harm if it throws, we just won't dedupe SERPs this time.
-          submission = PlacesSearchAutocompleteProvider.parseSubmissionURL(
-            result.payload.url
-          );
-        } catch (error) {}
+        let submission = Services.search.parseSubmissionURL(result.payload.url);
         if (submission) {
           let resultQuery = submission.terms.toLocaleLowerCase();
           if (
@@ -212,6 +212,15 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
             }
           }
         }
+      }
+
+      // Exclude omnibox results that dupe the heuristic.
+      if (
+        !result.heuristic &&
+        result.type == UrlbarUtils.RESULT_TYPE.OMNIBOX &&
+        result.payload.content == heuristicResultOmniboxContent
+      ) {
+        continue;
       }
 
       // Include this result.

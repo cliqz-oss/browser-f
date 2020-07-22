@@ -155,6 +155,14 @@
           }
         },
 
+        "AllowSession": {
+          "type": "array",
+          "strict": false,
+          "items": {
+            "type": "origin"
+          }
+        },
+
         "Block": {
           "type": "array",
           "strict": false,
@@ -975,7 +983,7 @@
         "media.peerconnection.enabled": {
           "type": "boolean"
         },
-        "media.peerconnection.ice.obfuscate_host_addresses.whitelist": {
+        "media.peerconnection.ice.obfuscate_host_addresses.blocklist": {
           "type": "string"
         },
         "network.dns.disableIPv6": {
@@ -1015,6 +1023,10 @@
           "type": "string"
         }
       }
+    },
+
+    "PrimaryPassword": {
+      "type": "boolean"
     },
 
     "PromptForDownloadLocation": {
@@ -1229,6 +1241,9 @@
           "type": "boolean"
         },
         "UrlbarInterventions": {
+          "type": "boolean"
+        },
+        "SkipOnboarding": {
           "type": "boolean"
         },
         "Locked": {

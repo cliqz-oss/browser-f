@@ -25,6 +25,7 @@
 #include "mozilla/dom/Touch.h"
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/PendingAnimationTracker.h"
+#include "mozilla/SharedStyleSheetCache.h"
 #include "nsIObjectLoadingContent.h"
 #include "nsFrame.h"
 #include "mozilla/layers/APZCCallbackHelper.h"
@@ -118,6 +119,7 @@
 #include "mozilla/layers/WebRenderBridgeChild.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/ResultExtensions.h"
+#include "mozilla/ViewportUtils.h"
 
 #ifdef XP_WIN
 #  undef GetClassName
@@ -316,7 +318,7 @@ nsDOMWindowUtils::GetDocCharsetIsForced(bool* aIsForced) {
 
   Document* doc = GetDocument();
   *aIsForced =
-      doc && doc->GetDocumentCharacterSetSource() >= kCharsetFromParentForced;
+      doc && doc->GetDocumentCharacterSetSource() >= kCharsetFromUserForced;
   return NS_OK;
 }
 
@@ -987,6 +989,23 @@ nsDOMWindowUtils::SuppressAnimation(bool aSuppress) {
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::ClearSharedStyleSheetCache() {
+  SharedStyleSheetCache::ClearForTest();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetParsedStyleSheets(uint32_t* aSheets) {
+  RefPtr<Document> doc = GetDocument();
+  if (!doc) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  *aSheets = doc->CSSLoader()->ParsedSheetCount();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMWindowUtils::ClearNativeTouchSequence(nsIObserver* aObserver) {
   nsCOMPtr<nsIWidget> widget = GetWidget();
   if (!widget) {
@@ -1495,6 +1514,25 @@ nsDOMWindowUtils::GetVisualViewportOffset(int32_t* aOffsetX,
   *aOffsetX = nsPresContext::AppUnitsToIntCSSPixels(offset.x);
   *aOffsetY = nsPresContext::AppUnitsToIntCSSPixels(offset.y);
 
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::TransformRectLayoutToVisual(float aX, float aY, float aWidth,
+                                              float aHeight,
+                                              DOMRect** aResult) {
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryReferent(mWindow);
+  NS_ENSURE_STATE(window);
+
+  PresShell* presShell = GetPresShell();
+  NS_ENSURE_TRUE(presShell, NS_ERROR_NOT_AVAILABLE);
+
+  CSSRect rect(aX, aY, aWidth, aHeight);
+  rect = ViewportUtils::DocumentRelativeLayoutToVisual(rect, presShell);
+
+  RefPtr<DOMRect> outRect = new DOMRect(window);
+  outRect->SetRect(rect.x, rect.y, rect.width, rect.height);
+  outRect.forget(aResult);
   return NS_OK;
 }
 
@@ -3129,7 +3167,8 @@ nsDOMWindowUtils::SetVisualViewportSize(float aWidth, float aHeight) {
     return NS_ERROR_FAILURE;
   }
 
-  nsLayoutUtils::SetVisualViewportSize(presShell, CSSSize(aWidth, aHeight));
+  presShell->SetVisualViewportSize(nsPresContext::CSSPixelsToAppUnits(aWidth),
+                                   nsPresContext::CSSPixelsToAppUnits(aHeight));
 
   return NS_OK;
 }
@@ -4167,7 +4206,7 @@ nsDOMWindowUtils::StartCompositionRecording(Promise** aOutPromise) {
   } else {
     cbc->SendBeginRecording(TimeStamp::Now())
         ->Then(
-            GetCurrentThreadSerialEventTarget(), __func__,
+            GetCurrentSerialEventTarget(), __func__,
             [promise](const bool& aSuccess) {
               if (aSuccess) {
                 promise->MaybeResolve(true);
@@ -4208,7 +4247,7 @@ nsDOMWindowUtils::StopCompositionRecording(bool aWriteToDisk,
     promise->MaybeReject(NS_ERROR_UNEXPECTED);
   } else if (aWriteToDisk) {
     cbc->SendEndRecordingToDisk()->Then(
-        GetCurrentThreadSerialEventTarget(), __func__,
+        GetCurrentSerialEventTarget(), __func__,
         [promise](const bool& aSuccess) {
           if (aSuccess) {
             promise->MaybeResolveWithUndefined();
@@ -4223,7 +4262,7 @@ nsDOMWindowUtils::StopCompositionRecording(bool aWriteToDisk,
         });
   } else {
     cbc->SendEndRecordingToMemory()->Then(
-        GetCurrentThreadSerialEventTarget(), __func__,
+        GetCurrentSerialEventTarget(), __func__,
         [promise](Maybe<CollectedFramesParams>&& aFrames) {
           if (!aFrames) {
             promise->MaybeRejectWithUnknownError(

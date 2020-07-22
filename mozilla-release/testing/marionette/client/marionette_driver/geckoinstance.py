@@ -89,6 +89,10 @@ class GeckoInstance(object):
         # Do not scan Wifi
         "geo.wifi.scan": False,
 
+        # Disable idle-daily notifications to avoid expensive operations
+        # that may cause unexpected test timeouts.
+        "idle.lastDailyNotification": -1,
+
         "javascript.options.showInConsole": True,
 
         # (deprecated and can be removed when Firefox 60 ships)
@@ -198,7 +202,7 @@ class GeckoInstance(object):
         self._update_profile(value)
 
     def _update_profile(self, profile=None, profile_name=None):
-        """Check if the profile has to be created, or replaced
+        """Check if the profile has to be created, or replaced.
 
         :param profile: A Profile instance to be used.
         :param name: Profile name to be used in the path.
@@ -296,7 +300,7 @@ class GeckoInstance(object):
             instance_class = apps[app]
         except (IOError, KeyError):
             exc, val, tb = sys.exc_info()
-            msg = 'Application "{0}" unknown (should be one of {1})'.format(app, apps.keys())
+            msg = 'Application "{0}" unknown (should be one of {1})'.format(app, list(apps.keys()))
             reraise(NotImplementedError, NotImplementedError(msg), tb)
 
         return instance_class(*args, **kwargs)
@@ -565,9 +569,6 @@ class DesktopInstance(GeckoInstance):
         "browser.startup.homepage_override.mstone": "ignore",
         # Start with a blank page by default
         "browser.startup.page": 0,
-
-        # Disable browser animations
-        "toolkit.cosmeticAnimations.enabled": False,
 
         # Bug 1557457: Disable because modal dialogs might not appear in Firefox
         "browser.tabs.remote.separatePrivilegedContentProcess": False,

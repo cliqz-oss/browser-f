@@ -11,7 +11,8 @@
 namespace mozilla {
 namespace dom {
 
-WebGLChild::WebGLChild(ClientWebGLContext& context) : mContext(context) {}
+WebGLChild::WebGLChild(ClientWebGLContext& context)
+    : PcqActor(this), mContext(context) {}
 
 WebGLChild::~WebGLChild() { (void)Send__delete__(this); }
 
@@ -28,8 +29,10 @@ mozilla::ipc::IPCResult WebGLChild::RecvOnContextLoss(
 }
 
 /* static */
-bool WebGLChild::ShouldSendSync(size_t aCmd, ...) {
-  return WebGLMethodDispatcher<>::SyncType(aCmd) == CommandSyncType::SYNC;
+IpdlQueueProtocol WebGLChild::GetIpdlQueueProtocol(size_t aCmd, ...) {
+  bool isSync =
+      WebGLMethodDispatcher<>::SyncType(aCmd) == CommandSyncType::SYNC;
+  return isSync ? IpdlQueueProtocol::kSync : IpdlQueueProtocol::kBufferedAsync;
 }
 
 }  // namespace dom

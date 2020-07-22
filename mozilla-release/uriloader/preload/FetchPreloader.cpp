@@ -32,7 +32,7 @@ FetchPreloader::FetchPreloader()
 FetchPreloader::FetchPreloader(nsContentPolicyType aContentPolicyType)
     : mContentPolicyType(aContentPolicyType) {}
 
-nsresult FetchPreloader::OpenChannel(PreloadHashKey* aKey, nsIURI* aURI,
+nsresult FetchPreloader::OpenChannel(const PreloadHashKey& aKey, nsIURI* aURI,
                                      const CORSMode aCORSMode,
                                      const dom::ReferrerPolicy& aReferrerPolicy,
                                      dom::Document* aDocument) {
@@ -204,7 +204,11 @@ NS_IMETHODIMP FetchPreloader::OnStopRequest(nsIRequest* request,
     }
   }
 
+  // Fetch preloader wants to keep the channel around so that consumers like XHR
+  // can access it even after the preload is done.
+  nsCOMPtr<nsIChannel> channel = mChannel;
   NotifyStop(request, status);
+  mChannel.swap(channel);
   return NS_OK;
 }
 

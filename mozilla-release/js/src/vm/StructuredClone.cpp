@@ -190,16 +190,20 @@ struct BufferIterator {
     return *this;
   }
 
+  MOZ_MUST_USE bool advance(size_t size = sizeof(T)) {
+    return mIter.AdvanceAcrossSegments(mBuffer, size);
+  }
+
   BufferIterator operator++(int) {
     BufferIterator ret = *this;
-    if (!mIter.AdvanceAcrossSegments(mBuffer, sizeof(T))) {
+    if (!advance(sizeof(T))) {
       MOZ_ASSERT(false, "Failed to read StructuredCloneData. Data incomplete");
     }
     return ret;
   }
 
   BufferIterator& operator+=(size_t size) {
-    if (!mIter.AdvanceAcrossSegments(mBuffer, size)) {
+    if (!advance(size)) {
       MOZ_ASSERT(false, "Failed to read StructuredCloneData. Data incomplete");
     }
     return *this;
@@ -208,12 +212,6 @@ struct BufferIterator {
   size_t operator-(const BufferIterator& other) {
     MOZ_ASSERT(&mBuffer == &other.mBuffer);
     return mBuffer.RangeLength(other.mIter, mIter);
-  }
-
-  void next() {
-    if (!mIter.AdvanceAcrossSegments(mBuffer, sizeof(T))) {
-      MOZ_ASSERT(false, "Failed to read StructuredCloneData. Data incomplete");
-    }
   }
 
   bool done() const { return mIter.Done(); }
@@ -363,7 +361,13 @@ class SCInput {
 
   const BufferIterator& tell() const { return point; }
   void seekTo(const BufferIterator& pos) { point = pos; }
-  void seekBy(size_t pos) { point += pos; }
+  MOZ_MUST_USE bool seekBy(size_t pos) {
+    if (!point.advance(pos)) {
+      reportTruncated();
+      return false;
+    }
+    return true;
+  }
 
   template <class T>
   MOZ_MUST_USE bool readArray(T* p, size_t nelems);
@@ -410,8 +414,8 @@ struct JSStructuredCloneReader {
   bool readTransferMap();
 
   template <typename CharT>
-  JSString* readStringImpl(uint32_t nchars);
-  JSString* readString(uint32_t data);
+  JSString* readStringImpl(uint32_t nchars, gc::InitialHeap heap);
+  JSString* readString(uint32_t data, gc::InitialHeap heap = gc::DefaultHeap);
 
   BigInt* readBigInt(uint32_t data);
 
@@ -425,7 +429,8 @@ struct JSStructuredCloneReader {
   MOZ_MUST_USE bool readV1ArrayBuffer(uint32_t arrayType, uint32_t nelems,
                                       MutableHandleValue vp);
   JSObject* readSavedFrame(uint32_t principalsTag);
-  MOZ_MUST_USE bool startRead(MutableHandleValue vp);
+  MOZ_MUST_USE bool startRead(MutableHandleValue vp,
+                              gc::InitialHeap strHeap = gc::DefaultHeap);
 
   SCInput& in;
 
@@ -715,7 +720,7 @@ bool SCInput::read(uint64_t* p) {
     return reportTruncated();
   }
   *p = NativeEndian::swapFromLittleEndian(point.peek());
-  point.next();
+  MOZ_ALWAYS_TRUE(point.advance());
   return true;
 }
 
@@ -969,7 +974,7 @@ void JSStructuredCloneData::discardTransferables() {
   uint32_t tag, data;
   MOZ_RELEASE_ASSERT(point.canPeek());
   SCInput::getPair(point.peek(), &tag, &data);
-  point.next();
+  MOZ_ALWAYS_TRUE(point.advance());
 
   if (tag == SCTAG_HEADER) {
     if (point.done()) {
@@ -978,7 +983,7 @@ void JSStructuredCloneData::discardTransferables() {
 
     MOZ_RELEASE_ASSERT(point.canPeek());
     SCInput::getPair(point.peek(), &tag, &data);
-    point.next();
+    MOZ_ALWAYS_TRUE(point.advance());
   }
 
   if (tag != SCTAG_TRANSFER_MAP_HEADER) {
@@ -996,8 +1001,9 @@ void JSStructuredCloneData::discardTransferables() {
     return;
   }
 
+  MOZ_RELEASE_ASSERT(point.canPeek());
   uint64_t numTransferables = NativeEndian::swapFromLittleEndian(point.peek());
-  point.next();
+  MOZ_ALWAYS_TRUE(point.advance());
   while (numTransferables--) {
     if (!point.canPeek()) {
       return;
@@ -1005,7 +1011,7 @@ void JSStructuredCloneData::discardTransferables() {
 
     uint32_t ownership;
     SCInput::getPair(point.peek(), &tag, &ownership);
-    point.next();
+    MOZ_ALWAYS_TRUE(point.advance());
     MOZ_ASSERT(tag >= SCTAG_TRANSFER_MAP_PENDING_ENTRY);
     if (!point.canPeek()) {
       return;
@@ -1013,13 +1019,13 @@ void JSStructuredCloneData::discardTransferables() {
 
     void* content;
     SCInput::getPtr(point.peek(), &content);
-    point.next();
+    MOZ_ALWAYS_TRUE(point.advance());
     if (!point.canPeek()) {
       return;
     }
 
     uint64_t extraData = NativeEndian::swapFromLittleEndian(point.peek());
-    point.next();
+    MOZ_ALWAYS_TRUE(point.advance());
 
     if (ownership < JS::SCTAG_TMO_FIRST_OWNED) {
       continue;
@@ -1984,12 +1990,12 @@ bool JSStructuredCloneWriter::transferOwnership() {
     }
 
     point.write(NativeEndian::swapToLittleEndian(PairToUInt64(tag, ownership)));
-    point.next();
+    MOZ_ALWAYS_TRUE(point.advance());
     point.write(
         NativeEndian::swapToLittleEndian(reinterpret_cast<uint64_t>(content)));
-    point.next();
+    MOZ_ALWAYS_TRUE(point.advance());
     point.write(NativeEndian::swapToLittleEndian(extraData));
-    point.next();
+    MOZ_ALWAYS_TRUE(point.advance());
   }
 
 #if DEBUG
@@ -2085,7 +2091,8 @@ bool JSStructuredCloneWriter::write(HandleValue v) {
 }
 
 template <typename CharT>
-JSString* JSStructuredCloneReader::readStringImpl(uint32_t nchars) {
+JSString* JSStructuredCloneReader::readStringImpl(uint32_t nchars,
+                                                  gc::InitialHeap heap) {
   if (nchars > JSString::MAX_LENGTH) {
     JS_ReportErrorNumberASCII(context(), GetErrorMessage, nullptr,
                               JSMSG_SC_BAD_SERIALIZED_DATA, "string length");
@@ -2097,14 +2104,15 @@ JSString* JSStructuredCloneReader::readStringImpl(uint32_t nchars) {
       !in.readChars(chars.get(), nchars)) {
     return nullptr;
   }
-  return chars.toStringDontDeflate(context(), nchars);
+  return chars.toStringDontDeflate(context(), nchars, heap);
 }
 
-JSString* JSStructuredCloneReader::readString(uint32_t data) {
+JSString* JSStructuredCloneReader::readString(uint32_t data,
+                                              gc::InitialHeap heap) {
   uint32_t nchars = data & BitMask(31);
   bool latin1 = data & (1 << 31);
-  return latin1 ? readStringImpl<Latin1Char>(nchars)
-                : readStringImpl<char16_t>(nchars);
+  return latin1 ? readStringImpl<Latin1Char>(nchars, heap)
+                : readStringImpl<char16_t>(nchars, heap);
 }
 
 BigInt* JSStructuredCloneReader::readBigInt(uint32_t data) {
@@ -2453,7 +2461,8 @@ static bool PrimitiveToObject(JSContext* cx, MutableHandleValue vp) {
   return true;
 }
 
-bool JSStructuredCloneReader::startRead(MutableHandleValue vp) {
+bool JSStructuredCloneReader::startRead(MutableHandleValue vp,
+                                        gc::InitialHeap strHeap) {
   uint32_t tag, data;
   bool alreadAppended = false;
 
@@ -2484,7 +2493,7 @@ bool JSStructuredCloneReader::startRead(MutableHandleValue vp) {
 
     case SCTAG_STRING:
     case SCTAG_STRING_OBJECT: {
-      JSString* str = readString(data);
+      JSString* str = readString(data, strHeap);
       if (!str) {
         return false;
       }
@@ -2558,7 +2567,7 @@ bool JSStructuredCloneReader::startRead(MutableHandleValue vp) {
         return false;
       }
 
-      JSString* str = readString(stringData);
+      JSString* str = readString(stringData, gc::TenuredHeap);
       if (!str) {
         return false;
       }
@@ -2605,7 +2614,7 @@ bool JSStructuredCloneReader::startRead(MutableHandleValue vp) {
     case SCTAG_TRANSFER_MAP_HEADER:
     case SCTAG_TRANSFER_MAP_PENDING_ENTRY:
       // We should be past all the transfer map tags.
-      JS_ReportErrorNumberASCII(context(), GetErrorMessage, NULL,
+      JS_ReportErrorNumberASCII(context(), GetErrorMessage, nullptr,
                                 JSMSG_SC_BAD_SERIALIZED_DATA, "invalid input");
       return false;
 
@@ -2828,7 +2837,9 @@ bool JSStructuredCloneReader::readTransferMap() {
       auto savedPos = in.tell();
       auto guard = mozilla::MakeScopeExit([&] { in.seekTo(savedPos); });
       in.seekTo(pos);
-      in.seekBy(static_cast<size_t>(extraData));
+      if (!in.seekBy(static_cast<size_t>(extraData))) {
+        return false;
+      }
 
       uint32_t tag, data;
       if (!in.readPair(&tag, &data)) {
@@ -2931,7 +2942,7 @@ JSObject* JSStructuredCloneReader::readSavedFrame(uint32_t principalsTag) {
     }
 
     if (mutedErrors.isBoolean()) {
-      if (!startRead(&source) || !source.isString()) {
+      if (!startRead(&source, gc::TenuredHeap) || !source.isString()) {
         return nullptr;
       }
     } else if (mutedErrors.isString()) {
@@ -2975,7 +2986,13 @@ JSObject* JSStructuredCloneReader::readSavedFrame(uint32_t principalsTag) {
   savedFrame->initSourceId(0);
 
   RootedValue name(context());
-  if (!startRead(&name) || !(name.isString() || name.isNull())) {
+  if (!startRead(&name, gc::TenuredHeap)) {
+    return nullptr;
+  }
+  if (!(name.isString() || name.isNull())) {
+    JS_ReportErrorNumberASCII(context(), GetErrorMessage, nullptr,
+                              JSMSG_SC_BAD_SERIALIZED_DATA,
+                              "invalid saved frame cause");
     return nullptr;
   }
   JSAtom* atomName = nullptr;
@@ -2989,7 +3006,13 @@ JSObject* JSStructuredCloneReader::readSavedFrame(uint32_t principalsTag) {
   savedFrame->initFunctionDisplayName(atomName);
 
   RootedValue cause(context());
-  if (!startRead(&cause) || !(cause.isString() || cause.isNull())) {
+  if (!startRead(&cause, gc::TenuredHeap)) {
+    return nullptr;
+  }
+  if (!(cause.isString() || cause.isNull())) {
+    JS_ReportErrorNumberASCII(context(), GetErrorMessage, nullptr,
+                              JSMSG_SC_BAD_SERIALIZED_DATA,
+                              "invalid saved frame cause");
     return nullptr;
   }
   JSAtom* atomCause = nullptr;

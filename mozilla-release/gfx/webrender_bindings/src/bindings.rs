@@ -37,7 +37,7 @@ use webrender::{
     api::units::*, api::*, set_profiler_hooks, AsyncPropertySampler, AsyncScreenshotHandle, Compositor,
     CompositorCapabilities, CompositorConfig, DebugFlags, Device, FastHashMap, NativeSurfaceId, NativeSurfaceInfo,
     NativeTileId, PipelineInfo, ProfilerHooks, RecordedFrameHandle, Renderer, RendererOptions, RendererStats,
-    SceneBuilderHooks, ShaderPrecacheFlags, Shaders, ThreadListener, UploadMethod, VertexUsageHint, WrShaders,
+    SceneBuilderHooks, ShaderPrecacheFlags, Shaders, ThreadListener, UploadMethod, WrShaders, ONE_TIME_USAGE_HINT,
 };
 
 #[cfg(target_os = "macos")]
@@ -484,6 +484,13 @@ pub type WrColorProperty = WrAnimationPropertyValue<ColorF>;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct WrWindowId(u64);
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct WrComputedTransformData {
+    pub scale_from: LayoutSize,
+    pub vertical_flip: bool,
+}
+
 fn get_proc_address(glcontext_ptr: *mut c_void, name: &str) -> *const c_void {
     extern "C" {
         fn get_proc_address_from_glcontext(glcontext_ptr: *mut c_void, procname: *const c_char) -> *const c_void;
@@ -898,6 +905,13 @@ extern "C" {
         epochs_being_rendered: &WrPipelineIdEpochs,
     );
     fn apz_deregister_sampler(window_id: WrWindowId);
+
+    fn omta_register_sampler(window_id: WrWindowId);
+    fn omta_sample(
+        window_id: WrWindowId,
+        transaction: &mut Transaction
+    );
+    fn omta_deregister_sampler(window_id: WrWindowId);
 }
 
 struct APZCallbacks {
@@ -978,7 +992,10 @@ impl SamplerCallback {
 
 impl AsyncPropertySampler for SamplerCallback {
     fn register(&self) {
-        unsafe { apz_register_sampler(self.window_id) }
+        unsafe {
+            apz_register_sampler(self.window_id);
+            omta_register_sampler(self.window_id);
+        }
     }
 
     fn sample(
@@ -988,18 +1005,23 @@ impl AsyncPropertySampler for SamplerCallback {
     ) -> Vec<FrameMsg> {
         let mut transaction = Transaction::new();
         unsafe {
+            // XXX: When we implement scroll-linked animations, we will probably
+            // need to call apz_sample_transforms prior to omta_sample.
+            omta_sample(self.window_id, &mut transaction);
             apz_sample_transforms(
                 self.window_id,
                 &mut transaction,
                 &epochs_being_rendered.iter().map(WrPipelineIdAndEpoch::from).collect(),
             )
         };
-        // TODO: also omta_sample_transforms(...)
         transaction.get_frame_ops()
     }
 
     fn deregister(&self) {
-        unsafe { apz_deregister_sampler(self.window_id) }
+        unsafe {
+            apz_deregister_sampler(self.window_id);
+            omta_deregister_sampler(self.window_id);
+        }
     }
 }
 
@@ -1129,7 +1151,7 @@ fn wr_device_new(gl_context: *mut c_void, pc: Option<&mut WrProgramCache>) -> De
     let upload_method = if unsafe { is_glcontext_angle(gl_context) } {
         UploadMethod::Immediate
     } else {
-        UploadMethod::PixelBuffer(VertexUsageHint::Dynamic)
+        UploadMethod::PixelBuffer(ONE_TIME_USAGE_HINT)
     };
 
     let resource_override_path = unsafe {
@@ -1197,6 +1219,15 @@ extern "C" {
     fn wr_compositor_enable_native_compositor(compositor: *mut c_void, enable: bool);
     fn wr_compositor_deinit(compositor: *mut c_void);
     fn wr_compositor_get_capabilities(compositor: *mut c_void) -> CompositorCapabilities;
+    fn wr_compositor_map_tile(
+        compositor: *mut c_void,
+        id: NativeTileId,
+        dirty_rect: DeviceIntRect,
+        valid_rect: DeviceIntRect,
+        data: &mut *mut c_void,
+        stride: &mut i32,
+    );
+    fn wr_compositor_unmap_tile(compositor: *mut c_void);
 }
 
 pub struct WrCompositor(*mut c_void);
@@ -1293,6 +1324,58 @@ impl Compositor for WrCompositor {
     }
 }
 
+/// Information about the underlying data buffer of a mapped tile.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct MappedTileInfo {
+    pub data: *mut c_void,
+    pub stride: i32,
+}
+
+/// WrCompositor-specific extensions to the basic Compositor interface.
+impl WrCompositor {
+    /// Map a tile's underlying buffer so it can be used as the backing for
+    /// a SWGL framebuffer. This is intended to be a replacement for 'bind'
+    /// in any compositors that intend to directly interoperate with SWGL
+    /// while supporting some form of native layers.
+    pub fn map_tile(
+        &mut self,
+        id: NativeTileId,
+        dirty_rect: DeviceIntRect,
+        valid_rect: DeviceIntRect,
+    ) -> Option<MappedTileInfo> {
+        let mut tile_info = MappedTileInfo {
+            data: ptr::null_mut(),
+            stride: 0,
+        };
+
+        unsafe {
+            wr_compositor_map_tile(
+                self.0,
+                id,
+                dirty_rect,
+                valid_rect,
+                &mut tile_info.data,
+                &mut tile_info.stride,
+            );
+        }
+
+        if tile_info.data != ptr::null_mut() && tile_info.stride != 0 {
+            Some(tile_info)
+        } else {
+            None
+        }
+    }
+
+    /// Unmap a tile that was was previously mapped via map_tile to signal
+    /// that SWGL is done rendering to the buffer.
+    pub fn unmap_tile(&mut self) {
+        unsafe {
+            wr_compositor_unmap_tile(self.0);
+        }
+    }
+}
+
 // Call MakeCurrent before this.
 #[no_mangle]
 pub extern "C" fn wr_window_new(
@@ -1303,6 +1386,7 @@ pub extern "C" fn wr_window_new(
     support_low_priority_threadpool: bool,
     allow_texture_swizzling: bool,
     enable_picture_caching: bool,
+    allow_scissored_cache_clears: bool,
     start_debug_server: bool,
     swgl_context: *mut c_void,
     gl_context: *mut c_void,
@@ -1326,10 +1410,12 @@ pub extern "C" fn wr_window_new(
 ) -> bool {
     assert!(unsafe { is_in_render_thread() });
 
-    let native_gl = if unsafe { is_glcontext_gles(gl_context) } {
-        unsafe { gl::GlesFns::load_with(|symbol| get_proc_address(gl_context, symbol)) }
+    let native_gl = if gl_context == ptr::null_mut() {
+        None
+    } else if unsafe { is_glcontext_gles(gl_context) } {
+        unsafe { Some(gl::GlesFns::load_with(|symbol| get_proc_address(gl_context, symbol))) }
     } else {
-        unsafe { gl::GlFns::load_with(|symbol| get_proc_address(gl_context, symbol)) }
+        unsafe { Some(gl::GlFns::load_with(|symbol| get_proc_address(gl_context, symbol))) }
     };
 
     let software = swgl_context != ptr::null_mut();
@@ -1338,7 +1424,7 @@ pub extern "C" fn wr_window_new(
         ctx.make_current();
         (Rc::new(ctx.clone()) as Rc<dyn gl::Gl>, Some(ctx))
     } else {
-        (native_gl.clone(), None)
+        (native_gl.as_ref().expect("Native GL context required when not using SWGL!").clone(), None)
     };
 
     let version = gl.get_string(gl::VERSION);
@@ -1354,10 +1440,11 @@ pub extern "C" fn wr_window_new(
         }
     };
 
-    let upload_method = if unsafe { is_glcontext_angle(gl_context) } {
+    let upload_method = if gl_context != ptr::null_mut() &&
+                           unsafe { is_glcontext_angle(gl_context) } {
         UploadMethod::Immediate
     } else {
-        UploadMethod::PixelBuffer(VertexUsageHint::Dynamic)
+        UploadMethod::PixelBuffer(ONE_TIME_USAGE_HINT)
     };
 
     let precache_flags = if env_var_to_bool("MOZ_WR_PRECACHE_SHADERS") {
@@ -1379,14 +1466,14 @@ pub extern "C" fn wr_window_new(
     };
 
     let compositor_config = if software {
-        let wr_compositor: Option<Box<dyn Compositor>> = if compositor != ptr::null_mut() {
-            Some(Box::new(WrCompositor(compositor)))
+        let wr_compositor = if compositor != ptr::null_mut() {
+            Some(WrCompositor(compositor))
         } else {
             None
         };
         CompositorConfig::Native {
             max_update_rects: 1,
-            compositor: Box::new(SwCompositor::new(sw_gl.unwrap(), Some(native_gl), wr_compositor)),
+            compositor: Box::new(SwCompositor::new(sw_gl.unwrap(), native_gl, wr_compositor)),
         }
     } else if compositor != ptr::null_mut() {
         CompositorConfig::Native {
@@ -1437,6 +1524,7 @@ pub extern "C" fn wr_window_new(
         namespace_alloc_by_client: true,
         enable_picture_caching,
         allow_pixel_local_storage_support: false,
+        clear_caches_with_quads: !allow_scissored_cache_clears,
         start_debug_server,
         surface_origin_is_top_left: !software && surface_origin_is_top_left,
         compositor_config,
@@ -2255,6 +2343,7 @@ pub struct WrStackingContextParams {
     pub clip: WrStackingContextClip,
     pub animation: *const WrAnimationProperty,
     pub opacity: *const f32,
+    pub computed_transform: *const WrComputedTransformData,
     pub transform_style: TransformStyle,
     pub reference_frame_kind: WrReferenceFrameKind,
     pub scrolling_relative_to: *const u64,
@@ -2302,6 +2391,7 @@ pub extern "C" fn wr_dp_push_stacking_context(
         None => None,
     };
 
+    let computed_ref = unsafe { params.computed_transform.as_ref() };
     let opacity_ref = unsafe { params.opacity.as_ref() };
     let mut has_opacity_animation = false;
     let anim = unsafe { params.animation.as_ref() };
@@ -2367,6 +2457,17 @@ pub extern "C" fn wr_dp_push_stacking_context(
             params.transform_style,
             transform_binding,
             reference_frame_kind,
+        );
+
+        bounds.origin = LayoutPoint::zero();
+        result.id = wr_spatial_id.0;
+        assert_ne!(wr_spatial_id.0, 0);
+    } else if let Some(data) = computed_ref {
+        wr_spatial_id = state.frame_builder.dl_builder.push_computed_frame(
+            bounds.origin,
+            wr_spatial_id,
+            Some(data.scale_from),
+            data.vertical_flip,
         );
 
         bounds.origin = LayoutPoint::zero();
@@ -3747,10 +3848,11 @@ pub unsafe extern "C" fn wr_device_delete(device: *mut Device) {
 pub extern "C" fn wr_shaders_new(
     gl_context: *mut c_void,
     program_cache: Option<&mut WrProgramCache>,
+    precache_shaders: bool,
 ) -> *mut WrShaders {
     let mut device = wr_device_new(gl_context, program_cache);
 
-    let precache_flags = if env_var_to_bool("MOZ_WR_PRECACHE_SHADERS") {
+    let precache_flags = if precache_shaders || env_var_to_bool("MOZ_WR_PRECACHE_SHADERS") {
         ShaderPrecacheFlags::FULL_COMPILE
     } else {
         ShaderPrecacheFlags::ASYNC_COMPILE
