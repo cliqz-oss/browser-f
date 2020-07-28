@@ -59,21 +59,17 @@ category-privacy =
 pane-sync-title2 = { -sync-brand-short-name }
 category-sync2 =
     .tooltiptext = { pane-sync-title2 }
-<<<<<<< HEAD
 
 pane-experiments-title = Labor
 category-experiments =
     .tooltiptext = { pane-experiments-title }
 
-||||||| merged common ancestors
-=======
 pane-experimental-title = { -brand-short-name }-Experimente
 category-experimental =
     .tooltiptext = { -brand-short-name }-Experimente
 pane-experimental-subtitle = Vorsicht!
 pane-experimental-search-results-header = { -brand-short-name } Experimente: Vorsicht!
 pane-experimental-description = Das Ändern von erweiterten Konfigurationseinstellungen kann sich auf die Leistung und Sicherheit von { -brand-short-name } auswirken.
->>>>>>> origin/upstream-releases
 help-button-label = Hilfe für { -brand-short-name }
 addons-button-label = Erweiterungen & Themes
 focus-search =
@@ -523,12 +519,6 @@ home-prefs-topsites-description = Die von deinen am meisten besuchten Websites
 
 home-prefs-recommended-by-header =
     .label = Empfohlen von { $provider }
-<<<<<<< HEAD
-home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für dich personalisiert
-||||||| merged common ancestors
-home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für Sie personalisiert
-=======
->>>>>>> origin/upstream-releases
 home-prefs-recommended-by-description-update = Besondere Inhalte aus dem ganzen Internet, ausgewählt von { $provider }
 
 ##
@@ -591,15 +581,7 @@ search-show-suggestions-url-bar-option =
 search-show-suggestions-above-history-option =
     .label = In Adressleiste Suchvorschläge vor Einträgen aus der Browser-Chronik anzeigen
 search-show-suggestions-private-windows =
-<<<<<<< HEAD
     .label = Suchvorschläge in Vergessen Fenstern anzeigen
-suggestions-addressbar-settings = Einstellungen für Chronik, Lesezeichen und vorgeschlagene offene Tabs ändern
-||||||| merged common ancestors
-    .label = Suchvorschläge in privaten Fenstern anzeigen
-suggestions-addressbar-settings = Einstellungen für Chronik, Lesezeichen und vorgeschlagene offene Tabs ändern
-=======
-    .label = Suchvorschläge in privaten Fenstern anzeigen
->>>>>>> origin/upstream-releases
 suggestions-addressbar-settings-generic = Einstellungen für andere Vorschläge in der Adressleiste ändern
 search-suggestions-cant-show = Suchvorschläge werden nicht in der Adressleiste angezeigt, weil { -brand-short-name } angewiesen wurde, keine Chronik zu speichern.
 search-one-click-header = Direkt suchen

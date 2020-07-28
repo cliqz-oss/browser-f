@@ -86,10 +86,6 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
-<<<<<<< HEAD
-#if MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
   if (Services.prefs.getBoolPref("browser.preferences.experimental")) {
     document.getElementById("category-experimental").hidden = false;
     register_module("paneExperimental", gExperimentalPane);
@@ -97,7 +93,7 @@ function init_all() {
   // The Sync category needs to be the last of the "real" categories
   // registered and inititalized since many tests wait for the
   // "sync-pane-loaded" observer notification before starting the test.
->>>>>>> origin/upstream-releases
+#if MOZ_SERVICES_SYNC
   if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     document.getElementById("category-sync").hidden = false;
     register_module("paneSync", gSyncPane);

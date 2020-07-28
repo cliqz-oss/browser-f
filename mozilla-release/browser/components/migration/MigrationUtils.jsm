@@ -666,31 +666,9 @@ var MigrationUtils = Object.freeze({
       case "firefox":
         return "source-name-firefox";
       case "360se":
-<<<<<<< HEAD
-        return "sourceName360se";
-      case "cliqz":
-        return "sourceNameCliqz";
-    }
-    return null;
-  },
-
-  getBrowserName(browserId) {
-    let prop = this._getLocalePropertyForBrowser(browserId);
-    if (prop) {
-      return this.getLocalizedString(prop);
-||||||| merged common ancestors
-        return "sourceName360se";
-    }
-    return null;
-  },
-
-  getBrowserName(browserId) {
-    let prop = this._getLocalePropertyForBrowser(browserId);
-    if (prop) {
-      return this.getLocalizedString(prop);
-=======
         return "source-name-360se";
->>>>>>> origin/upstream-releases
+      case "cliqz":
+        return "source-name-cliqz";
     }
     return null;
   },

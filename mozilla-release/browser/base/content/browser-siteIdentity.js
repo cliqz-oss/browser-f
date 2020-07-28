@@ -57,13 +57,7 @@ var gIdentityHandler = {
    * RegExp used to decide if an about url should be shown as being part of
    * the browser UI.
    */
-<<<<<<< HEAD
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|cliqz|config|crashes|downloads|license|logins|preferences|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
-||||||| merged common ancestors
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|config|crashes|downloads|license|logins|preferences|protections|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
-=======
-  _secureInternalPages: /^(?:accounts|addons|cache|certificate|config|crashes|downloads|license|logins|preferences|protections|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
->>>>>>> origin/upstream-releases
+  _secureInternalPages: /^(?:accounts|addons|cache|certificate|cliqz|config|crashes|downloads|license|logins|preferences|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
 
   /**
    * Whether the established HTTPS connection is considered "broken".
@@ -1177,21 +1171,11 @@ var gIdentityHandler = {
     // Add the "open" attribute to the identity box for styling
     this._identityBox.setAttribute("open", "true");
 
-<<<<<<< HEAD
-    // Check the panel state of the protections panel. Hide it if needed.
-#if 0
-    if (gProtectionsHandler._protectionsPopup.state != "closed") {
-      PanelMultiView.hidePopup(gProtectionsHandler._protectionsPopup);
-||||||| merged common ancestors
-    // Check the panel state of the protections panel. Hide it if needed.
-    if (gProtectionsHandler._protectionsPopup.state != "closed") {
-      PanelMultiView.hidePopup(gProtectionsHandler._protectionsPopup);
-=======
     // Check the panel state of other panels. Hide them if needed.
+#if 0
     let openPanels = Array.from(document.querySelectorAll("panel[openpanel]"));
     for (let panel of openPanels) {
       PanelMultiView.hidePopup(panel);
->>>>>>> origin/upstream-releases
     }
 #endif
 

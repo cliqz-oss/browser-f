@@ -42,9 +42,6 @@
 <!ENTITY importItems.title              "Items to Import">
 <!ENTITY importItems.label              "Select which items to import:">
 
-<!ENTITY selectAddons.title              "Add-ons to Import">
-<!ENTITY selectAddons.label              "Select which add-ons to import:">
-
 <!ENTITY migrating.title                "Importing…">
 <!ENTITY migrating.label                "The following items are currently being imported…">
 

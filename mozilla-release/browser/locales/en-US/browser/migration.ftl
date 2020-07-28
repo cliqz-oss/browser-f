@@ -59,6 +59,10 @@ import-items-page-title = Items to Import
 
 import-items-description = Select which items to import:
 
+import-addons-title = Add-ons to Import
+
+import-addons-description = Select which add-ons to import:
+
 import-migrating-page-title = Importing…
 
 import-migrating-description = The following items are currently being imported…
@@ -90,6 +94,7 @@ source-name-chrome-dev = Google Chrome Dev
 source-name-chromium = Chromium
 source-name-firefox = Mozilla Firefox
 source-name-360se = 360 Secure Browser
+source-name-cliqz = Cliqz Browser
 
 imported-safari-reading-list = Reading List (From Safari)
 imported-edge-reading-list = Reading List (From Edge)

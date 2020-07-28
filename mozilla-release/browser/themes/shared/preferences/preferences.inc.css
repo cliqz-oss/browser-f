@@ -219,18 +219,14 @@ button > hbox > label {
   list-style-image: url("chrome://browser/skin/preferences/sync.svg");
 }
 
-<<<<<<< HEAD
 #category-experiments > .category-icon {
   list-style-image: url("chrome://browser/skin/preferences/experiments.svg");
 }
 
-||||||| merged common ancestors
-=======
 #category-experimental > .category-icon {
   list-style-image: url("chrome://mozapps/skin/extensions/category-experiments.svg");
 }
 
->>>>>>> origin/upstream-releases
 /* header */
 .header {
   display: flex;

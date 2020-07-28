@@ -2246,10 +2246,7 @@ BrowserGlue.prototype = {
     _checkPioneerPref();
   },
 
-<<<<<<< HEAD
 #if 0
-||||||| merged common ancestors
-=======
   _monitorPioneerStudies() {
     const STUDY_ADDON_COLLECTION_KEY = "pioneer-study-addons";
     const PREF_PIONEER_NEW_STUDIES_AVAILABLE =
@@ -2296,7 +2293,6 @@ BrowserGlue.prototype = {
     Services.wm.addListener(windowListener);
   },
 
->>>>>>> origin/upstream-releases
   _showNewInstallModal() {
     // Allow other observers of the same topic to run while we open the dialog.
     Services.tm.dispatchToMainThread(() => {

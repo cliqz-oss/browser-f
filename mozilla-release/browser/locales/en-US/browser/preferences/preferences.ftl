@@ -56,13 +56,10 @@ pane-sync-title2 = { -sync-brand-short-name }
 category-sync2 =
     .tooltiptext = { pane-sync-title2 }
 
-<<<<<<< HEAD
 pane-experiments-title = Labs
 category-experiments =
     .tooltiptext = { pane-experiments-title }
 
-||||||| merged common ancestors
-=======
 pane-experimental-title = { -brand-short-name } Experiments
 category-experimental =
     .tooltiptext = { -brand-short-name } Experiments
@@ -70,7 +67,6 @@ pane-experimental-subtitle = Proceed with Caution
 pane-experimental-search-results-header = { -brand-short-name } Experiments: Proceed with Caution
 pane-experimental-description = Changing advanced configuration preferences can impact { -brand-short-name } performance or security.
 
->>>>>>> origin/upstream-releases
 help-button-label = { -brand-short-name } Support
 addons-button-label = Extensions
 
@@ -1412,6 +1408,6 @@ consentric-desc = re:consent displays the types of personal data that are collec
 
 experiments-desc = Here you will find settings for the latest browser features that we are testing out.
 
-dat-enable = 
+dat-enable =
     .label = Enable dat:// protocol
     .accessKey = D

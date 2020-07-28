@@ -72,7 +72,6 @@ const EXT_SIGNING_ADDRESS = "search.mozilla.org";
 const TOPIC_LOCALES_CHANGE = "intl:app-locales-changed";
 const QUIT_APPLICATION_TOPIC = "quit-application";
 
-<<<<<<< HEAD
 // The following constants are left undocumented in nsISearchService.idl
 // Cliqz. DB-927: Default search engine alias map
 const SEARCH_ENGINE_ALIAS = {
@@ -80,25 +79,6 @@ const SEARCH_ENGINE_ALIAS = {
   "youtube-de": "#yt"
 }
 
-// The following constants are left undocumented in nsISearchService.idl
-// For the moment, they are meant for testing/debugging purposes only.
-
-// Delay for batching invalidation of the JSON cache (ms)
-const CACHE_INVALIDATION_DELAY = 1000;
-
-const CACHE_FILENAME = "search.json.mozlz4";
-
-||||||| merged common ancestors
-// The following constants are left undocumented in nsISearchService.idl
-// For the moment, they are meant for testing/debugging purposes only.
-
-// Delay for batching invalidation of the JSON cache (ms)
-const CACHE_INVALIDATION_DELAY = 1000;
-
-const CACHE_FILENAME = "search.json.mozlz4";
-
-=======
->>>>>>> origin/upstream-releases
 // The default engine update interval, in days. This is only used if an engine
 // specifies an updateURL, but not an updateInterval.
 const SEARCH_DEFAULT_UPDATE_INTERVAL = 7;
@@ -2219,8 +2199,7 @@ SearchService.prototype = {
 
   async getVisibleEngines() {
     await this.init(true);
-<<<<<<< HEAD
-    SearchUtils.log("getVisibleEngines: getting all visible engines");
+    logConsole.debug("getVisibleEngines: getting all visible engines");
     var engines = this._getSortedEngines(false) || [];
 
     //CLIQZ-SPECIAL. DB-927: Restore alternate search engines' alias
@@ -2234,13 +2213,6 @@ SearchService.prototype = {
       }
     });
     return engines;
-||||||| merged common ancestors
-    SearchUtils.log("getVisibleEngines: getting all visible engines");
-    return this._getSortedEngines(false);
-=======
-    logConsole.debug("getVisibleEngines: getting all visible engines");
-    return this._getSortedEngines(false);
->>>>>>> origin/upstream-releases
   },
 
   async getDefaultEngines() {

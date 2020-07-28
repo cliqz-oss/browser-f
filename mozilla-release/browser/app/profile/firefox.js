@@ -355,39 +355,7 @@ pref("browser.urlbar.switchTabs.adoptIntoActiveWindow", false);
 pref("browser.urlbar.openintab", false);
 
 // If true, we show tail suggestions when available.
-<<<<<<< HEAD
-pref("browser.urlbar.richSuggestions.tail", false);
-
-// This is disabled until Bug 1340663 figures out the remaining requirements.
-pref("browser.urlbar.usepreloadedtopurls.enabled", false);
-pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
-
-// If true, we show actionable tips in the Urlbar when the user is searching
-// for those actions.
-pref("browser.urlbar.update1.interventions", false);
-// CLIQZ-SPECIAL: do not use interventions
-
-// If true, we show new users and those about to start an organic search a tip
-// encouraging them to use the Urlbar.
-pref("browser.urlbar.update1.searchTips", false);
-// CLIQZ-SPECIAL: do not use searchTips
-||||||| merged common ancestors
-pref("browser.urlbar.richSuggestions.tail", false);
-
-// This is disabled until Bug 1340663 figures out the remaining requirements.
-pref("browser.urlbar.usepreloadedtopurls.enabled", false);
-pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
-
-// If true, we show actionable tips in the Urlbar when the user is searching
-// for those actions.
-pref("browser.urlbar.update1.interventions", true);
-
-// If true, we show new users and those about to start an organic search a tip
-// encouraging them to use the Urlbar.
-pref("browser.urlbar.update1.searchTips", true);
-=======
 pref("browser.urlbar.richSuggestions.tail", true);
->>>>>>> origin/upstream-releases
 
 // Whether we expand the font size when when the urlbar is
 // focused in design update 2.

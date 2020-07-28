@@ -347,15 +347,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 /* CLIQZ-SPECIAL: We do not use this in search result
   PlacesRemoteTabsAutocompleteProvider:
     "resource://gre/modules/PlacesRemoteTabsAutocompleteProvider.jsm",
-<<<<<<< HEAD
 */
-  PlacesSearchAutocompleteProvider:
-    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
-||||||| merged common ancestors
-  PlacesSearchAutocompleteProvider:
-    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
-=======
->>>>>>> origin/upstream-releases
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   ProfileAge: "resource://gre/modules/ProfileAge.jsm",
@@ -1003,18 +995,10 @@ Search.prototype = {
 
     // If the query is simply "@" and we have tokenAliasEngines then return
     // early. UrlbarProviderTokenAliasEngines will add engine results.
-<<<<<<< HEAD
-    let tokenAliasEngines = await PlacesSearchAutocompleteProvider.tokenAliasEngines();
+    let tokenAliasEngines = await UrlbarSearchUtils.tokenAliasEngines();
     if (this._enableAtSearch &&
         this._trimmedOriginalSearchString == "@" &&
         tokenAliasEngines.length) {
-||||||| merged common ancestors
-    let tokenAliasEngines = await PlacesSearchAutocompleteProvider.tokenAliasEngines();
-    if (this._trimmedOriginalSearchString == "@" && tokenAliasEngines.length) {
-=======
-    let tokenAliasEngines = await UrlbarSearchUtils.tokenAliasEngines();
-    if (this._trimmedOriginalSearchString == "@" && tokenAliasEngines.length) {
->>>>>>> origin/upstream-releases
       this._autocompleteSearch.finishSearch(true);
       return;
     }
@@ -1063,26 +1047,6 @@ Search.prototype = {
       }
     }
 
-<<<<<<< HEAD
-    // Only add extension suggestions if the first token is a registered keyword
-    // and the search string has characters after the first token.
-    let extensionsCompletePromise = Promise.resolve();
-
-    /* CLIQZ-SPECIAL: we dont support extension search
-    if (
-      this._heuristicToken &&
-      ExtensionSearchHandler.isKeywordRegistered(this._heuristicToken) &&
-      substringAfter(this._originalSearchString, this._heuristicToken) &&
-      !this._searchEngineAliasMatch
-    ) {
-      // Do not await on this, since extensions cannot notify when they are done
-      // adding results, it may take too long.
-      extensionsCompletePromise = this._matchExtensionSuggestions();
-    } else if (ExtensionSearchHandler.hasActiveInputSession()) {
-      ExtensionSearchHandler.handleInputCancelled();
-    }
-    */
-
     if (!this._disableAdaptive) {
       // Run the adaptive query first.
       await conn.executeCached(
@@ -1093,41 +1057,6 @@ Search.prototype = {
       if (!this.pending) {
         return;
       }
-||||||| merged common ancestors
-    // Only add extension suggestions if the first token is a registered keyword
-    // and the search string has characters after the first token.
-    let extensionsCompletePromise = Promise.resolve();
-    if (
-      this._heuristicToken &&
-      ExtensionSearchHandler.isKeywordRegistered(this._heuristicToken) &&
-      substringAfter(this._originalSearchString, this._heuristicToken) &&
-      !this._searchEngineAliasMatch
-    ) {
-      // Do not await on this, since extensions cannot notify when they are done
-      // adding results, it may take too long.
-      extensionsCompletePromise = this._matchExtensionSuggestions();
-    } else if (ExtensionSearchHandler.hasActiveInputSession()) {
-      ExtensionSearchHandler.handleInputCancelled();
-    }
-
-    // Run the adaptive query first.
-    await conn.executeCached(
-      this._adaptiveQuery[0],
-      this._adaptiveQuery[1],
-      this._onResultRow.bind(this)
-    );
-    if (!this.pending) {
-      return;
-=======
-    // Run the adaptive query first.
-    await conn.executeCached(
-      this._adaptiveQuery[0],
-      this._adaptiveQuery[1],
-      this._onResultRow.bind(this)
-    );
-    if (!this.pending) {
-      return;
->>>>>>> origin/upstream-releases
     }
 
     /* CLIQZ-SPECIAL: we dont support remote tabs
@@ -1199,19 +1128,8 @@ Search.prototype = {
       }
     }
 
-    /* CLIQZ-SPECIAL: we dont support preload sites
-    this._matchPreloadedSites();
-<<<<<<< HEAD
-    */
-
-    // Ensure to fill any remaining space.
-    await extensionsCompletePromise;
-||||||| merged common ancestors
-
-    // Ensure to fill any remaining space.
-    await extensionsCompletePromise;
-=======
->>>>>>> origin/upstream-releases
+    // CLIQZ-SPECIAL: we dont support preload sites
+    // this._matchPreloadedSites();
   },
 
   _shouldMatchAboutPages() {

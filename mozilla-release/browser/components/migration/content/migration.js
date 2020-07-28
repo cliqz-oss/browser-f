@@ -12,7 +12,6 @@ const { MigrationUtils } = ChromeUtils.import(
   "resource:///modules/MigrationUtils.jsm"
 );
 
-<<<<<<< HEAD
 // For yet undiscovered reason `Cu.reportError()` doesn't work in this file.
 // Same as `dump()` :-/
 function logError(e) {
@@ -20,8 +19,6 @@ function logError(e) {
       e.stack);
 }
 
-||||||| merged common ancestors
-=======
 /**
  * Map from data types that match Ci.nsIBrowserProfileMigrator's types to
  * prefixes for strings used to label these data types in the migration
@@ -39,7 +36,6 @@ const kDataToStringMap = new Map([
   ["session", "browser-data-session"],
 ]);
 
->>>>>>> origin/upstream-releases
 var MigrationWizard = {
   /* exported MigrationWizard */
   _source: "", // Source Profile Migrator ContractID suffix

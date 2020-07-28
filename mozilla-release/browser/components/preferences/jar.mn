@@ -15,16 +15,8 @@ browser.jar:
    content/browser/preferences/containers.js
    content/browser/preferences/experiments.js
    content/browser/preferences/sync.js
-<<<<<<< HEAD
+   content/browser/preferences/experimental.js
 #   content/browser/preferences/fxaPairDevice.xhtml
 #   content/browser/preferences/fxaPairDevice.js
-||||||| merged common ancestors
-   content/browser/preferences/fxaPairDevice.xhtml
-   content/browser/preferences/fxaPairDevice.js
-=======
-   content/browser/preferences/experimental.js
-   content/browser/preferences/fxaPairDevice.xhtml
-   content/browser/preferences/fxaPairDevice.js
->>>>>>> origin/upstream-releases
    content/browser/preferences/findInPage.js
    content/browser/preferences/cliqz.home.js

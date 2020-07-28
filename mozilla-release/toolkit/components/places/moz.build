@@ -67,16 +67,8 @@ if CONFIG['MOZ_PLACES']:
         'PlacesCategoriesStarter.jsm',
         'PlacesDBUtils.jsm',
         'PlacesExpiration.jsm',
-<<<<<<< HEAD
 # CLIQZ-SPECIAL: We do not use remote tabs in query
 #       'PlacesRemoteTabsAutocompleteProvider.jsm',
-        'PlacesSearchAutocompleteProvider.jsm',
-||||||| merged common ancestors
-        'PlacesRemoteTabsAutocompleteProvider.jsm',
-        'PlacesSearchAutocompleteProvider.jsm',
-=======
-        'PlacesRemoteTabsAutocompleteProvider.jsm',
->>>>>>> origin/upstream-releases
         'PlacesSyncUtils.jsm',
         'PlacesTransactions.jsm',
         'PlacesUtils.jsm',

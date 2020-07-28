@@ -282,16 +282,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
 
-<<<<<<< HEAD
-<!ENTITY urlbar.permissionsGranted.tooltip       "Du hast dieser Website zusätzliche Berechtigungen erteilt.">
-
-||||||| merged common ancestors
-
-<!ENTITY urlbar.permissionsGranted.tooltip       "Sie haben dieser Website zusätzliche Berechtigungen erteilt.">
-
-
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY searchItem.title             "Suchen">
 
 <!-- Toolbar items -->
@@ -495,15 +485,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY moreMenu.label "Sonstiges">
 
 <!ENTITY openCmd.commandkey           "l">
-<<<<<<< HEAD
-
 <!ENTITY urlbar.placeholder2          "In Cliqz suchen oder Adresse eingeben">
-||||||| merged common ancestors
-
-<!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
-=======
-<!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
->>>>>>> origin/upstream-releases
 <!ENTITY urlbar.accesskey             "s">
 <!-- LOCALIZATION NOTE (urlbar.extension.label): Used to indicate that a selected autocomplete entry is provided by an extension. -->
 <!ENTITY urlbar.extension.label       "Erweiterung:">
@@ -998,21 +980,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY newTabControlled.disableButton.label "Erweiterung deaktivieren">
 <!ENTITY newTabControlled.disableButton.accesskey "d">
 
-<<<<<<< HEAD
 <!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls du diese Änderung nicht willst, kannst du die entsprechenden Einstellungen zurücksetzen.">
-
 <!ENTITY homepageControlled.header.message "Deine Startseite hat sich geändert.">
-<!ENTITY homepageControlled.keepButton.label "Änderungen behalten">
-||||||| merged common ancestors
-<!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls Sie diese Änderung nicht wollen, können Sie die entsprechenden Einstellungen zurücksetzen.">
-
-<!ENTITY homepageControlled.header.message "Ihre Startseite hat sich geändert.">
-<!ENTITY homepageControlled.keepButton.label "Änderungen behalten">
-=======
-<!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls Sie diese Änderung nicht wollen, können Sie die entsprechenden Einstellungen zurücksetzen.">
-<!ENTITY homepageControlled.header.message "Ihre Startseite hat sich geändert.">
 <!ENTITY homepageControlled.keepButton.label "Änderungen beibehalten">
->>>>>>> origin/upstream-releases
 <!ENTITY homepageControlled.keepButton.accesskey "b">
 <!ENTITY homepageControlled.disableButton.label "Erweiterung deaktivieren">
 <!ENTITY homepageControlled.disableButton.accesskey "d">
