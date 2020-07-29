@@ -165,3 +165,9 @@ browser-data-session-checkbox =
   .label = Windows and Tabs
 browser-data-session-label =
   .value = Windows and Tabs
+
+browser-data-addons-checkbox =
+  .label = Addons
+browser-data-addons-label =
+  .value = Addons
+

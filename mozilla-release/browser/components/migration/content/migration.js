@@ -34,6 +34,7 @@ const kDataToStringMap = new Map([
   ["bookmarks", "browser-data-bookmarks"],
   ["otherdata", "browser-data-otherdata"],
   ["session", "browser-data-session"],
+  ["addons", "browser-data-addons"],
 ]);
 
 var MigrationWizard = {
@@ -401,29 +402,6 @@ var MigrationWizard = {
     var items = this.spinResolve(
       this._migrator.getMigrateData(this._selectedProfile, this._autoMigrate)
     );
-<<<<<<< HEAD
-    for (var i = 0; i < 16; ++i) {
-      var itemID = (items >> i) & 0x1 ? Math.pow(2, i) : 0;
-      // CLIQZ - If no addons found set next button to final step 4
-      if (itemID == Ci.nsIBrowserProfileMigrator.ADDONS) {
-        hasAddon = true;
-      }
-      if (itemID > 0) {
-        var checkbox = document.createXULElement("checkbox");
-        checkbox.id = itemID;
-        checkbox.setAttribute(
-          "label",
-          MigrationUtils.getLocalizedString(itemID + "_" + this._source)
-||||||| merged common ancestors
-    for (var i = 0; i < 16; ++i) {
-      var itemID = (items >> i) & 0x1 ? Math.pow(2, i) : 0;
-      if (itemID > 0) {
-        var checkbox = document.createXULElement("checkbox");
-        checkbox.id = itemID;
-        checkbox.setAttribute(
-          "label",
-          MigrationUtils.getLocalizedString(itemID + "_" + this._source)
-=======
 
     for (let itemType of kDataToStringMap.keys()) {
       let itemValue = Ci.nsIBrowserProfileMigrator[itemType.toUpperCase()];
@@ -434,7 +412,6 @@ var MigrationWizard = {
           checkbox,
           kDataToStringMap.get(itemType) + "-checkbox",
           { browser: this._sourceForDataLocalization }
->>>>>>> origin/upstream-releases
         );
         dataSources.appendChild(checkbox);
         if (!this._itemsFlags || this._itemsFlags & itemValue) {
@@ -442,10 +419,7 @@ var MigrationWizard = {
         }
       }
     }
-    if (!hasAddon)
-      this._wiz.currentPage.next = "migrating";
-    else
-      this._wiz.currentPage.next = "selectAddons";
+    this._wiz.currentPage.next = "selectAddons";
   },
 
   onImportItemsPageRewound() {

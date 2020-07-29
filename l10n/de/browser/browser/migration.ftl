@@ -144,3 +144,7 @@ browser-data-session-checkbox =
     .label = Fenster und Tabs
 browser-data-session-label =
     .value = Fenster und Tabs
+browser-data-addons-checkbox =
+  .label = Addons
+browser-data-addons-label =
+  .value = Addons

@@ -13,7 +13,11 @@ source cliqz_env.sh
 cd $SRC_BASE
 
 if $CLOBBER; then
-  ./mach clobber
+  if [ "$IS_WIN" == "true" ]; then
+    rm -rf obj
+  else
+    ./mach clobber
+  fi
 fi
 
 if $BUILD_DE; then
