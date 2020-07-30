@@ -14,7 +14,7 @@ cd $SRC_BASE
 
 if $CLOBBER; then
   if [ "$IS_WIN" == "true" ]; then
-    rm -rf obj
+    rm -rf $MOZ_OBJDIR
   else
     ./mach clobber
   fi
