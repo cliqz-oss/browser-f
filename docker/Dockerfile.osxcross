@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y unzip python3 make zip autoconf2.13 wget \
     python yasm clang-6.0 rsync xz-utils awscli libnss3-dev libnss3-tools bzip2 \
-    libxml2
+    libxml2 python3-distutils
 
 WORKDIR /opt
 ADD cbindgen.tar.xz /opt
