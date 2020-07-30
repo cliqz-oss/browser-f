@@ -3,35 +3,34 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import copy
 import contextlib
-import importlib
-from pathlib import Path
-import tempfile
-import shutil
 
-from mozperftest.browser import pick_browser
+from mozperftest.test import pick_test
 from mozperftest.system import pick_system
 from mozperftest.metrics import pick_metrics
-from mozperftest.layers import Layers
-from mozperftest.utils import download_file
+from mozperftest.layers import Layers, StopRunError
+from mozperftest.utils import MachLogger
+from mozperftest.hooks import Hooks
 
 
-SYSTEM, BROWSER, METRICS = 0, 1, 2
+SYSTEM, TEST, METRICS = 0, 1, 2
 
 
-class MachEnvironment:
-    def __init__(self, mach_cmd, flavor="script", **kwargs):
+class MachEnvironment(MachLogger):
+    def __init__(self, mach_cmd, flavor="desktop-browser", hooks=None, **kwargs):
+        MachLogger.__init__(self, mach_cmd)
         self._mach_cmd = mach_cmd
         self._mach_args = dict(
             [(self._normalize(key), value) for key, value in kwargs.items()]
         )
         self.layers = []
-        # XXX do something with flavors, etc
-        if flavor != "script":
+        if flavor not in ("mobile-browser", "desktop-browser"):
             raise NotImplementedError(flavor)
-        for layer in (pick_system, pick_browser, pick_metrics):
+        for layer in (pick_system, pick_test, pick_metrics):
             self.add_layer(layer(self, flavor, mach_cmd))
-        self.tmp_dir = tempfile.mkdtemp()
-        self._load_hooks()
+        if hooks is None:
+            # we just load an empty Hooks instance
+            hooks = Hooks(mach_cmd)
+        self.hooks = hooks
 
     @contextlib.contextmanager
     def frozen(self):
@@ -87,76 +86,21 @@ class MachEnvironment:
         self._saved_mach_args = None
 
     def run(self, metadata):
-        has_exc_handler = self.has_hook("on_exception")
+        # run the system and test layers
+        try:
+            with self.layers[SYSTEM] as syslayer, self.layers[TEST] as testlayer:
+                metadata = testlayer(syslayer(metadata))
 
-        # run the system and browser layers
-        for layer in self.layers[:-1]:
-            with layer:
-                try:
-                    metadata = layer(metadata)
-                except Exception as e:
-                    if has_exc_handler:
-                        # if the hook returns True, we abort and return
-                        # without error. If it returns False, we continue
-                        # the loop. The hook can also raise an exception or
-                        # re-raise this exception.
-                        if not self.run_hook("on_exception", layer, e):
-                            return metadata
-                    else:
-                        raise
-        # then run the metrics layers
-        with self.layers[METRICS] as metrics:
-            try:
+            # then run the metrics layers
+            with self.layers[METRICS] as metrics:
                 metadata = metrics(metadata)
-            except Exception as e:
-                if has_exc_handler:
-                    if not self.run_hook("on_exception", layer, e):
-                        return metadata
-                else:
-                    raise
+        except StopRunError:
+            # ends the cycle but without bubbling up the error
+            pass
         return metadata
 
     def __enter__(self):
-        for layer in self.layers:
-            layer.__enter__()
         return self
 
     def __exit__(self, type, value, traceback):
-        for layer in self.layers:
-            layer.__exit__(type, value, traceback)
-
-    def cleanup(self):
-        if self.tmp_dir is None:
-            return
-        shutil.rmtree(self.tmp_dir)
-        self.tmp_dir = None
-
-    def _load_hooks(self):
-        self._hooks = None
-        hooks = self.get_arg("hooks")
-        if hooks is None:
-            return
-
-        if hooks.startswith("http"):
-            target = Path(self.tmp_dir, hooks.split("/")[-1])
-            hooks = download_file(hooks, target)
-        else:
-            hooks = Path(hooks)
-
-        if hooks.exists():
-            spec = importlib.util.spec_from_file_location("hooks", str(hooks))
-            hooks = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(hooks)
-            self._hooks = hooks
-        else:
-            raise IOError(str(hooks))
-
-    def has_hook(self, name):
-        return hasattr(self._hooks, name)
-
-    def run_hook(self, name, *args, **kw):
-        if self._hooks is None:
-            return
-        if not hasattr(self._hooks, name):
-            return
-        return getattr(self._hooks, name)(self, *args, **kw)
+        return

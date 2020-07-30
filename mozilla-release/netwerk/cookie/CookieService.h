@@ -75,7 +75,7 @@ class CookieService final : public nsICookieService,
                                  nsIURI* aHostURI, bool aIsForeign,
                                  bool aIsThirdPartyTrackingResource,
                                  bool aIsThirdPartySocialTrackingResource,
-                                 bool aFirstPartyStorageAccessGranted,
+                                 bool aStorageAccessPermissionGranted,
                                  const nsACString& aCookieHeader,
                                  const int aNumOfCookies,
                                  const OriginAttributes& aOriginAttrs,
@@ -84,7 +84,7 @@ class CookieService final : public nsICookieService,
   void GetCookiesForURI(nsIURI* aHostURI, nsIChannel* aChannel, bool aIsForeign,
                         bool aIsThirdPartyTrackingResource,
                         bool aIsThirdPartySocialTrackingResource,
-                        bool aFirstPartyStorageAccessGranted,
+                        bool aStorageAccessPermissionGranted,
                         uint32_t aRejectedReason, bool aIsSafeTopLevelNav,
                         bool aIsSameSiteForeign, bool aHttpBound,
                         const OriginAttributes& aOriginAttrs,
@@ -144,12 +144,6 @@ class CookieService final : public nsICookieService,
 
   nsresult RemoveCookiesFromExactHost(const nsACString& aHost,
                                       const OriginAttributesPattern& aPattern);
-
-  static void LogMessageToConsole(nsIConsoleReportCollector* aCRC, nsIURI* aURI,
-                                  uint32_t aErrorFlags,
-                                  const nsACString& aCategory,
-                                  const nsACString& aMsg,
-                                  const nsTArray<nsString>& aParams);
 
   // cached members.
   nsCOMPtr<mozIThirdPartyUtil> mThirdPartyUtil;

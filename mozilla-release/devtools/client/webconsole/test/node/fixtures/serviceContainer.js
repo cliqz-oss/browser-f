@@ -14,12 +14,15 @@ module.exports = {
   onViewSourceInStyleEditor: () => {},
   openNetworkPanel: () => {},
   resendNetworkRequest: () => {},
-  sourceMapService: {
-    subscribe: () => {},
-    originalPositionFor: () => {
-      return new Promise(resolve => {
-        resolve();
-      });
+  sourceMapURLService: {
+    subscribeByURL: () => {
+      return () => {};
+    },
+    subscribeByID: () => {
+      return () => {};
+    },
+    subscribeByLocation: () => {
+      return () => {};
     },
   },
   openLink: () => {},

@@ -106,9 +106,6 @@ var whitelist = [
   // modules/libpref/Preferences.cpp
   { file: "resource://gre/greprefs.js" },
 
-  // browser/extensions/pdfjs/content/web/viewer.js
-  { file: "resource://pdf.js/build/pdf.worker.js" },
-
   // layout/mathml/nsMathMLChar.cpp
   { file: "resource://gre/res/fonts/mathfontSTIXGeneral.properties" },
   { file: "resource://gre/res/fonts/mathfontUnicode.properties" },
@@ -209,12 +206,7 @@ var whitelist = [
     isFromDevTools: true,
   },
   { file: "chrome://devtools/skin/images/next.svg", isFromDevTools: true },
-  // Feature gates are available but not used yet - Bug 1479127
-  { file: "resource://featuregates/FeatureGate.jsm" },
-  {
-    file: "resource://featuregates/FeatureGateImplementation.jsm",
-  },
-  { file: "resource://featuregates/feature_definitions.json" },
+
   // Bug 1526672
   {
     file: "resource://app/localization/en-US/browser/touchbar/touchbar.ftl",
@@ -284,6 +276,11 @@ if (!isDevtools) {
     "extension-storage.js",
   ]) {
     whitelist.add("resource://services-sync/engines/" + module);
+  }
+  // resource://devtools/shared/worker/loader.js,
+  // resource://devtools/shared/builtin-modules.js
+  if (!AppConstants.ENABLE_REMOTE_AGENT) {
+    whitelist.add("resource://gre/modules/jsdebugger.jsm");
   }
 }
 

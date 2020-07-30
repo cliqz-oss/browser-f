@@ -199,6 +199,12 @@ pref("security.pki.mitm_detected", false);
 #else
   pref("security.remote_settings.intermediates.enabled", false);
 #endif
+#if defined(MOZ_NEW_CERT_STORAGE) && !defined(MOZ_WIDGET_ANDROID) && defined(EARLY_BETA_OR_EARLIER)
+  pref("security.intermediate_preloading_healer.enabled", true);
+#else
+  pref("security.intermediate_preloading_healer.enabled", false);
+#endif
+pref("security.intermediate_preloading_healer.timer_interval_ms", 300000);
 pref("security.remote_settings.intermediates.bucket", "security-state");
 pref("security.remote_settings.intermediates.collection", "intermediates");
 pref("security.remote_settings.intermediates.checked", 0);
@@ -299,19 +305,9 @@ pref("dom.keyboardevent.keypress.hack.use_legacy_keycode_and_charcode.addl", "")
 // explanation for the detail.
 pref("dom.mouseevent.click.hack.use_legacy_non-primary_dispatch", "");
 
-#ifdef JS_BUILD_BINAST
-  // Until we're satisfied that it works nicely, we're restricting
-  // BinAST to a few partner sites:
-  // - A subset of Facebook
-  // - A subset of Cloudflare
-  pref("dom.script_loader.binast_encoding.domain.restrict.list", "*.facebook.com,static.xx.fbcdn.net,*.cloudflare.com,*.cloudflarestream.com,unpkg.com");
-#endif
-
 // Fastback caching - if this pref is negative, then we calculate the number
 // of content viewers to cache based on the amount of available memory.
 pref("browser.sessionhistory.max_total_viewers", -1);
-
-pref("ui.click_hold_context_menus", false);
 // 0 = false, 1 = true, 2 = autodetect.
 pref("ui.android.mouse_as_touch", 1);
 
@@ -422,10 +418,12 @@ pref("media.videocontrols.picture-in-picture.video-toggle.min-video-secs", 45);
   pref("media.navigator.video.use_remb", true);
   #ifdef EARLY_BETA_OR_EARLIER
     pref("media.navigator.video.use_transport_cc", true);
+    pref("media.peerconnection.video.use_rtx", true);
   #else
     pref("media.navigator.video.use_transport_cc", false);
+    pref("media.peerconnection.video.use_rtx", false);
   #endif
-  pref("media.peerconnection.video.use_rtx", false);
+  pref("media.peerconnection.video.use_rtx.blocklist", "*.google.com");
   pref("media.navigator.video.use_tmmbr", false);
   pref("media.navigator.audio.use_fec", true);
   pref("media.navigator.video.red_ulpfec_enabled", false);
@@ -497,7 +495,7 @@ pref("media.videocontrols.picture-in-picture.video-toggle.min-video-secs", 45);
   #else
     pref("media.peerconnection.ice.obfuscate_host_addresses", true);
   #endif
-  pref("media.peerconnection.ice.obfuscate_host_addresses.whitelist", "");
+  pref("media.peerconnection.ice.obfuscate_host_addresses.blocklist", "");
   pref("media.peerconnection.ice.proxy_only_if_behind_proxy", false);
   pref("media.peerconnection.ice.proxy_only", false);
   pref("media.peerconnection.turn.disable", false);
@@ -524,11 +522,7 @@ pref("media.videocontrols.picture-in-picture.video-toggle.min-video-secs", 45);
   pref("media.getusermedia.agc", 1); // kAdaptiveDigital
   pref("media.getusermedia.hpf_enabled", true);
   pref("media.getusermedia.aecm_output_routing", 3); // kSpeakerphone
-#if defined(NIGHTLY_BUILD) && defined(XP_MACOSX)
-  pref("media.getusermedia.experimental_input_processing", true);
-#else
   pref("media.getusermedia.experimental_input_processing", false);
-#endif
 #endif // MOZ_WEBRTC
 
 #if !defined(ANDROID)
@@ -745,7 +739,6 @@ pref("accessibility.force_disabled", 0);
 pref("focusmanager.testmode", false);
 
 pref("accessibility.usetexttospeech", "");
-pref("accessibility.accesskeycausesactivation", true);
 pref("accessibility.mouse_focuses_formcontrol", false);
 
 // Type Ahead Find
@@ -809,7 +802,6 @@ pref("toolkit.telemetry.debugSlowSql", false);
 pref("toolkit.telemetry.unified", true);
 // AsyncShutdown delay before crashing in case of shutdown freeze
 #if !defined(MOZ_ASAN) && !defined(MOZ_TSAN)
-  pref("toolkit.asyncshutdown.report_writes_after", 40000); // 40 seconds
   pref("toolkit.asyncshutdown.crash_timeout", 60000); // 1 minute
 #else
   // ASan and TSan builds can be considerably slower. Extend the grace period
@@ -822,8 +814,6 @@ pref("toolkit.telemetry.unified", true);
 #endif // !defined(MOZ_ASAN) && !defined(MOZ_TSAN)
 // Extra logging for AsyncShutdown barriers and phases
 pref("toolkit.asyncshutdown.log", false);
-
-pref("toolkit.content-background-hang-monitor.disabled", false);
 
 // Enable JS dump() function.
 // IMPORTANT: These prefs must be here even though they're also defined in
@@ -1026,17 +1016,6 @@ pref("dom.storage.client_validation", true);
 
 pref("dom.send_after_paint_to_content", false);
 
-// Don't use new input types
-pref("dom.experimental_forms", false);
-
-// Enable <input type=color> by default. It will be turned off for remaining
-// platforms which don't have a color picker implemented yet.
-pref("dom.forms.color", true);
-
-// Support for input type=month, type=week and type=datetime-local. By default,
-// disabled.
-pref("dom.forms.datetime.others", false);
-
 // Enable time picker UI. By default, disabled.
 pref("dom.forms.datetime.timepicker", false);
 
@@ -1083,7 +1062,7 @@ pref("privacy.popups.maxReported", 100);
 // Purging first-party tracking cookies.
 #ifdef EARLY_BETA_OR_EARLIER
   pref("privacy.purge_trackers.enabled", true);
-  pref("privacy.purge_trackers.logging.level", "All");
+  pref("privacy.purge_trackers.logging.level", "Warn");
 #else
   pref("privacy.purge_trackers.enabled", false);
   pref("privacy.purge_trackers.logging.level", "Error");
@@ -1091,6 +1070,12 @@ pref("privacy.popups.maxReported", 100);
 
 // Allowable amount of cookies to purge in a batch.
 pref("privacy.purge_trackers.max_purge_count", 100);
+
+// Whether purging should not clear data from domains
+// that are associated with other domains which have
+// user interaction (even if they don't have user
+// interaction directly).
+pref("privacy.purge_trackers.consider_entity_list", false);
 
 pref("dom.event.contextmenu.enabled",       true);
 pref("dom.event.coalesce_mouse_move",       true);
@@ -1130,17 +1115,12 @@ pref("javascript.options.wasm_reftypes",          true);
 pref("javascript.options.native_regexp",    true);
 pref("javascript.options.parallel_parsing", true);
 pref("javascript.options.source_pragmas",    true);
-// Async stacks instrumentation adds overhead that is only
-// advisable for developers, so we limit it to Nightly and DevEdition
-#if defined(ANDROID) || defined(XP_IOS)
-  pref("javascript.options.asyncstack",       false);
-#else
-  #if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION)
-    pref("javascript.options.asyncstack",       true);
-  #else
-    pref("javascript.options.asyncstack",       false);
-  #endif
-#endif
+
+pref("javascript.options.asyncstack", true);
+// Broadly capturing async stack data adds overhead that is only advisable for
+// developers, so we only enable it when the devtools are open, by default.
+pref("javascript.options.asyncstack_capture_debuggee_only", true);
+
 pref("javascript.options.throw_on_asmjs_validation_failure", false);
 pref("javascript.options.ion.offthread_compilation", true);
 #ifdef DEBUG
@@ -1378,10 +1358,6 @@ pref("network.http.request.max-start-delay", 10);
 
 // If a connection is reset, we will retry it max-attempts times.
 pref("network.http.request.max-attempts", 10);
-
-// Include an origin header on non-GET and non-HEAD requests regardless of CORS
-// 0=never send, 1=send when same-origin only, 2=always send
-pref("network.http.sendOriginHeader", 2);
 
 // Maximum number of consecutive redirects before aborting.
 pref("network.http.redirection-limit", 20);
@@ -1986,17 +1962,10 @@ pref("network.mdns.use_js_fallback", false);
 
 pref("converter.html2txt.structs",          true); // Output structured phrases (strong, em, code, sub, sup, b, i, u)
 pref("converter.html2txt.header_strategy",  1); // 0 = no indention; 1 = indention, increased with header level; 2 = numbering and slight indention
-// Whether we include ruby annotation in the text despite whether it
-// is requested. This was true because we didn't explicitly strip out
-// annotations. Set false by default to provide a better behavior, but
-// we want to be able to pref-off it if user doesn't like it.
-pref("converter.html2txt.always_include_ruby", false);
 
 pref("intl.accept_languages",               "chrome://global/locale/intl.properties");
 pref("intl.menuitems.alwaysappendaccesskeys","chrome://global/locale/intl.properties");
 pref("intl.menuitems.insertseparatorbeforeaccesskeys","chrome://global/locale/intl.properties");
-pref("intl.charset.detector",               "chrome://global/locale/intl.properties");
-pref("intl.charset.fallback.override",      "");
 pref("intl.ellipsis",                       "chrome://global-platform/locale/intl.properties");
 // this pref allows user to request that all internationalization formatters
 // like date/time formatting, unit formatting, calendars etc. should use
@@ -2407,30 +2376,6 @@ pref("mousewheel.with_win.delta_multiplier_x", 100);
 pref("mousewheel.with_win.delta_multiplier_y", 100);
 pref("mousewheel.with_win.delta_multiplier_z", 100);
 
-// Auto-dir is a feature which treats any single-wheel scroll as a scroll in the
-// only one scrollable direction if the target has only one scrollable
-// direction. For example, if the user scrolls a vertical wheel inside a target
-// which is horizontally scrollable but vertical unscrollable, then the vertical
-// scroll is converted to a horizontal scroll for that target.
-// Note that auto-dir only takes effect for |mousewheel.*.action|s and
-// |mousewheel.*.action.override_x|s whose values are 1.
-pref("mousewheel.autodir.enabled", false);
-// When a wheel scroll is converted due to auto-dir, which side the converted
-// scroll goes towards is decided by one thing called "honoured target". If the
-// content of the honoured target horizontally starts from right to left, then
-// an upward scroll maps to a rightward scroll and a downward scroll maps to a
-// leftward scroll; otherwise, an upward scroll maps to a leftward scroll and a
-// downward scroll maps to a rightward scroll.
-// If this pref is set to false, then consider the scrolling target as the
-// honoured target.
-// If set to true, then consider the root element in the document where the
-// scrolling target is as the honoured target. But note that there's one
-// exception: for targets in an HTML document, the real root element(I.e. the
-// <html> element) is typically not considered as a root element, but the <body>
-// element is typically considered as a root element. If there is no <body>
-// element, then consider the <html> element instead.
-pref("mousewheel.autodir.honourroot", false);
-
 // These define the smooth scroll behavior (min ms, max ms) for different triggers
 // Some triggers:
 // mouseWheel: Discrete mouse wheel events, Synaptics touchpads on windows (generate wheel events)
@@ -2474,12 +2419,6 @@ pref("bidi.texttype", 1);
 // 5 = persiancontextnumeralBidi
 // 6 = persiannumeralBidi
 pref("bidi.numeral", 0);
-
-// Bidi caret movement style:
-// 0 = logical
-// 1 = visual
-// 2 = visual, but logical during selection
-pref("bidi.edit.caret_movement_style", 2);
 
 // Setting this pref to |true| forces Bidi UI menu items and keyboard shortcuts
 // to be exposed, and enables the directional caret hook. By default, only
@@ -2641,9 +2580,6 @@ pref("svg.disabled", false);
 
 // Override default dom.ipc.processCount for some remote content process types.
 pref("dom.ipc.processCount.webLargeAllocation", 10);
-
-// Enable the Large-Allocation header
-pref("dom.largeAllocationHeader.enabled", true);
 
 // Disable e10s for Gecko by default. This is overridden in firefox.js.
 pref("browser.tabs.remote.autostart", false);
@@ -2833,33 +2769,6 @@ pref("font.default.x-math", "serif");
 pref("font.minimum-size.x-math", 0);
 pref("font.size.variable.x-math", 16);
 pref("font.size.monospace.x-math", 13);
-
-/*
- * When enabled, the touch.radius and mouse.radius prefs allow events to be dispatched
- * to nearby elements that are sensitive to the event. See PositionedEventTargeting.cpp.
- * The 'mm' prefs define a rectangle around the nominal event target point within which
- * we will search for suitable elements. 'visitedWeight' is a percentage weight;
- * a value > 100 makes a visited link be treated as further away from the event target
- * than it really is, while a value < 100 makes a visited link be treated as closer
- * to the event target than it really is.
- */
-pref("ui.touch.radius.enabled", false);
-pref("ui.touch.radius.leftmm", 8);
-pref("ui.touch.radius.topmm", 12);
-pref("ui.touch.radius.rightmm", 8);
-pref("ui.touch.radius.bottommm", 4);
-pref("ui.touch.radius.visitedWeight", 120);
-
-pref("ui.mouse.radius.enabled", false);
-pref("ui.mouse.radius.leftmm", 8);
-pref("ui.mouse.radius.topmm", 12);
-pref("ui.mouse.radius.rightmm", 8);
-pref("ui.mouse.radius.bottommm", 4);
-pref("ui.mouse.radius.visitedWeight", 120);
-
-// When true, the ui.mouse.radius.* prefs will only affect simulated mouse events generated by touch input.
-// When false, the prefs will be used for all mouse events.
-pref("ui.mouse.radius.inputSource.touchOnly", true);
 
 #ifdef XP_WIN
 
@@ -3057,9 +2966,6 @@ pref("ui.mouse.radius.inputSource.touchOnly", true);
   // Locate plugins by the directories specified in the Windows registry for PLIDs
   // Which is currently HKLM\Software\MozillaPlugins\xxxPLIDxxx\Path
   pref("plugin.scan.plid.all", true);
-
-  // Whether sending WM_MOUSEWHEEL and WM_MOUSEHWHEEL to plugins on Windows.
-  pref("plugin.mousewheel.enabled", true);
 
   // Switch the keyboard layout per window
   pref("intl.keyboard.per_window_layout", false);
@@ -3846,8 +3752,10 @@ pref("signon.autofillForms",                true);
 pref("signon.autofillForms.autocompleteOff", true);
 pref("signon.autofillForms.http",           false);
 pref("signon.autologin.proxy",              false);
+pref("signon.capture.inputChanges.enabled", true);
 pref("signon.formlessCapture.enabled",      true);
 pref("signon.generation.available",               true);
+pref("signon.backup.enabled",               false);
 // A value of "-1" disables new-password heuristics. Can be updated once Bug 1618058 is resolved.
 pref("signon.generation.confidenceThreshold",     "-1");
 pref("signon.generation.enabled",                 true);
@@ -3883,8 +3791,9 @@ pref("toolkit.zoomManager.zoomValues", ".3,.5,.67,.8,.9,1,1.1,1.2,1.33,1.5,1.7,2
 // Image-related prefs
 //
 
-// The default Accept header sent for images loaded over HTTP(S)
-pref("image.http.accept", "image/webp,*/*");
+// By default the Accept header sent for images loaded over HTTP(S) is derived
+// by ImageAcceptHeader() in nsHttpHandler.cpp. If set, this pref overrides it.
+pref("image.http.accept", "");
 
 //
 // Image memory management prefs
@@ -3957,6 +3866,9 @@ pref("network.psl.onUpdate_notify", false);
 //#else
   // Use MLS on Nightly and early Beta.
   pref("geo.provider.network.url", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
+  // On Nightly and early Beta, make duplicate location services requests
+  // to google so we can compare results.
+//  pref("geo.provider.network.compare.url", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
 //#endif
 
 // Timeout to wait before sending the location request.
@@ -3984,6 +3896,10 @@ pref("browser.region.network.url", "https://location.services.mozilla.com/v1/cou
 pref("browser.region.network.scan", false);
 // Timeout for whole region request.
 pref("browser.region.timeout", 5000);
+
+#ifdef EARLY_BETA_OR_EARLIER
+  pref("browser.region.update.enabled", true);
+#endif
 
 // Enable/Disable the device storage API for content
 pref("device.storage.enabled", false);
@@ -4061,18 +3977,6 @@ pref("dom.webnotifications.requireinteraction.count", 3);
 
 // Show favicons in web notifications.
 pref("alerts.showFavicons", false);
-
-// Whether to use platform-specific backends for showing desktop notifications.
-// If no such backend is available, or if the pref is false, then XUL
-// notifications are used.
-
-// Linux and macOS turn on system level notification as default, but Windows is
-// disabled due to instability (dependencies of bug 1497425).
-#if defined(XP_WIN)
-  pref("alerts.useSystemBackend", false);
-#else
-  pref("alerts.useSystemBackend", true);
-#endif
 
 // DOM full-screen API.
 #ifdef XP_MACOSX
@@ -4157,12 +4061,6 @@ pref("memory.blob_report.stack_frames", 0);
 
 // Activates the activity monitor
 pref("io.activity.enabled", false);
-
-// If true, reuse the same global for (almost) everything loaded by the component
-// loader (JS components, JSMs, etc). This saves memory, but makes it possible
-// for the scripts to interfere with each other.  A restart is required for this
-// to take effect.
-pref("jsloader.shareGlobal", true);
 
 // path to OSVR DLLs
 pref("gfx.vr.osvr.utilLibPath", "");
@@ -4292,10 +4190,6 @@ pref("urlclassifier.gethashnoise", 4);
 
 // Gethash timeout for Safe Browsing
 pref("urlclassifier.gethash.timeout_ms", 5000);
-// Update server response timeout for Safe Browsing
-pref("urlclassifier.update.response_timeout_ms", 30000);
-// Download update timeout for Safe Browsing
-pref("urlclassifier.update.timeout_ms", 90000);
 
 // Name of the about: page to display Safe Browsing warnings (bug 399233)
 pref("urlclassifier.alternate_error_page", "blocked");
@@ -4535,7 +4429,7 @@ pref("webextensions.webRequest.requestBodyMaxRawBytes", 16777216);
 
 pref("webextensions.storage.sync.enabled", true);
 // Should we use the old kinto-based implementation of storage.sync? To be removed in bug 1637465.
-pref("webextensions.storage.sync.kinto", true);
+pref("webextensions.storage.sync.kinto", false);
 // Server used by the old kinto-based implementation of storage.sync.
 pref("webextensions.storage.sync.serverURL", "https://webextensions.settings.services.mozilla.com/v1");
 
@@ -4606,21 +4500,11 @@ pref("dom.clients.openwindow_favors_same_process", true);
   pref("toolkit.crashreporter.include_context_heap", true);
 #endif
 
-// Open noopener links in a new process
-pref("dom.noopener.newprocess.enabled", true);
-
 #if defined(XP_WIN) || defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK)
   pref("layers.omtp.enabled", true);
 #else
   pref("layers.omtp.enabled", false);
 #endif
-
-// Limits the depth of recursive conversion of data when opening
-// a content to view.  This is mostly intended to prevent infinite
-// loops with faulty converters involved.
-pref("general.document_open_conversion_depth_limit", 20);
-
-pref("fission.rebuild_frameloaders_on_remoteness_change", true);
 
 // Support for legacy customizations that rely on checking the
 // user profile directory for these stylesheets:
@@ -4870,11 +4754,8 @@ pref("devtools.errorconsole.deprecation_warnings", true);
 
 pref("devtools.debugger.features.watchpoints", true);
 
-#ifdef NIGHTLY_BUILD
-  pref("devtools.debugger.features.windowless-service-workers", true);
-#else
-  pref("devtools.debugger.features.windowless-service-workers", false);
-#endif
+// Disable service worker debugging on all channels (see Bug 1651605).
+pref("devtools.debugger.features.windowless-service-workers", false);
 
 // Disable remote debugging protocol logging.
 pref("devtools.debugger.log", false);
@@ -4892,8 +4773,8 @@ pref("devtools.debugger.force-local", true);
 pref("devtools.netmonitor.responseBodyLimit", 1048576);
 pref("devtools.netmonitor.requestBodyLimit", 1048576);
 
-// Limit for WebSocket frames (100 KB).
-pref("devtools.netmonitor.ws.messageDataLimit", 100000);
+// Limit for WebSocket/EventSource messages (100 KB).
+pref("devtools.netmonitor.msg.messageDataLimit", 100000);
 
 // DevTools default color unit.
 pref("devtools.defaultColorUnit", "authored");

@@ -64,10 +64,6 @@ using JS::ReadOnlyCompileOptions;
 using JS::RegExpFlag;
 using JS::RegExpFlags;
 
-// There's some very preliminary support for private fields in this file. It's
-// disabled in all builds, for now.
-//#define JS_PRIVATE_FIELDS 1
-
 struct ReservedWordInfo {
   const char* chars;  // C string with reserved word text
   js::frontend::TokenKind tokentype;
@@ -135,28 +131,20 @@ static const ReservedWordInfo* FindReservedWord(
   if (str->hasLatin1Chars()) {
     const JS::Latin1Char* chars = str->latin1Chars(nogc);
     size_t length = str->length();
-#ifdef JS_PRIVATE_FIELDS
     if (length > 0 && chars[0] == '#') {
       *visibility = js::frontend::NameVisibility::Private;
       return nullptr;
     }
-#else
-    MOZ_ASSERT_IF(length > 0, chars[0] != '#');
-#endif
     *visibility = js::frontend::NameVisibility::Public;
     return FindReservedWord(chars, length);
   }
 
   const char16_t* chars = str->twoByteChars(nogc);
   size_t length = str->length();
-#ifdef JS_PRIVATE_FIELDS
   if (length > 0 && chars[0] == '#') {
     *visibility = js::frontend::NameVisibility::Private;
     return nullptr;
   }
-#else
-  MOZ_ASSERT_IF(length > 0, chars[0] != '#');
-#endif
   *visibility = js::frontend::NameVisibility::Public;
   return FindReservedWord(chars, length);
 }
@@ -246,13 +234,10 @@ bool IsIdentifierNameOrPrivateName(const Latin1Char* chars, size_t length) {
     return false;
   }
 
-  if (char16_t(*chars) == '#') {
-#ifdef JS_PRIVATE_FIELDS
+  // Skip over any private name marker.
+  if (*chars == '#') {
     ++chars;
     --length;
-#else
-    return false;
-#endif
   }
 
   return IsIdentifier(chars, length);
@@ -292,16 +277,15 @@ bool IsIdentifierNameOrPrivateName(const char16_t* chars, size_t length) {
   uint32_t codePoint;
 
   codePoint = GetSingleCodePoint(&p, end);
+
+  // Skip over any private name marker.
   if (codePoint == '#') {
-#ifdef JS_PRIVATE_FIELDS
+    // The identifier part of a private name mustn't be empty.
     if (length == 1) {
       return false;
     }
 
     codePoint = GetSingleCodePoint(&p, end);
-#else
-    return false;
-#endif
   }
 
   if (!unicode::IsIdentifierStart(codePoint)) {
@@ -2157,11 +2141,7 @@ bool TokenStreamSpecific<Unit, AnyCharsAccess>::putIdentInCharBuffer(
 
     uint32_t codePoint;
     if (MOZ_LIKELY(isAsciiCodePoint(unit))) {
-      if (unicode::IsIdentifierPart(char16_t(unit))
-#ifdef JS_PRIVATE_FIELDS
-          || char16_t(unit) == '#'
-#endif
-      ) {
+      if (unicode::IsIdentifierPart(char16_t(unit)) || unit == '#') {
         if (!this->charBuffer.append(unit)) {
           return false;
         }
@@ -2251,7 +2231,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::identifierName(
       return false;
     }
 
-    atom = drainCharBufferIntoAtom(anyCharsAccess().cx);
+    atom = drainCharBufferIntoAtom();
   } else {
     // Escape-free identifiers can be created directly from sourceUnits.
     const Unit* chars = identStart;
@@ -2267,7 +2247,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::identifierName(
       }
     }
 
-    atom = atomizeSourceChars(anyCharsAccess().cx, MakeSpan(chars, length));
+    atom = atomizeSourceChars(MakeSpan(chars, length));
   }
   if (!atom) {
     return false;
@@ -2275,8 +2255,8 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::identifierName(
 
   noteBadToken.release();
   if (visibility == NameVisibility::Private) {
-    errorAt(start.offset(), JSMSG_PRIVATE_FIELDS_NOT_SUPPORTED);
-    return false;
+    newPrivateNameToken(atom->asPropertyName(), start, modifier, out);
+    return true;
   }
   newNameToken(atom->asPropertyName(), start, modifier, out);
   return true;
@@ -2649,13 +2629,9 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::regexpLiteral(
       flag = RegExpFlag::IgnoreCase;
     } else if (unit == 'm') {
       flag = RegExpFlag::Multiline;
-    }
-#ifdef ENABLE_NEW_REGEXP
-    else if (unit == 's') {
+    } else if (unit == 's') {
       flag = RegExpFlag::DotAll;
-    }
-#endif
-    else if (unit == 'u') {
+    } else if (unit == 'u') {
       flag = RegExpFlag::Unicode;
     } else if (unit == 'y') {
       flag = RegExpFlag::Sticky;
@@ -2949,6 +2925,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
         if (!strictModeError(JSMSG_DEPRECATED_OCTAL)) {
           return badToken();
         }
+        anyCharsAccess().flags.sawDeprecatedOctal = true;
 
         radix = 8;
         // one past the '0'
@@ -3068,20 +3045,20 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
         break;
 
       case '#': {
-#ifdef JS_PRIVATE_FIELDS
-        TokenStart start(this->sourceUnits, -1);
-        const Unit* identStart = this->sourceUnits.addressOfNextCodeUnit() - 1;
-        IdentifierEscapes sawEscape;
-        if (!matchIdentifierStart(&sawEscape)) {
-          return badToken();
+        if (options().privateClassFields) {
+          TokenStart start(this->sourceUnits, -1);
+          const Unit* identStart =
+              this->sourceUnits.addressOfNextCodeUnit() - 1;
+          IdentifierEscapes sawEscape;
+          if (!matchIdentifierStart(&sawEscape)) {
+            return badToken();
+          }
+          return identifierName(start, identStart, sawEscape, modifier,
+                                NameVisibility::Private, ttp);
         }
-        return identifierName(start, identStart, sawEscape, modifier,
-                              NameVisibility::Private, ttp);
-#else
         ungetCodeUnit(unit);
         error(JSMSG_PRIVATE_FIELDS_NOT_SUPPORTED);
         return badToken();
-#endif
       }
 
       case '=':
@@ -3124,11 +3101,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
 
       case '|':
         if (matchCodeUnit('|')) {
-#ifdef NIGHTLY_BUILD
           simpleKind = matchCodeUnit('=') ? TokenKind::OrAssign : TokenKind::Or;
-#else
-          simpleKind = TokenKind::Or;
-#endif
 #ifdef ENABLE_PIPELINE_OPERATOR
         } else if (matchCodeUnit('>')) {
           simpleKind = TokenKind::Pipeline;
@@ -3146,12 +3119,8 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
 
       case '&':
         if (matchCodeUnit('&')) {
-#ifdef NIGHTLY_BUILD
           simpleKind =
               matchCodeUnit('=') ? TokenKind::AndAssign : TokenKind::And;
-#else
-          simpleKind = TokenKind::And;
-#endif
         } else {
           simpleKind =
               matchCodeUnit('=') ? TokenKind::BitAndAssign : TokenKind::BitAnd;
@@ -3173,12 +3142,8 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
             simpleKind = TokenKind::OptionalChain;
           }
         } else if (matchCodeUnit('?')) {
-#ifdef NIGHTLY_BUILD
           simpleKind = matchCodeUnit('=') ? TokenKind::CoalesceAssign
                                           : TokenKind::Coalesce;
-#else
-          simpleKind = TokenKind::Coalesce;
-#endif
         } else {
           simpleKind = TokenKind::Hook;
         }
@@ -3639,7 +3604,7 @@ bool TokenStreamSpecific<Unit, AnyCharsAccess>::getStringOrTemplateToken(
             if (!strictModeError(JSMSG_DEPRECATED_OCTAL)) {
               return false;
             }
-            anyChars.flags.sawOctalEscape = true;
+            anyChars.flags.sawDeprecatedOctal = true;
           }
 
           if (IsAsciiOctal(unit)) {
@@ -3703,7 +3668,7 @@ bool TokenStreamSpecific<Unit, AnyCharsAccess>::getStringOrTemplateToken(
     }
   }
 
-  JSAtom* atom = drainCharBufferIntoAtom(anyCharsAccess().cx);
+  JSAtom* atom = drainCharBufferIntoAtom();
   if (!atom) {
     return false;
   }

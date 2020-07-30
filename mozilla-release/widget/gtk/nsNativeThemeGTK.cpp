@@ -1675,15 +1675,14 @@ nsNativeThemeGTK::GetMinimumWidgetSize(nsPresContext* aPresContext,
         gfxFontStyle fieldFontStyle;
         nsAutoString unusedFontName;
         DebugOnly<bool> result = LookAndFeel::GetFont(
-            LookAndFeel::eFont_Field, unusedFontName, fieldFontStyle);
+            LookAndFeel::FontID::Field, unusedFontName, fieldFontStyle);
         MOZ_ASSERT(result, "GTK look and feel supports the field font");
         // NOTE: GetFont returns font sizes in CSS pixels, and we want just
         // that.
         return fieldFontStyle.size;
       }();
 
-      const gfxFloat fontSize =
-          CSSPixel::FromAppUnits(aFrame->StyleFont()->mFont.size);
+      const gfxFloat fontSize = aFrame->StyleFont()->mFont.size.ToCSSPixels();
       if (fieldFontSizeInCSSPixels > fontSize) {
         contentHeight =
             std::round(contentHeight * fontSize / fieldFontSizeInCSSPixels);

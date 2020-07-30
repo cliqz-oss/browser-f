@@ -9,14 +9,13 @@ const DOC_IFRAME_MULTI = toDataURL(`
   <iframe src='data:text/html,bar'></iframe>
 `);
 const DOC_IFRAME_NESTED = toDataURL(`
-  <iframe src="data:text/html,<iframe src='data:text/html,foo'></iframe>">
-  </iframe>
+  <iframe src="${DOC_IFRAME_MULTI}"></iframe>
 `);
 
 add_task(async function noEventWhenPageDomainDisabled({ client }) {
   await runFrameAttachedTest(client, 0, async () => {
-    info("Navigate to a page with an iframe");
-    await loadURL(DOC_IFRAME_MULTI);
+    info("Navigate to a page with nested iframes");
+    await loadURL(DOC_IFRAME_NESTED);
   });
 });
 
@@ -27,21 +26,21 @@ add_task(async function noEventAfterPageDomainDisabled({ client }) {
   await Page.disable();
 
   await runFrameAttachedTest(client, 0, async () => {
-    info("Navigate to a page with an iframe");
-    await loadURL(DOC_IFRAME_MULTI);
+    info("Navigate to a page with nested iframes");
+    await loadURL(DOC_IFRAME_NESTED);
   });
 });
 
 add_task(async function noEventWhenNavigatingWithNoFrames({ client }) {
   const { Page } = client;
 
+  info("Navigate to a page with iframes");
+  await loadURL(DOC_IFRAME_NESTED);
+
   await Page.enable();
 
-  info("Navigate to a page with iframes");
-  await loadURL(DOC_IFRAME_MULTI);
-
   await runFrameAttachedTest(client, 0, async () => {
-    info("Navigate to a page without an iframe");
+    info("Navigate to a page with no iframes");
     await loadURL(DOC);
   });
 });
@@ -52,7 +51,7 @@ add_task(async function eventWhenNavigatingWithFrames({ client }) {
   await Page.enable();
 
   await runFrameAttachedTest(client, 2, async () => {
-    info("Navigate to a page with an iframe");
+    info("Navigate to a page with iframes");
     await loadURL(DOC_IFRAME_MULTI);
   });
 });
@@ -62,7 +61,7 @@ add_task(async function eventWhenNavigatingWithNestedFrames({ client }) {
 
   await Page.enable();
 
-  await runFrameAttachedTest(client, 2, async () => {
+  await runFrameAttachedTest(client, 3, async () => {
     info("Navigate to a page with nested iframes");
     await loadURL(DOC_IFRAME_NESTED);
   });
@@ -98,9 +97,9 @@ async function runFrameAttachedTest(client, expectedEventCount, callback) {
     },
   });
 
-  const framesBefore = await getFlattendFrameList();
+  const framesBefore = await getFlattenedFrameTree(client);
   await callback();
-  const framesAfter = await getFlattendFrameList();
+  const framesAfter = await getFlattenedFrameTree(client);
 
   const frameAttachedEvents = await history.record();
 
@@ -130,7 +129,7 @@ async function runFrameAttachedTest(client, expectedEventCount, callback) {
   frameAttachedEvents.forEach(({ payload }) => {
     const { frameId, parentFrameId } = payload;
 
-    console.log(`Check frame id ${frameId}`);
+    info(`Check frame id ${frameId}`);
     const expectedFrame = expectedFrames.get(frameId);
 
     ok(expectedFrame, `Found expected frame with id ${frameId}`);

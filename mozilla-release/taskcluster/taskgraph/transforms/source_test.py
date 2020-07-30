@@ -10,7 +10,6 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import copy
 import os
-import six
 from six import text_type
 
 from taskgraph.transforms.base import TransformSequence
@@ -44,9 +43,9 @@ source_test_description_schema = Schema({
     # contain a build label for the task platform.
     # The task will then depend on a build task, and the installer url will be
     # saved to the GECKO_INSTALLER_URL environment variable.
-    Optional('require-build'): {
-        text_type: text_type,
-    },
+    Optional('require-build'): optionally_keyed_by(
+        'project', {text_type: text_type}
+    ),
 
     # These fields can be keyed by "platform", and are otherwise identical to
     # job descriptions.
@@ -57,8 +56,6 @@ source_test_description_schema = Schema({
         'platform', job_description_schema['worker']),
 
     Optional('python-version'): [int],
-    # If true, the DECISION_TASK_ID env will be populated.
-    Optional('require-decision-task-id'): bool,
 
     # A list of artifacts to install from 'fetch' tasks.
     Optional('fetches'): {
@@ -178,6 +175,7 @@ def handle_platform(config, jobs):
     """
     fields = [
         'fetches.toolchain',
+        'require-build',
         'worker-type',
         'worker',
     ]
@@ -186,7 +184,7 @@ def handle_platform(config, jobs):
         platform = job['platform']
 
         for field in fields:
-            resolve_keyed_by(job, field, item_name=job['name'])
+            resolve_keyed_by(job, field, item_name=job['name'], project=config.params['project'])
 
         if 'treeherder' in job:
             job['treeherder']['platform'] = platform
@@ -217,22 +215,6 @@ def handle_shell(config, jobs):
             resolve_keyed_by(job, field, item_name=job['name'])
 
         del job['shell']
-        yield job
-
-
-@transforms.add
-def add_decision_task_id_to_env(config, jobs):
-    """
-    Creates the `DECISION_TASK_ID` environment variable in tasks that set the
-    `require-decision-task-id` config.
-    """
-    for job in jobs:
-        if not job.pop('require-decision-task-id', False):
-            yield job
-            continue
-
-        env = job['worker'].setdefault('env', {})
-        env['DECISION_TASK_ID'] = six.ensure_text(os.environ.get('TASK_ID', ''))
         yield job
 
 

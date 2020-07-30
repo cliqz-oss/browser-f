@@ -9,6 +9,9 @@ user_pref("devtools.console.stdout.chrome", true);
 user_pref("browser.newtabpage.activity-stream.asrouter.providers.cfr", "[]");
 user_pref("browser.newtabpage.activity-stream.asrouter.providers.cfr-fxa", "[]");
 user_pref("browser.newtabpage.activity-stream.asrouter.providers.snippets", "[]");
+user_pref("browser.newtabpage.activity-stream.asrouter.providers.message-groups", "[]");
+user_pref("browser.newtabpage.activity-stream.asrouter.providers.whats-new-panel", "[]");
+user_pref("browser.newtabpage.activity-stream.asrouter.providers.messaging-experiments", "[]");
 user_pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
 user_pref("browser.newtabpage.activity-stream.feeds.snippets", false);
 user_pref("browser.newtabpage.activity-stream.tippyTop.service.endpoint", "");
@@ -67,7 +70,7 @@ user_pref("media.block-autoplay-until-in-foreground", false);
 user_pref("toolkit.telemetry.coverage.endpoint.base", "http://localhost");
 // Don't ask for a request in testing unless explicitly set this as true.
 user_pref("media.geckoview.autoplay.request", false);
-// user_pref("geo.provider.network.url", "http://localhost/geoip-dummy");
-user_pref("browser.region.network.url", "http://localhost/geoip-dummy");
+user_pref("geo.provider.network.compare.url", "");
+user_pref("browser.region.network.url", "");
 // Do not unload tabs on low memory when testing
 user_pref("browser.tabs.unloadOnLowMemory", false);

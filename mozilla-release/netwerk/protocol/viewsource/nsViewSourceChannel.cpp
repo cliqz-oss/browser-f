@@ -828,6 +828,14 @@ nsViewSourceChannel::VisitNonDefaultRequestHeaders(
 }
 
 NS_IMETHODIMP
+nsViewSourceChannel::ShouldStripRequestBodyHeader(const nsACString& aMethod,
+                                                  bool* aResult) {
+  return !mHttpChannel
+             ? NS_ERROR_NULL_POINTER
+             : mHttpChannel->ShouldStripRequestBodyHeader(aMethod, aResult);
+}
+
+NS_IMETHODIMP
 nsViewSourceChannel::GetAllowPipelining(bool* aAllowPipelining) {
   return !mHttpChannel ? NS_ERROR_NULL_POINTER
                        : mHttpChannel->GetAllowPipelining(aAllowPipelining);
@@ -998,8 +1006,10 @@ nsViewSourceChannel::SetIsMainDocumentChannel(bool aValue) {
 
 // Have to manually forward SetCorsPreflightParameters since it's [notxpcom]
 void nsViewSourceChannel::SetCorsPreflightParameters(
-    const nsTArray<nsCString>& aUnsafeHeaders) {
-  mHttpChannelInternal->SetCorsPreflightParameters(aUnsafeHeaders);
+    const nsTArray<nsCString>& aUnsafeHeaders,
+    bool aShouldStripRequestBodyHeader) {
+  mHttpChannelInternal->SetCorsPreflightParameters(
+      aUnsafeHeaders, aShouldStripRequestBodyHeader);
 }
 
 void nsViewSourceChannel::SetAltDataForChild(bool aIsForChild) {

@@ -24,7 +24,7 @@ using class mozilla::TimeStamp from "mozilla/TimeStamp.h";
 using refcounted class nsIPropertyBag2 from "mozilla/dom/PropertyBagUtils.h";
 using refcounted class nsDOMNavigationTiming from "nsDOMNavigationTiming.h";
 using nsILoadInfo::CrossOriginEmbedderPolicy from "nsILoadInfo.h";
-using moveonly mozilla::dom::SessionHistoryInfoAndId from "mozilla/dom/SessionHistoryEntry.h";
+using moveonly mozilla::dom::SessionHistoryInfo from "mozilla/dom/SessionHistoryEntry.h";
 
 namespace mozilla {
 namespace net {
@@ -47,7 +47,7 @@ struct CookieJarSettingsArgs
   bool isOnContentBlockingAllowList;
   CookiePermissionData[] cookiePermissions;
   bool isFixed;
-  nsString firstPartyDomain;
+  nsString partitionKey;
 };
 
 //-----------------------------------------------------------------------------
@@ -111,13 +111,6 @@ struct LoadInfoArgs
   RedirectHistoryEntryInfo[]  redirectChain;
 
   /**
-   * Ancestor data for use with the WebRequest API.
-   * See nsILoadInfo.idl for details.
-   */
-  PrincipalInfo[]             ancestorPrincipals;
-  uint64_t[]                  ancestorOuterWindowIDs;
-
-  /**
    * ClientInfo structure representing the window or worker that triggered
    * this network request.  May be Nothing if its a system internal request.
    */
@@ -153,6 +146,7 @@ struct LoadInfoArgs
   uint32_t                    httpsOnlyStatus;
   bool                        hasValidUserGestureActivation;
   bool                        allowDeprecatedSystemRequests;
+  bool                        isInDevToolsContext;
   bool                        parserCreatedScript;
   bool                        isFromProcessingFrameAttributes;
   CookieJarSettingsArgs       cookieJarSettings;
@@ -206,6 +200,8 @@ struct ParentLoadInfoForwarderArgs
   // and all requests will be cancelled. Setting this flag to true prevents
   // the request from being cancelled.
   bool allowDeprecatedSystemRequests;
+
+  bool isInDevToolsContext;
 
   // Only ever returns true if the loadinfo is of TYPE_SCRIPT and
   // the script was created by the HTML parser.
@@ -436,6 +432,7 @@ struct CookieStruct
   bool      isSecure;
   int32_t   sameSite;
   int32_t   rawSameSite;
+  uint8_t   schemeMap;
 };
 
 struct DocumentChannelCreationArgs {
@@ -471,7 +468,9 @@ struct RedirectToRealChannelArgs {
   nsDOMNavigationTiming? timing;
   nsString srcdocData;
   nsIURI baseUri;
-  SessionHistoryInfoAndId? sessionHistoryInfo;
+  SessionHistoryInfo? sessionHistoryInfo;
+  uint64_t loadIdentifier;
+  nsCString? originalUriString;
 };
 
 struct TimingStructArgs {

@@ -47,6 +47,7 @@
 #include "mozilla/net/MozURL.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/ResultExtensions.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPtr.h"
@@ -660,16 +661,18 @@ nsresult SaveLocalStorageArchiveVersion(mozIStorageConnection* aConnection,
 }  // namespace
 
 class DirectoryLockImpl final : public DirectoryLock {
-  RefPtr<QuotaManager> mQuotaManager;
+  const NotNull<RefPtr<QuotaManager>> mQuotaManager;
 
   const Nullable<PersistenceType> mPersistenceType;
   const nsCString mGroup;
   const OriginScope mOriginScope;
   const Nullable<Client::Type> mClientType;
-  RefPtr<OpenDirectoryListener> mOpenListener;
+  LazyInitializedOnceEarlyDestructible<
+      const NotNull<RefPtr<OpenDirectoryListener>>>
+      mOpenListener;
 
-  nsTArray<DirectoryLockImpl*> mBlocking;
-  nsTArray<DirectoryLockImpl*> mBlockedOn;
+  nsTArray<NotNull<DirectoryLockImpl*>> mBlocking;
+  nsTArray<NotNull<DirectoryLockImpl*>> mBlockedOn;
 
   const int64_t mId;
 
@@ -680,14 +683,16 @@ class DirectoryLockImpl final : public DirectoryLock {
   const bool mInternal;
 
   bool mRegistered;
-  bool mInvalidated;
+  FlippedOnce<false> mInvalidated;
 
  public:
-  DirectoryLockImpl(QuotaManager* aQuotaManager, const int64_t aId,
+  DirectoryLockImpl(MovingNotNull<RefPtr<QuotaManager>> aQuotaManager,
+                    const int64_t aId,
                     const Nullable<PersistenceType>& aPersistenceType,
                     const nsACString& aGroup, const OriginScope& aOriginScope,
                     const Nullable<Client::Type>& aClientType, bool aExclusive,
-                    bool aInternal, OpenDirectoryListener* aOpenListener);
+                    bool aInternal,
+                    RefPtr<OpenDirectoryListener> aOpenListener);
 
   void AssertIsOnOwningThread() const
 #ifdef DEBUG
@@ -734,24 +739,26 @@ class DirectoryLockImpl final : public DirectoryLock {
   // Test whether this DirectoryLock needs to wait for the given lock.
   bool MustWaitFor(const DirectoryLockImpl& aLock) const;
 
-  void AddBlockingLock(DirectoryLockImpl* aLock) {
+  void AddBlockingLock(DirectoryLockImpl& aLock) {
     AssertIsOnOwningThread();
 
-    mBlocking.AppendElement(aLock);
+    mBlocking.AppendElement(WrapNotNull(&aLock));
   }
 
-  const nsTArray<DirectoryLockImpl*>& GetBlockedOnLocks() { return mBlockedOn; }
-
-  void AddBlockedOnLock(DirectoryLockImpl* aLock) {
-    AssertIsOnOwningThread();
-
-    mBlockedOn.AppendElement(aLock);
+  const nsTArray<NotNull<DirectoryLockImpl*>>& GetBlockedOnLocks() {
+    return mBlockedOn;
   }
 
-  void MaybeUnblock(DirectoryLockImpl* aLock) {
+  void AddBlockedOnLock(DirectoryLockImpl& aLock) {
     AssertIsOnOwningThread();
 
-    mBlockedOn.RemoveElement(aLock);
+    mBlockedOn.AppendElement(WrapNotNull(&aLock));
+  }
+
+  void MaybeUnblock(DirectoryLockImpl& aLock) {
+    AssertIsOnOwningThread();
+
+    mBlockedOn.RemoveElement(&aLock);
     if (mBlockedOn.IsEmpty()) {
       NotifyOpenListener();
     }
@@ -762,7 +769,7 @@ class DirectoryLockImpl final : public DirectoryLock {
   void Invalidate() {
     AssertIsOnOwningThread();
 
-    mInvalidated = true;
+    mInvalidated.EnsureFlipped();
   }
 
   NS_INLINE_DECL_REFCOUNTING(DirectoryLockImpl, override)
@@ -1148,7 +1155,7 @@ class OriginOperationBase : public BackgroundThreadObject, public Runnable {
 
  protected:
   explicit OriginOperationBase(
-      nsIEventTarget* aOwningThread = GetCurrentThreadEventTarget())
+      nsIEventTarget* aOwningThread = GetCurrentEventTarget())
       : BackgroundThreadObject(aOwningThread),
         Runnable("dom::quota::OriginOperationBase"),
         mResultCode(NS_OK),
@@ -1905,7 +1912,7 @@ nsresult MaybeUpdateGroupForOrigin(const nsACString& aOrigin,
 }  // namespace
 
 BackgroundThreadObject::BackgroundThreadObject()
-    : mOwningThread(GetCurrentThreadEventTarget()) {
+    : mOwningThread(GetCurrentEventTarget()) {
   AssertIsOnOwningThread();
 }
 
@@ -2853,23 +2860,21 @@ already_AddRefed<DirectoryLock> DirectoryLock::Specialize(
 void DirectoryLock::Log() const { GetDirectoryLockImpl(this)->Log(); }
 
 DirectoryLockImpl::DirectoryLockImpl(
-    QuotaManager* aQuotaManager, const int64_t aId,
+    MovingNotNull<RefPtr<QuotaManager>> aQuotaManager, const int64_t aId,
     const Nullable<PersistenceType>& aPersistenceType, const nsACString& aGroup,
     const OriginScope& aOriginScope, const Nullable<Client::Type>& aClientType,
-    bool aExclusive, bool aInternal, OpenDirectoryListener* aOpenListener)
-    : mQuotaManager(aQuotaManager),
+    bool aExclusive, bool aInternal,
+    RefPtr<OpenDirectoryListener> aOpenListener)
+    : mQuotaManager(std::move(aQuotaManager)),
       mPersistenceType(aPersistenceType),
       mGroup(aGroup),
       mOriginScope(aOriginScope),
       mClientType(aClientType),
-      mOpenListener(aOpenListener),
       mId(aId),
       mExclusive(aExclusive),
       mInternal(aInternal),
-      mRegistered(false),
-      mInvalidated(false) {
+      mRegistered(false) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aQuotaManager);
   MOZ_ASSERT_IF(aOriginScope.IsOrigin(), !aOriginScope.GetOrigin().IsEmpty());
   MOZ_ASSERT_IF(!aInternal, !aPersistenceType.IsNull());
   MOZ_ASSERT_IF(!aInternal,
@@ -2879,20 +2884,23 @@ DirectoryLockImpl::DirectoryLockImpl(
   MOZ_ASSERT_IF(!aInternal, !aClientType.IsNull());
   MOZ_ASSERT_IF(!aInternal, aClientType.Value() < Client::TypeMax());
   MOZ_ASSERT_IF(!aInternal, aOpenListener);
+
+  if (aOpenListener) {
+    mOpenListener.init(WrapNotNullUnchecked(std::move(aOpenListener)));
+  }
 }
 
 DirectoryLockImpl::~DirectoryLockImpl() {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(mQuotaManager);
 
   for (DirectoryLockImpl* blockingLock : mBlocking) {
-    blockingLock->MaybeUnblock(this);
+    blockingLock->MaybeUnblock(*this);
   }
 
   mBlocking.Clear();
 
   if (mRegistered) {
-    mQuotaManager->UnregisterDirectoryLock(this);
+    mQuotaManager->UnregisterDirectoryLock(*this);
   }
 
   MOZ_ASSERT(!mRegistered);
@@ -2901,7 +2909,6 @@ DirectoryLockImpl::~DirectoryLockImpl() {
 #ifdef DEBUG
 
 void DirectoryLockImpl::AssertIsOnOwningThread() const {
-  MOZ_ASSERT(mQuotaManager);
   mQuotaManager->AssertIsOnOwningThread();
 }
 
@@ -2947,18 +2954,16 @@ bool DirectoryLockImpl::MustWaitFor(const DirectoryLockImpl& aLock) const {
 
 void DirectoryLockImpl::NotifyOpenListener() {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(mQuotaManager);
-  MOZ_ASSERT(mOpenListener);
 
   if (mInvalidated) {
-    mOpenListener->DirectoryLockFailed();
+    (*mOpenListener)->DirectoryLockFailed();
   } else {
-    mOpenListener->DirectoryLockAcquired(this);
+    (*mOpenListener)->DirectoryLockAcquired(this);
   }
 
-  mOpenListener = nullptr;
+  mOpenListener.destroy();
 
-  mQuotaManager->RemovePendingDirectoryLock(this);
+  mQuotaManager->RemovePendingDirectoryLock(*this);
 }
 
 already_AddRefed<DirectoryLock> DirectoryLockImpl::Specialize(
@@ -2969,7 +2974,6 @@ already_AddRefed<DirectoryLock> DirectoryLockImpl::Specialize(
   MOZ_ASSERT(!aGroup.IsEmpty());
   MOZ_ASSERT(!aOrigin.IsEmpty());
   MOZ_ASSERT(aClientType < Client::TypeMax());
-  MOZ_ASSERT(mQuotaManager);
   MOZ_ASSERT(!mOpenListener);
   MOZ_ASSERT(mBlockedOn.IsEmpty());
 
@@ -2998,15 +3002,13 @@ already_AddRefed<DirectoryLock> DirectoryLockImpl::Specialize(
 #endif
 
   for (const auto& blockedLock : mBlocking) {
-    MOZ_ASSERT(blockedLock);
-
     if (blockedLock->MustWaitFor(*lock)) {
-      lock->AddBlockingLock(blockedLock);
-      blockedLock->AddBlockedOnLock(lock);
+      lock->AddBlockingLock(*blockedLock);
+      blockedLock->AddBlockedOnLock(*lock);
     }
   }
 
-  mQuotaManager->RegisterDirectoryLock(lock);
+  mQuotaManager->RegisterDirectoryLock(*lock);
 
   if (mInvalidated) {
     lock->Invalidate();
@@ -3060,7 +3062,8 @@ void DirectoryLockImpl::Log() const {
 
   nsCString blockedOnString;
   for (auto blockedOn : mBlockedOn) {
-    blockedOnString.Append(nsPrintfCString(" [%p]", blockedOn));
+    blockedOnString.Append(
+        nsPrintfCString(" [%p]", static_cast<void*>(blockedOn)));
   }
   QM_LOG(("  mBlockedOn:%s", blockedOnString.get()));
 
@@ -3068,7 +3071,7 @@ void DirectoryLockImpl::Log() const {
 
   QM_LOG(("  mInternal: %d", mInternal));
 
-  QM_LOG(("  mInvalidated: %d", mInvalidated));
+  QM_LOG(("  mInvalidated: %d", static_cast<bool>(mInvalidated)));
 
   for (auto blockedOn : mBlockedOn) {
     blockedOn->Log();
@@ -3684,8 +3687,9 @@ bool QuotaManager::IsDotFile(const nsAString& aFileName) {
 auto QuotaManager::CreateDirectoryLock(
     const Nullable<PersistenceType>& aPersistenceType, const nsACString& aGroup,
     const OriginScope& aOriginScope, const Nullable<Client::Type>& aClientType,
-    bool aExclusive, bool aInternal, OpenDirectoryListener* aOpenListener,
-    bool& aBlockedOut) -> already_AddRefed<DirectoryLockImpl> {
+    bool aExclusive, bool aInternal,
+    RefPtr<OpenDirectoryListener> aOpenListener, bool& aBlockedOut)
+    -> already_AddRefed<DirectoryLockImpl> {
   AssertIsOnOwningThread();
   MOZ_ASSERT_IF(aOriginScope.IsOrigin(), !aOriginScope.GetOrigin().IsEmpty());
   MOZ_ASSERT_IF(!aInternal, !aPersistenceType.IsNull());
@@ -3698,8 +3702,9 @@ auto QuotaManager::CreateDirectoryLock(
   MOZ_ASSERT_IF(!aInternal, aOpenListener);
 
   RefPtr<DirectoryLockImpl> lock = new DirectoryLockImpl(
-      this, GenerateDirectoryLockId(), aPersistenceType, aGroup, aOriginScope,
-      aClientType, aExclusive, aInternal, aOpenListener);
+      WrapNotNullUnchecked(this), GenerateDirectoryLockId(), aPersistenceType,
+      aGroup, aOriginScope, aClientType, aExclusive, aInternal,
+      std::move(aOpenListener));
 
   mPendingDirectoryLocks.AppendElement(lock);
 
@@ -3708,13 +3713,13 @@ auto QuotaManager::CreateDirectoryLock(
   for (uint32_t index = mDirectoryLocks.Length(); index > 0; index--) {
     DirectoryLockImpl* existingLock = mDirectoryLocks[index - 1];
     if (lock->MustWaitFor(*existingLock)) {
-      existingLock->AddBlockingLock(lock);
-      lock->AddBlockedOnLock(existingLock);
+      existingLock->AddBlockingLock(*lock);
+      lock->AddBlockedOnLock(*existingLock);
       blocked = true;
     }
   }
 
-  RegisterDirectoryLock(lock);
+  RegisterDirectoryLock(*lock);
 
   // Otherwise, notify the open listener immediately.
   if (!blocked) {
@@ -3733,7 +3738,8 @@ auto QuotaManager::CreateDirectoryLockForEviction(
   MOZ_ASSERT(!aOrigin.IsEmpty());
 
   RefPtr<DirectoryLockImpl> lock = new DirectoryLockImpl(
-      this, /* aDirectoryLockId */ kBypassDirectoryLockIdTableId,
+      WrapNotNullUnchecked(this),
+      /* aDirectoryLockId */ kBypassDirectoryLockIdTableId,
       Nullable<PersistenceType>(aPersistenceType), aGroup,
       OriginScope::FromOrigin(aOrigin), Nullable<Client::Type>(),
       /* aExclusive */ true, /* aInternal */ true, nullptr);
@@ -3745,83 +3751,80 @@ auto QuotaManager::CreateDirectoryLockForEviction(
   }
 #endif
 
-  RegisterDirectoryLock(lock);
+  RegisterDirectoryLock(*lock);
 
   return lock.forget();
 }
 
-void QuotaManager::RegisterDirectoryLock(DirectoryLockImpl* aLock) {
+void QuotaManager::RegisterDirectoryLock(DirectoryLockImpl& aLock) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aLock);
 
-  mDirectoryLocks.AppendElement(aLock);
+  mDirectoryLocks.AppendElement(&aLock);
 
-  if (aLock->ShouldUpdateLockIdTable()) {
+  if (aLock.ShouldUpdateLockIdTable()) {
     MutexAutoLock lock(mQuotaMutex);
 
-    MOZ_DIAGNOSTIC_ASSERT(!mDirectoryLockIdTable.Get(aLock->Id()));
-    mDirectoryLockIdTable.Put(aLock->Id(), aLock);
+    MOZ_DIAGNOSTIC_ASSERT(!mDirectoryLockIdTable.Get(aLock.Id()));
+    mDirectoryLockIdTable.Put(aLock.Id(), &aLock);
   }
 
-  if (aLock->ShouldUpdateLockTable()) {
+  if (aLock.ShouldUpdateLockTable()) {
     DirectoryLockTable& directoryLockTable =
-        GetDirectoryLockTable(aLock->GetPersistenceType());
+        GetDirectoryLockTable(aLock.GetPersistenceType());
 
     nsTArray<DirectoryLockImpl*>* array;
-    if (!directoryLockTable.Get(aLock->Origin(), &array)) {
+    if (!directoryLockTable.Get(aLock.Origin(), &array)) {
       array = new nsTArray<DirectoryLockImpl*>();
-      directoryLockTable.Put(aLock->Origin(), array);
+      directoryLockTable.Put(aLock.Origin(), array);
 
       if (!IsShuttingDown()) {
-        UpdateOriginAccessTime(aLock->GetPersistenceType(), aLock->Group(),
-                               aLock->Origin());
+        UpdateOriginAccessTime(aLock.GetPersistenceType(), aLock.Group(),
+                               aLock.Origin());
       }
     }
-    array->AppendElement(aLock);
+    array->AppendElement(&aLock);
   }
 
-  aLock->SetRegistered(true);
+  aLock.SetRegistered(true);
 }
 
-void QuotaManager::UnregisterDirectoryLock(DirectoryLockImpl* aLock) {
+void QuotaManager::UnregisterDirectoryLock(DirectoryLockImpl& aLock) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aLock);
 
-  MOZ_ALWAYS_TRUE(mDirectoryLocks.RemoveElement(aLock));
+  MOZ_ALWAYS_TRUE(mDirectoryLocks.RemoveElement(&aLock));
 
-  if (aLock->ShouldUpdateLockIdTable()) {
+  if (aLock.ShouldUpdateLockIdTable()) {
     MutexAutoLock lock(mQuotaMutex);
 
-    MOZ_DIAGNOSTIC_ASSERT(mDirectoryLockIdTable.Get(aLock->Id()));
-    mDirectoryLockIdTable.Remove(aLock->Id());
+    MOZ_DIAGNOSTIC_ASSERT(mDirectoryLockIdTable.Get(aLock.Id()));
+    mDirectoryLockIdTable.Remove(aLock.Id());
   }
 
-  if (aLock->ShouldUpdateLockTable()) {
+  if (aLock.ShouldUpdateLockTable()) {
     DirectoryLockTable& directoryLockTable =
-        GetDirectoryLockTable(aLock->GetPersistenceType());
+        GetDirectoryLockTable(aLock.GetPersistenceType());
 
     nsTArray<DirectoryLockImpl*>* array;
-    MOZ_ALWAYS_TRUE(directoryLockTable.Get(aLock->Origin(), &array));
+    MOZ_ALWAYS_TRUE(directoryLockTable.Get(aLock.Origin(), &array));
 
-    MOZ_ALWAYS_TRUE(array->RemoveElement(aLock));
+    MOZ_ALWAYS_TRUE(array->RemoveElement(&aLock));
     if (array->IsEmpty()) {
-      directoryLockTable.Remove(aLock->Origin());
+      directoryLockTable.Remove(aLock.Origin());
 
       if (!IsShuttingDown()) {
-        UpdateOriginAccessTime(aLock->GetPersistenceType(), aLock->Group(),
-                               aLock->Origin());
+        UpdateOriginAccessTime(aLock.GetPersistenceType(), aLock.Group(),
+                               aLock.Origin());
       }
     }
   }
 
-  aLock->SetRegistered(false);
+  aLock.SetRegistered(false);
 }
 
-void QuotaManager::RemovePendingDirectoryLock(DirectoryLockImpl* aLock) {
+void QuotaManager::RemovePendingDirectoryLock(DirectoryLockImpl& aLock) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aLock);
 
-  MOZ_ALWAYS_TRUE(mPendingDirectoryLocks.RemoveElement(aLock));
+  MOZ_ALWAYS_TRUE(mPendingDirectoryLocks.RemoveElement(&aLock));
 }
 
 uint64_t QuotaManager::CollectOriginsForEviction(
@@ -5304,23 +5307,31 @@ nsresult QuotaManager::InitializeOrigin(PersistenceType aPersistenceType,
       continue;
     }
 
-    UsageInfo usageInfo;
-    rv = mClients[clientType]->InitOrigin(aPersistenceType, aGroup, aOrigin,
-                                          /* aCanceled */ Atomic<bool>(false),
-                                          trackQuota ? &usageInfo : nullptr);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      // error should have reported in InitOrigin
-      RECORD_IN_NIGHTLY(statusKeeper, rv);
-      CONTINUE_IN_NIGHTLY_RETURN_IN_OTHERS(rv);
-    }
-
     if (trackQuota) {
-      Maybe<uint64_t> clientUsage = usageInfo.TotalUsage();
+      auto usageInfoOrErr =
+          mClients[clientType]->InitOrigin(aPersistenceType, aGroup, aOrigin,
+                                           /* aCanceled */ Atomic<bool>(false));
+      if (NS_WARN_IF(usageInfoOrErr.isErr())) {
+        // error should have reported in InitOrigin
+        RECORD_IN_NIGHTLY(statusKeeper, usageInfoOrErr.inspectErr());
+        CONTINUE_IN_NIGHTLY_RETURN_IN_OTHERS(usageInfoOrErr.inspectErr());
+      }
+
+      const Maybe<uint64_t> clientUsage = usageInfoOrErr.inspect().TotalUsage();
 
       clientUsages[clientType] = clientUsage;
 
       AssertNoOverflow(usage, clientUsage.valueOr(0));
       usage += clientUsage.valueOr(0);
+    } else {
+      rv = mClients[clientType]->InitOriginWithoutTracking(
+          aPersistenceType, aGroup, aOrigin,
+          /* aCanceled */ Atomic<bool>(false));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        // error should have reported in InitOrigin
+        RECORD_IN_NIGHTLY(statusKeeper, rv);
+        CONTINUE_IN_NIGHTLY_RETURN_IN_OTHERS(rv);
+      }
     }
   }
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -6766,7 +6777,7 @@ nsresult QuotaManager::EnsureStorageIsInitialized() {
 already_AddRefed<DirectoryLock> QuotaManager::OpenDirectory(
     PersistenceType aPersistenceType, const nsACString& aGroup,
     const nsACString& aOrigin, Client::Type aClientType, bool aExclusive,
-    OpenDirectoryListener* aOpenListener) {
+    RefPtr<OpenDirectoryListener> aOpenListener) {
   AssertIsOnOwningThread();
 
   bool blocked;
@@ -6802,8 +6813,7 @@ already_AddRefed<DirectoryLock> QuotaManager::OpenDirectoryInternal(
       origins;
   origins.SetLength(Client::TypeMax());
 
-  const nsTArray<DirectoryLockImpl*>& blockedOnLocks =
-      lock->GetBlockedOnLocks();
+  const auto& blockedOnLocks = lock->GetBlockedOnLocks();
 
   for (DirectoryLockImpl* blockedOnLock : blockedOnLocks) {
     if (!blockedOnLock->IsInternal()) {
@@ -7726,12 +7736,11 @@ void QuotaManager::CheckTemporaryStorageLimits() {
         }
       }
 
-      for (uint32_t index = originInfos.Length(); index > 0; index--) {
-        if (doomedOriginInfos.Contains(originInfos[index - 1]) ||
-            originInfos[index - 1]->LockedPersisted()) {
-          originInfos.RemoveElementAt(index - 1);
-        }
-      }
+      originInfos.RemoveElementsBy(
+          [&doomedOriginInfos](const auto& originInfo) {
+            return doomedOriginInfos.Contains(originInfo) ||
+                   originInfo->LockedPersisted();
+          });
 
       originInfos.Sort(OriginInfoLRUComparator());
 
@@ -9145,16 +9154,15 @@ Result<UsageInfo, nsresult> QuotaUsageRequestBase::GetUsageForOriginEntries(
     Client* client = aQuotaManager.GetClient(clientType);
     MOZ_ASSERT(client);
 
-    if (aInitialized) {
-      rv = client->GetUsageForOrigin(aPersistenceType, aGroup, aOrigin,
-                                     mCanceled, &usageInfo);
-    } else {
-      rv = client->InitOrigin(aPersistenceType, aGroup, aOrigin, mCanceled,
-                              &usageInfo);
+    auto usageInfoOrErr =
+        aInitialized
+            ? client->GetUsageForOrigin(aPersistenceType, aGroup, aOrigin,
+                                        mCanceled)
+            : client->InitOrigin(aPersistenceType, aGroup, aOrigin, mCanceled);
+    if (NS_WARN_IF(usageInfoOrErr.isErr())) {
+      return usageInfoOrErr.propagateErr();
     }
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return Err(rv);
-    }
+    usageInfo += usageInfoOrErr.inspect();
   }
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return Err(rv);
@@ -9451,7 +9459,7 @@ nsresult GetOriginUsageOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
       return usageInfoOrErr.unwrapErr();
     }
 
-    usageInfo.Append(usageInfoOrErr.unwrap());
+    usageInfo += usageInfoOrErr.unwrap();
   }
 
   mUsage = usageInfo.TotalUsage().valueOr(0);

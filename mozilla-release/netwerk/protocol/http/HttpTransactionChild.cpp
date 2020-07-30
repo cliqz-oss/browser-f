@@ -113,7 +113,7 @@ nsresult HttpTransactionChild::InitInternal(
 
   nsresult rv = mTransaction->Init(
       caps, cinfo, requestHead, requestBody, requestContentLength,
-      requestBodyHasHeaders, GetCurrentThreadEventTarget(),
+      requestBodyHasHeaders, GetCurrentEventTarget(),
       nullptr,  // TODO: security callback, fix in bug 1512479.
       this, topLevelOuterContentWindowId,
       static_cast<HttpTrafficCategory>(httpTrafficCategory), rc, classOfService,
@@ -457,6 +457,8 @@ HttpTransactionChild::OnStopRequest(nsIRequest* aRequest, nsresult aStatus) {
     mDataBridgeParent = nullptr;
   }
 
+  mTransactionPump = nullptr;
+
   // Don't bother sending IPC to parent process if already canceled.
   if (mCanceled) {
     return mStatus;
@@ -475,11 +477,14 @@ HttpTransactionChild::OnStopRequest(nsIRequest* aRequest, nsresult aStatus) {
     responseTrailers.emplace(*headerArray);
   }
 
-  Unused << SendOnStopRequest(
-      aStatus, mTransaction->ResponseIsComplete(),
-      mTransaction->GetTransferSize(),
-      ToTimingStructArgs(mTransaction->Timings()), responseTrailers,
-      mTransaction->HasStickyConnection(), mTransactionObserverResult);
+  int64_t requestSize = mTransaction->GetRequestSize();
+
+  Unused << SendOnStopRequest(aStatus, mTransaction->ResponseIsComplete(),
+                              mTransaction->GetTransferSize(),
+                              ToTimingStructArgs(mTransaction->Timings()),
+                              responseTrailers,
+                              mTransaction->HasStickyConnection(),
+                              mTransactionObserverResult, requestSize);
 
   return NS_OK;
 }

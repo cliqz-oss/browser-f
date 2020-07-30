@@ -1,6 +1,3 @@
-use crate::script::{ScriptStencil, ScriptStencilBase};
-use ast::source_atom_set::SourceAtomSetIndex;
-
 #[derive(Debug)]
 pub struct FunctionFlags {
     flags: u16,
@@ -11,7 +8,7 @@ pub struct FunctionFlags {
 // Do mot modify manually.
 //
 // @@@@ BEGIN TYPES @@@@
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FunctionKind {
     NormalFunction = 0,
     Arrow = 1,
@@ -108,6 +105,78 @@ const MUTABLE_FLAGS: u16 = RESOLVED_NAME | RESOLVED_LENGTH | NEW_SCRIPT_CLEARED;
 const STABLE_ACROSS_CLONES: u16 = CONSTRUCTOR | LAMBDA | SELF_HOSTED | FUNCTION_KIND_MASK;
 // @@@@ END TYPES @@@@
 
+#[derive(Debug)]
+pub struct FunctionSyntaxKind {
+    kind: FunctionKind,
+    is_lambda: bool,
+    is_generator: bool,
+    is_async: bool,
+}
+
+impl FunctionSyntaxKind {
+    pub fn function_declaration(is_generator: bool, is_async: bool) -> Self {
+        Self {
+            kind: FunctionKind::NormalFunction,
+            is_lambda: false,
+            is_generator,
+            is_async,
+        }
+    }
+
+    pub fn function_expression(is_generator: bool, is_async: bool) -> Self {
+        Self {
+            kind: FunctionKind::NormalFunction,
+            is_lambda: true,
+            is_generator,
+            is_async,
+        }
+    }
+
+    pub fn method(is_generator: bool, is_async: bool) -> Self {
+        Self {
+            kind: FunctionKind::Method,
+            is_lambda: false,
+            is_generator,
+            is_async,
+        }
+    }
+
+    pub fn getter() -> Self {
+        FunctionSyntaxKind {
+            kind: FunctionKind::Getter,
+            is_lambda: false,
+            is_generator: false,
+            is_async: false,
+        }
+    }
+
+    pub fn setter() -> Self {
+        FunctionSyntaxKind {
+            kind: FunctionKind::Setter,
+            is_lambda: false,
+            is_generator: false,
+            is_async: false,
+        }
+    }
+
+    pub fn arrow(is_async: bool) -> Self {
+        Self {
+            kind: FunctionKind::Arrow,
+            is_lambda: true,
+            is_generator: false,
+            is_async,
+        }
+    }
+
+    pub fn is_generator(&self) -> bool {
+        self.is_generator
+    }
+
+    pub fn is_async(&self) -> bool {
+        self.is_async
+    }
+}
+
 impl FunctionFlags {
     fn new(flags: u16) -> Self {
         debug_assert!(
@@ -118,122 +187,41 @@ impl FunctionFlags {
         Self { flags }
     }
 
-    pub fn interpreted_normal() -> Self {
-        Self::new(INTERPRETED_NORMAL)
+    /// Returns empty flag that is used for top level script
+    pub fn empty() -> Self {
+        Self { flags: 0 }
     }
-}
 
-#[derive(Debug)]
-pub struct NonLazyFunctionScript {
-    script: ScriptStencil,
-}
-
-#[derive(Debug)]
-pub struct LazyFunctionScript {
-    script: ScriptStencilBase,
-}
-
-#[derive(Debug)]
-pub enum FunctionScript {
-    NonLazy(NonLazyFunctionScript),
-    Lazy(LazyFunctionScript),
-}
-
-/// Maps to JSFunction in m-c/js/src/vm/JSFunction.h, and BaseScript/JSScript
-/// in m-c/js/src/vm/JSScript.h, linked from it.
-#[derive(Debug)]
-pub struct FunctionStencil {
-    name: Option<SourceAtomSetIndex>,
-    script: FunctionScript,
-    flags: FunctionFlags,
-    // FIXME: add more fields
-}
-
-impl FunctionStencil {
-    pub fn non_lazy(
-        name: Option<SourceAtomSetIndex>,
-        script: ScriptStencil,
-        flags: FunctionFlags,
-    ) -> Self {
-        Self {
-            name,
-            script: FunctionScript::NonLazy(NonLazyFunctionScript { script }),
-            flags,
+    pub fn interpreted(syntax_kind: FunctionSyntaxKind) -> Self {
+        let kind_flag = (syntax_kind.kind as u16) << FUNCTION_KIND_SHIFT;
+        let mut flags = BASESCRIPT | kind_flag;
+        match syntax_kind.kind {
+            FunctionKind::NormalFunction => {
+                if !syntax_kind.is_generator && !syntax_kind.is_async {
+                    flags |= CONSTRUCTOR;
+                }
+                if syntax_kind.is_lambda {
+                    flags |= LAMBDA;
+                }
+            }
+            FunctionKind::ClassConstructor => {
+                debug_assert!(!syntax_kind.is_generator);
+                debug_assert!(!syntax_kind.is_async);
+                flags |= CONSTRUCTOR;
+            }
+            _ => {}
         }
+        Self::new(flags)
     }
 
-    pub fn lazy(
-        name: Option<SourceAtomSetIndex>,
-        script: ScriptStencilBase,
-        flags: FunctionFlags,
-    ) -> Self {
-        Self {
-            name,
-            script: FunctionScript::Lazy(LazyFunctionScript { script }),
-            flags,
-        }
-    }
-
-    pub fn is_non_lazy(&self) -> bool {
-        match self.script {
-            FunctionScript::NonLazy(_) => true,
-            FunctionScript::Lazy(_) => false,
-        }
-    }
-
-    pub fn is_lazy(&self) -> bool {
-        match self.script {
-            FunctionScript::NonLazy(_) => false,
-            FunctionScript::Lazy(_) => true,
-        }
-    }
-
-    pub fn non_lazy_script<'a>(&'a self) -> &'a ScriptStencil {
-        match &self.script {
-            FunctionScript::NonLazy(nonlazy) => &nonlazy.script,
-            FunctionScript::Lazy(_) => panic!("unexpeceted function type"),
-        }
+    pub fn is_arrow(&self) -> bool {
+        let kind_num = (self.flags >> FUNCTION_KIND_SHIFT) & FUNCTION_KIND_MASK;
+        kind_num == FunctionKind::Arrow as u16
     }
 }
 
-/// Index into FunctionStencilList.items.
-#[derive(Debug, Clone, Copy)]
-pub struct FunctionStencilIndex {
-    index: usize,
-}
-
-impl FunctionStencilIndex {
-    fn new(index: usize) -> Self {
-        Self { index }
-    }
-}
-
-impl From<FunctionStencilIndex> for usize {
-    fn from(index: FunctionStencilIndex) -> usize {
-        index.index
-    }
-}
-
-/// List of FunctionStencil.
-#[derive(Debug)]
-pub struct FunctionStencilList {
-    items: Vec<FunctionStencil>,
-}
-
-impl FunctionStencilList {
-    pub fn new() -> Self {
-        Self { items: Vec::new() }
-    }
-
-    pub fn push(&mut self, fun_data: FunctionStencil) -> FunctionStencilIndex {
-        let index = self.items.len();
-        self.items.push(fun_data);
-        FunctionStencilIndex::new(index)
-    }
-}
-
-impl From<FunctionStencilList> for Vec<FunctionStencil> {
-    fn from(list: FunctionStencilList) -> Vec<FunctionStencil> {
-        list.items
+impl From<FunctionFlags> for u16 {
+    fn from(flags: FunctionFlags) -> u16 {
+        flags.flags
     }
 }

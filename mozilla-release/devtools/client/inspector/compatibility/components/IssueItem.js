@@ -12,6 +12,9 @@ const {
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
+const FluentReact = require("devtools/client/shared/vendor/fluent-react");
+const Localized = createFactory(FluentReact.Localized);
+
 loader.lazyRequireGetter(
   this,
   "openDocLink",
@@ -83,50 +86,35 @@ class IssueItem extends PureComponent {
   _renderCauses() {
     const { deprecated, experimental } = this.props;
 
-    const causes = [];
-
-    if (deprecated) {
-      causes.push("deprecated");
+    if (!deprecated && !experimental) {
+      return null;
     }
 
-    if (experimental) {
-      causes.push("experimental");
+    let localizationId = "compatibility-issue-deprecated-experimental";
+
+    if (!deprecated) {
+      localizationId = "compatibility-issue-experimental";
+    } else if (!experimental) {
+      localizationId = "compatibility-issue-deprecated";
     }
 
-    return causes.length
-      ? dom.span(
-          { className: "compatibility-issue-item__causes" },
-          `(${causes.join(",")})`
-        )
-      : null;
+    return Localized(
+      {
+        id: localizationId,
+      },
+      dom.span(
+        { className: "compatibility-issue-item__causes" },
+        localizationId
+      )
+    );
   }
 
   _renderDescription() {
-    const {
-      deprecated,
-      experimental,
-      property,
-      unsupportedBrowsers,
-      url,
-    } = this.props;
-
-    const classes = ["compatibility-issue-item__description"];
-
-    if (deprecated) {
-      classes.push("compatibility-issue-item__description--deprecated");
-    }
-
-    if (experimental) {
-      classes.push("compatibility-issue-item__description--experimental");
-    }
-
-    if (unsupportedBrowsers.length) {
-      classes.push("compatibility-issue-item__description--unsupported");
-    }
+    const { property, url } = this.props;
 
     return dom.div(
       {
-        className: classes.join(" "),
+        className: "compatibility-issue-item__description",
       },
       dom.a(
         {
@@ -172,11 +160,30 @@ class IssueItem extends PureComponent {
   }
 
   render() {
-    const { property } = this.props;
+    const {
+      deprecated,
+      experimental,
+      property,
+      unsupportedBrowsers,
+    } = this.props;
+
+    const classes = ["compatibility-issue-item"];
+
+    if (deprecated) {
+      classes.push("compatibility-issue-item--deprecated");
+    }
+
+    if (experimental) {
+      classes.push("compatibility-issue-item--experimental");
+    }
+
+    if (unsupportedBrowsers.length) {
+      classes.push("compatibility-issue-item--unsupported");
+    }
 
     return dom.li(
       {
-        className: "compatibility-issue-item",
+        className: classes.join(" "),
         key: property,
         ...this._getTestDataAttributes(),
       },

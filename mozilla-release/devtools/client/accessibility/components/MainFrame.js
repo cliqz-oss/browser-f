@@ -100,15 +100,9 @@ class MainFrame extends Component {
       "can-be-disabled-change": this.onCanBeDisabledChange,
     });
     this.props.startListeningForAccessibilityEvents({
-      "document-ready": this.resetAccessibility,
+      "top-level-document-ready": this.resetAccessibility,
     });
     window.addEventListener("resize", this.onPanelWindowResize, true);
-  }
-
-  componentWillReceiveProps({ enabled }) {
-    if (this.props.enabled && !enabled) {
-      this.resetAccessibility();
-    }
   }
 
   componentWillUnmount() {
@@ -121,7 +115,7 @@ class MainFrame extends Component {
       "can-be-disabled-change": this.onCanBeDisabledChange,
     });
     this.props.stopListeningForAccessibilityEvents({
-      "document-ready": this.resetAccessibility,
+      "top-level-document-ready": this.resetAccessibility,
     });
     window.removeEventListener("resize", this.onPanelWindowResize, true);
   }
@@ -192,7 +186,7 @@ class MainFrame extends Component {
     return LocalizationProvider(
       { bundles: fluentBundles },
       div(
-        { className: "mainFrame", role: "presentation" },
+        { className: "mainFrame", role: "presentation", tabIndex: "-1" },
         Toolbar({
           audit,
           disableAccessibility,
@@ -217,6 +211,7 @@ class MainFrame extends Component {
               {
                 className: "main-panel",
                 role: "presentation",
+                tabIndex: "-1",
               },
               AccessibilityTree({
                 toolboxDoc: toolbox.doc,

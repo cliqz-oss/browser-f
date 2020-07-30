@@ -97,7 +97,7 @@ class Context::QuotaInitRunnable final : public nsIRunnable,
         mData(aData),
         mTarget(aTarget),
         mInitAction(aInitAction),
-        mInitiatingEventTarget(GetCurrentThreadEventTarget()),
+        mInitiatingEventTarget(GetCurrentEventTarget()),
         mResult(NS_OK),
         mState(STATE_INIT),
         mCanceled(false) {
@@ -469,7 +469,7 @@ class Context::ActionRunnable final : public nsIRunnable,
         mTarget(aTarget),
         mAction(aAction),
         mQuotaInfo(aQuotaInfo),
-        mInitiatingThread(GetCurrentThreadEventTarget()),
+        mInitiatingThread(GetCurrentEventTarget()),
         mState(STATE_INIT),
         mResult(NS_OK),
         mExecutingRunOnTarget(false) {
@@ -700,7 +700,7 @@ void Context::ThreadsafeHandle::InvalidateAndAllowToClose() {
 Context::ThreadsafeHandle::ThreadsafeHandle(SafeRefPtr<Context> aContext)
     : mStrongRef(std::move(aContext)),
       mWeakRef(mStrongRef.unsafeGetRawPtr()),
-      mOwningEventTarget(GetCurrentThreadSerialEventTarget()) {}
+      mOwningEventTarget(GetCurrentSerialEventTarget()) {}
 
 Context::ThreadsafeHandle::~ThreadsafeHandle() {
   // Normally we only touch mStrongRef on the owning thread.  This is safe,
@@ -817,11 +817,8 @@ void Context::CancelAll() {
 
   mState = STATE_CONTEXT_CANCELED;
   mPendingActions.Clear();
-  {
-    ActivityList::ForwardIterator iter(mActivityList);
-    while (iter.HasMore()) {
-      iter.GetNext()->Cancel();
-    }
+  for (auto* activity : mActivityList.ForwardRange()) {
+    activity->Cancel();
   }
   AllowToClose();
 }
@@ -848,16 +845,12 @@ void Context::CancelForCacheId(CacheId aCacheId) {
   NS_ASSERT_OWNINGTHREAD(Context);
 
   // Remove matching pending actions
-  for (int32_t i = mPendingActions.Length() - 1; i >= 0; --i) {
-    if (mPendingActions[i].mAction->MatchesCacheId(aCacheId)) {
-      mPendingActions.RemoveElementAt(i);
-    }
-  }
+  mPendingActions.RemoveElementsBy([aCacheId](const auto& pendingAction) {
+    return pendingAction.mAction->MatchesCacheId(aCacheId);
+  });
 
   // Cancel activities and let them remove themselves
-  ActivityList::ForwardIterator iter(mActivityList);
-  while (iter.HasMore()) {
-    Activity* activity = iter.GetNext();
+  for (auto* activity : mActivityList.ForwardRange()) {
     if (activity->MatchesCacheId(aCacheId)) {
       activity->Cancel();
     }

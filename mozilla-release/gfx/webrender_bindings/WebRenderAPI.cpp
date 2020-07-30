@@ -70,11 +70,6 @@ class NewRenderer : public RendererEvent {
     *mUseDComp = compositor->UseDComp();
     *mUseTripleBuffering = compositor->UseTripleBuffering();
 
-    void* swCtx = nullptr;
-    if (gfx::gfxVars::UseSoftwareWebRender()) {
-      swCtx = wr_swgl_create_context();
-    }
-
     // Only allow the panic on GL error functionality in nightly builds,
     // since it (deliberately) crashes the GPU process if any GL call
     // returns an error code.
@@ -84,7 +79,6 @@ class NewRenderer : public RendererEvent {
         StaticPrefs::gfx_webrender_panic_on_gl_error_AtStartup();
 #endif
 
-    bool allow_texture_swizzling = gfx::gfxVars::UseGLSwizzle();
     bool isMainWindow = true;  // TODO!
     bool supportLowPriorityTransactions = isMainWindow;
     bool supportLowPriorityThreadpool =
@@ -95,15 +89,17 @@ class NewRenderer : public RendererEvent {
     if (!wr_window_new(
             aWindowId, mSize.width, mSize.height,
             supportLowPriorityTransactions, supportLowPriorityThreadpool,
-            allow_texture_swizzling,
+            gfx::gfxVars::UseGLSwizzle(),
             StaticPrefs::gfx_webrender_picture_caching() &&
                 supportPictureCaching,
+            gfx::gfxVars::UseWebRenderScissoredCacheClears(),
 #ifdef NIGHTLY_BUILD
             StaticPrefs::gfx_webrender_start_debug_server(),
 #else
             false,
 #endif
-            swCtx, compositor->gl(), compositor->SurfaceOriginIsTopLeft(),
+            compositor->swgl(), compositor->gl(),
+            compositor->SurfaceOriginIsTopLeft(),
             aRenderThread.GetProgramCache()
                 ? aRenderThread.GetProgramCache()->Raw()
                 : nullptr,
@@ -122,9 +118,6 @@ class NewRenderer : public RendererEvent {
             StaticPrefs::gfx_webrender_enable_gpu_markers_AtStartup(),
             panic_on_gl_error)) {
       // wr_window_new puts a message into gfxCriticalNote if it returns false
-      if (swCtx) {
-        wr_swgl_destroy_context(swCtx);
-      }
       return;
     }
     MOZ_ASSERT(wrRenderer);
@@ -132,7 +125,7 @@ class NewRenderer : public RendererEvent {
     RefPtr<RenderThread> thread = &aRenderThread;
     auto renderer =
         MakeUnique<RendererOGL>(std::move(thread), std::move(compositor),
-                                aWindowId, wrRenderer, mBridge, swCtx);
+                                aWindowId, wrRenderer, mBridge);
     if (wrRenderer && renderer) {
       wr::WrExternalImageHandler handler = renderer->GetExternalImageHandler();
       wr_renderer_set_external_image_handler(wrRenderer, &handler);
@@ -267,6 +260,19 @@ void TransactionBuilder::UpdateScrollPosition(
 }
 
 TransactionWrapper::TransactionWrapper(Transaction* aTxn) : mTxn(aTxn) {}
+
+void TransactionWrapper::UpdateDynamicProperties(
+    const nsTArray<wr::WrOpacityProperty>& aOpacityArray,
+    const nsTArray<wr::WrTransformProperty>& aTransformArray,
+    const nsTArray<wr::WrColorProperty>& aColorArray) {
+  wr_transaction_update_dynamic_properties(
+      mTxn, aOpacityArray.IsEmpty() ? nullptr : aOpacityArray.Elements(),
+      aOpacityArray.Length(),
+      aTransformArray.IsEmpty() ? nullptr : aTransformArray.Elements(),
+      aTransformArray.Length(),
+      aColorArray.IsEmpty() ? nullptr : aColorArray.Elements(),
+      aColorArray.Length());
+}
 
 void TransactionWrapper::AppendTransformProperties(
     const nsTArray<wr::WrTransformProperty>& aTransformArray) {

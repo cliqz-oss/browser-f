@@ -32,8 +32,21 @@ NS_IMPL_RELEASE_INHERITED(DOMLocalization, Localization)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(DOMLocalization)
 NS_INTERFACE_MAP_END_INHERITING(Localization)
 
-DOMLocalization::DOMLocalization(nsIGlobalObject* aGlobal)
-    : Localization(aGlobal) {
+/* static */
+already_AddRefed<DOMLocalization> DOMLocalization::Create(
+    nsIGlobalObject* aGlobal, const bool aSync,
+    const BundleGenerator& aBundleGenerator) {
+  RefPtr<DOMLocalization> domLoc =
+      new DOMLocalization(aGlobal, aSync, aBundleGenerator);
+
+  domLoc->Init();
+
+  return domLoc.forget();
+}
+
+DOMLocalization::DOMLocalization(nsIGlobalObject* aGlobal, const bool aSync,
+                                 const BundleGenerator& aBundleGenerator)
+    : Localization(aGlobal, aSync, aBundleGenerator) {
   mMutations = new L10nMutations(this);
 }
 
@@ -47,13 +60,14 @@ already_AddRefed<DOMLocalization> DOMLocalization::Constructor(
     return nullptr;
   }
 
-  RefPtr<DOMLocalization> domLoc = new DOMLocalization(global);
+  RefPtr<DOMLocalization> domLoc =
+      DOMLocalization::Create(global, aSync, aBundleGenerator);
 
   if (aResourceIds.Length()) {
     domLoc->AddResourceIds(aResourceIds);
   }
 
-  domLoc->Activate(aSync, true, aBundleGenerator);
+  domLoc->Activate(true);
 
   return domLoc.forget();
 }
@@ -63,7 +77,9 @@ JSObject* DOMLocalization::WrapObject(JSContext* aCx,
   return DOMLocalization_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-DOMLocalization::~DOMLocalization() { DisconnectMutations(); }
+void DOMLocalization::Destroy() { DisconnectMutations(); }
+
+DOMLocalization::~DOMLocalization() { Destroy(); }
 
 /**
  * DOMLocalization API
@@ -131,7 +147,7 @@ void DOMLocalization::SetAttributes(
   }
 }
 
-void DOMLocalization::GetAttributes(Element& aElement, L10nKey& aResult,
+void DOMLocalization::GetAttributes(Element& aElement, L10nIdArgs& aResult,
                                     ErrorResult& aRv) {
   nsAutoString l10nId;
   nsAutoString l10nArgs;
@@ -274,8 +290,8 @@ already_AddRefed<Promise> DOMLocalization::TranslateElements(
     const Sequence<OwningNonNull<Element>>& aElements,
     nsXULPrototypeDocument* aProto, ErrorResult& aRv) {
   JS::RootingContext* rcx = RootingCx();
-  Sequence<L10nKey> l10nKeys;
-  SequenceRooter<L10nKey> rooter(rcx, &l10nKeys);
+  Sequence<OwningUTF8StringOrL10nIdArgs> l10nKeys;
+  SequenceRooter<OwningUTF8StringOrL10nIdArgs> rooter(rcx, &l10nKeys);
   RefPtr<ElementTranslationHandler> nativeHandler =
       new ElementTranslationHandler(this, aProto);
   nsTArray<nsCOMPtr<Element>>& domElements = nativeHandler->Elements();
@@ -293,13 +309,13 @@ already_AddRefed<Promise> DOMLocalization::TranslateElements(
       continue;
     }
 
-    L10nKey* key = l10nKeys.AppendElement(fallible);
+    OwningUTF8StringOrL10nIdArgs* key = l10nKeys.AppendElement(fallible);
     if (!key) {
       aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
       return nullptr;
     }
 
-    GetAttributes(*domElement, *key, aRv);
+    GetAttributes(*domElement, key->SetAsL10nIdArgs(), aRv);
     if (NS_WARN_IF(aRv.Failed())) {
       return nullptr;
     }
@@ -469,6 +485,14 @@ bool DOMLocalization::ApplyTranslations(
       hasMissingTranslation = true;
       continue;
     }
+    // If we have a proto, we expect all elements are connected up.
+    // If they're not, they may have been removed by earlier translations.
+    // We will have added an error in L10nOverlays in this case.
+    // This is an error in fluent use, but shouldn't be crashing. There's
+    // also no point translating the element - skip it:
+    if (aProto && !elem->IsInComposedDoc()) {
+      continue;
+    }
     L10nOverlays::TranslateElement(*elem, aTranslations[i].Value(), errors,
                                    aRv);
     if (NS_WARN_IF(aRv.Failed())) {
@@ -498,7 +522,7 @@ bool DOMLocalization::ApplyTranslations(
 
 void DOMLocalization::OnChange() {
   Localization::OnChange();
-  if (mLocalization) {
+  if (mLocalization && !mResourceIds.IsEmpty()) {
     ErrorResult rv;
     RefPtr<Promise> promise = TranslateRoots(rv);
   }
@@ -550,10 +574,29 @@ void DOMLocalization::ReportL10nOverlaysErrors(
                      " didn't match the element found in the source ") +
                  error.mSourceElementName.Value() + NS_LITERAL_STRING(".");
           break;
+        case L10nOverlays_Binding::ERROR_TRANSLATED_ELEMENT_DISCONNECTED:
+          msg += NS_LITERAL_STRING("The element using message \"") +
+                 error.mL10nName.Value() +
+                 NS_LITERAL_STRING(
+                     "\" was removed from the DOM when translating its \"") +
+                 error.mTranslatedElementName.Value() +
+                 NS_LITERAL_STRING("\" parent.");
+          break;
+        case L10nOverlays_Binding::ERROR_TRANSLATED_ELEMENT_DISALLOWED_DOM:
+          msg += NS_LITERAL_STRING(
+                     "While translating an element with fluent ID \"") +
+                 error.mL10nName.Value() +
+                 NS_LITERAL_STRING("\" a child element of type \"") +
+                 error.mTranslatedElementName.Value() +
+                 NS_LITERAL_STRING(
+                     "\" was removed. Either the fluent message "
+                     "does not contain markup, or it does not contain markup "
+                     "of this type.");
+          break;
         case L10nOverlays_Binding::ERROR_UNKNOWN:
         default:
           msg += NS_LITERAL_STRING(
-              "Unknown error happened while translation of an element.");
+              "Unknown error happened while translating an element.");
           break;
       }
       nsPIDOMWindowInner* innerWindow = GetParentObject()->AsInnerWindow();

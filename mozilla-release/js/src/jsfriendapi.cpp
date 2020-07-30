@@ -503,9 +503,11 @@ JS_FRIEND_API void js::SetReservedSlotWithBarrier(JSObject* obj, size_t slot,
   }
 }
 
-void js::SetPreserveWrapperCallback(JSContext* cx,
-                                    PreserveWrapperCallback callback) {
-  cx->runtime()->preserveWrapperCallback = callback;
+void js::SetPreserveWrapperCallbacks(
+    JSContext* cx, PreserveWrapperCallback preserveWrapper,
+    HasReleasedWrapperCallback hasReleasedWrapper) {
+  cx->runtime()->preserveWrapperCallback = preserveWrapper;
+  cx->runtime()->hasReleasedWrapperCallback = hasReleasedWrapper;
 }
 
 JS_FRIEND_API unsigned JS_PCToLineNumber(JSScript* script, jsbytecode* pc,
@@ -1423,7 +1425,7 @@ JS_FRIEND_API void js::SetWindowProxy(JSContext* cx, HandleObject global,
 
   GlobalObject& globalObj = global->as<GlobalObject>();
   globalObj.setWindowProxy(windowProxy);
-  globalObj.lexicalEnvironment().setWindowProxyThisValue(windowProxy);
+  globalObj.lexicalEnvironment().setWindowProxyThisObject(windowProxy);
 }
 
 JS_FRIEND_API JSObject* js::ToWindowIfWindowProxy(JSObject* obj) {

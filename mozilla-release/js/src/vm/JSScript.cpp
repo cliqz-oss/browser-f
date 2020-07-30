@@ -31,8 +31,6 @@
 #include "jsapi.h"
 #include "jstypes.h"
 
-#include "frontend/BinASTRuntimeSupport.h"  // BinASTSourceMetadata{,Multipart,Context}
-#include "frontend/BinASTTokenReaderContext.h"  // HuffmanDictionaryForMetadata,AutoClearHuffmanDictionaryForMetadata
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/BytecodeEmitter.h"
 #include "frontend/SharedContext.h"
@@ -714,6 +712,8 @@ XDRResult js::PrivateScriptData::XDR(XDRState<mode>* xdr, HandleScript script,
   // Code the field initilizer data.
   if (funOrMod && funOrMod->is<JSFunction>() &&
       funOrMod->as<JSFunction>().isClassConstructor()) {
+    MOZ_ASSERT(scriptEnclosingScope);
+
     uint32_t numFieldInitializers;
     if (mode == XDR_ENCODE) {
       numFieldInitializers = data->getFieldInitializers().numFieldInitializers;
@@ -1218,7 +1218,9 @@ XDRResult js::XDRLazyScript(XDRState<mode>* xdr, HandleScope enclosingScope,
     }
   }
 
-  bool hasFieldInitializers = fun->isClassConstructor();
+  // FieldInitializer data is defined for class constructors, but only once
+  // their enclosing script has been compiled.
+  bool hasFieldInitializers = fun->isClassConstructor() && enclosingScope;
 
   MOZ_TRY(BaseScript::XDRLazyScriptData(xdr, sourceObject, lazy,
                                         hasFieldInitializers));
@@ -1781,11 +1783,6 @@ class ScriptSource::LoadSourceMatcher {
     return true;
   }
 
-  bool operator()(const BinAST&) const {
-    *loaded_ = false;
-    return true;
-  }
-
  private:
   bool tryLoadAndSetSource(const Utf8Unit&, size_t* length) const {
     char* utf8Source;
@@ -2271,31 +2268,6 @@ MOZ_MUST_USE bool ScriptSource::setRetrievedSource(JSContext* cx,
                                      SourceRetrievable::Yes);
 }
 
-#if defined(JS_BUILD_BINAST)
-
-MOZ_MUST_USE bool ScriptSource::setBinASTSourceCopy(JSContext* cx,
-                                                    const uint8_t* buf,
-                                                    size_t len) {
-  MOZ_ASSERT(data.is<Missing>());
-
-  auto& cache = cx->zone()->runtimeFromAnyThread()->sharedImmutableStrings();
-  auto deduped = cache.getOrCreate(reinterpret_cast<const char*>(buf), len);
-  if (!deduped) {
-    ReportOutOfMemory(cx);
-    return false;
-  }
-
-  data = SourceType(BinAST(std::move(*deduped), nullptr));
-  return true;
-}
-
-const uint8_t* ScriptSource::binASTSource() {
-  MOZ_ASSERT(hasBinASTSource());
-  return reinterpret_cast<const uint8_t*>(data.as<BinAST>().string.chars());
-}
-
-#endif /* JS_BUILD_BINAST */
-
 bool ScriptSource::tryCompressOffThread(JSContext* cx) {
   // Beware: |js::SynchronouslyCompressSource| assumes that this function is
   // only called once, just after a script has been compiled, and it's never
@@ -2303,7 +2275,7 @@ bool ScriptSource::tryCompressOffThread(JSContext* cx) {
   // occur, that function may require changes.
 
   if (!hasUncompressedSource()) {
-    // This excludes compressed, missing, retrievable, and BinAST source.
+    // This excludes compressed, missing, and retrievable source.
     return true;
   }
 
@@ -2438,15 +2410,6 @@ template bool ScriptSource::assignSource(JSContext* cx,
 
 void ScriptSource::trace(JSTracer* trc) {
   // This should be kept in sync with ScriptSource::finalizeGCData below.
-#ifdef JS_BUILD_BINAST
-  if (data.is<BinAST>()) {
-    if (auto& metadata = data.as<BinAST>().metadata) {
-      metadata->trace(trc);
-    }
-  }
-#else
-  MOZ_ASSERT(!data.is<BinAST>());
-#endif  // JS_BUILD_BINAST
   if (xdrEncoder_) {
     xdrEncoder_->trace(trc);
   }
@@ -2463,13 +2426,6 @@ void ScriptSource::finalizeGCData() {
   // offthread later will fail.
   MOZ_ASSERT(TlsContext.get() && TlsContext.get()->isMainThreadContext());
 
-#ifdef JS_BUILD_BINAST
-  if (hasBinASTSource()) {
-    if (auto& metadata = data.as<BinAST>().metadata) {
-      metadata.reset();
-    }
-  }
-#endif  // JS_BUILD_BINAST
   if (xdrEncoder_) {
     xdrEncoder_.reset();
   }
@@ -2481,7 +2437,6 @@ ScriptSource::~ScriptSource() {
   // GC pointers must have been cleared earlier, because this destructor could
   // be called off-thread by SweepCompressionTasks. See above.
   MOZ_ASSERT(!xdrEncoder_);
-  MOZ_ASSERT_IF(hasBinASTSource(), !data.as<BinAST>().metadata);
 }
 
 static MOZ_MUST_USE bool reallocUniquePtr(UniqueChars& unique, size_t size) {
@@ -2583,7 +2538,7 @@ struct SourceCompressionTask::PerformTaskWork {
   void operator()(const T&) {
     MOZ_CRASH(
         "why are we compressing missing, missing-but-retrievable, "
-        "already-compressed, or BinAST source?");
+        "or already-compressed source?");
   }
 };
 
@@ -2597,10 +2552,27 @@ void SourceCompressionTask::runTask() {
     return;
   }
 
+  TraceLoggerThread* logger = TraceLoggerForCurrentThread();
+  AutoTraceLog logCompile(logger, TraceLogger_CompressSource);
+
   ScriptSource* source = sourceHolder_.get();
   MOZ_ASSERT(source->hasUncompressedSource());
 
   source->performTaskWork(this);
+}
+
+void SourceCompressionTask::runTaskLocked(AutoLockHelperThreadState& locked) {
+  {
+    AutoUnlockHelperThreadState unlock(locked);
+    this->runTask();
+  }
+
+  {
+    AutoEnterOOMUnsafeRegion oomUnsafe;
+    if (!HelperThreadState().compressionFinishedList(locked).append(this)) {
+      oomUnsafe.crash("SourceCompressionTask::runTaskLocked");
+    }
+  }
 }
 
 void ScriptSource::triggerConvertToCompressedSourceFromTask(
@@ -2667,7 +2639,7 @@ bool js::SynchronouslyCompressSource(JSContext* cx,
     // Attempt to compress.  This may not succeed if OOM happens, but (because
     // it ordinarily happens on a helper thread) no error will ever be set here.
     MOZ_ASSERT(!cx->isExceptionPending());
-    task->runTask();
+    ss->performTaskWork(task.get());
     MOZ_ASSERT(!cx->isExceptionPending());
 
     // Convert |ss| from uncompressed to compressed data.
@@ -2937,526 +2909,6 @@ void ScriptSource::codeRetrievable(ScriptSource* const ss) {
   }
 }
 
-template <XDRMode mode>
-/* static */
-XDRResult ScriptSource::codeBinASTData(XDRState<mode>* const xdr,
-                                       ScriptSource* const ss) {
-#if !defined(JS_BUILD_BINAST)
-  return xdr->fail(JS::TranscodeResult_Throw);
-#else
-  if (mode == XDR_ENCODE) {
-    MOZ_ASSERT(ss->data.is<BinAST>());
-  } else {
-    MOZ_ASSERT(ss->data.is<Missing>());
-  }
-
-  // XDR the length of the BinAST data.
-  uint32_t binASTLength;
-  if (mode == XDR_ENCODE) {
-    binASTLength = ss->data.as<BinAST>().string.length();
-  }
-  MOZ_TRY(xdr->codeUint32(&binASTLength));
-
-  // XDR the BinAST data.
-  mozilla::Maybe<SharedImmutableString> binASTData;
-  if (mode == XDR_DECODE) {
-    auto bytes = xdr->cx()->template make_pod_array<char>(
-        std::max<size_t>(binASTLength, 1));
-    if (!bytes) {
-      return xdr->fail(JS::TranscodeResult_Throw);
-    }
-    MOZ_TRY(xdr->codeBytes(bytes.get(), binASTLength));
-
-    auto& cache =
-        xdr->cx()->zone()->runtimeFromAnyThread()->sharedImmutableStrings();
-    binASTData = cache.getOrCreate(std::move(bytes), binASTLength);
-    if (!binASTData) {
-      ReportOutOfMemory(xdr->cx());
-      return xdr->fail(JS::TranscodeResult_Throw);
-    }
-  } else {
-    void* bytes = ss->binASTData();
-    MOZ_TRY(xdr->codeBytes(bytes, binASTLength));
-  }
-
-  // XDR any BinAST metadata.
-  uint8_t hasMetadata;
-  if (mode == XDR_ENCODE) {
-    hasMetadata = ss->data.as<BinAST>().metadata != nullptr;
-  }
-  MOZ_TRY(xdr->codeUint8(&hasMetadata));
-
-  Rooted<UniquePtr<frontend::BinASTSourceMetadata>> freshMetadata(xdr->cx());
-  if (hasMetadata) {
-    // If we're decoding, this is a *mutable borrowed* reference to the
-    // |UniquePtr| stored in the |Rooted| above, and the |UniquePtr| will be
-    // filled with freshly allocated metadata.
-    //
-    // If we're encoding, this is an *immutable borrowed* reference to the
-    // |UniquePtr| stored in |ss|.  (Immutable up to GCs transparently moving
-    // things around, that is.)
-    UniquePtr<frontend::BinASTSourceMetadata>& binASTMetadata =
-        mode == XDR_DECODE ? freshMetadata.get()
-                           : ss->data.as<BinAST>().metadata;
-
-    frontend::BinASTSourceMetadata::Type metadataType;
-    uint8_t metadataTypeAsInt;
-    if (mode == XDR_ENCODE) {
-      metadataType = binASTMetadata->type();
-      metadataTypeAsInt = static_cast<uint8_t>(metadataType);
-    }
-    MOZ_TRY(xdr->codeUint8(&metadataTypeAsInt));
-    if (mode == XDR_DECODE) {
-      metadataType =
-          static_cast<frontend::BinASTSourceMetadata::Type>(metadataTypeAsInt);
-    }
-
-    if (metadataType == frontend::BinASTSourceMetadata::Type::Multipart) {
-      auto metadata = binASTMetadata->asMultipart();
-
-      uint32_t numBinASTKinds;
-      uint32_t numStrings;
-      if (mode == XDR_ENCODE) {
-        numBinASTKinds = metadata->numBinASTKinds();
-        numStrings = metadata->numStrings();
-      }
-      MOZ_TRY(xdr->codeUint32(&numBinASTKinds));
-      MOZ_TRY(xdr->codeUint32(&numStrings));
-
-      if (mode == XDR_DECODE) {
-        metadata = frontend::BinASTSourceMetadataMultipart::create(
-            numBinASTKinds, numStrings);
-        if (!metadata) {
-          return xdr->fail(JS::TranscodeResult_Throw);
-        }
-
-        binASTMetadata.reset(metadata);
-      }
-
-      MOZ_ASSERT(binASTMetadata != nullptr);
-
-      frontend::BinASTKind* binASTKindBase = metadata->binASTKindBase();
-      for (uint32_t i = 0; i < numBinASTKinds; i++) {
-        MOZ_TRY(xdr->codeEnum32(&binASTKindBase[i]));
-      }
-
-      Rooted<JSAtom*> atom(xdr->cx());
-      JSAtom** atomsBase = metadata->atomsBase();
-      auto slices = metadata->sliceBase();
-      const char* sourceBase =
-          (mode == XDR_ENCODE ? ss->data.as<BinAST>().string : *binASTData)
-              .chars();
-
-      for (uint32_t i = 0; i < numStrings; i++) {
-        uint8_t isNull;
-        if (mode == XDR_ENCODE) {
-          atom = metadata->getAtom(i);
-          isNull = !atom;
-        }
-        MOZ_TRY(xdr->codeUint8(&isNull));
-        if (isNull) {
-          atom = nullptr;
-        } else {
-          MOZ_TRY(XDRAtom(xdr, &atom));
-        }
-        if (mode == XDR_DECODE) {
-          atomsBase[i] = atom;
-        }
-
-        uint64_t sliceOffset;
-        uint32_t sliceLen;
-        if (mode == XDR_ENCODE) {
-          auto& slice = metadata->getSlice(i);
-          sliceOffset = slice.begin() - sourceBase;
-          sliceLen = slice.byteLen_;
-        }
-
-        MOZ_TRY(xdr->codeUint64(&sliceOffset));
-        MOZ_TRY(xdr->codeUint32(&sliceLen));
-
-        if (mode == XDR_DECODE) {
-          new (&slices[i]) frontend::BinASTSourceMetadataMultipart::CharSlice(
-              sourceBase + sliceOffset, sliceLen);
-        }
-      }
-    } else {
-      MOZ_ASSERT(metadataType == frontend::BinASTSourceMetadata::Type::Context);
-
-      auto metadata = binASTMetadata->asContext();
-
-      uint32_t numStrings;
-      if (mode == XDR_ENCODE) {
-        numStrings = metadata->numStrings();
-      }
-      MOZ_TRY(xdr->codeUint32(&numStrings));
-
-      if (mode == XDR_DECODE) {
-        metadata = frontend::BinASTSourceMetadataContext::create(numStrings);
-        if (!metadata) {
-          return xdr->fail(JS::TranscodeResult_Throw);
-        }
-
-        binASTMetadata.reset(metadata);
-      }
-
-      MOZ_ASSERT(binASTMetadata != nullptr);
-
-      Rooted<JSAtom*> atom(xdr->cx());
-      JSAtom** atomsBase = metadata->atomsBase();
-
-      for (uint32_t i = 0; i < numStrings; i++) {
-        uint8_t isNull;
-        if (mode == XDR_ENCODE) {
-          atom = metadata->getAtom(i);
-          isNull = !atom;
-        }
-        MOZ_TRY(xdr->codeUint8(&isNull));
-        if (isNull) {
-          atom = nullptr;
-        } else {
-          MOZ_TRY(XDRAtom(xdr, &atom));
-        }
-        if (mode == XDR_DECODE) {
-          atomsBase[i] = atom;
-        }
-      }
-
-      uint32_t numTables;
-      uint32_t numHuffmanEntries;
-      uint32_t numInternalIndices;
-      uint32_t numSingleTables;
-      uint32_t numTwoTables;
-
-      UniquePtr<frontend::HuffmanDictionaryForMetadata> newDictionary;
-      frontend::AutoClearHuffmanDictionaryForMetadata autoClear;
-
-      frontend::HuffmanDictionaryForMetadata* dictionary;
-      if (mode == XDR_ENCODE) {
-        dictionary = metadata->dictionary();
-        MOZ_ASSERT(metadata->dictionary());
-
-        numTables = dictionary->numTables();
-        numHuffmanEntries = dictionary->numHuffmanEntries();
-        numInternalIndices = dictionary->numInternalIndices();
-        numSingleTables = dictionary->numSingleTables();
-        numTwoTables = dictionary->numTwoTables();
-      }
-      MOZ_TRY(xdr->codeUint32(&numTables));
-      MOZ_TRY(xdr->codeUint32(&numHuffmanEntries));
-      MOZ_TRY(xdr->codeUint32(&numInternalIndices));
-      MOZ_TRY(xdr->codeUint32(&numSingleTables));
-      MOZ_TRY(xdr->codeUint32(&numTwoTables));
-      if (mode == XDR_DECODE) {
-        dictionary = frontend::HuffmanDictionaryForMetadata::create(
-            numTables, numHuffmanEntries, numInternalIndices, numSingleTables,
-            numTwoTables);
-        if (!dictionary) {
-          return xdr->fail(JS::TranscodeResult_Throw);
-        }
-        autoClear.set(dictionary);
-
-        newDictionary.reset(dictionary);
-      }
-
-      auto huffmanEntryPtr = dictionary->huffmanEntriesBase();
-      auto internalIndexPtr = dictionary->internalIndicesBase();
-      auto singleTablePtr = dictionary->singleTablesBase();
-      auto twoTablePtr = dictionary->twoTablesBase();
-
-      for (uint32_t i = 0; i < frontend::TableIdentity::Limit; i++) {
-        MOZ_TRY(xdr->codeUint16(&dictionary->tableIndices_[i]));
-      }
-
-      enum TableTag {
-        SingleEntryHuffmanTableTag = 0,
-        TwoEntriesHuffmanTableTag = 1,
-        SingleLookupHuffmanTableTag = 2,
-        TwoLookupsHuffmanTableTag = 3,
-        ThreeLookupsHuffmanTableTag = 4,
-      };
-
-      // Encode/decode tables and the content of those tables.
-      for (uint32_t i = 0; i < numTables; i++) {
-        auto& table = dictionary->tableAtIndex(i);
-
-        uint8_t tag;
-        if (mode == XDR_ENCODE) {
-          if (table.implementation_.is<frontend::SingleEntryHuffmanTable>()) {
-            tag = SingleEntryHuffmanTableTag;
-          } else if (table.implementation_
-                         .is<frontend::TwoEntriesHuffmanTable>()) {
-            tag = TwoEntriesHuffmanTableTag;
-          } else if (table.implementation_
-                         .is<frontend::SingleLookupHuffmanTable>()) {
-            tag = SingleLookupHuffmanTableTag;
-          } else if (table.implementation_
-                         .is<frontend::TwoLookupsHuffmanTable>()) {
-            tag = TwoLookupsHuffmanTableTag;
-          } else {
-            MOZ_ASSERT(
-                table.implementation_.is<frontend::ThreeLookupsHuffmanTable>());
-            tag = ThreeLookupsHuffmanTableTag;
-          }
-        }
-
-        MOZ_TRY(xdr->codeUint8(&tag));
-
-        // Encode/decode HuffmanEntry, without moving `huffmanEntryPtr`.
-        // The caller is responsible to move `huffmanEntryPtr`.
-        auto codeHuffmanEntryWithoutMovePtr =
-            [xdr](frontend::HuffmanEntry* entry) -> XDRResult {
-          uint32_t keyBits;
-          uint8_t keyBitLength;
-          uint64_t bits;
-          if (mode == XDR_ENCODE) {
-            keyBits = entry->key().bits_;
-            keyBitLength = entry->key().bitLength_;
-            bits = entry->value().asBits_;
-          }
-          MOZ_TRY(xdr->codeUint32(&keyBits));
-          MOZ_TRY(xdr->codeUint8(&keyBitLength));
-          MOZ_TRY(xdr->codeUint64(&bits));
-          if (mode == XDR_DECODE) {
-            new (entry) frontend::HuffmanEntry(keyBits, keyBitLength,
-                                               frontend::BinASTSymbol(bits));
-          }
-
-          return Ok();
-        };
-
-        // Encode/decode SingleLookupHuffmanTable and its contents.
-        auto codeSingleTable =
-            [xdr, &huffmanEntryPtr, &internalIndexPtr,
-             codeHuffmanEntryWithoutMovePtr](
-                frontend::SingleLookupHuffmanTable* table) -> XDRResult {
-          uint32_t numValues;
-          if (mode == XDR_ENCODE) {
-            numValues = table->values_.size();
-          }
-          MOZ_TRY(xdr->codeUint32(&numValues));
-          if (mode == XDR_DECODE) {
-            table->values_ =
-                mozilla::MakeSpan(huffmanEntryPtr.get(), numValues);
-            huffmanEntryPtr += numValues;
-          }
-
-          for (size_t i = 0; i < numValues; i++) {
-            MOZ_TRY(codeHuffmanEntryWithoutMovePtr(&table->values_[i]));
-          }
-
-          uint32_t numSaturated;
-          if (mode == XDR_ENCODE) {
-            numSaturated = table->saturated_.size();
-          }
-          MOZ_TRY(xdr->codeUint32(&numSaturated));
-          if (mode == XDR_DECODE) {
-            table->saturated_ =
-                mozilla::MakeSpan(internalIndexPtr.get(), numSaturated);
-            internalIndexPtr += numSaturated;
-          }
-
-          for (size_t i = 0; i < numSaturated; i++) {
-            MOZ_TRY(xdr->codeUint8(&table->saturated_[i]));
-          }
-
-          MOZ_TRY(xdr->codeUint8(&table->largestBitLength_));
-
-          return Ok();
-        };
-
-        // Encode/decode TwoLookupsHuffmanTable and its contents,
-        // including suffixTables_ recursively.
-        auto codeTwoTable =
-            [xdr, &huffmanEntryPtr, &singleTablePtr,
-             codeHuffmanEntryWithoutMovePtr, codeSingleTable](
-                frontend::TwoLookupsHuffmanTable* table) -> XDRResult {
-          MOZ_TRY(codeSingleTable(&table->shortKeys_));
-
-          uint32_t numValues;
-          if (mode == XDR_ENCODE) {
-            numValues = table->values_.size();
-          }
-          MOZ_TRY(xdr->codeUint32(&numValues));
-          if (mode == XDR_DECODE) {
-            table->values_ =
-                mozilla::MakeSpan(huffmanEntryPtr.get(), numValues);
-            huffmanEntryPtr += numValues;
-          }
-
-          for (size_t i = 0; i < numValues; i++) {
-            MOZ_TRY(codeHuffmanEntryWithoutMovePtr(&table->values_[i]));
-          }
-
-          uint32_t numSuffixTables;
-          if (mode == XDR_ENCODE) {
-            numSuffixTables = table->suffixTables_.size();
-          }
-          MOZ_TRY(xdr->codeUint32(&numSuffixTables));
-          if (mode == XDR_DECODE) {
-            table->suffixTables_ =
-                mozilla::MakeSpan(singleTablePtr.get(), numSuffixTables);
-            singleTablePtr += numSuffixTables;
-          }
-
-          for (size_t i = 0; i < numSuffixTables; i++) {
-            auto suffixTable = &table->suffixTables_[i];
-            new (suffixTable) frontend::SingleLookupHuffmanTable();
-            MOZ_TRY(codeSingleTable(suffixTable));
-          }
-
-          MOZ_TRY(xdr->codeUint8(&table->largestBitLength_));
-
-          return Ok();
-        };
-
-        // Encode/decode ThreeLookupsHuffmanTable and its contents,
-        // including suffixTables_ recursively.
-        auto codeThreeTable =
-            [xdr, &huffmanEntryPtr, &twoTablePtr,
-             codeHuffmanEntryWithoutMovePtr, codeSingleTable, codeTwoTable](
-                frontend::ThreeLookupsHuffmanTable* table) -> XDRResult {
-          MOZ_TRY(codeSingleTable(&table->shortKeys_));
-
-          uint32_t numValues;
-          if (mode == XDR_ENCODE) {
-            numValues = table->values_.size();
-          }
-          MOZ_TRY(xdr->codeUint32(&numValues));
-          if (mode == XDR_DECODE) {
-            table->values_ =
-                mozilla::MakeSpan(huffmanEntryPtr.get(), numValues);
-            huffmanEntryPtr += numValues;
-          }
-
-          for (size_t i = 0; i < numValues; i++) {
-            MOZ_TRY(codeHuffmanEntryWithoutMovePtr(&table->values_[i]));
-          }
-
-          uint32_t numSuffixTables;
-          if (mode == XDR_ENCODE) {
-            numSuffixTables = table->suffixTables_.size();
-          }
-          MOZ_TRY(xdr->codeUint32(&numSuffixTables));
-          if (mode == XDR_DECODE) {
-            table->suffixTables_ =
-                mozilla::MakeSpan(twoTablePtr.get(), numSuffixTables);
-            twoTablePtr += numSuffixTables;
-          }
-
-          for (size_t i = 0; i < numSuffixTables; i++) {
-            auto suffixTable = &table->suffixTables_[i];
-            new (suffixTable) frontend::TwoLookupsHuffmanTable();
-            MOZ_TRY(codeTwoTable(suffixTable));
-          }
-
-          MOZ_TRY(xdr->codeUint8(&table->largestBitLength_));
-
-          return Ok();
-        };
-
-        if (tag == SingleEntryHuffmanTableTag) {
-          uint64_t bits;
-          if (mode == XDR_ENCODE) {
-            auto& specialized =
-                table.implementation_.as<frontend::SingleEntryHuffmanTable>();
-            bits = specialized.value_.asBits_;
-          }
-          MOZ_TRY(xdr->codeUint64(&bits));
-          if (mode == XDR_DECODE) {
-            new (&table) frontend::GenericHuffmanTable();
-
-            auto value = frontend::BinASTSymbol(bits);
-            table.implementation_ = {
-                mozilla::VariantType<frontend::SingleEntryHuffmanTable>{},
-                value};
-          }
-        } else if (tag == SingleEntryHuffmanTableTag) {
-          if (mode == XDR_DECODE) {
-            new (&table) frontend::GenericHuffmanTable();
-
-            table.implementation_ = {
-                mozilla::VariantType<frontend::TwoEntriesHuffmanTable>{}};
-          }
-
-          auto& specialized =
-              table.implementation_.as<frontend::TwoEntriesHuffmanTable>();
-
-          for (size_t i = 0; i < 2; i++) {
-            uint64_t bits;
-
-            if (mode == XDR_ENCODE) {
-              bits = specialized.values_[i].asBits_;
-            }
-            MOZ_TRY(xdr->codeUint64(&bits));
-            if (mode == XDR_DECODE) {
-              specialized.values_[i] = frontend::BinASTSymbol(bits);
-            }
-          }
-        } else if (tag == SingleLookupHuffmanTableTag) {
-          if (mode == XDR_DECODE) {
-            new (&table) frontend::GenericHuffmanTable();
-
-            table.implementation_ = {
-                mozilla::VariantType<frontend::SingleLookupHuffmanTable>{}};
-          }
-
-          auto& specialized =
-              table.implementation_.as<frontend::SingleLookupHuffmanTable>();
-
-          MOZ_TRY(codeSingleTable(&specialized));
-        } else if (tag == TwoLookupsHuffmanTableTag) {
-          if (mode == XDR_DECODE) {
-            new (&table) frontend::GenericHuffmanTable();
-
-            table.implementation_ = {
-                mozilla::VariantType<frontend::TwoLookupsHuffmanTable>{}};
-          }
-
-          auto& specialized =
-              table.implementation_.as<frontend::TwoLookupsHuffmanTable>();
-
-          MOZ_TRY(codeTwoTable(&specialized));
-        } else {
-          MOZ_ASSERT(tag == ThreeLookupsHuffmanTableTag);
-
-          if (mode == XDR_DECODE) {
-            new (&table) frontend::GenericHuffmanTable();
-
-            table.implementation_ = {
-                mozilla::VariantType<frontend::ThreeLookupsHuffmanTable>{}};
-          }
-
-          auto& specialized =
-              table.implementation_.as<frontend::ThreeLookupsHuffmanTable>();
-
-          MOZ_TRY(codeThreeTable(&specialized));
-        }
-      }
-
-      autoClear.reset();
-      metadata->setDictionary(newDictionary.release());
-    }
-  }
-
-  if (mode == XDR_DECODE) {
-    MOZ_ASSERT(binASTData.isSome());
-    MOZ_ASSERT(freshMetadata != nullptr);
-
-    MOZ_ASSERT(ss->data.is<Missing>(),
-               "should only be initializing a fresh ScriptSource");
-
-    ss->data = SourceType(
-        BinAST(std::move(*binASTData), std::move(freshMetadata.get())));
-  }
-
-  MOZ_ASSERT(binASTData.isNothing());
-  MOZ_ASSERT(freshMetadata == nullptr);
-  MOZ_ASSERT(ss->data.is<BinAST>());
-
-  return Ok();
-#endif  // !defined(JS_BUILD_BINAST)
-}
-
 template <typename Unit, XDRMode mode>
 /* static */
 void ScriptSource::codeRetrievableData(ScriptSource* ss) {
@@ -3488,7 +2940,6 @@ XDRResult ScriptSource::xdrData(XDRState<mode>* const xdr,
     RetrievableUtf8,
     RetrievableUtf16,
     Missing,
-    BinAST,
   };
 
   DataType tag;
@@ -3535,7 +2986,6 @@ XDRResult ScriptSource::xdrData(XDRState<mode>* const xdr,
         return DataType::RetrievableUtf16;
       }
       DataType operator()(const Missing&) { return DataType::Missing; }
-      DataType operator()(const BinAST&) { return DataType::BinAST; }
     };
 
     uint8_t type;
@@ -3544,7 +2994,7 @@ XDRResult ScriptSource::xdrData(XDRState<mode>* const xdr,
     }
     MOZ_TRY(xdr->codeUint8(&type));
 
-    if (type > static_cast<uint8_t>(DataType::BinAST)) {
+    if (type > static_cast<uint8_t>(DataType::Missing)) {
       // Fail in debug, but only soft-fail in release, if the type is invalid.
       MOZ_ASSERT_UNREACHABLE("bad tag");
       return xdr->fail(JS::TranscodeResult_Failure_BadDecode);
@@ -3598,9 +3048,6 @@ XDRResult ScriptSource::xdrData(XDRState<mode>* const xdr,
     case DataType::RetrievableUtf16:
       ScriptSource::codeRetrievableData<char16_t, mode>(ss);
       return Ok();
-
-    case DataType::BinAST:
-      return codeBinASTData(xdr, ss);
   }
 
   // The range-check on |type| far above ought ensure the above |switch| is
@@ -4235,9 +3682,8 @@ bool JSScript::fullyInitFromStencil(JSContext* cx,
   MOZ_ASSERT(stencil.gcThings.length() <= INDEX_LIMIT);
 
   // Note: These flags should already be correct when the BaseScript was
-  // allocated, except that lazy BinAST parsing has incomplete set of flags.
-  MOZ_ASSERT_IF(!script->isBinAST(),
-                script->immutableFlags() == stencil.immutableFlags);
+  // allocated.
+  MOZ_ASSERT(script->immutableFlags() == stencil.immutableFlags);
   script->resetImmutableFlags(stencil.immutableFlags);
 
   // Derive initial mutable flags
@@ -4676,6 +4122,7 @@ static JSObject* CloneInnerInterpretedFunction(
     return nullptr;
   }
 
+  MOZ_ASSERT(cloneScript->hasBytecode());
   if (!JSFunction::setTypeForScriptedFunction(cx, clone)) {
     return nullptr;
   }
@@ -4789,8 +4236,10 @@ bool PrivateScriptData::Clone(JSContext* cx, HandleScript src, HandleScript dst,
   if (!JSScript::createPrivateScriptData(cx, dst, ngcthings)) {
     return false;
   }
-
   PrivateScriptData* dstData = dst->data_;
+
+  dstData->fieldInitializers_ = srcData->fieldInitializers_;
+
   {
     auto array = dstData->gcthings();
     for (uint32_t i = 0; i < ngcthings; ++i) {

@@ -135,6 +135,7 @@ const kDocumentChannelDeniedURIs = [
   "about:blank",
   "about:crashcontent",
   "about:newtab",
+  "about:home",
   "about:printpreview",
 ];
 
@@ -143,6 +144,33 @@ function documentChannelPermittedForURI(aURI) {
   return (
     !kDocumentChannelDeniedSchemes.includes(aURI.scheme) &&
     !kDocumentChannelDeniedURIs.includes(aURI.spec)
+  );
+}
+
+function canProcessSwitchWithDocumentChannel(
+  aURI,
+  aRemoteSubframes,
+  aDesiredRemoteType,
+  aBrowsingContext
+) {
+  if (
+    aBrowsingContext &&
+    aBrowsingContext.top &&
+    aBrowsingContext.inRDMPane &&
+    aBrowsingContext.embedderElementType == "iframe" &&
+    aDesiredRemoteType == NOT_REMOTE
+  ) {
+    // If we're in an old-style <iframe mozbrowser> RDM pane,
+    // and we need to switch to the parent process, then we can't
+    // use DocumentChannel process switching (since it doesn't
+    // support tunneling to the outer <browser>.
+    // We can remove this once bug 1648616 removes the tests
+    // depending on it.
+    return false;
+  }
+  return (
+    (aRemoteSubframes || documentChannel) &&
+    documentChannelPermittedForURI(aURI)
   );
 }
 
@@ -823,10 +851,13 @@ var E10SUtils = {
     // handled using DocumentChannel, then we can skip switching
     // for now, and let DocumentChannel do it during the response.
     if (
-      requiredRemoteType != NOT_REMOTE &&
       uriObject &&
-      (remoteSubframes || documentChannel) &&
-      documentChannelPermittedForURI(uriObject)
+      canProcessSwitchWithDocumentChannel(
+        uriObject,
+        remoteSubframes,
+        requiredRemoteType,
+        browser.browsingContext
+      )
     ) {
       mustChangeProcess = false;
       newFrameloader = false;
@@ -853,9 +884,11 @@ var E10SUtils = {
     );
 
     if (
-      (aRemoteSubframes || documentChannel) &&
-      wantRemoteType != NOT_REMOTE &&
-      documentChannelPermittedForURI(aURI)
+      canProcessSwitchWithDocumentChannel(
+        aURI,
+        aRemoteSubframes,
+        wantRemoteType
+      )
     ) {
       // We can switch later with documentchannel.
       return true;
@@ -891,9 +924,12 @@ var E10SUtils = {
     // 1640019).
     if (
       AppConstants.MOZ_WIDGET_TOOLKIT != "android" &&
-      (useRemoteSubframes || documentChannel) &&
-      wantRemoteType != NOT_REMOTE &&
-      documentChannelPermittedForURI(aURI)
+      canProcessSwitchWithDocumentChannel(
+        aURI,
+        useRemoteSubframes,
+        wantRemoteType,
+        aDocShell.browsingContext
+      )
     ) {
       return true;
     }
@@ -909,25 +945,6 @@ var E10SUtils = {
       // is the case, so let's redirect this request to the parent to decide if a new
       // process is needed. But we don't currently properly handle POST data in
       // redirects (bug 1457520), so if there is POST data, don't return false here.
-      return false;
-    }
-
-    // If we are in a Large-Allocation process, and it wouldn't be content visible
-    // to change processes, we want to load into a new process so that we can throw
-    // this one out. We don't want to move into a new process if we have post data,
-    // because we would accidentally throw out that data.
-    let isOnlyToplevelBrowsingContext =
-      !aDocShell.browsingContext.parent &&
-      aDocShell.browsingContext.group.getToplevels().length == 1;
-    if (
-      !aHasPostData &&
-      remoteType == LARGE_ALLOCATION_REMOTE_TYPE &&
-      !aDocShell.awaitingLargeAlloc &&
-      isOnlyToplevelBrowsingContext
-    ) {
-      this.log().info(
-        "returning false to throw away large allocation process\n"
-      );
       return false;
     }
 
@@ -960,7 +977,6 @@ var E10SUtils = {
     aURI,
     aReferrerInfo,
     aTriggeringPrincipal,
-    aFreshProcess,
     aFlags,
     aCsp
   ) {
@@ -980,7 +996,6 @@ var E10SUtils = {
             Services.scriptSecurityManager.createNullPrincipal({})
         ),
         csp: aCsp ? this.serializeCSP(aCsp) : null,
-        reloadInFreshProcess: !!aFreshProcess,
       },
       historyIndex: sessionHistory.legacySHistory.requestedIndex,
     });
@@ -1088,10 +1103,4 @@ XPCOMUtils.defineLazyGetter(
       Services.scriptSecurityManager.getSystemPrincipal()
     );
   }
-);
-XPCOMUtils.defineLazyPreferenceGetter(
-  E10SUtils,
-  "rebuildFrameloadersOnRemotenessChange",
-  "fission.rebuild_frameloaders_on_remoteness_change",
-  false
 );

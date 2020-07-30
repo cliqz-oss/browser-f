@@ -412,7 +412,8 @@ void CycleCollectedJSContext::CleanupIDBTransactions(uint32_t aRecursionDepth) {
   nsTArray<PendingIDBTransactionData> localQueue =
       std::move(mPendingIDBTransactions);
 
-  localQueue.RemoveElementsAt(
+  localQueue.RemoveLastElements(
+      localQueue.end() -
       std::remove_if(localQueue.begin(), localQueue.end(),
                      [aRecursionDepth](PendingIDBTransactionData& data) {
                        if (data.mRecursionDepth != aRecursionDepth) {
@@ -426,8 +427,7 @@ void CycleCollectedJSContext::CleanupIDBTransactions(uint32_t aRecursionDepth) {
                        }
 
                        return true;
-                     }),
-      localQueue.end());
+                     }));
 
   // If mPendingIDBTransactions has events in it now, they were added from
   // something we called, so they belong at the end of the queue.
@@ -559,6 +559,8 @@ void CycleCollectedJSContext::DispatchToMicroTask(
   MOZ_ASSERT(runnable);
 
   JS::JobQueueMayNotBeEmpty(Context());
+
+  LogMicroTaskRunnable::LogDispatch(runnable.get());
   mPendingMicroTaskRunnables.push(std::move(runnable));
 }
 
@@ -637,7 +639,10 @@ bool CycleCollectedJSContext::PerformMicroTaskCheckPoint(bool aForce) {
         JS::JobQueueIsEmpty(Context());
       }
       didProcess = true;
+
+      LogMicroTaskRunnable::Run log(runnable.get());
       runnable->Run(aso);
+      runnable = nullptr;
     }
   }
 
@@ -670,6 +675,8 @@ void CycleCollectedJSContext::PerformDebuggerMicroTaskCheckpoint() {
     RefPtr<MicroTaskRunnable> runnable = std::move(microtaskQueue->front());
     MOZ_ASSERT(runnable);
 
+    LogMicroTaskRunnable::Run log(runnable.get());
+
     // This function can re-enter, so we remove the element before calling.
     microtaskQueue->pop();
 
@@ -677,6 +684,7 @@ void CycleCollectedJSContext::PerformDebuggerMicroTaskCheckpoint() {
       JS::JobQueueIsEmpty(Context());
     }
     runnable->Run(aso);
+    runnable = nullptr;
   }
 
   AfterProcessMicrotasks();

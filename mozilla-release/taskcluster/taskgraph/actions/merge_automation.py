@@ -22,7 +22,7 @@ def is_release_promotion_available(parameters):
     title="Merge Day Automation",
     symbol="${input.behavior}",
     description="Merge repository branches.",
-    generic=False,
+    permission='merge-automation',
     order=500,
     context=[],
     available=is_release_promotion_available,
@@ -95,6 +95,7 @@ def merge_automation_action(parameters, graph_config, input, task_group_id, task
     ]:
         if input.get(field):
             parameters["merge_config"][field] = input[field]
+    parameters["tasks_for"] = "action"
 
     # make parameters read-only
     parameters = Parameters(**parameters)

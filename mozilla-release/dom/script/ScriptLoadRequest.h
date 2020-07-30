@@ -123,6 +123,19 @@ class ScriptLoadRequest
     mIsTracking = true;
   }
 
+  void BlockOnload(Document* aDocument) {
+    MOZ_ASSERT(!mLoadBlockedDocument);
+    aDocument->BlockOnload();
+    mLoadBlockedDocument = aDocument;
+  }
+
+  void MaybeUnblockOnload() {
+    if (mLoadBlockedDocument) {
+      mLoadBlockedDocument->UnblockOnload(false);
+      mLoadBlockedDocument = nullptr;
+    }
+  }
+
   enum class Progress : uint8_t {
     eLoading,         // Request either source or bytecode
     eLoading_Source,  // Explicitly Request source stream
@@ -154,13 +167,7 @@ class ScriptLoadRequest
 
   bool IsUnknownDataType() const { return mDataType == DataType::eUnknown; }
   bool IsTextSource() const { return mDataType == DataType::eTextSource; }
-  bool IsBinASTSource() const {
-#ifdef JS_BUILD_BINAST
-    return mDataType == DataType::eBinASTSource;
-#else
-    return false;
-#endif
-  }
+  bool IsBinASTSource() const { return false; }
   bool IsSource() const { return IsTextSource() || IsBinASTSource(); }
   bool IsBytecode() const { return mDataType == DataType::eBytecode; }
 
@@ -343,6 +350,9 @@ class ScriptLoadRequest
   int32_t mLineNo;
   const SRIMetadata mIntegrity;
   const nsCOMPtr<nsIURI> mReferrer;
+
+  // Non-null if there is a document that this request is blocking from loading.
+  RefPtr<Document> mLoadBlockedDocument;
 
   // Holds the Cache information, which is used to register the bytecode
   // on the cache entry, such that we can load it the next time.

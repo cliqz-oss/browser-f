@@ -75,6 +75,87 @@ already_AddRefed<nsIURIFixupInfo> GetFixupURIInfo(const nsACString& aStringURI,
 }  // anonymous namespace
 
 nsDocShellLoadState::nsDocShellLoadState(nsIURI* aURI)
+    : nsDocShellLoadState(aURI, nsContentUtils::GenerateLoadIdentifier()) {}
+
+nsDocShellLoadState::nsDocShellLoadState(
+    const DocShellLoadStateInit& aLoadState)
+    : mLoadIdentifier(aLoadState.LoadIdentifier()) {
+  MOZ_ASSERT(aLoadState.URI(), "Cannot create a LoadState with a null URI!");
+  mResultPrincipalURI = aLoadState.ResultPrincipalURI();
+  mResultPrincipalURIIsSome = aLoadState.ResultPrincipalURIIsSome();
+  mKeepResultPrincipalURIIfSet = aLoadState.KeepResultPrincipalURIIfSet();
+  mLoadReplace = aLoadState.LoadReplace();
+  mInheritPrincipal = aLoadState.InheritPrincipal();
+  mPrincipalIsExplicit = aLoadState.PrincipalIsExplicit();
+  mForceAllowDataURI = aLoadState.ForceAllowDataURI();
+  mOriginalFrameSrc = aLoadState.OriginalFrameSrc();
+  mIsFormSubmission = aLoadState.IsFormSubmission();
+  mLoadType = aLoadState.LoadType();
+  mTarget = aLoadState.Target();
+  mTargetBrowsingContext = aLoadState.SourceBrowsingContext();
+  mLoadFlags = aLoadState.LoadFlags();
+  mFirstParty = aLoadState.FirstParty();
+  mHasValidUserGestureActivation = aLoadState.HasValidUserGestureActivation();
+  mTypeHint = aLoadState.TypeHint();
+  mFileName = aLoadState.FileName();
+  mIsFromProcessingFrameAttributes =
+      aLoadState.IsFromProcessingFrameAttributes();
+  mReferrerInfo = aLoadState.ReferrerInfo();
+  mURI = aLoadState.URI();
+  mOriginalURI = aLoadState.OriginalURI();
+  mSourceBrowsingContext = aLoadState.SourceBrowsingContext();
+  mBaseURI = aLoadState.BaseURI();
+  mTriggeringPrincipal = aLoadState.TriggeringPrincipal();
+  mPrincipalToInherit = aLoadState.PrincipalToInherit();
+  mPartitionedPrincipalToInherit = aLoadState.PartitionedPrincipalToInherit();
+  mCsp = aLoadState.Csp();
+  mOriginalURIString = aLoadState.OriginalURIString();
+  mCancelContentJSEpoch = aLoadState.CancelContentJSEpoch();
+  mPostDataStream = aLoadState.PostDataStream();
+  mHeadersStream = aLoadState.HeadersStream();
+  mSrcdocData = aLoadState.SrcdocData();
+  mChannelInitialized = aLoadState.ChannelInitialized();
+}
+
+nsDocShellLoadState::nsDocShellLoadState(const nsDocShellLoadState& aOther)
+    : mReferrerInfo(aOther.mReferrerInfo),
+      mURI(aOther.mURI),
+      mOriginalURI(aOther.mOriginalURI),
+      mResultPrincipalURI(aOther.mResultPrincipalURI),
+      mResultPrincipalURIIsSome(aOther.mResultPrincipalURIIsSome),
+      mTriggeringPrincipal(aOther.mTriggeringPrincipal),
+      mCsp(aOther.mCsp),
+      mKeepResultPrincipalURIIfSet(aOther.mKeepResultPrincipalURIIfSet),
+      mLoadReplace(aOther.mLoadReplace),
+      mInheritPrincipal(aOther.mInheritPrincipal),
+      mPrincipalIsExplicit(aOther.mPrincipalIsExplicit),
+      mPrincipalToInherit(aOther.mPrincipalToInherit),
+      mPartitionedPrincipalToInherit(aOther.mPartitionedPrincipalToInherit),
+      mForceAllowDataURI(aOther.mForceAllowDataURI),
+      mOriginalFrameSrc(aOther.mOriginalFrameSrc),
+      mIsFormSubmission(aOther.mIsFormSubmission),
+      mLoadType(aOther.mLoadType),
+      mSHEntry(aOther.mSHEntry),
+      mTarget(aOther.mTarget),
+      mTargetBrowsingContext(aOther.mTargetBrowsingContext),
+      mPostDataStream(aOther.mPostDataStream),
+      mHeadersStream(aOther.mHeadersStream),
+      mSrcdocData(aOther.mSrcdocData),
+      mSourceBrowsingContext(aOther.mSourceBrowsingContext),
+      mBaseURI(aOther.mBaseURI),
+      mLoadFlags(aOther.mLoadFlags),
+      mFirstParty(aOther.mFirstParty),
+      mHasValidUserGestureActivation(aOther.mHasValidUserGestureActivation),
+      mTypeHint(aOther.mTypeHint),
+      mFileName(aOther.mFileName),
+      mIsFromProcessingFrameAttributes(aOther.mIsFromProcessingFrameAttributes),
+      mPendingRedirectedChannel(aOther.mPendingRedirectedChannel),
+      mOriginalURIString(aOther.mOriginalURIString),
+      mCancelContentJSEpoch(aOther.mCancelContentJSEpoch),
+      mLoadIdentifier(aOther.mLoadIdentifier),
+      mChannelInitialized(aOther.mChannelInitialized) {}
+
+nsDocShellLoadState::nsDocShellLoadState(nsIURI* aURI, uint64_t aLoadIdentifier)
     : mURI(aURI),
       mResultPrincipalURIIsSome(false),
       mKeepResultPrincipalURIIfSet(false),
@@ -92,92 +173,17 @@ nsDocShellLoadState::nsDocShellLoadState(nsIURI* aURI)
       mHasValidUserGestureActivation(false),
       mTypeHint(VoidCString()),
       mFileName(VoidString()),
-      mIsHttpsOnlyModeUpgradeExempt(false),
       mIsFromProcessingFrameAttributes(false),
-      mLoadIdentifier(0) {
+      mLoadIdentifier(aLoadIdentifier),
+      mChannelInitialized(false) {
   MOZ_ASSERT(aURI, "Cannot create a LoadState with a null URI!");
 }
-
-nsDocShellLoadState::nsDocShellLoadState(
-    const DocShellLoadStateInit& aLoadState) {
-  MOZ_ASSERT(aLoadState.URI(), "Cannot create a LoadState with a null URI!");
-  mResultPrincipalURI = aLoadState.ResultPrincipalURI();
-  mResultPrincipalURIIsSome = aLoadState.ResultPrincipalURIIsSome();
-  mKeepResultPrincipalURIIfSet = aLoadState.KeepResultPrincipalURIIfSet();
-  mLoadReplace = aLoadState.LoadReplace();
-  mInheritPrincipal = aLoadState.InheritPrincipal();
-  mPrincipalIsExplicit = aLoadState.PrincipalIsExplicit();
-  mForceAllowDataURI = aLoadState.ForceAllowDataURI();
-  mOriginalFrameSrc = aLoadState.OriginalFrameSrc();
-  mIsFormSubmission = aLoadState.IsFormSubmission();
-  mLoadType = aLoadState.LoadType();
-  mTarget = aLoadState.Target();
-  mLoadFlags = aLoadState.LoadFlags();
-  mFirstParty = aLoadState.FirstParty();
-  mHasValidUserGestureActivation = aLoadState.HasValidUserGestureActivation();
-  mTypeHint = aLoadState.TypeHint();
-  mFileName = aLoadState.FileName();
-  mIsHttpsOnlyModeUpgradeExempt = aLoadState.IsHttpsOnlyModeUpgradeExempt();
-  mIsFromProcessingFrameAttributes =
-      aLoadState.IsFromProcessingFrameAttributes();
-  mReferrerInfo = aLoadState.ReferrerInfo();
-  mURI = aLoadState.URI();
-  mOriginalURI = aLoadState.OriginalURI();
-  mSourceBrowsingContext = aLoadState.SourceBrowsingContext();
-  mBaseURI = aLoadState.BaseURI();
-  mTriggeringPrincipal = aLoadState.TriggeringPrincipal();
-  mPrincipalToInherit = aLoadState.PrincipalToInherit();
-  mStoragePrincipalToInherit = aLoadState.StoragePrincipalToInherit();
-  mCsp = aLoadState.Csp();
-  mOriginalURIString = aLoadState.OriginalURIString();
-  mCancelContentJSEpoch = aLoadState.CancelContentJSEpoch();
-  mPostDataStream = aLoadState.PostDataStream();
-  mHeadersStream = aLoadState.HeadersStream();
-  mSrcdocData = aLoadState.SrcdocData();
-  mLoadIdentifier = aLoadState.LoadIdentifier();
-}
-
-nsDocShellLoadState::nsDocShellLoadState(const nsDocShellLoadState& aOther)
-    : mReferrerInfo(aOther.mReferrerInfo),
-      mURI(aOther.mURI),
-      mOriginalURI(aOther.mOriginalURI),
-      mResultPrincipalURI(aOther.mResultPrincipalURI),
-      mResultPrincipalURIIsSome(aOther.mResultPrincipalURIIsSome),
-      mTriggeringPrincipal(aOther.mTriggeringPrincipal),
-      mCsp(aOther.mCsp),
-      mKeepResultPrincipalURIIfSet(aOther.mKeepResultPrincipalURIIfSet),
-      mLoadReplace(aOther.mLoadReplace),
-      mInheritPrincipal(aOther.mInheritPrincipal),
-      mPrincipalIsExplicit(aOther.mPrincipalIsExplicit),
-      mPrincipalToInherit(aOther.mPrincipalToInherit),
-      mStoragePrincipalToInherit(aOther.mStoragePrincipalToInherit),
-      mForceAllowDataURI(aOther.mForceAllowDataURI),
-      mOriginalFrameSrc(aOther.mOriginalFrameSrc),
-      mIsFormSubmission(aOther.mIsFormSubmission),
-      mLoadType(aOther.mLoadType),
-      mSHEntry(aOther.mSHEntry),
-      mTarget(aOther.mTarget),
-      mPostDataStream(aOther.mPostDataStream),
-      mHeadersStream(aOther.mHeadersStream),
-      mSrcdocData(aOther.mSrcdocData),
-      mSourceBrowsingContext(aOther.mSourceBrowsingContext),
-      mBaseURI(aOther.mBaseURI),
-      mLoadFlags(aOther.mLoadFlags),
-      mFirstParty(aOther.mFirstParty),
-      mHasValidUserGestureActivation(aOther.mHasValidUserGestureActivation),
-      mTypeHint(aOther.mTypeHint),
-      mFileName(aOther.mFileName),
-      mIsHttpsOnlyModeUpgradeExempt(aOther.mIsHttpsOnlyModeUpgradeExempt),
-      mIsFromProcessingFrameAttributes(aOther.mIsFromProcessingFrameAttributes),
-      mPendingRedirectedChannel(aOther.mPendingRedirectedChannel),
-      mOriginalURIString(aOther.mOriginalURIString),
-      mCancelContentJSEpoch(aOther.mCancelContentJSEpoch),
-      mLoadIdentifier(aOther.mLoadIdentifier) {}
 
 nsDocShellLoadState::~nsDocShellLoadState() {}
 
 nsresult nsDocShellLoadState::CreateFromPendingChannel(
-    nsIChannel* aPendingChannel, nsDocShellLoadState** aResult) {
+    nsIChannel* aPendingChannel, uint64_t aLoadIdentifier,
+    uint64_t aRegistrarId, nsDocShellLoadState** aResult) {
   // Create the nsDocShellLoadState object with default state pulled from the
   // passed-in channel.
   nsCOMPtr<nsIURI> uri;
@@ -186,8 +192,10 @@ nsresult nsDocShellLoadState::CreateFromPendingChannel(
     return rv;
   }
 
-  RefPtr<nsDocShellLoadState> loadState = new nsDocShellLoadState(uri);
+  RefPtr<nsDocShellLoadState> loadState =
+      new nsDocShellLoadState(uri, aLoadIdentifier);
   loadState->mPendingRedirectedChannel = aPendingChannel;
+  loadState->mChannelRegistrarId = aRegistrarId;
 
   // Pull relevant state from the channel, and store it on the
   // nsDocShellLoadState.
@@ -352,8 +360,6 @@ nsresult nsDocShellLoadState::CreateFromLoadURIOptions(
   if (aLoadURIOptions.mCancelContentJSEpoch) {
     loadState->SetCancelContentJSEpoch(aLoadURIOptions.mCancelContentJSEpoch);
   }
-  loadState->SetIsHttpsOnlyModeUpgradeExempt(
-      aLoadURIOptions.mIsHttpsOnlyModeUpgradeExempt);
 
   if (fixupInfo) {
     nsAutoString searchProvider, keyword;
@@ -432,13 +438,13 @@ void nsDocShellLoadState::SetPrincipalToInherit(
   mPrincipalToInherit = aPrincipalToInherit;
 }
 
-nsIPrincipal* nsDocShellLoadState::StoragePrincipalToInherit() const {
-  return mStoragePrincipalToInherit;
+nsIPrincipal* nsDocShellLoadState::PartitionedPrincipalToInherit() const {
+  return mPartitionedPrincipalToInherit;
 }
 
-void nsDocShellLoadState::SetStoragePrincipalToInherit(
-    nsIPrincipal* aStoragePrincipalToInherit) {
-  mStoragePrincipalToInherit = aStoragePrincipalToInherit;
+void nsDocShellLoadState::SetPartitionedPrincipalToInherit(
+    nsIPrincipal* aPartitionedPrincipalToInherit) {
+  mPartitionedPrincipalToInherit = aPartitionedPrincipalToInherit;
 }
 
 void nsDocShellLoadState::SetCsp(nsIContentSecurityPolicy* aCsp) {
@@ -494,17 +500,13 @@ void nsDocShellLoadState::SetSHEntry(nsISHEntry* aSHEntry) {
 }
 
 void nsDocShellLoadState::SetSessionHistoryInfo(
-    const mozilla::dom::SessionHistoryInfoAndId& aIdAndInfo) {
-  mSessionHistoryInfo = aIdAndInfo;
+    const mozilla::dom::SessionHistoryInfo& aInfo) {
+  mSessionHistoryInfo = MakeUnique<SessionHistoryInfo>(aInfo);
 }
 
-uint64_t nsDocShellLoadState::GetSessionHistoryID() const {
-  return mSessionHistoryInfo.mId;
-}
-
-const mozilla::dom::SessionHistoryInfo&
+const mozilla::dom::SessionHistoryInfo*
 nsDocShellLoadState::GetSessionHistoryInfo() const {
-  return *mSessionHistoryInfo.mInfo;
+  return mSessionHistoryInfo.get();
 }
 
 const nsString& nsDocShellLoadState::Target() const { return mTarget; }
@@ -538,6 +540,11 @@ void nsDocShellLoadState::SetSrcdocData(const nsAString& aSrcdocData) {
 void nsDocShellLoadState::SetSourceBrowsingContext(
     BrowsingContext* aSourceBrowsingContext) {
   mSourceBrowsingContext = aSourceBrowsingContext;
+}
+
+void nsDocShellLoadState::SetTargetBrowsingContext(
+    BrowsingContext* aTargetBrowsingContext) {
+  mTargetBrowsingContext = aTargetBrowsingContext;
 }
 
 nsIURI* nsDocShellLoadState::BaseURI() const { return mBaseURI; }
@@ -603,15 +610,9 @@ void nsDocShellLoadState::SetTypeHint(const nsCString& aTypeHint) {
 const nsString& nsDocShellLoadState::FileName() const { return mFileName; }
 
 void nsDocShellLoadState::SetFileName(const nsAString& aFileName) {
+  MOZ_DIAGNOSTIC_ASSERT(aFileName.FindChar(char16_t(0)) == kNotFound,
+                        "The filename should never contain null characters");
   mFileName = aFileName;
-}
-
-bool nsDocShellLoadState::IsHttpsOnlyModeUpgradeExempt() const {
-  return mIsHttpsOnlyModeUpgradeExempt;
-}
-
-void nsDocShellLoadState::SetIsHttpsOnlyModeUpgradeExempt(bool aIsExempt) {
-  mIsHttpsOnlyModeUpgradeExempt = aIsExempt;
 }
 
 nsresult nsDocShellLoadState::SetupInheritingPrincipal(
@@ -871,12 +872,12 @@ DocShellLoadStateInit nsDocShellLoadState::Serialize() {
   loadState.IsFormSubmission() = mIsFormSubmission;
   loadState.LoadType() = mLoadType;
   loadState.Target() = mTarget;
+  loadState.TargetBrowsingContext() = mTargetBrowsingContext;
   loadState.LoadFlags() = mLoadFlags;
   loadState.FirstParty() = mFirstParty;
   loadState.HasValidUserGestureActivation() = mHasValidUserGestureActivation;
   loadState.TypeHint() = mTypeHint;
   loadState.FileName() = mFileName;
-  loadState.IsHttpsOnlyModeUpgradeExempt() = mIsHttpsOnlyModeUpgradeExempt;
   loadState.IsFromProcessingFrameAttributes() =
       mIsFromProcessingFrameAttributes;
   loadState.URI() = mURI;
@@ -885,7 +886,7 @@ DocShellLoadStateInit nsDocShellLoadState::Serialize() {
   loadState.BaseURI() = mBaseURI;
   loadState.TriggeringPrincipal() = mTriggeringPrincipal;
   loadState.PrincipalToInherit() = mPrincipalToInherit;
-  loadState.StoragePrincipalToInherit() = mStoragePrincipalToInherit;
+  loadState.PartitionedPrincipalToInherit() = mPartitionedPrincipalToInherit;
   loadState.Csp() = mCsp;
   loadState.OriginalURIString() = mOriginalURIString;
   loadState.CancelContentJSEpoch() = mCancelContentJSEpoch;
@@ -895,5 +896,6 @@ DocShellLoadStateInit nsDocShellLoadState::Serialize() {
   loadState.SrcdocData() = mSrcdocData;
   loadState.ResultPrincipalURI() = mResultPrincipalURI;
   loadState.LoadIdentifier() = mLoadIdentifier;
+  loadState.ChannelInitialized() = mChannelInitialized;
   return loadState;
 }

@@ -51,29 +51,6 @@ interface nsISearchEngine : nsISupports
                                     [optional] in AString purpose);
 
   /**
-   * Adds a parameter to the search engine's submission data. This should only
-   * be called on engines created via addEngineWithDetails.
-   *
-   * @param name
-   *        The parameter's name. Must not be null.
-   *
-   * @param value
-   *        The value to pass. If value is "{searchTerms}", it will be
-   *        substituted with the user-entered data when retrieving the
-   *        submission. Must not be null.
-   *
-   * @param responseType
-   *        Since an engine can have several different request URLs,
-   *        differentiated by response types, this parameter selects
-   *        a request to add parameters to.  If null, will default
-   *        to "text/html"
-   *
-   * @throws NS_ERROR_FAILURE if the search engine is read-only.
-   * @throws NS_ERROR_INVALID_ARG if name or value are null.
-   */
-  void addParam(in AString name, in AString value, in AString responseType);
-
-  /**
    * Determines whether the engine can return responses in the given
    * MIME type.  Returns true if the engine spec has a URL with the
    * given responseType, false otherwise.
@@ -261,23 +238,6 @@ interface nsISearchService : nsISupports
   Promise resetToOriginalDefaultEngine();
 
   /**
-   * Checks if an EngineURL of type URLTYPE_SEARCH_HTML exists for
-   * any engine, with a matching method, template URL, and query params.
-   *
-   * @param method
-   *        The HTTP request method used when submitting a search query.
-   *        Must be a case insensitive value of either "get" or "post".
-   *
-   * @param url
-   *        The URL to which search queries should be sent.
-   *        Must not be null.
-   *
-   * @param formData
-   *        The un-sorted form data used as query params.
-   */
-  boolean hasEngineWithURL(in AString method, in AString url, in jsval formData);
-
-  /**
    * Adds a new search engine from the file at the supplied URI, optionally
    * asking the user for confirmation first.  If a confirmation dialog is
    * shown, it will offer the option to begin using the newly added engine
@@ -357,16 +317,6 @@ interface nsISearchService : nsISupports
    * @returns Promise that resolves when finished.
    */
   Promise addEnginesFromExtension(in jsval extension);
-
-  /**
-   * Returns an engine object given a search WebExtension.
-   *
-   * @returns an array of nsISearchEngine objects.
-   */
-  Promise getEngineParams(in jsval extension,
-                          in jsval manifest,
-                          in AString locale,
-                          in jsval params);
 
   /**
    * Un-hides all engines in the set of engines returned by getDefaultEngines.
@@ -547,42 +497,3 @@ interface nsISearchService : nsISupports
    */
   nsISearchParseSubmissionResult parseSubmissionURL(in AString url);
 };
-
-%{ C++
-/**
- * The observer topic to listen to for actions performed on installed
- * search engines.
- */
-#define SEARCH_ENGINE_TOPIC "browser-search-engine-modified"
-
-/**
- * Sent when an engine is removed from the data store.
- */
-#define SEARCH_ENGINE_REMOVED      "engine-removed"
-
-/**
- * Sent when an engine is changed. This includes when the engine's "hidden"
- * property is changed.
- */
-#define SEARCH_ENGINE_CHANGED      "engine-changed"
-
-/**
- * Sent when an engine is added to the list of available engines.
- */
-#define SEARCH_ENGINE_ADDED        "engine-added"
-
-/**
- * Sent when a search engine being installed from a remote plugin description
- * file is completely loaded. This is used internally by the search service as
- * an indication of when the engine can be added to the internal store, and
- * therefore should not be used to detect engine availability. It is always
- * followed by an "added" notification.
- */
-#define SEARCH_ENGINE_LOADED       "engine-loaded"
-
-/**
- * Sent when the "default" engine is changed.
- */
-#define SEARCH_ENGINE_DEFAULT      "engine-default";
-
-%}

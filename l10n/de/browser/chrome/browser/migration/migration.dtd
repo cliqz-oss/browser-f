@@ -42,9 +42,6 @@
 <!ENTITY importItems.title              "Zu importierende Daten">
 <!ENTITY importItems.label              "Wähle bitte aus, welche Daten importiert werden sollen:">
 
-<!ENTITY selectAddons.title              "Zu importierende Add-ons">
-<!ENTITY selectAddons.label              "Wähle bitte aus, welche Add-ons importiert werden sollen:">
-
 <!ENTITY migrating.title                "Importieren…">
 <!ENTITY migrating.label                "Folgende Daten werden momentan importiert:">
 

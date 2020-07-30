@@ -23,6 +23,7 @@
 #include "nsURLHelper.h"
 #include "TRR.h"
 #include "TRRService.h"
+#include "TRRServiceChannel.h"
 #include "TRRLoadInfo.h"
 
 #include "mozilla/Base64.h"
@@ -161,13 +162,9 @@ nsresult TRR::DohEncode(nsCString& aBody, bool aDisableECS) {
 
 NS_IMETHODIMP
 TRR::Run() {
-  MOZ_ASSERT_IF(gTRRService &&
-                    StaticPrefs::network_trr_fetch_off_main_thread() &&
-                    !XRE_IsSocketProcess(),
-                gTRRService->IsOnTRRThread());
-  MOZ_ASSERT_IF(!StaticPrefs::network_trr_fetch_off_main_thread() ||
-                    XRE_IsSocketProcess(),
-                NS_IsMainThread());
+  MOZ_ASSERT_IF(XRE_IsParentProcess() && gTRRService,
+                NS_IsMainThread() || gTRRService->IsOnTRRThread());
+  MOZ_ASSERT_IF(XRE_IsSocketProcess(), NS_IsMainThread());
 
   if ((gTRRService == nullptr) || NS_FAILED(SendHTTPRequest())) {
     FailData(NS_ERROR_FAILURE);
@@ -413,6 +410,13 @@ nsresult TRR::SendHTTPRequest() {
   rv = httpChannel->AsyncOpen(this);
   if (NS_FAILED(rv)) {
     return rv;
+  }
+
+  // If the asyncOpen succeeded we can say that we actually attempted to
+  // use the TRR connection.
+  RefPtr<AddrHostRecord> addrRec = do_QueryObject(mRec);
+  if (addrRec) {
+    addrRec->mTRRUsed = true;
   }
 
   NS_NewTimerWithCallback(getter_AddRefs(mTimeout), this,
@@ -1483,8 +1487,8 @@ class ProxyCancel : public Runnable {
 };
 
 void TRR::Cancel() {
-  if (StaticPrefs::network_trr_fetch_off_main_thread() &&
-      !XRE_IsSocketProcess()) {
+  RefPtr<TRRServiceChannel> trrServiceChannel = do_QueryObject(mChannel);
+  if (trrServiceChannel && !XRE_IsSocketProcess()) {
     if (gTRRService) {
       nsCOMPtr<nsIThread> thread = gTRRService->TRRThread();
       if (thread && !thread->IsOnCurrentThread()) {

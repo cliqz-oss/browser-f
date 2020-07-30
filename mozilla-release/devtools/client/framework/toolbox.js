@@ -775,9 +775,11 @@ Toolbox.prototype = {
     // already tracked by the content process targets. At least in the context
     // of the Browser Toolbox.
     // We would have to revisit that for the content toolboxes.
+    // Worker targets are attached to by the debugger so that the debugger
+    // has a chance to register breakpoints with the server.
     if (
       targetFront.isTopLevel ||
-      targetFront.targetType != TargetList.TYPES.FRAME
+      targetFront.targetType == TargetList.TYPES.PROCESS
     ) {
       const threadFront = await this._attachAndResumeThread(targetFront);
       this._startThreadFrontListeners(threadFront);
@@ -1355,16 +1357,15 @@ Toolbox.prototype = {
             return (generatedId, url, code, mappings) => {
               return target
                 .applySourceMap(generatedId, url, code, mappings)
-                .then(result => {
+                .then(async result => {
                   // If a tool has changed or introduced a source map
                   // (e.g, by pretty-printing a source), tell the
                   // source map URL service about the change, so that
                   // subscribers to that service can be updated as
                   // well.
                   if (this._sourceMapURLService) {
-                    this._sourceMapURLService.sourceMapChanged(
-                      generatedId,
-                      url
+                    await this._sourceMapURLService.newSourceMapCreated(
+                      generatedId
                     );
                   }
                   return result;
@@ -3043,6 +3044,7 @@ Toolbox.prototype = {
     if (!panel) {
       return;
     }
+
     await panel.once("reloaded");
     const delay = this.win.performance.now() - start;
 
@@ -3971,15 +3973,77 @@ Toolbox.prototype = {
   },
 
   /**
-   * Opens source in style editor. Falls back to plain "view-source:".
-   * @see devtools/client/shared/source-utils.js
+   * Open a CSS file when there is no line or column information available.
+   *
+   * @param {string} url The URL of the CSS file to open.
    */
-  viewSourceInStyleEditor: function(sourceURL, sourceLine, sourceColumn) {
+  viewGeneratedSourceInStyleEditor: async function(url) {
+    if (typeof url !== "string") {
+      console.warn("Failed to open generated source, no url given");
+      return;
+    }
+
+    // The style editor hides the generated file if the file has original
+    // sources, so we have no choice but to open whichever original file
+    // corresponds to the first line of the generated file.
+    return viewSource.viewSourceInStyleEditor(this, url, 1);
+  },
+
+  /**
+   * Given a URL for a stylesheet (generated or original), open in the style
+   * editor if possible. Falls back to plain "view-source:".
+   * If the stylesheet has a sourcemap, we will attempt to open the original
+   * version of the file instead of the generated version.
+   */
+  viewSourceInStyleEditorByURL: async function(url, line, column) {
+    if (typeof url !== "string") {
+      console.warn("Failed to open source, no url given");
+      return;
+    }
+    if (typeof line !== "number") {
+      console.warn(
+        "No line given when navigating to source. If you're seeing this, there is a bug."
+      );
+
+      // This is a fallback in case of programming errors, but in a perfect
+      // world, viewSourceInStyleEditorByURL would always get a line/colum.
+      line = 1;
+      column = null;
+    }
+
+    return viewSource.viewSourceInStyleEditor(this, url, line, column);
+  },
+
+  /**
+   * Opens source in style editor. Falls back to plain "view-source:".
+   * If the stylesheet has a sourcemap, we will attempt to open the original
+   * version of the file instead of the generated version.
+   */
+  viewSourceInStyleEditorByFront: async function(
+    stylesheetFront,
+    line,
+    column
+  ) {
+    if (!stylesheetFront || typeof stylesheetFront !== "object") {
+      console.warn("Failed to open source, no stylesheet given");
+      return;
+    }
+    if (typeof line !== "number") {
+      console.warn(
+        "No line given when navigating to source. If you're seeing this, there is a bug."
+      );
+
+      // This is a fallback in case of programming errors, but in a perfect
+      // world, viewSourceInStyleEditorByFront would always get a line/colum.
+      line = 1;
+      column = null;
+    }
+
     return viewSource.viewSourceInStyleEditor(
       this,
-      sourceURL,
-      sourceLine,
-      sourceColumn
+      stylesheetFront,
+      line,
+      column
     );
   },
 
@@ -3997,6 +4061,20 @@ Toolbox.prototype = {
   },
 
   /**
+   * Open a JS file when there is no line or column information available.
+   *
+   * @param {string} url The URL of the JS file to open.
+   */
+  viewGeneratedSourceInDebugger: async function(url) {
+    if (typeof url !== "string") {
+      console.warn("Failed to open generated source, no url given");
+      return;
+    }
+
+    return viewSource.viewSourceInDebugger(this, url, null, null, null, null);
+  },
+
+  /**
    * Opens source in debugger, the sourcemapped location will be selected in
    * the debugger panel, if the given location resolves to a know sourcemapped one.
    *
@@ -4011,23 +4089,19 @@ Toolbox.prototype = {
     sourceId,
     reason
   ) {
-    try {
-      const sourceMappedLoc = await this.sourceMapURLService.originalPositionFor(
-        sourceURL,
-        sourceLine,
-        sourceColumn
+    if (typeof sourceURL !== "string" && typeof sourceId !== "string") {
+      console.warn("Failed to open generated source, no url/id given");
+      return;
+    }
+    if (typeof sourceLine !== "number") {
+      console.warn(
+        "No line given when navigating to source. If you're seeing this, there is a bug."
       );
-      if (sourceMappedLoc) {
-        sourceURL = sourceMappedLoc.sourceUrl;
-        sourceLine = sourceMappedLoc.line;
-        sourceColumn = sourceMappedLoc.column;
-      }
-    } catch (err) {
-      console.error(
-        "Failed to resolve sourcemapped location for the given source location",
-        { sourceURL, sourceLine, sourceColumn, sourceId, reason },
-        err
-      );
+
+      // This is a fallback in case of programming errors, but in a perfect
+      // world, viewSourceInDebugger would always get a line/colum.
+      sourceLine = 1;
+      sourceColumn = null;
     }
 
     return viewSource.viewSourceInDebugger(

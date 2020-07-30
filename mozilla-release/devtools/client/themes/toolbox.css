@@ -28,11 +28,18 @@
  */
 .debug-target-info .iconized-label {
   display: grid;
-  grid-template-columns: 20px auto auto;
-  grid-column-gap: 8px;
   align-items: center;
-  padding: 0 var(--padding-inline-end-size);
   white-space: nowrap;
+  grid-column-gap: 8px;
+  grid-template-columns: 20px auto auto;
+  padding: 0 var(--padding-inline-end-size);
+}
+
+.debug-target-navigation {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 0 4px;
 }
 
 .debug-target-info .iconized-label:not(:last-child) {
@@ -49,7 +56,17 @@
   fill: var(--theme-toolbar-color);
 }
 
-.debug-target-info .reload-button {
+/*
+ * XXX: This was added to match the padding 8px used by the reload button.
+ * This padding makes the debug target component taller and also creates
+ * spacing with the debug-target-title separator.
+ * See Bug 1641920 for improving the CSS of the DebugTargetInfo component.
+ */
+.debug-target-info .debug-target-url-readonly {
+  padding: 8px;
+}
+
+.debug-target-info .navigation-button {
   padding: 8px;
   grid-column-gap: 0;
   border: 0;
@@ -57,23 +74,23 @@
   --border-inline-end-width: 0;
 }
 
-.debug-target-info .reload-button:hover {
+.debug-target-info .navigation-button:hover {
   background-color: var(--toolbarbutton-hover-background);
 }
 
-.debug-target-info .reload-button:focus {
+.debug-target-info .navigation-button:focus {
   box-shadow: 0 0 0 1px #0a84ff inset, 0 0 0 1px #0a84ff, 0 0 0 4px rgba(10, 132, 255, 0.3)
 }
 
-.debug-target-info .reload-button:active {
+.debug-target-info .navigation-button:active {
   background-color: var(--theme-toolbarbutton-active-background);
 }
 
-.debug-target-info .reload-button img {
+.debug-target-info .navigation-button img {
   fill: var(--theme-toolbarbutton-color);
 }
 
-.debug-target-info .reload-button:active img {
+.debug-target-info .navigation-button:active img {
   fill: var(--theme-toolbarbutton-active-color);
 }
 

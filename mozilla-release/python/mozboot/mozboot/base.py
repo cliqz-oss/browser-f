@@ -142,14 +142,9 @@ tool or package manager on your system, or directly from https://rust-lang.org/
 '''
 
 BROWSER_ARTIFACT_MODE_MOZCONFIG = '''
-Paste the lines between the chevrons (>>> and <<<) into your
-$topsrcdir/mozconfig file, or create the file if it does not exist:
-
->>>
 # Automatically download and use compiled C++ components:
 ac_add_options --enable-artifact-builds
-<<<
-'''
+'''.strip()
 
 # Upgrade Mercurial older than this.
 MODERN_MERCURIAL_VERSION = LooseVersion('4.8')
@@ -158,7 +153,7 @@ MODERN_MERCURIAL_VERSION = LooseVersion('4.8')
 MODERN_PYTHON_VERSION = LooseVersion('2.7.3')
 
 # Upgrade rust older than this.
-MODERN_RUST_VERSION = LooseVersion('1.41.1')
+MODERN_RUST_VERSION = LooseVersion('1.43.0')
 
 # Upgrade nasm older than this.
 MODERN_NASM_VERSION = LooseVersion('2.14')
@@ -191,7 +186,7 @@ class BaseBootstrapper(object):
                                   '%s does not yet implement install_browser_packages()' %
                                   __name__)
 
-    def suggest_browser_mozconfig(self):
+    def generate_browser_mozconfig(self):
         '''
         Print a message to the console detailing what the user's mozconfig
         should contain.
@@ -211,7 +206,7 @@ class BaseBootstrapper(object):
             '%s does not yet implement install_browser_artifact_mode_packages()' %
             __name__)
 
-    def suggest_browser_artifact_mode_mozconfig(self):
+    def generate_browser_artifact_mode_mozconfig(self):
         '''
         Print a message to the console detailing what the user's mozconfig
         should contain.
@@ -219,7 +214,7 @@ class BaseBootstrapper(object):
         Firefox for Desktop Artifact Mode needs to enable artifact builds and
         a path where the build artifacts will be written to.
         '''
-        print(BROWSER_ARTIFACT_MODE_MOZCONFIG)
+        return BROWSER_ARTIFACT_MODE_MOZCONFIG
 
     def install_mobile_android_packages(self):
         '''
@@ -230,7 +225,7 @@ class BaseBootstrapper(object):
                                   '%s does not yet implement install_mobile_android_packages()'
                                   % __name__)
 
-    def suggest_mobile_android_mozconfig(self):
+    def generate_mobile_android_mozconfig(self):
         '''
         Print a message to the console detailing what the user's mozconfig
         should contain.
@@ -238,7 +233,7 @@ class BaseBootstrapper(object):
         GeckoView/Firefox for Android needs an application and an ABI set, and it needs
         paths to the Android SDK and NDK.
         '''
-        raise NotImplementedError('%s does not yet implement suggest_mobile_android_mozconfig()' %
+        raise NotImplementedError('%s does not yet implement generate_mobile_android_mozconfig()' %
                                   __name__)
 
     def install_mobile_android_artifact_mode_packages(self):
@@ -251,7 +246,7 @@ class BaseBootstrapper(object):
             '%s does not yet implement install_mobile_android_artifact_mode_packages()'
             % __name__)
 
-    def suggest_mobile_android_artifact_mode_mozconfig(self):
+    def generate_mobile_android_artifact_mode_mozconfig(self):
         '''
         Print a message to the console detailing what the user's mozconfig
         should contain.
@@ -260,7 +255,7 @@ class BaseBootstrapper(object):
         and it needs paths to the Android SDK.
         '''
         raise NotImplementedError(
-            '%s does not yet implement suggest_mobile_android_artifact_mode_mozconfig()'
+            '%s does not yet implement generate_mobile_android_artifact_mode_mozconfig()'
             % __name__)
 
     def ensure_clang_static_analysis_package(self, state_dir, checkout_root):
@@ -350,7 +345,7 @@ class BaseBootstrapper(object):
             raise ValueError("cannot determine path to Python executable")
 
         cmd = [sys.executable, mach_binary, 'artifact', 'toolchain',
-               '--from-build', toolchain_job]
+               '--bootstrap', '--from-build', toolchain_job]
 
         if no_unpack:
             cmd += ['--no-unpack']
@@ -839,9 +834,8 @@ class BaseBootstrapper(object):
         java = self.which('java', *extra_search_dirs)
 
         if not java:
-            raise Exception('You need to have Java version 1.8 installed. '
-                            'Please visit http://www.java.com/en/download '
-                            'to get version 1.8.')
+            raise Exception('You need to have Java Development Kit version 1.8 installed. '
+                            'Please install it from https://adoptopenjdk.net/?variant=openjdk8')
 
         try:
             output = subprocess.check_output([java,
@@ -857,20 +851,20 @@ class BaseBootstrapper(object):
             # but has been around since at least 2011.
             version = [line for line in output.splitlines()
                        if 'java.specification.version' in line]
+
+            unknown_version_exception = Exception('You need to have Java Development Kit version '
+                                                  '1.8 installed (found {} but could not parse '
+                                                  'version "{}"). Check the JAVA_HOME environment '
+                                                  'variable. Please install JDK 1.8 from '
+                                                  'https://adoptopenjdk.net/?variant=openjdk8.'
+                                                  .format(java, output))
+
             if not len(version) == 1:
-                raise Exception('You need to have Java version 1.8 installed '
-                                '(found {} but could not parse version "{}"). '
-                                'Check the JAVA_HOME environment variable. '
-                                'Please visit http://www.java.com/en/download '
-                                'to get version 1.8.'.format(java, output))
+                raise unknown_version_exception
 
             version = version[0].split(' = ')[-1]
             if version not in ['1.8', '8']:
-                raise Exception('You need to have Java version 1.8 installed '
-                                '(found {} with version "{}"). '
-                                'Check the JAVA_HOME environment variable. '
-                                'Please visit http://www.java.com/en/download '
-                                'to get version 1.8.'.format(java, version))
+                raise unknown_version_exception
         except subprocess.CalledProcessError as e:
             raise Exception('Failed to get java version from {}: {}'.format(java, e.output))
 

@@ -24,7 +24,6 @@ import logging
 from six import string_types, text_type
 
 from mozbuild.schedules import INCLUSIVE_COMPONENTS
-from moztest.resolve import TEST_SUITES
 from voluptuous import (
     Any,
     Optional,
@@ -38,7 +37,7 @@ from taskgraph.util.attributes import match_run_on_projects, keymatch
 from taskgraph.util.keyed_by import evaluate_keyed_by
 from taskgraph.util.schema import resolve_keyed_by, OptimizationSchema
 from taskgraph.util.templates import merge
-from taskgraph.util.treeherder import split_symbol, join_symbol, add_suffix
+from taskgraph.util.treeherder import split_symbol, join_symbol
 from taskgraph.util.platforms import platform_family
 from taskgraph.util.schema import (
     optionally_keyed_by,
@@ -221,6 +220,13 @@ TEST_VARIANTS = {
                 ],
             }
         }
+    },
+    'webrender': {
+        'description': "{description} with webrender enabled",
+        'suffix': 'wr',
+        'merge': {
+            'webrender': True,
+        }
     }
 }
 
@@ -257,16 +263,22 @@ CHUNK_SUITES_BLACKLIST = (
     'test-verify-gpu',
     'test-verify-wpt',
     'web-platform-tests-backlog',
-    'web-platform-tests-crashtest',
-    'web-platform-tests-reftest',
+    'web-platform-tests-print-reftest',
     'web-platform-tests-reftest-backlog',
-    'web-platform-tests-wdspec',
 )
 """These suites will be chunked at test runtime rather than here in the taskgraph."""
 
 
 DYNAMIC_CHUNK_DURATION = 20 * 60  # seconds
 """The approximate time each test chunk should take to run."""
+
+
+DYNAMIC_CHUNK_MULTIPLIER = {
+    # Desktop xpcshell tests run in parallel. Reduce the total runtime to
+    # compensate.
+    '^(?!android).*-xpcshell.*': 0.2,
+}
+"""A multiplication factor to tweak the total duration per platform / suite."""
 
 
 logger = logging.getLogger(__name__)
@@ -333,6 +345,11 @@ test_description_schema = Schema({
         'test-name',
         Any([text_type], 'built-projects')),
 
+    # When set only run on projects where the build would already be running.
+    # This ensures tasks where this is True won't be the cause of the build
+    # running on a project it otherwise wouldn't have.
+    Optional('built-projects-only'): bool,
+
     # Same as `run-on-projects` except it only applies to Fission tasks. Fission
     # tasks will ignore `run_on_projects` and non-Fission tasks will ignore
     # `fission-run-on-projects`.
@@ -378,6 +395,9 @@ test_description_schema = Schema({
 
     # Whether the task should run with WebRender enabled or not.
     Optional('webrender'): bool,
+    Optional('webrender-run-on-projects'): optionally_keyed_by(
+        'app',
+        Any([text_type], 'default')),
 
     # The EC2 instance size to run these tests on.
     Required('instance-size'): optionally_keyed_by(
@@ -637,6 +657,7 @@ def set_defaults(config, tasks):
         task.setdefault('run-as-administrator', False)
         task.setdefault('chunks', 1)
         task.setdefault('run-on-projects', 'built-projects')
+        task.setdefault('built-projects-only', False)
         task.setdefault('instance-size', 'default')
         task.setdefault('max-run-time', 3600)
         task.setdefault('reboot', False)
@@ -644,12 +665,7 @@ def set_defaults(config, tasks):
         task.setdefault('loopback-audio', False)
         task.setdefault('loopback-video', False)
         task.setdefault('limit-platforms', [])
-        # Bug 1602863 - temporarily in place while ubuntu1604 and ubuntu1804
-        # both exist in the CI.
-        if ('linux1804' in task['test-platform']):
-            task.setdefault('docker-image', {'in-tree': 'ubuntu1804-test'})
-        else:
-            task.setdefault('docker-image', {'in-tree': 'desktop1604-test'})
+        task.setdefault('docker-image', {'in-tree': 'ubuntu1804-test'})
         task.setdefault('checkout', False)
         task.setdefault('require-signed-extensions', False)
         task.setdefault('variants', [])
@@ -847,18 +863,17 @@ def set_treeherder_machine_platform(config, tasks):
             platform_new = task['test-platform'].replace('-pgo/opt', '/pgo')
             task['treeherder-machine-platform'] = platform_new
         elif 'android-em-7.0-x86_64-qr' in task['test-platform']:
-            opt = task['test-platform'].split('/')[1]
-            task['treeherder-machine-platform'] = 'android-em-7-0-x86_64-qr/'+opt
+            task['treeherder-machine-platform'] = task['test-platform'].replace('.', '-')
+        elif 'android-em-7.0-x86_64-shippable-qr' in task['test-platform']:
+            task['treeherder-machine-platform'] = task['test-platform'].replace('.', '-')
         elif '-qr' in task['test-platform']:
             task['treeherder-machine-platform'] = task['test-platform']
         elif 'android-hw' in task['test-platform']:
             task['treeherder-machine-platform'] = task['test-platform']
         elif 'android-em-7.0-x86_64' in task['test-platform']:
-            opt = task['test-platform'].split('/')[1]
-            task['treeherder-machine-platform'] = 'android-em-7-0-x86_64/'+opt
+            task['treeherder-machine-platform'] = task['test-platform'].replace('.', '-')
         elif 'android-em-7.0-x86' in task['test-platform']:
-            opt = task['test-platform'].split('/')[1]
-            task['treeherder-machine-platform'] = 'android-em-7-0-x86/'+opt
+            task['treeherder-machine-platform'] = task['test-platform'].replace('.', '-')
         # Bug 1602863 - must separately define linux64/asan and linux1804-64/asan
         # otherwise causes an exception during taskgraph generation about
         # duplicate treeherder platform/symbol.
@@ -927,10 +942,10 @@ def set_tier(config, tasks):
                 'macosx1014-64-qr/opt',
                 'macosx1014-64-shippable-qr/opt',
                 'macosx1014-64-qr/debug',
-                'android-em-7.0-x86_64/opt',
+                'android-em-7.0-x86_64-shippable/opt',
                 'android-em-7.0-x86_64/debug',
-                'android-em-7.0-x86/opt',
-                'android-em-7.0-x86_64-qr/opt',
+                'android-em-7.0-x86-shippable/opt',
+                'android-em-7.0-x86_64-shippable-qr/opt',
                 'android-em-7.0-x86_64-qr/debug'
             ]:
                 task['tier'] = 1
@@ -991,6 +1006,7 @@ def handle_keyed_by(config, tasks):
         'fetches.fetch',
         'fetches.toolchain',
         'target',
+        'webrender-run-on-projects',
     ]
     for task in tasks:
         for field in fields:
@@ -1255,6 +1271,19 @@ def handle_run_on_projects(config, tasks):
     for task in tasks:
         if task['run-on-projects'] == 'built-projects':
             task['run-on-projects'] = task['build-attributes'].get('run_on_projects', ['all'])
+
+        if task.pop('built-projects-only', False):
+            built_projects = set(task['build-attributes'].get('run_on_projects', {'all'}))
+            run_on_projects = set(task.get('run-on-projects', set()))
+
+            # If 'all' exists in run-on-projects, then the intersection of both
+            # is built-projects. Similarly if 'all' exists in built-projects,
+            # the intersection is run-on-projects (so do nothing). When neither
+            # contains 'all', take the actual set intersection.
+            if 'all' in run_on_projects:
+                task['run-on-projects'] = sorted(built_projects)
+            elif 'all' not in built_projects:
+                task['run-on-projects'] = sorted(run_on_projects & built_projects)
         yield task
 
 
@@ -1381,6 +1410,9 @@ def set_test_verify_chunks(config, tasks):
 def set_test_manifests(config, tasks):
     """Determine the set of test manifests that should run in this task."""
 
+    loader_cls = manifest_loaders[config.params['test_manifest_loader']]
+    loader = loader_cls(config.params)
+
     for task in tasks:
         if task['suite'] in CHUNK_SUITES_BLACKLIST:
             yield task
@@ -1402,13 +1434,10 @@ def set_test_manifests(config, tasks):
             yield task
             continue
 
-        suite_definition = TEST_SUITES[task['suite']]
         mozinfo = guess_mozinfo_from_task(task)
 
-        loader = manifest_loaders[config.params['test_manifest_loader']]
         task['test-manifests'] = loader.get_manifests(
-            suite_definition['build_flavor'],
-            suite_definition.get('kwargs', {}).get('subsuite', 'undefined'),
+            task['suite'],
             frozenset(mozinfo.items()),
         )
 
@@ -1416,6 +1445,13 @@ def set_test_manifests(config, tasks):
         # associated suite.
         if not task['test-manifests']['active'] and not task['test-manifests']['skipped']:
             continue
+
+        # The default loader loads all manifests. If we use a non-default
+        # loader, we'll only run some subset of manifests and the hardcoded
+        # chunk numbers will no longer be valid. Dynamic chunking should yield
+        # better results.
+        if config.params['test_manifest_loader'] != 'default':
+            task['chunks'] = "dynamic"
 
         yield task
 
@@ -1434,10 +1470,13 @@ def resolve_dynamic_chunks(config, tasks):
                 "{} must define 'test-manifests' to use dynamic chunking!".format(
                     task['test-name']))
 
-        runtimes = {m: r for m, r in get_runtimes(task['test-platform']).items()
+        runtimes = {m: r for m, r in get_runtimes(task['test-platform'], task['suite']).items()
                     if m in task['test-manifests']['active']}
 
-        times = list(runtimes.values())
+        # Truncate runtimes that are above the desired chunk duration. They
+        # will be assigned to a chunk on their own and the excess duration
+        # shouldn't cause additional chunks to be needed.
+        times = [min(DYNAMIC_CHUNK_DURATION, r) for r in runtimes.values()]
         avg = round(sum(times) / len(times), 2) if times else 0
         total = sum(times)
 
@@ -1446,7 +1485,21 @@ def resolve_dynamic_chunks(config, tasks):
         missing = [m for m in task['test-manifests']['active'] if m not in runtimes]
         total += avg * len(missing)
 
-        task['chunks'] = int(round(total / DYNAMIC_CHUNK_DURATION)) or 1
+        # Apply any chunk multipliers if found.
+        key = "{}-{}".format(task["test-platform"], task["test-name"])
+        matches = keymatch(DYNAMIC_CHUNK_MULTIPLIER, key)
+        if len(matches) > 1:
+            raise Exception(
+                "Multiple matching values for {} found while "
+                "determining dynamic chunk multiplier!".format(key))
+        elif matches:
+            total = total * matches[0]
+
+        chunks = int(round(total / DYNAMIC_CHUNK_DURATION))
+
+        # Make sure we never exceed the number of manifests, nor have a chunk
+        # length of 0.
+        task['chunks'] = min(chunks, len(task['test-manifests']['active'])) or 1
         yield task
 
 
@@ -1462,11 +1515,9 @@ def split_chunks(config, tasks):
         # the algorithm more than once.
         chunked_manifests = None
         if 'test-manifests' in task:
-            suite_definition = TEST_SUITES[task['suite']]
             manifests = task['test-manifests']
             chunked_manifests = chunk_manifests(
-                suite_definition['build_flavor'],
-                suite_definition.get('kwargs', {}).get('subsuite', 'undefined'),
+                task['suite'],
                 task['test-platform'],
                 task['chunks'],
                 manifests['active'],
@@ -1491,10 +1542,11 @@ def split_chunks(config, tasks):
                             this_chunk, task['test-name'], task['test-platform']))
                 chunked['test-manifests'] = manifests
 
-            if task['chunks'] > 1:
+            group, symbol = split_symbol(chunked['treeherder-symbol'])
+            if task['chunks'] > 1 or not symbol:
                 # add the chunk number to the TH symbol
-                chunked['treeherder-symbol'] = add_suffix(
-                    chunked['treeherder-symbol'], this_chunk)
+                symbol += str(this_chunk)
+                chunked['treeherder-symbol'] = join_symbol(group, symbol)
 
             yield chunked
 
@@ -1528,6 +1580,10 @@ def enable_webrender(config, tasks):
             if not task['attributes']['unittest_category'] in ['cppunittest', 'gtest', 'raptor']:
                 extra_options.append("--setpref=layers.d3d11.enable-blacklist=false")
 
+            # run webrender variants on the projects specified on webrender-run-on-projects
+            if task.get("webrender-run-on-projects") is not None:
+                task["run-on-projects"] = task["webrender-run-on-projects"]
+
         yield task
 
 
@@ -1557,7 +1613,7 @@ def set_profile(config, tasks):
 
     for task in tasks:
         if profile and task['suite'] in ['talos', 'raptor']:
-            task['mozharness']['extra-options'].append('--geckoProfile')
+            task['mozharness']['extra-options'].append('--gecko-profile')
         yield task
 
 

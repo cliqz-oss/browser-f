@@ -10,6 +10,7 @@
 #include "CachePushChecker.h"
 #include "HttpTransactionParent.h"
 #include "SocketProcessHost.h"
+#include "mozilla/dom/IPCBlobInputStreamParent.h"
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/ipc/FileDescriptorSetParent.h"
 #include "mozilla/ipc/IPCStreamAlloc.h"
@@ -19,6 +20,7 @@
 #include "mozilla/net/ProxyConfigLookupParent.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TelemetryIPC.h"
+#include "nsIAppStartup.h"
 #include "nsIHttpActivityObserver.h"
 #include "nsNSSIOLayer.h"
 #include "PSMIPCCommon.h"
@@ -79,6 +81,16 @@ void SocketProcessParent::ActorDestroy(ActorDestroyReason aWhy) {
 
   if (aWhy == AbnormalShutdown) {
     GenerateCrashReport(OtherPid());
+
+    if (PR_GetEnv("MOZ_CRASHREPORTER_SHUTDOWN")) {
+      printf_stderr("Shutting down due to socket process crash.\n");
+      nsCOMPtr<nsIAppStartup> appService =
+          do_GetService("@mozilla.org/toolkit/app-startup;1");
+      if (appService) {
+        bool userAllowedQuit = true;
+        appService->Quit(nsIAppStartup::eForceQuit, &userAllowedQuit);
+      }
+    }
   }
 
   if (mHost) {
@@ -245,7 +257,7 @@ mozilla::ipc::IPCResult SocketProcessParent::RecvObserveHttpActivity(
     const uint32_t& aActivitySubtype, const PRTime& aTimestamp,
     const uint64_t& aExtraSizeData, const nsCString& aExtraStringData) {
   nsCOMPtr<nsIHttpActivityDistributor> activityDistributor =
-      services::GetActivityDistributor();
+      services::GetHttpActivityDistributor();
   MOZ_ASSERT(activityDistributor);
 
   Unused << activityDistributor->ObserveActivityWithArgs(
@@ -374,6 +386,24 @@ class DeferredDeleteSocketProcessParent : public Runnable {
 void SocketProcessParent::Destroy(UniquePtr<SocketProcessParent>&& aParent) {
   NS_DispatchToMainThread(
       new DeferredDeleteSocketProcessParent(std::move(aParent)));
+}
+
+already_AddRefed<dom::PIPCBlobInputStreamParent>
+SocketProcessParent::AllocPIPCBlobInputStreamParent(const nsID& aID,
+                                                    const uint64_t& aSize) {
+  RefPtr<dom::IPCBlobInputStreamParent> actor =
+      dom::IPCBlobInputStreamParent::Create(aID, aSize, this);
+  return actor.forget();
+}
+
+mozilla::ipc::IPCResult SocketProcessParent::RecvPIPCBlobInputStreamConstructor(
+    dom::PIPCBlobInputStreamParent* aActor, const nsID& aID,
+    const uint64_t& aSize) {
+  if (!static_cast<dom::IPCBlobInputStreamParent*>(aActor)->HasValidStream()) {
+    return IPC_FAIL_NO_REASON(this);
+  }
+
+  return IPC_OK();
 }
 
 }  // namespace net

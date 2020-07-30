@@ -14,7 +14,7 @@
 <!ENTITY menu_securityEncryptOptional.accesskey "w">
 -->
 
-<!ENTITY menu_securityEncryptRequire2.label "Verschlüsselung verlangen">
+<!ENTITY menu_securityEncryptRequire2.label "Nur mit Verschlüsselung senden">
 <!ENTITY menu_securityEncryptRequire.accesskey "V">
 
 <!ENTITY menu_securitySign.label "Nachricht unterschreiben">

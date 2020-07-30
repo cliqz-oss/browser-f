@@ -351,6 +351,7 @@ let ProfileAutocomplete = {
           // The observer notification is for autocomplete in a different process.
           break;
         }
+        FormAutofillContent.autofillPending = true;
         this._fillFromAutocompleteRow(FormAutofillContent.activeInput);
         break;
       }
@@ -366,11 +367,12 @@ let ProfileAutocomplete = {
     return actor.selectedIndex;
   },
 
-  _fillFromAutocompleteRow(focusedInput) {
+  async _fillFromAutocompleteRow(focusedInput) {
     this.debug("_fillFromAutocompleteRow:", focusedInput);
     let formDetails = FormAutofillContent.activeFormDetails;
     if (!formDetails) {
       // The observer notification is for a different frame.
+      FormAutofillContent.autofillPending = false;
       return;
     }
 
@@ -381,6 +383,7 @@ let ProfileAutocomplete = {
       this.lastProfileAutoCompleteResult.getStyleAt(selectedIndex) !=
         "autofill-profile"
     ) {
+      FormAutofillContent.autofillPending = false;
       return;
     }
 
@@ -388,7 +391,8 @@ let ProfileAutocomplete = {
       this.lastProfileAutoCompleteResult.getCommentAt(selectedIndex)
     );
 
-    FormAutofillContent.activeHandler.autofillFormFields(profile);
+    await FormAutofillContent.activeHandler.autofillFormFields(profile);
+    FormAutofillContent.autofillPending = false;
   },
 
   _clearProfilePreview() {
@@ -449,6 +453,18 @@ var FormAutofillContent = {
    * handler, section, and field detail.
    */
   _activeItems: {},
+
+  /**
+   * @type {boolean} Flag indicating whether a focus action requiring
+   * the popup to be active is pending.
+   */
+  _popupPending: false,
+
+  /**
+   * @type {boolean} Flag indicating whether the form is waiting to be
+   * filled by Autofill.
+   */
+  _autofillPending: false,
 
   init() {
     FormAutofill.defineLazyLogGetter(this, "FormAutofillContent");
@@ -530,6 +546,11 @@ var FormAutofillContent = {
         }
         if (Services.cpmm.sharedData.get("FormAutofill:enabled")) {
           ProfileAutocomplete.ensureRegistered();
+          if (this._popupPending) {
+            this._popupPending = false;
+            this.debug("handleEvent: Opening deferred popup");
+            formFillController.showPopup();
+          }
         } else {
           ProfileAutocomplete.ensureUnregistered();
         }
@@ -580,6 +601,7 @@ var FormAutofillContent = {
   updateActiveInput(element) {
     element = element || formFillController.focusedInput;
     if (!element) {
+      this.debug("updateActiveElement: no element selected");
       this._activeItems = {};
       return;
     }
@@ -587,6 +609,34 @@ var FormAutofillContent = {
       elementWeakRef: Cu.getWeakReference(element),
       fieldDetail: null,
     };
+
+    this.debug("updateActiveElement: checking for popup-on-focus");
+    // We know this element just received focus. If it's a credit card field,
+    // open its popup.
+    if (this._autofillPending) {
+      this.debug("updateActiveElement: skipping check; autofill is imminent");
+    } else if (element.value?.length !== 0) {
+      this.debug(
+        "updateActiveElement: Not opening popup because field is " +
+          `not empty: element.value = "${element.value}"`
+      );
+    } else {
+      this.debug(
+        "updateActiveElement: checking if empty field is cc-*: ",
+        this.activeFieldDetail?.fieldName
+      );
+      if (this.activeFieldDetail?.fieldName?.startsWith("cc-")) {
+        if (Services.cpmm.sharedData.get("FormAutofill:enabled")) {
+          this.debug("updateActiveElement: opening pop up");
+          formFillController.showPopup();
+        } else {
+          this.debug(
+            "updateActiveElement: Deferring pop-up until Autofill is ready"
+          );
+          this._popupPending = true;
+        }
+      }
+    }
   },
 
   get activeInput() {
@@ -639,6 +689,11 @@ var FormAutofillContent = {
       }
     }
     return this._activeItems.fieldDetail;
+  },
+
+  set autofillPending(flag) {
+    this.debug("Setting autofillPending to", flag);
+    this._autofillPending = flag;
   },
 
   identifyAutofillFields(element) {
@@ -727,6 +782,7 @@ var FormAutofillContent = {
   },
 
   onPopupClosed(selectedRowStyle) {
+    this.debug("Popup has closed.");
     ProfileAutocomplete._clearProfilePreview();
 
     let lastAutoCompleteResult =
@@ -745,6 +801,13 @@ var FormAutofillContent = {
         FormAutofillContent.clearForm();
       }
     }
+  },
+
+  onPopupOpened() {
+    this.debug(
+      "Popup has opened, automatic =",
+      formFillController.passwordPopupAutomaticallyOpened
+    );
   },
 
   _markAsAutofillField(field) {

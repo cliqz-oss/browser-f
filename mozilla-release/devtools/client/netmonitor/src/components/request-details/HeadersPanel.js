@@ -22,6 +22,7 @@ const { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 const {
   getHeadersURL,
   getTrackingProtectionURL,
+  getHTTPStatusCodeURL,
 } = require("devtools/client/netmonitor/src/utils/mdn-utils");
 const {
   fetchNetworkUpdatePacket,
@@ -86,6 +87,9 @@ const HEADERS_STATUS = L10N.getStr("netmonitor.headers.status");
 const HEADERS_VERSION = L10N.getStr("netmonitor.headers.version");
 const HEADERS_TRANSFERRED = L10N.getStr("netmonitor.toolbar.transferred");
 const SUMMARY_STATUS_LEARN_MORE = L10N.getStr("netmonitor.summary.learnMore");
+const SUMMARY_ETP_LEARN_MORE = L10N.getStr(
+  "netmonitor.enhancedTrackingProtection.learnMore"
+);
 const HEADERS_REFERRER = L10N.getStr("netmonitor.headers.referrerPolicy");
 const HEADERS_CONTENT_BLOCKING = L10N.getStr(
   "netmonitor.headers.contentBlocking"
@@ -115,6 +119,8 @@ class HeadersPanel extends Component {
       openRequestBlockingAndAddUrl: PropTypes.func.isRequired,
       cloneRequest: PropTypes.func,
       sendCustomRequest: PropTypes.func,
+      shouldExpandPreview: PropTypes.bool,
+      setHeadersUrlPreviewExpanded: PropTypes.func,
     };
   }
 
@@ -516,6 +522,8 @@ class HeadersPanel extends Component {
         transferredSize,
       },
       openRequestBlockingAndAddUrl,
+      shouldExpandPreview,
+      setHeadersUrlPreviewExpanded,
     } = this.props;
     const {
       rawResponseHeadersOpened,
@@ -662,7 +670,11 @@ class HeadersPanel extends Component {
           StatusCode({
             item: { fromCache, fromServiceWorker, status, statusText },
           }),
-          statusText
+          statusText,
+          MDNLink({
+            url: getHTTPStatusCodeURL(status),
+            title: SUMMARY_STATUS_LEARN_MORE,
+          })
         )
       );
     }
@@ -687,7 +699,7 @@ class HeadersPanel extends Component {
           trackingProtectionDocURL
             ? MDNLink({
                 url: trackingProtectionDocURL,
-                title: SUMMARY_STATUS_LEARN_MORE,
+                title: SUMMARY_ETP_LEARN_MORE,
               })
             : span({ className: "headers-summary learn-more-link" })
         )
@@ -752,6 +764,8 @@ class HeadersPanel extends Component {
             address: remoteAddress
               ? getFormattedIPAndPort(remoteAddress, remotePort)
               : null,
+            shouldExpandPreview,
+            onTogglePreview: expanded => setHeadersUrlPreviewExpanded(expanded),
           }),
           div({ className: "summary" }, summaryItems)
         ),
@@ -761,9 +775,17 @@ class HeadersPanel extends Component {
   }
 }
 
-module.exports = connect(null, (dispatch, props) => ({
-  openRequestBlockingAndAddUrl: url =>
-    dispatch(Actions.openRequestBlockingAndAddUrl(url)),
-  cloneRequest: id => dispatch(Actions.cloneRequest(id)),
-  sendCustomRequest: () => dispatch(Actions.sendCustomRequest(props.connector)),
-}))(HeadersPanel);
+module.exports = connect(
+  state => ({
+    shouldExpandPreview: state.ui.shouldExpandHeadersUrlPreview,
+  }),
+  (dispatch, props) => ({
+    setHeadersUrlPreviewExpanded: expanded =>
+      dispatch(Actions.setHeadersUrlPreviewExpanded(expanded)),
+    openRequestBlockingAndAddUrl: url =>
+      dispatch(Actions.openRequestBlockingAndAddUrl(url)),
+    cloneRequest: id => dispatch(Actions.cloneRequest(id)),
+    sendCustomRequest: () =>
+      dispatch(Actions.sendCustomRequest(props.connector)),
+  })
+)(HeadersPanel);

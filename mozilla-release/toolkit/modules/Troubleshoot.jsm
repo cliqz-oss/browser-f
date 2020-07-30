@@ -17,6 +17,11 @@ const { E10SUtils } = ChromeUtils.import(
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
+
+const { FeatureGate } = ChromeUtils.import(
+  "resource://featuregates/FeatureGate.jsm"
+);
+
 XPCOMUtils.defineLazyGlobalGetters(this, ["DOMParser"]);
 
 // We use a preferences whitelist to make sure we only show preferences that
@@ -196,7 +201,9 @@ var dataProviders = {
       osVersion:
         Services.sysinfo.getProperty("name") +
         " " +
-        Services.sysinfo.getProperty("version"),
+        Services.sysinfo.getProperty("version") +
+        " " +
+        Services.sysinfo.getProperty("build"),
       version: AppConstants.MOZ_APP_VERSION_DISPLAY,
       buildID: Services.appinfo.appBuildID,
       distributionID: Services.prefs
@@ -279,15 +286,23 @@ var dataProviders = {
     done(data);
   },
 
-  extensions: async function extensions(done) {
-    let extensions = await AddonManager.getAddonsByTypes(["extension"]);
-    extensions = extensions.filter(e => !e.isSystem);
-    extensions.sort(function(a, b) {
+  addons: async function addons(done) {
+    let addons = await AddonManager.getAddonsByTypes([
+      "extension",
+      "locale",
+      "dictionary",
+    ]);
+    addons = addons.filter(e => !e.isSystem);
+    addons.sort(function(a, b) {
       if (a.isActive != b.isActive) {
         return b.isActive ? 1 : -1;
       }
 
-      // In some unfortunate cases addon names can be null.
+      if (a.type != b.type) {
+        return a.type.localeCompare(b.type);
+      }
+
+      // In some unfortunate cases add-on names can be null.
       let aname = a.name || "";
       let bname = b.name || "";
       let lc = aname.localeCompare(bname);
@@ -299,9 +314,9 @@ var dataProviders = {
       }
       return 0;
     });
-    let props = ["name", "version", "isActive", "id"];
+    let props = ["name", "type", "version", "isActive", "id"];
     done(
-      extensions.map(function(ext) {
+      addons.map(function(ext) {
         return props.reduce(function(extData, prop) {
           extData[prop] = ext[prop];
           return extData;
@@ -402,6 +417,23 @@ var dataProviders = {
     };
 
     done(data);
+  },
+
+  async experimentalFeatures(done) {
+    if (AppConstants.platform == "android") {
+      done();
+      return;
+    }
+    let gates = await FeatureGate.all();
+    done(
+      gates.map(gate => {
+        return [
+          gate.title,
+          gate.preference,
+          Services.prefs.getBoolPref(gate.preference),
+        ];
+      })
+    );
   },
 
   modifiedPreferences: function modifiedPreferences(done) {

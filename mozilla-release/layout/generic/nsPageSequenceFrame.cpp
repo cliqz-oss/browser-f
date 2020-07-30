@@ -63,7 +63,8 @@ nsPageSequenceFrame::nsPageSequenceFrame(ComputedStyle* aStyle,
            ->Document()
            ->GetFontPrefsForLang(aStyle->StyleFont()->mLanguage)
            ->GetDefaultFont(StyleGenericFontFamily::Serif);
-  mPageData->mHeadFootFont.size = nsPresContext::CSSPointsToAppUnits(10);
+  mPageData->mHeadFootFont.size =
+      Length::FromPixels(CSSPixel::FromPoints(10.0f));
 
   // Doing this here so we only have to go get these formats once
   SetPageNumberFormat("pagenumber", "%1$d", true);
@@ -152,7 +153,7 @@ void nsPageSequenceFrame::Reflow(nsPresContext* aPresContext,
 
   // Don't do incremental reflow until we've taught tables how to do
   // it right in paginated mode.
-  if (!(GetStateBits() & NS_FRAME_FIRST_REFLOW)) {
+  if (!HasAnyStateBits(NS_FRAME_FIRST_REFLOW)) {
     // Return our desired size
     SetDesiredSize(aDesiredSize, aReflowInput, mSize.width, mSize.height);
     aDesiredSize.SetOverflowAreasToDesiredBounds();

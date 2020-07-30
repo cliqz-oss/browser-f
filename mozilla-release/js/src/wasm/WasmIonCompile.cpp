@@ -656,23 +656,41 @@ class FunctionCompiler {
     MOZ_ASSERT(lhs->type() == MIRType::Simd128 &&
                rhs->type() == MIRType::Int32);
 
-    if (op == wasm::SimdOp::I64x2ShrS) {
-      if (!rhs->isConstant()) {
-        // x86/x64 specific? The masm interface for this shift requires the
-        // client to mask variable shift counts.  It's OK if later optimizations
-        // transform a variable count to a constant count here. (And then
-        // optimizations should also be able to fold the mask, though this is
-        // not crucial.)
-        MConstant* mask = MConstant::New(alloc(), Int32Value(63));
+    // Do something vector-based when the platform allows it.
+    if ((rhs->isConstant() && !MacroAssembler::MustScalarizeShiftSimd128(
+                                  op, Imm32(rhs->toConstant()->toInt32()))) ||
+        (!rhs->isConstant() &&
+         !MacroAssembler::MustScalarizeShiftSimd128(op))) {
+      int32_t maskBits;
+      if (!rhs->isConstant() &&
+          MacroAssembler::MustMaskShiftCountSimd128(op, &maskBits)) {
+        MConstant* mask = MConstant::New(alloc(), Int32Value(maskBits));
         curBlock_->add(mask);
         MBitAnd* maskedShift = MBitAnd::New(alloc(), rhs, mask, MIRType::Int32);
         curBlock_->add(maskedShift);
         rhs = maskedShift;
       }
+
+      auto* ins = MWasmShiftSimd128::New(alloc(), lhs, rhs, op);
+      curBlock_->add(ins);
+      return ins;
     }
 
-    auto* ins = MWasmShiftSimd128::New(alloc(), lhs, rhs, op);
-    curBlock_->add(ins);
+#  ifdef DEBUG
+    js::wasm::ReportSimdAnalysis("shift -> variable scalarized shift");
+#  endif
+
+    // Otherwise just scalarize using existing primitive operations.
+    auto* lane0 = reduceSimd128(lhs, SimdOp::I64x2ExtractLane, ValType::I64, 0);
+    auto* lane1 = reduceSimd128(lhs, SimdOp::I64x2ExtractLane, ValType::I64, 1);
+    auto* shiftCount = extendI32(rhs, /*isUnsigned=*/false);
+    auto* shifted0 = binary<MRsh>(lane0, shiftCount, MIRType::Int64);
+    auto* shifted1 = binary<MRsh>(lane1, shiftCount, MIRType::Int64);
+    V128 zero;
+    auto* res0 = constant(zero);
+    auto* res1 =
+        replaceLaneSimd128(res0, shifted0, 0, SimdOp::I64x2ReplaceLane);
+    auto* ins = replaceLaneSimd128(res1, shifted1, 1, SimdOp::I64x2ReplaceLane);
     return ins;
   }
 
@@ -730,6 +748,10 @@ class FunctionCompiler {
   // (v128, v128, v128) -> v128 effect-free operations
   MDefinition* bitselectSimd128(MDefinition* v1, MDefinition* v2,
                                 MDefinition* control) {
+    if (inDeadCode()) {
+      return nullptr;
+    }
+
     MOZ_ASSERT(v1->type() == MIRType::Simd128);
     MOZ_ASSERT(v2->type() == MIRType::Simd128);
     MOZ_ASSERT(control->type() == MIRType::Simd128);
@@ -740,6 +762,10 @@ class FunctionCompiler {
 
   // (v128, v128, imm_v128) -> v128 effect-free operations
   MDefinition* shuffleSimd128(MDefinition* v1, MDefinition* v2, V128 control) {
+    if (inDeadCode()) {
+      return nullptr;
+    }
+
     MOZ_ASSERT(v1->type() == MIRType::Simd128);
     MOZ_ASSERT(v2->type() == MIRType::Simd128);
     auto* ins = MWasmShuffleSimd128::New(
@@ -752,6 +778,10 @@ class FunctionCompiler {
   MDefinition* loadSplatSimd128(Scalar::Type viewType,
                                 const LinearMemoryAddress<MDefinition*>& addr,
                                 wasm::SimdOp splatOp) {
+    if (inDeadCode()) {
+      return nullptr;
+    }
+
     // Expand load-and-splat as integer load followed by splat.
     MemoryAccessDesc access(viewType, addr.align, addr.offset,
                             bytecodeIfNotAsmJS());
@@ -766,6 +796,10 @@ class FunctionCompiler {
 
   MDefinition* loadExtendSimd128(const LinearMemoryAddress<MDefinition*>& addr,
                                  wasm::SimdOp op) {
+    if (inDeadCode()) {
+      return nullptr;
+    }
+
     MemoryAccessDesc access(Scalar::Int64, addr.align, addr.offset,
                             bytecodeIfNotAsmJS());
     // Expand load-and-extend as integer load followed by widen.
@@ -1415,10 +1449,10 @@ class FunctionCompiler {
       MOZ_ASSERT(funcType.id.kind() == FuncTypeIdDescKind::None);
       const TableDesc& table =
           env_.tables[env_.asmJSSigToTableIndex[funcTypeIndex]];
-      MOZ_ASSERT(IsPowerOfTwo(table.limits.initial));
+      MOZ_ASSERT(IsPowerOfTwo(table.initialLength));
 
       MConstant* mask =
-          MConstant::New(alloc(), Int32Value(table.limits.initial - 1));
+          MConstant::New(alloc(), Int32Value(table.initialLength - 1));
       curBlock_->add(mask);
       MBitAnd* maskedIndex = MBitAnd::New(alloc(), index, mask, MIRType::Int32);
       curBlock_->add(maskedIndex);
@@ -4843,6 +4877,9 @@ static bool EmitBodyExprs(FunctionCompiler& f) {
           case uint32_t(SimdOp::I8x16AllTrue):
           case uint32_t(SimdOp::I16x8AllTrue):
           case uint32_t(SimdOp::I32x4AllTrue):
+          case uint32_t(SimdOp::I8x16Bitmask):
+          case uint32_t(SimdOp::I16x8Bitmask):
+          case uint32_t(SimdOp::I32x4Bitmask):
             CHECK(EmitReduceSimd128(f, SimdOp(op.b1)));
           case uint32_t(SimdOp::I8x16Shl):
           case uint32_t(SimdOp::I8x16ShrS):

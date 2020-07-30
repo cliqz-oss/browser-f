@@ -5,6 +5,7 @@
 "use strict";
 
 const Services = require("Services");
+const { gDevTools } = require("devtools/client/framework/devtools");
 const Telemetry = require("devtools/client/shared/telemetry");
 const {
   FrontClassWithSpec,
@@ -18,7 +19,6 @@ const TELEMETRY_EYEDROPPER_OPENED_MENU =
   "DEVTOOLS_MENU_EYEDROPPER_OPENED_COUNT";
 const SHOW_ALL_ANONYMOUS_CONTENT_PREF =
   "devtools.inspector.showAllAnonymousContent";
-const CONTENT_FISSION_ENABLED_PREF = "devtools.contenttoolbox.fission";
 
 const telemetry = new Telemetry();
 
@@ -45,16 +45,6 @@ class InspectorFront extends FrontClassWithSpec(inspectorSpec) {
       this._getPageStyle(),
       this._startChangesFront(),
     ]);
-  }
-
-  get isContentFissionEnabled() {
-    if (this._isContentFissionEnabled === undefined) {
-      this._isContentFissionEnabled = Services.prefs.getBoolPref(
-        CONTENT_FISSION_ENABLED_PREF
-      );
-    }
-
-    return this._isContentFissionEnabled;
   }
 
   async _getWalker() {
@@ -89,11 +79,27 @@ class InspectorFront extends FrontClassWithSpec(inspectorSpec) {
     this.pageStyle = await super.getPageStyle();
   }
 
+  async getCompatibilityFront() {
+    // DevTools supports a Compatibility actor from version FF79 and above.
+    // This check exists to maintain backwards compatibility with older
+    // backend. This check can be removed once FF79 hits the release channel.
+    if (this._compatibility === undefined) {
+      try {
+        this._compatibility = await super.getCompatibility();
+      } catch (error) {
+        this._compatibility = null;
+      }
+    }
+
+    return this._compatibility;
+  }
+
   async _startChangesFront() {
     await this.targetFront.getFront("changes");
   }
 
   destroy() {
+    this._compatibility = null;
     // Highlighter fronts are managed by InspectorFront and so will be
     // automatically destroyed. But we have to clear the `_highlighters`
     // Map as well as explicitly call `finalize` request on all of them.
@@ -155,7 +161,10 @@ class InspectorFront extends FrontClassWithSpec(inspectorSpec) {
   async getNodeFrontFromNodeGrip(grip) {
     const gripHasContentDomReference = "contentDomReference" in grip;
 
-    if (!this.isContentFissionEnabled || !gripHasContentDomReference) {
+    if (
+      !gDevTools.isFissionContentToolboxEnabled() ||
+      !gripHasContentDomReference
+    ) {
       // Backward compatibility ( < Firefox 71):
       // If the grip does not have a contentDomReference, we can't know in which browsing
       // context id the node lives. We fall back on gripToNodeFront that might retrieve
@@ -172,7 +181,7 @@ class InspectorFront extends FrontClassWithSpec(inspectorSpec) {
     // current one, we can directly use the current walker.
     if (
       this.targetFront.browsingContextID === browsingContextId ||
-      !this.isContentFissionEnabled
+      !gDevTools.isFissionContentToolboxEnabled()
     ) {
       return this.walker.getNodeActorFromContentDomReference(
         contentDomReference
@@ -185,18 +194,20 @@ class InspectorFront extends FrontClassWithSpec(inspectorSpec) {
     // Get the target for this remote frame element
     const { descriptorFront } = this.targetFront;
 
-    // Starting with FF77, Tab and Process Descriptor exposes a Watcher,
-    // which should be used to fetch the node's target.
+    // Tab and Process Descriptors expose a Watcher, which should be used to
+    // fetch the node's target.
     let target;
     if (descriptorFront && descriptorFront.traits.watcher) {
       const watcher = await descriptorFront.getWatcher();
       target = await watcher.getBrowsingContextTarget(browsingContextId);
     } else {
-      // FF<=76 backward compat code:
-      const descriptor = await this.targetFront.client.mainRoot.getBrowsingContextDescriptor(
-        browsingContextId
+      // For descriptors which don't expose a watcher (e.g. WebExtension)
+      // we used to call RootActor::getBrowsingContextDescriptor, but it was
+      // removed in FF77.
+      // Support for watcher in WebExtension descriptors is Bug 1644341.
+      throw new Error(
+        `Unable to call getNodeActorFromContentDomReference for ${this.targetFront.actorID}`
       );
-      target = await descriptor.getTarget();
     }
     const { walker } = await target.getFront("inspector");
     return walker.getNodeActorFromContentDomReference(contentDomReference);

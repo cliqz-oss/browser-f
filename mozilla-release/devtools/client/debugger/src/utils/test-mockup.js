@@ -26,9 +26,15 @@ import type {
   URL,
   WasmSourceContent,
   Why,
+  Thread,
 } from "../types";
 import * as asyncValue from "./async-value";
+
+import { initialState } from "../reducers/index";
+
 import type { SourceBase } from "../reducers/sources";
+import type { State } from "../reducers/types";
+import type { FulfilledValue } from "./async-value";
 
 function makeMockSource(url: URL = "url", id: SourceId = "source"): SourceBase {
   return {
@@ -80,6 +86,17 @@ function makeMockSourceAndContent(
       contentType,
     },
   };
+}
+
+function makeFullfilledMockSourceContent(
+  text: string = "",
+  contentType?: string = "text/javascript"
+): FulfilledValue<TextSourceContent> {
+  return asyncValue.fulfilled({
+    type: "text",
+    value: text,
+    contentType,
+  });
 }
 
 function makeMockWasmSource(): SourceBase {
@@ -177,6 +194,7 @@ function makeMockFrame(
     index,
     asyncCause: null,
     state: "on-stack",
+    type: "call",
   };
 }
 
@@ -213,6 +231,23 @@ const mockthreadcx = {
   isPaused: false,
 };
 
+function makeMockThread(fields: $Shape<Thread>) {
+  return {
+    actor: "test",
+    url: "example.com",
+    type: "worker",
+    name: "test",
+    ...fields,
+  };
+}
+
+function makeMockState(state: $Shape<State>) {
+  return {
+    ...initialState(),
+    ...state,
+  };
+}
+
 export {
   makeMockSource,
   makeMockSourceWithContent,
@@ -229,4 +264,7 @@ export {
   makeMockExpression,
   mockcx,
   mockthreadcx,
+  makeMockState,
+  makeMockThread,
+  makeFullfilledMockSourceContent,
 };

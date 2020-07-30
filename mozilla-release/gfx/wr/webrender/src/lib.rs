@@ -105,7 +105,9 @@ mod gpu_types;
 mod hit_test;
 mod intern;
 mod internal_types;
+mod lru_cache;
 mod picture;
+mod prepare;
 mod prim_store;
 mod print_tree;
 mod render_backend;
@@ -126,6 +128,7 @@ mod storage;
 mod texture_allocator;
 mod texture_cache;
 mod util;
+mod visibility;
 
 mod shader_source {
     include!(concat!(env!("OUT_DIR"), "/shaders.rs"));
@@ -211,7 +214,7 @@ pub use crate::renderer::{
     AsyncPropertySampler, CpuProfile, DebugFlags, GpuProfile, GraphicsApi,
     GraphicsApiInfo, PipelineInfo, Renderer, RendererError, RendererOptions, RenderResults,
     RendererStats, SceneBuilderHooks, ThreadListener, ShaderPrecacheFlags,
-    MAX_VERTEX_TEXTURE_WIDTH,
+    MAX_VERTEX_TEXTURE_WIDTH, ONE_TIME_USAGE_HINT,
 };
 pub use crate::hit_test::SharedHitTester;
 pub use crate::internal_types::FastHashMap;

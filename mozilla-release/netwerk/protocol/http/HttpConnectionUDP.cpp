@@ -116,8 +116,8 @@ nsresult HttpConnectionUDP::Init(
 
   MOZ_ASSERT(mConnInfo->IsHttp3());
   mHttp3Session = new Http3Session();
-  nsresult rv =
-      mHttp3Session->Init(mConnInfo->GetOrigin(), mSocketTransport, this);
+  nsresult rv = mHttp3Session->Init(
+      mConnInfo->GetOrigin(), mConnInfo->GetNPNToken(), mSocketTransport, this);
   if (NS_FAILED(rv)) {
     LOG(
         ("HttpConnectionUDP::Init mHttp3Session->Init failed "
@@ -297,6 +297,12 @@ nsresult HttpConnectionUDP::OnHeadersAvailable(nsAHttpTransaction* trans,
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
   NS_ENSURE_ARG_POINTER(trans);
   MOZ_ASSERT(responseHead, "No response head?");
+
+  if (mHttp3Session) {
+    DebugOnly<nsresult> rv = responseHead->SetHeader(
+        nsHttp::X_Firefox_Http3, mHttp3Session->GetAlpnToken());
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+  }
 
   // deal with 408 Server Timeouts
   uint16_t responseStatus = responseHead->Status();

@@ -14,6 +14,7 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
+#include "mozilla/StaticPrefs_mathml.h"
 
 #include "nsCOMPtr.h"
 #include "nsDeviceContext.h"
@@ -64,7 +65,7 @@ static void NormalizeDefaultFont(nsFont& aFont, float aFontSizeInflation) {
     aFont.fontlist.SetFontlist(std::move(names));
     aFont.fontlist.SetDefaultFontType(StyleGenericFontFamily::None);
   }
-  aFont.size = NSToCoordRound(aFont.size * aFontSizeInflation);
+  aFont.size.ScaleBy(aFontSizeInflation);
 }
 
 // -----------------------------------------------------------------------------
@@ -1276,7 +1277,8 @@ bool nsMathMLChar::StretchEnumContext::TryParts(
   return IsSizeOK(computedSize, mTargetSize, mStretchHint);
 }
 
-// This is called for each family, whether it exists or not
+// Returns true iff stretching succeeded with the given family.
+// This is called for each family, whether it exists or not.
 bool nsMathMLChar::StretchEnumContext::EnumCallback(
     const FontFamilyName& aFamily, bool aGeneric, void* aData) {
   StretchEnumContext* context = static_cast<StretchEnumContext*>(aData);
@@ -1297,7 +1299,7 @@ bool nsMathMLChar::StretchEnumContext::EnumCallback(
   if (!aGeneric &&
       !context->mChar->SetFontFamily(context->mPresContext, nullptr, kNullGlyph,
                                      family, font, &fontGroup))
-    return true;  // Could not set the family
+    return false;  // Could not set the family
 
   // Determine the glyph table to use for this font.
   UniquePtr<nsOpenTypeTable> openTypeTable;
@@ -1310,6 +1312,8 @@ bool nsMathMLChar::StretchEnumContext::EnumCallback(
     openTypeTable = nsOpenTypeTable::Create(fontGroup->GetFirstValidFont());
     if (openTypeTable) {
       glyphTable = openTypeTable.get();
+    } else if (StaticPrefs::mathml_stixgeneral_operator_stretching_disabled()) {
+      glyphTable = &gGlyphTableList->mUnicodeTable;
     } else {
       // Otherwise try to find a .properties file corresponding to that font
       // family or fallback to the Unicode table.
@@ -1321,7 +1325,7 @@ bool nsMathMLChar::StretchEnumContext::EnumCallback(
 
   if (!openTypeTable) {
     if (context->mTablesTried.Contains(glyphTable))
-      return true;  // already tried this one
+      return false;  // already tried this one
 
     // Only try this table once.
     context->mTablesTried.AppendElement(glyphTable);
@@ -1334,13 +1338,10 @@ bool nsMathMLChar::StretchEnumContext::EnumCallback(
       glyphTable == &gGlyphTableList->mUnicodeTable ? context->mFamilyList
                                                     : family;
 
-  if ((context->mTryVariants &&
-       context->TryVariants(glyphTable, &fontGroup, familyList)) ||
-      (context->mTryParts &&
-       context->TryParts(glyphTable, &fontGroup, familyList)))
-    return false;  // no need to continue
-
-  return true;  // true means continue
+  return (context->mTryVariants &&
+          context->TryVariants(glyphTable, &fontGroup, familyList)) ||
+         (context->mTryParts &&
+          context->TryParts(glyphTable, &fontGroup, familyList));
 }
 
 static void AppendFallbacks(nsTArray<FontFamilyName>& aNames,
@@ -1527,12 +1528,18 @@ nsresult nsMathMLChar::StretchInternal(
 
     const nsTArray<FontFamilyName>& fontlist =
         font.fontlist.GetFontlist()->mNames;
-    uint32_t i, num = fontlist.Length();
-    bool next = true;
-    for (i = 0; i < num && next; i++) {
-      const FontFamilyName& name = fontlist[i];
-      next =
-          StretchEnumContext::EnumCallback(name, name.IsGeneric(), &enumData);
+    for (const FontFamilyName& name : fontlist) {
+      if (StretchEnumContext::EnumCallback(name, name.IsGeneric(), &enumData)) {
+        if (name.IsNamedFamily(NS_LITERAL_STRING("STIXGeneral"))) {
+          AutoTArray<nsString, 1> params{
+              NS_LITERAL_STRING("https://developer.mozilla.org/docs/Mozilla/"
+                                "MathML_Project/Fonts")};
+          aForFrame->PresContext()->Document()->WarnOnceAbout(
+              dom::Document::eMathML_DeprecatedStixgeneralOperatorStretching,
+              false, params);
+        }
+        break;
+      }
     }
   }
 

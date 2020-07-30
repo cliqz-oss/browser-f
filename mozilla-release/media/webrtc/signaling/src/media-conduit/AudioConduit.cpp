@@ -235,8 +235,9 @@ bool WebrtcAudioConduit::GetRTCPReceiverReport(uint32_t* jitterMs,
   return res;
 }
 
-bool WebrtcAudioConduit::GetRTCPSenderReport(unsigned int* packetsSent,
-                                             uint64_t* bytesSent) {
+bool WebrtcAudioConduit::GetRTCPSenderReport(
+    unsigned int* packetsSent, uint64_t* bytesSent,
+    DOMHighResTimeStamp* aRemoteTimestamp) {
   ASSERT_ON_THREAD(mStsThread);
   MutexAutoLock lock(mMutex);
   if (!mRecvChannelProxy) {
@@ -246,6 +247,7 @@ bool WebrtcAudioConduit::GetRTCPSenderReport(unsigned int* packetsSent,
   webrtc::CallStatistics stats = mRecvChannelProxy->GetRTCPStatistics();
   *packetsSent = stats.rtcp_sender_packets_sent;
   *bytesSent = stats.rtcp_sender_octets_sent;
+  *aRemoteTimestamp = stats.rtcp_sender_ntp_timestamp.ToMs();
   return *packetsSent > 0 && *bytesSent > 0;
 }
 
@@ -253,28 +255,24 @@ bool WebrtcAudioConduit::SetDtmfPayloadType(unsigned char type, int freq) {
   CSFLogInfo(LOGTAG, "%s : setting dtmf payload %d", __FUNCTION__, (int)type);
   MOZ_ASSERT(NS_IsMainThread());
 
-  int result = mSendChannelProxy->SetSendTelephoneEventPayloadType(type, freq);
-  if (result == -1) {
+  bool result = mSendChannelProxy->SetSendTelephoneEventPayloadType(type, freq);
+  if (!result) {
     CSFLogError(LOGTAG,
                 "%s Failed call to SetSendTelephoneEventPayloadType(%u, %d)",
                 __FUNCTION__, type, freq);
   }
-  return result != -1;
+  return result;
 }
 
 bool WebrtcAudioConduit::InsertDTMFTone(int channel, int eventCode,
                                         bool outOfBand, int lengthMs,
                                         int attenuationDb) {
   MOZ_ASSERT(NS_IsMainThread());
-  if (!mSendChannelProxy || !mDtmfEnabled) {
+  if (!mSendChannelProxy || !mDtmfEnabled || !outOfBand) {
     return false;
   }
 
-  int result = 0;
-  if (outOfBand) {
-    result = mSendChannelProxy->SendTelephoneEventOutband(eventCode, lengthMs);
-  }
-  return result != -1;
+  return mSendChannelProxy->SendTelephoneEventOutband(eventCode, lengthMs);
 }
 
 void WebrtcAudioConduit::OnRtpPacket(const webrtc::RTPHeader& aHeader,

@@ -762,21 +762,23 @@ class LToAsyncIter : public LCallInstructionHelper<1, 1 + BOX_PIECES, 0> {
   const LAllocation* iterator() { return getOperand(0); }
 };
 
-class LToIdV : public LInstructionHelper<BOX_PIECES, BOX_PIECES, 1> {
+class LToPropertyKeyCache
+    : public LInstructionHelper<BOX_PIECES, BOX_PIECES, 0> {
  public:
-  LIR_HEADER(ToIdV)
+  LIR_HEADER(ToPropertyKeyCache)
 
-  LToIdV(const LBoxAllocation& input, const LDefinition& temp)
+  explicit LToPropertyKeyCache(const LBoxAllocation& input)
       : LInstructionHelper(classOpcode) {
     setBoxOperand(Input, input);
-    setTemp(0, temp);
   }
 
+  const MToPropertyKeyCache* mir() const {
+    return mir_->toToPropertyKeyCache();
+  }
+
+  const LAllocation* input() { return getOperand(Input); }
+
   static const size_t Input = 0;
-
-  MToId* mir() const { return mir_->toToId(); }
-
-  const LDefinition* tempFloat() { return getTemp(0); }
 };
 
 // Allocate an object for |new| on the caller-side,
@@ -919,20 +921,18 @@ class LReturnFromCtor : public LInstructionHelper<1, BOX_PIECES + 1, 0> {
   static const size_t ObjectIndex = BOX_PIECES;
 };
 
-class LComputeThis : public LInstructionHelper<BOX_PIECES, BOX_PIECES, 0> {
+class LBoxNonStrictThis : public LInstructionHelper<1, BOX_PIECES, 0> {
  public:
-  LIR_HEADER(ComputeThis)
+  LIR_HEADER(BoxNonStrictThis)
 
   static const size_t ValueIndex = 0;
 
-  explicit LComputeThis(const LBoxAllocation& value)
+  explicit LBoxNonStrictThis(const LBoxAllocation& value)
       : LInstructionHelper(classOpcode) {
     setBoxOperand(ValueIndex, value);
   }
 
-  const LDefinition* output() { return getDef(0); }
-
-  MComputeThis* mir() const { return mir_->toComputeThis(); }
+  MBoxNonStrictThis* mir() const { return mir_->toBoxNonStrictThis(); }
 };
 
 class LImplicitThis : public LCallInstructionHelper<BOX_PIECES, 1, 0> {
@@ -2483,6 +2483,27 @@ class LPowI : public LCallInstructionHelper<1, 2, 1> {
   const LDefinition* temp() { return getTemp(0); }
 };
 
+// Integer raised to an integer power.
+class LPowII : public LInstructionHelper<1, 2, 2> {
+ public:
+  LIR_HEADER(PowII)
+  LPowII(const LAllocation& value, const LAllocation& power,
+         const LDefinition& temp1, const LDefinition& temp2)
+      : LInstructionHelper(classOpcode) {
+    setOperand(0, value);
+    setOperand(1, power);
+    setTemp(0, temp1);
+    setTemp(1, temp2);
+  }
+
+  const LAllocation* value() { return getOperand(0); }
+  const LAllocation* power() { return getOperand(1); }
+  const LDefinition* temp1() { return getTemp(0); }
+  const LDefinition* temp2() { return getTemp(1); }
+
+  MPow* mir() const { return mir_->toPow(); }
+};
+
 // Double raised to a double power.
 class LPowD : public LCallInstructionHelper<1, 2, 1> {
  public:
@@ -2498,6 +2519,21 @@ class LPowD : public LCallInstructionHelper<1, 2, 1> {
   const LAllocation* value() { return getOperand(0); }
   const LAllocation* power() { return getOperand(1); }
   const LDefinition* temp() { return getTemp(0); }
+};
+
+// Constant of a power of two raised to an integer power.
+class LPowOfTwoI : public LInstructionHelper<1, 1, 0> {
+  uint32_t base_;
+
+ public:
+  LIR_HEADER(PowOfTwoI)
+  LPowOfTwoI(uint32_t base, const LAllocation& power)
+      : LInstructionHelper(classOpcode), base_(base) {
+    setOperand(0, power);
+  }
+
+  uint32_t base() const { return base_; }
+  const LAllocation* power() { return getOperand(0); }
 };
 
 // Sign value of an integer.
@@ -6029,6 +6065,20 @@ class LGuardSpecificAtom : public LInstructionHelper<0, 1, 0> {
   const MGuardSpecificAtom* mir() const { return mir_->toGuardSpecificAtom(); }
 };
 
+class LGuardSpecificSymbol : public LInstructionHelper<0, 1, 0> {
+ public:
+  LIR_HEADER(GuardSpecificSymbol)
+
+  explicit LGuardSpecificSymbol(const LAllocation& symbol)
+      : LInstructionHelper(classOpcode) {
+    setOperand(0, symbol);
+  }
+  const LAllocation* symbol() { return getOperand(0); }
+  const MGuardSpecificSymbol* mir() const {
+    return mir_->toGuardSpecificSymbol();
+  }
+};
+
 class LGuardShape : public LInstructionHelper<1, 1, 1> {
  public:
   LIR_HEADER(GuardShape)
@@ -6055,20 +6105,17 @@ class LGuardObjectGroup : public LInstructionHelper<1, 1, 1> {
   const MGuardObjectGroup* mir() const { return mir_->toGuardObjectGroup(); }
 };
 
-// Guard against the sharedness of a TypedArray's memory.
-class LGuardSharedTypedArray : public LInstructionHelper<0, 1, 1> {
+class LGuardNoDenseElements : public LInstructionHelper<0, 1, 1> {
  public:
-  LIR_HEADER(GuardSharedTypedArray)
+  LIR_HEADER(GuardNoDenseElements)
 
-  LGuardSharedTypedArray(const LAllocation& in, const LDefinition& temp)
+  LGuardNoDenseElements(const LAllocation& in, const LDefinition& temp)
       : LInstructionHelper(classOpcode) {
     setOperand(0, in);
     setTemp(0, temp);
   }
-  const MGuardSharedTypedArray* mir() const {
-    return mir_->toGuardSharedTypedArray();
-  }
-  const LDefinition* tempInt() { return getTemp(0); }
+
+  const LDefinition* temp() { return getTemp(0); }
 };
 
 class LInCache : public LInstructionHelper<1, BOX_PIECES + 1, 1> {
@@ -7008,7 +7055,12 @@ class LWasmRegisterResult : public LInstructionHelper<1, 0, 0> {
 
   LWasmRegisterResult() : LInstructionHelper(classOpcode) {}
 
-  MWasmRegisterResult* mir() const { return mir_->toWasmRegisterResult(); }
+  MWasmRegisterResult* mir() const {
+    if (!mir_->isWasmRegisterResult()) {
+      return nullptr;
+    }
+    return mir_->toWasmRegisterResult();
+  }
 };
 
 class LWasmRegisterPairResult : public LInstructionHelper<2, 0, 0> {
@@ -7192,6 +7244,21 @@ class LAssertRangeV : public LInstructionHelper<0, BOX_PIECES, 3> {
   const Range* range() { return mir()->assertedRange(); }
 };
 
+class LAssertClass : public LInstructionHelper<0, 1, 1> {
+ public:
+  LIR_HEADER(AssertClass)
+
+  explicit LAssertClass(const LAllocation& input, const LDefinition& temp)
+      : LInstructionHelper(classOpcode) {
+    setOperand(0, input);
+    setTemp(0, temp);
+  }
+
+  const LAllocation* input() { return getOperand(0); }
+
+  MAssertClass* mir() { return mir_->toAssertClass(); }
+};
+
 class LAssertResultT : public LInstructionHelper<0, 1, 0> {
  public:
   LIR_HEADER(AssertResultT)
@@ -7341,38 +7408,19 @@ class LArrowNewTarget : public LInstructionHelper<BOX_PIECES, 1, 0> {
 };
 
 // Math.random().
-#ifdef JS_PUNBOX64
-#  define LRANDOM_NUM_TEMPS 3
-#else
-#  define LRANDOM_NUM_TEMPS 5
-#endif
-
-class LRandom : public LInstructionHelper<1, 0, LRANDOM_NUM_TEMPS> {
+class LRandom : public LInstructionHelper<1, 0, 1 + 2 * INT64_PIECES> {
  public:
   LIR_HEADER(Random)
-  LRandom(const LDefinition& temp0, const LDefinition& temp1,
-          const LDefinition& temp2
-#ifndef JS_PUNBOX64
-          ,
-          const LDefinition& temp3, const LDefinition& temp4
-#endif
-          )
+  LRandom(const LDefinition& temp0, const LInt64Definition& temp1,
+          const LInt64Definition& temp2)
       : LInstructionHelper(classOpcode) {
     setTemp(0, temp0);
-    setTemp(1, temp1);
-    setTemp(2, temp2);
-#ifndef JS_PUNBOX64
-    setTemp(3, temp3);
-    setTemp(4, temp4);
-#endif
+    setInt64Temp(1, temp1);
+    setInt64Temp(1 + INT64_PIECES, temp2);
   }
   const LDefinition* temp0() { return getTemp(0); }
-  const LDefinition* temp1() { return getTemp(1); }
-  const LDefinition* temp2() { return getTemp(2); }
-#ifndef JS_PUNBOX64
-  const LDefinition* temp3() { return getTemp(3); }
-  const LDefinition* temp4() { return getTemp(4); }
-#endif
+  LInt64Definition temp1() { return getInt64Temp(1); }
+  LInt64Definition temp2() { return getInt64Temp(1 + INT64_PIECES); }
 
   MRandom* mir() const { return mir_->toRandom(); }
 };

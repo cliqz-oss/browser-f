@@ -106,6 +106,9 @@ enum BailoutKind {
   // We hit a hole in an array.
   Bailout_Hole,
 
+  // The object has dense array elements
+  Bailout_NoDenseElementsGuard,
+
   // Array access with negative index
   Bailout_NegativeIndex,
 
@@ -123,6 +126,9 @@ enum BailoutKind {
   // JSString was not equal to the expected JSAtom
   Bailout_SpecificAtomGuard,
 
+  // Symbol was not equal the expected JS::Symbol.
+  Bailout_SpecificSymbolGuard,
+
   // Unbox expects a given type, bails out if it doesn't get it.
   Bailout_NonInt32Input,
   Bailout_NonNumericInput,  // unboxing a double works with int32 too
@@ -131,10 +137,6 @@ enum BailoutKind {
   Bailout_NonStringInput,
   Bailout_NonSymbolInput,
   Bailout_NonBigIntInput,
-
-  // Atomic operations require shared memory, bail out if the typed array
-  // maps unshared memory.
-  Bailout_NonSharedTypedArrayInput,
 
   // We hit a |debugger;| statement.
   Bailout_Debugger,
@@ -214,6 +216,8 @@ inline const char* BailoutKindString(BailoutKind kind) {
       return "Bailout_MonitorTypes";
     case Bailout_Hole:
       return "Bailout_Hole";
+    case Bailout_NoDenseElementsGuard:
+      return "Bailout_NoDenseElementsGuard";
     case Bailout_NegativeIndex:
       return "Bailout_NegativeIndex";
     case Bailout_NonIntegerIndex:
@@ -222,6 +226,8 @@ inline const char* BailoutKindString(BailoutKind kind) {
       return "Bailout_ObjectIdentityOrTypeGuard";
     case Bailout_SpecificAtomGuard:
       return "Bailout_SpecifcAtomGuard";
+    case Bailout_SpecificSymbolGuard:
+      return "Bailout_SpecifcSymbolGuard";
     case Bailout_NonInt32Input:
       return "Bailout_NonInt32Input";
     case Bailout_NonNumericInput:
@@ -236,8 +242,6 @@ inline const char* BailoutKindString(BailoutKind kind) {
       return "Bailout_NonSymbolInput";
     case Bailout_NonBigIntInput:
       return "Bailout_NonBigIntInput";
-    case Bailout_NonSharedTypedArrayInput:
-      return "Bailout_NonSharedTypedArrayInput";
     case Bailout_Debugger:
       return "Bailout_Debugger";
     case Bailout_FirstExecution:

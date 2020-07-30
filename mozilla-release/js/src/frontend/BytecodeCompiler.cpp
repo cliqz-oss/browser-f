@@ -12,9 +12,6 @@
 #include "mozilla/Utf8.h"  // mozilla::Utf8Unit
 
 #include "builtin/ModuleObject.h"
-#if defined(JS_BUILD_BINAST)
-#  include "frontend/BinASTParser.h"
-#endif  // JS_BUILD_BINAST
 #include "frontend/BytecodeCompilation.h"
 #include "frontend/BytecodeEmitter.h"
 #include "frontend/EitherParser.h"
@@ -296,13 +293,12 @@ class MOZ_STACK_CLASS frontend::StandaloneFunctionCompiler final
 
   using Base::createSourceAndParser;
 
-  FunctionNode* parse(CompilationInfo& compilationInfo, HandleFunction fun,
-                      HandleScope enclosingScope, GeneratorKind generatorKind,
-                      FunctionAsyncKind asyncKind,
+  FunctionNode* parse(CompilationInfo& compilationInfo,
+                      HandleScope enclosingScope, FunctionSyntaxKind syntaxKind,
+                      GeneratorKind generatorKind, FunctionAsyncKind asyncKind,
                       const Maybe<uint32_t>& parameterListEnd);
 
-  MOZ_MUST_USE bool compile(MutableHandleFunction fun, CompilationInfo& info,
-                            FunctionNode* parsedFunction);
+  JSFunction* compile(CompilationInfo& info, FunctionNode* parsedFunction);
 };
 
 AutoFrontendTraceLog::AutoFrontendTraceLog(JSContext* cx,
@@ -581,12 +577,9 @@ ModuleObject* frontend::ModuleCompiler<Unit>::compile(
 // constructor.
 template <typename Unit>
 FunctionNode* frontend::StandaloneFunctionCompiler<Unit>::parse(
-    CompilationInfo& compilationInfo, HandleFunction fun,
-    HandleScope enclosingScope, GeneratorKind generatorKind,
+    CompilationInfo& compilationInfo, HandleScope enclosingScope,
+    FunctionSyntaxKind syntaxKind, GeneratorKind generatorKind,
     FunctionAsyncKind asyncKind, const Maybe<uint32_t>& parameterListEnd) {
-  MOZ_ASSERT(fun);
-  MOZ_ASSERT(fun->isTenured());
-
   assertSourceAndParserCreated(compilationInfo);
 
   TokenStreamPosition startPosition(compilationInfo.keepAtoms,
@@ -601,8 +594,8 @@ FunctionNode* frontend::StandaloneFunctionCompiler<Unit>::parse(
   FunctionNode* fn;
   for (;;) {
     Directives newDirectives = compilationInfo.directives;
-    fn = parser->standaloneFunction(fun, enclosingScope, parameterListEnd,
-                                    generatorKind, asyncKind,
+    fn = parser->standaloneFunction(enclosingScope, parameterListEnd,
+                                    syntaxKind, generatorKind, asyncKind,
                                     compilationInfo.directives, &newDirectives);
     if (fn) {
       break;
@@ -621,12 +614,12 @@ FunctionNode* frontend::StandaloneFunctionCompiler<Unit>::parse(
 
 // Compile a standalone JS function.
 template <typename Unit>
-bool frontend::StandaloneFunctionCompiler<Unit>::compile(
-    MutableHandleFunction fun, CompilationInfo& compilationInfo,
-    FunctionNode* parsedFunction) {
+JSFunction* frontend::StandaloneFunctionCompiler<Unit>::compile(
+    CompilationInfo& compilationInfo, FunctionNode* parsedFunction) {
   FunctionBox* funbox = parsedFunction->funbox();
+
   if (funbox->isInterpreted()) {
-    MOZ_ASSERT(fun == funbox->function());
+    MOZ_ASSERT(funbox->function() == nullptr);
 
     // The parser extent has stripped off the leading `function...` but
     // we want the SourceExtent used in the final standalone script to
@@ -642,28 +635,35 @@ bool frontend::StandaloneFunctionCompiler<Unit>::compile(
 
     Maybe<BytecodeEmitter> emitter;
     if (!emplaceEmitter(compilationInfo, emitter, funbox)) {
-      return false;
+      return nullptr;
     }
 
     if (!emitter->emitFunctionScript(parsedFunction, TopLevelFunction::Yes)) {
-      return false;
+      return nullptr;
     }
-
-    funbox->synchronizeArgCount();
-
-    if (!compilationInfo.instantiateStencils()) {
-      return false;
-    }
-
-    MOZ_ASSERT(compilationInfo.script);
   } else {
-    fun.set(funbox->function());
-    MOZ_ASSERT(IsAsmJSModule(fun));
+    // The asm.js module was created by parser. Instantiation below will
+    // allocate the JSFunction that wraps it.
+    MOZ_ASSERT(funbox->isAsmJSModule());
+    MOZ_ASSERT(compilationInfo.asmJS.has(FunctionIndex(funbox->index())));
+
+    compilationInfo.topLevelAsmJS = true;
   }
 
+  if (!compilationInfo.instantiateStencils()) {
+    return nullptr;
+  }
+
+  MOZ_ASSERT(funbox->function()->hasBytecode() ||
+             IsAsmJSModule(funbox->function()));
+
   // Enqueue an off-thread source compression task after finishing parsing.
-  return compilationInfo.sourceObject->source()->tryCompressOffThread(
-      compilationInfo.cx);
+  if (!compilationInfo.sourceObject->source()->tryCompressOffThread(
+          compilationInfo.cx)) {
+    return nullptr;
+  }
+
+  return funbox->function();
 }
 
 ScriptSourceObject* frontend::CreateScriptSourceObject(
@@ -700,86 +700,6 @@ ScriptSourceObject* frontend::CreateScriptSourceObject(
 
   return sso;
 }
-
-#if defined(JS_BUILD_BINAST)
-
-template <class ParserT>
-static JSScript* CompileGlobalBinASTScriptImpl(
-    JSContext* cx, const ReadOnlyCompileOptions& options, const uint8_t* src,
-    size_t len, JS::BinASTFormat format, ScriptSourceObject** sourceObjectOut) {
-  AutoAssertReportedException assertException(cx);
-
-  LifoAllocScope allocScope(&cx->tempLifoAlloc());
-  CompilationInfo compilationInfo(cx, allocScope, options);
-  if (!compilationInfo.init(cx)) {
-    return nullptr;
-  }
-
-  if (!compilationInfo.sourceObject->source()->setBinASTSourceCopy(cx, src,
-                                                                   len)) {
-    return nullptr;
-  }
-
-  SourceExtent extent = SourceExtent::makeGlobalExtent(len);
-  extent.lineno = 0;
-  GlobalSharedContext globalsc(cx, ScopeKind::Global, compilationInfo,
-                               compilationInfo.directives, extent);
-
-  frontend::BinASTParser<ParserT> parser(cx, compilationInfo, options);
-
-  // Metadata stores internal pointers, so we must use the same buffer every
-  // time, including for lazy parses
-  ScriptSource* ss = compilationInfo.sourceObject->source();
-  BinASTSourceMetadata* metadata = nullptr;
-  auto parsed =
-      parser.parse(&globalsc, ss->binASTSource(), ss->length(), &metadata);
-
-  if (parsed.isErr()) {
-    return nullptr;
-  }
-
-  compilationInfo.sourceObject->source()->setBinASTSourceMetadata(metadata);
-
-  BytecodeEmitter bce(nullptr, &parser, &globalsc, compilationInfo);
-
-  if (!bce.init()) {
-    return nullptr;
-  }
-
-  ParseNode* pn = parsed.unwrap();
-  if (!bce.emitScript(pn)) {
-    return nullptr;
-  }
-
-  if (!compilationInfo.instantiateStencils()) {
-    return nullptr;
-  }
-
-  if (sourceObjectOut) {
-    *sourceObjectOut = compilationInfo.sourceObject;
-  }
-
-  tellDebuggerAboutCompiledScript(cx, options.hideScriptFromDebugger,
-                                  compilationInfo.script);
-
-  assertException.reset();
-  return compilationInfo.script;
-}
-
-JSScript* frontend::CompileGlobalBinASTScript(
-    JSContext* cx, const ReadOnlyCompileOptions& options, const uint8_t* src,
-    size_t len, JS::BinASTFormat format, ScriptSourceObject** sourceObjectOut) {
-  if (format == JS::BinASTFormat::Multipart) {
-    return CompileGlobalBinASTScriptImpl<BinASTTokenReaderMultipart>(
-        cx, options, src, len, format, sourceObjectOut);
-  }
-
-  MOZ_ASSERT(format == JS::BinASTFormat::Context);
-  return CompileGlobalBinASTScriptImpl<BinASTTokenReaderContext>(
-      cx, options, src, len, format, sourceObjectOut);
-}
-
-#endif  // JS_BUILD_BINAST
 
 template <typename Unit>
 static ModuleObject* InternalParseModule(
@@ -879,7 +799,6 @@ static bool CompileLazyFunctionImpl(JSContext* cx, Handle<BaseScript*> lazy,
   // compiled, because compilation requires full information about the
   // function's immediately enclosing scope.
   MOZ_ASSERT(lazy->isReadyForDelazification());
-  MOZ_ASSERT(!lazy->isBinAST());
 
   AutoAssertReportedException assertException(cx);
   Rooted<JSFunction*> fun(cx, lazy->function());
@@ -922,6 +841,9 @@ static bool CompileLazyFunctionImpl(JSContext* cx, Handle<BaseScript*> lazy,
   if (!parser.checkOptions()) {
     return false;
   }
+
+  AutoGeckoProfilerEntry pseudoFrame(cx, "script delazify",
+                                     JS::ProfilingCategoryPair::JS_Parsing);
 
   FunctionNode* pn =
       parser.standaloneLazyFunction(fun, lazy->toStringStart(), lazy->strict(),
@@ -967,105 +889,22 @@ bool frontend::CompileLazyFunction(JSContext* cx, Handle<BaseScript*> lazy,
   return CompileLazyFunctionImpl(cx, lazy, units, length);
 }
 
-#ifdef JS_BUILD_BINAST
-
-template <class ParserT>
-static bool CompileLazyBinASTFunctionImpl(JSContext* cx,
-                                          Handle<BaseScript*> lazy,
-                                          const uint8_t* buf, size_t length) {
-  MOZ_ASSERT(cx->compartment() == lazy->compartment());
-
-  // We can only compile functions whose parents have previously been
-  // compiled, because compilation requires full information about the
-  // function's immediately enclosing scope.
-  MOZ_ASSERT(lazy->isReadyForDelazification());
-  MOZ_ASSERT(lazy->isBinAST());
-
-  AutoAssertReportedException assertException(cx);
-  Rooted<JSFunction*> fun(cx, lazy->function());
-
-  mozilla::DebugOnly<bool> lazyIsLikelyConstructorWrapper =
-      lazy->isLikelyConstructorWrapper();
-
-  CompileOptions options(cx);
-  options.setMutedErrors(lazy->mutedErrors())
-      .setFileAndLine(lazy->filename(), lazy->lineno())
-      .setColumn(lazy->column())
-      .setScriptSourceOffset(lazy->sourceStart())
-      .setNoScriptRval(false)
-      .setSelfHostingMode(false);
-
-  LifoAllocScope allocScope(&cx->tempLifoAlloc());
-  CompilationInfo compilationInfo(cx, allocScope, options);
-  compilationInfo.initFromLazy(lazy);
-
-  frontend::BinASTParser<ParserT> parser(cx, compilationInfo, options, lazy);
-
-  auto parsed =
-      parser.parseLazyFunction(lazy->scriptSource(), lazy->sourceStart());
-
-  if (parsed.isErr()) {
-    return false;
-  }
-
-  FunctionNode* pn = parsed.unwrap();
-
-  BytecodeEmitter bce(nullptr, &parser, pn->funbox(), compilationInfo,
-                      BytecodeEmitter::LazyFunction);
-
-  if (!bce.init(pn->pn_pos)) {
-    return false;
-  }
-
-  if (!bce.emitFunctionScript(pn, TopLevelFunction::Yes)) {
-    return false;
-  }
-
-  if (!compilationInfo.instantiateStencils()) {
-    return false;
-  }
-
-  // This value *must* not change after the lazy function is first created.
-  MOZ_ASSERT(lazyIsLikelyConstructorWrapper ==
-             compilationInfo.script->isLikelyConstructorWrapper());
-
-  assertException.reset();
-  return true;
-}
-
-bool frontend::CompileLazyBinASTFunction(JSContext* cx,
-                                         Handle<BaseScript*> lazy,
-                                         const uint8_t* buf, size_t length) {
-  if (lazy->scriptSource()->binASTSourceMetadata()->isMultipart()) {
-    return CompileLazyBinASTFunctionImpl<BinASTTokenReaderMultipart>(
-        cx, lazy, buf, length);
-  }
-
-  MOZ_ASSERT(lazy->scriptSource()->binASTSourceMetadata()->isContext());
-  return CompileLazyBinASTFunctionImpl<BinASTTokenReaderContext>(cx, lazy, buf,
-                                                                 length);
-}
-
-#endif  // JS_BUILD_BINAST
-
-static bool CompileStandaloneFunction(JSContext* cx, MutableHandleFunction fun,
-                                      const JS::ReadOnlyCompileOptions& options,
-                                      JS::SourceText<char16_t>& srcBuf,
-                                      const Maybe<uint32_t>& parameterListEnd,
-                                      GeneratorKind generatorKind,
-                                      FunctionAsyncKind asyncKind,
-                                      HandleScope enclosingScope = nullptr) {
+static JSFunction* CompileStandaloneFunction(
+    JSContext* cx, const JS::ReadOnlyCompileOptions& options,
+    JS::SourceText<char16_t>& srcBuf, const Maybe<uint32_t>& parameterListEnd,
+    FunctionSyntaxKind syntaxKind, GeneratorKind generatorKind,
+    FunctionAsyncKind asyncKind, HandleScope enclosingScope = nullptr) {
   AutoAssertReportedException assertException(cx);
 
   LifoAllocScope allocScope(&cx->tempLifoAlloc());
   CompilationInfo compilationInfo(cx, allocScope, options, enclosingScope);
   if (!compilationInfo.init(cx)) {
-    return false;
+    return nullptr;
   }
 
   StandaloneFunctionCompiler<char16_t> compiler(srcBuf);
   if (!compiler.createSourceAndParser(allocScope, compilationInfo)) {
-    return false;
+    return nullptr;
   }
 
   RootedScope scope(cx, enclosingScope);
@@ -1073,11 +912,16 @@ static bool CompileStandaloneFunction(JSContext* cx, MutableHandleFunction fun,
     scope = &cx->global()->emptyGlobalScope();
   }
 
-  FunctionNode* parsedFunction = compiler.parse(
-      compilationInfo, fun, scope, generatorKind, asyncKind, parameterListEnd);
-  if (!parsedFunction ||
-      !compiler.compile(fun, compilationInfo, parsedFunction)) {
-    return false;
+  FunctionNode* parsedFunction =
+      compiler.parse(compilationInfo, scope, syntaxKind, generatorKind,
+                     asyncKind, parameterListEnd);
+  if (!parsedFunction) {
+    return nullptr;
+  }
+
+  RootedFunction fun(cx, compiler.compile(compilationInfo, parsedFunction));
+  if (!fun) {
+    return nullptr;
   }
 
   // Note: If AsmJS successfully compiles, the into.script will still be
@@ -1093,43 +937,43 @@ static bool CompileStandaloneFunction(JSContext* cx, MutableHandleFunction fun,
   }
 
   assertException.reset();
-  return true;
+  return fun;
 }
 
-bool frontend::CompileStandaloneFunction(
-    JSContext* cx, MutableHandleFunction fun,
-    const JS::ReadOnlyCompileOptions& options, JS::SourceText<char16_t>& srcBuf,
-    const Maybe<uint32_t>& parameterListEnd,
-    HandleScope enclosingScope /* = nullptr */) {
-  return CompileStandaloneFunction(
-      cx, fun, options, srcBuf, parameterListEnd, GeneratorKind::NotGenerator,
-      FunctionAsyncKind::SyncFunction, enclosingScope);
+JSFunction* frontend::CompileStandaloneFunction(
+    JSContext* cx, const JS::ReadOnlyCompileOptions& options,
+    JS::SourceText<char16_t>& srcBuf, const Maybe<uint32_t>& parameterListEnd,
+    FunctionSyntaxKind syntaxKind, HandleScope enclosingScope /* = nullptr */) {
+  return CompileStandaloneFunction(cx, options, srcBuf, parameterListEnd,
+                                   syntaxKind, GeneratorKind::NotGenerator,
+                                   FunctionAsyncKind::SyncFunction,
+                                   enclosingScope);
 }
 
-bool frontend::CompileStandaloneGenerator(
-    JSContext* cx, MutableHandleFunction fun,
-    const JS::ReadOnlyCompileOptions& options, JS::SourceText<char16_t>& srcBuf,
-    const Maybe<uint32_t>& parameterListEnd) {
-  return CompileStandaloneFunction(cx, fun, options, srcBuf, parameterListEnd,
-                                   GeneratorKind::Generator,
+JSFunction* frontend::CompileStandaloneGenerator(
+    JSContext* cx, const JS::ReadOnlyCompileOptions& options,
+    JS::SourceText<char16_t>& srcBuf, const Maybe<uint32_t>& parameterListEnd,
+    FunctionSyntaxKind syntaxKind) {
+  return CompileStandaloneFunction(cx, options, srcBuf, parameterListEnd,
+                                   syntaxKind, GeneratorKind::Generator,
                                    FunctionAsyncKind::SyncFunction);
 }
 
-bool frontend::CompileStandaloneAsyncFunction(
-    JSContext* cx, MutableHandleFunction fun,
-    const ReadOnlyCompileOptions& options, JS::SourceText<char16_t>& srcBuf,
-    const Maybe<uint32_t>& parameterListEnd) {
-  return CompileStandaloneFunction(cx, fun, options, srcBuf, parameterListEnd,
-                                   GeneratorKind::NotGenerator,
+JSFunction* frontend::CompileStandaloneAsyncFunction(
+    JSContext* cx, const ReadOnlyCompileOptions& options,
+    JS::SourceText<char16_t>& srcBuf, const Maybe<uint32_t>& parameterListEnd,
+    FunctionSyntaxKind syntaxKind) {
+  return CompileStandaloneFunction(cx, options, srcBuf, parameterListEnd,
+                                   syntaxKind, GeneratorKind::NotGenerator,
                                    FunctionAsyncKind::AsyncFunction);
 }
 
-bool frontend::CompileStandaloneAsyncGenerator(
-    JSContext* cx, MutableHandleFunction fun,
-    const ReadOnlyCompileOptions& options, JS::SourceText<char16_t>& srcBuf,
-    const Maybe<uint32_t>& parameterListEnd) {
-  return CompileStandaloneFunction(cx, fun, options, srcBuf, parameterListEnd,
-                                   GeneratorKind::Generator,
+JSFunction* frontend::CompileStandaloneAsyncGenerator(
+    JSContext* cx, const ReadOnlyCompileOptions& options,
+    JS::SourceText<char16_t>& srcBuf, const Maybe<uint32_t>& parameterListEnd,
+    FunctionSyntaxKind syntaxKind) {
+  return CompileStandaloneFunction(cx, options, srcBuf, parameterListEnd,
+                                   syntaxKind, GeneratorKind::Generator,
                                    FunctionAsyncKind::AsyncFunction);
 }
 

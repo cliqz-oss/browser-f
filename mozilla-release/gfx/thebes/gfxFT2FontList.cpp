@@ -604,7 +604,6 @@ void gfxFT2FontList::CollectInitData(const FontListEntry& aFLE,
     mFamilyInitData.AppendElement(
         fontlist::Family::InitData{key, aFLE.familyName()});
   }
-  uint32_t faceIndex = faceList->Length();
   faceList->AppendElement(
       fontlist::Face::InitData{aFLE.filepath(), aFLE.index(), false,
                                WeightRange::FromScalar(aFLE.weightRange()),
@@ -614,13 +613,13 @@ void gfxFT2FontList::CollectInitData(const FontListEntry& aFLE,
   if (!psname.IsEmpty()) {
     ToLowerCase(psname);
     mLocalNameTable.Put(psname,
-                        fontlist::LocalFaceRec::InitData(key, faceIndex));
+                        fontlist::LocalFaceRec::InitData(key, aFLE.filepath()));
   }
   if (!fullname.IsEmpty()) {
     ToLowerCase(fullname);
     if (fullname != psname) {
-      mLocalNameTable.Put(fullname,
-                          fontlist::LocalFaceRec::InitData(key, faceIndex));
+      mLocalNameTable.Put(
+          fullname, fontlist::LocalFaceRec::InitData(key, aFLE.filepath()));
     }
   }
 }
@@ -807,14 +806,14 @@ class FontNameCache {
 
   PLDHashTableOps mOps;
 
-  typedef struct : public PLDHashEntryHdr {
+  struct FNCMapEntry : public PLDHashEntryHdr {
    public:
     nsCString mFilename;
     uint32_t mTimestamp;
     uint32_t mFilesize;
     nsCString mFaces;
     bool mFileExists;
-  } FNCMapEntry;
+  };
 
   static PLDHashNumber StringHash(const void* key) {
     return HashString(reinterpret_cast<const char*>(key));
@@ -1041,7 +1040,7 @@ void FT2FontEntry::AppendToFaceList(nsCString& aFaceList,
 }
 
 void FT2FontEntry::CheckForBrokenFont(gfxFontFamily* aFamily) {
-  // note if the family is in the "bad underline" blacklist
+  // note if the family is in the "bad underline" blocklist
   if (aFamily->IsBadUnderlineFamily()) {
     mIsBadUnderlineFont = true;
   }

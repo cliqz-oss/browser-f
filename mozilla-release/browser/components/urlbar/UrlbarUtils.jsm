@@ -76,6 +76,8 @@ var UrlbarUtils = {
     REMOTE_TAB: 6,
     // An actionable message to help the user with their query.
     TIP: 7,
+    // A type of result created at runtime, for example by an extension.
+    DYNAMIC: 8,
 
     // When you add a new type, also add its schema to
     // UrlbarUtils.RESULT_PAYLOAD_SCHEMA below.  Also consider checking if
@@ -100,6 +102,7 @@ var UrlbarUtils = {
   // This defines icon locations that are commonly used in the UI.
   ICON: {
     // DEFAULT is defined lazily so it doesn't eagerly initialize PlacesUtils.
+    EXTENSION: "chrome://browser/content/extension.svg",
     HISTORY: "chrome://browser/skin/history.svg",
     SEARCH_GLASS: "chrome://browser/skin/search-glass.svg",
     TIP: "chrome://browser/skin/tip.svg",
@@ -573,6 +576,38 @@ var UrlbarUtils = {
   },
 
   /**
+   * Returns the portion of a string starting at the index where another string
+   * begins.
+   *
+   * @param   {string} sourceStr
+   *          The string to search within.
+   * @param   {string} targetStr
+   *          The string to search for.
+   * @returns {string} The substring within sourceStr starting at targetStr, or
+   *          the empty string if targetStr does not occur in sourceStr.
+   */
+  substringAt(sourceStr, targetStr) {
+    let index = sourceStr.indexOf(targetStr);
+    return index < 0 ? "" : sourceStr.substr(index);
+  },
+
+  /**
+   * Returns the portion of a string starting at the index where another string
+   * ends.
+   *
+   * @param   {string} sourceStr
+   *          The string to search within.
+   * @param   {string} targetStr
+   *          The string to search for.
+   * @returns {string} The substring within sourceStr where targetStr ends, or
+   *          the empty string if targetStr does not occur in sourceStr.
+   */
+  substringAfter(sourceStr, targetStr) {
+    let index = sourceStr.indexOf(targetStr);
+    return index < 0 ? "" : sourceStr.substr(index + targetStr.length);
+  },
+
+  /**
    * Runs a search for the given string, and returns the heuristic result.
    * @param {string} searchString The string to search for.
    * @param {nsIDOMWindow} window The window requesting it.
@@ -862,6 +897,15 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
+  [UrlbarUtils.RESULT_TYPE.DYNAMIC]: {
+    type: "object",
+    required: ["dynamicType"],
+    properties: {
+      dynamicType: {
+        type: "string",
+      },
+    },
+  },
 };
 
 /**
@@ -955,6 +999,27 @@ class UrlbarQueryContext {
       }
       this[optionName] = options[optionName];
     }
+  }
+
+  /**
+   * Caches and returns fixup info from URIFixup for the current search string.
+   */
+  get fixupInfo() {
+    if (this.searchString && !this._fixupInfo) {
+      let flags =
+        Ci.nsIURIFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS |
+        Ci.nsIURIFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP;
+      if (this.isPrivate) {
+        flags |= Ci.nsIURIFixup.FIXUP_FLAG_PRIVATE_CONTEXT;
+      }
+
+      this._fixupInfo = Services.uriFixup.getFixupURIInfo(
+        this.searchString.trim(),
+        flags
+      );
+    }
+
+    return this._fixupInfo || null;
   }
 }
 
@@ -1074,15 +1139,19 @@ class UrlbarProvider {
   }
 
   /**
-   * Called when a result from the provider without a URL is picked, but
-   * currently only for tip results.  The provider should handle the pick.
+   * Called when a result from the provider is picked, but currently only for
+   * tip and dynamic results.  The provider should handle the pick.  For tip
+   * results, this is called only when the tip's payload doesn't have a URL.
+   * For dynamic results, this is called when any selectable element in the
+   * result's view is picked.
+   *
    * @param {UrlbarResult} result
    *   The result that was picked.
+   * @param {Element} element
+   *   The element in the result's view that was picked.
    * @abstract
    */
-  pickResult(result) {
-    throw new Error("Trying to access the base class, must be overridden");
-  }
+  pickResult(result, element) {}
 
   /**
    * Called when the user starts and ends an engagement with the urlbar.
@@ -1092,6 +1161,69 @@ class UrlbarProvider {
    *        engagement, abandonment, discard.
    */
   onEngagement(isPrivate, state) {}
+
+  /**
+   * This is called only for dynamic result types, when the urlbar view updates
+   * the view of one of the results of the provider.  It should return an object
+   * describing the view update that looks like this:
+   *
+   *   {
+   *     nodeNameFoo: {
+   *       attributes: {
+   *         someAttribute: someValue,
+   *       },
+   *       style: {
+   *         someStyleProperty: someValue,
+   *       },
+   *       l10n: {
+   *         id: someL10nId,
+   *         args: someL10nArgs,
+   *       },
+   *       textContent: "some text content",
+   *     },
+   *     nodeNameBar: {
+   *       ...
+   *     },
+   *     nodeNameBaz: {
+   *       ...
+   *     },
+   *   }
+   *
+   * The object should contain a property for each element to update in the
+   * dynamic result type view.  The names of these properties are the names
+   * declared in the view template of the dynamic result type; see
+   * UrlbarView.addDynamicViewTemplate().  The values are similar to the nested
+   * objects specified in the view template but not quite the same; see below.
+   * For each property, the element in the view subtree with the specified name
+   * is updated according to the object in the property's value.  If an
+   * element's name is not specified, then it will not be updated and will
+   * retain its current state.
+   *
+   * @param {UrlbarResult} result
+   *   The result whose view will be updated.
+   * @returns {object}
+   *   A view update object as described above.  The names of properties are the
+   *   the names of elements declared in the view template.  The values of
+   *   properties are objects that describe how to update each element, and
+   *   these objects may include the following properties, all of which are
+   *   optional:
+   *
+   *   {object} [attributes]
+   *     A mapping from attribute names to values.  Each name-value pair results
+   *     in an attribute being added to the element.
+   *   {object} [style]
+   *     A plain object that can be used to add inline styles to the element,
+   *     like `display: none`.   `element.style` is updated for each name-value
+   *     pair in this object.
+   *   {object} [l10n]
+   *     An { id, args } object that will be passed to
+   *     document.l10n.setAttributes().
+   *   {string} [textContent]
+   *     A string that will be set as `element.textContent`.
+   */
+  getViewUpdate(result) {
+    return null;
+  }
 }
 
 /**

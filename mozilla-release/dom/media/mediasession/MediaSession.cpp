@@ -4,10 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/ContentMediaController.h"
 #include "mozilla/dom/MediaSession.h"
 #include "mozilla/EnumeratedArrayCycleCollection.h"
-
-#include "MediaSessionUtils.h"
 
 namespace mozilla {
 namespace dom {
@@ -51,15 +51,7 @@ void MediaSession::SetPlaybackState(
   RefPtr<BrowsingContext> currentBC = GetParentObject()->GetBrowsingContext();
   MOZ_ASSERT(currentBC,
              "Update session playback state after context destroyed!");
-  if (XRE_IsContentProcess()) {
-    ContentChild* contentChild = ContentChild::GetSingleton();
-    Unused << contentChild->SendNotifyMediaSessionPlaybackStateChanged(
-        currentBC, mDeclaredPlaybackState);
-    return;
-  }
-  // This would only happen when we disable e10s.
-  if (RefPtr<IMediaInfoUpdater> updater =
-          currentBC->Canonical()->GetMediaController()) {
+  if (RefPtr<IMediaInfoUpdater> updater = ContentMediaAgent::Get(currentBC)) {
     updater->SetDeclaredPlaybackState(currentBC->Id(), mDeclaredPlaybackState);
   }
 }
@@ -71,6 +63,16 @@ MediaSessionPlaybackState MediaSession::PlaybackState() const {
 void MediaSession::SetActionHandler(MediaSessionAction aAction,
                                     MediaSessionActionHandler* aHandler) {
   MOZ_ASSERT(size_t(aAction) < ArrayLength(mActionHandlers));
+  // If the media session changes its supported action, then we would propagate
+  // this information to the chrome process in order to run the media session
+  // actions update algorithm.
+  // https://w3c.github.io/mediasession/#supported-media-session-actions
+  RefPtr<MediaSessionActionHandler>& hanlder = mActionHandlers[aAction];
+  if (!hanlder && aHandler) {
+    NotifyEnableSupportedAction(aAction);
+  } else if (hanlder && !aHandler) {
+    NotifyDisableSupportedAction(aAction);
+  }
   mActionHandlers[aAction] = aHandler;
 }
 
@@ -178,27 +180,44 @@ void MediaSession::Shutdown() {
 void MediaSession::NotifyMediaSessionStatus(SessionStatus aState) {
   RefPtr<BrowsingContext> currentBC = GetParentObject()->GetBrowsingContext();
   MOZ_ASSERT(currentBC, "Update session status after context destroyed!");
-  NotfiyMediaSessionCreationOrDeconstruction(currentBC,
-                                             aState == SessionStatus::eCreated);
+
+  RefPtr<IMediaInfoUpdater> updater = ContentMediaAgent::Get(currentBC);
+  if (!updater) {
+    return;
+  }
+  if (aState == SessionStatus::eCreated) {
+    updater->NotifySessionCreated(currentBC->Id());
+  } else {
+    updater->NotifySessionDestroyed(currentBC->Id());
+  }
 }
 
 void MediaSession::NotifyMetadataUpdated() {
   RefPtr<BrowsingContext> currentBC = GetParentObject()->GetBrowsingContext();
   MOZ_ASSERT(currentBC, "Update session metadata after context destroyed!");
+
   Maybe<MediaMetadataBase> metadata;
   if (GetMetadata()) {
     metadata.emplace(*(GetMetadata()->AsMetadataBase()));
   }
-
-  if (XRE_IsContentProcess()) {
-    ContentChild* contentChild = ContentChild::GetSingleton();
-    Unused << contentChild->SendNotifyUpdateMediaMetadata(currentBC, metadata);
-    return;
-  }
-  // This would only happen when we disable e10s.
-  if (RefPtr<IMediaInfoUpdater> updater =
-          currentBC->Canonical()->GetMediaController()) {
+  if (RefPtr<IMediaInfoUpdater> updater = ContentMediaAgent::Get(currentBC)) {
     updater->UpdateMetadata(currentBC->Id(), metadata);
+  }
+}
+
+void MediaSession::NotifyEnableSupportedAction(MediaSessionAction aAction) {
+  RefPtr<BrowsingContext> currentBC = GetParentObject()->GetBrowsingContext();
+  MOZ_ASSERT(currentBC, "Update action after context destroyed!");
+  if (RefPtr<IMediaInfoUpdater> updater = ContentMediaAgent::Get(currentBC)) {
+    updater->EnableAction(currentBC->Id(), aAction);
+  }
+}
+
+void MediaSession::NotifyDisableSupportedAction(MediaSessionAction aAction) {
+  RefPtr<BrowsingContext> currentBC = GetParentObject()->GetBrowsingContext();
+  MOZ_ASSERT(currentBC, "Update action after context destroyed!");
+  if (RefPtr<IMediaInfoUpdater> updater = ContentMediaAgent::Get(currentBC)) {
+    updater->DisableAction(currentBC->Id(), aAction);
   }
 }
 

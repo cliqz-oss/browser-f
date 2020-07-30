@@ -748,30 +748,7 @@ static bool ValidateSecurityInfo(imgRequest* request, bool forcePrincipalCheck,
                                  int32_t corsmode,
                                  nsIPrincipal* triggeringPrincipal,
                                  Document* aLoadingDocument,
-                                 nsContentPolicyType aPolicyType,
-                                 nsIReferrerInfo* aReferrerInfo) {
-  // If the referrer policy doesn't match, we can't use this request.
-  // XXX: Note that we only validate referrer policy, not referrerInfo object.
-  // We should do with referrerInfo object, but it will cause us to use more
-  // resources in the common case (the same policies but different original
-  // referrers).
-  // XXX: this will return false if an image has different referrer attributes,
-  // i.e. we currently don't use the cached image but reload the image with
-  // the new referrer policy bug 1174921
-  ReferrerPolicy referrerPolicy = ReferrerPolicy::_empty;
-  if (aReferrerInfo) {
-    referrerPolicy = aReferrerInfo->ReferrerPolicy();
-  }
-
-  ReferrerPolicy requestReferrerPolicy = ReferrerPolicy::_empty;
-  if (request->GetReferrerInfo()) {
-    requestReferrerPolicy = request->GetReferrerInfo()->ReferrerPolicy();
-  }
-
-  if (referrerPolicy != requestReferrerPolicy) {
-    return false;
-  }
-
+                                 nsContentPolicyType aPolicyType) {
   // If the entry's CORS mode doesn't match, or the CORS mode matches but the
   // document principal isn't the same, we can't use this request.
   if (request->GetCORSMode() != corsmode) {
@@ -960,11 +937,11 @@ static nsresult NewImageChannel(
   return NS_OK;
 }
 
-/* static */
-uint32_t imgCacheEntry::SecondsFromPRTime(PRTime prTime) {
-  return uint32_t(int64_t(prTime) / int64_t(PR_USEC_PER_SEC));
+static uint32_t SecondsFromPRTime(PRTime aTime) {
+  return nsContentUtils::SecondsFromPRTime(aTime);
 }
 
+/* static */
 imgCacheEntry::imgCacheEntry(imgLoader* loader, imgRequest* request,
                              bool forcePrincipalCheck)
     : mLoader(loader),
@@ -1709,12 +1686,10 @@ bool imgLoader::ValidateRequestWithNewChannel(
 
       if (aLinkPreload) {
         MOZ_ASSERT(aLoadingDocument);
-        MOZ_ASSERT(aReferrerInfo);
         proxy->PrioritizeAsPreload();
         auto preloadKey = PreloadHashKey::CreateAsImage(
-            aURI, aTriggeringPrincipal, ConvertToCORSMode(aCORSMode),
-            aReferrerInfo->ReferrerPolicy());
-        proxy->NotifyOpen(&preloadKey, aLoadingDocument, true);
+            aURI, aTriggeringPrincipal, ConvertToCORSMode(aCORSMode));
+        proxy->NotifyOpen(preloadKey, aLoadingDocument, true);
       }
 
       // Attach the proxy without notifying
@@ -1778,12 +1753,10 @@ bool imgLoader::ValidateRequestWithNewChannel(
 
   if (aLinkPreload) {
     MOZ_ASSERT(aLoadingDocument);
-    MOZ_ASSERT(aReferrerInfo);
     req->PrioritizeAsPreload();
     auto preloadKey = PreloadHashKey::CreateAsImage(
-        aURI, aTriggeringPrincipal, ConvertToCORSMode(aCORSMode),
-        aReferrerInfo->ReferrerPolicy());
-    req->NotifyOpen(&preloadKey, aLoadingDocument, true);
+        aURI, aTriggeringPrincipal, ConvertToCORSMode(aCORSMode));
+    req->NotifyOpen(preloadKey, aLoadingDocument, true);
   }
 
   // Add the proxy without notifying
@@ -1822,8 +1795,8 @@ bool imgLoader::ValidateEntry(
   // If the expiration time is zero, then the request has not gotten far enough
   // to know when it will expire.
   uint32_t expiryTime = aEntry->GetExpiryTime();
-  bool hasExpired = expiryTime != 0 &&
-                    expiryTime <= imgCacheEntry::SecondsFromPRTime(PR_Now());
+  bool hasExpired =
+      expiryTime != 0 && expiryTime <= SecondsFromPRTime(PR_Now());
 
   nsresult rv;
 
@@ -1840,8 +1813,7 @@ bool imgLoader::ValidateEntry(
       if (NS_SUCCEEDED(rv)) {
         // nsIFile uses millisec, NSPR usec
         fileLastMod *= 1000;
-        hasExpired =
-            imgCacheEntry::SecondsFromPRTime((PRTime)fileLastMod) > lastModTime;
+        hasExpired = SecondsFromPRTime((PRTime)fileLastMod) > lastModTime;
       }
     }
   }
@@ -1854,7 +1826,7 @@ bool imgLoader::ValidateEntry(
 
   if (!ValidateSecurityInfo(request, aEntry->ForcePrincipalCheck(), aCORSMode,
                             aTriggeringPrincipal, aLoadingDocument,
-                            aLoadPolicyType, aReferrerInfo)) {
+                            aLoadPolicyType)) {
     return false;
   }
 
@@ -1927,6 +1899,54 @@ bool imgLoader::ValidateEntry(
              "[request=%p] because of mismatched application caches\n",
              address_of(request)));
     return false;
+  }
+
+  // If the original request is still transferring don't kick off a validation
+  // network request because it is a bit silly to issue a validation request if
+  // the original request hasn't even finished yet. So just return true
+  // indicating the caller can create a new proxy for the request and use it as
+  // is.
+  // This is an optimization but it's also required for correctness. If we don't
+  // do this then when firing the load complete notification for the original
+  // request that can unblock load for the document and then spin the event loop
+  // (see the stack in bug 1641682) which then the OnStartRequest for the
+  // validation request can fire which can call UpdateProxies and can sync
+  // notify on the progress tracker about all existing state, which includes
+  // load complete, so we fire a second load complete notification for the
+  // image.
+  // In addition, we want to validate if the original request encountered
+  // an error for two reasons. The first being if the error was a network error
+  // then trying to re-fetch the image might succeed. The second is more
+  // complicated. We decide if we should fire the load or error event for img
+  // elements depending on if the image has error in its status at the time when
+  // the load complete notification is received, and we set error status on an
+  // image if it encounters a network error or a decode error with no real way
+  // to tell them apart. So if we load an image that will produce a decode error
+  // the first time we will usually fire the load event, and then decode enough
+  // to encounter the decode error and set the error status on the image. The
+  // next time we reference the image in the same document the load complete
+  // notification is replayed and this time the error status from the decode is
+  // already present so we fire the error event instead of the load event. This
+  // is a bug (bug 1645576) that we should fix. In order to avoid that bug in
+  // some cases (specifically the cases when we hit this code and try to
+  // validate the request) we make sure to validate. This avoids the bug because
+  // when the load complete notification arrives the proxy is marked as
+  // validating so it lies about its status and returns nothing.
+  bool requestComplete = false;
+  RefPtr<ProgressTracker> tracker;
+  RefPtr<mozilla::image::Image> image = request->GetImage();
+  if (image) {
+    tracker = image->GetProgressTracker();
+  } else {
+    tracker = request->GetProgressTracker();
+  }
+  if (tracker) {
+    if (tracker->GetProgress() & (FLAG_LOAD_COMPLETE | FLAG_HAS_ERROR)) {
+      requestComplete = true;
+    }
+  }
+  if (!requestComplete) {
+    return true;
   }
 
   if (validateRequest && aCanMakeNewChannel) {
@@ -2181,7 +2201,9 @@ nsresult imgLoader::LoadImage(
   if (aLoadFlags & nsIRequest::LOAD_BACKGROUND) {
     // Propagate background loading...
     requestFlags |= nsIRequest::LOAD_BACKGROUND;
-  } else if (aLinkPreload) {
+  }
+
+  if (aLinkPreload) {
     // Set background loading if it is <link rel=preload>
     requestFlags |= nsIRequest::LOAD_BACKGROUND;
   }
@@ -2195,12 +2217,10 @@ nsresult imgLoader::LoadImage(
 
   // Look in the preloaded images of loading document first.
   if (StaticPrefs::network_preload() && !aLinkPreload && aLoadingDocument) {
-    auto key = PreloadHashKey::CreateAsImage(
-        aURI, aTriggeringPrincipal, ConvertToCORSMode(corsmode),
-        aReferrerInfo ? aReferrerInfo->ReferrerPolicy()
-                      : ReferrerPolicy::_empty);
+    auto key = PreloadHashKey::CreateAsImage(aURI, aTriggeringPrincipal,
+                                             ConvertToCORSMode(corsmode));
     if (RefPtr<PreloaderBase> preload =
-            aLoadingDocument->Preloads().LookupPreload(&key)) {
+            aLoadingDocument->Preloads().LookupPreload(key)) {
       RefPtr<imgRequestProxy> proxy = do_QueryObject(preload);
       MOZ_ASSERT(proxy);
 
@@ -2330,7 +2350,7 @@ nsresult imgLoader::LoadImage(
 
     nsCOMPtr<nsIClassOfService> cos(do_QueryInterface(newChannel));
     if (cos) {
-      if (aUseUrgentStartForChannel) {
+      if (aUseUrgentStartForChannel && !aLinkPreload) {
         cos->AddClassFlags(nsIClassOfService::UrgentStart);
       }
 
@@ -2426,12 +2446,10 @@ nsresult imgLoader::LoadImage(
 
     if (aLinkPreload) {
       MOZ_ASSERT(aLoadingDocument);
-      MOZ_ASSERT(aReferrerInfo);
       proxy->PrioritizeAsPreload();
       auto preloadKey = PreloadHashKey::CreateAsImage(
-          aURI, aTriggeringPrincipal, ConvertToCORSMode(corsmode),
-          aReferrerInfo->ReferrerPolicy());
-      proxy->NotifyOpen(&preloadKey, aLoadingDocument, true);
+          aURI, aTriggeringPrincipal, ConvertToCORSMode(corsmode));
+      proxy->NotifyOpen(preloadKey, aLoadingDocument, true);
     }
 
     // Note that it's OK to add here even if the request is done.  If it is,
@@ -2897,11 +2915,6 @@ void imgCacheValidator::AddProxy(imgRequestProxy* aProxy) {
 
 void imgCacheValidator::RemoveProxy(imgRequestProxy* aProxy) {
   mProxies.RemoveElement(aProxy);
-}
-
-void imgCacheValidator::PrioritizeAsPreload() {
-  MOZ_ASSERT(mNewRequest);
-  mNewRequest->PrioritizeAsPreload();
 }
 
 void imgCacheValidator::UpdateProxies(bool aCancelRequest, bool aSyncNotify) {

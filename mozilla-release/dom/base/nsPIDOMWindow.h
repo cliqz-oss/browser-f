@@ -13,10 +13,12 @@
 #include "nsCOMPtr.h"
 #include "nsTArray.h"
 #include "mozilla/dom/EventTarget.h"
+#include "mozilla/EventForwards.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/TaskCategory.h"
 #include "js/TypeDecls.h"
 #include "nsRefPtrHashtable.h"
+#include "nsILoadInfo.h"
 
 // Only fired for inner windows.
 #define DOM_WINDOW_DESTROYED_TOPIC "dom-window-destroyed"
@@ -58,6 +60,7 @@ class ContentFrameMessageManager;
 class DocGroup;
 class Document;
 class Element;
+class Location;
 class Navigator;
 class Performance;
 class Selection;
@@ -89,33 +92,6 @@ enum class FullscreenReason {
   // suppress the fullscreen transition.
   ForForceExitFullscreen
 };
-
-namespace mozilla {
-namespace dom {
-
-class Location;
-
-// The states in this enum represent the different possible outcomes which the
-// window could be experiencing of loading a document with the
-// Large-Allocation header. The NONE case represents the case where no
-// Large-Allocation header was set.
-enum class LargeAllocStatus : uint8_t {
-  // These are the OK states, NONE means that no large allocation status message
-  // should be printed, while SUCCESS means that the success message should be
-  // printed.
-  NONE,
-  SUCCESS,
-
-  // These are the ERROR states. If a window is in one of these states, then the
-  // next document loaded in that window should have an error message reported
-  // to it.
-  NON_GET,
-  NON_E10S,
-  NOT_ONLY_TOPLEVEL_IN_TABGROUP,
-  NON_WIN32
-};
-}  // namespace dom
-}  // namespace mozilla
 
 // Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
 #define NS_PIDOMWINDOWINNER_IID                      \
@@ -555,9 +531,9 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   virtual nsISerialEventTarget* EventTargetFor(
       mozilla::TaskCategory aCategory) const = 0;
 
-  void SaveStorageAccessGranted();
+  void SaveStorageAccessPermissionGranted();
 
-  bool HasStorageAccessGranted();
+  bool HasStorageAccessPermissionGranted();
 
   nsIPrincipal* GetDocumentContentBlockingAllowListPrincipal() const;
 
@@ -655,7 +631,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // current window. These are also set as permissions, but it could happen
   // that we need to access them synchronously in this context, and for
   // this, we need a copy here.
-  bool mStorageAccessGranted;
+  bool mStorageAccessPermissionGranted;
 
   // The WindowGlobalChild actor for this window.
   //
@@ -740,9 +716,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
 
   float GetDevicePixelRatio(mozilla::dom::CallerType aCallerType);
 
-  void SetLargeAllocStatus(mozilla::dom::LargeAllocStatus aStatus);
-
-  bool IsTopLevelWindow();
   bool HadOriginalOpener() const;
 
   virtual nsPIDOMWindowOuter* GetPrivateRoot() = 0;
@@ -814,8 +787,10 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   }
 
   // Set the window up with an about:blank document with the current subject
-  // principal and potentially a CSP.
-  virtual void SetInitialPrincipalToSubject(nsIContentSecurityPolicy* aCSP) = 0;
+  // principal and potentially a CSP and a COEP.
+  virtual void SetInitialPrincipalToSubject(
+      nsIContentSecurityPolicy* aCSP,
+      const mozilla::Maybe<nsILoadInfo::CrossOriginEmbedderPolicy>& aCoep) = 0;
 
   // Returns an object containing the window's state.  This also suspends
   // all running timeouts in the window.
@@ -964,7 +939,10 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
    *
    * Outer windows only.
    */
-  virtual bool DispatchCustomEvent(const nsAString& aEventName) = 0;
+  virtual bool DispatchCustomEvent(
+      const nsAString& aEventName,
+      mozilla::ChromeOnlyDispatch aChromeOnlyDispatch =
+          mozilla::ChromeOnlyDispatch::eNo) = 0;
 
   /**
    * Like nsIDOMWindow::Open, except that we don't navigate to the given URL.
@@ -1108,8 +1086,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   // Let the service workers plumbing know that some feature are enabled while
   // testing.
   bool mServiceWorkersTestingEnabled;
-
-  mozilla::dom::LargeAllocStatus mLargeAllocStatus;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsPIDOMWindowOuter, NS_PIDOMWINDOWOUTER_IID)

@@ -198,6 +198,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD VisitRequestHeaders(nsIHttpHeaderVisitor* visitor) override;
   NS_IMETHOD VisitNonDefaultRequestHeaders(
       nsIHttpHeaderVisitor* visitor) override;
+  NS_IMETHOD ShouldStripRequestBodyHeader(const nsACString& aMethod,
+                                          bool* aResult) override;
   NS_IMETHOD GetResponseHeader(const nsACString& header,
                                nsACString& value) override;
   NS_IMETHOD SetResponseHeader(const nsACString& header,
@@ -299,7 +301,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD SetTopWindowURIIfUnknown(nsIURI* aTopWindowURI) override;
   NS_IMETHOD GetProxyURI(nsIURI** proxyURI) override;
   virtual void SetCorsPreflightParameters(
-      const nsTArray<nsCString>& unsafeHeaders) override;
+      const nsTArray<nsCString>& unsafeHeaders,
+      bool aShouldStripRequestBodyHeader) override;
   virtual void SetAltDataForChild(bool aIsForChild) override;
   virtual void DisableAltDataCache() override { mDisableAltDataCache = true; };
 

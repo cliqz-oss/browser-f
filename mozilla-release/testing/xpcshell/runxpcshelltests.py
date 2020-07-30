@@ -73,6 +73,7 @@ if os.path.isdir(mozbase):
 
 from manifestparser import TestManifest
 from manifestparser.filters import chunk_by_slice, tags, pathprefix
+from manifestparser.util import normsep
 from mozlog import commandline
 import mozcrash
 import mozfile
@@ -1076,6 +1077,11 @@ class XPCShellTests(object):
 
         self.env["MOZ_DISABLE_SOCKET_PROCESS_SANDBOX"] = "1"
 
+        if self.mozInfo.get("socketprocess_networking"):
+            self.env["MOZ_FORCE_USE_SOCKET_PROCESS"] = "1"
+        else:
+            self.env["MOZ_DISABLE_SOCKET_PROCESS"] = "1"
+
         if self.enable_webrender:
             self.env["MOZ_WEBRENDER"] = "1"
             self.env["MOZ_ACCELERATED"] = "1"
@@ -1693,7 +1699,14 @@ class XPCShellTests(object):
 
         tests_by_manifest = defaultdict(list)
         for test in self.alltests:
-            tests_by_manifest[test['manifest']].append(test['id'])
+            group = test['manifest']
+            if 'ancestor_manifest' in test:
+                ancestor_manifest = normsep(test['ancestor_manifest'])
+                # Only change the group id if ancestor is not the generated root manifest.
+                if '/' in ancestor_manifest:
+                    group = "{}:{}".format(ancestor_manifest, group)
+            tests_by_manifest[group].append(test['id'])
+
         self.log.suite_start(tests_by_manifest, name='xpcshell')
 
         while tests_queue or running_tests:

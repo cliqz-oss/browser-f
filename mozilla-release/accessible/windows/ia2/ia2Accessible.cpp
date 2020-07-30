@@ -154,10 +154,10 @@ ia2Accessible::role(long* aRole) {
   AccessibleWrap* acc = static_cast<AccessibleWrap*>(this);
   if (acc->IsDefunct()) return CO_E_OBJNOTCONNECTED;
 
-#define ROLE(_geckoRole, stringRole, atkRole, macRole, msaaRole, ia2Role, \
-             androidClass, nameRule)                                      \
-  case roles::_geckoRole:                                                 \
-    *aRole = ia2Role;                                                     \
+#define ROLE(_geckoRole, stringRole, atkRole, macRole, macSubrole, msaaRole, \
+             ia2Role, androidClass, nameRule)                                \
+  case roles::_geckoRole:                                                    \
+    *aRole = ia2Role;                                                        \
     break;
 
   a11y::role geckoRole;
@@ -526,12 +526,7 @@ ia2Accessible::get_selectionRanges(IA2Range** aRanges, long* aNRanges) {
 
   AutoTArray<TextRange, 1> ranges;
   acc->Document()->SelectionRanges(&ranges);
-  uint32_t len = ranges.Length();
-  for (uint32_t idx = 0; idx < len; idx++) {
-    if (!ranges[idx].Crop(acc)) {
-      ranges.RemoveElementAt(idx);
-    }
-  }
+  ranges.RemoveElementsBy([acc](auto& range) { return !range.Crop(acc); });
 
   *aNRanges = ranges.Length();
   *aRanges =

@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <initializer_list>
+#include <iterator>
 #include <new>
 #include <ostream>
 #include <type_traits>
@@ -27,7 +28,6 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/NotNull.h"
-#include "mozilla/ReverseIterator.h"
 #include "mozilla/Span.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/fallible.h"
@@ -959,10 +959,10 @@ class nsTArray_Impl
   typedef nsTArray_Impl<E, Alloc> self_type;
   typedef nsTArrayElementTraits<E> elem_traits;
   typedef nsTArray_SafeElementAtHelper<E, self_type> safeelementat_helper_type;
-  typedef mozilla::ArrayIterator<elem_type&, nsTArray<E>> iterator;
-  typedef mozilla::ArrayIterator<const elem_type&, nsTArray<E>> const_iterator;
-  typedef mozilla::ReverseIterator<iterator> reverse_iterator;
-  typedef mozilla::ReverseIterator<const_iterator> const_reverse_iterator;
+  typedef mozilla::ArrayIterator<elem_type&, self_type> iterator;
+  typedef mozilla::ArrayIterator<const elem_type&, self_type> const_iterator;
+  typedef std::reverse_iterator<iterator> reverse_iterator;
+  typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
 
   using base_type::EmptyHdr;
   using safeelementat_helper_type::SafeElementAt;
@@ -1762,7 +1762,8 @@ class nsTArray_Impl
   // std::vector::erase.
   // @param first iterator to the first of elements to remove
   // @param last iterator to the last of elements to remove
-  const_iterator RemoveElementsAt(const_iterator first, const_iterator last) {
+  const_iterator RemoveElementsRange(const_iterator first,
+                                     const_iterator last) {
     MOZ_ASSERT(first.GetArray() == this);
     MOZ_ASSERT(last.GetArray() == this);
     MOZ_ASSERT(last.GetIndex() >= first.GetIndex());
@@ -1787,13 +1788,31 @@ class nsTArray_Impl
   // A variation on the RemoveElementsAt method defined above.
   void RemoveElementAt(index_type aIndex) { RemoveElementsAt(aIndex, 1); }
 
-  // A variation on the RemoveElementAt that removes the last element.
-  void RemoveLastElement() { RemoveElementAt(Length() - 1); }
+  // A variation on RemoveElementAt that removes the last element.
+  void RemoveLastElement() { RemoveLastElements(1); }
+
+  // A variation on RemoveElementsAt that removes the last 'aCount' elements.
+  void RemoveLastElements(const size_type aCount) {
+    // This assertion is redundant, but produces a better error message than the
+    // release assertion within TruncateLength.
+    MOZ_ASSERT(aCount <= Length());
+    TruncateLength(Length() - aCount);
+  }
 
   // Removes the last element of the array and returns a copy of it.
   [[nodiscard]] elem_type PopLastElement() {
-    elem_type elem = std::move(LastElement());
-    RemoveLastElement();
+    // This function intentionally does not call ElementsAt and calls
+    // TruncateLengthUnsafe directly to avoid multiple release checks for
+    // non-emptiness.
+    // This debug assertion is redundant, but produces a better error message
+    // than the release assertion below.
+    MOZ_ASSERT(!base_type::IsEmpty());
+    const size_type oldLen = Length();
+    if (MOZ_UNLIKELY(0 == oldLen)) {
+      InvalidArrayIndex_CRASH(1, 0);
+    }
+    elem_type elem = std::move(Elements()[oldLen - 1]);
+    TruncateLengthUnsafe(oldLen - 1);
     return elem;
   }
 
@@ -2132,19 +2151,19 @@ class nsTArray_Impl
   // removes elements from the array (see also RemoveElementsAt).
   // @param aNewLen The desired length of this array.
   // @return True if the operation succeeded; false otherwise.
-  // See also TruncateLength if the new length is guaranteed to be smaller than
-  // the old.
+  // See also TruncateLength for a more efficient variant if the new length is
+  // guaranteed to be smaller than the old.
  protected:
   template <typename ActualAlloc = Alloc>
   typename ActualAlloc::ResultType SetLength(size_type aNewLen) {
-    size_type oldLen = Length();
+    const size_type oldLen = Length();
     if (aNewLen > oldLen) {
       return ActualAlloc::ConvertBoolToResultType(
           InsertElementsAtInternal<ActualAlloc>(oldLen, aNewLen - oldLen) !=
           nullptr);
     }
 
-    TruncateLength(aNewLen);
+    TruncateLengthUnsafe(aNewLen);
     return ActualAlloc::ConvertBoolToResultType(true);
   }
 
@@ -2160,9 +2179,24 @@ class nsTArray_Impl
   // RemoveElementsAt).
   // @param aNewLen The desired length of this array.
   void TruncateLength(size_type aNewLen) {
-    size_type oldLen = Length();
-    MOZ_ASSERT(aNewLen <= oldLen, "caller should use SetLength instead");
-    RemoveElementsAt(aNewLen, oldLen - aNewLen);
+    // This assertion is redundant, but produces a better error message than the
+    // release assertion below.
+    MOZ_ASSERT(aNewLen <= Length(), "caller should use SetLength instead");
+
+    if (MOZ_UNLIKELY(aNewLen > Length())) {
+      InvalidArrayIndex_CRASH(aNewLen, Length());
+    }
+
+    TruncateLengthUnsafe(aNewLen);
+  }
+
+ private:
+  void TruncateLengthUnsafe(size_type aNewLen) {
+    const size_type oldLen = Length();
+    if (oldLen) {
+      DestructRange(aNewLen, oldLen - aNewLen);
+      base_type::mHdr->mLength = aNewLen;
+    }
   }
 
   // This method ensures that the array has length at least the given
@@ -2959,6 +2993,7 @@ struct nsTArray_RelocationStrategy<AutoTArray<E, N>> {
 template <class E, size_t N>
 class CopyableAutoTArray : public AutoTArray<E, N> {
  public:
+  typedef CopyableAutoTArray<E, N> self_type;
   using AutoTArray<E, N>::AutoTArray;
 
   CopyableAutoTArray(const CopyableAutoTArray& aOther) : AutoTArray<E, N>() {
@@ -2993,6 +3028,10 @@ class CopyableAutoTArray : public AutoTArray<E, N> {
     return *this;
   }
 
+  // CopyableTArray exists for cases where an explicit Clone is not possible.
+  // These uses should not be mixed, so we delete Clone() here.
+  self_type Clone() const = delete;
+
   CopyableAutoTArray(CopyableAutoTArray&&) = default;
   CopyableAutoTArray& operator=(CopyableAutoTArray&&) = default;
 };
@@ -3011,13 +3050,13 @@ Span<const ElementType> MakeSpan(
   return aTArray;
 }
 
-template <typename T>
+template <typename T, typename ArrayT>
 class nsTArrayBackInserter
     : public std::iterator<std::output_iterator_tag, void, void, void, void> {
-  nsTArray<T>* mArray;
+  ArrayT* mArray;
 
  public:
-  explicit nsTArrayBackInserter(nsTArray<T>& aArray) : mArray{&aArray} {}
+  explicit nsTArrayBackInserter(ArrayT& aArray) : mArray{&aArray} {}
 
   nsTArrayBackInserter& operator=(const T& aValue) {
     mArray->AppendElement(aValue);
@@ -3037,7 +3076,7 @@ class nsTArrayBackInserter
 
 template <typename T>
 auto MakeBackInserter(nsTArray<T>& aArray) {
-  return nsTArrayBackInserter<T>{aArray};
+  return nsTArrayBackInserter<T, nsTArray<T>>{aArray};
 }
 
 template <typename E, class Alloc>

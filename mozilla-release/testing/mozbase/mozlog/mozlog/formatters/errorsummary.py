@@ -34,7 +34,8 @@ class ErrorSummaryFormatter(BaseFormatter):
                 "status": item["status"],
                 "expected": item["expected"],
                 "message": item.get("message"),
-                "stack": item.get("stack")}
+                "stack": item.get("stack"),
+                "known_intermittent": item.get("known_intermittent", [])}
         return self._output("test_result", data)
 
     def _update_results(self, item):
@@ -45,7 +46,11 @@ class ErrorSummaryFormatter(BaseFormatter):
         if item["status"] == "SKIP":
             if group not in self.group_results:
                 self.group_results[group] = "SKIP"
-        elif "expected" not in item or item["status"] == item["expected"]:
+        elif (
+            "expected" not in item
+            or item["status"] == item["expected"]
+            or item["status"] in item.get("known_intermittent", [])
+        ):
             if group not in self.group_results or self.group_results[group] == "SKIP":
                 self.group_results[group] = "OK"
         else:

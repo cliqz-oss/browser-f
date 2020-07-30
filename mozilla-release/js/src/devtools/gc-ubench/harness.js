@@ -139,47 +139,6 @@ var AllocationLoad = class {
   }
 };
 
-var LoadCycle = class {
-  constructor(tests_to_run, duration) {
-    this.queue = [...tests_to_run];
-    this.duration = duration;
-    this.idx = -1;
-  }
-
-  get current() {
-    return this.queue[this.idx];
-  }
-
-  start(now = performance.now()) {
-    this.idx = 0;
-    this.cycleStart = this.started = now;
-  }
-
-  tick(now = performance.now()) {
-    if (this.currentLoadElapsed(now) < this.duration) {
-      return;
-    }
-
-    this.idx++;
-    this.started = now;
-    if (this.idx >= this.queue.length) {
-      this.idx = -1;
-    }
-  }
-
-  done() {
-    return this.idx == -1;
-  }
-
-  cycleElapsed(now = performance.now()) {
-    return now - this.cycleStart;
-  }
-
-  currentLoadElapsed(now = performance.now()) {
-    return now - this.started;
-  }
-};
-
 var AllocationLoadManager = class {
   constructor(tests) {
     this._loads = new Map();
@@ -188,28 +147,29 @@ var AllocationLoadManager = class {
     }
     this._active = undefined;
     this._paused = false;
-    this._eventsSinceLastTick = 0;
 
     // Public API
-    this.cycle = null;
+    this.sequencer = null;
     this.testDurationMS = gDefaultTestDuration * 1000;
+  }
 
-    // Constants
-    this.CYCLE_STARTED = 1;
-    this.CYCLE_STOPPED = 2;
-    this.LOAD_ENDED = 4;
-    this.LOAD_STARTED = 8;
+  getByName(name) {
+    const mutator = this._loads.get(name);
+    if (!mutator) {
+      throw new Error(`invalid mutator '${name}'`);
+    }
+    return mutator;
   }
 
   activeLoad() {
     return this._active;
   }
 
-  setActiveLoadByName(name) {
+  setActiveLoad(mutator) {
     if (this._active) {
       this._active.stop();
     }
-    this._active = this._loads.get(name);
+    this._active = mutator;
     this._active.start();
   }
 
@@ -244,24 +204,18 @@ var AllocationLoadManager = class {
 
   tick(now = gHost.now()) {
     this.lastActive = this._active;
-    let events = this._eventsSinceLastTick;
-    this._eventsSinceLastTick = 0;
+    let completed = false;
 
-    if (this.cycle) {
-      const prev = this.cycle.current;
-      this.cycle.tick(now);
-      if (this.cycle.current != prev) {
-        if (this.cycle.current) {
-          this.setActiveLoadByName(this.cycle.current);
+    if (this.sequencer) {
+      if (this.sequencer.tick(now)) {
+        completed = true;
+        if (this.sequencer.current) {
+          this.setActiveLoad(this.sequencer.current);
         } else {
           this.deactivateLoad();
         }
-        events |= this.LOAD_ENDED;
-        if (this.cycle.done()) {
-          events |= this.CYCLE_STOPPED;
-          this.cycle = null;
-        } else {
-          events |= this.LOAD_STARTED;
+        if (this.sequencer.done()) {
+          this.sequencer = null;
         }
       }
     }
@@ -270,24 +224,29 @@ var AllocationLoadManager = class {
       this._active.tick();
     }
 
-    return events;
+    return completed;
   }
 
-  startCycle(tests_to_run, now = performance.now()) {
-    this.cycle = new LoadCycle(tests_to_run, this.testDurationMS);
-    this.cycle.start(now);
-    this.setActiveLoadByName(this.cycle.current);
-    this._eventsSinceLastTick |= this.CYCLE_STARTED | this.LOAD_STARTED;
+  startSequencer(sequencer, now = gHost.now()) {
+    this.sequencer = sequencer;
+    this.sequencer.start(now);
+    this.setActiveLoad(this.sequencer.current);
   }
 
-  cycleStopped() {
-    return !this.cycle || this.cycle.done();
+  stopped() {
+    return !this.sequencer || this.sequencer.done();
   }
 
   currentLoadRemaining(now = gHost.now()) {
-    return this.cycleStopped()
-      ? 0
-      : this.testDurationMS - this.cycle.currentLoadElapsed(now);
+    if (this.stopped()) {
+      return 0;
+    }
+
+    // TODO: The web UI displays a countdown to the end of the current mutator.
+    // This won't work for potential future things like "run until 3 major GCs
+    // have been seen", so the API will need to be modified to provide
+    // information in that case.
+    return this.testDurationMS - this.sequencer.currentLoadElapsed(now);
   }
 };
 

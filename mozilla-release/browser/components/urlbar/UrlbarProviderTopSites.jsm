@@ -14,14 +14,15 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AboutNewTab: "resource:///modules/AboutNewTab.jsm",
   Log: "resource://gre/modules/Log.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
-  PlacesSearchAutocompleteProvider:
-    "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
   Services: "resource://gre/modules/Services.jsm",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarProvider: "resource:///modules/UrlbarUtils.jsm",
   UrlbarProviderOpenTabs: "resource:///modules/UrlbarProviderOpenTabs.jsm",
   UrlbarResult: "resource:///modules/UrlbarResult.jsm",
+  UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
+  TOP_SITES_MAX_SITES_PER_ROW: "resource://activity-stream/common/Reducers.jsm",
+  TOP_SITES_DEFAULT_ROWS: "resource://activity-stream/common/Reducers.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(this, "logger", () =>
@@ -117,8 +118,27 @@ class ProviderTopSites extends UrlbarProvider {
     // Filter out empty values. Site is empty when there's a gap between tiles
     // on about:newtab.
     sites = sites.filter(site => site);
-    // We want the top 8 sites.
-    sites = sites.slice(0, 8);
+
+    // This is done here, rather than in the global scope, because
+    // TOP_SITES_DEFAULT_ROWS causes the import of Reducers.jsm, and we want to
+    // do that only when actually querying for Top Sites.
+    if (this.topSitesRows === undefined) {
+      XPCOMUtils.defineLazyPreferenceGetter(
+        this,
+        "topSitesRows",
+        "browser.newtabpage.activity-stream.topSitesRows",
+        TOP_SITES_DEFAULT_ROWS
+      );
+    }
+
+    // We usually respect maxRichResults, though we never show a number of Top
+    // Sites greater than what is visible in the New Tab Page, because the
+    // additional ones couldn't be managed from the page.
+    let numTopSites = Math.min(
+      UrlbarPrefs.get("maxRichResults"),
+      TOP_SITES_MAX_SITES_PER_ROW * this.topSitesRows
+    );
+    sites = sites.slice(0, numTopSites);
 
     sites = sites.map(link => ({
       type: link.searchTopSite ? "search" : "url",
@@ -175,9 +195,7 @@ class ProviderTopSites extends UrlbarProvider {
           break;
         }
         case "search": {
-          let engine = await PlacesSearchAutocompleteProvider.engineForAlias(
-            site.title
-          );
+          let engine = await UrlbarSearchUtils.engineForAlias(site.title);
 
           if (!engine && site.url) {
             // Look up the engine by its domain.
@@ -186,9 +204,7 @@ class ProviderTopSites extends UrlbarProvider {
               host = new URL(site.url).hostname;
             } catch (err) {}
             if (host) {
-              engine = await PlacesSearchAutocompleteProvider.engineForDomainPrefix(
-                host
-              );
+              engine = await UrlbarSearchUtils.engineForDomainPrefix(host);
             }
           }
 

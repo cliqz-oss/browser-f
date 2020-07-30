@@ -699,12 +699,36 @@ for ( let byte of [3, 11, 8, 2] ) {
 
 for ( let lanes of ['i8x16', 'i16x8', 'i32x4', 'i64x2'] ) {
     for ( let shift of ['shl', 'shr_s', 'shr_u'] ) {
-        for ( let [count, result] of [['(i32.const 5)', 'shift -> constant shift'],
-                                      ['(local.get 1)', 'shift -> variable shift']] ) {
+        for ( let [count, result] of [['(i32.const 5)', /shift -> constant shift/],
+                                      ['(local.get 1)', /shift -> variable(?: scalarized)? shift/]] ) {
             wasmCompile(`(module (func (param v128) (param i32) (result v128) (${lanes}.${shift} (local.get 0) ${count})))`);
-            assertEq(wasmSimdAnalysis(), result);
+            assertEq(wasmSimdAnalysis().match(result).length, 1);
         }
     }
+}
+
+// Constant folding scalar->simd.  There are functional tests for all these in
+// ad-hack.js so here we only check that the transformation is triggered.
+
+for ( let [ty128, ty] of [['i8x16', 'i32'], ['i16x8', 'i32'], ['i32x4', 'i32'],
+                          ['i64x2', 'i64'], ['f32x4', 'f32'], ['f64x2', 'f64']] )
+{
+    wasmCompile(`(module (func (result v128) (${ty128}.splat (${ty}.const 37))))`);
+    assertEq(wasmSimdAnalysis(), "scalar-to-simd128 -> constant folded");
+}
+
+// Ditto simd->scalar.
+
+for ( let [ty128, suffix] of [['i8x16', '_s'], ['i8x16', '_u'], ['i16x8','_s'], ['i16x8','_u'], ['i32x4', '']] ) {
+    for ( let op of ['any_true', 'all_true', 'bitmask', `extract_lane${suffix} 0`] ) {
+        wasmCompile(`(module (func (result i32) (${ty128}.${op} (v128.const i64x2 0 0))))`);
+        assertEq(wasmSimdAnalysis(), "simd128-to-scalar -> constant folded");
+    }
+}
+
+for ( let ty128 of ['f32x4','f64x2','i64x2'] ) {
+    wasmCompile(`(module (func (result ${ty128.match(/(...)x.*/)[1]}) (${ty128}.extract_lane 0 (v128.const i64x2 0 0))))`);
+    assertEq(wasmSimdAnalysis(), "simd128-to-scalar -> constant folded");
 }
 
 // Library

@@ -62,6 +62,12 @@ set_define('JS_64BIT', depends(target)(lambda t: t.bitness == 64 or None))
 set_define('JS_PUNBOX64', depends(target)(lambda t: t.bitness == 64 or None))
 set_define('JS_NUNBOX32', depends(target)(lambda t: t.bitness == 32 or None))
 
+# Bits of Stencil-related parser-atoms work are being landed before
+# being enabled.  This define controls that code, and will be removed,
+# along with guard code in ParserAtoms.cpp, when the final transition
+# to parser atoms lands.
+set_define('JS_PARSER_ATOMS', None)
+
 
 # SpiderMonkey as a shared library, and how its symbols are exported
 # ==================================================================
@@ -445,22 +451,6 @@ set_config('ENABLE_PIPELINE_OPERATOR', enable_pipeline_operator)
 set_define('ENABLE_PIPELINE_OPERATOR', enable_pipeline_operator)
 
 
-
-# Experimental support for BinAST
-# ==============================================================
-
-@depends(milestone.is_nightly)
-def default_binast(is_nightly):
-    return is_nightly
-
-js_option('--enable-binast',
-          default=default_binast,
-          help="{Enable|Disable} BinAST support")
-
-set_config('JS_BUILD_BINAST', depends_if('--enable-binast')(lambda x: True))
-set_define('JS_BUILD_BINAST', depends_if('--enable-binast')(lambda x: True))
-
-
 # SIMD acceleration for encoding_rs
 # ==============================================================
 
@@ -521,47 +511,56 @@ set_define('JS_HAS_TYPED_OBJECTS', depends_if('--enable-typed-objects')(lambda x
 # Support for WebAssembly bulk memory operations.
 # =====================================================
 
-@depends(milestone.is_nightly)
-def default_wasm_bulk_memory(is_nightly):
-    return is_nightly
+js_option('--disable-wasm-bulk-memory',
+          help='Disable WebAssembly bulk memory operators')
 
-js_option('--enable-wasm-bulk-memory',
-          default=default_wasm_bulk_memory,
-          help='{Enable|Disable} WebAssembly bulk memory operators')
+@depends('--disable-wasm-bulk-memory')
+def enable_wasm_bulk_memory(value):
+    if value:
+        return True
 
-set_config('ENABLE_WASM_BULKMEM_OPS', depends_if('--enable-wasm-bulk-memory')(lambda x: True))
-set_define('ENABLE_WASM_BULKMEM_OPS', depends_if('--enable-wasm-bulk-memory')(lambda x: True))
-
+set_config('ENABLE_WASM_BULKMEM_OPS', enable_wasm_bulk_memory)
+set_define('ENABLE_WASM_BULKMEM_OPS', enable_wasm_bulk_memory)
 
 # Support for WebAssembly reference types.
 # =====================================================
 
-@depends(milestone.is_nightly)
-def default_wasm_reftypes(is_nightly):
-    return is_nightly
+js_option('--disable-wasm-reftypes',
+          help='Disable WebAssembly reference types')
 
-js_option('--enable-wasm-reftypes',
-          default=default_wasm_reftypes,
-          help='{Enable|Disable} WebAssembly reference types')
+@depends('--disable-wasm-reftypes')
+def enable_wasm_reftypes(value):
+    if value:
+        return True
 
-set_config('ENABLE_WASM_REFTYPES', depends_if('--enable-wasm-reftypes')(lambda x: True))
-set_define('ENABLE_WASM_REFTYPES', depends_if('--enable-wasm-reftypes')(lambda x: True))
+set_config('ENABLE_WASM_REFTYPES', enable_wasm_reftypes)
+set_define('ENABLE_WASM_REFTYPES', enable_wasm_reftypes)
 
 
 # Support for WebAssembly GC.
 # ===========================
 
-@depends(milestone.is_nightly, '--enable-wasm-reftypes')
-def default_wasm_gc(is_nightly, reftypes):
-    if reftypes and is_nightly:
+@depends(milestone.is_nightly, '--enable-wasm-reftypes', '--enable-typed-objects')
+def default_wasm_gc(is_nightly, reftypes, typed_objects):
+    if is_nightly and reftypes and typed_objects:
         return True
 
 js_option('--enable-wasm-gc',
           default=default_wasm_gc,
           help='{Enable|Disable} WebAssembly GC')
 
-set_config('ENABLE_WASM_GC', depends_if('--enable-wasm-gc')(lambda x: True))
-set_define('ENABLE_WASM_GC', depends_if('--enable-wasm-gc')(lambda x: True))
+@depends('--enable-wasm-gc', '--enable-wasm-reftypes', '--enable-typed-objects')
+def wasm_gc(value, reftypes, typed_objects):
+    if not value:
+        return
+
+    if reftypes and typed_objects:
+        return True
+
+    die('--enable-wasm-gc only possible with --enable-wasm-reftypes and --enable-typed-objects')
+
+set_config('ENABLE_WASM_GC', wasm_gc)
+set_define('ENABLE_WASM_GC', wasm_gc)
 
 
 # Support for WebAssembly private ref types.
@@ -616,19 +615,6 @@ set_config('ENABLE_SHARED_MEMORY', enable_shared_memory)
 set_define('ENABLE_SHARED_MEMORY', enable_shared_memory)
 
 
-# Initial support for new regexp engine
-# ==================================================
-
-js_option('--disable-new-regexp', help='{Enable|Disable} new regexp engine')
-
-@depends('--disable-new-regexp')
-def enable_new_regexp(value):
-    if value:
-        return True
-
-set_config('ENABLE_NEW_REGEXP', enable_new_regexp)
-set_define('ENABLE_NEW_REGEXP', enable_new_regexp)
-
 # Support for WebAssembly SIMD
 # =====================================================
 
@@ -637,10 +623,7 @@ def default_wasm_simd(jit_enabled, simulator, target, milestone):
     if not jit_enabled or simulator:
         return
 
-    # Note, not `target.cpu in ('x86_64')`, as the parens are stripped
-    # from the 1-element tuple and the operation does string matching.
-    # Good grief.
-    if milestone.is_nightly and target.cpu == 'x86_64':
+    if milestone.is_nightly and target.cpu in ('x86_64', 'x86'):
         return True
 
 js_option('--enable-wasm-simd',
@@ -653,10 +636,10 @@ def wasm_simd(value, jit_enabled, simulator, target):
         return
 
     if jit_enabled and not simulator:
-        if target.cpu == 'x86_64':
+        if target.cpu in ('x86_64', 'x86'):
             return True
 
-    die('--enable-wasm-simd only possible when targeting the x86_64 jit')
+    die('--enable-wasm-simd only possible when targeting the x86_64/x86 jit')
 
 set_config('ENABLE_WASM_SIMD', wasm_simd)
 set_define('ENABLE_WASM_SIMD', wasm_simd)

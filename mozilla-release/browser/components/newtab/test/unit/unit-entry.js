@@ -45,6 +45,10 @@ const RemoteSettings = name => ({
 RemoteSettings.pollChanges = () => {};
 
 const TEST_GLOBAL = {
+  AboutReaderParent: {
+    addMessageListener: (messageName, listener) => {},
+    removeMessageListener: (messageName, listener) => {},
+  },
   AddonManager: {
     getActiveAddons() {
       return Promise.resolve({ addons: [], fullData: false });
@@ -330,6 +334,7 @@ const TEST_GLOBAL = {
           __internalAliases: ["@bing"],
         },
       },
+      getEngineByAlias: () => null,
     },
     scriptSecurityManager: {
       createNullPrincipal() {},

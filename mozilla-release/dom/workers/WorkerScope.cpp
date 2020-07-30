@@ -460,7 +460,7 @@ int32_t WorkerGlobalScope::SetTimeoutOrInterval(JSContext* aCx,
 
 void WorkerGlobalScope::GetOrigin(nsAString& aOrigin) const {
   mWorkerPrivate->AssertIsOnWorkerThread();
-  aOrigin = mWorkerPrivate->Origin();
+  aOrigin = mWorkerPrivate->OriginNoSuffix();
 }
 
 bool WorkerGlobalScope::CrossOriginIsolated() const {
@@ -616,7 +616,7 @@ WorkerGlobalScope::GetOrCreateServiceWorkerRegistration(
   return ref;
 }
 
-void WorkerGlobalScope::FirstPartyStorageAccessGranted() {
+void WorkerGlobalScope::StorageAccessPermissionGranted() {
   // Reset the IndexedDB factory.
   mIndexedDB = nullptr;
 
@@ -922,7 +922,7 @@ already_AddRefed<Promise> ServiceWorkerGlobalScope::SkipWaiting(
     auto holder = MakeRefPtr<DOMMozPromiseRequestHolder<MozPromiseType>>(this);
 
     mWorkerPrivate->SetServiceWorkerSkipWaitingFlag()
-        ->Then(GetCurrentThreadSerialEventTarget(), __func__,
+        ->Then(GetCurrentSerialEventTarget(), __func__,
                [holder, promise](const MozPromiseType::ResolveOrRejectValue&) {
                  holder->Complete();
                  promise->MaybeResolveWithUndefined();

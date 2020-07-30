@@ -5,7 +5,17 @@
 "use strict";
 
 const EventEmitter = require("devtools/shared/event-emitter");
-const Services = require("Services");
+
+// eslint-disable-next-line mozilla/reject-some-requires
+const { gDevTools } = require("devtools/client/framework/devtools");
+
+// eslint-disable-next-line mozilla/reject-some-requires
+loader.lazyRequireGetter(
+  this,
+  "getAdHocFrontOrPrimitiveGrip",
+  "devtools/client/fronts/object",
+  true
+);
 
 class ResourceWatcher {
   /**
@@ -23,11 +33,13 @@ class ResourceWatcher {
 
   constructor(targetList) {
     this.targetList = targetList;
+    this.descriptorFront = targetList.descriptorFront;
 
     this._onTargetAvailable = this._onTargetAvailable.bind(this);
     this._onTargetDestroyed = this._onTargetDestroyed.bind(this);
 
     this._onResourceAvailable = this._onResourceAvailable.bind(this);
+    this._onResourceDestroyed = this._onResourceDestroyed.bind(this);
 
     this._availableListeners = new EventEmitter();
     this._destroyedListeners = new EventEmitter();
@@ -35,16 +47,6 @@ class ResourceWatcher {
     // Cache for all resources by the order that the resource was taken.
     this._cache = [];
     this._listenerCount = new Map();
-  }
-
-  get contentToolboxFissionPrefValue() {
-    if (!this._contentToolboxFissionPrefValue) {
-      this._contentToolboxFissionPrefValue = Services.prefs.getBoolPref(
-        "devtools.contenttoolbox.fission",
-        false
-      );
-    }
-    return this._contentToolboxFissionPrefValue;
   }
 
   /**
@@ -67,6 +69,15 @@ class ResourceWatcher {
    */
   async watchResources(resources, options) {
     const { onAvailable, ignoreExistingResources = false } = options;
+
+    // Cache the Watcher once for all, the first time we call `watch()`.
+    // This `watcher` attribute may be then used in any function of the ResourceWatcher after this.
+    if (!this.watcher) {
+      const supportsWatcher = this.descriptorFront?.traits?.watcher;
+      if (supportsWatcher) {
+        this.watcher = await this.descriptorFront.getWatcher();
+      }
+    }
 
     // First ensuring enabling listening to targets.
     // This will call onTargetAvailable for all already existing targets,
@@ -176,8 +187,25 @@ class ResourceWatcher {
         continue;
       }
       // ...request existing resource and new one to come from this one target
+      // *but* only do that for backward compat, where we don't have the watcher API
+      // (See bug 1626647)
+      if (this._hasWatcherSupport(resourceType)) {
+        continue;
+      }
       await this._watchResourcesForTarget(targetFront, resourceType);
     }
+    // Compared to the TargetList and Watcher.watchTargets,
+    // We do call Watcher.watchResources, but the events are fired on the target.
+    // That's because the Watcher runs in the parent process/main thread, while resources
+    // are available from the target's process/thread.
+    targetFront.on(
+      "resource-available-form",
+      this._onResourceAvailable.bind(this, targetFront)
+    );
+    targetFront.on(
+      "resource-destroyed-form",
+      this._onResourceDestroyed.bind(this, targetFront)
+    );
   }
 
   /**
@@ -211,6 +239,14 @@ class ResourceWatcher {
         resource.targetFront = targetFront;
       }
       const { resourceType } = resource;
+      if (resourceType == ResourceWatcher.TYPES.CONSOLE_MESSAGE) {
+        if (Array.isArray(resource.message.arguments)) {
+          // We might need to create fronts for each of the message arguments.
+          resource.message.arguments = resource.message.arguments.map(arg =>
+            getAdHocFrontOrPrimitiveGrip(arg, targetFront)
+          );
+        }
+      }
 
       this._availableListeners.emit(resourceType, {
         // XXX: We may want to read resource.resourceType instead of passing this resourceType argument?
@@ -253,6 +289,10 @@ class ResourceWatcher {
     );
   }
 
+  _hasWatcherSupport(resourceType) {
+    return this.watcher?.traits?.resources?.[resourceType];
+  }
+
   /**
    * Start listening for a given type of resource.
    * For backward compatibility code, we register the legacy listeners on
@@ -270,6 +310,14 @@ class ResourceWatcher {
     if (listeners > 1) {
       return;
     }
+
+    // If the server supports the Watcher API and the Watcher supports
+    // this resource type, use this API
+    if (this._hasWatcherSupport(resourceType)) {
+      await this.watcher.watchResources([resourceType]);
+      return;
+    }
+    // Otherwise, fallback on backward compat mode and use LegacyListeners.
 
     // If this is the first listener for this type of resource,
     // we should go through all the existing targets as onTargetAvailable
@@ -303,7 +351,7 @@ class ResourceWatcher {
     return LegacyListeners[resourceType]({
       targetList: this.targetList,
       targetFront,
-      isFissionEnabledOnContentToolbox: this.contentToolboxFissionPrefValue,
+      isFissionEnabledOnContentToolbox: gDevTools.isFissionContentToolboxEnabled(),
       onAvailable,
     });
   }
@@ -329,6 +377,14 @@ class ResourceWatcher {
     this._cache = this._cache.filter(
       cachedResource => cachedResource.resourceType !== resourceType
     );
+
+    // If the server supports the Watcher API and the Watcher supports
+    // this resource type, use this API
+    if (this._hasWatcherSupport(resourceType)) {
+      this.watcher.unwatchResources([resourceType]);
+      return;
+    }
+    // Otherwise, fallback on backward compat mode and use LegacyListeners.
 
     // If this was the last listener, we should stop watching these events from the actors
     // and the actors should stop watching things from the platform
@@ -357,6 +413,8 @@ class ResourceWatcher {
 
 ResourceWatcher.TYPES = ResourceWatcher.prototype.TYPES = {
   CONSOLE_MESSAGE: "console-message",
+  CSS_CHANGE: "css-change",
+  CSS_MESSAGE: "css-message",
   ERROR_MESSAGE: "error-message",
   PLATFORM_MESSAGE: "platform-message",
   DOCUMENT_EVENT: "document-event",
@@ -370,6 +428,10 @@ module.exports = { ResourceWatcher };
 const LegacyListeners = {
   [ResourceWatcher.TYPES
     .CONSOLE_MESSAGE]: require("devtools/shared/resources/legacy-listeners/console-messages"),
+  [ResourceWatcher.TYPES
+    .CSS_CHANGE]: require("devtools/shared/resources/legacy-listeners/css-changes"),
+  [ResourceWatcher.TYPES
+    .CSS_MESSAGE]: require("devtools/shared/resources/legacy-listeners/css-messages"),
   [ResourceWatcher.TYPES
     .ERROR_MESSAGE]: require("devtools/shared/resources/legacy-listeners/error-messages"),
   [ResourceWatcher.TYPES

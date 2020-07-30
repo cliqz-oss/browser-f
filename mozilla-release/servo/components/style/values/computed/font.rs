@@ -81,13 +81,14 @@ impl ToAnimatedValue for FontWeight {
     ToCss,
     ToResolvedValue,
 )]
+#[cfg_attr(feature = "servo", derive(Serialize, Deserialize))]
 /// The computed value of font-size
 pub struct FontSize {
     /// The size.
     pub size: NonNegativeLength,
     /// If derived from a keyword, the keyword and additional transformations applied to it
     #[css(skip)]
-    pub keyword_info: Option<KeywordInfo>,
+    pub keyword_info: KeywordInfo,
 }
 
 impl FontWeight {
@@ -155,8 +156,8 @@ impl FontSize {
     /// Get default value of font size.
     pub fn medium() -> Self {
         Self {
-            size: NonNegative(Length::new(specified::FONT_MEDIUM_PX as CSSFloat)),
-            keyword_info: Some(KeywordInfo::medium()),
+            size: NonNegative(Length::new(specified::FONT_MEDIUM_PX)),
+            keyword_info: KeywordInfo::medium(),
         }
     }
 }
@@ -173,13 +174,13 @@ impl ToAnimatedValue for FontSize {
     fn from_animated_value(animated: Self::AnimatedValue) -> Self {
         FontSize {
             size: NonNegative(animated.clamp_to_non_negative()),
-            keyword_info: None,
+            keyword_info: KeywordInfo::none(),
         }
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, ToComputedValue, ToResolvedValue)]
-#[cfg_attr(feature = "servo", derive(Hash, MallocSizeOf))]
+#[cfg_attr(feature = "servo", derive(Hash, MallocSizeOf, Serialize, Deserialize))]
 /// Specifies a prioritized list of font family names or generic family names.
 pub struct FontFamily {
     /// The actual list of family names.
@@ -344,7 +345,7 @@ pub enum GenericFontFamily {
 impl SingleFontFamily {
     /// Parse a font-family value.
     pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
-        if let Ok(value) = input.try(|i| i.expect_string_cloned()) {
+        if let Ok(value) = input.try_parse(|i| i.expect_string_cloned()) {
             return Ok(SingleFontFamily::FamilyName(FamilyName {
                 name: Atom::from(&*value),
                 syntax: FontFamilyNameSyntax::Quoted,
@@ -379,7 +380,7 @@ impl SingleFontFamily {
             value.push(' ');
             value.push_str(&ident);
         }
-        while let Ok(ident) = input.try(|i| i.expect_ident_cloned()) {
+        while let Ok(ident) = input.try_parse(|i| i.expect_ident_cloned()) {
             serialize_quoted = serialize_quoted || ident.contains(' ');
             value.push(' ');
             value.push_str(&ident);
@@ -445,7 +446,17 @@ impl SingleFontFamily {
 
 #[cfg(feature = "servo")]
 #[derive(
-    Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToComputedValue, ToResolvedValue, ToShmem,
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    Hash,
+    MallocSizeOf,
+    PartialEq,
+    Serialize,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
 )]
 /// A list of SingleFontFamily
 pub struct FontFamilyList(Box<[SingleFontFamily]>);

@@ -48,6 +48,7 @@
 #include "mozilla/dom/Document.h"
 #include "nsPIDOMWindow.h"
 #include "nsRFPService.h"
+#include "prtime.h"
 
 #if defined(XP_WIN)
 // Undefine LoadImage to prevent naming conflict with Windows.
@@ -337,6 +338,12 @@ class nsContentUtils {
   static nsINode* GetCrossDocParentNode(nsINode* aChild);
 
   /**
+   * Like GetCrossDocParentNode, but skips any cross-process parent frames and
+   * continues with the nearest in-process frame in the hierarchy.
+   */
+  static nsINode* GetNearestInProcessCrossDocParentNode(nsINode* aChild);
+
+  /**
    * Similar to nsINode::IsInclusiveDescendantOf, except will treat an
    * HTMLTemplateElement or ShadowRoot as an ancestor of things in the
    * corresponding DocumentFragment. See the concept of "host-including
@@ -551,23 +558,6 @@ class nsContentUtils {
    * @see Node
    */
   static uint16_t ReverseDocumentPosition(uint16_t aDocumentPosition);
-
-  /**
-   * Returns a subdocument for aDocument with a particular outer window ID.
-   *
-   * @param aDocument
-   *        The document whose subdocuments will be searched.
-   * @param aOuterWindowID
-   *        The outer window ID for the subdocument to be found. This must
-   *        be a value greater than 0.
-   * @return Document*
-   *        A pointer to the found Document. nullptr if the subdocument
-   *        cannot be found, or if either aDocument or aOuterWindowId were
-   *        invalid. If the outer window ID belongs to aDocument itself, this
-   *        will return a pointer to aDocument.
-   */
-  static Document* GetSubdocumentWithOuterWindowId(Document* aDocument,
-                                                   uint64_t aOuterWindowId);
 
   static const nsDependentSubstring TrimCharsInSet(const char* aSet,
                                                    const nsAString& aValue);
@@ -1598,14 +1588,22 @@ class nsContentUtils {
    * @param aEventName     The name of the event.
    * @param aCanBubble     Whether the event can bubble.
    * @param aCancelable    Is the event cancelable.
+   * @param aComposed      Is the event composed.
    * @param aDefaultAction Set to true if default action should be taken,
    *                       see EventTarget::DispatchEvent.
    */
-  static nsresult DispatchEventOnlyToChrome(Document* aDoc,
-                                            nsISupports* aTarget,
-                                            const nsAString& aEventName,
-                                            CanBubble, Cancelable,
-                                            bool* aDefaultAction = nullptr);
+  static nsresult DispatchEventOnlyToChrome(
+      Document* aDoc, nsISupports* aTarget, const nsAString& aEventName,
+      CanBubble, Cancelable, Composed aComposed = Composed::eDefault,
+      bool* aDefaultAction = nullptr);
+
+  static nsresult DispatchEventOnlyToChrome(
+      Document* aDoc, nsISupports* aTarget, const nsAString& aEventName,
+      CanBubble aCanBubble, Cancelable aCancelable, bool* aDefaultAction) {
+    return DispatchEventOnlyToChrome(aDoc, aTarget, aEventName, aCanBubble,
+                                     aCancelable, Composed::eDefault,
+                                     aDefaultAction);
+  }
 
   /**
    * Determines if an event attribute name (such as onclick) is valid for
@@ -3033,8 +3031,6 @@ class nsContentUtils {
           nullptr,
       mozilla::dom::CustomElementDefinition* aDefinition = nullptr);
 
-  static bool AttemptLargeAllocationLoad(nsIHttpChannel* aChannel);
-
   /**
    * Appends all "document level" native anonymous content subtree roots for
    * aDocument to aElements.  Document level NAC subtrees are those created
@@ -3136,6 +3132,11 @@ class nsContentUtils {
   static uint64_t GenerateTabId();
 
   /**
+   * Compose a browser id with process id and a serial number.
+   */
+  static uint64_t GenerateBrowserId();
+
+  /**
    * Generate an id for a BrowsingContext using a range of serial
    * numbers reserved for the current process.
    */
@@ -3153,6 +3154,12 @@ class nsContentUtils {
    * recycled.
    */
   static uint64_t GenerateWindowId();
+
+  /**
+   * Generate an ID for a load which is unique across processes and will never
+   * be recycled.
+   */
+  static uint64_t GenerateLoadIdentifier();
 
   /**
    * Determine whether or not the user is currently interacting with the web
@@ -3193,6 +3200,13 @@ class nsContentUtils {
    * @param aMsg  The message to check
    */
   static bool IsMessageInputEvent(const IPC::Message& aMsg);
+
+  /**
+   * Returns true if the passed-in message is a critical InputEvent.
+   *
+   * @param aMsg  The message to check
+   */
+  static bool IsMessageCriticalInputEvent(const IPC::Message& aMsg);
 
   static void AsyncPrecreateStringBundles();
 
@@ -3237,6 +3251,23 @@ class nsContentUtils {
   static mozilla::ScreenIntMargin GetWindowSafeAreaInsets(
       nsIScreen* aScreen, const mozilla::ScreenIntMargin& aSafeareaInsets,
       const mozilla::LayoutDeviceIntRect& aWindowRect);
+
+  struct SubresourceCacheValidationInfo {
+    // The expiration time, in seconds, if known.
+    Maybe<uint32_t> mExpirationTime;
+    bool mMustRevalidate = false;
+  };
+
+  /**
+   * Gets cache validation info for subresources such as images or CSS
+   * stylesheets.
+   */
+  static SubresourceCacheValidationInfo GetSubresourceCacheValidationInfo(
+      nsIRequest*);
+
+  static uint32_t SecondsFromPRTime(PRTime aTime) {
+    return uint32_t(int64_t(aTime) / int64_t(PR_USEC_PER_SEC));
+  }
 
  private:
   static bool InitializeEventTable();

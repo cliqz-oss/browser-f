@@ -7,10 +7,11 @@
 #ifndef DOM_MEDIA_MEDIACONTROL_MEDIACONTROLLER_H_
 #define DOM_MEDIA_MEDIACONTROL_MEDIACONTROLLER_H_
 
-#include "ContentMediaController.h"
 #include "MediaEventSource.h"
 #include "MediaPlaybackStatus.h"
 #include "MediaStatusManager.h"
+#include "mozilla/DOMEventTargetHelper.h"
+#include "mozilla/dom/MediaControllerBinding.h"
 #include "mozilla/LinkedList.h"
 #include "nsDataHashtable.h"
 #include "nsISupportsImpl.h"
@@ -19,7 +20,6 @@ namespace mozilla {
 namespace dom {
 
 class BrowsingContext;
-enum class MediaControlKeysEvent : uint32_t;
 
 /**
  * IMediaController is an interface which includes control related methods and
@@ -67,14 +67,24 @@ class IMediaController {
  * tabs playing media at the same time, we can use the ID to query the specific
  * controller from `MediaControlService`.
  */
-class MediaController final
-    : public IMediaController,
-      public MediaStatusManager,
-      public LinkedListElement<RefPtr<MediaController>> {
+class MediaController final : public DOMEventTargetHelper,
+                              public IMediaController,
+                              public LinkedListElement<RefPtr<MediaController>>,
+                              public MediaStatusManager,
+                              public nsITimerCallback {
  public:
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaController, override);
-
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_NSITIMERCALLBACK
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(MediaController,
+                                                         DOMEventTargetHelper)
   explicit MediaController(uint64_t aBrowsingContextId);
+
+  // WebIDL methods
+  nsISupports* GetParentObject() const;
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override;
+  void GetSupportedKeys(nsTArray<MediaControlKey>& aRetVal) const;
+  IMPL_EVENT_HANDLER(supportedkeyschange);
 
   // IMediaController's methods
   void Focus() override;
@@ -94,7 +104,10 @@ class MediaController final
                                   MediaPlaybackState aState) override;
   void NotifyMediaAudibleChanged(uint64_t aBrowsingContextId,
                                  MediaAudibleState aState) override;
-  void SetIsInPictureInPictureMode(bool aIsInPictureInPictureMode) override;
+  void SetIsInPictureInPictureMode(uint64_t aBrowsingContextId,
+                                   bool aIsInPictureInPictureMode) override;
+  void NotifyMediaFullScreenState(uint64_t aBrowsingContextId,
+                                  bool aIsInFullScreen) override;
 
   // Reture true if any of controlled media is being used in Picture-In-Picture
   // mode.
@@ -104,11 +117,28 @@ class MediaController final
   // then calling any its method won't take any effect.
   void Shutdown();
 
+  // This event would be notified media controller's supported media keys
+  // change.
+  MediaEventSource<nsTArray<MediaControlKey>>& SupportedKeysChangedEvent() {
+    return mSupportedKeysChangedEvent;
+  }
+
+  MediaEventSource<bool>& FullScreenChangedEvent() {
+    return mFullScreenChangedEvent;
+  }
+
+  MediaEventSource<bool>& PictureInPictureModeChangedEvent() {
+    return mPictureInPictureModeChangedEvent;
+  }
+
+  CopyableTArray<MediaControlKey> GetSupportedMediaKeys() const;
+
  private:
   ~MediaController();
   void HandleActualPlaybackStateChanged() override;
-  void UpdateMediaControlKeysEventToContentMediaIfNeeded(
-      MediaControlKeysEvent aEvent);
+  void UpdateMediaControlKeyToContentMediaIfNeeded(MediaControlKey aKey);
+  void HandleSupportedMediaSessionActionsChanged(
+      const nsTArray<MediaSessionAction>& aSupportedAction);
 
   // This would register controller to the media control service that takes a
   // responsibility to manage all active controllers.
@@ -121,9 +151,28 @@ class MediaController final
   bool ShouldActivateController() const;
   bool ShouldDeactivateController() const;
 
-  bool mIsRegisteredToService = false;
+  void UpdateDeactivationTimerIfNeeded();
+
+  bool IsMediaBeingUsedInPIPModeOrFullScreen() const;
+
+  bool mIsActive = false;
   bool mShutdown = false;
   bool mIsInPictureInPictureMode = false;
+  bool mIsInFullScreenMode = false;
+
+  // We would monitor the change of media session actions and convert them to
+  // the media keys, then determine the supported media keys.
+  MediaEventListener mSupportedActionsChangedListener;
+  MediaEventProducer<nsTArray<MediaControlKey>> mSupportedKeysChangedEvent;
+
+  MediaEventProducer<bool> mFullScreenChangedEvent;
+  MediaEventProducer<bool> mPictureInPictureModeChangedEvent;
+  // Use copyable array so that we can use the result as a parameter for the
+  // media event.
+  CopyableTArray<MediaControlKey> mSupportedKeys;
+  // Timer to deactivate the controller if the time of being paused exceeds the
+  // threshold of time.
+  nsCOMPtr<nsITimer> mDeactivationTimer;
 };
 
 }  // namespace dom

@@ -518,7 +518,7 @@ nsresult nsMathMLContainerFrame::FinalizeReflow(DrawTarget* aDrawTarget,
         // The Place() call above didn't request FinishReflowChild(),
         // so let's check that we eventually did through Stretch().
         for (nsIFrame* childFrame : PrincipalChildList()) {
-          NS_ASSERTION(!(childFrame->GetStateBits() & NS_FRAME_IN_REFLOW),
+          NS_ASSERTION(!childFrame->HasAnyStateBits(NS_FRAME_IN_REFLOW),
                        "DidReflow() was never called");
         }
       }
@@ -603,9 +603,7 @@ void nsMathMLContainerFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     return;
   }
 
-  DisplayBorderBackgroundOutline(aBuilder, aLists);
-
-  BuildDisplayListForNonBlockChildren(aBuilder, aLists, DISPLAY_CHILD_INLINE);
+  BuildDisplayListForInline(aBuilder, aLists);
 
 #if defined(DEBUG) && defined(SHOW_BOUNDING_BOX)
   // for visual debug
@@ -1101,7 +1099,7 @@ static nscoord GetInterFrameSpacing(int32_t aScriptLevel,
 }
 
 static nscoord GetThinSpace(const nsStyleFont* aStyleFont) {
-  return NSToCoordRound(float(aStyleFont->mFont.size) * float(3) / float(18));
+  return aStyleFont->mFont.size.ScaledBy(3.0f / 18.0f).ToAppUnits();
 }
 
 class nsMathMLContainerFrame::RowChildFrameIterator {
@@ -1339,7 +1337,7 @@ void nsMathMLContainerFrame::DidReflowChildren(nsIFrame* aFirst,
   for (nsIFrame* frame = aFirst; frame != aStop;
        frame = frame->GetNextSibling()) {
     NS_ASSERTION(frame, "aStop isn't a sibling");
-    if (frame->GetStateBits() & NS_FRAME_IN_REFLOW) {
+    if (frame->HasAnyStateBits(NS_FRAME_IN_REFLOW)) {
       // finish off principal descendants, too
       nsIFrame* grandchild = frame->PrincipalChildList().FirstChild();
       if (grandchild) DidReflowChildren(grandchild, nullptr);

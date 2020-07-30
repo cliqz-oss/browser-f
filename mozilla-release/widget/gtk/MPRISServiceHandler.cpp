@@ -460,7 +460,7 @@ void MPRISServiceHandler::Close() {
   }
 
   mInitialized = false;
-  MediaControlKeysEventSource::Close();
+  MediaControlKeySource::Close();
 }
 
 bool MPRISServiceHandler::IsOpened() const { return mInitialized; }
@@ -560,7 +560,7 @@ void MPRISServiceHandler::SetPlaybackState(
     return;
   }
 
-  MediaControlKeysEventSource::SetPlaybackState(aState);
+  MediaControlKeySource::SetPlaybackState(aState);
 
   if (!mConnection) {
     return;  // No D-Bus Connection, no event
@@ -651,6 +651,9 @@ GVariant* MPRISServiceHandler::GetMetadataAsGVariant() const {
     g_variant_builder_add(
         &builder, "{sv}", "xesam:title",
         g_variant_new_string(NS_ConvertUTF16toUTF8(mMetadata->mTitle).get()));
+    g_variant_builder_add(
+        &builder, "{sv}", "xesam:album",
+        g_variant_new_string(NS_ConvertUTF16toUTF8(mMetadata->mAlbum).get()));
     GVariantBuilder artistBuilder;  // Artists is a list.
     g_variant_builder_init(&artistBuilder, G_VARIANT_TYPE("as"));
     g_variant_builder_add(&artistBuilder, "s",
@@ -661,45 +664,45 @@ GVariant* MPRISServiceHandler::GetMetadataAsGVariant() const {
   return g_variant_builder_end(&builder);
 }
 
-void MPRISServiceHandler::EmitEvent(mozilla::dom::MediaControlKeysEvent event) {
+void MPRISServiceHandler::EmitEvent(mozilla::dom::MediaControlKey aKey) {
   for (auto& listener : mListeners) {
-    listener->OnKeyPressed(event);
+    listener->OnKeyPressed(aKey);
   }
 }
 
 void MPRISServiceHandler::Raise() {
   LOG("Raise");
-  EmitEvent(mozilla::dom::MediaControlKeysEvent::eFocus);
+  EmitEvent(mozilla::dom::MediaControlKey::Focus);
 }
 
 void MPRISServiceHandler::Next() {
   LOG("Next");
-  EmitEvent(mozilla::dom::MediaControlKeysEvent::eNextTrack);
+  EmitEvent(mozilla::dom::MediaControlKey::Nexttrack);
 }
 
 void MPRISServiceHandler::Previous() {
   LOG("Previous");
-  EmitEvent(mozilla::dom::MediaControlKeysEvent::ePrevTrack);
+  EmitEvent(mozilla::dom::MediaControlKey::Previoustrack);
 }
 
 void MPRISServiceHandler::Pause() {
   LOG("Pause");
-  EmitEvent(mozilla::dom::MediaControlKeysEvent::ePause);
+  EmitEvent(mozilla::dom::MediaControlKey::Pause);
 }
 
 void MPRISServiceHandler::PlayPause() {
   LOG("PlayPause");
-  EmitEvent(mozilla::dom::MediaControlKeysEvent::ePlayPause);
+  EmitEvent(mozilla::dom::MediaControlKey::Playpause);
 }
 
 void MPRISServiceHandler::Stop() {
   LOG("Stop");
-  EmitEvent(mozilla::dom::MediaControlKeysEvent::eStop);
+  EmitEvent(mozilla::dom::MediaControlKey::Stop);
 }
 
 void MPRISServiceHandler::Play() {
   LOG("Play");
-  EmitEvent(mozilla::dom::MediaControlKeysEvent::ePlay);
+  EmitEvent(mozilla::dom::MediaControlKey::Play);
 }
 
 // Caution, Seek can really be negative, like -1000000 during testing

@@ -508,11 +508,13 @@ struct KerxSubTableFormat4
 	{
 	  case 0: /* Control Point Actions.*/
 	  {
-	    /* indexed into glyph outline. */
-	    const HBUINT16 *data = &ankrData[entry.data.ankrActionIndex];
+	    /* Indexed into glyph outline. */
+	    /* Each action (record in ankrData) contains two 16-bit fields, so we must
+	       double the ankrActionIndex to get the correct offset here. */
+	    const HBUINT16 *data = &ankrData[entry.data.ankrActionIndex * 2];
 	    if (!c->sanitizer.check_array (data, 2)) return;
-	    HB_UNUSED unsigned int markControlPoint = *data++;
-	    HB_UNUSED unsigned int currControlPoint = *data++;
+	    unsigned int markControlPoint = *data++;
+	    unsigned int currControlPoint = *data++;
 	    hb_position_t markX = 0;
 	    hb_position_t markY = 0;
 	    hb_position_t currX = 0;
@@ -534,8 +536,10 @@ struct KerxSubTableFormat4
 
 	  case 1: /* Anchor Point Actions. */
 	  {
-	   /* Indexed into 'ankr' table. */
-	    const HBUINT16 *data = &ankrData[entry.data.ankrActionIndex];
+	    /* Indexed into 'ankr' table. */
+	    /* Each action (record in ankrData) contains two 16-bit fields, so we must
+	       double the ankrActionIndex to get the correct offset here. */
+	    const HBUINT16 *data = &ankrData[entry.data.ankrActionIndex * 2];
 	    if (!c->sanitizer.check_array (data, 2)) return;
 	    unsigned int markAnchorPoint = *data++;
 	    unsigned int currAnchorPoint = *data++;
@@ -553,7 +557,9 @@ struct KerxSubTableFormat4
 
 	  case 2: /* Control Point Coordinate Actions. */
 	  {
-	    const FWORD *data = (const FWORD *) &ankrData[entry.data.ankrActionIndex];
+	    /* Each action contains four 16-bit fields, so we multiply the ankrActionIndex
+	       by 4 to get the correct offset for the given action. */
+	    const FWORD *data = (const FWORD *) &ankrData[entry.data.ankrActionIndex * 4];
 	    if (!c->sanitizer.check_array (data, 4)) return;
 	    int markX = *data++;
 	    int markY = *data++;
@@ -887,7 +893,7 @@ struct KerxTable
       reverse = bool (st->u.header.coverage & st->u.header.Backwards) !=
 		HB_DIRECTION_IS_BACKWARD (c->buffer->props.direction);
 
-      if (!c->buffer->message (c->font, "start %c%c%c%c subtable %d", HB_UNTAG (thiz()->tableTag), c->lookup_index))
+      if (!c->buffer->message (c->font, "start subtable %d", c->lookup_index))
 	goto skip;
 
       if (!seenCrossStream &&
@@ -919,7 +925,7 @@ struct KerxTable
       if (reverse)
 	c->buffer->reverse ();
 
-      (void) c->buffer->message (c->font, "end %c%c%c%c subtable %d", HB_UNTAG (thiz()->tableTag), c->lookup_index);
+      (void) c->buffer->message (c->font, "end subtable %d", c->lookup_index);
 
     skip:
       st = &StructAfter<SubTable> (*st);

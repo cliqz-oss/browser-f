@@ -450,6 +450,19 @@ bool IonCacheIRCompiler::init() {
           1, TypedOrValueRegister(MIRType::Object, AnyRegister(ic->rhs())));
       break;
     }
+    case CacheKind::ToPropertyKey: {
+      IonToPropertyKeyIC* ic = ic_->asToPropertyKeyIC();
+      ValueOperand output = ic->output();
+
+      available.add(output);
+
+      liveRegs_.emplace(ic->liveRegs());
+      outputUnchecked_.emplace(TypedOrValueRegister(output));
+
+      MOZ_ASSERT(numInputs == 1);
+      allocator.initInputLocation(0, ic->input());
+      break;
+    }
     case CacheKind::UnaryArith: {
       IonUnaryArithIC* ic = ic_->asUnaryArithIC();
       ValueOperand output = ic->output();
@@ -581,6 +594,7 @@ void IonCacheIRCompiler::assertFloatRegisterAvailable(FloatRegister reg) {
     case CacheKind::HasOwn:
     case CacheKind::InstanceOf:
     case CacheKind::UnaryArith:
+    case CacheKind::ToPropertyKey:
       MOZ_CRASH("No float registers available");
     case CacheKind::SetProp:
     case CacheKind::SetElem:
@@ -843,6 +857,12 @@ bool IonCacheIRCompiler::emitLoadFixedSlotResult(ObjOperandId objId,
   int32_t offset = int32StubField(offsetOffset);
   masm.loadTypedOrValue(Address(obj, offset), output);
   return true;
+}
+
+bool IonCacheIRCompiler::emitLoadFixedSlotTypedResult(ObjOperandId objId,
+                                                      uint32_t offsetOffset,
+                                                      ValueType) {
+  MOZ_CRASH("Call ICs not used in ion");
 }
 
 bool IonCacheIRCompiler::emitLoadDynamicSlotResult(ObjOperandId objId,
@@ -2420,5 +2440,18 @@ bool IonCacheIRCompiler::emitGuardFunApply(Int32OperandId argcId,
 }
 
 bool IonCacheIRCompiler::emitIsArrayResult(ValOperandId inputId) {
+  MOZ_CRASH("Call ICs not used in ion");
+}
+
+bool IonCacheIRCompiler::emitStringFromCharCodeResult(Int32OperandId codeId) {
+  MOZ_CRASH("Call ICs not used in ion");
+}
+
+bool IonCacheIRCompiler::emitMathRandomResult(uint32_t rngOffset) {
+  MOZ_CRASH("Call ICs not used in ion");
+}
+
+bool IonCacheIRCompiler::emitHasClassResult(ObjOperandId objId,
+                                            uint32_t claspOffset) {
   MOZ_CRASH("Call ICs not used in ion");
 }

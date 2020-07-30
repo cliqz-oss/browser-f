@@ -127,6 +127,10 @@ pref("app.update.download.promptMaxAttempts", 2);
 // download a fresh installer.
 pref("app.update.elevation.promptMaxAttempts", 2);
 
+// If set to true, a message will be displayed in the hamburger menu while
+// an update is being downloaded.
+pref("app.update.notifyDuringDownload", false);
+
 // If set to true, the Update Service will automatically download updates if the
 // user can apply updates. This pref is no longer used on Windows, except as the
 // default value to migrate to the new location that this data is now stored
@@ -207,7 +211,7 @@ pref("keyword.enabled", true);
 
 // Fixup whitelists, the urlbar won't try to search for these words, but will
 // instead consider them valid TLDs. Don't check these directly, use
-// Services.uriFixup.isDomainWhitelisted() instead.
+// Services.uriFixup.isDomainKnown() instead.
 pref("browser.fixup.domainwhitelist.localhost", true);
 // https://tools.ietf.org/html/rfc2606
 pref("browser.fixup.domainsuffixwhitelist.test", true);
@@ -218,6 +222,10 @@ pref("browser.fixup.domainsuffixwhitelist.localhost", true);
 pref("browser.fixup.domainsuffixwhitelist.internal", true);
 // https://tools.ietf.org/html/rfc6762
 pref("browser.fixup.domainsuffixwhitelist.local", true);
+
+// Whether to always go through the DNS server before sending a single word
+// search string, that may contain a valid host, to a search engine.
+pref("browser.fixup.dns_first_for_single_words", false);
 
 #ifdef UNIX_BUT_NOT_MAC
   pref("general.autoScroll", false);
@@ -303,18 +311,9 @@ pref("browser.urlbar.filter.javascript", true);
 
 // the maximum number of results to show in autocomplete when doing richResults
 pref("browser.urlbar.maxRichResults", 10);
-// The amount of time (ms) to wait after the user has stopped typing
-// before starting to perform autocomplete.  50 is the default set in
-// autocomplete.xml.
-pref("browser.urlbar.delay", 50);
 
 // The maximum number of historical search results to show.
 pref("browser.urlbar.maxHistoricalSearchSuggestions", 2);
-
-// When true, URLs in the user's history that look like search result pages
-// are styled to look like search engine results instead of the usual history
-// results.
-pref("browser.urlbar.restyleSearches", false);
 
 // The default behavior for the urlbar can be configured to use any combination
 // of the match filters with each additional filter adding more results (union).
@@ -341,7 +340,6 @@ pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 0);
 // is longer than this.
 pref("browser.urlbar.maxCharsForSearchSuggestions", 100);
 
-pref("browser.urlbar.formatting.enabled", true);
 pref("browser.urlbar.trimURLs", true);
 
 // If changed to true, copying the entire URL from the location bar will put the
@@ -357,21 +355,7 @@ pref("browser.urlbar.switchTabs.adoptIntoActiveWindow", false);
 pref("browser.urlbar.openintab", false);
 
 // If true, we show tail suggestions when available.
-pref("browser.urlbar.richSuggestions.tail", false);
-
-// This is disabled until Bug 1340663 figures out the remaining requirements.
-pref("browser.urlbar.usepreloadedtopurls.enabled", false);
-pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
-
-// If true, we show actionable tips in the Urlbar when the user is searching
-// for those actions.
-pref("browser.urlbar.update1.interventions", false);
-// CLIQZ-SPECIAL: do not use interventions
-
-// If true, we show new users and those about to start an organic search a tip
-// encouraging them to use the Urlbar.
-pref("browser.urlbar.update1.searchTips", false);
-// CLIQZ-SPECIAL: do not use searchTips
+pref("browser.urlbar.richSuggestions.tail", true);
 
 // Whether we expand the font size when when the urlbar is
 // focused in design update 2.
@@ -407,6 +391,13 @@ pref("browser.download.animateNotifications", true);
 
 // This records whether or not the panel has been shown at least once.
 pref("browser.download.panel.shown", false);
+
+// This records whether or not to show the 'Open in system viewer' context menu item when appropriate
+pref("browser.download.openInSystemViewerContextMenuItem", true);
+
+// This records whether or not to show the 'Always open...' context menu item when appropriate
+pref("browser.download.alwaysOpenInSystemViewerContextMenuItem", true);
+
 
 // This controls whether the button is automatically shown/hidden depending
 // on whether there are downloads to show.
@@ -448,7 +439,7 @@ pref("browser.search.widget.inNavBar", false);
 // The maximum amount of times the private default banner is shown.
 pref("browser.search.separatePrivateDefault.ui.banner.max", 0);
 
-pref("browser.search.modernConfig", false);
+pref("browser.search.modernConfig", true);
 
 pref("browser.sessionhistory.max_entries", 50);
 
@@ -796,7 +787,11 @@ pref("plugins.favorfallback.rules", "nosrc,video");
 
 // Toggling Search bar on and off in about:preferences
 pref("browser.preferences.search", true);
-
+#if defined(NIGHTLY_BUILD)
+pref("browser.preferences.experimental", true);
+#else
+pref("browser.preferences.experimental", false);
+#endif
 pref("browser.preferences.defaultPerformanceSettings.enabled", true);
 
 pref("browser.download.show_plugins_in_list", true);
@@ -1031,8 +1026,6 @@ pref("security.certerrors.mitm.priming.enabled", true);
 pref("security.certerrors.mitm.priming.endpoint", "https://mitmdetection.services.mozilla.com/");
 pref("security.certerrors.mitm.auto_enable_enterprise_roots", true);
 
-pref("security.aboutcertificate.enabled", true);
-
 // Whether the bookmark panel should be shown when bookmarking a page.
 pref("browser.bookmarks.editDialog.showForNewBookmarks", true);
 
@@ -1080,25 +1073,12 @@ pref("dom.ipc.shims.enabledWarnings", false);
   // SetSecurityLevelForContentProcess() for what the different settings mean.
   pref("security.sandbox.content.level", 6);
 
-  // This controls the depth of stack trace that is logged when Windows sandbox
-  // logging is turned on.  This is only currently available for the content
-  // process because the only other sandbox (for GMP) has too strict a policy to
-  // allow stack tracing.  This does not require a restart to take effect.
-  pref("security.sandbox.windows.log.stackTraceDepth", 0);
-
   // This controls the strength of the Windows GPU process sandbox.  Changes
   // will require restart.
   // For information on what the level number means, see
   // SetSecurityLevelForGPUProcess() in
   // security/sandbox/win/src/sandboxbroker/sandboxBroker.cpp
   pref("security.sandbox.gpu.level", 0);
-
-  // Controls whether we disable win32k for the processes.
-  // true means that win32k system calls are not permitted.
-  pref("security.sandbox.rdd.win32k-disable", true);
-  // Note: win32k is currently _not_ disabled for GMP due to intermittent test
-  // failures, where the GMP process fails very early. See bug 1449348.
-  pref("security.sandbox.gmp.win32k-disable", false);
 #endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
@@ -1341,7 +1321,7 @@ pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", 
 // ASRouter provider configuration
 pref("browser.newtabpage.activity-stream.asrouter.providers.cfr", "{\"id\":\"cfr\",\"enabled\":true,\"type\":\"remote-settings\",\"bucket\":\"cfr\",\"frequency\":{\"custom\":[{\"period\":\"daily\",\"cap\":1}]},\"categories\":[\"cfrAddons\",\"cfrFeatures\"],\"updateCycleInMs\":3600000}");
 pref("browser.newtabpage.activity-stream.asrouter.providers.whats-new-panel", "{\"id\":\"whats-new-panel\",\"enabled\":true,\"type\":\"remote-settings\",\"bucket\":\"whats-new-panel\",\"updateCycleInMs\":3600000}");
-pref("browser.newtabpage.activity-stream.asrouter.providers.message-groups", "{\"id\":\"message-groups\",\"enabled\":false,\"type\":\"remote-settings\",\"bucket\":\"message-groups\",\"updateCycleInMs\":3600000}");
+pref("browser.newtabpage.activity-stream.asrouter.providers.message-groups", "{\"id\":\"message-groups\",\"enabled\":true,\"type\":\"remote-settings\",\"bucket\":\"message-groups\",\"updateCycleInMs\":3600000}");
 // This url, if changed, MUST continue to point to an https url. Pulling arbitrary content to inject into
 // this page over http opens us up to a man-in-the-middle attack that we'd rather not face. If you are a downstream
 // repackager of this code using an alternate snippet url, please keep your users safe
@@ -1359,13 +1339,17 @@ pref("browser.newtabpage.activity-stream.discoverystream.spocs-endpoint", "");
 // List of regions that get stories by default.
 pref("browser.newtabpage.activity-stream.discoverystream.region-stories-config", "US,DE,CA,GB");
 // List of regions that get spocs by default.
-pref("browser.newtabpage.activity-stream.discoverystream.region-spocs-config", "US");
+pref("browser.newtabpage.activity-stream.discoverystream.region-spocs-config", "US,CA");
 // List of regions that get the 7 row layout.
-pref("browser.newtabpage.activity-stream.discoverystream.region-layout-config", "US,CA,GB");
+pref("browser.newtabpage.activity-stream.discoverystream.region-layout-config", "US,CA,GB,DE");
 // Allows Pocket story collections to be dismissed.
 pref("browser.newtabpage.activity-stream.discoverystream.isCollectionDismissible", true);
 // Switch between different versions of the recommendation provider.
-pref("browser.newtabpage.activity-stream.discoverystream.personalization.version", 1);
+#ifdef NIGHTLY_BUILD
+  pref("browser.newtabpage.activity-stream.discoverystream.personalization.version", 2);
+#else
+  pref("browser.newtabpage.activity-stream.discoverystream.personalization.version", 1);
+#endif
 // Configurable keys used by personalization version 2.
 pref("browser.newtabpage.activity-stream.discoverystream.personalization.modelKeys", "nb_model_arts_and_entertainment, nb_model_autos_and_vehicles, nb_model_beauty_and_fitness, nb_model_blogging_resources_and_services, nb_model_books_and_literature, nb_model_business_and_industrial, nb_model_computers_and_electronics, nb_model_finance, nb_model_food_and_drink, nb_model_games, nb_model_health, nb_model_hobbies_and_leisure, nb_model_home_and_garden, nb_model_internet_and_telecom, nb_model_jobs_and_education, nb_model_law_and_government, nb_model_online_communities, nb_model_people_and_society, nb_model_pets_and_animals, nb_model_real_estate, nb_model_reference, nb_model_science, nb_model_shopping, nb_model_sports, nb_model_travel");
 // System pref to allow Pocket stories personalization to be turned on/off.
@@ -1612,10 +1596,15 @@ pref("browser.ping-centre.log", false);
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);
 
+#ifdef NIGHTLY_BUILD
+// Enable Dynamic First-Party Isolation in Nightly.
+pref("network.cookie.cookieBehavior", 5 /* BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN */);
+#else
 // Enable blocking access to storage from tracking resources by default.
 // pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 // CLIQZ-SPECIAL
 pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
+#endif
 
 // Enable fingerprinting blocking by default for all channels, only on desktop.
 // CLIQZ-MERGE - check if we can remove beta check (Firefox get this unconditionoial)
@@ -1672,7 +1661,12 @@ pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", false);
 //     "cookieBehavior4": cookie behaviour BEHAVIOR_REJECT_TRACKER
 //     "cookieBehavior5": cookie behaviour BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN
 // One value from each section must be included in the browser.contentblocking.features.strict pref.
+#ifdef NIGHTLY_BUILD
+// Enable Dynamic First-Party Isolation in Nightly.
+pref("browser.contentblocking.features.strict", "tp,tpPrivate,cookieBehavior5,cm,fp,stp");
+#else
 pref("browser.contentblocking.features.strict", "tp,tpPrivate,cookieBehavior4,cm,fp,stp");
+#endif
 
 // Hide the "Change Block List" link for trackers/tracking content in the custom
 // Content Blocking/ETP panel. By default, it will not be visible. There is also
@@ -1741,11 +1735,17 @@ pref("privacy.userContext.extension", "");
 // tab in the default container
 pref("privacy.userContext.newTabContainerOnLeftClick.enabled", false);
 
+#ifdef NIGHTLY_BUILD
 // Set to true to allow the user to silence all notifications when
 // sharing the screen.
-pref("privacy.webrtc.allowSilencingNotifications", false);
+pref("privacy.webrtc.allowSilencingNotifications", true);
 // Set to true to use the legacy WebRTC global indicator
+pref("privacy.webrtc.legacyGlobalIndicator", false);
+#else
+pref("privacy.webrtc.allowSilencingNotifications", false);
 pref("privacy.webrtc.legacyGlobalIndicator", true);
+#endif
+
 // Set to true to enable a warning displayed when attempting
 // to switch tabs in a window that's being shared over WebRTC.
 pref("privacy.webrtc.sharedTabWarning", false);
@@ -1778,6 +1778,12 @@ pref("browser.tabs.crashReporting.includeURL", false);
 pref("browser.tabs.crashReporting.requestEmail", false);
 pref("browser.tabs.crashReporting.emailMe", false);
 pref("browser.tabs.crashReporting.email", "");
+
+#ifdef NIGHTLY_BUILD
+pref("browser.navigation.requireUserInteraction", true);
+#else
+pref("browser.navigation.requireUserInteraction", false);
+#endif
 
 // If true, unprivileged extensions may use experimental APIs on
 // nightly and developer edition.
@@ -1934,6 +1940,13 @@ pref("doh-rollout.profileCreationThreshold", "1572476400000");
 // This pref is controlled by a Normandy rollout so we don't overload providers.
 pref("doh-rollout.trr-selection.enabled", false);
 
+// DoH Rollout: whether to enable automatic steering to provider endpoints.
+// This pref is also controlled by a Normandy rollout.
+pref("doh-rollout.provider-steering.enabled", false);
+
+// DoH Rollout: provider details for automatic steering.
+pref("doh-rollout.provider-steering.provider-list", "[{ \"name\": \"comcast\", \"canonicalName\": \"doh-discovery.xfinity.com\", \"uri\": \"https://doh.xfinity.com/dns-query\" }]");
+
 // URL for Learn More link for browser error logging in preferences
 pref("browser.chrome.errorReporter.infoURL",
      "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/nightly-error-collection");
@@ -2031,8 +2044,10 @@ pref("devtools.browsertoolbox.fission", false);
 
 // The fission pref for enabling Fission frame debugging directly from the
 // regular web/content toolbox.
-// ⚠ This is a work in progress. Expect weirdness when the pref is enabled. ⚠
-pref("devtools.contenttoolbox.fission", false);
+// When set to true, the toolbox will start showing content from remote frames
+// if (and only if) fission.autostart is also set to true.
+// When set to false, the toolbox should not show content from remote frames.
+pref("devtools.contenttoolbox.fission", true);
 
 // This pref is also related to fission, but not only. It allows the toolbox
 // to stay open even if the debugged tab switches to another process.
@@ -2192,12 +2207,8 @@ pref("devtools.netmonitor.enabled", true);
 pref("devtools.netmonitor.features.search", true);
 pref("devtools.netmonitor.features.requestBlocking", true);
 
-// Enable the Application panel on Nightly
-#if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION)
-  pref("devtools.application.enabled", true);
-#else
-  pref("devtools.application.enabled", false);
-#endif
+// Enable the Application panel
+pref("devtools.application.enabled", true);
 
 // The default Network Monitor UI settings
 pref("devtools.netmonitor.panes-network-details-width", 550);
@@ -2210,11 +2221,11 @@ pref("devtools.netmonitor.visibleColumns",
 );
 pref("devtools.netmonitor.columnsData",
   '[{"name":"status","minWidth":30,"width":5}, {"name":"method","minWidth":30,"width":5}, {"name":"domain","minWidth":30,"width":10}, {"name":"file","minWidth":30,"width":25}, {"name":"url","minWidth":30,"width":25},{"name":"initiator","minWidth":30,"width":10},{"name":"type","minWidth":30,"width":5},{"name":"transferred","minWidth":30,"width":10},{"name":"contentSize","minWidth":30,"width":5},{"name":"waterfall","minWidth":150,"width":15}]');
-pref("devtools.netmonitor.ws.payload-preview-height", 128);
-pref("devtools.netmonitor.ws.visibleColumns",
+pref("devtools.netmonitor.msg.payload-preview-height", 128);
+pref("devtools.netmonitor.msg.visibleColumns",
   '["data", "time"]'
 );
-pref("devtools.netmonitor.ws.displayed-frames.limit", 500);
+pref("devtools.netmonitor.msg.displayed-messages.limit", 500);
 
 pref("devtools.netmonitor.response.ui.limit", 10240);
 
@@ -2257,12 +2268,8 @@ pref("devtools.dom.enabled", false);
 
 // Enable the Accessibility panel.
 pref("devtools.accessibility.enabled", true);
-// Enable accessibility panel auto initialization on early beta and dev edition.
-#if defined(EARLY_BETA_OR_EARLIER) || defined(MOZ_DEV_EDITION)
-  pref("devtools.accessibility.auto-init.enabled", true);
-#else
-  pref("devtools.accessibility.auto-init.enabled", false);
-#endif
+// Enable accessibility panel auto initialization.
+pref("devtools.accessibility.auto-init.enabled", true);
 
 // Web console filters
 pref("devtools.webconsole.filter.error", true);
@@ -2386,19 +2393,14 @@ pref("devtools.responsive.touchSimulation.enabled", false);
 pref("devtools.responsive.metaViewport.enabled", true);
 // The user agent of the viewport.
 pref("devtools.responsive.userAgent", "");
+// Enable the RDM browser UI in all builds.
+pref("devtools.responsive.browserUI.enabled", true);
 
 // Show the custom user agent input only in Nightly.
 #if defined(NIGHTLY_BUILD)
   pref("devtools.responsive.showUserAgentInput", true);
 #else
   pref("devtools.responsive.showUserAgentInput", false);
-#endif
-
-// Show the RDM browser UI in Nightly or DevEdition builds.
-#if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION)
-  pref("devtools.responsive.browserUI.enabled", true);
-#else
-  pref("devtools.responsive.browserUI.enabled", false);
 #endif
 
 // Show tab debug targets for This Firefox (on by default for local builds).
@@ -2431,13 +2433,9 @@ pref("devtools.aboutdebugging.collapsibilities.temporaryExtension", false);
 // Map top-level await expressions in the console
 pref("devtools.debugger.features.map-await-expression", true);
 
-#if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION)
+// This relies on javascript.options.asyncstack as well or it has no effect.
 pref("devtools.debugger.features.async-captured-stacks", true);
 pref("devtools.debugger.features.async-live-stacks", false);
-#else
-pref("devtools.debugger.features.async-live-stacks", true);
-pref("devtools.debugger.features.async-captured-stacks", false);
-#endif
 
 // Disable autohide for DevTools popups and tooltips.
 // This is currently not exposed by any UI to avoid making
@@ -2450,6 +2448,10 @@ pref("devtools.whatsnew.enabled", true);
 // Temporary preference to fully disable the WhatsNew panel on any target.
 // Should be removed in https://bugzilla.mozilla.org/show_bug.cgi?id=1596037
 pref("devtools.whatsnew.feature-enabled", true);
+
+// Part of the Overflow Debugging project
+// Here's the meta bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1529280
+pref("devtools.overflow.debugging.enabled", false);
 
 // FirstStartup service time-out in ms
 pref("first-startup.timeout", 30000);

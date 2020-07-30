@@ -19,6 +19,24 @@ function logError(e) {
       e.stack);
 }
 
+/**
+ * Map from data types that match Ci.nsIBrowserProfileMigrator's types to
+ * prefixes for strings used to label these data types in the migration
+ * dialog. We use these strings with -checkbox and -label suffixes for the
+ * checkboxes on the "importItems" page, and for the labels on the "migrating"
+ * and "done" pages, respectively.
+ */
+const kDataToStringMap = new Map([
+  ["cookies", "browser-data-cookies"],
+  ["history", "browser-data-history"],
+  ["formdata", "browser-data-formdata"],
+  ["passwords", "browser-data-passwords"],
+  ["bookmarks", "browser-data-bookmarks"],
+  ["otherdata", "browser-data-otherdata"],
+  ["session", "browser-data-session"],
+  ["addons", "browser-data-addons"],
+]);
+
 var MigrationWizard = {
   /* exported MigrationWizard */
   _source: "", // Source Profile Migrator ContractID suffix
@@ -83,6 +101,7 @@ var MigrationWizard = {
         document.getElementById("nothing").hidden = false;
       }
     }
+    this._setSourceForDataLocalization();
 
     document.addEventListener("wizardcancel", function() {
       MigrationWizard.onWizardCancel();
@@ -170,6 +189,17 @@ var MigrationWizard = {
     this._wiz.canAdvance = canAdvance;
     this._wiz.canRewind = canRewind;
     return result;
+  },
+
+  _setSourceForDataLocalization() {
+    this._sourceForDataLocalization = this._source;
+    // Ensure consistency for various channels, brandings and versions of
+    // Chromium and MS Edge.
+    if (this._sourceForDataLocalization) {
+      this._sourceForDataLocalization = this._sourceForDataLocalization
+        .replace(/^(chromium-edge-beta|chromium-edge)$/, "edge")
+        .replace(/^(canary|chromium|chrome-beta|chrome-dev)$/, "chrome");
+    }
   },
 
   onWizardCancel() {
@@ -279,6 +309,7 @@ var MigrationWizard = {
       this._selectedProfile = null;
     }
     this._source = newSource;
+    this._setSourceForDataLocalization();
 
     return true;
   },
@@ -371,29 +402,24 @@ var MigrationWizard = {
     var items = this.spinResolve(
       this._migrator.getMigrateData(this._selectedProfile, this._autoMigrate)
     );
-    for (var i = 0; i < 16; ++i) {
-      var itemID = (items >> i) & 0x1 ? Math.pow(2, i) : 0;
-      // CLIQZ - If no addons found set next button to final step 4
-      if (itemID == Ci.nsIBrowserProfileMigrator.ADDONS) {
-        hasAddon = true;
-      }
-      if (itemID > 0) {
-        var checkbox = document.createXULElement("checkbox");
-        checkbox.id = itemID;
-        checkbox.setAttribute(
-          "label",
-          MigrationUtils.getLocalizedString(itemID + "_" + this._source)
+
+    for (let itemType of kDataToStringMap.keys()) {
+      let itemValue = Ci.nsIBrowserProfileMigrator[itemType.toUpperCase()];
+      if (items & itemValue) {
+        let checkbox = document.createXULElement("checkbox");
+        checkbox.id = itemValue;
+        document.l10n.setAttributes(
+          checkbox,
+          kDataToStringMap.get(itemType) + "-checkbox",
+          { browser: this._sourceForDataLocalization }
         );
         dataSources.appendChild(checkbox);
-        if (!this._itemsFlags || this._itemsFlags & itemID) {
+        if (!this._itemsFlags || this._itemsFlags & itemValue) {
           checkbox.checked = true;
         }
       }
     }
-    if (!hasAddon)
-      this._wiz.currentPage.next = "migrating";
-    else
-      this._wiz.currentPage.next = "selectAddons";
+    this._wiz.currentPage.next = "selectAddons";
   },
 
   onImportItemsPageRewound() {
@@ -530,16 +556,16 @@ var MigrationWizard = {
       items.firstChild.remove();
     }
 
-    var itemID;
-    for (var i = 0; i < 16; ++i) {
-      itemID = (this._itemsFlags >> i) & 0x1 ? Math.pow(2, i) : 0;
-      if (itemID > 0) {
+    for (let itemType of kDataToStringMap.keys()) {
+      let itemValue = Ci.nsIBrowserProfileMigrator[itemType.toUpperCase()];
+      if (this._itemsFlags & itemValue) {
         var label = document.createXULElement("label");
-        label.id = itemID + "_migrated";
+        label.id = itemValue + "_migrated";
         try {
-          label.setAttribute(
-            "value",
-            MigrationUtils.getLocalizedString(itemID + "_" + this._source)
+          document.l10n.setAttributes(
+            label,
+            kDataToStringMap.get(itemType) + "-label",
+            { browser: this._sourceForDataLocalization }
           );
           items.appendChild(label);
         } catch (e) {
@@ -592,9 +618,6 @@ var MigrationWizard = {
         let type = "undefined";
         let numericType = parseInt(aData);
         switch (numericType) {
-          case Ci.nsIBrowserProfileMigrator.SETTINGS:
-            type = "settings";
-            break;
           case Ci.nsIBrowserProfileMigrator.COOKIES:
             type = "cookies";
             break;

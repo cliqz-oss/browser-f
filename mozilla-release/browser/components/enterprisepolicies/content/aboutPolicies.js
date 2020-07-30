@@ -290,6 +290,7 @@ function generateDocumentation() {
     Certificates: "CertificatesDescription",
     SanitizeOnShutdown: "SanitizeOnShutdown2",
     Permissions: "Permissions2",
+    PrimaryPassword: "MasterPassword",
   };
 
   for (let policyName in schema.properties) {
@@ -403,7 +404,7 @@ function show(button) {
   button.setAttribute("selected", "true");
 
   let title = document.getElementById("sectionTitle");
-  title.textContent = button.children[1].textContent;
+  title.textContent = button.textContent;
   location.hash = category;
   restoreScrollPosition(category);
 }

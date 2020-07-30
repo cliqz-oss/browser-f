@@ -16,6 +16,7 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/ThreadLocal.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Tuple.h"
 #include "nsCOMPtr.h"
@@ -772,7 +773,7 @@ class nsRunnableMethod
 
   virtual void Revoke() = 0;
 
-  // These ReturnTypeEnforcer classes set up a blacklist for return types that
+  // These ReturnTypeEnforcer classes disallow return types that
   // we know are not safe. The default ReturnTypeEnforcer compiles just fine but
   // already_AddRefed will not.
   template <typename OtherReturnType>
@@ -1779,7 +1780,34 @@ extern "C" nsresult NS_DispatchBackgroundTask(
 extern "C" nsresult NS_CreateBackgroundTaskQueue(
     const char* aName, nsISerialEventTarget** aTarget);
 
+// Predeclaration for logging function below
+namespace IPC {
+class Message;
+}
+
 namespace mozilla {
+
+// RAII class that will set the TLS entry to return the currently running
+// nsISerialEventTarget.
+// It should be used from inner event loop implementation.
+class SerialEventTargetGuard {
+ public:
+  explicit SerialEventTargetGuard(nsISerialEventTarget* aThread)
+      : mLastCurrentThread(sCurrentThreadTLS.get()) {
+    sCurrentThreadTLS.set(aThread);
+  }
+
+  ~SerialEventTargetGuard() { sCurrentThreadTLS.set(mLastCurrentThread); }
+
+  static void InitTLS();
+  static nsISerialEventTarget* GetCurrentSerialEventTarget() {
+    return sCurrentThreadTLS.get();
+  }
+
+ private:
+  static MOZ_THREAD_LOCAL(nsISerialEventTarget*) sCurrentThreadTLS;
+  nsISerialEventTarget* mLastCurrentThread;
+};
 
 // These functions return event targets that can be used to dispatch to the
 // current or main thread. They can also be used to test if you're on those
@@ -1787,7 +1815,7 @@ namespace mozilla {
 // to the nsIThread-based NS_Get{Current,Main}Thread functions since they will
 // return more useful answers in the case of threads sharing an event loop.
 
-nsIEventTarget* GetCurrentThreadEventTarget();
+nsIEventTarget* GetCurrentEventTarget();
 
 nsIEventTarget* GetMainThreadEventTarget();
 
@@ -1795,7 +1823,7 @@ nsIEventTarget* GetMainThreadEventTarget();
 // serial event target (i.e., that it's not part of a thread pool) and returns
 // that.
 
-nsISerialEventTarget* GetCurrentThreadSerialEventTarget();
+nsISerialEventTarget* GetCurrentSerialEventTarget();
 
 nsISerialEventTarget* GetMainThreadSerialEventTarget();
 
@@ -1885,6 +1913,10 @@ class LogTaskBase {
   // Adds a simple log about dispatch of this runnable.
   static void LogDispatch(T* aEvent);
 
+  // Logs dispatch of the message and along that also the PID of the target
+  // proccess, purposed for uniquely identifying IPC messages.
+  static void LogDispatchWithPid(T* aEvent, int32_t aPid);
+
   // This is designed to surround a call to `Run()` or any code representing
   // execution of the task body.
   // The constructor adds a simple log about start of the runnable execution and
@@ -1900,12 +1932,24 @@ class LogTaskBase {
     void WillRunAgain() { mWillRunAgain = true; }
 
    private:
-    T* mEvent;
     bool mWillRunAgain = false;
   };
 };
 
+class MicroTaskRunnable;
+
+// Specialized methods must be explicitly predeclared.
+template <>
+LogTaskBase<nsIRunnable>::Run::Run(nsIRunnable* aEvent, bool aWillRunAgain);
+template <>
+void LogTaskBase<IPC::Message>::LogDispatchWithPid(IPC::Message* aEvent,
+                                                   int32_t aPid);
+template <>
+LogTaskBase<IPC::Message>::Run::Run(IPC::Message* aMessage, bool aWillRunAgain);
+
 typedef LogTaskBase<nsIRunnable> LogRunnable;
+typedef LogTaskBase<MicroTaskRunnable> LogMicroTaskRunnable;
+typedef LogTaskBase<IPC::Message> LogIPCMessage;
 // If you add new types don't forget to add:
 // `template class LogTaskBase<YourType>;` to nsThreadUtils.cpp
 

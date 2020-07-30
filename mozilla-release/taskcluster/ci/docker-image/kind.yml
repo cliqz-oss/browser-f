@@ -58,7 +58,7 @@ jobs:
             - deb8-gdb
             - deb8-git
             - deb8-mercurial
-            - deb8-python3.5
+            - deb8-python3.6
             - deb8-python3-defaults
             - deb8-python-zstandard
             - deb8-xz-utils
@@ -69,10 +69,6 @@ jobs:
         packages:
             - deb8-cmake
             - deb8-ninja
-    deb9-toolchain-build:
-        symbol: I(deb9-toolchain)
-        parent: debian9-base
-        definition: toolchain-build
     deb10-toolchain-build:
         symbol: I(deb10-toolchain)
         parent: debian10-base
@@ -81,7 +77,7 @@ jobs:
             - deb10-cmake
     custom-v8:
         symbol: I(custom-v8)
-        parent: debian9-base
+        parent: debian10-base
     debian8-amd64-build-base:
         symbol: I(deb8-bb)
         parent: debian8-base
@@ -115,32 +111,6 @@ jobs:
         parent: debian8-amd64-build
     lint:
         symbol: I(lnt)
-    # Neither the debian9-raw nor the debian9-packages images can have
-    # packages dependencies.
-    debian9-raw:
-        symbol: I(deb9-raw)
-        definition: debian-raw
-        args:
-            BASE_IMAGE: debian:stretch-20200422
-            DIST: stretch
-            SNAPSHOT: '20200422T205110Z'
-    debian9-packages:
-        symbol: I(deb9-pkg)
-        definition: debian-packages
-        parent: debian9-raw
-    debian9-base:
-        symbol: I(deb9-base)
-        definition: debian-base
-        parent: debian9-raw
-        packages:
-            - deb9-mercurial
-            - deb9-python-zstandard
-    debian9-amd64-build:
-        symbol: I(deb9)
-        parent: debian9-base
-        definition: debian-build
-        args:
-            ARCH: amd64
     # Neither the debian10-raw nor the debian10-packages images can have
     # packages dependencies.
     debian10-raw:
@@ -184,7 +154,7 @@ jobs:
             - deb10-python-zstandard
     android-build:
         symbol: I(agb)
-        parent: debian9-base
+        parent: debian10-base
         packages:
             - deb8-valgrind
     fetch:
@@ -194,14 +164,14 @@ jobs:
             - deb10-python-zstandard
     static-analysis-build:
         symbol: I(static-analysis-build)
-        parent: debian9-base
+        parent: debian10-base
     gdb-test:
         symbol: I(gdb)
         parent: debian8-amd64-build
         definition: gdb-test
     mingw32-build:
         symbol: I(mingw)
-        parent: debian9-base
+        parent: debian10-base
     index-task:
         symbol: I(idx)
     funsize-update-generator:
@@ -213,7 +183,7 @@ jobs:
         parent: debian10-base
     partner-repack:
         symbol: I(PR)
-        parent: debian9-base
+        parent: debian10-base
         definition: partner-repack
     periodic-updates:
         symbol: I(file)
@@ -225,19 +195,19 @@ jobs:
         symbol: I(flatpak)
     webrender:
         symbol: I(webrender)
-        parent: debian9-base
+        parent: debian10-base
     wgpu:
         symbol: I(wgpu)
-        parent: debian9-base
+        parent: debian10-base
     condprof:
         symbol: I(condprof)
         parent: ubuntu1804-test
     visual-metrics:
         symbol: I(visual-metrics)
-        parent: debian9-base
+        parent: debian10-base
     github-sync:
         symbol: I(github-sync)
-        parent: debian9-base
+        parent: debian10-base
     system-symbols-mac:
         symbol: I(system-symbols-mac)
     system-symbols-win:

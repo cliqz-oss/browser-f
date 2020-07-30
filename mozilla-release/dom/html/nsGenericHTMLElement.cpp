@@ -122,6 +122,24 @@ static const nsAttrValue::EnumTable kInputmodeTable[] = {
     {"search", NS_INPUTMODE_SEARCH},
     {nullptr, 0}};
 
+static const uint8_t NS_ENTERKEYHINT_ENTER = 1;
+static const uint8_t NS_ENTERKEYHINT_DONE = 2;
+static const uint8_t NS_ENTERKEYHINT_GO = 3;
+static const uint8_t NS_ENTERKEYHINT_NEXT = 4;
+static const uint8_t NS_ENTERKEYHINT_PREVIOUS = 5;
+static const uint8_t NS_ENTERKEYHINT_SEARCH = 6;
+static const uint8_t NS_ENTERKEYHINT_SEND = 7;
+
+static const nsAttrValue::EnumTable kEnterKeyHintTable[] = {
+    {"enter", NS_ENTERKEYHINT_ENTER},
+    {"done", NS_ENTERKEYHINT_DONE},
+    {"go", NS_ENTERKEYHINT_GO},
+    {"next", NS_ENTERKEYHINT_NEXT},
+    {"previous", NS_ENTERKEYHINT_PREVIOUS},
+    {"search", NS_ENTERKEYHINT_SEARCH},
+    {"send", NS_ENTERKEYHINT_SEND},
+    {nullptr, 0}};
+
 nsresult nsGenericHTMLElement::CopyInnerTo(Element* aDst) {
   MOZ_ASSERT(!aDst->GetUncomposedDoc(),
              "Should not CopyInnerTo an Element in a document");
@@ -857,6 +875,10 @@ bool nsGenericHTMLElement::ParseAttribute(int32_t aNamespaceID,
     if (aAttribute == nsGkAtoms::inputmode) {
       return aResult.ParseEnumValue(aValue, kInputmodeTable, false);
     }
+
+    if (aAttribute == nsGkAtoms::enterkeyhint) {
+      return aResult.ParseEnumValue(aValue, kEnterKeyHintTable, false);
+    }
   }
 
   return nsGenericHTMLElementBase::ParseAttribute(
@@ -897,25 +919,24 @@ nsMapRuleToAttributesFunc nsGenericHTMLElement::GetAttributeMappingFunction()
 
 nsIFormControlFrame* nsGenericHTMLElement::GetFormControlFrame(
     bool aFlushFrames) {
-  if (aFlushFrames && IsInComposedDoc()) {
-    // Cause a flush of the frames, so we get up-to-date frame information
-    GetComposedDoc()->FlushPendingNotifications(FlushType::Frames);
+  auto flushType = aFlushFrames ? FlushType::Frames : FlushType::None;
+  nsIFrame* frame = GetPrimaryFrame(flushType);
+  if (!frame) {
+    return nullptr;
   }
-  nsIFrame* frame = GetPrimaryFrame();
-  if (frame) {
-    nsIFormControlFrame* form_frame = do_QueryFrame(frame);
-    if (form_frame) {
-      return form_frame;
-    }
 
-    // If we have generated content, the primary frame will be a
-    // wrapper frame..  out real frame will be in its child list.
-    for (frame = frame->PrincipalChildList().FirstChild(); frame;
-         frame = frame->GetNextSibling()) {
-      form_frame = do_QueryFrame(frame);
-      if (form_frame) {
-        return form_frame;
-      }
+  if (nsIFormControlFrame* f = do_QueryFrame(frame)) {
+    return f;
+  }
+
+  // If we have generated content, the primary frame will be a wrapper frame...
+  // Our real frame will be in its child list.
+  //
+  // FIXME(emilio): I don't think that's true... See bug 155957 for test-cases
+  // though, we should figure out whether this is still needed.
+  for (nsIFrame* kid : frame->PrincipalChildList()) {
+    if (nsIFormControlFrame* f = do_QueryFrame(kid)) {
+      return f;
     }
   }
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use bindings::WrCompositor;
 use gleam::{gl, gl::Gl};
 use std::collections::hash_map::HashMap;
 use std::os::raw::c_void;
@@ -25,8 +26,9 @@ pub extern "C" fn wr_swgl_make_current(ctx: *mut c_void) {
 }
 
 #[no_mangle]
-pub extern "C" fn wr_swgl_init_default_framebuffer(ctx: *mut c_void, width: i32, height: i32) {
-    swgl::Context::from(ctx).init_default_framebuffer(width, height);
+pub extern "C" fn wr_swgl_init_default_framebuffer(ctx: *mut c_void, width: i32, height: i32,
+                                                   stride: i32, buf: *mut c_void) {
+    swgl::Context::from(ctx).init_default_framebuffer(width, height, stride, buf);
 }
 
 #[derive(Debug)]
@@ -35,7 +37,6 @@ pub struct SwTile {
     y: i32,
     fbo_id: u32,
     color_id: u32,
-    depth_id: u32,
     tex_id: u32,
     pbo_id: u32,
     dirty_rect: DeviceIntRect,
@@ -209,15 +210,23 @@ impl DrawTileHelper {
 pub struct SwCompositor {
     gl: swgl::Context,
     native_gl: Option<Rc<dyn gl::Gl>>,
-    compositor: Option<Box<dyn Compositor>>,
+    compositor: Option<WrCompositor>,
     surfaces: HashMap<NativeSurfaceId, SwSurface>,
     frame_surfaces: Vec<(NativeSurfaceId, DeviceIntPoint, DeviceIntRect)>,
     cur_tile: NativeTileId,
     draw_tile: Option<DrawTileHelper>,
+    /// The maximum tile size required for any of the allocated surfaces.
+    max_tile_size: DeviceIntSize,
+    /// Reuse the same depth texture amongst all tiles in all surfaces.
+    /// This depth texture must be big enough to accommodate the largest used
+    /// tile size for any surface. The maximum requested tile size is tracked
+    /// to ensure that this depth texture is at least that big.
+    depth_id: u32,
 }
 
 impl SwCompositor {
-    pub fn new(gl: swgl::Context, native_gl: Option<Rc<dyn gl::Gl>>, compositor: Option<Box<dyn Compositor>>) -> Self {
+    pub fn new(gl: swgl::Context, native_gl: Option<Rc<dyn gl::Gl>>, compositor: Option<WrCompositor>) -> Self {
+        let depth_id = gl.gen_textures(1)[0];
         SwCompositor {
             gl,
             compositor,
@@ -230,6 +239,8 @@ impl SwCompositor {
             },
             draw_tile: native_gl.as_ref().map(|gl| DrawTileHelper::new(gl.clone())),
             native_gl,
+            max_tile_size: DeviceIntSize::zero(),
+            depth_id,
         }
     }
 
@@ -243,7 +254,6 @@ impl SwCompositor {
     fn deinit_tile(&self, tile: &SwTile) {
         self.gl.delete_framebuffers(&[tile.fbo_id]);
         self.gl.delete_textures(&[tile.color_id]);
-        self.gl.delete_textures(&[tile.depth_id]);
         if let Some(native_gl) = &self.native_gl {
             native_gl.delete_textures(&[tile.tex_id]);
             native_gl.delete_buffers(&[tile.pbo_id]);
@@ -268,6 +278,10 @@ impl Compositor for SwCompositor {
         if let Some(compositor) = &mut self.compositor {
             compositor.create_surface(id, virtual_offset, tile_size, is_opaque);
         }
+        self.max_tile_size = DeviceIntSize::new(
+            self.max_tile_size.width.max(tile_size.width),
+            self.max_tile_size.height.max(tile_size.height),
+        );
         self.surfaces.insert(
             id,
             SwSurface {
@@ -292,6 +306,8 @@ impl Compositor for SwCompositor {
             self.deinit_surface(surface);
         }
 
+        self.gl.delete_textures(&[self.depth_id]);
+
         self.deinit_shader();
 
         if let Some(compositor) = &mut self.compositor {
@@ -304,33 +320,13 @@ impl Compositor for SwCompositor {
             compositor.create_tile(id);
         }
         if let Some(surface) = self.surfaces.get_mut(&id.surface_id) {
-            let texs = self.gl.gen_textures(2);
-            let color_id = texs[0];
-            self.gl.set_texture_buffer(
-                color_id,
-                gl::RGBA8,
-                surface.tile_size.width,
-                surface.tile_size.height,
-                ptr::null_mut(),
-                0,
-                0,
-            );
-            let depth_id = texs[1];
-            self.gl.set_texture_buffer(
-                depth_id,
-                gl::DEPTH_COMPONENT16,
-                surface.tile_size.width,
-                surface.tile_size.height,
-                ptr::null_mut(),
-                0,
-                0,
-            );
+            let color_id = self.gl.gen_textures(1)[0];
             let fbo_id = self.gl.gen_framebuffers(1)[0];
             self.gl.bind_framebuffer(gl::DRAW_FRAMEBUFFER, fbo_id);
             self.gl
                 .framebuffer_texture_2d(gl::DRAW_FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, color_id, 0);
             self.gl
-                .framebuffer_texture_2d(gl::DRAW_FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::TEXTURE_2D, depth_id, 0);
+                .framebuffer_texture_2d(gl::DRAW_FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::TEXTURE_2D, self.depth_id, 0);
             self.gl.bind_framebuffer(gl::DRAW_FRAMEBUFFER, 0);
 
             let mut tex_id = 0;
@@ -371,7 +367,6 @@ impl Compositor for SwCompositor {
                 y: id.y,
                 fbo_id,
                 color_id,
-                depth_id,
                 tex_id,
                 pbo_id,
                 dirty_rect: DeviceIntRect::zero(),
@@ -408,8 +403,14 @@ impl Compositor for SwCompositor {
                     return surface_info;
                 }
 
+                let mut stride = 0;
                 let mut buf = ptr::null_mut();
-                if let Some(native_gl) = &self.native_gl {
+                if let Some(compositor) = &mut self.compositor {
+                    if let Some(tile_info) = compositor.map_tile(id, dirty_rect, valid_rect) {
+                        stride = tile_info.stride;
+                        buf = tile_info.data;
+                    }
+                } else if let Some(native_gl) = &self.native_gl {
                     if tile.pbo_id != 0 {
                         native_gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, tile.pbo_id);
                         buf = native_gl.map_buffer_range(
@@ -418,7 +419,9 @@ impl Compositor for SwCompositor {
                             valid_rect.size.area() as isize * 4 + 16,
                             gl::MAP_WRITE_BIT | gl::MAP_INVALIDATE_BUFFER_BIT,
                         ); // | gl::MAP_UNSYNCHRONIZED_BIT);
-                        if buf == ptr::null_mut() {
+                        if buf != ptr::null_mut() {
+                            stride = valid_rect.size.width * 4;
+                        } else {
                             native_gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, 0);
                             native_gl.delete_buffers(&[tile.pbo_id]);
                             tile.pbo_id = 0;
@@ -430,18 +433,29 @@ impl Compositor for SwCompositor {
                     gl::RGBA8,
                     valid_rect.size.width,
                     valid_rect.size.height,
+                    stride,
                     buf,
                     surface.tile_size.width,
                     surface.tile_size.height,
                 );
+                // Reallocate the shared depth buffer to fit the valid rect, but within
+                // a buffer sized to actually fit at least the maximum possible tile size.
+                // The maximum tile size is supplied to avoid reallocation by ensuring the
+                // allocated buffer is actually big enough to accommodate the largest tile
+                // size requested by any used surface, even though supplied valid rect may
+                // actually be much smaller than this. This will only force a texture
+                // reallocation inside SWGL if the maximum tile size has grown since the
+                // last time it was supplied, instead simply reusing the buffer if the max
+                // tile size is not bigger than what was previously allocated.
                 self.gl.set_texture_buffer(
-                    tile.depth_id,
+                    self.depth_id,
                     gl::DEPTH_COMPONENT16,
                     valid_rect.size.width,
                     valid_rect.size.height,
+                    0,
                     ptr::null_mut(),
-                    surface.tile_size.width,
-                    surface.tile_size.height,
+                    self.max_tile_size.width,
+                    self.max_tile_size.height,
                 );
                 surface_info.fbo_id = tile.fbo_id;
                 surface_info.origin -= valid_rect.origin.to_vector();
@@ -452,18 +466,25 @@ impl Compositor for SwCompositor {
     }
 
     fn unbind(&mut self) {
-        let native_gl = match &self.native_gl {
-            Some(native_gl) => native_gl,
-            None => return,
-        };
-
         let id = self.cur_tile;
         if let Some(surface) = self.surfaces.get_mut(&id.surface_id) {
             if let Some(tile) = surface.tiles.iter().find(|t| t.x == id.x && t.y == id.y) {
                 if tile.valid_rect.is_empty() {
                     return;
                 }
-                let (swbuf, w, _) = self.gl.get_color_buffer(tile.fbo_id, true);
+
+                if let Some(compositor) = &mut self.compositor {
+                    compositor.unmap_tile();
+                    return;
+                }
+
+                let native_gl = match &self.native_gl {
+                    Some(native_gl) => native_gl,
+                    None => return,
+                };
+
+                let (swbuf, _, _, stride) = self.gl.get_color_buffer(tile.fbo_id, true);
+                assert!(stride % 4 == 0);
                 let buf = if tile.pbo_id != 0 {
                     native_gl.unmap_buffer(gl::PIXEL_UNPACK_BUFFER);
                     0 as *mut c_void
@@ -473,13 +494,13 @@ impl Compositor for SwCompositor {
                 let dirty = tile.dirty_rect;
                 let src = unsafe {
                     (buf as *mut u32).offset(
-                        (dirty.origin.y - tile.valid_rect.origin.y) as isize * w as isize
+                        (dirty.origin.y - tile.valid_rect.origin.y) as isize * (stride / 4) as isize
                             + (dirty.origin.x - tile.valid_rect.origin.x) as isize,
                     )
                 };
                 native_gl.active_texture(gl::TEXTURE0);
                 native_gl.bind_texture(gl::TEXTURE_2D, tile.tex_id);
-                native_gl.pixel_store_i(gl::UNPACK_ROW_LENGTH, w);
+                native_gl.pixel_store_i(gl::UNPACK_ROW_LENGTH, stride / 4);
                 native_gl.tex_sub_image_2d_pbo(
                     gl::TEXTURE_2D,
                     0,
@@ -534,7 +555,7 @@ impl Compositor for SwCompositor {
         if let Some(compositor) = &mut self.compositor {
             compositor.end_frame();
         } else if let Some(native_gl) = &self.native_gl {
-            let (_, fw, fh) = self.gl.get_color_buffer(0, false);
+            let (_, fw, fh, _) = self.gl.get_color_buffer(0, false);
             let viewport = DeviceIntRect::from_size(DeviceIntSize::new(fw, fh));
             let draw_tile = self.draw_tile.as_ref().unwrap();
             draw_tile.enable(&viewport);
@@ -583,7 +604,7 @@ impl Compositor for SwCompositor {
                                 rect.min_x(),
                                 rect.min_y(),
                                 surface.is_opaque,
-                                true,
+                                false,
                             );
                         }
                     }

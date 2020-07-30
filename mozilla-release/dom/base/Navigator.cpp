@@ -400,6 +400,19 @@ void Navigator::GetLanguages(nsTArray<nsString>& aLanguages) {
 
 void Navigator::GetPlatform(nsAString& aPlatform, CallerType aCallerType,
                             ErrorResult& aRv) const {
+  if (mWindow) {
+    BrowsingContext* bc = mWindow->GetBrowsingContext();
+    nsString customPlatform;
+    if (bc) {
+      bc->GetCustomPlatform(customPlatform);
+
+      if (!customPlatform.IsEmpty()) {
+        aPlatform = customPlatform;
+        return;
+      }
+    }
+  }
+
   nsCOMPtr<Document> doc = mWindow->GetExtantDoc();
 
   nsresult rv = GetPlatform(
@@ -1312,13 +1325,6 @@ void Navigator::MozGetUserMediaDevices(
     if (!mWindow->IsSecureContext()) {
       doc->SetUseCounter(eUseCounter_custom_MozGetUserMediaInsec);
     }
-    nsINode* node = doc;
-    while ((node = nsContentUtils::GetCrossDocParentNode(node))) {
-      if (NS_FAILED(nsContentUtils::CheckSameOrigin(doc, node))) {
-        doc->SetUseCounter(eUseCounter_custom_MozGetUserMediaXOrigin);
-        break;
-      }
-    }
   }
   RefPtr<MediaManager> manager = MediaManager::Get();
   // XXXbz aOnError seems to be unused?
@@ -1374,6 +1380,17 @@ Promise* Navigator::Share(const ShareData& aData, ErrorResult& aRv) {
     return nullptr;
   }
 
+  // null checked above
+  auto* doc = mWindow->GetExtantDoc();
+
+  if (StaticPrefs::dom_webshare_requireinteraction() &&
+      !doc->ConsumeTransientUserGestureActivation()) {
+    aRv.ThrowNotAllowedError(
+        "User activation was already consumed "
+        "or share() was not activated by a user gesture.");
+    return nullptr;
+  }
+
   // If none of data's members title, text, or url are present, reject p with
   // TypeError, and abort these steps.
   bool someMemberPassed = aData.mTitle.WasPassed() || aData.mText.WasPassed() ||
@@ -1383,9 +1400,6 @@ Promise* Navigator::Share(const ShareData& aData, ErrorResult& aRv) {
         "Must have a title, text, or url in the ShareData dictionary");
     return nullptr;
   }
-
-  // null checked above
-  auto doc = mWindow->GetExtantDoc();
 
   // If data's url member is present, try to resolve it...
   nsCOMPtr<nsIURI> url;
@@ -1413,16 +1427,6 @@ Promise* Navigator::Share(const ShareData& aData, ErrorResult& aRv) {
     text.Assign(NS_ConvertUTF16toUTF8(aData.mText.Value()));
   } else {
     text.SetIsVoid(true);
-  }
-
-  // The spec does the "triggered by user activation" after the data checks.
-  // Unfortunately, both Chrome and Safari behave this way, so interop wins.
-  // https://github.com/w3c/web-share/pull/118
-  if (StaticPrefs::dom_webshare_requireinteraction() &&
-      !UserActivation::IsHandlingUserInput()) {
-    NS_WARNING("Attempt to share not triggered by user activation");
-    aRv.Throw(NS_ERROR_DOM_NOT_ALLOWED_ERR);
-    return nullptr;
   }
 
   // Let mSharePromise be a new promise.
@@ -1474,6 +1478,27 @@ void Navigator::GetGamepads(nsTArray<RefPtr<Gamepad>>& aGamepads,
   }
   NS_ENSURE_TRUE_VOID(mWindow->GetDocShell());
   nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
+
+  // As we are moving this API to secure contexts, we are going to temporarily
+  // show a console warning to developers.
+  if (!mGamepadSecureContextWarningShown && !win->IsSecureContext()) {
+    mGamepadSecureContextWarningShown = true;
+    auto msg = NS_LITERAL_STRING(
+        "The Gamepad API is only available in "
+        "secure contexts (e.g., https). Please see "
+        "https://hacks.mozilla.org/2020/06/securing-gamepad-api/ for more "
+        "info.");
+    nsContentUtils::ReportToConsoleNonLocalized(
+        msg, nsIScriptError::warningFlag, NS_LITERAL_CSTRING("DOM"),
+        win->GetExtantDoc());
+  }
+
+#ifdef NIGHTLY_BUILD
+  if (!win->IsSecureContext()) {
+    return;
+  }
+#endif
+
   win->SetHasGamepadEventListener(true);
   win->GetGamepads(aGamepads);
 }
@@ -1511,7 +1536,7 @@ already_AddRefed<Promise> Navigator::GetVRDisplays(ErrorResult& aRv) {
     int browserID = browser->ChromeOuterWindowID();
 
     browser->SendIsWindowSupportingWebVR(browserID)->Then(
-        GetCurrentThreadSerialEventTarget(), __func__,
+        GetCurrentSerialEventTarget(), __func__,
         [self, p](bool isSupported) {
           self->FinishGetVRDisplays(isSupported, p);
         },
@@ -1760,7 +1785,7 @@ bool Navigator::HasUserMediaSupport(JSContext* cx, JSObject* obj) {
 
 /* static */
 bool Navigator::HasShareSupport(JSContext* cx, JSObject* obj) {
-  if (!Preferences::GetBool("dom.webshare.enabled")) {
+  if (!StaticPrefs::dom_webshare_enabled()) {
     return false;
   }
 #if defined(XP_WIN) && !defined(__MINGW32__)
@@ -1776,6 +1801,10 @@ already_AddRefed<nsPIDOMWindowInner> Navigator::GetWindowFromGlobal(
     JSObject* aGlobal) {
   nsCOMPtr<nsPIDOMWindowInner> win = xpc::WindowOrNull(aGlobal);
   return win.forget();
+}
+
+void Navigator::ClearPlatformCache() {
+  Navigator_Binding::ClearCachedPlatformValue(this);
 }
 
 nsresult Navigator::GetPlatform(nsAString& aPlatform,

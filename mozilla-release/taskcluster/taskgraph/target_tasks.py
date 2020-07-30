@@ -22,7 +22,6 @@ _target_task_methods = {}
 UNCOMMON_TRY_TASK_LABELS = [
     # Platforms and/or Build types
     r'build-.*-gcp',  # Bug 1631990
-    r'build-.*-aarch64',  # Bug 1631990
     r'mingwclang',  # Bug 1631990
     r'valgrind',  # Bug 1631990
     # Android tasks
@@ -38,10 +37,14 @@ UNCOMMON_TRY_TASK_LABELS = [
     # Test tasks
     r'web-platform-tests.*backlog',  # hide wpt jobs that are not implemented yet - bug 1572820
     r'-ccov/',
-    # Shippable build tests, except those that don't have opt versions - bug 1638014
-    # blacklist tasks on these platforms that aren't part of the named test suites,
-    # which are known to only run on shippable builds
-    r'(linux1804-64|windows10-64|windows7-32)-shippable(?!.*(awsy|browsertime|marionette-headless|raptor|talos|web-platform-tests-wdspec-headless))',  # noqa - too long
+    r'-profiling-',  # talos/raptor profiling jobs are run too often
+    # Generally, we don't want shippable builds or tests to run, unless they're needed
+    # for performance tests _or_ on OS X, where we run all tests against shippable
+    # builds (not opt).
+    # The negative lookbehind assertion looks weird here because it has to be fixed
+    # width, and we have two platforms (build & test) to catch.
+    # The full version of the first platform is macosx1014-64
+    r'(?<!(x1014-64|macosx64))-shippable(?!.*(awsy|browsertime|marionette-headless|raptor|talos|web-platform-tests-wdspec-headless))',  # noqa - too long
 ]
 
 
@@ -186,6 +189,18 @@ def standard_filter(task, parameters):
     )
 
 
+def accept_raptor_android_build(platform):
+    """Helper function for selecting the correct android raptor builds."""
+    if 'android' not in platform:
+        return False
+    if 'shippable' not in platform:
+        return False
+    if 'p2' in platform and 'aarch64' in platform:
+        return True
+    if 'g5' in platform:
+        return True
+
+
 def _try_task_config(full_task_graph, parameters, graph_config):
     requested_tasks = parameters['try_task_config']['tasks']
     return list(set(requested_tasks) & full_task_graph.graph.nodes)
@@ -266,6 +281,7 @@ def target_tasks_try_auto(full_task_graph, parameters, graph_config):
     return [l for l, t in six.iteritems(full_task_graph.tasks)
             if standard_filter(t, parameters)
             and filter_out_shipping_phase(t, parameters)
+            and filter_out_devedition(t, parameters)
             and filter_by_uncommon_try_tasks(t.label)]
 
 
@@ -530,23 +546,41 @@ def target_tasks_ship_geckoview(full_task_graph, parameters, graph_config):
 @_target_task('fennec_v68')
 def target_tasks_fennec_v68(full_task_graph, parameters, graph_config):
     """
-    Select tasks required for running tp6m fennec v68 tests
+    Select tasks required for running weekly fennec v68 tests
     """
     def filter(task):
-        platform = task.attributes.get('build_platform')
         test_platform = task.attributes.get('test_platform')
-        attributes = task.attributes
+        try_name = task.attributes.get('raptor_try_name')
 
-        if platform and 'android' not in platform:
+        vismet = task.attributes.get('kind') == 'visual-metrics-dep'
+        if vismet:
+            test_platform = task.task.get('extra').get('treeherder-platform')
+            try_name = task.label
+
+        if task.attributes.get('unittest_suite') != 'raptor' and not vismet:
             return False
-        if attributes.get('unittest_suite') != 'raptor':
+        if not accept_raptor_android_build(test_platform):
             return False
-        if '-fennec68-' in attributes.get('raptor_try_name'):
-            if '-p2' in test_platform and '-arm7' in test_platform:
-                return False
-            if '-youtube-playback-' in attributes.get('raptor_try_name') \
-                    and 'opt' in test_platform:
-                return False
+
+        if '-fennec' in try_name:
+            if 'raptor-scn-power-idle' in try_name:
+                return True
+            if 'raptor-speedometer' in try_name and 'power' in try_name:
+                return True
+            if 'browsertime' in try_name:
+                if 'tp6m' in try_name:
+                    return True
+                elif 'speedometer' in try_name:
+                    return True
+                else:
+                    return False
+            if '-youtube-playback' in try_name:
+                # Bug 1627898: VP9 tests don't work on G5
+                if '-g5-' in test_platform and '-vp9-' in try_name:
+                    return False
+                # Bug 1639193: AV1 tests are currently broken
+                if '-av1-' in try_name:
+                    return False
             return True
 
     return [l for l, t in six.iteritems(full_task_graph.tasks) if filter(t)]
@@ -568,13 +602,11 @@ def target_tasks_live_site_perf_testing(full_task_graph, parameters, graph_confi
             platform = task.task.get('extra').get('treeherder-platform')
             try_name = task.label
 
-        if 'android' not in platform:
+        if not accept_raptor_android_build(platform):
             return False
         if 'fenix' not in try_name:
             return False
-        if ('browsertime' not in try_name or
-            'shippable' not in platform or
-            'live' not in try_name):
+        if 'browsertime' not in try_name and 'live' not in try_name:
             return False
         for test in LIVE_SITES:
             if try_name.endswith(test) or try_name.endswith(test + "-e10s"):
@@ -592,7 +624,7 @@ def target_tasks_general_perf_testing(full_task_graph, parameters, graph_config)
     Select tasks required for running performance tests 3 times a week.
     """
     def filter(task):
-        platform = task.attributes.get('build_platform')
+        platform = task.attributes.get('test_platform')
         attributes = task.attributes
         vismet = attributes.get('kind') == 'visual-metrics-dep'
         if attributes.get('unittest_suite') != 'raptor' and not vismet:
@@ -610,63 +642,55 @@ def target_tasks_general_perf_testing(full_task_graph, parameters, graph_config)
                     return True
             return False
 
-        # Run chrome and chromium on all platforms available
-        if '-chrome' in try_name:
-            if 'android' in platform:
-                # Run only on shippable android builds
-                if 'shippable' in platform:
-                    if '-live' in try_name:
-                        return _run_live_site()
-                else:
-                    return False
-            else:
-                # Run on all desktop builds
-                return True
-        if '-chromium' in try_name:
-            return True
-
-        # Run raptor scn-power-idle and speedometer for fenix and fennec68
-        if 'shippable' in platform:
-            if 'raptor-scn-power-idle' in try_name \
-                    and ('-fenix' in try_name or '-fennec68' in try_name):
-                return True
-            if 'raptor-speedometer' in try_name \
-                    and '-fennec68' in try_name:
-                return True
-            if 'raptor-speedometer' in try_name \
-                    and 'power' in try_name \
-                    and 'fenix' in try_name:
-                return True
-
-        # Select browsertime tasks
-        if 'browsertime' in try_name and 'shippable' in platform:
-            if 'speedometer' in try_name:
-                return True
-            if '-live' in try_name:
-                # We only want to select those which should run 3 times
-                # a week here, other live site tests should be removed
-                return _run_live_site()
+        # Completely ignore all non-shippable platforms
+        if 'shippable' not in platform:
             return False
 
-        # Run the following tests on android geckoview
-        if platform and 'android' not in platform:
-            return False
-        if 'geckoview' not in try_name:
-            return False
-
-        # Run cpu+memory, and power tests
-        cpu_n_memory_task = '-cpu' in try_name and '-memory' in try_name
-        power_task = '-power' in try_name
-        # Ignore cpu+memory+power tests
-        if power_task and cpu_n_memory_task:
-            return False
-        if power_task or cpu_n_memory_task:
-            if 'shippable' not in platform:
+        # Desktop selection
+        if 'android' not in platform:
+            # Run tests on all chrome variants
+            if '-chrome' in try_name:
+                return True
+            if '-chromium' in try_name:
+                return True
+            # Select some browsertime tasks as desktop smoke-tests
+            if 'browsertime' in try_name:
+                if 'linux' in platform:
+                    if 'speedometer' in try_name:
+                        return True
+                    if 'tp6' in try_name:
+                        return True
+        # Android selection
+        elif accept_raptor_android_build(platform):
+            # Ignore all fennec tests here, we run those weekly
+            if 'fennec' in try_name:
                 return False
-            if '-speedometer-' in try_name:
-                return True
-            if '-scn' in try_name and '-idle' in try_name:
-                return True
+            # Select live site tests
+            if '-live' in try_name and ('fenix' in try_name or 'chrome-m' in try_name):
+                return False  # temporarily disabled, Bug 1648183
+            # Select fenix resource usage tests
+            if 'fenix' in try_name:
+                if 'raptor-scn-power-idle' in try_name:
+                    return True
+                if 'raptor-speedometer' in try_name and 'power' in try_name:
+                    return True
+            # Select geckoview resource usage tests
+            if 'geckoview' in try_name:
+                # Run cpu+memory, and power tests
+                cpu_n_memory_task = '-cpu' in try_name and '-memory' in try_name
+                power_task = '-power' in try_name
+                # Ignore cpu+memory+power tests
+                if power_task and cpu_n_memory_task:
+                    return False
+                if power_task or cpu_n_memory_task:
+                    if '-speedometer-' in try_name:
+                        return True
+                    if '-scn' in try_name and '-idle' in try_name:
+                        return True
+            # Select browsertime-specific tests
+            if 'browsertime' in try_name:
+                if 'speedometer' in try_name:
+                    return True
         return False
 
     return [l for l, t in six.iteritems(full_task_graph.tasks) if filter(t)]

@@ -10,16 +10,16 @@
 // Keep others in (case-insensitive) order:
 #include "gfxContext.h"
 #include "nsDisplayList.h"
-#include "mozilla/PresShell.h"
-#include "mozilla/dom/Document.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIObjectLoadingContent.h"
+#include "nsSubDocumentFrame.h"
 #include "nsSVGIntegrationUtils.h"
-#include "nsSVGForeignObjectFrame.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/SVGForeignObjectFrame.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/SVGSVGElement.h"
 #include "mozilla/dom/SVGViewElement.h"
-#include "nsSubDocumentFrame.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -29,29 +29,28 @@ using namespace mozilla::image;
 //----------------------------------------------------------------------
 // Implementation helpers
 
-void nsSVGOuterSVGFrame::RegisterForeignObject(
-    nsSVGForeignObjectFrame* aFrame) {
+void nsSVGOuterSVGFrame::RegisterForeignObject(SVGForeignObjectFrame* aFrame) {
   NS_ASSERTION(aFrame, "Who on earth is calling us?!");
 
   if (!mForeignObjectHash) {
     mForeignObjectHash =
-        MakeUnique<nsTHashtable<nsPtrHashKey<nsSVGForeignObjectFrame>>>();
+        MakeUnique<nsTHashtable<nsPtrHashKey<SVGForeignObjectFrame>>>();
   }
 
   NS_ASSERTION(!mForeignObjectHash->GetEntry(aFrame),
-               "nsSVGForeignObjectFrame already registered!");
+               "SVGForeignObjectFrame already registered!");
 
   mForeignObjectHash->PutEntry(aFrame);
 
   NS_ASSERTION(mForeignObjectHash->GetEntry(aFrame),
-               "Failed to register nsSVGForeignObjectFrame!");
+               "Failed to register SVGForeignObjectFrame!");
 }
 
 void nsSVGOuterSVGFrame::UnregisterForeignObject(
-    nsSVGForeignObjectFrame* aFrame) {
+    SVGForeignObjectFrame* aFrame) {
   NS_ASSERTION(aFrame, "Who on earth is calling us?!");
   NS_ASSERTION(mForeignObjectHash && mForeignObjectHash->GetEntry(aFrame),
-               "nsSVGForeignObjectFrame not in registry!");
+               "SVGForeignObjectFrame not in registry!");
   return mForeignObjectHash->RemoveEntry(aFrame);
 }
 
@@ -451,7 +450,7 @@ void nsSVGOuterSVGFrame::Reflow(nsPresContext* aPresContext,
   // ReflowSVG() or ReflowSVGNonDisplayText() on them, depending
   // on whether we are non-display.
   mCallingReflowSVG = true;
-  if (GetStateBits() & NS_FRAME_IS_NONDISPLAY) {
+  if (HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
     ReflowSVGNonDisplayText(this);
   } else {
     // Update the mRects and visual overflow rects of all our descendants,
@@ -678,7 +677,7 @@ nsresult nsSVGOuterSVGFrame::AttributeChanged(int32_t aNameSpaceID,
                                               nsAtom* aAttribute,
                                               int32_t aModType) {
   if (aNameSpaceID == kNameSpaceID_None &&
-      !(GetStateBits() & (NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_NONDISPLAY))) {
+      !HasAnyStateBits(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_NONDISPLAY)) {
     if (aAttribute == nsGkAtoms::viewBox ||
         aAttribute == nsGkAtoms::preserveAspectRatio ||
         aAttribute == nsGkAtoms::transform) {
@@ -756,7 +755,7 @@ bool nsSVGOuterSVGFrame::IsSVGTransformed(Matrix* aOwnTransform,
 
 void nsSVGOuterSVGFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                           const nsDisplayListSet& aLists) {
-  if (GetStateBits() & NS_FRAME_IS_NONDISPLAY) {
+  if (HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
     return;
   }
 
@@ -902,18 +901,16 @@ bool nsSVGOuterSVGFrame::IsContainingWindowElementOfType(
     nsIFrame** aContainingWindowFrame, Args... aArgs) const {
   if (!mContent->GetParent()) {
     // Our content is the document element
-    nsCOMPtr<nsIDocShell> docShell = PresContext()->GetDocShell();
-    nsCOMPtr<nsPIDOMWindowOuter> window;
-    if (docShell) {
-      window = docShell->GetWindow();
-    }
+    if (nsCOMPtr<nsIDocShell> docShell = PresContext()->GetDocShell()) {
+      RefPtr<BrowsingContext> bc = docShell->GetBrowsingContext();
+      const Maybe<nsString>& type = bc->GetEmbedderElementType();
 
-    if (window) {
-      RefPtr<Element> frameElement = window->GetFrameElement();
-      if (frameElement && frameElement->IsAnyOfHTMLElements(aArgs...)) {
+      if (type && IsAnyAtomEqual(*type, aArgs...)) {
         if (aContainingWindowFrame) {
-          *aContainingWindowFrame = frameElement->GetPrimaryFrame();
-          NS_ASSERTION(*aContainingWindowFrame, "Yikes, no frame!");
+          if (const Element* const element = bc->GetEmbedderElement()) {
+            *aContainingWindowFrame = element->GetPrimaryFrame();
+            NS_ASSERTION(*aContainingWindowFrame, "Yikes, no frame!");
+          }
         }
         return true;
       }
@@ -1046,3 +1043,9 @@ bool nsSVGOuterSVGAnonChildFrame::IsSVGTransformed(
 
   return true;
 }
+
+template <typename... Atoms>
+bool IsAnyAtomEqual(const nsAString& aString, nsAtom* aFirst, Atoms... aArgs) {
+  return aFirst->Equals(aString) || IsAnyAtomEqual(aString, aArgs...);
+}
+bool IsAnyAtomEqual(const nsAString& aString) { return false; }

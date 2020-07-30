@@ -105,17 +105,15 @@ extern mozilla::LazyLogModule gPageCacheLog;
   PR_END_MACRO
 
 // Iterates over all registered session history listeners.
-#define ITERATE_LISTENERS(body)                                              \
-  PR_BEGIN_MACRO {                                                           \
-    nsAutoTObserverArray<nsWeakPtr, 2>::EndLimitedIterator iter(mListeners); \
-    while (iter.HasMore()) {                                                 \
-      nsCOMPtr<nsISHistoryListener> listener =                               \
-          do_QueryReferent(iter.GetNext());                                  \
-      if (listener) {                                                        \
-        body                                                                 \
-      }                                                                      \
-    }                                                                        \
-  }                                                                          \
+#define ITERATE_LISTENERS(body)                                           \
+  PR_BEGIN_MACRO {                                                        \
+    for (const nsWeakPtr& weakPtr : mListeners.EndLimitedRange()) {       \
+      nsCOMPtr<nsISHistoryListener> listener = do_QueryReferent(weakPtr); \
+      if (listener) {                                                     \
+        body                                                              \
+      }                                                                   \
+    }                                                                     \
+  }                                                                       \
   PR_END_MACRO
 
 // Calls a given method on all registered session history listeners.
@@ -523,6 +521,7 @@ nsresult nsSHistory::AddChildSHEntryHelper(nsISHEntry* aCloneRef,
   uint32_t cloneID = aCloneRef->GetID();
   rv = nsSHistory::CloneAndReplace(currentHE, aBC, cloneID, aNewEntry,
                                    aCloneChildren, aNextEntry);
+
   if (NS_SUCCEEDED(rv)) {
     rv = AddEntry(*aNextEntry, true);
   }
@@ -1504,6 +1503,16 @@ nsresult nsSHistory::GotoIndex(int32_t aIndex,
   return LoadEntry(aIndex, LOAD_HISTORY, HIST_CMD_GOTOINDEX, aLoadResults);
 }
 
+NS_IMETHODIMP_(bool)
+nsSHistory::HasUserInteractionAtIndex(int32_t aIndex) {
+  nsCOMPtr<nsISHEntry> entry;
+  GetEntryAtIndex(aIndex, getter_AddRefs(entry));
+  if (!entry) {
+    return false;
+  }
+  return entry->GetHasUserInteraction();
+}
+
 nsresult nsSHistory::LoadNextPossibleEntry(
     int32_t aNewIndex, long aLoadType, uint32_t aHistCmd,
     nsTArray<LoadEntryResult>& aLoadResults) {
@@ -1549,8 +1558,7 @@ nsresult nsSHistory::LoadEntry(int32_t aIndex, long aLoadType,
   // Get the uri for the entry we are about to visit
   nsCOMPtr<nsIURI> nextURI = nextEntry->GetURI();
 
-  MOZ_ASSERT((prevEntry && nextEntry && nextURI),
-             "prevEntry, nextEntry and nextURI can't be null");
+  MOZ_ASSERT(nextURI, "nextURI can't be null");
 
   // Send appropriate listener notifications.
   if (aHistCmd == HIST_CMD_GOTOINDEX) {
@@ -1560,40 +1568,36 @@ nsresult nsSHistory::LoadEntry(int32_t aIndex, long aLoadType,
 
   if (mRequestedIndex == mIndex) {
     // Possibly a reload case
-    return InitiateLoad(nextEntry, mRootBC, aLoadType, aLoadResults);
+    InitiateLoad(nextEntry, mRootBC, aLoadType, aLoadResults);
+    return NS_OK;
   }
 
   // Going back or forward.
-  bool differenceFound = false;
-  nsresult rv = LoadDifferingEntries(prevEntry, nextEntry, mRootBC, aLoadType,
-                                     differenceFound, aLoadResults);
+  bool differenceFound = LoadDifferingEntries(prevEntry, nextEntry, mRootBC,
+                                              aLoadType, aLoadResults);
   if (!differenceFound) {
     // We did not find any differences. Go further in the history.
     return LoadNextPossibleEntry(aIndex, aLoadType, aHistCmd, aLoadResults);
   }
 
-  return rv;
+  return NS_OK;
 }
 
-nsresult nsSHistory::LoadDifferingEntries(
-    nsISHEntry* aPrevEntry, nsISHEntry* aNextEntry, BrowsingContext* aParent,
-    long aLoadType, bool& aDifferenceFound,
-    nsTArray<LoadEntryResult>& aLoadResults) {
-  if (!aPrevEntry || !aNextEntry || !aParent) {
-    return NS_ERROR_FAILURE;
-  }
+bool nsSHistory::LoadDifferingEntries(nsISHEntry* aPrevEntry,
+                                      nsISHEntry* aNextEntry,
+                                      BrowsingContext* aParent, long aLoadType,
+                                      nsTArray<LoadEntryResult>& aLoadResults) {
+  MOZ_ASSERT(aPrevEntry && aNextEntry && aParent);
 
-  nsresult result = NS_OK;
   uint32_t prevID = aPrevEntry->GetID();
   uint32_t nextID = aNextEntry->GetID();
 
   // Check the IDs to verify if the pages are different.
   if (prevID != nextID) {
-    aDifferenceFound = true;
-
     // Set the Subframe flag if not navigating the root docshell.
     aNextEntry->SetIsSubFrame(aParent != mRootBC);
-    return InitiateLoad(aNextEntry, aParent, aLoadType, aLoadResults);
+    InitiateLoad(aNextEntry, aParent, aLoadType, aLoadResults);
+    return true;
   }
 
   // The entries are the same, so compare any child frames
@@ -1605,6 +1609,7 @@ nsresult nsSHistory::LoadDifferingEntries(
   aParent->GetChildren(browsingContexts);
 
   // Search for something to load next.
+  bool differenceFound = false;
   for (int32_t i = 0; i < ncnt; ++i) {
     // First get an entry which may cause a new page to be loaded.
     nsCOMPtr<nsISHEntry> nChild;
@@ -1642,20 +1647,25 @@ nsresult nsSHistory::LoadDifferingEntries(
         }
       }
     }
+    if (!pChild) {
+      continue;
+    }
 
     // Finally recursively call this method.
     // This will either load a new page to shell or some subshell or
     // do nothing.
-    LoadDifferingEntries(pChild, nChild, bcChild, aLoadType, aDifferenceFound,
-                         aLoadResults);
+    if (LoadDifferingEntries(pChild, nChild, bcChild, aLoadType,
+                             aLoadResults)) {
+      differenceFound = true;
+    }
   }
-  return result;
+  return differenceFound;
 }
 
-nsresult nsSHistory::InitiateLoad(nsISHEntry* aFrameEntry,
-                                  BrowsingContext* aFrameBC, long aLoadType,
-                                  nsTArray<LoadEntryResult>& aLoadResults) {
-  NS_ENSURE_STATE(aFrameBC && aFrameEntry);
+void nsSHistory::InitiateLoad(nsISHEntry* aFrameEntry,
+                              BrowsingContext* aFrameBC, long aLoadType,
+                              nsTArray<LoadEntryResult>& aLoadResults) {
+  MOZ_ASSERT(aFrameBC && aFrameEntry);
 
   LoadEntryResult* loadResult = aLoadResults.AppendElement();
   loadResult->mBrowsingContext = aFrameBC;
@@ -1686,8 +1696,6 @@ nsresult nsSHistory::InitiateLoad(nsISHEntry* aFrameEntry,
   loadState->SetCsp(csp);
 
   loadResult->mLoadState = std::move(loadState);
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1695,4 +1703,23 @@ nsSHistory::CreateEntry(nsISHEntry** aEntry) {
   nsCOMPtr<nsISHEntry> entry = new nsSHEntry(this);
   entry.forget(aEntry);
   return NS_OK;
+}
+
+NS_IMETHODIMP_(bool)
+nsSHistory::IsEmptyOrHasEntriesForSingleTopLevelPage() {
+  if (mEntries.IsEmpty()) {
+    return true;
+  }
+
+  nsISHEntry* entry = mEntries[0];
+  size_t length = mEntries.Length();
+  for (size_t i = 1; i < length; ++i) {
+    bool sharesDocument = false;
+    mEntries[i]->SharesDocumentWith(entry, &sharesDocument);
+    if (!sharesDocument) {
+      return false;
+    }
+  }
+
+  return true;
 }

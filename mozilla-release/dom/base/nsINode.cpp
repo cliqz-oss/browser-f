@@ -623,9 +623,8 @@ void nsINode::LastRelease() {
   nsINode::nsSlots* slots = GetExistingSlots();
   if (slots) {
     if (!slots->mMutationObservers.IsEmpty()) {
-      NS_OBSERVER_AUTO_ARRAY_NOTIFY_OBSERVERS(slots->mMutationObservers,
-                                              nsIMutationObserver, 1,
-                                              NodeWillBeDestroyed, (this));
+      NS_OBSERVER_ARRAY_NOTIFY_OBSERVERS(slots->mMutationObservers,
+                                         NodeWillBeDestroyed, (this));
     }
 
     delete slots;
@@ -2974,7 +2973,7 @@ JSObject* nsINode::WrapObject(JSContext* aCx,
   JS::Rooted<JSObject*> obj(aCx, WrapNode(aCx, aGivenProto));
   if (obj && ChromeOnlyAccess()) {
     MOZ_RELEASE_ASSERT(
-        JS::GetNonCCWObjectGlobal(obj) == xpc::UnprivilegedJunkScope() ||
+        xpc::IsUnprivilegedJunkScope(JS::GetNonCCWObjectGlobal(obj)) ||
         xpc::IsInUAWidgetScope(obj) || xpc::AccessCheck::isChrome(obj));
   }
   return obj;

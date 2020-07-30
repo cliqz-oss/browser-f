@@ -38,6 +38,10 @@ class RenderCompositor {
 
   virtual bool BeginFrame() = 0;
 
+  // Optional handler in case the frame was aborted allowing the compositor
+  // to clean up relevant resources if required.
+  virtual void CancelFrame() {}
+
   // Called to notify the RenderCompositor that all of the commands for a frame
   // have been pushed to the queue.
   // @return a RenderedFrameId for the frame
@@ -62,6 +66,7 @@ class RenderCompositor {
   virtual void Update() {}
 
   virtual gl::GLContext* gl() const { return nullptr; }
+  virtual void* swgl() const { return nullptr; }
 
   virtual bool MakeCurrent();
 
@@ -91,6 +96,12 @@ class RenderCompositor {
                     uint32_t* aFboId, wr::DeviceIntRect aDirtyRect,
                     wr::DeviceIntRect aValidRect) {}
   virtual void Unbind() {}
+  virtual bool MapTile(wr::NativeTileId aId, wr::DeviceIntRect aDirtyRect,
+                       wr::DeviceIntRect aValidRect, void** aData,
+                       int32_t* aStride) {
+    return false;
+  }
+  virtual void UnmapTile() {}
   virtual void CreateSurface(wr::NativeSurfaceId aId,
                              wr::DeviceIntPoint aVirtualOffset,
                              wr::DeviceIntSize aTileSize, bool aIsOpaque) {}

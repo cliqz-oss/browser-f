@@ -15,6 +15,7 @@
 
 #include "ds/TraceableFifo.h"
 #include "gc/Memory.h"
+#include "irregexp/RegExpTypes.h"
 #include "js/CharacterEncoding.h"
 #include "js/ContextOptions.h"  // JS::ContextOptions
 #include "js/GCVector.h"
@@ -22,9 +23,6 @@
 #include "js/Result.h"
 #include "js/Utility.h"
 #include "js/Vector.h"
-#ifdef ENABLE_NEW_REGEXP
-#  include "new-regexp/RegExpTypes.h"
-#endif
 #include "threading/ProtectedData.h"
 #include "util/StructuredSpewer.h"
 #include "vm/Activation.h"  // js::Activation
@@ -41,6 +39,10 @@ namespace js {
 class AutoAllocInAtomsZone;
 class AutoMaybeLeaveAtomsZone;
 class AutoRealm;
+
+namespace frontend {
+class WellKnownParserAtoms;
+}  // namespace frontend
 
 namespace jit {
 class JitActivation;
@@ -267,6 +269,9 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
 
   // Accessors for immutable runtime data.
   JSAtomState& names() { return *runtime_->commonNames; }
+  js::frontend::WellKnownParserAtoms& parserNames() {
+    return *runtime_->commonParserNames;
+  }
   js::StaticStrings& staticStrings() { return *runtime_->staticStrings; }
   js::SharedImmutableStringsCache& sharedImmutableStrings() {
     return runtime_->sharedImmutableStrings();
@@ -425,14 +430,8 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
    */
   js::ContextData<js::jit::JitActivation*> jitActivation;
 
-#ifdef ENABLE_NEW_REGEXP
   // Shim for V8 interfaces used by irregexp code
   js::ContextData<js::irregexp::Isolate*> isolate;
-#else
-  // Information about the heap allocated backtrack stack used by RegExp JIT
-  // code.
-  js::ContextData<js::irregexp::RegExpStack> regexpStack;
-#endif
 
   /*
    * Points to the most recent activation running on the thread.
@@ -812,6 +811,7 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   inline bool runningWithTrustedPrincipals();
 
   size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
+  size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 
   void trace(JSTracer* trc);
 

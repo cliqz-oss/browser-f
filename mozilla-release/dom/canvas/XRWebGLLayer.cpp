@@ -259,10 +259,7 @@ HTMLCanvasElement* XRWebGLLayer::GetCanvas() {
   return mWebGL->GetParentObject();
 }
 
-void XRWebGLLayer::SessionEnded() {
-  DeleteFramebuffer();
-  mWebGL->ClearVRFrame();
-}
+void XRWebGLLayer::SessionEnded() { DeleteFramebuffer(); }
 
 }  // namespace dom
 }  // namespace mozilla

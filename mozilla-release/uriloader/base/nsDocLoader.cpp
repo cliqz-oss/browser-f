@@ -248,7 +248,7 @@ nsDocLoader::Stop(void) {
   MOZ_LOG(gDocLoaderLog, LogLevel::Debug,
           ("DocLoader:%p: Stop() called\n", this));
 
-  NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mChildList, nsDocLoader, Stop, ());
+  NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mChildList, Stop, ());
 
   if (mLoadGroup) rv = mLoadGroup->Cancel(NS_BINDING_ABORTED);
 
@@ -256,8 +256,8 @@ nsDocLoader::Stop(void) {
   // Stop call.
   mIsFlushingLayout = false;
 
-  // Clear out mChildrenInOnload.  We want to make sure to fire our
-  // onload at this point, and there's no issue with mChildrenInOnload
+  // Clear out mChildrenInOnload.  We're not going to fire our onload
+  // anyway at this point, and there's no issue with mChildrenInOnload
   // after this, since mDocumentRequest will be null after the
   // DocLoaderIsEmpty() call.
   mChildrenInOnload.Clear();
@@ -274,7 +274,12 @@ nsDocLoader::Stop(void) {
   // we wouldn't need the call here....
 
   NS_ASSERTION(!IsBusy(), "Shouldn't be busy here");
-  DocLoaderIsEmpty(false);
+
+  // If Cancelling the load group only had pending subresource requests, then
+  // the group status will still be success, and we would fire the load event.
+  // We want to avoid that when we're aborting the load, so override the status
+  // with an explicit NS_BINDING_ABORTED value.
+  DocLoaderIsEmpty(false, Some(NS_BINDING_ABORTED));
 
   return rv;
 }
@@ -660,7 +665,8 @@ NS_IMETHODIMP nsDocLoader::GetDocumentChannel(nsIChannel** aChannel) {
   return CallQueryInterface(mDocumentRequest, aChannel);
 }
 
-void nsDocLoader::DocLoaderIsEmpty(bool aFlushLayout) {
+void nsDocLoader::DocLoaderIsEmpty(bool aFlushLayout,
+                                   const Maybe<nsresult>& aOverrideStatus) {
   if (IsBlockingLoadEvent()) {
     /* In the unimagineably rude circumstance that onload event handlers
        triggered by this function actually kill the window ... ok, it's
@@ -724,7 +730,11 @@ void nsDocLoader::DocLoaderIsEmpty(bool aFlushLayout) {
       mProgressStateFlags = nsIWebProgressListener::STATE_STOP;
 
       nsresult loadGroupStatus = NS_OK;
-      mLoadGroup->GetStatus(&loadGroupStatus);
+      if (aOverrideStatus) {
+        loadGroupStatus = *aOverrideStatus;
+      } else {
+        mLoadGroup->GetStatus(&loadGroupStatus);
+      }
 
       //
       // New code to break the circular reference between
@@ -971,55 +981,9 @@ nsDocLoader::GetDOMWindow(mozIDOMWindowProxy** aResult) {
 }
 
 NS_IMETHODIMP
-nsDocLoader::GetDOMWindowID(uint64_t* aResult) {
-  *aResult = 0;
-
-  nsCOMPtr<mozIDOMWindowProxy> window;
-  nsresult rv = GetDOMWindow(getter_AddRefs(window));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsPIDOMWindowOuter> piwindow = nsPIDOMWindowOuter::From(window);
-  NS_ENSURE_STATE(piwindow);
-
-  *aResult = piwindow->WindowID();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDocLoader::GetInnerDOMWindowID(uint64_t* aResult) {
-  *aResult = 0;
-
-  nsCOMPtr<mozIDOMWindowProxy> window;
-  nsresult rv = GetDOMWindow(getter_AddRefs(window));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsPIDOMWindowOuter> outer = nsPIDOMWindowOuter::From(window);
-  NS_ENSURE_STATE(outer);
-
-  nsPIDOMWindowInner* inner = outer->GetCurrentInnerWindow();
-  if (!inner) {
-    // If we don't have an inner window, return 0.
-    return NS_OK;
-  }
-
-  *aResult = inner->WindowID();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsDocLoader::GetIsTopLevel(bool* aResult) {
-  *aResult = false;
-
-  nsCOMPtr<mozIDOMWindowProxy> window;
-  GetDOMWindow(getter_AddRefs(window));
-  if (window) {
-    nsCOMPtr<nsPIDOMWindowOuter> piwindow = nsPIDOMWindowOuter::From(window);
-    NS_ENSURE_STATE(piwindow);
-
-    nsCOMPtr<nsPIDOMWindowOuter> topWindow = piwindow->GetInProcessTop();
-    *aResult = piwindow == topWindow;
-  }
-
+  nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(this);
+  *aResult = docShell && docShell->GetBrowsingContext()->IsTop();
   return NS_OK;
 }
 
@@ -1533,7 +1497,7 @@ NS_IMETHODIMP nsDocLoader::SetPriority(int32_t aPriority) {
   nsCOMPtr<nsISupportsPriority> p = do_QueryInterface(mLoadGroup);
   if (p) p->SetPriority(aPriority);
 
-  NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mChildList, nsDocLoader, SetPriority,
+  NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mChildList, SetPriority,
                                            (aPriority));
 
   return NS_OK;
@@ -1546,8 +1510,8 @@ NS_IMETHODIMP nsDocLoader::AdjustPriority(int32_t aDelta) {
   nsCOMPtr<nsISupportsPriority> p = do_QueryInterface(mLoadGroup);
   if (p) p->AdjustPriority(aDelta);
 
-  NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mChildList, nsDocLoader,
-                                           AdjustPriority, (aDelta));
+  NS_OBSERVER_ARRAY_NOTIFY_XPCOM_OBSERVERS(mChildList, AdjustPriority,
+                                           (aDelta));
 
   return NS_OK;
 }

@@ -1424,7 +1424,7 @@ nsresult nsHttpChannel::SetupTransaction() {
   }
   rv = mTransaction->Init(
       mCaps, mConnectionInfo, &mRequestHead, mUploadStream, mReqContentLength,
-      mUploadStreamHasHeaders, GetCurrentThreadEventTarget(), callbacks, this,
+      mUploadStreamHasHeaders, GetCurrentEventTarget(), callbacks, this,
       mTopLevelOuterContentWindowId, category, mRequestContext, mClassOfService,
       mInitialRwin, mResponseTimeoutEnabled, mChannelId, std::move(observer),
       std::move(pushCallback), mTransWithPushedStream, mPushedStreamId);
@@ -1869,7 +1869,7 @@ void nsHttpChannel::UpdateAntiTrackingInfo() {
     // We only need to set FPD for top-level loads. FPD will automatically be
     // propagated to non-top level loads via CookieJarSetting.
     mozilla::net::CookieJarSettings::Cast(cookieJarSettings)
-        ->SetFirstPartyDomain(mURI);
+        ->SetPartitionKey(mURI);
   }
 }
 
@@ -2427,13 +2427,21 @@ void nsHttpChannel::ProcessAltService() {
   nsCOMPtr<nsProxyInfo> proxyInfo;
   NS_NewNotificationCallbacksAggregation(mCallbacks, mLoadGroup,
                                          getter_AddRefs(callbacks));
+
   if (mProxyInfo) {
     proxyInfo = do_QueryInterface(mProxyInfo);
   }
 
   OriginAttributes originAttributes;
-  StoragePrincipalHelper::GetOriginAttributes(
-      this, originAttributes, StoragePrincipalHelper::eRegularPrincipal);
+  // Regular principal in case we have a proxy.
+  if (proxyInfo &&
+      !StaticPrefs::privacy_partition_network_state_connection_with_proxy()) {
+    StoragePrincipalHelper::GetOriginAttributes(
+        this, originAttributes, StoragePrincipalHelper::eRegularPrincipal);
+  } else {
+    StoragePrincipalHelper::GetOriginAttributesForNetworkState(
+        this, originAttributes);
+  }
 
   AltSvcMapping::ProcessHeader(
       altSvc, scheme, originHost, originPort, mUsername, GetTopWindowOrigin(),
@@ -6761,8 +6769,15 @@ nsresult nsHttpChannel::BeginConnect() {
   SetDoNotTrack();
 
   OriginAttributes originAttributes;
-  StoragePrincipalHelper::GetOriginAttributes(
-      this, originAttributes, StoragePrincipalHelper::eRegularPrincipal);
+  // Regular principal in case we have a proxy.
+  if (proxyInfo &&
+      !StaticPrefs::privacy_partition_network_state_connection_with_proxy()) {
+    StoragePrincipalHelper::GetOriginAttributes(
+        this, originAttributes, StoragePrincipalHelper::eRegularPrincipal);
+  } else {
+    StoragePrincipalHelper::GetOriginAttributesForNetworkState(
+        this, originAttributes);
+  }
 
   RefPtr<nsHttpConnectionInfo> connInfo = new nsHttpConnectionInfo(
       host, port, EmptyCString(), mUsername, GetTopWindowOrigin(), proxyInfo,
@@ -6888,12 +6903,13 @@ nsresult nsHttpChannel::BeginConnect() {
     // just the initial document resets the whole pool
     if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI) {
       gHttpHandler->AltServiceCache()->ClearAltServiceMappings();
-      rv = gHttpHandler->DoShiftReloadConnectionCleanup(mConnectionInfo);
+      rv = gHttpHandler->DoShiftReloadConnectionCleanupWithConnInfo(
+          mConnectionInfo);
       if (NS_FAILED(rv)) {
-        LOG(
-            ("nsHttpChannel::BeginConnect "
-             "DoShiftReloadConnectionCleanup failed: %08x [this=%p]",
-             static_cast<uint32_t>(rv), this));
+        LOG((
+            "nsHttpChannel::BeginConnect "
+            "DoShiftReloadConnectionCleanupWithConnInfo failed: %08x [this=%p]",
+            static_cast<uint32_t>(rv), this));
       }
     }
   }
@@ -9035,10 +9051,10 @@ void nsHttpChannel::PushRedirectAsyncFunc(nsContinueRedirectionFunc func) {
 }
 
 void nsHttpChannel::PopRedirectAsyncFunc(nsContinueRedirectionFunc func) {
-  MOZ_ASSERT(func == mRedirectFuncStack[mRedirectFuncStack.Length() - 1],
+  MOZ_ASSERT(func == mRedirectFuncStack.LastElement(),
              "Trying to pop wrong method from redirect async stack!");
 
-  mRedirectFuncStack.TruncateLength(mRedirectFuncStack.Length() - 1);
+  mRedirectFuncStack.RemoveLastElement();
 }
 
 //-----------------------------------------------------------------------------
@@ -9199,7 +9215,7 @@ void nsHttpChannel::UpdateAggregateCallbacks() {
   }
   nsCOMPtr<nsIInterfaceRequestor> callbacks;
   NS_NewNotificationCallbacksAggregation(mCallbacks, mLoadGroup,
-                                         GetCurrentThreadEventTarget(),
+                                         GetCurrentEventTarget(),
                                          getter_AddRefs(callbacks));
   mTransaction->SetSecurityCallbacks(callbacks);
 }
@@ -9553,16 +9569,7 @@ void nsHttpChannel::SetOriginHeader() {
     return;
   }
 
-  // Instead of consulting Preferences::GetInt() all the time we
-  // can cache the result to speed things up.
-  static int32_t sSendOriginHeader = 0;
-  static bool sIsInited = false;
-  if (!sIsInited) {
-    sIsInited = true;
-    Preferences::AddIntVarCache(&sSendOriginHeader,
-                                "network.http.sendOriginHeader");
-  }
-  if (sSendOriginHeader == 0) {
+  if (StaticPrefs::network_http_sendOriginHeader() == 0) {
     // Origin header suppressed by user setting
     return;
   }
@@ -9578,7 +9585,7 @@ void nsHttpChannel::SetOriginHeader() {
   nsContentUtils::GetASCIIOrigin(referrer, origin);
 
   // Restrict Origin to same-origin loads if requested by user
-  if (sSendOriginHeader == 1) {
+  if (StaticPrefs::network_http_sendOriginHeader() == 1) {
     nsAutoCString currentOrigin;
     nsContentUtils::GetASCIIOrigin(mURI, currentOrigin);
     if (!origin.EqualsIgnoreCase(currentOrigin.get())) {

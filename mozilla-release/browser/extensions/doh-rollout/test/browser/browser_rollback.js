@@ -22,13 +22,10 @@ add_task(async function testRollback() {
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, EXAMPLE_URL);
   let panel = await promise;
-  is(
-    Preferences.get(prefs.DOH_DOORHANGER_SHOWN_PREF),
-    undefined,
-    "Doorhanger shown pref undefined before user interaction."
-  );
 
-  prefPromise = TestUtils.waitForPrefChange(prefs.DOH_DOORHANGER_SHOWN_PREF);
+  prefPromise = TestUtils.waitForPrefChange(
+    prefs.DOH_DOORHANGER_USER_DECISION_PREF
+  );
 
   // Click the doorhanger's "accept" button.
   let button = panel.querySelector(".popup-notification-primary-button");
@@ -40,11 +37,6 @@ add_task(async function testRollback() {
   await checkHeuristicsTelemetry("enable_doh", "startup");
 
   await prefPromise;
-  is(
-    Preferences.get(prefs.DOH_DOORHANGER_SHOWN_PREF),
-    true,
-    "Doorhanger shown pref saved."
-  );
   is(
     Preferences.get(prefs.DOH_DOORHANGER_USER_DECISION_PREF),
     "UIOk",
@@ -73,11 +65,11 @@ add_task(async function testRollback() {
   setPassingHeuristics();
   Preferences.reset(prefs.DOH_ENABLED_PREF);
   await waitForStateTelemetry();
-  await ensureTRRMode(0);
+  await ensureTRRMode(undefined);
   ensureNoTRRSelectionTelemetry();
   await ensureNoHeuristicsTelemetry();
   simulateNetworkChange();
-  await ensureNoTRRModeChange(0);
+  await ensureNoTRRModeChange(undefined);
   await ensureNoHeuristicsTelemetry();
 
   // Re-enable.
@@ -96,17 +88,17 @@ add_task(async function testRollback() {
   // Rollback again for good measure! This time with failing heuristics.
   Preferences.reset(prefs.DOH_ENABLED_PREF);
   await waitForStateTelemetry();
-  await ensureNoTRRModeChange(0);
+  await ensureTRRMode(undefined);
   ensureNoTRRSelectionTelemetry();
   await ensureNoHeuristicsTelemetry();
   simulateNetworkChange();
-  await ensureNoTRRModeChange(0);
+  await ensureNoTRRModeChange(undefined);
   await ensureNoHeuristicsTelemetry();
 
   // Re-enable.
   Preferences.set(prefs.DOH_ENABLED_PREF, true);
 
-  await ensureNoTRRModeChange(0);
+  await ensureTRRMode(0);
   ensureNoTRRSelectionTelemetry();
   await checkHeuristicsTelemetry("disable_doh", "startup");
 
@@ -119,11 +111,11 @@ add_task(async function testRollback() {
   // Rollback again, this time with TRR mode set to 2 prior to doing so.
   Preferences.reset(prefs.DOH_ENABLED_PREF);
   await waitForStateTelemetry();
-  await ensureTRRMode(0);
+  await ensureTRRMode(undefined);
   ensureNoTRRSelectionTelemetry();
   await ensureNoHeuristicsTelemetry();
   simulateNetworkChange();
-  await ensureNoTRRModeChange(0);
+  await ensureNoTRRModeChange(undefined);
   await ensureNoHeuristicsTelemetry();
 
   // Re-enable.
@@ -141,10 +133,10 @@ add_task(async function testRollback() {
   await disableAddon();
   Preferences.reset(prefs.DOH_ENABLED_PREF);
   await enableAddon();
-  await ensureTRRMode(0);
+  await ensureTRRMode(undefined);
   ensureNoTRRSelectionTelemetry();
   await ensureNoHeuristicsTelemetry();
   simulateNetworkChange();
-  await ensureNoTRRModeChange(0);
+  await ensureNoTRRModeChange(undefined);
   await ensureNoHeuristicsTelemetry();
 });

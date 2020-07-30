@@ -224,27 +224,6 @@ class WebConsole {
   }
 
   /**
-   * Tries to open a Stylesheet file related to the web page for the web console
-   * instance in the Style Editor. If the file is not found, it is opened in
-   * source view instead.
-   *
-   * Manually handle the case where toolbox does not exist (Browser Console).
-   *
-   * @param string sourceURL
-   *        The URL of the file.
-   * @param integer sourceLine
-   *        The line number which you want to place the caret.
-   */
-  viewSourceInStyleEditor(sourceURL, sourceLine) {
-    const { toolbox } = this;
-    if (!toolbox) {
-      this.viewSource(sourceURL, sourceLine);
-      return;
-    }
-    toolbox.viewSourceInStyleEditor(sourceURL, sourceLine);
-  }
-
-  /**
    * Tries to open a JavaScript file related to the web page for the web console
    * instance in the Script Debugger. If the file is not found, it is opened in
    * source view instead.
@@ -378,29 +357,20 @@ class WebConsole {
     return panel.selection;
   }
 
-  async onViewSourceInDebugger(frame) {
+  async onViewSourceInDebugger({ id, url, line, column }) {
     if (this.toolbox) {
-      await this.toolbox.viewSourceInDebugger(
-        frame.url,
-        frame.line,
-        frame.column,
-        frame.sourceId
-      );
+      await this.toolbox.viewSourceInDebugger(url, line, column, id);
 
       this.recordEvent("jump_to_source");
       this.emitForTests("source-in-debugger-opened");
     }
   }
 
-  async onViewSourceInStyleEditor(frame) {
+  async onViewSourceInStyleEditor({ url, line, column }) {
     if (!this.toolbox) {
       return;
     }
-    await this.toolbox.viewSourceInStyleEditor(
-      frame.url,
-      frame.line,
-      frame.column
-    );
+    await this.toolbox.viewSourceInStyleEditorByURL(url, line, column);
     this.recordEvent("jump_to_source");
   }
 

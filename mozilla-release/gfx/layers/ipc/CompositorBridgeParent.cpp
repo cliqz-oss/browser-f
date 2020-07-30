@@ -32,19 +32,18 @@
 #include "mozilla/gfx/Point.h"      // for IntSize
 #include "mozilla/gfx/Rect.h"       // for IntSize
 #include "mozilla/gfx/gfxVars.h"    // for gfxVars
-#include "VRManager.h"              // for VRManager
 #include "mozilla/ipc/Transport.h"  // for Transport
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUParent.h"
-#include "mozilla/layers/AnimationHelper.h"  // for CompositorAnimationStorage
 #include "mozilla/layers/APZCTreeManagerParent.h"  // for APZCTreeManagerParent
 #include "mozilla/layers/APZSampler.h"             // for APZSampler
 #include "mozilla/layers/APZThreadUtils.h"         // for APZThreadUtils
 #include "mozilla/layers/APZUpdater.h"             // for APZUpdater
 #include "mozilla/layers/AsyncCompositionManager.h"
-#include "mozilla/layers/BasicCompositor.h"          // for BasicCompositor
-#include "mozilla/layers/CompositionRecorder.h"      // for CompositionRecorder
-#include "mozilla/layers/Compositor.h"               // for Compositor
+#include "mozilla/layers/BasicCompositor.h"      // for BasicCompositor
+#include "mozilla/layers/CompositionRecorder.h"  // for CompositionRecorder
+#include "mozilla/layers/Compositor.h"           // for Compositor
+#include "mozilla/layers/CompositorAnimationStorage.h"  // for CompositorAnimationStorage
 #include "mozilla/layers/CompositorManagerParent.h"  // for CompositorManagerParent
 #include "mozilla/layers/CompositorOGL.h"            // for CompositorOGL
 #include "mozilla/layers/CompositorThread.h"
@@ -58,6 +57,7 @@
 #include "mozilla/layers/LayerManagerMLGPU.h"
 #include "mozilla/layers/LayerTreeOwnerTracker.h"
 #include "mozilla/layers/LayersTypes.h"
+#include "mozilla/layers/OMTASampler.h"
 #include "mozilla/layers/PLayerTransactionParent.h"
 #include "mozilla/layers/RemoteContentController.h"
 #include "mozilla/layers/WebRenderBridgeParent.h"
@@ -391,6 +391,10 @@ void CompositorBridgeParent::Initialize() {
     mApzUpdater = new APZUpdater(mApzcTreeManager, mOptions.UseWebRender());
   }
 
+  if (mOptions.UseWebRender()) {
+    mOMTASampler = new OMTASampler(GetAnimationStorage());
+  }
+
   mPaused = mOptions.InitiallyPaused();
 
   mCompositorBridgeID = 0;
@@ -518,6 +522,11 @@ void CompositorBridgeParent::StopAndClearResources() {
   if (mCompositorScheduler) {
     mCompositorScheduler->Destroy();
     mCompositorScheduler = nullptr;
+  }
+
+  if (mOMTASampler) {
+    mOMTASampler->Destroy();
+    mOMTASampler = nullptr;
   }
 
   // After this point, it is no longer legal to access the widget.
@@ -1161,12 +1170,16 @@ bool CompositorBridgeParent::DeallocPAPZParent(PAPZParent* aActor) {
   return true;
 }
 
-RefPtr<APZSampler> CompositorBridgeParent::GetAPZSampler() {
+RefPtr<APZSampler> CompositorBridgeParent::GetAPZSampler() const {
   return mApzSampler;
 }
 
-RefPtr<APZUpdater> CompositorBridgeParent::GetAPZUpdater() {
+RefPtr<APZUpdater> CompositorBridgeParent::GetAPZUpdater() const {
   return mApzUpdater;
+}
+
+RefPtr<OMTASampler> CompositorBridgeParent::GetOMTASampler() const {
+  return mOMTASampler;
 }
 
 CompositorBridgeParent*
@@ -1816,7 +1829,7 @@ mozilla::ipc::IPCResult CompositorBridgeParent::RecvAdoptChild(
     api = api->Clone();
     wr::Epoch newEpoch = childWrBridge->UpdateWebRender(
         mWrBridge->CompositorScheduler(), std::move(api),
-        mWrBridge->AsyncImageManager(), GetAnimationStorage(),
+        mWrBridge->AsyncImageManager(),
         mWrBridge->GetTextureFactoryIdentifier());
     // Pretend we composited, since parent CompositorBridgeParent was replaced.
     TimeStamp now = TimeStamp::Now();
@@ -1882,6 +1895,10 @@ PWebRenderBridgeParent* CompositorBridgeParent::AllocPWebRenderBridgeParent(
     // Same as for mApzUpdater, but for the sampler thread.
     mApzSampler->SetWebRenderWindowId(windowId);
   }
+  if (mOMTASampler) {
+    // Same, but for the OMTA sampler.
+    mOMTASampler->SetWebRenderWindowId(windowId);
+  }
   RefPtr<wr::WebRenderAPI> api =
       wr::WebRenderAPI::Create(this, std::move(widget), windowId, aSize);
   if (!api) {
@@ -1901,10 +1918,9 @@ PWebRenderBridgeParent* CompositorBridgeParent::AllocPWebRenderBridgeParent(
   mAsyncImageManager =
       new AsyncImagePipelineManager(api->Clone(), useCompositorWnd);
   RefPtr<AsyncImagePipelineManager> asyncMgr = mAsyncImageManager;
-  RefPtr<CompositorAnimationStorage> animStorage = GetAnimationStorage();
   mWrBridge = new WebRenderBridgeParent(this, aPipelineId, mWidget, nullptr,
                                         std::move(api), std::move(asyncMgr),
-                                        std::move(animStorage), mVsyncRate);
+                                        mVsyncRate);
   mWrBridge.get()->AddRef();  // IPDL reference
 
   mCompositorScheduler = mWrBridge->CompositorScheduler();
@@ -2419,6 +2435,10 @@ CompositorBridgeParent::GetIndirectShadowTree(LayersId aId) {
 bool CompositorBridgeParent::CallWithIndirectShadowTree(
     LayersId aId,
     const std::function<void(CompositorBridgeParent::LayerTreeState&)>& aFunc) {
+  if (!sIndirectLayerTreesLock) {
+    // Can hapen during shutdown
+    return false;
+  }
   // Note that this does not make things universally threadsafe just because the
   // sIndirectLayerTreesLock mutex is held. This is because the compositor
   // thread can mutate the LayerTreeState outside the lock. It does however

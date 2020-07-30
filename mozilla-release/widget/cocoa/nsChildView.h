@@ -182,6 +182,10 @@ class WidgetRenderingContext;
   // This is a subview of self so that it can be ordered on top of mVibrancyViewsContainer.
   PixelHostingView* mPixelHostingView;
 
+  // The CALayer that wraps Gecko's rendered contents. It's a sublayer of
+  // mPixelHostingView's backing layer. Always non-null.
+  CALayer* mRootCALayer;  // [STRONG]
+
   // Last pressure stage by trackpad's force click
   NSInteger mLastPressureStage;
 }
@@ -425,6 +429,8 @@ class nsChildView final : public nsBaseWidget {
 
   virtual void CreateCompositor() override;
 
+  virtual bool WidgetPaintsBackground() override { return true; }
+
   virtual bool PreRender(mozilla::widget::WidgetRenderingContext* aContext) override;
   virtual void PostRender(mozilla::widget::WidgetRenderingContext* aContext) override;
   virtual RefPtr<mozilla::layers::NativeLayerRoot> GetNativeLayerRoot() override;
@@ -485,8 +491,6 @@ class nsChildView final : public nsBaseWidget {
 
   virtual LayoutDeviceIntPoint GetClientOffset() override;
 
-  virtual LayoutDeviceIntRegion GetOpaqueWidgetRegion() override;
-
   void DispatchAPZWheelInputEvent(mozilla::InputData& aEvent, bool aCanTriggerSwipe);
   nsEventStatus DispatchAPZInputEvent(mozilla::InputData& aEvent);
 
@@ -527,8 +531,6 @@ class nsChildView final : public nsBaseWidget {
   void UpdateVibrancy(const nsTArray<ThemeGeometry>& aThemeGeometries);
   mozilla::VibrancyManager& EnsureVibrancyManager();
 
-  void UpdateInternalOpaqueRegion();
-
   nsIWidget* GetWidgetForListenerEvents();
 
   struct SwipeInfo {
@@ -554,9 +556,10 @@ class nsChildView final : public nsBaseWidget {
   nsWeakPtr mAccessible;
 #endif
 
-  // Protects the view from being teared down while a composition is in
-  // progress on the compositor thread.
-  mozilla::Mutex mViewTearDownLock;
+  // Held while the compositor (or WR renderer) thread is compositing.
+  // Protects from tearing down the view during compositing and from presenting
+  // half-composited layers to the screen.
+  mozilla::Mutex mCompositingLock;
 
   mozilla::ViewRegion mNonDraggableRegion;
 
@@ -589,9 +592,6 @@ class nsChildView final : public nsBaseWidget {
   mozilla::UniquePtr<mozilla::SwipeEventQueue> mSwipeEventQueue;
 
   RefPtr<mozilla::CancelableRunnable> mUnsuspendAsyncCATransactionsRunnable;
-
-  // The widget's opaque region. Written on the main thread, read on any thread.
-  mozilla::DataMutex<mozilla::LayoutDeviceIntRegion> mOpaqueRegion;
 
   // This flag is only used when APZ is off. It indicates that the current pan
   // gesture was processed as a swipe. Sometimes the swipe animation can finish

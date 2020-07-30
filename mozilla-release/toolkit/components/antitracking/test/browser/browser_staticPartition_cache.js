@@ -44,7 +44,9 @@ async function checkCache(suffixes, originAttributes) {
     );
     ok(
       foundEntryCount > 0,
-      `Cache entries expected for ${suffix} and OA=${originAttributes}`
+      `Cache entries expected for ${suffix} and OA=${JSON.stringify(
+        originAttributes
+      )}`
     );
   }
 }
@@ -62,7 +64,7 @@ add_task(async function() {
   const tests = [
     {
       prefValue: true,
-      originAttributes: { firstPartyDomain: "(http,example.org)" },
+      originAttributes: { partitionKey: "(http,example.org)" },
     },
     {
       prefValue: false,
@@ -97,6 +99,9 @@ add_task(async function() {
     };
 
     await SpecialPowers.spawn(tab.linkedBrowser, [argObj], async function(arg) {
+      // The CSS cache needs to be cleared in-process.
+      content.windowUtils.clearSharedStyleSheetCache();
+
       let videoURL = arg.urlPrefix + "file_thirdPartyChild.video.ogv";
       let audioURL = arg.urlPrefix + "file_thirdPartyChild.audio.ogg";
       let URLSuffix = "?r=" + arg.randomSuffix;
@@ -161,6 +166,7 @@ add_task(async function() {
       "link.css",
       "script.js",
       "img.png",
+      "favicon.png",
       "object.png",
       "embed.png",
       "xhr.html",
@@ -173,15 +179,11 @@ add_task(async function() {
       "worker.request.html",
       "import.js",
       "worker.js",
+      "sharedworker.js",
     ];
 
     info("Query the cache (maybe) partitioned cache");
     await checkCache(maybePartitionedSuffixes, test.originAttributes);
-
-    let notPartitionedSuffixes = ["sharedworker.js"];
-
-    info("Query the cache not partitioned cache");
-    await checkCache(notPartitionedSuffixes, {});
 
     gBrowser.removeCurrentTab();
   }

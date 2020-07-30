@@ -367,7 +367,7 @@ bool nsXULElement::IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) {
   // or if it's a remote target, since the remote target must handle
   // the focus.
   if (aWithMouse && IsNonList(mNodeInfo) &&
-      !EventStateManager::IsRemoteTarget(this)) {
+      !EventStateManager::IsTopLevelRemoteTarget(this)) {
     return false;
   }
 #endif
@@ -1831,8 +1831,8 @@ nsresult nsXULPrototypeScript::Compile(
 
   // Ok, compile it to create a prototype script object!
   JS::CompileOptions options(cx);
-  options.setIntroductionType("scriptElement")
-      .setFileAndLine(urlspec.get(), aLineNo);
+  options.setIntroductionType(mOutOfLine ? "srcScript" : "inlineScript")
+      .setFileAndLine(urlspec.get(), mOutOfLine ? 1 : aLineNo);
   // If the script was inline, tell the JS parser to save source for
   // Function.prototype.toSource(). If it's out of line, we retrieve the
   // source from the files on demand.

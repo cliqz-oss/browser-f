@@ -12,27 +12,33 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/ReflowOutput.h"
 #include "mozilla/RelativeTo.h"
 #include "mozilla/StaticPrefs_nglayout.h"
+#include "mozilla/SVGImageContext.h"
+#include "mozilla/ToString.h"
 #include "mozilla/TypedEnumBits.h"
 #include "mozilla/UniquePtr.h"
-#include "nsBoundingMetrics.h"
 #include "mozilla/layout/FrameChildList.h"
 #include "mozilla/layers/ScrollableLayerGuid.h"
-#include "nsThreadUtils.h"
-#include "nsCSSPropertyIDSet.h"
-#include "nsGkAtoms.h"
 #include "mozilla/gfx/2D.h"
-#include "Units.h"
-#include "mozilla/ToString.h"
-#include "mozilla/ReflowOutput.h"
-#include "ImageContainer.h"  // for layers::Image
 #include "gfx2DGlue.h"
-#include "SVGImageContext.h"
+#include "gfxPoint.h"
+#include "nsBoundingMetrics.h"
+#include "nsCSSPropertyIDSet.h"
+#include "nsClassHashtable.h"
+#include "nsGkAtoms.h"
+#include "nsThreadUtils.h"
+#include "ImageContainer.h"  // for layers::Image
+#include "Units.h"
 #include <limits>
 #include <algorithm>
-#include "gfxPoint.h"
-#include "nsClassHashtable.h"
+// If you're thinking of adding a new include here, please try hard to not.
+// This header file gets included just about everywhere and adding headers here
+// can dramatically increase avoidable build activity. Try instead:
+// - using a forward declaration
+// - putting the include in the .cpp file, if it is only needed by the body
+// - putting your new functions in some other less-widely-used header
 
 class gfxContext;
 class gfxFontEntry;
@@ -74,6 +80,7 @@ class WritingMode;
 class DisplayItemClip;
 class EffectSet;
 struct ActiveScrolledRoot;
+enum class ScrollOrigin : uint8_t;
 enum class StyleImageOrientation : uint8_t;
 namespace dom {
 class CanvasRenderingContext2D;
@@ -149,6 +156,7 @@ class nsLayoutUtils {
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
   typedef mozilla::IntrinsicSize IntrinsicSize;
   typedef mozilla::RelativeTo RelativeTo;
+  typedef mozilla::ScrollOrigin ScrollOrigin;
   typedef mozilla::ViewportType ViewportType;
   typedef mozilla::gfx::SourceSurface SourceSurface;
   typedef mozilla::gfx::sRGBColor sRGBColor;
@@ -913,6 +921,8 @@ class nsLayoutUtils {
    * aAncestor. Computes the bounding-box of the true quadrilateral.
    * Pass non-null aPreservesAxisAlignedRectangles and it will be set to true if
    * we only need to use a 2d transform that PreservesAxisAlignedRectangles().
+   * The corner positions of aRect are treated as meaningful even if aRect is
+   * empty.
    *
    * |aMatrixCache| allows for optimizations in recomputing the same matrix over
    * and over. The argument can be one of the following values:
@@ -1009,6 +1019,15 @@ class nsLayoutUtils {
    */
   static const nsIFrame* FindNearestCommonAncestorFrame(
       const nsIFrame* aFrame1, const nsIFrame* aFrame2);
+
+  /**
+   * Find the nearest common ancestor frame for aFrame1 and aFrame2, assuming
+   * that they are within the same block.
+   *
+   * Returns null if they are not within the same block.
+   */
+  static const nsIFrame* FindNearestCommonAncestorFrameWithinBlock(
+      const nsTextFrame* aFrame1, const nsTextFrame* aFrame2);
 
   /**
    * Transforms a list of CSSPoints from aFromFrame to aToFrame, taking into
@@ -1189,6 +1208,7 @@ class nsLayoutUtils {
     NoComposite = 0x100,
     Compressed = 0x200,
     ForWebRender = 0x400,
+    UseHighQualityScaling = 0x800,
   };
 
   /**
@@ -2674,9 +2694,16 @@ class nsLayoutUtils {
    * to the given prescontext. Return true if the size was set, false
    * otherwise.
    */
-  static bool GetContentViewerSize(nsPresContext* aPresContext,
-                                   LayoutDeviceIntSize& aOutSize);
+  enum class SubtractDynamicToolbar { No, Yes };
+  static bool GetContentViewerSize(
+      nsPresContext* aPresContext, LayoutDeviceIntSize& aOutSize,
+      SubtractDynamicToolbar = SubtractDynamicToolbar::Yes);
 
+ private:
+  static bool UpdateCompositionBoundsForRCDRSF(
+      mozilla::ParentLayerRect& aCompBounds, nsPresContext* aPresContext);
+
+ public:
   /**
    * Calculate the compostion size for a frame. See FrameMetrics.h for
    * defintion of composition size (or bounds).
@@ -2687,7 +2714,8 @@ class nsLayoutUtils {
    * are likely to need special-case handling of the RCD-RSF.
    */
   static nsSize CalculateCompositionSizeForFrame(
-      nsIFrame* aFrame, bool aSubtractScrollbars = true);
+      nsIFrame* aFrame, bool aSubtractScrollbars = true,
+      const nsSize* aOverrideScrollPortSize = nullptr);
 
   /**
    * Calculate the composition size for the root scroll frame of the root
@@ -2857,20 +2885,13 @@ class nsLayoutUtils {
   static bool HasDocumentLevelListenersForApzAwareEvents(PresShell* aPresShell);
 
   /**
-   * Set the viewport size for the purpose of clamping the scroll position
-   * for the root scroll frame of this document
-   * (see nsIDOMWindowUtils.setVisualViewportSize).
-   */
-  static void SetVisualViewportSize(PresShell* aPresShell, CSSSize aSize);
-
-  /**
    * Returns true if the given scroll origin is "higher priority" than APZ.
    * In general any content programmatic scrolls (e.g. scrollTo calls) are
    * higher priority, and take precedence over APZ scrolling. This function
    * returns true for those, and returns false for other origins like APZ
    * itself, or scroll position updates from the history restore code.
    */
-  static bool CanScrollOriginClobberApz(nsAtom* aScrollOrigin);
+  static bool CanScrollOriginClobberApz(ScrollOrigin aScrollOrigin);
 
   static ScrollMetadata ComputeScrollMetadata(
       nsIFrame* aForFrame, nsIFrame* aScrollFrame, nsIContent* aContent,
@@ -3032,7 +3053,8 @@ class nsLayoutUtils {
   // aUseUserFontSet is true.
   static already_AddRefed<nsFontMetrics> GetMetricsFor(
       nsPresContext* aPresContext, bool aIsVertical,
-      const nsStyleFont* aStyleFont, nscoord aFontSize, bool aUseUserFontSet);
+      const nsStyleFont* aStyleFont, mozilla::Length aFontSize,
+      bool aUseUserFontSet);
 
   static void ComputeSystemFont(nsFont* aSystemFont,
                                 mozilla::LookAndFeel::FontID aFontID,
@@ -3099,9 +3121,13 @@ class nsLayoutUtils {
    * With dynamic toolbar(s) the height for `vh` units is greater than the
    * ICB height, we need to expand it in some places.
    **/
-  template <typename SizeType>
-  static SizeType ExpandHeightForViewportUnits(nsPresContext* aPresContext,
-                                               const SizeType& aSize);
+  static nsSize ExpandHeightForViewportUnits(nsPresContext* aPresContext,
+                                             const nsSize& aSize);
+
+  static CSSSize ExpandHeightForDynamicToolbar(nsPresContext* aPresContext,
+                                               const CSSSize& aSize);
+  static nsSize ExpandHeightForDynamicToolbar(nsPresContext* aPresContext,
+                                              const nsSize& aSize);
 
  private:
   /**
@@ -3156,24 +3182,6 @@ template <typename PointType, typename RectType, typename CoordType>
   }
 
   return false;
-}
-
-template <typename SizeType>
-/* static */ SizeType nsLayoutUtils::ExpandHeightForViewportUnits(
-    nsPresContext* aPresContext, const SizeType& aSize) {
-  nsSize sizeForViewportUnits = aPresContext->GetSizeForViewportUnits();
-
-  // |aSize| might be the size expanded to the minimum-scale size whereas the
-  // size for viewport units is not scaled so that we need to expand the |aSize|
-  // height by multiplying by the ratio of the viewport units height to the
-  // visible area height.
-  float vhExpansionRatio = (float)sizeForViewportUnits.height /
-                           aPresContext->GetVisibleArea().height;
-
-  MOZ_ASSERT(aSize.height <= NSCoordSaturatingNonnegativeMultiply(
-                                 aSize.height, vhExpansionRatio));
-  return SizeType(aSize.width, NSCoordSaturatingNonnegativeMultiply(
-                                   aSize.height, vhExpansionRatio));
 }
 
 template <typename T>

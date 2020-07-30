@@ -107,6 +107,13 @@ class WindowProxyHolder;
   FIELD(FeaturePolicy, RefPtr<mozilla::dom::FeaturePolicy>)                  \
   /* See nsSandboxFlags.h for the possible flags. */                         \
   FIELD(SandboxFlags, uint32_t)                                              \
+  /* A unique identifier for the browser element that is hosting this        \
+   * BrowsingContext tree. Every BrowsingContext in the element's tree will  \
+   * return the same ID in all processes and it will remain stable           \
+   * regardless of process changes. When a browser element's frameloader is  \
+   * switched to another browser element this ID will remain the same but    \
+   * hosted under the under the new browser element. */                      \
+  FIELD(BrowserId, uint64_t)                                                 \
   FIELD(HistoryID, nsID)                                                     \
   FIELD(InRDMPane, bool)                                                     \
   FIELD(Loading, bool)                                                       \
@@ -116,6 +123,7 @@ class WindowProxyHolder;
   FIELD(AllowContentRetargetingOnChildren, bool)                             \
   FIELD(ForceEnableTrackingProtection, bool)                                 \
   FIELD(UseGlobalHistory, bool)                                              \
+  FIELD(FullscreenAllowedByOwner, bool)                                      \
   /* These field are used to store the states of autoplay media request on   \
    * GeckoView only, and it would only be modified on the top level browsing \
    * context. */                                                             \
@@ -132,12 +140,16 @@ class WindowProxyHolder;
   FIELD(FullZoom, float)                                                     \
   FIELD(WatchedByDevToolsInternal, bool)                                     \
   FIELD(TextZoom, float)                                                     \
+  /* The current in-progress load. */                                        \
+  FIELD(CurrentLoadIdentifier, Maybe<uint64_t>)                              \
   /* See nsIRequest for possible flags. */                                   \
   FIELD(DefaultLoadFlags, uint32_t)                                          \
   /* Signals that session history is enabled for this browsing context tree. \
    * This is only ever set to true on the top BC, so consumers need to get   \
    * the value from the top BC! */                                           \
-  FIELD(HasSessionHistory, bool)
+  FIELD(HasSessionHistory, bool)                                             \
+  FIELD(UseErrorPages, bool)                                                 \
+  FIELD(PlatformOverride, nsString)
 
 // BrowsingContext, in this context, is the cross process replicated
 // environment in which information about documents is stored. In
@@ -272,8 +284,7 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   nsresult LoadURI(nsDocShellLoadState* aLoadState,
                    bool aSetNavigating = false);
 
-  nsresult InternalLoad(nsDocShellLoadState* aLoadState,
-                        nsIDocShell** aDocShell, nsIRequest** aRequest);
+  nsresult InternalLoad(nsDocShellLoadState* aLoadState);
 
   // If the load state includes a source BrowsingContext has been passed, check
   // to see if we are sandboxed from it as the result of an iframe or CSP
@@ -298,12 +309,13 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   bool IsChrome() const { return !IsContent(); }
 
   bool IsTop() const { return !GetParent(); }
+  bool IsFrame() const { return !IsTop(); }
 
-  bool IsTopContent() const { return IsContent() && !GetParent(); }
+  bool IsTopContent() const { return IsContent() && IsTop(); }
 
   bool IsInSubtreeOf(BrowsingContext* aContext);
 
-  bool IsContentSubframe() const { return IsContent() && GetParent(); }
+  bool IsContentSubframe() const { return IsContent() && IsFrame(); }
   uint64_t Id() const { return mBrowsingContextId; }
 
   BrowsingContext* GetParent() const;
@@ -388,12 +400,30 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   bool WatchedByDevTools();
   void SetWatchedByDevTools(bool aWatchedByDevTools, ErrorResult& aRv);
 
+  bool FullscreenAllowed() const;
+
   float FullZoom() const { return GetFullZoom(); }
   float TextZoom() const { return GetTextZoom(); }
 
   bool UseGlobalHistory() const { return GetUseGlobalHistory(); }
 
+  uint64_t BrowserId() const { return GetBrowserId(); }
+
   bool IsLoading();
+
+  void GetEmbedderElementType(nsString& aElementType) {
+    if (GetEmbedderElementType().isSome()) {
+      aElementType = GetEmbedderElementType().value();
+    }
+  }
+
+  bool IsLoadingIdentifier(uint64_t aLoadIdentifer) {
+    if (GetCurrentLoadIdentifier() &&
+        *GetCurrentLoadIdentifier() == aLoadIdentifer) {
+      return true;
+    }
+    return false;
+  }
 
   // ScreenOrientation related APIs
   void SetCurrentOrientation(OrientationType aType, float aAngle) {
@@ -507,6 +537,7 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
 
   // Window APIs that are cross-origin-accessible (from the HTML spec).
   WindowProxyHolder Window();
+  BrowsingContext* GetBrowsingContext() { return this; };
   BrowsingContext* Self() { return this; }
   void Location(JSContext* aCx, JS::MutableHandle<JSObject*> aLocation,
                 ErrorResult& aError);
@@ -532,6 +563,11 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
     aUserAgent = Top()->GetUserAgentOverride();
   }
   void SetCustomUserAgent(const nsAString& aUserAgent);
+
+  void GetCustomPlatform(nsAString& aPlatform) {
+    aPlatform = Top()->GetPlatformOverride();
+  }
+  void SetCustomPlatform(const nsAString& aPlatform);
 
   JSObject* WrapObject(JSContext* aCx);
 
@@ -726,6 +762,10 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
 
   void DidSet(FieldIndex<IDX_AncestorLoading>);
 
+  void DidSet(FieldIndex<IDX_PlatformOverride>);
+  bool CanSet(FieldIndex<IDX_PlatformOverride>,
+              const nsString& aPlatformOverride, ContentParent* aSource);
+
   void DidSet(FieldIndex<IDX_UserAgentOverride>);
   bool CanSet(FieldIndex<IDX_UserAgentOverride>, const nsString& aUserAgent,
               ContentParent* aSource);
@@ -746,6 +786,8 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
               ContentParent* aSource);
   bool CanSet(FieldIndex<IDX_AllowPlugins>, const bool& aAllowPlugins,
               ContentParent* aSource);
+  bool CanSet(FieldIndex<IDX_FullscreenAllowedByOwner>, const bool&,
+              ContentParent*);
   bool CanSet(FieldIndex<IDX_WatchedByDevToolsInternal>,
               const bool& aWatchedByDevToolsInternal, ContentParent* aSource);
 
@@ -757,6 +799,12 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
               ContentParent* aSource);
 
   void DidSet(FieldIndex<IDX_HasSessionHistory>, bool aOldValue);
+
+  bool CanSet(FieldIndex<IDX_BrowserId>, const uint32_t& aValue,
+              ContentParent* aSource);
+
+  bool CanSet(FieldIndex<IDX_UseErrorPages>, const bool& aUseErrorPages,
+              ContentParent* aSource);
 
   template <size_t I, typename T>
   bool CanSet(FieldIndex<I>, const T&, ContentParent*) {

@@ -15,6 +15,7 @@
 #include "mozilla/StaticPrefs_permissions.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/FeaturePolicyUtils.h"
+#include "mozilla/dom/WindowContext.h"
 #include "mozilla/PermissionManager.h"
 
 using namespace mozilla::dom;
@@ -43,6 +44,12 @@ static const DelegateInfo sPermissionsMap[] = {
     {"screen", u"display-capture", DelegatePolicy::eDelegateUseFeaturePolicy},
     {"xr", u"xr-spatial-tracking", DelegatePolicy::eDelegateUseFeaturePolicy},
 };
+
+static_assert(PermissionDelegateHandler::DELEGATED_PERMISSION_COUNT ==
+                  (sizeof(sPermissionsMap) / sizeof(DelegateInfo)),
+              "The PermissionDelegateHandler::DELEGATED_PERMISSION_COUNT must "
+              "match to the "
+              "length of sPermissionsMap. Please update it.");
 
 NS_IMPL_CYCLE_COLLECTION(PermissionDelegateHandler)
 NS_IMPL_CYCLE_COLLECTING_ADDREF(PermissionDelegateHandler)
@@ -141,20 +148,33 @@ bool PermissionDelegateHandler::Initialize() {
   }
 
   mPrincipal = mDocument->NodePrincipal();
-  nsPIDOMWindowInner* window = mDocument->GetInnerWindow();
-  nsGlobalWindowInner* innerWindow = nsGlobalWindowInner::Cast(window);
-  if (innerWindow) {
-    mTopLevelPrincipal = innerWindow->GetTopLevelAntiTrackingPrincipal();
-  }
-
   return true;
 }
 
-static bool IsTopWindowContent(Document* aDocument) {
+static bool IsCrossOriginContentToTop(Document* aDocument) {
   MOZ_ASSERT(aDocument);
 
-  BrowsingContext* browsingContext = aDocument->GetBrowsingContext();
-  return browsingContext && browsingContext->IsTopContent();
+  RefPtr<BrowsingContext> bc = aDocument->GetBrowsingContext();
+  if (!bc) {
+    return true;
+  }
+  RefPtr<BrowsingContext> topBC = bc->Top();
+
+  // In Fission, we can know if it is cross-origin by checking whether both
+  // contexts in the same process. So, If they are not in the same process, we
+  // can say that it's cross-origin.
+  if (!topBC->IsInProcess()) {
+    return true;
+  }
+
+  RefPtr<Document> topDoc = topBC->GetDocument();
+  if (!topDoc) {
+    return true;
+  }
+
+  nsCOMPtr<nsIPrincipal> topLevelPrincipal = topDoc->NodePrincipal();
+
+  return !aDocument->NodePrincipal()->Subsumes(topLevelPrincipal);
 }
 
 bool PermissionDelegateHandler::HasFeaturePolicyAllowed(
@@ -188,8 +208,8 @@ bool PermissionDelegateHandler::HasPermissionDelegated(
   }
 
   if (info->mPolicy == DelegatePolicy::ePersistDeniedCrossOrigin &&
-      !IsTopWindowContent(mDocument) &&
-      !mPrincipal->Subsumes(mTopLevelPrincipal)) {
+      !mDocument->IsTopLevelContentDocument() &&
+      IsCrossOriginContentToTop(mDocument)) {
     return false;
   }
 
@@ -200,6 +220,7 @@ nsresult PermissionDelegateHandler::GetPermission(const nsACString& aType,
                                                   uint32_t* aPermission,
                                                   bool aExactHostMatch) {
   MOZ_ASSERT(mDocument);
+  MOZ_ASSERT(mPrincipal);
 
   if (mPrincipal->IsSystemPrincipal()) {
     *aPermission = nsIPermissionManager::ALLOW_ACTION;
@@ -224,18 +245,46 @@ nsresult PermissionDelegateHandler::GetPermission(const nsACString& aType,
   }
 
   if (info->mPolicy == DelegatePolicy::ePersistDeniedCrossOrigin &&
-      !IsTopWindowContent(mDocument) &&
-      !mPrincipal->Subsumes(mTopLevelPrincipal)) {
+      !mDocument->IsTopLevelContentDocument() &&
+      IsCrossOriginContentToTop(mDocument)) {
     *aPermission = nsIPermissionManager::DENY_ACTION;
     return NS_OK;
   }
 
   nsIPrincipal* principal = mPrincipal;
-  if (mTopLevelPrincipal &&
-      (info->mPolicy == DelegatePolicy::eDelegateUseTopOrigin ||
+  // If we cannot get the browsing context from the document, we fallback to use
+  // the prinicpal of the document to test the permission.
+  RefPtr<BrowsingContext> bc = mDocument->GetBrowsingContext();
+
+  if ((info->mPolicy == DelegatePolicy::eDelegateUseTopOrigin ||
        (info->mPolicy == DelegatePolicy::eDelegateUseFeaturePolicy &&
-        StaticPrefs::dom_security_featurePolicy_enabled()))) {
-    principal = mTopLevelPrincipal;
+        StaticPrefs::dom_security_featurePolicy_enabled())) &&
+      bc) {
+    RefPtr<WindowContext> topWC = bc->GetTopWindowContext();
+
+    if (topWC->IsInProcess()) {
+      // If the top-level window context is in the same process, we directly get
+      // the node principal from the top-level document to test the permission.
+      // We cannot check the lists in the window context in this case since the
+      // 'perm-changed' could be notified in the iframe before the top-level in
+      // certain cases, for example, request permissions in first-party iframes.
+      // In this case, the list in window context hasn't gotten updated, so it
+      // would has an out-dated value until the top-level window get the
+      // observer. So, we have to test permission manager directly if we can.
+      RefPtr<Document> topDoc = topWC->GetBrowsingContext()->GetDocument();
+
+      if (topDoc) {
+        principal = topDoc->NodePrincipal();
+      }
+    } else {
+      // Get the delegated permissions from the top-level window context.
+      DelegatedPermissionList list =
+          aExactHostMatch ? topWC->GetDelegatedExactHostMatchPermissions()
+                          : topWC->GetDelegatedPermissions();
+      size_t idx = std::distance(sPermissionsMap, info);
+      *aPermission = list.mPermissions[idx];
+      return NS_OK;
+    }
   }
 
   return (mPermissionManager->*testPermission)(principal, aType, aPermission);
@@ -244,6 +293,110 @@ nsresult PermissionDelegateHandler::GetPermission(const nsACString& aType,
 nsresult PermissionDelegateHandler::GetPermissionForPermissionsAPI(
     const nsACString& aType, uint32_t* aPermission) {
   return GetPermission(aType, aPermission, false);
+}
+
+void PermissionDelegateHandler::PopulateAllDelegatedPermissions() {
+  MOZ_ASSERT(mDocument);
+  MOZ_ASSERT(mPermissionManager);
+
+  // We only populate the delegated permissions for the top-level content.
+  if (!mDocument->IsTopLevelContentDocument()) {
+    return;
+  }
+
+  RefPtr<WindowContext> wc = mDocument->GetWindowContext();
+  NS_ENSURE_TRUE_VOID(wc);
+
+  DelegatedPermissionList list;
+  DelegatedPermissionList exactHostMatchList;
+
+  for (const auto& perm : sPermissionsMap) {
+    size_t idx = std::distance(sPermissionsMap, &perm);
+
+    nsDependentCString type(perm.mPermissionName);
+    // Populate the permission.
+    uint32_t permission = nsIPermissionManager::UNKNOWN_ACTION;
+    Unused << mPermissionManager->TestPermissionFromPrincipal(mPrincipal, type,
+                                                              &permission);
+    list.mPermissions[idx] = permission;
+
+    // Populate the exact-host-match permission.
+    permission = nsIPermissionManager::UNKNOWN_ACTION;
+    Unused << mPermissionManager->TestExactPermissionFromPrincipal(
+        mPrincipal, type, &permission);
+    exactHostMatchList.mPermissions[idx] = permission;
+  }
+
+  WindowContext::Transaction txn;
+  txn.SetDelegatedPermissions(list);
+  txn.SetDelegatedExactHostMatchPermissions(exactHostMatchList);
+  txn.Commit(wc);
+}
+
+void PermissionDelegateHandler::UpdateDelegatedPermission(
+    const nsACString& aType) {
+  MOZ_ASSERT(mDocument);
+  MOZ_ASSERT(mPermissionManager);
+
+  // We only update the delegated permission for the top-level content.
+  if (!mDocument->IsTopLevelContentDocument()) {
+    return;
+  }
+
+  RefPtr<WindowContext> wc = mDocument->GetWindowContext();
+  NS_ENSURE_TRUE_VOID(wc);
+
+  const DelegateInfo* info =
+      GetPermissionDelegateInfo(NS_ConvertUTF8toUTF16(aType));
+  NS_ENSURE_TRUE_VOID(info);
+  size_t idx = std::distance(sPermissionsMap, info);
+
+  WindowContext::Transaction txn;
+  bool changed = false;
+  DelegatedPermissionList list = wc->GetDelegatedPermissions();
+
+  if (UpdateDelegatePermissionInternal(
+          list, aType, idx,
+          &nsIPermissionManager::TestPermissionFromPrincipal)) {
+    txn.SetDelegatedPermissions(list);
+    changed = true;
+  }
+
+  DelegatedPermissionList exactHostMatchList =
+      wc->GetDelegatedExactHostMatchPermissions();
+
+  if (UpdateDelegatePermissionInternal(
+          exactHostMatchList, aType, idx,
+          &nsIPermissionManager::TestExactPermissionFromPrincipal)) {
+    txn.SetDelegatedExactHostMatchPermissions(exactHostMatchList);
+    changed = true;
+  }
+
+  // We only commit if there is any change of permissions.
+  if (changed) {
+    txn.Commit(wc);
+  }
+}
+
+bool PermissionDelegateHandler::UpdateDelegatePermissionInternal(
+    PermissionDelegateHandler::DelegatedPermissionList& aList,
+    const nsACString& aType, size_t aIdx,
+    nsresult (NS_STDCALL nsIPermissionManager::*aTestFunc)(nsIPrincipal*,
+                                                           const nsACString&,
+                                                           uint32_t*)) {
+  MOZ_ASSERT(aTestFunc);
+  MOZ_ASSERT(mPermissionManager);
+  MOZ_ASSERT(mPrincipal);
+
+  uint32_t permission = nsIPermissionManager::UNKNOWN_ACTION;
+  Unused << (mPermissionManager->*aTestFunc)(mPrincipal, aType, &permission);
+
+  if (aList.mPermissions[aIdx] != permission) {
+    aList.mPermissions[aIdx] = permission;
+    return true;
+  }
+
+  return false;
 }
 
 }  // namespace mozilla

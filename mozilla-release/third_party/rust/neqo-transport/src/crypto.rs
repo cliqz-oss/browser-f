@@ -11,18 +11,18 @@ use std::ops::{Index, IndexMut, Range};
 use std::rc::Rc;
 use std::time::Instant;
 
-use neqo_common::{hex, matches, qdebug, qerror, qinfo, qtrace};
+use neqo_common::{hex, matches, qdebug, qerror, qinfo, qtrace, Role};
 use neqo_crypto::aead::Aead;
 use neqo_crypto::hp::HpKey;
 use neqo_crypto::{
-    hkdf, Agent, AntiReplay, Cipher, Epoch, RecordList, SymKey, TLS_AES_128_GCM_SHA256,
-    TLS_AES_256_GCM_SHA384, TLS_EPOCH_APPLICATION_DATA, TLS_EPOCH_HANDSHAKE, TLS_EPOCH_INITIAL,
-    TLS_EPOCH_ZERO_RTT, TLS_VERSION_1_3,
+    hkdf, Agent, AntiReplay, Cipher, Epoch, HandshakeState, Record, RecordList, SymKey,
+    TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256, TLS_CT_HANDSHAKE,
+    TLS_EPOCH_APPLICATION_DATA, TLS_EPOCH_HANDSHAKE, TLS_EPOCH_INITIAL, TLS_EPOCH_ZERO_RTT,
+    TLS_VERSION_1_3,
 };
 
-use crate::connection::Role;
 use crate::frame::Frame;
-use crate::packet::PacketNumber;
+use crate::packet::{PacketNumber, QuicVersion};
 use crate::recovery::RecoveryToken;
 use crate::recv_stream::RxStreamOrderer;
 use crate::send_stream::TxBuffer;
@@ -47,9 +47,13 @@ impl Crypto {
         anti_replay: Option<&AntiReplay>,
     ) -> Res<Self> {
         agent.set_version_range(TLS_VERSION_1_3, TLS_VERSION_1_3)?;
-        agent.enable_ciphers(&[TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384])?;
+        agent.set_ciphers(&[
+            TLS_AES_128_GCM_SHA256,
+            TLS_AES_256_GCM_SHA384,
+            TLS_CHACHA20_POLY1305_SHA256,
+        ])?;
         agent.set_alpn(protocols)?;
-        agent.disable_end_of_early_data();
+        agent.disable_end_of_early_data()?;
         match &mut agent {
             Agent::Client(c) => c.enable_0rtt()?,
             Agent::Server(s) => s.enable_0rtt(
@@ -64,6 +68,42 @@ impl Crypto {
             streams: Default::default(),
             states: Default::default(),
         })
+    }
+
+    pub fn handshake(
+        &mut self,
+        now: Instant,
+        space: PNSpace,
+        data: Option<&[u8]>,
+    ) -> Res<&HandshakeState> {
+        let input = data.map(|d| {
+            qtrace!("Handshake record received {:0x?} ", d);
+            let epoch = match space {
+                PNSpace::Initial => TLS_EPOCH_INITIAL,
+                PNSpace::Handshake => TLS_EPOCH_HANDSHAKE,
+                // Our epoch progresses forward, but the TLS epoch is fixed to 3.
+                PNSpace::ApplicationData => TLS_EPOCH_APPLICATION_DATA,
+            };
+            Record {
+                ct: TLS_CT_HANDSHAKE,
+                epoch,
+                data: d.to_vec(),
+            }
+        });
+
+        match self.tls.handshake_raw(now, input) {
+            Ok(output) => {
+                self.buffer_records(output)?;
+                Ok(self.tls.state())
+            }
+            Err(e) => {
+                qinfo!("Handshake failed");
+                Err(match self.tls.alert() {
+                    Some(a) => Error::CryptoAlert(*a),
+                    _ => Error::CryptoError(e),
+                })
+            }
+        }
     }
 
     /// Enable 0-RTT and return `true` if it is enabled successfully.
@@ -155,15 +195,18 @@ impl Crypto {
     }
 
     /// Buffer crypto records for sending.
-    pub fn buffer_records(&mut self, records: RecordList) {
+    pub fn buffer_records(&mut self, records: RecordList) -> Res<()> {
         for r in records {
-            assert_eq!(r.ct, 22);
+            if r.ct != TLS_CT_HANDSHAKE {
+                return Err(Error::ProtocolViolation);
+            }
             qtrace!([self], "Adding CRYPTO data {:?}", r);
             self.streams.send(PNSpace::from(r.epoch), &r.data);
         }
+        Ok(())
     }
 
-    pub fn acked(&mut self, token: CryptoRecoveryToken) {
+    pub fn acked(&mut self, token: &CryptoRecoveryToken) {
         qinfo!(
             "Acked crypto frame space={} offset={} length={}",
             token.space,
@@ -244,17 +287,31 @@ impl CryptoDxState {
         }
     }
 
-    pub fn new_initial(direction: CryptoDxDirection, label: &str, dcid: &[u8]) -> Self {
-        const INITIAL_SALT: &[u8] = &[
+    pub fn new_initial(
+        quic_version: QuicVersion,
+        direction: CryptoDxDirection,
+        label: &str,
+        dcid: &[u8],
+    ) -> Self {
+        qtrace!("new_initial for {:?}", quic_version);
+        const INITIAL_SALT_27: &[u8] = &[
             0xc3, 0xee, 0xf7, 0x12, 0xc7, 0x2e, 0xbb, 0x5a, 0x11, 0xa7, 0xd2, 0x43, 0x2b, 0xb4,
             0x63, 0x65, 0xbe, 0xf9, 0xf5, 0x02,
         ];
+        const INITIAL_SALT_29: &[u8] = &[
+            0xaf, 0xbf, 0xec, 0x28, 0x99, 0x93, 0xd2, 0x4c, 0x9e, 0x97, 0x86, 0xf1, 0x9c, 0x61,
+            0x11, 0xe0, 0x43, 0x90, 0xa8, 0x99,
+        ];
+        let salt = match quic_version {
+            QuicVersion::Draft27 | QuicVersion::Draft28 => INITIAL_SALT_27,
+            QuicVersion::Draft29 => INITIAL_SALT_29,
+        };
         let cipher = TLS_AES_128_GCM_SHA256;
         let initial_secret = hkdf::extract(
             TLS_VERSION_1_3,
             cipher,
             Some(
-                hkdf::import_key(TLS_VERSION_1_3, cipher, INITIAL_SALT)
+                hkdf::import_key(TLS_VERSION_1_3, cipher, salt)
                     .as_ref()
                     .unwrap(),
             ),
@@ -412,7 +469,12 @@ impl CryptoDxState {
     pub(crate) fn test_default() -> Self {
         // This matches the value in packet.rs
         const CLIENT_CID: &[u8] = &[0x83, 0x94, 0xc8, 0xf0, 0x3e, 0x51, 0x57, 0x08];
-        Self::new_initial(CryptoDxDirection::Write, "server in", CLIENT_CID)
+        Self::new_initial(
+            QuicVersion::default(),
+            CryptoDxDirection::Write,
+            "server in",
+            CLIENT_CID,
+        )
     }
 }
 
@@ -475,7 +537,7 @@ impl CryptoDxAppData {
     pub fn next(&self) -> Res<Self> {
         if self.dx.epoch == usize::max_value() {
             // Guard against too many key updates.
-            return Err(Error::KeysNotFound);
+            return Err(Error::KeysExhausted);
         }
         let next_secret = Self::update_secret(self.cipher, &self.next_secret)?;
         Ok(Self {
@@ -555,7 +617,7 @@ impl CryptoStates {
     }
 
     /// Create the initial crypto state.
-    pub fn init(&mut self, role: Role, dcid: &[u8]) {
+    pub fn init(&mut self, quic_version: QuicVersion, role: Role, dcid: &[u8]) {
         const CLIENT_INITIAL_LABEL: &str = "client in";
         const SERVER_INITIAL_LABEL: &str = "server in";
 
@@ -566,14 +628,14 @@ impl CryptoStates {
             hex(dcid)
         );
 
-        let (write_label, read_label) = match role {
+        let (write, read) = match role {
             Role::Client => (CLIENT_INITIAL_LABEL, SERVER_INITIAL_LABEL),
             Role::Server => (SERVER_INITIAL_LABEL, CLIENT_INITIAL_LABEL),
         };
 
         let mut initial = CryptoState {
-            tx: CryptoDxState::new_initial(CryptoDxDirection::Write, write_label, dcid),
-            rx: CryptoDxState::new_initial(CryptoDxDirection::Read, read_label, dcid),
+            tx: CryptoDxState::new_initial(quic_version, CryptoDxDirection::Write, write, dcid),
+            rx: CryptoDxState::new_initial(quic_version, CryptoDxDirection::Read, read, dcid),
         };
         if let Some(prev) = &self.initial {
             qinfo!(
@@ -800,6 +862,51 @@ impl CryptoStates {
             read_update_time: None,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn test_chacha() -> Self {
+        const SECRET: &[u8] = &[
+            0x9a, 0xc3, 0x12, 0xa7, 0xf8, 0x77, 0x46, 0x8e, 0xbe, 0x69, 0x42, 0x27, 0x48, 0xad,
+            0x00, 0xa1, 0x54, 0x43, 0xf1, 0x82, 0x03, 0xa0, 0x7d, 0x60, 0x60, 0xf6, 0x88, 0xf3,
+            0x0f, 0x21, 0x63, 0x2b,
+        ];
+        let secret =
+            hkdf::import_key(TLS_VERSION_1_3, TLS_CHACHA20_POLY1305_SHA256, SECRET).unwrap();
+        let app_read = || CryptoDxAppData {
+            dx: CryptoDxState {
+                direction: CryptoDxDirection::Read,
+                epoch: 0,
+                aead: Aead::new(
+                    TLS_VERSION_1_3,
+                    TLS_CHACHA20_POLY1305_SHA256,
+                    &secret,
+                    "quic ",
+                )
+                .unwrap(),
+                hpkey: HpKey::extract(
+                    TLS_VERSION_1_3,
+                    TLS_CHACHA20_POLY1305_SHA256,
+                    &secret,
+                    "quic hp",
+                )
+                .unwrap(),
+                used_pn: 0..645_971_972,
+                min_pn: 0,
+            },
+            cipher: TLS_CHACHA20_POLY1305_SHA256,
+            next_secret: secret.clone(),
+        };
+        Self {
+            initial: None,
+            handshake: None,
+            zero_rtt: None,
+            cipher: TLS_CHACHA20_POLY1305_SHA256,
+            app_write: None,
+            app_read: Some(app_read()),
+            app_read_next: Some(app_read()),
+            read_update_time: None,
+        }
+    }
 }
 
 impl std::fmt::Display for CryptoStates {
@@ -872,11 +979,11 @@ impl CryptoStreams {
         self.get(space).map_or(false, |cs| cs.rx.data_ready())
     }
 
-    pub fn read_to_end(&mut self, space: PNSpace, buf: &mut Vec<u8>) -> Res<u64> {
+    pub fn read_to_end(&mut self, space: PNSpace, buf: &mut Vec<u8>) -> usize {
         self.get_mut(space).unwrap().rx.read_to_end(buf)
     }
 
-    pub fn acked(&mut self, token: CryptoRecoveryToken) {
+    pub fn acked(&mut self, token: &CryptoRecoveryToken) {
         self.get_mut(token.space)
             .unwrap()
             .tx

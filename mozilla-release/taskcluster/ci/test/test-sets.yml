@@ -17,11 +17,14 @@
 
 web-platform-tests:
     - web-platform-tests
-    - web-platform-tests-backlog
     - web-platform-tests-crashtest
+    - web-platform-tests-print-reftest
     - web-platform-tests-reftest
-    - web-platform-tests-reftest-backlog
     - web-platform-tests-wdspec
+
+web-platform-tests-backlog:
+    - web-platform-tests-backlog
+    - web-platform-tests-reftest-backlog
 
 web-platform-tests-wdspec-headless:
     - web-platform-tests-wdspec-headless
@@ -77,7 +80,6 @@ talos-ref-hw:
 
 raptor-firefox:
     - raptor-tp6
-    - raptor-tp6-binast-firefox
     - raptor-speedometer-firefox
     - raptor-stylebench-firefox
     - raptor-motionmark-htmlsuite-firefox
@@ -88,6 +90,7 @@ raptor-firefox:
     - raptor-youtube-playback-firefox
     - raptor-youtube-playback-av1-sfr-firefox
     - raptor-youtube-playback-h264-sfr-firefox
+    - raptor-youtube-playback-h264-firefox
     - raptor-youtube-playback-vp9-sfr-firefox
     - raptor-youtube-playback-widevine-hfr-firefox
     - raptor-youtube-playback-widevine-h264-sfr-firefox
@@ -108,6 +111,7 @@ raptor-chrome:
     - raptor-youtube-playback-chrome
     - raptor-youtube-playback-av1-sfr-chrome
     - raptor-youtube-playback-h264-sfr-chrome
+    - raptor-youtube-playback-h264-chrome
     - raptor-youtube-playback-vp9-sfr-chrome
     - raptor-youtube-playback-widevine-hfr-chrome
     - raptor-youtube-playback-widevine-h264-sfr-chrome
@@ -333,6 +337,24 @@ mingwclang-tests-debug:
     - reftest
     - telemetry-tests-client
 
+# The following is the same as the above block, minus reftests.
+# Reftests were disabled due to frequent hangs; see bug 1642719
+# for re-enabling.
+mingwclang-win7-tests-debug:
+    - cppunit
+    - firefox-ui-functional-local
+    - firefox-ui-functional-remote
+    - mochitest-a11y
+    - mochitest-chrome-gpu
+    - mochitest-plain-gpu
+    - mochitest-webgl1-core
+    - mochitest-webgl1-ext
+    - mochitest-webgl2-core
+    - mochitest-webgl2-ext
+    - mochitest-webgpu
+    # - reftest - disabled, see bug 1642719
+    - telemetry-tests-client
+
 mingwclang-tests-opt:
     - cppunit
     - mochitest-chrome-gpu
@@ -393,12 +415,6 @@ macosx1014-64-tests:
     - test-verify
     - test-verify-gpu
     - test-verify-wpt
-    - web-platform-tests
-    - web-platform-tests-backlog
-    - web-platform-tests-crashtest
-    - web-platform-tests-reftest
-    - web-platform-tests-reftest-backlog
-    - web-platform-tests-wdspec
     - xpcshell
 
 macosx1014-64-qr-tests:
@@ -491,6 +507,7 @@ android-hw-arm7-raptor:
     - raptor-youtube-playback-fenix
     - raptor-youtube-playback-av1-sfr-fenix
     - raptor-youtube-playback-h264-sfr-fenix
+    - raptor-youtube-playback-h264-fenix
     - raptor-youtube-playback-vp9-sfr-fenix
     - raptor-youtube-playback-widevine-hfr-fenix
     - raptor-youtube-playback-widevine-h264-sfr-fenix
@@ -498,6 +515,7 @@ android-hw-arm7-raptor:
     - raptor-youtube-playback-geckoview
     - raptor-youtube-playback-av1-sfr-geckoview
     - raptor-youtube-playback-h264-sfr-geckoview
+    - raptor-youtube-playback-h264-geckoview
     - raptor-youtube-playback-vp9-sfr-geckoview
     - raptor-youtube-playback-widevine-hfr-geckoview
     - raptor-youtube-playback-widevine-h264-sfr-geckoview
@@ -505,105 +523,11 @@ android-hw-arm7-raptor:
     - raptor-youtube-playback-fennec68
     - raptor-youtube-playback-av1-sfr-fennec68
     - raptor-youtube-playback-h264-sfr-fennec68
+    - raptor-youtube-playback-h264-fennec68
     - raptor-youtube-playback-vp9-sfr-fennec68
     - raptor-youtube-playback-widevine-hfr-fennec68
     - raptor-youtube-playback-widevine-h264-sfr-fennec68
     - raptor-youtube-playback-widevine-vp9-sfr-fennec68
-    - raptor-tp6m-1-geckoview
-    - raptor-tp6m-2-geckoview
-    - raptor-tp6m-3-geckoview
-    - raptor-tp6m-4-geckoview
-    - raptor-tp6m-5-geckoview
-    - raptor-tp6m-6-geckoview
-    - raptor-tp6m-7-geckoview
-    - raptor-tp6m-8-geckoview
-    - raptor-tp6m-9-geckoview
-    - raptor-tp6m-1-refbrow
-    - raptor-tp6m-2-refbrow
-    - raptor-tp6m-3-refbrow
-    - raptor-tp6m-4-refbrow
-    - raptor-tp6m-5-refbrow
-    - raptor-tp6m-6-refbrow
-    - raptor-tp6m-7-refbrow
-    - raptor-tp6m-8-refbrow
-    - raptor-tp6m-9-refbrow
-    - raptor-tp6m-1-geckoview-cold
-    - raptor-tp6m-2-geckoview-cold
-    - raptor-tp6m-3-geckoview-cold
-    - raptor-tp6m-4-geckoview-cold
-    - raptor-tp6m-5-geckoview-cold
-    - raptor-tp6m-6-geckoview-cold
-    - raptor-tp6m-7-geckoview-cold
-    - raptor-tp6m-8-geckoview-cold
-    - raptor-tp6m-9-geckoview-cold
-    - raptor-tp6m-10-geckoview-cold
-    - raptor-tp6m-11-geckoview-cold
-    - raptor-tp6m-12-geckoview-cold
-    - raptor-tp6m-13-geckoview-cold
-    - raptor-tp6m-14-geckoview-cold
-    - raptor-tp6m-15-geckoview-cold
-    - raptor-tp6m-16-geckoview-cold
-    - raptor-tp6m-17-geckoview-cold
-    - raptor-tp6m-18-geckoview-cold
-    - raptor-tp6m-19-geckoview-cold
-    - raptor-tp6m-20-geckoview-cold
-    - raptor-tp6m-21-geckoview-cold
-    - raptor-tp6m-22-geckoview-cold
-    - raptor-tp6m-23-geckoview-cold
-    - raptor-tp6m-24-geckoview-cold
-    - raptor-tp6m-25-geckoview-cold
-    - raptor-tp6m-27-geckoview-cold
-    - raptor-tp6m-28-geckoview-cold
-    - raptor-tp6m-1-fennec68
-    - raptor-tp6m-2-fennec68
-    - raptor-tp6m-3-fennec68
-    - raptor-tp6m-4-fennec68
-    - raptor-tp6m-5-fennec68
-    - raptor-tp6m-6-fennec68
-    - raptor-tp6m-7-fennec68
-    - raptor-tp6m-8-fennec68
-    - raptor-tp6m-9-fennec68
-    - raptor-tp6m-1-fennec68-cold
-    - raptor-tp6m-2-fennec68-cold
-    - raptor-tp6m-3-fennec68-cold
-    - raptor-tp6m-4-fennec68-cold
-    - raptor-tp6m-5-fennec68-cold
-    - raptor-tp6m-6-fennec68-cold
-    - raptor-tp6m-7-fennec68-cold
-    - raptor-tp6m-8-fennec68-cold
-    - raptor-tp6m-9-fennec68-cold
-    - raptor-tp6m-10-fennec68-cold
-    - raptor-tp6m-11-fennec68-cold
-    - raptor-tp6m-12-fennec68-cold
-    - raptor-tp6m-13-fennec68-cold
-    - raptor-tp6m-14-fennec68-cold
-    - raptor-tp6m-1-refbrow-cold
-    - raptor-tp6m-2-refbrow-cold
-    - raptor-tp6m-3-refbrow-cold
-    - raptor-tp6m-4-refbrow-cold
-    - raptor-tp6m-5-refbrow-cold
-    - raptor-tp6m-6-refbrow-cold
-    - raptor-tp6m-7-refbrow-cold
-    - raptor-tp6m-8-refbrow-cold
-    - raptor-tp6m-9-refbrow-cold
-    - raptor-tp6m-10-refbrow-cold
-    - raptor-tp6m-11-refbrow-cold
-    - raptor-tp6m-12-refbrow-cold
-    - raptor-tp6m-13-refbrow-cold
-    - raptor-tp6m-14-refbrow-cold
-    - raptor-tp6m-15-refbrow-cold
-    - raptor-tp6m-16-refbrow-cold
-    - raptor-tp6m-17-refbrow-cold
-    - raptor-tp6m-18-refbrow-cold
-    - raptor-tp6m-19-refbrow-cold
-    - raptor-tp6m-20-refbrow-cold
-    - raptor-tp6m-21-refbrow-cold
-    - raptor-tp6m-22-refbrow-cold
-    - raptor-tp6m-23-refbrow-cold
-    - raptor-tp6m-24-refbrow-cold
-    - raptor-tp6m-25-refbrow-cold
-    - raptor-tp6m-27-refbrow-cold
-    - raptor-tp6m-28-refbrow-cold
 
 android-hw-aarch64-raptor:
     - raptor-speedometer-geckoview
@@ -613,6 +537,7 @@ android-hw-aarch64-raptor:
     - raptor-youtube-playback-fenix
     - raptor-youtube-playback-av1-sfr-fenix
     - raptor-youtube-playback-h264-sfr-fenix
+    - raptor-youtube-playback-h264-fenix
     - raptor-youtube-playback-vp9-sfr-fenix
     - raptor-youtube-playback-widevine-hfr-fenix
     - raptor-youtube-playback-widevine-h264-sfr-fenix
@@ -620,6 +545,7 @@ android-hw-aarch64-raptor:
     - raptor-youtube-playback-geckoview
     - raptor-youtube-playback-av1-sfr-geckoview
     - raptor-youtube-playback-h264-sfr-geckoview
+    - raptor-youtube-playback-h264-geckoview
     - raptor-youtube-playback-vp9-sfr-geckoview
     - raptor-youtube-playback-widevine-hfr-geckoview
     - raptor-youtube-playback-widevine-h264-sfr-geckoview
@@ -627,105 +553,11 @@ android-hw-aarch64-raptor:
     - raptor-youtube-playback-fennec68
     - raptor-youtube-playback-av1-sfr-fennec68
     - raptor-youtube-playback-h264-sfr-fennec68
+    - raptor-youtube-playback-h264-fennec68
     - raptor-youtube-playback-vp9-sfr-fennec68
     - raptor-youtube-playback-widevine-hfr-fennec68
     - raptor-youtube-playback-widevine-h264-sfr-fennec68
     - raptor-youtube-playback-widevine-vp9-sfr-fennec68
-    - raptor-tp6m-1-geckoview
-    - raptor-tp6m-2-geckoview
-    - raptor-tp6m-3-geckoview
-    - raptor-tp6m-4-geckoview
-    - raptor-tp6m-5-geckoview
-    - raptor-tp6m-6-geckoview
-    - raptor-tp6m-7-geckoview
-    - raptor-tp6m-8-geckoview
-    - raptor-tp6m-9-geckoview
-    - raptor-tp6m-1-refbrow
-    - raptor-tp6m-2-refbrow
-    - raptor-tp6m-3-refbrow
-    - raptor-tp6m-4-refbrow
-    - raptor-tp6m-5-refbrow
-    - raptor-tp6m-6-refbrow
-    - raptor-tp6m-7-refbrow
-    - raptor-tp6m-8-refbrow
-    - raptor-tp6m-9-refbrow
-    - raptor-tp6m-1-geckoview-cold
-    - raptor-tp6m-2-geckoview-cold
-    - raptor-tp6m-3-geckoview-cold
-    - raptor-tp6m-4-geckoview-cold
-    - raptor-tp6m-5-geckoview-cold
-    - raptor-tp6m-6-geckoview-cold
-    - raptor-tp6m-7-geckoview-cold
-    - raptor-tp6m-8-geckoview-cold
-    - raptor-tp6m-9-geckoview-cold
-    - raptor-tp6m-10-geckoview-cold
-    - raptor-tp6m-11-geckoview-cold
-    - raptor-tp6m-12-geckoview-cold
-    - raptor-tp6m-13-geckoview-cold
-    - raptor-tp6m-14-geckoview-cold
-    - raptor-tp6m-15-geckoview-cold
-    - raptor-tp6m-16-geckoview-cold
-    - raptor-tp6m-17-geckoview-cold
-    - raptor-tp6m-18-geckoview-cold
-    - raptor-tp6m-19-geckoview-cold
-    - raptor-tp6m-20-geckoview-cold
-    - raptor-tp6m-21-geckoview-cold
-    - raptor-tp6m-22-geckoview-cold
-    - raptor-tp6m-23-geckoview-cold
-    - raptor-tp6m-24-geckoview-cold
-    - raptor-tp6m-25-geckoview-cold
-    - raptor-tp6m-27-geckoview-cold
-    - raptor-tp6m-28-geckoview-cold
-    - raptor-tp6m-1-fennec68
-    - raptor-tp6m-2-fennec68
-    - raptor-tp6m-3-fennec68
-    - raptor-tp6m-4-fennec68
-    - raptor-tp6m-5-fennec68
-    - raptor-tp6m-6-fennec68
-    - raptor-tp6m-7-fennec68
-    - raptor-tp6m-8-fennec68
-    - raptor-tp6m-9-fennec68
-    - raptor-tp6m-1-fennec68-cold
-    - raptor-tp6m-2-fennec68-cold
-    - raptor-tp6m-3-fennec68-cold
-    - raptor-tp6m-4-fennec68-cold
-    - raptor-tp6m-5-fennec68-cold
-    - raptor-tp6m-6-fennec68-cold
-    - raptor-tp6m-7-fennec68-cold
-    - raptor-tp6m-8-fennec68-cold
-    - raptor-tp6m-9-fennec68-cold
-    - raptor-tp6m-10-fennec68-cold
-    - raptor-tp6m-11-fennec68-cold
-    - raptor-tp6m-12-fennec68-cold
-    - raptor-tp6m-13-fennec68-cold
-    - raptor-tp6m-14-fennec68-cold
-    - raptor-tp6m-1-refbrow-cold
-    - raptor-tp6m-2-refbrow-cold
-    - raptor-tp6m-3-refbrow-cold
-    - raptor-tp6m-4-refbrow-cold
-    - raptor-tp6m-5-refbrow-cold
-    - raptor-tp6m-6-refbrow-cold
-    - raptor-tp6m-7-refbrow-cold
-    - raptor-tp6m-8-refbrow-cold
-    - raptor-tp6m-9-refbrow-cold
-    - raptor-tp6m-10-refbrow-cold
-    - raptor-tp6m-11-refbrow-cold
-    - raptor-tp6m-12-refbrow-cold
-    - raptor-tp6m-13-refbrow-cold
-    - raptor-tp6m-14-refbrow-cold
-    - raptor-tp6m-15-refbrow-cold
-    - raptor-tp6m-16-refbrow-cold
-    - raptor-tp6m-17-refbrow-cold
-    - raptor-tp6m-18-refbrow-cold
-    - raptor-tp6m-19-refbrow-cold
-    - raptor-tp6m-20-refbrow-cold
-    - raptor-tp6m-21-refbrow-cold
-    - raptor-tp6m-22-refbrow-cold
-    - raptor-tp6m-23-refbrow-cold
-    - raptor-tp6m-24-refbrow-cold
-    - raptor-tp6m-25-refbrow-cold
-    - raptor-tp6m-27-refbrow-cold
-    - raptor-tp6m-28-refbrow-cold
 
 android-hw-arm7-raptor-power:
     - raptor-speedometer-geckoview-power

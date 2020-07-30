@@ -767,7 +767,8 @@ JSLinearString* js::Int32ToString(JSContext* cx, int32_t si) {
       BackfillInt32InBuffer(si, buffer, ArrayLength(buffer), &length);
 
   mozilla::Range<const Latin1Char> chars(start, length);
-  JSInlineString* str = NewInlineString<allowGC>(cx, chars);
+  JSInlineString* str =
+      NewInlineString<allowGC>(cx, chars, js::gc::TenuredHeap);
   if (!str) {
     return nullptr;
   }
@@ -1273,9 +1274,6 @@ static const JSFunctionSpec number_static_methods[] = {
     JS_FS_END};
 
 static const JSPropertySpec number_static_properties[] = {
-    // Our NaN must be one particular canonical value, because we rely on NaN
-    // encoding for our value representation.  See Value.h.
-    JS_DOUBLE_PS("NaN", GenericNaN(), JSPROP_READONLY | JSPROP_PERMANENT),
     JS_DOUBLE_PS("POSITIVE_INFINITY", mozilla::PositiveInfinity<double>(),
                  JSPROP_READONLY | JSPROP_PERMANENT),
     JS_DOUBLE_PS("NEGATIVE_INFINITY", mozilla::NegativeInfinity<double>(),
@@ -1408,6 +1406,12 @@ static bool NumberClassFinish(JSContext* cx, HandleObject ctor,
 
   RootedValue valueNaN(cx, JS::NaNValue());
   RootedValue valueInfinity(cx, JS::InfinityValue());
+
+  if (!DefineDataProperty(
+          cx, ctor, cx->names().NaN, valueNaN,
+          JSPROP_PERMANENT | JSPROP_READONLY | JSPROP_RESOLVING)) {
+    return false;
+  }
 
   // ES5 15.1.1.1, 15.1.1.2
   if (!NativeDefineDataProperty(
@@ -1546,7 +1550,8 @@ static JSString* NumberToStringWithBase(JSContext* cx, double d, int base) {
     numStrLen = strlen(numStr);
   }
 
-  JSLinearString* s = NewStringCopyN<allowGC>(cx, numStr, numStrLen);
+  JSLinearString* s =
+      NewStringCopyN<allowGC>(cx, numStr, numStrLen, js::gc::TenuredHeap);
   if (!s) {
     return nullptr;
   }
@@ -1624,7 +1629,7 @@ JSLinearString* js::IndexToString(JSContext* cx, uint32_t index) {
   RangedPtr<Latin1Char> start = BackfillIndexInCharBuffer(index, end);
 
   mozilla::Range<const Latin1Char> chars(start.get(), end - start);
-  JSInlineString* str = NewInlineString<CanGC>(cx, chars);
+  JSInlineString* str = NewInlineString<CanGC>(cx, chars, js::gc::TenuredHeap);
   if (!str) {
     return nullptr;
   }
@@ -1656,8 +1661,8 @@ bool JS_FASTCALL js::NumberValueToStringBuffer(JSContext* cx, const Value& v,
 }
 
 template <typename CharT>
-static bool CharsToNumber(JSContext* cx, const CharT* chars, size_t length,
-                          double* result) {
+static bool CharsToNumberImpl(JSContext* cx, const CharT* chars, size_t length,
+                              double* result) {
   if (length == 1) {
     CharT c = chars[0];
     if ('0' <= c && c <= '9') {
@@ -1724,6 +1729,16 @@ static bool CharsToNumber(JSContext* cx, const CharT* chars, size_t length,
   }
 
   return true;
+}
+
+bool js::CharsToNumber(JSContext* cx, const Latin1Char* chars, size_t length,
+                       double* result) {
+  return CharsToNumberImpl(cx, chars, length, result);
+}
+
+bool js::CharsToNumber(JSContext* cx, const char16_t* chars, size_t length,
+                       double* result) {
+  return CharsToNumberImpl(cx, chars, length, result);
 }
 
 bool js::StringToNumber(JSContext* cx, JSString* str, double* result) {

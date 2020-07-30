@@ -150,11 +150,7 @@ class ProviderSearchTips extends UrlbarProvider {
    * @returns {boolean} Whether this provider should be invoked for the search.
    */
   isActive(queryContext) {
-    return (
-      UrlbarPrefs.get("update1.searchTips") &&
-      this.currentTip &&
-      cfrFeaturesUserPref
-    );
+    return this.currentTip && cfrFeaturesUserPref;
   }
 
   /**
@@ -300,7 +296,6 @@ class ProviderSearchTips extends UrlbarProvider {
 
     // Check if we are supposed to show a tip for the current session.
     if (
-      !UrlbarPrefs.get("update1.searchTips") ||
       !cfrFeaturesUserPref ||
       (this.disableTipsForCurrentSession &&
         !UrlbarPrefs.get("searchTips.test.ignoreShowLimits"))
@@ -484,7 +479,7 @@ async function lastBrowserUpdateDate() {
   // Get the newest update in the update history. This isn't perfect
   // because these dates are when updates are applied, not when the
   // user restarts with the update. See bug 1595328.
-  if (updateManager && updateManager.updateCount) {
+  if (updateManager && updateManager.getUpdateCount()) {
     let update = updateManager.getUpdateAt(0);
     return update.installDate;
   }

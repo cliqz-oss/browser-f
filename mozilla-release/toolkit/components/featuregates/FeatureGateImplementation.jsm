@@ -28,6 +28,7 @@ class FeatureGateImplementation {
    * @param {string} definition.id
    * @param {string} definition.title
    * @param {string} definition.description
+   * @param {string} definition.descriptionLinks
    * @param {boolean} definition.restartRequired
    * @param {string} definition.type
    * @param {string} definition.preference
@@ -51,7 +52,7 @@ class FeatureGateImplementation {
   }
 
   /**
-   * A short, descriptive string to identify this feature to users.
+   * A Fluent string ID that will resolve to some text to identify this feature to users.
    * @type string
    */
   get title() {
@@ -59,11 +60,15 @@ class FeatureGateImplementation {
   }
 
   /**
-   * A longer string to show to users that explains the feature.
+   * A Fluent string ID that will resolve to a longer string to show to users that explains the feature.
    * @type string
    */
   get description() {
     return this._definition.description;
+  }
+
+  get descriptionLinks() {
+    return this._definition.descriptionLinks;
   }
 
   /**

@@ -107,7 +107,9 @@ class TaskGraphGenerator(object):
     # each "phase" of generation.  This allows some mach subcommands to short-
     # circuit generation of the entire graph by never completing the generator.
 
-    def __init__(self, root_dir, parameters, target_kind=None):
+    def __init__(
+            self, root_dir, parameters, decision_task_id="<decision-task>", target_kind=None,
+    ):
         """
         @param root_dir: root directory, with subdirectories for each kind
         @param paramaters: parameters for this task-graph generation, or callable
@@ -119,6 +121,7 @@ class TaskGraphGenerator(object):
         self.root_dir = ensure_text(root_dir)
         self._parameters = parameters
         self._target_kind = target_kind
+        self._decision_task_id = decision_task_id
 
         # start the generator
         self._run = self._run()
@@ -276,7 +279,7 @@ class TaskGraphGenerator(object):
         full_task_set = TaskGraph(all_tasks, Graph(set(all_tasks), set()))
         self.verify_attributes(all_tasks)
         self.verify_run_using()
-        yield verifications('full_task_set', full_task_set, graph_config)
+        yield verifications('full_task_set', full_task_set, graph_config, parameters)
 
         logger.info("Generating full task graph")
         edges = set()
@@ -288,7 +291,7 @@ class TaskGraphGenerator(object):
                                     Graph(full_task_set.graph.nodes, edges))
         logger.info("Full task graph contains %d tasks and %d dependencies" % (
             len(full_task_set.graph.nodes), len(edges)))
-        yield verifications('full_task_graph', full_task_graph, graph_config)
+        yield verifications('full_task_graph', full_task_graph, graph_config, parameters)
 
         logger.info("Generating target task set")
         target_task_set = TaskGraph(dict(all_tasks),
@@ -304,7 +307,7 @@ class TaskGraphGenerator(object):
                 old_len - len(target_tasks),
                 len(target_tasks)))
 
-        yield verifications('target_task_set', target_task_set, graph_config)
+        yield verifications('target_task_set', target_task_set, graph_config, parameters)
 
         logger.info("Generating target task graph")
         # include all docker-image build tasks here, in case they are needed for a graph morph
@@ -323,7 +326,7 @@ class TaskGraphGenerator(object):
         target_task_graph = TaskGraph(
             {l: all_tasks[l] for l in target_graph.nodes},
             target_graph)
-        yield verifications('target_task_graph', target_task_graph, graph_config)
+        yield verifications('target_task_graph', target_task_graph, graph_config, parameters)
 
         logger.info("Generating optimized task graph")
         existing_tasks = parameters.get('existing_tasks')
@@ -341,17 +344,18 @@ class TaskGraphGenerator(object):
             target_task_graph,
             parameters,
             do_not_optimize,
+            self._decision_task_id,
             existing_tasks=existing_tasks,
             strategy_override=strategies,
         )
 
-        yield verifications('optimized_task_graph', optimized_task_graph, graph_config)
+        yield verifications('optimized_task_graph', optimized_task_graph, graph_config, parameters)
 
         morphed_task_graph, label_to_taskid = morph(
             optimized_task_graph, label_to_taskid, parameters, graph_config)
 
         yield 'label_to_taskid', label_to_taskid
-        yield verifications('morphed_task_graph', morphed_task_graph, graph_config)
+        yield verifications('morphed_task_graph', morphed_task_graph, graph_config, parameters)
 
     def _run_until(self, name):
         while name not in self._run_results:

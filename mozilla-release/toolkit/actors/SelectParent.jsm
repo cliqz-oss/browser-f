@@ -733,17 +733,7 @@ class SelectParent extends JSWindowActorParent {
         let data = message.data;
         menulist.menupopup.style.direction = data.style.direction;
 
-        let { ZoomManager } = browser.ownerGlobal;
-        if (!ZoomManager) {
-          let bc = topBrowsingContext;
-          // The toplevel window doesn't have an embedding element. As long
-          // as there is an embedder element, find *its* top browsing context.
-          while (bc.embedderElement) {
-            bc = bc.embedderElement.ownerGlobal.docShell.browsingContext.top;
-          }
-          // Then grab the zoom manager in that top window.
-          ({ ZoomManager } = bc.associatedWindow);
-        }
+        let { ZoomManager } = topBrowsingContext.topChromeWindow;
         SelectParentHelper.populate(
           menulist,
           data.options.options,

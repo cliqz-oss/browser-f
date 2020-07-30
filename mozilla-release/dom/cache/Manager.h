@@ -20,7 +20,6 @@ class nsIThread;
 
 namespace mozilla {
 
-class AbstractThread;
 class ErrorResult;
 
 namespace dom {
@@ -215,7 +214,6 @@ class Manager final : public SafeRefCounted<Manager> {
 
   SafeRefPtr<ManagerId> mManagerId;
   nsCOMPtr<nsIThread> mIOThread;
-  const RefPtr<AbstractThread> mIOAbstractThread;
 
   // Weak reference cleared by RemoveContext() in Context destructor.
   Context* MOZ_NON_OWNING_REF mContext;
@@ -272,8 +270,8 @@ class Manager final : public SafeRefCounted<Manager> {
   struct ConstructorGuard {};
 
  public:
-  Manager(SafeRefPtr<ManagerId> aManagerId,
-          already_AddRefed<nsIThread> aIOThread, const ConstructorGuard&);
+  Manager(SafeRefPtr<ManagerId> aManagerId, nsIThread* aIOThread,
+          const ConstructorGuard&);
   ~Manager();
 
   NS_DECL_OWNINGTHREAD

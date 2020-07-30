@@ -35,7 +35,7 @@ mod table;
 use self::call::expand_call;
 use self::globalvalue::expand_global_value;
 use self::heap::expand_heap_addr;
-use self::libcall::expand_as_libcall;
+pub(crate) use self::libcall::expand_as_libcall;
 use self::table::expand_table_addr;
 
 enum LegalizeInstResult {
@@ -214,6 +214,7 @@ pub fn simple_legalize(func: &mut ir::Function, cfg: &mut ControlFlowGraph, isa:
                 | ir::Opcode::TableAddr
                 | ir::Opcode::Trapnz
                 | ir::Opcode::Trapz
+                | ir::Opcode::ResumableTrapnz
                 | ir::Opcode::BandImm
                 | ir::Opcode::BorImm
                 | ir::Opcode::BxorImm
@@ -261,15 +262,15 @@ fn expand_cond_trap(
 ) {
     // Parse the instruction.
     let trapz;
-    let (arg, code) = match func.dfg[inst] {
+    let (arg, code, opcode) = match func.dfg[inst] {
         ir::InstructionData::CondTrap { opcode, arg, code } => {
             // We want to branch *over* an unconditional trap.
             trapz = match opcode {
                 ir::Opcode::Trapz => true,
-                ir::Opcode::Trapnz => false,
+                ir::Opcode::Trapnz | ir::Opcode::ResumableTrapnz => false,
                 _ => panic!("Expected cond trap: {}", func.dfg.display_inst(inst, None)),
             };
-            (arg, code)
+            (arg, code, opcode)
         }
         _ => panic!("Expected cond trap: {}", func.dfg.display_inst(inst, None)),
     };
@@ -307,7 +308,17 @@ fn expand_cond_trap(
 
     // Insert the new label and the unconditional trap terminator.
     pos.insert_block(new_block_trap);
-    pos.ins().trap(code);
+
+    match opcode {
+        ir::Opcode::Trapz | ir::Opcode::Trapnz => {
+            pos.ins().trap(code);
+        }
+        ir::Opcode::ResumableTrapnz => {
+            pos.ins().resumable_trap(code);
+            pos.ins().jump(new_block_resume, &[]);
+        }
+        _ => unreachable!(),
+    }
 
     // Insert the new label and resume the execution when the trap fails.
     pos.insert_block(new_block_resume);

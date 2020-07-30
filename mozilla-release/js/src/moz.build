@@ -126,7 +126,6 @@ EXPORTS.js += [
     '../public/Array.h',
     '../public/ArrayBuffer.h',
     '../public/ArrayBufferMaybeShared.h',
-    '../public/BinASTFormat.h',
     '../public/BuildId.h',
     '../public/CallArgs.h',
     '../public/CallNonGenericMethod.h',
@@ -205,8 +204,15 @@ EXPORTS.js += [
     '../public/ValueArray.h',
     '../public/Vector.h',
     '../public/Warnings.h',
+    '../public/WasmModule.h',
     '../public/WeakMapPtr.h',
     '../public/Wrapper.h',
+]
+
+# This lives in mozglue/baseprofiler but we re-publish ourselves to support
+# standalone SpiderMonkey configurations.
+EXPORTS.js += [
+    '../../mozglue/baseprofiler/public/ProfilingCategoryList.h',
 ]
 
 EXPORTS.js.experimental += [
@@ -455,26 +461,14 @@ if CONFIG['MOZ_VTUNE']:
             '-Wno-stringop-overflow'
         ]
 
-if not CONFIG['ENABLE_NEW_REGEXP']:
-    UNIFIED_SOURCES += [
-        'irregexp/NativeRegExpMacroAssembler.cpp',
-        'irregexp/RegExpAST.cpp',
-        'irregexp/RegExpCharacters.cpp',
-        'irregexp/RegExpEngine.cpp',
-        'irregexp/RegExpInterpreter.cpp',
-        'irregexp/RegExpMacroAssembler.cpp',
-        'irregexp/RegExpParser.cpp',
-        'irregexp/RegExpStack.cpp',
-        ]
-
 DIRS += [
     'build',
     'debugger',
     'frontend',
     'gc',
+    'irregexp',
     'jit',
-    'wasm',
-] + (['new-regexp'] if CONFIG['ENABLE_NEW_REGEXP'] else [])
+    'wasm']
 
 if CONFIG['JS_JITSPEW']:
     DIRS += ['zydis']

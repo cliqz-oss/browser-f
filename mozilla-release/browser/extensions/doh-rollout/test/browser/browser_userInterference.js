@@ -20,13 +20,10 @@ add_task(async function testUserInterference() {
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, EXAMPLE_URL);
   let panel = await promise;
-  is(
-    Preferences.get(prefs.DOH_DOORHANGER_SHOWN_PREF),
-    undefined,
-    "Doorhanger shown pref undefined before user interaction."
-  );
 
-  prefPromise = TestUtils.waitForPrefChange(prefs.DOH_DOORHANGER_SHOWN_PREF);
+  prefPromise = TestUtils.waitForPrefChange(
+    prefs.DOH_DOORHANGER_USER_DECISION_PREF
+  );
 
   // Click the doorhanger's "accept" button.
   let button = panel.querySelector(".popup-notification-primary-button");
@@ -35,11 +32,6 @@ add_task(async function testUserInterference() {
   await promise;
   await prefPromise;
 
-  is(
-    Preferences.get(prefs.DOH_DOORHANGER_SHOWN_PREF),
-    true,
-    "Doorhanger shown pref saved."
-  );
   is(
     Preferences.get(prefs.DOH_DOORHANGER_USER_DECISION_PREF),
     "UIOk",
@@ -52,12 +44,13 @@ add_task(async function testUserInterference() {
   await checkHeuristicsTelemetry("enable_doh", "startup");
 
   // Set the TRR mode pref manually and ensure we respect this.
-  Preferences.set(prefs.TRR_MODE_PREF, 0);
+  Preferences.set(prefs.NETWORK_TRR_MODE_PREF, 3);
+  await ensureTRRMode(undefined);
 
   // Simulate a network change.
   simulateNetworkChange();
-  await ensureNoTRRModeChange(0);
-  await checkHeuristicsTelemetry("disable_doh", "userModified");
+  await ensureNoTRRModeChange(undefined);
+  ensureNoHeuristicsTelemetry();
 
   is(
     Preferences.get(prefs.DOH_DISABLED_PREF, false),
@@ -72,17 +65,17 @@ add_task(async function testUserInterference() {
 
   // Simulate another network change.
   simulateNetworkChange();
-  await ensureNoTRRModeChange(0);
+  await ensureNoTRRModeChange(undefined);
   ensureNoHeuristicsTelemetry();
 
   // Restart the add-on for good measure.
   await restartAddon();
-  await ensureNoTRRModeChange(0);
+  await ensureNoTRRModeChange(undefined);
   ensureNoTRRSelectionTelemetry();
   ensureNoHeuristicsTelemetry();
 
   // Simulate another network change.
   simulateNetworkChange();
-  await ensureNoTRRModeChange(0);
+  await ensureNoTRRModeChange(undefined);
   ensureNoHeuristicsTelemetry();
 });

@@ -64,7 +64,7 @@ nsresult ContentPrincipal::Init(nsIURI* aURI,
   // or fall back to a null principal.  These are schemes which return
   // URI_INHERITS_SECURITY_CONTEXT from their protocol handler's
   // GetProtocolFlags function.
-  bool hasFlag;
+  bool hasFlag = false;
   Unused << hasFlag;  // silence possible compiler warnings.
   MOZ_DIAGNOSTIC_ASSERT(
       NS_SUCCEEDED(NS_URIChainHasFlags(
@@ -363,8 +363,10 @@ ContentPrincipal::SetDomain(nsIURI* aDomain) {
   };
   JSPrincipals* principals =
       nsJSPrincipals::get(static_cast<nsIPrincipal*>(this));
-  AutoSafeJSContext cx;
-  JS::IterateRealmsWithPrincipals(cx, principals, nullptr, cb);
+
+  dom::AutoJSAPI jsapi;
+  jsapi.Init();
+  JS::IterateRealmsWithPrincipals(jsapi.cx(), principals, nullptr, cb);
 
   return NS_OK;
 }

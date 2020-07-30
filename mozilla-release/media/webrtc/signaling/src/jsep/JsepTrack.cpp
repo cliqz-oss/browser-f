@@ -256,8 +256,8 @@ bool JsepTrack::IsRtxEnabled(
 
 void JsepTrack::AddToMsection(const std::vector<JsConstraints>& constraintsList,
                               sdp::Direction direction,
-                              SsrcGenerator& ssrcGenerator,
-                              bool requireRtxSsrcs, SdpMediaSection* msection) {
+                              SsrcGenerator& ssrcGenerator, bool rtxEnabled,
+                              SdpMediaSection* msection) {
   UniquePtr<SdpSimulcastAttribute> simulcast(new SdpSimulcastAttribute);
   UniquePtr<SdpRidAttributeList> rids(new SdpRidAttributeList);
   for (const JsConstraints& constraints : constraintsList) {
@@ -282,6 +282,10 @@ void JsepTrack::AddToMsection(const std::vector<JsConstraints>& constraintsList,
     msection->GetAttributeList().SetAttribute(simulcast.release());
     msection->GetAttributeList().SetAttribute(rids.release());
   }
+
+  bool requireRtxSsrcs =
+      rtxEnabled && msection->GetDirectionAttribute().mValue !=
+                        SdpDirectionAttribute::Direction::kRecvonly;
 
   if (mType != SdpMediaSection::kApplication && mDirection == sdp::kSend) {
     UpdateSsrcs(ssrcGenerator, constraintsList.size());
@@ -451,6 +455,7 @@ std::vector<UniquePtr<JsepCodecDescription>> JsepTrack::NegotiateCodecs(
           JsepVideoCodecDescription* cloneVideoCodec =
               static_cast<JsepVideoCodecDescription*>(clone.get());
           bool useRtx =
+              mRtxIsAllowed &&
               Preferences::GetBool("media.peerconnection.video.use_rtx", false);
           videoCodec->mRtxEnabled = useRtx && cloneVideoCodec->mRtxEnabled;
           videoCodec->mRtxPayloadType = cloneVideoCodec->mRtxPayloadType;

@@ -1086,7 +1086,7 @@ void nsImageFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
   }
   FinishAndStoreOverflow(&aMetrics, aReflowInput.mStyleDisplay);
 
-  if ((GetStateBits() & NS_FRAME_FIRST_REFLOW) && !mReflowCallbackPosted) {
+  if (HasAnyStateBits(NS_FRAME_FIRST_REFLOW) && !mReflowCallbackPosted) {
     mReflowCallbackPosted = true;
     PresShell()->PostReflowCallback(this);
   }
@@ -1765,8 +1765,21 @@ static bool OldImageHasDifferentRatio(const nsImageFrame& aFrame,
   // If we have an image, we need to have a current request.
   // Same if we had an image.
   const bool hasRequest = true;
-  MOZ_ASSERT(currentRatio == ComputeAspectRatio(&aImage, hasRequest, aFrame),
-             "aspect-ratio got out of sync during paint? How?");
+#ifdef DEBUG
+  auto currentRatioRecomputed = ComputeAspectRatio(&aImage, hasRequest, aFrame);
+  // If the image encounters an error after decoding the size (and we run
+  // UpdateIntrinsicRatio) then the image will return the empty AspectRatio and
+  // the aspect ratio we compute here will be different from what was computed
+  // and stored before the image went into error state. It would be better to
+  // check that the image has an error here but we need an imgIRequest for that,
+  // not an imgIContainer. In lieu of that we check that
+  // aImage.GetIntrinsicRatio() returns Nothing() as it does when the image is
+  // in the error state and that the recomputed ratio is the zero ratio.
+  MOZ_ASSERT(
+      (!currentRatioRecomputed && aImage.GetIntrinsicRatio() == Nothing()) ||
+          currentRatio == currentRatioRecomputed,
+      "aspect-ratio got out of sync during paint? How?");
+#endif
   auto oldRatio = ComputeAspectRatio(aPrevImage, hasRequest, aFrame);
   return oldRatio != currentRatio;
 }
@@ -1782,7 +1795,7 @@ void nsDisplayImage::Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) {
   if (aBuilder->ShouldSyncDecodeImages() || oldImageIsDifferent) {
     flags |= imgIContainer::FLAG_SYNC_DECODE;
   }
-  if (aBuilder->IsPaintingToWindow()) {
+  if (aBuilder->UseHighQualityScaling()) {
     flags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
   }
 
@@ -1950,7 +1963,7 @@ bool nsDisplayImage::CreateWebRenderCommands(
   if (aDisplayListBuilder->ShouldSyncDecodeImages() || oldImageIsDifferent) {
     flags |= imgIContainer::FLAG_SYNC_DECODE;
   }
-  if (aDisplayListBuilder->IsPaintingToWindow()) {
+  if (aDisplayListBuilder->UseHighQualityScaling()) {
     flags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
   }
 
@@ -2287,7 +2300,7 @@ nsresult nsImageFrame::HandleEvent(nsPresContext* aPresContext,
   NS_ENSURE_ARG_POINTER(aEventStatus);
 
   if ((aEvent->mMessage == eMouseClick &&
-       aEvent->AsMouseEvent()->mButton == MouseButton::eLeft) ||
+       aEvent->AsMouseEvent()->mButton == MouseButton::ePrimary) ||
       aEvent->mMessage == eMouseMove) {
     nsImageMap* map = GetImageMap();
     bool isServerMap = IsServerImageMap();
@@ -2652,10 +2665,7 @@ void nsImageFrame::IconLoad::Notify(imgIRequest* aRequest, int32_t aType,
                                     imgIContainer::FLAG_HIGH_QUALITY_SCALING);
   }
 
-  nsTObserverArray<nsImageFrame*>::ForwardIterator iter(mIconObservers);
-  nsImageFrame* frame;
-  while (iter.HasMore()) {
-    frame = iter.GetNext();
+  for (nsImageFrame* frame : mIconObservers.ForwardRange()) {
     frame->InvalidateFrame();
   }
 }

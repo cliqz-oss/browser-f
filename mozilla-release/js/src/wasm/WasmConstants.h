@@ -505,7 +505,7 @@ enum class SimdOp {
   I8x16Neg = 0x61,
   I8x16AnyTrue = 0x62,
   I8x16AllTrue = 0x63,
-  // Bitmask = 0x64
+  I8x16Bitmask = 0x64,
   I8x16NarrowSI16x8 = 0x65,
   I8x16NarrowUI16x8 = 0x66,
   // Widen = 0x67
@@ -537,7 +537,7 @@ enum class SimdOp {
   I16x8Neg = 0x81,
   I16x8AnyTrue = 0x82,
   I16x8AllTrue = 0x83,
-  // Bitmask = 0x84
+  I16x8Bitmask = 0x84,
   I16x8NarrowSI32x4 = 0x85,
   I16x8NarrowUI32x4 = 0x86,
   I16x8WidenLowSI8x16 = 0x87,
@@ -569,7 +569,7 @@ enum class SimdOp {
   I32x4Neg = 0xa1,
   I32x4AnyTrue = 0xa2,
   I32x4AllTrue = 0xa3,
-  // Bitmask = 0xa4
+  I32x4Bitmask = 0xa4,
   // Narrow = 0xa5
   // Narrow = 0xa6
   I32x4WidenLowSI16x8 = 0xa7,
@@ -840,6 +840,11 @@ enum class NameType { Module = 0, Function = 1, Local = 2 };
 
 enum class FieldFlags { Mutable = 0x01, AllowedMask = 0x01 };
 
+// The WebAssembly spec hard-codes the virtual page size to be 64KiB and
+// requires the size of linear memory to always be a multiple of 64KiB.
+
+static const unsigned PageSize = 64 * 1024;
+
 // These limits are agreed upon with other engines for consistency.
 
 static const unsigned MaxTypes = 1000000;
@@ -849,7 +854,10 @@ static const unsigned MaxImports = 100000;
 static const unsigned MaxExports = 100000;
 static const unsigned MaxGlobals = 1000000;
 static const unsigned MaxDataSegments = 100000;
+static const unsigned MaxDataSegmentLengthPages = 16384;
 static const unsigned MaxElemSegments = 10000000;
+static const unsigned MaxElemSegmentLength = 10000000;
+static const unsigned MaxTableLimitField = UINT32_MAX;
 static const unsigned MaxTableLength = 10000000;
 static const unsigned MaxLocals = 50000;
 static const unsigned MaxParams = 1000;
@@ -857,16 +865,15 @@ static const unsigned MaxParams = 1000;
 // `env->funcMaxResults()` to get the correct value for a module.
 static const unsigned MaxResults = 1000;
 static const unsigned MaxStructFields = 1000;
-static const unsigned MaxMemoryMaximumPages = 65536;
+static const unsigned MaxMemoryLimitField = 65536;
+static const unsigned MaxMemoryPages = INT32_MAX / PageSize;
 static const unsigned MaxStringBytes = 100000;
 static const unsigned MaxModuleBytes = 1024 * 1024 * 1024;
 static const unsigned MaxFunctionBytes = 7654321;
 
 // These limits pertain to our WebAssembly implementation only.
 
-static const unsigned MaxTableInitialLength = 10000000;
 static const unsigned MaxBrTableElems = 1000000;
-static const unsigned MaxMemoryInitialPages = 16384;
 static const unsigned MaxCodeSectionBytes = MaxModuleBytes;
 static const unsigned MaxResultsForJitEntry = 1;
 static const unsigned MaxResultsForJitExit = 1;

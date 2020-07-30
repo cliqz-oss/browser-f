@@ -6,6 +6,7 @@
 
 #include "nsWaylandDisplay.h"
 #include "WindowSurfaceWayland.h"
+#include "DMABufLibWrapper.h"
 
 #include "nsPrintfCString.h"
 #include "mozilla/gfx/2D.h"
@@ -117,7 +118,7 @@ WindowBackBufferShm scheme:
   |  |WindowBackBufferDMABuf  |      |
   |  |                        |      |
   |  | ---------------------- |      |
-  |  | |WaylandDMABufSurface  |      |
+  |  | |DMABufSurface         |      |
   |  | ---------------------- |      |
   |  --------------------------      |
   |                                  |
@@ -125,7 +126,7 @@ WindowBackBufferShm scheme:
   |  |WindowBackBufferDMABuf  |      |
   |  |                        |      |
   |  | ---------------------- |      |
-  |  | |WaylandDMABufSurface  |      |
+  |  | |DMABufSurface         |      |
   |  | ---------------------- |      |
   |  --------------------------      |
   -----------------------------------
@@ -189,10 +190,10 @@ handle to wayland compositor by WindowBackBuffer/WindowSurfaceWayland
 WindowBackBufferDMABuf
 
 It's WindowBackBuffer implementation based on DMA Buffer.
-It owns wl_buffer object, owns WaylandDMABufSurface
+It owns wl_buffer object, owns DMABufSurface
 (which provides the DMA Buffer) and ties them together.
 
-WindowBackBufferDMABuf backend is used only when WaylandDMABufSurface is
+WindowBackBufferDMABuf backend is used only when DMABufSurface is
 available and widget.wayland_dmabuf_backend.enabled preference is set.
 
 */
@@ -422,7 +423,7 @@ already_AddRefed<gfx::DrawTarget> WindowBackBufferShm::Lock() {
 WindowBackBufferDMABuf::WindowBackBufferDMABuf(
     WindowSurfaceWayland* aWindowSurfaceWayland, int aWidth, int aHeight)
     : WindowBackBuffer(aWindowSurfaceWayland) {
-  mDMAbufSurface = WaylandDMABufSurfaceRGBA::CreateDMABufSurface(
+  mDMAbufSurface = DMABufSurfaceRGBA::CreateDMABufSurface(
       aWidth, aHeight, DMABUF_ALPHA | DMABUF_CREATE_WL_BUFFER);
   LOGWAYLAND(
       ("WindowBackBufferDMABuf::WindowBackBufferDMABuf [%p] Created DMABuf "
@@ -546,7 +547,7 @@ WindowSurfaceWayland::~WindowSurfaceWayland() {
 
 bool WindowSurfaceWayland::UseDMABufBackend() {
   if (!mUseDMABufInitialized) {
-    mUseDMABuf = nsWaylandDisplay::IsDMABufBasicEnabled();
+    mUseDMABuf = GetDMABufDevice()->IsDMABufBasicEnabled();
     LOGWAYLAND(("WindowSurfaceWayland::UseDMABufBackend DMABuf state %d\n",
                 mUseDMABuf));
     mUseDMABufInitialized = true;
@@ -969,19 +970,16 @@ void WindowSurfaceWayland::CacheImageSurface(
   WindowImageSurface surf = WindowImageSurface(mImageSurface, aRegion);
 
   if (mDelayedImageCommits.Length()) {
-    int lastSurf = mDelayedImageCommits.Length() - 1;
-    if (surf.OverlapsSurface(mDelayedImageCommits[lastSurf])) {
+    auto lastSurf = mDelayedImageCommits.PopLastElement();
+    if (surf.OverlapsSurface(lastSurf)) {
 #ifdef MOZ_LOGGING
       {
-        gfx::IntRect size = mDelayedImageCommits[lastSurf]
-                                .GetUpdateRegion()
-                                ->GetBounds()
-                                .ToUnknownRect();
+        gfx::IntRect size =
+            lastSurf.GetUpdateRegion()->GetBounds().ToUnknownRect();
         LOGWAYLAND(("    removing [ %d, %d] -> [%d x %d]\n", size.x, size.y,
                     size.width, size.height));
       }
 #endif
-      mDelayedImageCommits.RemoveElementAt(lastSurf);
     }
   }
 
@@ -1052,7 +1050,8 @@ void WindowSurfaceWayland::CommitWaylandBuffer() {
   MOZ_ASSERT(!mWaylandBuffer->IsAttached(),
              "We can't draw to attached wayland buffer!");
 
-  wl_surface* waylandSurface = mWindow->GetWaylandSurface();
+  MozContainer* container = mWindow->GetMozContainer();
+  wl_surface* waylandSurface = moz_container_wayland_surface_lock(container);
   if (!waylandSurface) {
     LOGWAYLAND(("    [%p] mWindow->GetWaylandSurface() failed, delay commit.\n",
                 (void*)this));
@@ -1077,6 +1076,11 @@ void WindowSurfaceWayland::CommitWaylandBuffer() {
     }
     return;
   }
+
+  auto unlockContainer = MakeScopeExit([&] {
+    moz_container_wayland_surface_unlock(container, &waylandSurface);
+  });
+
   wl_proxy_set_queue((struct wl_proxy*)waylandSurface,
                      mWaylandDisplay->GetEventQueue());
 
@@ -1119,6 +1123,9 @@ void WindowSurfaceWayland::CommitWaylandBuffer() {
   mWaylandBuffer->Attach(waylandSurface);
   mLastCommittedSurface = waylandSurface;
   mLastCommitTime = g_get_monotonic_time() / 1000;
+
+  // Unlock surface now as SyncBegin()
+  moz_container_wayland_surface_unlock(container, &waylandSurface);
 
   // Ask wl_display to start events synchronization. We're going to wait
   // until all events are processed before next WindowSurfaceWayland::Lock()

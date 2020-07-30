@@ -50,6 +50,18 @@ interface nsITelemetry : nsISupports
   const unsigned long DATASET_ALL_CHANNELS = 0;
   const unsigned long DATASET_PRERELEASE_CHANNELS = 1;
 
+  /**
+   * Serializes the histogram labels for categorical hitograms.
+   * The returned structure looks like:
+   *   { "histogram1": [ "histogram1_label1", "histogram1_label2", ...],
+   *     "histogram2": [ "histogram2_label1", "histogram2_label2", ...]
+   *     ...
+   *     }
+   *
+   * Note that this function should only be used in tests and about:telemetry.
+   */
+  [implicit_jscontext]
+  jsval getCategoricalLabels();
 
   /**
    * Serializes the histograms from the given store to a JSON-style object.
@@ -611,18 +623,6 @@ interface nsITelemetry : nsISupports
    */
   [implicit_jscontext]
   jsval getAllStores();
-
-  /**
-   * Reset the storage for all the collection primitives so that GeckoView
-   * can issue a single Clear signal for histograms, scalars, events, ...
-   *
-   * This is needed for supporting the current implementation of GeckoView
-   * measurement persistence: all the measurements are stored in a single file and
-   * they can't be cleared independently.
-   *
-   * Please note that this is only intended to be used by GeckoViewTelemetryController.
-   */
-  void clearProbes();
 
   /**
    * Does early, cheap initialization for native telemetry data providers.

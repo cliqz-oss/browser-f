@@ -23,6 +23,14 @@ XPCOMUtils.defineLazyPreferenceGetter(
   false
 );
 
+ChromeUtils.defineModuleGetter(
+  this,
+  "setTimeout",
+  "resource://gre/modules/Timer.jsm"
+);
+
+const PREF_SECURITY_DELAY = "security.notification_enable_delay";
+
 // Stores the browser and actor that has the active popup, used by formfill
 let currentBrowserWeakRef = null;
 let currentActor = null;
@@ -275,6 +283,17 @@ class AutoCompleteParent extends JSWindowActorParent {
     );
     this.openedPopup.invalidate();
     this._maybeRecordTelemetryEvents(results);
+
+    // This is a temporary solution. We should replace it with
+    // proper meta information about the popup once such field
+    // becomes available.
+    let isCreditCard = results.some(result =>
+      result?.comment?.includes("cc-number")
+    );
+
+    if (isCreditCard) {
+      this.delayPopupInput();
+    }
   }
 
   /**
@@ -439,6 +458,32 @@ class AutoCompleteParent extends JSWindowActorParent {
     // Returning false to pacify ESLint, but this return value is
     // ignored by the messaging infrastructure.
     return false;
+  }
+
+  // Imposes a brief period during which the popup will not respond to
+  // a click, so as to reduce the chances of a successful clickjacking
+  // attempt
+  delayPopupInput() {
+    if (!this.openedPopup) {
+      return;
+    }
+    const popupDelay = Services.prefs.getIntPref(PREF_SECURITY_DELAY);
+
+    // Mochitests set this to 0, and many will fail on integration
+    // if we make the popup items inactive, even briefly.
+    if (!popupDelay) {
+      return;
+    }
+
+    const items = Array.from(
+      this.openedPopup.getElementsByTagName("richlistitem")
+    );
+    items.forEach(item => (item.disabled = true));
+
+    setTimeout(
+      () => items.forEach(item => (item.disabled = false)),
+      popupDelay
+    );
   }
 
   notifyListeners() {

@@ -17,15 +17,6 @@ types.addDictType("root.listWorkers", {
 types.addDictType("root.listServiceWorkerRegistrations", {
   registrations: "array:serviceWorkerRegistration",
 });
-// TODO: This can be removed once FF77 is the release
-// This is only kept to support older version. FF77+ uses watchTargets.
-types.addDictType("root.listRemoteFrames", {
-  frames: "array:frameDescriptor",
-});
-types.addPolymorphicType("root.browsingContextDescriptor", [
-  "frameDescriptor",
-  "processDescriptor",
-]);
 
 const rootSpecPrototype = {
   typeName: "root",
@@ -99,23 +90,6 @@ const rootSpecPrototype = {
       response: {
         processDescriptor: RetVal("processDescriptor"),
       },
-    },
-
-    // TODO: This can be removed once FF77 is the release
-    // This is only kept to support older version. FF77+ uses watchTargets.
-    listRemoteFrames: {
-      request: {
-        id: Arg(0, "number"),
-      },
-      response: RetVal("root.listRemoteFrames"),
-    },
-
-    // Can be removed when FF77 reach release channel
-    getBrowsingContextDescriptor: {
-      request: {
-        id: Arg(0, "number"),
-      },
-      response: RetVal("root.browsingContextDescriptor"),
     },
 
     protocolDescription: {

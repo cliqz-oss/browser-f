@@ -276,6 +276,11 @@ StorageActors.defaults = function(typeName, observationTopics) {
       const host = this.getHostName(window.location);
       if (host && !this.hostVsStores.has(host)) {
         await this.populateStoresForHost(host, window);
+        if (!this.storageActor) {
+          // The actor might be destroyed during populateStoresForHost.
+          return;
+        }
+
         const data = {};
         data[host] = this.getNamesForHost(host);
         this.storageActor.update("added", typeName, data);
@@ -932,6 +937,7 @@ var cookieHelpers = {
           isSession: nsiCookie.isSession,
           expires: nsiCookie.expires,
           originAttributes: nsiCookie.originAttributes,
+          schemeMap: nsiCookie.schemeMap,
         };
         break;
       }
@@ -995,7 +1001,8 @@ var cookieHelpers = {
       cookie.isSession,
       cookie.isSession ? MAX_COOKIE_EXPIRY : cookie.expires,
       cookie.originAttributes,
-      cookie.sameSite
+      cookie.sameSite,
+      cookie.schemeMap
     );
   },
 

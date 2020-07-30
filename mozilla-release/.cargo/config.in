@@ -15,7 +15,7 @@ rev = "e3c3388e6632cf55e08d773b32e58b1cab9b2731"
 [source."https://github.com/mozilla/neqo"]
 git = "https://github.com/mozilla/neqo"
 replace-with = "vendored-sources"
-tag = "v0.2.4"
+tag = "v0.4.4"
 
 [source."https://github.com/mozilla/mp4parse-rust"]
 git = "https://github.com/mozilla/mp4parse-rust"
@@ -30,7 +30,7 @@ rev = "61dcc364ac0d6d0816ab88a494bbf20d824b009b"
 [source."https://github.com/mozilla-spidermonkey/jsparagus"]
 git = "https://github.com/mozilla-spidermonkey/jsparagus"
 replace-with = "vendored-sources"
-rev = "efc1291d05e5ba8dbb4bd1197937a0291e72742c"
+rev = "f94e3c1ab5d98c9fcfddd6441ce0d66169321035"
 
 [source."https://github.com/kvark/spirv_cross"]
 branch = "wgpu3"
@@ -52,15 +52,20 @@ git = "https://github.com/hsivonen/packed_simd"
 replace-with = "vendored-sources"
 rev = "3541e3818fdc7c2a24f87e3459151a4ce955a67a"
 
+[source."https://github.com/gfx-rs/naga"]
+git = "https://github.com/gfx-rs/naga"
+replace-with = "vendored-sources"
+rev = "bce6358eb1026c13d2f1c6d365af37afe8869a86"
+
 [source."https://github.com/djg/cubeb-pulse-rs"]
 git = "https://github.com/djg/cubeb-pulse-rs"
 replace-with = "vendored-sources"
-rev = "70431f444cf164177cb3c0f060698fc35f811be5"
+rev = "3224e2dee65c0726c448484d4c3c43956b9330ec"
 
 [source."https://github.com/bytecodealliance/wasmtime"]
 git = "https://github.com/bytecodealliance/wasmtime"
 replace-with = "vendored-sources"
-rev = "b7cfd39b531680217537cfcf5294a22077a0a58d"
+rev = "238ae3bf2111847f60089656eb97fc9345295b1f"
 
 [source."https://github.com/badboy/failure"]
 git = "https://github.com/badboy/failure"

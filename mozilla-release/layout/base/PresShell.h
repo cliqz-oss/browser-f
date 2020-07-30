@@ -356,6 +356,12 @@ class PresShell final : public nsStubDocumentObserver,
    */
   void AddResizeEventFlushObserverIfNeeded();
 
+  /**
+   * Returns true if the document hosted by this presShell is in a devtools
+   * Responsive Design Mode browsing context.
+   */
+  bool InRDMPane();
+
  private:
   /**
    * This is what ResizeReflowIgnoreOverride does when not shrink-wrapping (that
@@ -575,7 +581,8 @@ class PresShell final : public nsStubDocumentObserver,
    * Scrolls the view of the document so that the given area of a frame
    * is visible, if possible. Layout is not flushed before scrolling.
    *
-   * @param aRect relative to aFrame
+   * @param aRect Relative to aFrame. The rect edges will be respected even if
+   * the rect is empty.
    * @param aVertical see ScrollContentIntoView and ScrollAxis
    * @param aHorizontal see ScrollContentIntoView and ScrollAxis
    * @param aScrollFlags if SCROLL_FIRST_ANCESTOR_ONLY is set, only the
@@ -816,6 +823,8 @@ class PresShell final : public nsStubDocumentObserver,
    * RenderDocumentFlags::IgnoreViewportScrolling is set or the document is in
    * ignore viewport scrolling mode
    * (PresShell::SetIgnoreViewportScrolling/IgnoringViewportScrolling).
+   *   set RenderDocumentFlags::UseHighQualityScaling to enable downscale on
+   *   decode for images.
    * @param aBackgroundColor a background color to render onto
    * @param aRenderedContext the gfxContext to render to. We render so that
    * one CSS pixel in the source document is rendered to one unit in the current
@@ -1276,7 +1285,6 @@ class PresShell final : public nsStubDocumentObserver,
 
   // Widget notificiations
   void WindowSizeMoveDone();
-  void SysColorChanged() { mPresContext->SysColorChanged(); }
   void ThemeChanged() { mPresContext->ThemeChanged(); }
   void BackingScaleFactorChanged() { mPresContext->UIResolutionChangedSync(); }
 
@@ -1454,6 +1462,8 @@ class PresShell final : public nsStubDocumentObserver,
    * Calls FrameNeedsReflow on all fixed position children of the root frame.
    */
   void MarkFixedFramesForReflow(IntrinsicDirty aIntrinsicDirty);
+
+  void MaybeReflowForInflationScreenSizeChange();
 
   // This function handles all the work after VisualViewportSize is set
   // or reset.
@@ -1671,7 +1681,8 @@ class PresShell final : public nsStubDocumentObserver,
     PresShell::SetCapturingContent(nullptr, CaptureFlags::None);
   }
 
-  // Called at the end of nsLayoutUtils::PaintFrame().
+  // Called at the end of nsLayoutUtils::PaintFrame() if we were painting to
+  // the widget.
   // This is used to clear any pending visual scroll updates that have been
   // acknowledged, to make sure they don't stick around for the next paint.
   void EndPaint();

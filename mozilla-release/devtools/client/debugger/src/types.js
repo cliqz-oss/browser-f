@@ -250,6 +250,7 @@ export type Frame = {
   index: number,
   asyncCause: null | string,
   state: "on-stack" | "suspended" | "dead",
+  type?: "call" | "eval" | "global" | "module" | "wasmcall" | "debugger",
 };
 
 export type ChromeFrame = {
@@ -516,4 +517,12 @@ export type Preview = {
   value: any,
   column: number,
   line: number,
+};
+
+export type Exception = {
+  columnNumber: number,
+  errorMessage: string,
+  fileName: URL,
+  lineNumber: number,
+  sourceActorId: SourceActorId,
 };

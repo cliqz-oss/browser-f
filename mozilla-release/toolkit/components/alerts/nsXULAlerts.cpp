@@ -9,6 +9,7 @@
 #include "nsComponentManagerUtils.h"
 #include "nsCOMPtr.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/EventForwards.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/dom/Notification.h"
 #include "mozilla/Unused.h"
@@ -270,7 +271,7 @@ nsXULAlerts::ShowAlertWithIconURI(nsIAlertNotification* aAlert,
   NS_ENSURE_TRUE(scriptableOrigin, NS_ERROR_FAILURE);
 
   int32_t origin =
-      LookAndFeel::GetInt(LookAndFeel::eIntID_AlertNotificationOrigin);
+      LookAndFeel::GetInt(LookAndFeel::IntID::AlertNotificationOrigin);
   scriptableOrigin->SetData(origin);
 
   rv = argsArray->AppendElement(scriptableOrigin);
@@ -395,7 +396,8 @@ nsXULAlerts::CloseAlert(const nsAString& aAlertName, nsIPrincipal* aPrincipal) {
   mozIDOMWindowProxy* alert = mNamedWindows.GetWeak(aAlertName);
   if (nsCOMPtr<nsPIDOMWindowOuter> domWindow =
           nsPIDOMWindowOuter::From(alert)) {
-    domWindow->DispatchCustomEvent(NS_LITERAL_STRING("XULAlertClose"));
+    domWindow->DispatchCustomEvent(NS_LITERAL_STRING("XULAlertClose"),
+                                   ChromeOnlyDispatch::eYes);
   }
   return NS_OK;
 }

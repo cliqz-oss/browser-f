@@ -27,7 +27,6 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/MemoryReportingProcess.h"
 #include "mozilla/MozPromise.h"
-#include "mozilla/StaticPtr.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Variant.h"
 #include "mozilla/UniquePtr.h"
@@ -36,7 +35,8 @@
 #include "nsPluginTags.h"
 #include "nsFrameMessageManager.h"
 #include "nsHashKeys.h"
-#include "nsIContentParent.h"
+#include "nsIAsyncShutdown.h"
+#include "nsIDOMProcessParent.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIObserver.h"
 #include "nsIRemoteTab.h"
@@ -54,15 +54,16 @@
 // Process names as reported by about:memory are defined in
 // ContentChild:RecvRemoteType.  Add your value there too or it will be called
 // "Web Content".
+#define PREALLOC_REMOTE_TYPE "prealloc"
 #define DEFAULT_REMOTE_TYPE "web"
-#define FISSION_WEB_REMOTE_TYPE "webIsolated"
 #define FILE_REMOTE_TYPE "file"
 #define EXTENSION_REMOTE_TYPE "extension"
 #define PRIVILEGEDABOUT_REMOTE_TYPE "privilegedabout"
 #define PRIVILEGEDMOZILLA_REMOTE_TYPE "privilegedmozilla"
-#define WITH_COOP_COEP_REMOTE_TYPE_PREFIX "webCOOP+COEP="
 
-// This must start with the DEFAULT_REMOTE_TYPE above.
+// These must start with the DEFAULT_REMOTE_TYPE above.
+#define FISSION_WEB_REMOTE_TYPE "webIsolated"
+#define WITH_COOP_COEP_REMOTE_TYPE_PREFIX "webCOOP+COEP="
 #define LARGE_ALLOCATION_REMOTE_TYPE "webLargeAllocation"
 
 class nsConsoleService;
@@ -127,10 +128,11 @@ struct CancelContentJSOptions;
 
 class ContentParent final
     : public PContentParent,
-      public nsIContentParent,
+      public nsIDOMProcessParent,
       public nsIObserver,
       public nsIDOMGeoPositionCallback,
       public nsIDOMGeoPositionErrorCallback,
+      public nsIAsyncShutdownBlocker,
       public nsIInterfaceRequestor,
       public gfx::gfxVarReceiver,
       public mozilla::LinkedListElement<ContentParent>,
@@ -161,6 +163,8 @@ class ContentParent final
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_CONTENTPARENT_IID)
 
+  static LogModule* GetLog();
+
   /**
    * Create a subprocess suitable for use later as a content process.
    */
@@ -184,12 +188,12 @@ class ContentParent final
   static void ReleaseCachedProcesses();
 
   /**
-   * Picks a random content parent from |aContentParents| with a given |aOpener|
-   * respecting the index limit set by |aMaxContentParents|.
+   * Picks a random content parent from |aContentParents| respecting the index
+   * limit set by |aMaxContentParents|.
    * Returns null if non available.
    */
   static already_AddRefed<ContentParent> MinTabSelect(
-      const nsTArray<ContentParent*>& aContentParents, ContentParent* aOpener,
+      const nsTArray<ContentParent*>& aContentParents,
       int32_t maxContentParents);
 
   /**
@@ -202,12 +206,34 @@ class ContentParent final
       Element* aFrameElement, const nsAString& aRemoteType,
       hal::ProcessPriority aPriority =
           hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND,
-      ContentParent* aOpener = nullptr, bool aPreferUsed = false);
+      bool aPreferUsed = false);
   static already_AddRefed<ContentParent> GetNewOrUsedBrowserProcess(
       Element* aFrameElement, const nsAString& aRemoteType,
       hal::ProcessPriority aPriority =
           hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND,
-      ContentParent* aOpener = nullptr, bool aPreferUsed = false);
+      bool aPreferUsed = false);
+
+  /**
+   * Get or create a content process, but without waiting for the process
+   * launch to have completed. The returned `ContentParent` may still be in the
+   * "Launching" state.
+   *
+   * Can return `nullptr` in the case of an error.
+   *
+   * Use the `WaitForLaunchAsync` or `WaitForLaunchSync` methods to wait for
+   * the process to be fully launched.
+   */
+  static already_AddRefed<ContentParent> GetNewOrUsedLaunchingBrowserProcess(
+      Element* aFrameElement, const nsAString& aRemoteType,
+      hal::ProcessPriority aPriority =
+          hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND,
+      bool aPreferUsed = false);
+
+  RefPtr<ContentParent::LaunchPromise> WaitForLaunchAsync(
+      hal::ProcessPriority aPriority =
+          hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND);
+  bool WaitForLaunchSync(hal::ProcessPriority aPriority =
+                             hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND);
 
   /**
    * Get or create a content process for a JS plugin. aPluginID is the id of the
@@ -288,8 +314,6 @@ class ContentParent final
     return ContentParentIterator(aPolicy, first);
   }
 
-  static bool IgnoreIPCPrincipal();
-
   static void NotifyUpdatedDictionaries();
 
   static void NotifyUpdatedFonts();
@@ -333,10 +357,11 @@ class ContentParent final
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(ContentParent, nsIObserver)
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_NSICONTENTPARENT
+  NS_DECL_NSIDOMPROCESSPARENT
   NS_DECL_NSIOBSERVER
   NS_DECL_NSIDOMGEOPOSITIONCALLBACK
   NS_DECL_NSIDOMGEOPOSITIONERRORCALLBACK
+  NS_DECL_NSIASYNCSHUTDOWNBLOCKER
   NS_DECL_NSIINTERFACEREQUESTOR
 
   /**
@@ -353,6 +378,11 @@ class ContentParent final
 
   /** Notify that a tab was destroyed during normal operation. */
   void NotifyTabDestroyed(const TabId& aTabId, bool aNotifiedDestroying);
+
+  // Manage the set of `KeepAlive`s on this ContentParent which are preventing
+  // it from being destroyed.
+  void AddKeepAlive();
+  void RemoveKeepAlive();
 
   TestShellParent* CreateTestShell();
 
@@ -386,7 +416,6 @@ class ContentParent final
 
   GeckoChildProcessHost* Process() const { return mSubprocess; }
 
-  ContentParent* Opener() const { return mOpener; }
   nsIContentProcessInfo* ScriptableHelper() const { return mScriptableHelper; }
 
   mozilla::dom::ProcessMessageManager* GetMessageManager() const {
@@ -696,14 +725,17 @@ class ContentParent final
    */
   static nsClassHashtable<nsStringHashKey, nsTArray<ContentParent*>>*
       sBrowserContentParents;
-  static nsTArray<ContentParent*>* sPrivateContent;
-  static nsDataHashtable<nsUint32HashKey, ContentParent*>*
+  static UniquePtr<nsTArray<ContentParent*>> sPrivateContent;
+  static UniquePtr<nsDataHashtable<nsUint32HashKey, ContentParent*>>
       sJSPluginContentParents;
-  static StaticAutoPtr<LinkedList<ContentParent>> sContentParents;
+  static UniquePtr<LinkedList<ContentParent>> sContentParents;
+
+  void AddShutdownBlockers();
+  void RemoveShutdownBlockers();
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   // Cached Mac sandbox params used when launching content processes.
-  static StaticAutoPtr<std::vector<std::string>> sMacSandboxParams;
+  static UniquePtr<std::vector<std::string>> sMacSandboxParams;
 #endif
 
   // Set aLoadUri to true to load aURIToLoad and to false to only create the
@@ -722,12 +754,11 @@ class ContentParent final
       const OriginAttributes& aOriginAttributes);
 
   explicit ContentParent(int32_t aPluginID)
-      : ContentParent(nullptr, EmptyString(), aPluginID) {}
-  ContentParent(ContentParent* aOpener, const nsAString& aRemoteType)
-      : ContentParent(aOpener, aRemoteType, nsFakePluginTag::NOT_JSPLUGIN) {}
+      : ContentParent(EmptyString(), aPluginID) {}
+  explicit ContentParent(const nsAString& aRemoteType)
+      : ContentParent(aRemoteType, nsFakePluginTag::NOT_JSPLUGIN) {}
 
-  ContentParent(ContentParent* aOpener, const nsAString& aRemoteType,
-                int32_t aPluginID);
+  ContentParent(const nsAString& aRemoteType, int32_t aPluginID);
 
   // Launch the subprocess and associated initialization.
   // Returns false if the process fails to start.
@@ -745,18 +776,9 @@ class ContentParent final
   // Common implementation of LaunchSubprocess{Sync,Async}.
   // Return `true` in case of success, `false` if launch was
   // aborted because of shutdown.
-  bool BeginSubprocessLaunch(bool aIsSync, ProcessPriority aPriority);
+  bool BeginSubprocessLaunch(ProcessPriority aPriority);
   void LaunchSubprocessReject();
   bool LaunchSubprocessResolve(bool aIsSync, ProcessPriority aPriority);
-  // Return `nullptr` in case of error.
-  // Return a `ContentParent` in case of success. This `ContentParent`
-  // may either be ready and initialized or in the process of initializing
-  // asynchronously. In the latter case, the caller is responsible for
-  // finishing initialization.
-  static already_AddRefed<ContentParent> GetNewOrUsedBrowserProcessInternal(
-      Element* aFrameElement, const nsAString& aRemoteType,
-      ProcessPriority aPriority, ContentParent* aOpener, bool aPreferUsed,
-      bool aIsSync);
 
   // Common initialization after sub process launch.
   bool InitInternal(ProcessPriority aPriority);
@@ -785,6 +807,11 @@ class ContentParent final
    * GetNewOrUsedBrowserProcess.
    */
   void RemoveFromList();
+
+  /**
+   * Return if the process has an active worker or JSPlugin
+   */
+  bool HasActiveWorkerOrJSPlugin();
 
   /**
    * Decide whether the process should be kept alive even when it would normally
@@ -1007,7 +1034,7 @@ class ContentParent final
       nsIURI* uri, nsIPrincipal* triggeringPrincipal,
       const MaybeDiscarded<BrowsingContext>& aContext);
   mozilla::ipc::IPCResult RecvExtProtocolChannelConnectParent(
-      const uint32_t& registrarId);
+      const uint64_t& registrarId);
 
   mozilla::ipc::IPCResult RecvSyncMessage(
       const nsString& aMsg, const ClonedMessageData& aData,
@@ -1209,22 +1236,23 @@ class ContentParent final
       const nsACString& aHostName, int32_t aPort, bool aIsTemporary,
       AddCertExceptionResolver&& aResolver);
 
-  mozilla::ipc::IPCResult RecvAutomaticStorageAccessCanBeGranted(
+  mozilla::ipc::IPCResult RecvAutomaticStorageAccessPermissionCanBeGranted(
       const Principal& aPrincipal,
-      AutomaticStorageAccessCanBeGrantedResolver&& aResolver);
+      AutomaticStorageAccessPermissionCanBeGrantedResolver&& aResolver);
 
-  mozilla::ipc::IPCResult RecvFirstPartyStorageAccessGrantedForOrigin(
+  mozilla::ipc::IPCResult RecvStorageAccessPermissionGrantedForOrigin(
       uint64_t aTopLevelWindowId,
       const MaybeDiscarded<BrowsingContext>& aParentContext,
       const Principal& aTrackingPrincipal, const nsCString& aTrackingOrigin,
       const int& aAllowMode,
-      FirstPartyStorageAccessGrantedForOriginResolver&& aResolver);
+      StorageAccessPermissionGrantedForOriginResolver&& aResolver);
 
   mozilla::ipc::IPCResult RecvCompleteAllowAccessFor(
       const MaybeDiscarded<BrowsingContext>& aParentContext,
       uint64_t aTopLevelWindowId, const Principal& aTrackingPrincipal,
       const nsCString& aTrackingOrigin, uint32_t aCookieBehavior,
-      const ContentBlockingNotifier::StorageAccessGrantedReason& aReason,
+      const ContentBlockingNotifier::StorageAccessPermissionGrantedReason&
+          aReason,
       CompleteAllowAccessForResolver&& aResolver);
 
   mozilla::ipc::IPCResult RecvStoreUserInteractionAsPermission(
@@ -1252,6 +1280,13 @@ class ContentParent final
       const MaybeDiscarded<BrowsingContext>& aContext,
       MediaSessionPlaybackState aPlaybackState);
 
+  mozilla::ipc::IPCResult RecvNotifyMediaSessionSupportedActionChanged(
+      const MaybeDiscarded<BrowsingContext>& aContext,
+      MediaSessionAction aAction, bool aEnabled);
+
+  mozilla::ipc::IPCResult RecvNotifyMediaFullScreenState(
+      const MaybeDiscarded<BrowsingContext>& aContext, bool aIsInFullScreen);
+
   mozilla::ipc::IPCResult RecvGetModulesTrust(
       ModulePaths&& aModPaths, bool aRunAtNormalPriority,
       GetModulesTrustResolver&& aResolver);
@@ -1272,6 +1307,10 @@ class ContentParent final
   mozilla::ipc::IPCResult RecvAbortOtherOrientationPendingPromises(
       const MaybeDiscarded<BrowsingContext>& aContext);
 
+  mozilla::ipc::IPCResult RecvNotifyOnHistoryReload(
+      const MaybeDiscarded<BrowsingContext>& aContext,
+      NotifyOnHistoryReloadResolver&& aResolver);
+
   mozilla::ipc::IPCResult RecvHistoryCommit(
       const MaybeDiscarded<BrowsingContext>& aContext,
       uint64_t aSessionHistoryEntryID);
@@ -1288,6 +1327,8 @@ class ContentParent final
   void AppendSandboxParams(std::vector<std::string>& aArgs);
   void AppendDynamicSandboxParams(std::vector<std::string>& aArgs);
 #endif
+
+  mozilla::ipc::IPCResult RecvFOGData(ByteBuf&& buf);
 
  public:
   void SendGetFilesResponseAndForget(const nsID& aID,
@@ -1312,23 +1353,17 @@ class ContentParent final
 
   JSActor::Type GetSide() override { return JSActor::Type::Parent; }
 
-  static const nsTArray<RefPtr<BrowsingContextGroup>>& BrowsingContextGroups() {
-    return *sBrowsingContextGroupHolder;
-  }
-
  private:
   // Return an existing ContentParent if possible. Otherwise, `nullptr`.
   static already_AddRefed<ContentParent> GetUsedBrowserProcess(
-      ContentParent* aOpener, const nsAString& aRemoteType,
-      nsTArray<ContentParent*>& aContentParents, uint32_t aMaxContentParents,
-      bool aPreferUsed);
+      const nsAString& aRemoteType, nsTArray<ContentParent*>& aContentParents,
+      uint32_t aMaxContentParents, bool aPreferUsed);
 
-  // Get a JS actor object by name.
-  already_AddRefed<JSProcessActorParent> GetActor(const nsACString& aName,
-                                                  ErrorResult& aRv);
-  void ReceiveRawMessage(const JSActorMessageMeta& aMeta,
-                         StructuredCloneData&& aData,
-                         StructuredCloneData&& aStack);
+  void AddToPool(nsTArray<ContentParent*>&);
+  void RemoveFromPool(nsTArray<ContentParent*>&);
+  void AssertNotInPool();
+
+  void AssertAlive();
 
  private:
   // Released in ActorDealloc; deliberately not exposed to the CC.
@@ -1342,7 +1377,8 @@ class ContentParent final
   const TimeStamp mLaunchTS;  // used to calculate time to start content process
   TimeStamp mLaunchYieldTS;   // used to calculate async launch main thread time
   TimeStamp mActivateTS;
-  ContentParent* mOpener;
+
+  bool mIsAPreallocBlocker;  // We called AddBlocker for this ContentParent
 
   nsString mRemoteType;
 
@@ -1385,6 +1421,8 @@ class ContentParent final
   // NotifyTabDestroying() but not called NotifyTabDestroyed().
   int32_t mNumDestroyingTabs;
 
+  uint32_t mNumKeepaliveCalls;
+
   // The process starts in the LAUNCHING state, and transitions to
   // ALIVE once it can accept IPC messages.  It remains ALIVE only
   // while remote content is being actively used from this process.
@@ -1398,23 +1436,25 @@ class ContentParent final
 
   LifecycleState mLifecycleState;
 
-  bool mIsForBrowser;
+  uint8_t mIsForBrowser : 1;
 
   // These variables track whether we've called Close() and KillHard() on our
   // channel.
-  bool mCalledClose;
-  bool mCalledKillHard;
-  bool mCreatedPairedMinidumps;
-  bool mShutdownPending;
-  bool mIPCOpen;
+  uint8_t mCalledClose : 1;
+  uint8_t mCalledKillHard : 1;
+  uint8_t mCreatedPairedMinidumps : 1;
+  uint8_t mShutdownPending : 1;
+  uint8_t mIPCOpen : 1;
 
   // True if the input event queue on the main thread of the content process is
   // enabled.
-  bool mIsRemoteInputEventQueueEnabled;
+  uint8_t mIsRemoteInputEventQueueEnabled : 1;
 
   // True if we send input events with input priority. Otherwise, we send input
   // events with normal priority.
-  bool mIsInputPriorityEventEnabled;
+  uint8_t mIsInputPriorityEventEnabled : 1;
+
+  uint8_t mIsInPool : 1;
 
   RefPtr<nsConsoleService> mConsoleService;
   nsConsoleService* GetConsoleService();
@@ -1469,9 +1509,6 @@ class ContentParent final
 
   RefPtr<mozilla::dom::ProcessMessageManager> mMessageManager;
 
-  static StaticAutoPtr<nsTArray<RefPtr<BrowsingContextGroup>>>
-      sBrowsingContextGroupHolder;
-
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   // When set to true, indicates that content processes should
   // initialize their sandbox during startup instead of waiting
@@ -1503,7 +1540,7 @@ bool IsWebRemoteType(const nsAString& aContentProcessType);
 bool IsWebCoopCoepRemoteType(const nsAString& aContentProcessType);
 
 inline nsISupports* ToSupports(mozilla::dom::ContentParent* aContentParent) {
-  return static_cast<nsIContentParent*>(aContentParent);
+  return static_cast<nsIDOMProcessParent*>(aContentParent);
 }
 
 }  // namespace dom

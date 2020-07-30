@@ -71,9 +71,6 @@
 #include "builtin/RegExp.h"
 #include "builtin/TestingFunctions.h"
 #include "debugger/DebugAPI.h"
-#if defined(JS_BUILD_BINAST)
-#  include "frontend/BinASTParser.h"
-#endif  // defined(JS_BUILD_BINAST)
 #include "frontend/CompilationInfo.h"
 #ifdef JS_ENABLE_SMOOSH
 #  include "frontend/Frontend2.h"
@@ -91,6 +88,7 @@
 #ifdef JS_SIMULATOR_MIPS64
 #  include "jit/mips64/Simulator-mips64.h"
 #endif
+#include "jit/CacheIRHealth.h"
 #include "jit/InlinableNatives.h"
 #include "jit/Ion.h"
 #include "jit/JitcodeMap.h"
@@ -121,7 +119,8 @@
 #include "js/StableStringChars.h"
 #include "js/StructuredClone.h"
 #include "js/SweepingAPI.h"
-#include "js/Warnings.h"  // JS::SetWarningReporter
+#include "js/Warnings.h"    // JS::SetWarningReporter
+#include "js/WasmModule.h"  // JS::WasmModule
 #include "js/Wrapper.h"
 #include "shell/jsoptparse.h"
 #include "shell/jsshell.h"
@@ -504,6 +503,7 @@ bool shell::enableWasmVerbose = false;
 bool shell::enableTestWasmAwaitTier2 = false;
 bool shell::enableSourcePragmas = true;
 bool shell::enableAsyncStacks = false;
+bool shell::enableAsyncStackCaptureDebuggeeOnly = false;
 bool shell::enableStreams = false;
 bool shell::enableReadableByteStreams = false;
 bool shell::enableBYOBStreamReaders = false;
@@ -513,6 +513,7 @@ bool shell::enableWeakRefs = false;
 bool shell::enableToSource = false;
 bool shell::enablePropertyErrorMessageFix = false;
 bool shell::enableIteratorHelpers = false;
+bool shell::enablePrivateClassFields = false;
 #ifdef JS_GC_ZEAL
 uint32_t shell::gZealBits = 0;
 uint32_t shell::gZealFrequency = 0;
@@ -960,38 +961,6 @@ static MOZ_MUST_USE bool RunFile(JSContext* cx, const char* filename,
   }
   return true;
 }
-
-#if defined(JS_BUILD_BINAST)
-
-static MOZ_MUST_USE bool RunBinAST(JSContext* cx, const char* filename,
-                                   FILE* file, bool compileOnly,
-                                   JS::BinASTFormat format) {
-  RootedScript script(cx);
-
-  {
-    CompileOptions options(cx);
-    options.setFileAndLine(filename, 0)
-        .setIsRunOnce(true)
-        .setNoScriptRval(true);
-
-    script = JS::DecodeBinAST(cx, options, file, format);
-    if (!script) {
-      return false;
-    }
-  }
-
-  if (!RegisterScriptPathWithModuleLoader(cx, script, filename)) {
-    return false;
-  }
-
-  if (compileOnly) {
-    return true;
-  }
-
-  return JS_ExecuteScript(cx, script);
-}
-
-#endif  // JS_BUILD_BINAST
 
 static MOZ_MUST_USE bool RunModule(JSContext* cx, const char* filename,
                                    bool compileOnly) {
@@ -1471,8 +1440,6 @@ enum FileKind {
   FileScript,       // UTF-8, directly parsed as such
   FileScriptUtf16,  // FileScript, but inflate to UTF-16 before parsing
   FileModule,
-  FileBinASTMultipart,
-  FileBinASTContext,
 };
 
 static void ReportCantOpenErrorUnknownEncoding(JSContext* cx,
@@ -1525,20 +1492,6 @@ static MOZ_MUST_USE bool Process(JSContext* cx, const char* filename,
           return false;
         }
         break;
-#if defined(JS_BUILD_BINAST)
-      case FileBinASTMultipart:
-        if (!RunBinAST(cx, filename, file, compileOnly,
-                       JS::BinASTFormat::Multipart)) {
-          return false;
-        }
-        break;
-      case FileBinASTContext:
-        if (!RunBinAST(cx, filename, file, compileOnly,
-                       JS::BinASTFormat::Context)) {
-          return false;
-        }
-        break;
-#endif  // JS_BUILD_BINAST
       default:
         MOZ_CRASH("Impossible FileKind!");
     }
@@ -1931,7 +1884,7 @@ static void my_LargeAllocFailCallback() {
   MOZ_ASSERT(!JS::RuntimeHeapIsBusy());
 
   JS::PrepareForFullGC(cx);
-  cx->runtime()->gc.gc(GC_NORMAL, JS::GCReason::SHARED_MEMORY_LIMIT);
+  cx->runtime()->gc.gc(GC_SHRINK, JS::GCReason::SHARED_MEMORY_LIMIT);
 }
 
 static const uint32_t CacheEntry_SOURCE = 0;
@@ -3666,10 +3619,48 @@ static bool DisassWithSrc(JSContext* cx, unsigned argc, Value* vp) {
 
 #endif /* defined(DEBUG) || defined(JS_JITSPEW) */
 
+#ifdef JS_CACHEIR_SPEW
+static bool RateMyCacheIR(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  RootedScript script(cx);
+  if (!argc) {
+    /* If no function is specified we rate current script. */
+    script = GetTopScript(cx);
+  } else {
+    RootedValue value(cx, args.get(0));
+    if (value.isObject() && value.toObject().is<ModuleObject>()) {
+      script = value.toObject().as<ModuleObject>().maybeScript();
+    } else {
+      script = TestingFunctionArgumentToScript(cx, args.get(0));
+    }
+  }
+
+  if (!script) {
+    return false;
+  }
+
+  js::jit::CacheIRHealth cih(cx);
+
+  if (!cih.init()) {
+    return false;
+  }
+
+  if (!cih.rateMyCacheIR(script)) {
+    return false;
+  }
+
+  args.rval().setUndefined();
+  return true;
+}
+#endif /* JS_CACHEIR_SPEW */
+
 /* Pretend we can always preserve wrappers for dummy DOM objects. */
 static bool DummyPreserveWrapperCallback(JSContext* cx, HandleObject obj) {
   return true;
 }
+
+static bool DummyHasReleasedWrapperCallback(HandleObject obj) { return true; }
 
 static bool Intern(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
@@ -3890,10 +3881,13 @@ static void SetStandardRealmOptions(JS::RealmOptions& options) {
       .setBYOBStreamReadersEnabled(enableBYOBStreamReaders)
       .setWritableStreamsEnabled(enableWritableStreams)
       .setReadableStreamPipeToEnabled(enableReadableStreamPipeTo)
-      .setWeakRefsEnabled(enableWeakRefs)
+      .setWeakRefsEnabled(enableWeakRefs
+                              ? JS::WeakRefSpecifier::EnabledWithCleanupSome
+                              : JS::WeakRefSpecifier::Disabled)
       .setToSourceEnabled(enableToSource)
       .setPropertyErrorMessageFixEnabled(enablePropertyErrorMessageFix)
-      .setIteratorHelpersEnabled(enableIteratorHelpers);
+      .setIteratorHelpersEnabled(enableIteratorHelpers)
+      .setPrivateClassFieldsEnabled(enablePrivateClassFields);
 }
 
 static MOZ_MUST_USE bool CheckRealmOptions(JSContext* cx,
@@ -4138,7 +4132,8 @@ static void WorkerMain(WorkerInput* input) {
 
   JS_SetFutexCanWait(cx);
   JS::SetWarningReporter(cx, WarningReporter);
-  js::SetPreserveWrapperCallback(cx, DummyPreserveWrapperCallback);
+  js::SetPreserveWrapperCallbacks(cx, DummyPreserveWrapperCallback,
+                                  DummyHasReleasedWrapperCallback);
   JS_InitDestroyPrincipalsCallback(cx, ShellPrincipals::destroy);
   JS_SetDestroyCompartmentCallback(cx, DestroyShellCompartmentPrivate);
   JS::SetGetElementCallback(cx, &GetElementCallback);
@@ -5027,7 +5022,7 @@ static bool CodeModule(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   RootedModuleObject modObject(cx, &args[0].toObject().as<ModuleObject>());
-  if (modObject->status() >= MODULE_STATUS_INSTANTIATING) {
+  if (modObject->status() >= MODULE_STATUS_LINKING) {
     JS_ReportErrorASCII(cx, "cannot encode module after instantiation.");
     return false;
   }
@@ -5124,146 +5119,6 @@ static bool SetModuleResolveHook(JSContext* cx, unsigned argc, Value* vp) {
   args.rval().setUndefined();
   return true;
 }
-
-#if defined(JS_BUILD_BINAST)
-
-template <typename Tok>
-static bool ParseBinASTData(JSContext* cx, uint8_t* buf_data,
-                            uint32_t buf_length,
-                            js::frontend::GlobalSharedContext* globalsc,
-                            js::frontend::CompilationInfo& compilationInfo,
-                            const JS::ReadOnlyCompileOptions& options) {
-  MOZ_ASSERT(globalsc);
-
-  // Note: We need to keep `reader` alive as long as we can use `parsed`.
-  js::frontend::BinASTParser<Tok> reader(cx, compilationInfo, options);
-
-  JS::Result<js::frontend::ParseNode*> parsed =
-      reader.parse(globalsc, buf_data, buf_length);
-
-  if (parsed.isErr()) {
-    return false;
-  }
-
-#  ifdef DEBUG
-  Fprinter out(stderr);
-  DumpParseTree(parsed.unwrap(), out);
-#  endif
-
-  return true;
-}
-
-static bool BinParse(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-
-  if (!args.requireAtLeast(cx, "parseBin", 1)) {
-    return false;
-  }
-
-  // Extract argument 1: ArrayBuffer.
-
-  if (!args[0].isObject()) {
-    const char* typeName = InformalValueTypeName(args[0]);
-    JS_ReportErrorASCII(cx, "expected object (ArrayBuffer) to parse, got %s",
-                        typeName);
-    return false;
-  }
-
-  RootedObject objBuf(cx, &args[0].toObject());
-  if (!JS::IsArrayBufferObject(objBuf)) {
-    const char* typeName = InformalValueTypeName(args[0]);
-    JS_ReportErrorASCII(cx, "expected ArrayBuffer to parse, got %s", typeName);
-    return false;
-  }
-
-  uint32_t buf_length = 0;
-  bool buf_isSharedMemory = false;
-  uint8_t* buf_data = nullptr;
-  JS::GetArrayBufferLengthAndData(objBuf, &buf_length, &buf_isSharedMemory,
-                                  &buf_data);
-  MOZ_ASSERT(buf_data);
-
-  // Extract argument 2: Options.
-
-  // BinAST currently supports 2 formats, multipart and context.
-  enum {
-    Multipart,
-    Context,
-  } mode = Multipart;
-
-  if (args.length() >= 2) {
-    if (!args[1].isObject()) {
-      const char* typeName = InformalValueTypeName(args[1]);
-      JS_ReportErrorASCII(cx, "expected object (options) to parse, got %s",
-                          typeName);
-      return false;
-    }
-    RootedObject objOptions(cx, &args[1].toObject());
-
-    RootedValue optionFormat(cx);
-    if (!JS_GetProperty(cx, objOptions, "format", &optionFormat)) {
-      return false;
-    }
-
-    if (!optionFormat.isUndefined()) {
-      RootedLinearString linearFormat(
-          cx, optionFormat.toString()->ensureLinear(cx));
-      if (!linearFormat) {
-        return false;
-      }
-      // Currently not used, reserved for future.
-      if (StringEqualsLiteral(linearFormat, "multipart")) {
-        mode = Multipart;
-      } else if (StringEqualsLiteral(linearFormat, "context")) {
-        mode = Context;
-      } else {
-        UniqueChars printable = QuoteString(cx, linearFormat, '\'');
-        if (!printable) {
-          return false;
-        }
-
-        JS_ReportErrorASCII(
-            cx,
-            "Unknown value for option `format`, expected 'multipart', got %s",
-            printable.get());
-        return false;
-      }
-    } else {
-      const char* typeName = InformalValueTypeName(optionFormat);
-      JS_ReportErrorASCII(cx, "option `format` should be a string, got %s",
-                          typeName);
-      return false;
-    }
-  }
-
-  CompileOptions options(cx);
-  options.setIntroductionType("js shell bin parse")
-      .setFileAndLine("<ArrayBuffer>", 1);
-
-  LifoAllocScope allocScope(&cx->tempLifoAlloc());
-  js::frontend::CompilationInfo compilationInfo(cx, allocScope, options);
-  if (!compilationInfo.init(cx)) {
-    return false;
-  }
-
-  js::SourceExtent extent = js::SourceExtent::makeGlobalExtent(0, options);
-  js::frontend::Directives directives(false);
-  js::frontend::GlobalSharedContext globalsc(
-      cx, ScopeKind::Global, compilationInfo, directives, extent);
-
-  auto parseFunc = mode == Multipart
-                       ? ParseBinASTData<frontend::BinASTTokenReaderMultipart>
-                       : ParseBinASTData<frontend::BinASTTokenReaderContext>;
-  if (!parseFunc(cx, buf_data, buf_length, &globalsc, compilationInfo,
-                 options)) {
-    return false;
-  }
-
-  args.rval().setUndefined();
-  return true;
-}
-
-#endif  // defined(JS_BUILD_BINAST)
 
 template <typename Unit>
 static bool FullParseTest(JSContext* cx,
@@ -8606,6 +8461,13 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "  Similar to the DumpJSStack() function in the browser."),
 
 #endif
+
+#ifdef JS_CACHEIR_SPEW
+JS_FN_HELP("rateMyCacheIR", RateMyCacheIR, 0, 0,
+"rateMyCacheIR()",
+"  Show health rating of CacheIR stubs."),
+#endif
+
     JS_FN_HELP("intern", Intern, 1, 0,
 "intern(str)",
 "  Internalize str in the atom table."),
@@ -8689,17 +8551,6 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "  Set the HostResolveImportedModule hook to |function|, overriding the shell\n"
 "  module loader for testing purposes. This hook is used to look up a\n"
 "  previously loaded module object."),
-
-#if defined(JS_BUILD_BINAST)
-
-JS_FN_HELP("parseBin", BinParse, 1, 0,
-"parseBin(arraybuffer, [options])",
-"  Parses a Binary AST, potentially throwing. If present, |options| may\n"
-"  have properties saying how the passed |arraybuffer| should be handled:\n"
-"      format: the format of the BinAST file\n"
-"        (\"multipart\" or \"context\")"),
-
-#endif // defined(JS_BUILD_BINAST)
 
     JS_FN_HELP("parse", Parse, 1, 0,
 "parse(code)",
@@ -10062,24 +9913,9 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
   MultiStringRange utf16FilePaths = op->getMultiStringOption('u');
   MultiStringRange codeChunks = op->getMultiStringOption('e');
   MultiStringRange modulePaths = op->getMultiStringOption('m');
-  MultiStringRange binASTPaths(nullptr, nullptr);
-  FileKind binASTFileKind = FileBinASTMultipart;
-#if defined(JS_BUILD_BINAST)
-  binASTPaths = op->getMultiStringOption('B');
-  if (const char* str = op->getStringOption("binast-format")) {
-    if (strcmp(str, "multipart") == 0) {
-      binASTFileKind = FileBinASTMultipart;
-    } else if (strcmp(str, "context") == 0) {
-      binASTFileKind = FileBinASTContext;
-    } else {
-      return OptionFailure("binast-format", str);
-    }
-  }
-#endif  // JS_BUILD_BINAST
 
   if (filePaths.empty() && utf16FilePaths.empty() && codeChunks.empty() &&
-      modulePaths.empty() && binASTPaths.empty() &&
-      !op->getStringArg("script")) {
+      modulePaths.empty() && !op->getStringArg("script")) {
     // Always use the interactive shell when -i is used. Without -i we let
     // Process figure it out based on isatty.
     bool forceTTY = op->getBoolOption('i');
@@ -10109,16 +9945,14 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
   }
 
   while (!filePaths.empty() || !utf16FilePaths.empty() || !codeChunks.empty() ||
-         !modulePaths.empty() || !binASTPaths.empty()) {
+         !modulePaths.empty()) {
     size_t fpArgno = filePaths.empty() ? SIZE_MAX : filePaths.argno();
     size_t ufpArgno =
         utf16FilePaths.empty() ? SIZE_MAX : utf16FilePaths.argno();
     size_t ccArgno = codeChunks.empty() ? SIZE_MAX : codeChunks.argno();
     size_t mpArgno = modulePaths.empty() ? SIZE_MAX : modulePaths.argno();
-    size_t baArgno = binASTPaths.empty() ? SIZE_MAX : binASTPaths.argno();
 
-    if (fpArgno < ufpArgno && fpArgno < ccArgno && fpArgno < mpArgno &&
-        fpArgno < baArgno) {
+    if (fpArgno < ufpArgno && fpArgno < ccArgno && fpArgno < mpArgno) {
       char* path = filePaths.front();
       if (!Process(cx, path, false, FileScript)) {
         return false;
@@ -10128,8 +9962,7 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
       continue;
     }
 
-    if (ufpArgno < fpArgno && ufpArgno < ccArgno && ufpArgno < mpArgno &&
-        ufpArgno < baArgno) {
+    if (ufpArgno < fpArgno && ufpArgno < ccArgno && ufpArgno < mpArgno) {
       char* path = utf16FilePaths.front();
       if (!Process(cx, path, false, FileScriptUtf16)) {
         return false;
@@ -10139,8 +9972,7 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
       continue;
     }
 
-    if (ccArgno < fpArgno && ccArgno < ufpArgno && ccArgno < mpArgno &&
-        ccArgno < baArgno) {
+    if (ccArgno < fpArgno && ccArgno < ufpArgno && ccArgno < mpArgno) {
       const char* code = codeChunks.front();
 
       JS::CompileOptions opts(cx);
@@ -10164,19 +9996,7 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
       continue;
     }
 
-    if (baArgno < fpArgno && baArgno < ufpArgno && baArgno < ccArgno &&
-        baArgno < mpArgno) {
-      char* path = binASTPaths.front();
-      if (!Process(cx, path, false, binASTFileKind)) {
-        return false;
-      }
-
-      binASTPaths.popFront();
-      continue;
-    }
-
-    MOZ_ASSERT(mpArgno < fpArgno && mpArgno < ufpArgno && mpArgno < ccArgno &&
-               mpArgno < baArgno);
+    MOZ_ASSERT(mpArgno < fpArgno && mpArgno < ufpArgno && mpArgno < ccArgno);
 
     char* path = modulePaths.front();
     if (!Process(cx, path, false, FileModule)) {
@@ -10251,16 +10071,19 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
   enableTestWasmAwaitTier2 = op.getBoolOption("test-wasm-await-tier2");
   enableSourcePragmas = !op.getBoolOption("no-source-pragmas");
   enableAsyncStacks = !op.getBoolOption("no-async-stacks");
+  enableAsyncStackCaptureDebuggeeOnly =
+      op.getBoolOption("async-stacks-capture-debuggee-only");
   enableStreams = !op.getBoolOption("no-streams");
   enableReadableByteStreams = op.getBoolOption("enable-readable-byte-streams");
   enableBYOBStreamReaders = op.getBoolOption("enable-byob-stream-readers");
   enableWritableStreams = op.getBoolOption("enable-writable-streams");
   enableReadableStreamPipeTo = op.getBoolOption("enable-readablestream-pipeto");
-  enableWeakRefs = op.getBoolOption("enable-weak-refs");
+  enableWeakRefs = !op.getBoolOption("disable-weak-refs");
   enableToSource = !op.getBoolOption("disable-tosource");
   enablePropertyErrorMessageFix =
       !op.getBoolOption("disable-property-error-message-fix");
   enableIteratorHelpers = op.getBoolOption("enable-iterator-helpers");
+  enablePrivateClassFields = op.getBoolOption("enable-private-fields");
 
   JS::ContextOptionsRef(cx)
       .setAsmJS(enableAsmJS)
@@ -10284,7 +10107,8 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
       .setWasmVerbose(enableWasmVerbose)
       .setTestWasmAwaitTier2(enableTestWasmAwaitTier2)
       .setSourcePragmas(enableSourcePragmas)
-      .setAsyncStack(enableAsyncStacks);
+      .setAsyncStack(enableAsyncStacks)
+      .setAsyncStackCaptureDebuggeeOnly(enableAsyncStackCaptureDebuggeeOnly);
 
   if (op.getBoolOption("no-ion-for-main-context")) {
     JS::ContextOptionsRef(cx).setDisableIon();
@@ -10468,12 +10292,10 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
     jit::JitOptions.baselineJitWarmUpThreshold = warmUpThreshold;
   }
 
-#ifdef ENABLE_NEW_REGEXP
   warmUpThreshold = op.getIntOption("regexp-warmup-threshold");
   if (warmUpThreshold >= 0) {
     jit::JitOptions.regexpWarmUpThreshold = warmUpThreshold;
   }
-#endif
 
   if (op.getBoolOption("baseline-eager")) {
     jit::JitOptions.setEagerBaselineCompilation();
@@ -10508,7 +10330,6 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
     jit::JitOptions.nativeRegExp = false;
   }
 
-#ifdef ENABLE_NEW_REGEXP
   if (op.getBoolOption("trace-regexp-parser")) {
     jit::JitOptions.traceRegExpParser = true;
   }
@@ -10521,7 +10342,6 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
   if (op.getBoolOption("trace-regexp-peephole")) {
     jit::JitOptions.traceRegExpPeephole = true;
   }
-#endif
 
 #ifdef NIGHTLY_BUILD
   if (op.getBoolOption("no-ti")) {
@@ -11011,14 +10831,6 @@ int main(int argc, char** argv, char** envp) {
           "File path to run, inflating the file's UTF-8 contents to UTF-16 and "
           "then parsing that") ||
       !op.addMultiStringOption('m', "module", "PATH", "Module path to run") ||
-#if defined(JS_BUILD_BINAST)
-      !op.addMultiStringOption('B', "binast", "PATH", "BinAST path to run") ||
-      !op.addStringOption('\0', "binast-format", "[format]",
-                          "Format of BinAST file (multipart/context)") ||
-#else
-      !op.addMultiStringOption('B', "binast", "", "No-op") ||
-      !op.addStringOption('\0', "binast-format", "[format]", "No-op") ||
-#endif  // JS_BUILD_BINAST
       !op.addMultiStringOption('e', "execute", "CODE", "Inline code to run") ||
       !op.addBoolOption('i', "shell", "Enter prompt after running code") ||
       !op.addBoolOption('c', "compileonly",
@@ -11097,7 +10909,6 @@ int main(int argc, char** argv, char** envp) {
 #endif
       !op.addBoolOption('\0', "no-native-regexp",
                         "Disable native regexp compilation") ||
-#ifdef ENABLE_NEW_REGEXP
       !op.addIntOption(
           '\0', "regexp-warmup-threshold", "COUNT",
           "Wait for COUNT invocations before compiling regexps to native code "
@@ -11110,7 +10921,6 @@ int main(int argc, char** argv, char** envp) {
                         "Trace regexp interpreter") ||
       !op.addBoolOption('\0', "trace-regexp-peephole",
                         "Trace regexp peephole optimization") ||
-#endif
       !op.addBoolOption('\0', "no-unboxed-objects",
                         "Disable creating unboxed plain objects") ||
       !op.addBoolOption('\0', "enable-streams",
@@ -11127,13 +10937,15 @@ int main(int argc, char** argv, char** envp) {
       !op.addBoolOption('\0', "enable-readablestream-pipeto",
                         "Enable support for "
                         "WHATWG ReadableStream.prototype.pipeTo") ||
-      !op.addBoolOption('\0', "enable-weak-refs", "Enable weak references") ||
+      !op.addBoolOption('\0', "disable-weak-refs", "Disable weak references") ||
       !op.addBoolOption('\0', "disable-tosource", "Disable toSource/uneval") ||
       !op.addBoolOption('\0', "disable-property-error-message-fix",
                         "Disable fix for the error message when accessing "
                         "property of null or undefined") ||
       !op.addBoolOption('\0', "enable-iterator-helpers",
                         "Enable iterator helpers") ||
+      !op.addBoolOption('\0', "enable-private-fields",
+                        "Enable private class fields") ||
       !op.addStringOption('\0', "shared-memory", "on/off",
                           "SharedArrayBuffer and Atomics "
 #if SHARED_MEMORY_DEFAULT
@@ -11323,6 +11135,8 @@ int main(int argc, char** argv, char** envp) {
       !op.addBoolOption('\0', "no-source-pragmas",
                         "Disable source(Mapping)URL pragma parsing") ||
       !op.addBoolOption('\0', "no-async-stacks", "Disable async stacks") ||
+      !op.addBoolOption('\0', "async-stacks-capture-debuggee-only",
+                        "Limit async stack capture to only debuggees") ||
       !op.addMultiStringOption('\0', "dll", "LIBRARY",
                                "Dynamically load LIBRARY") ||
       !op.addBoolOption('\0', "suppress-minidump",
@@ -11407,6 +11221,10 @@ int main(int argc, char** argv, char** envp) {
     if (!sCompilerProcessFlags.append("--enable-avx")) {
       return EXIT_FAILURE;
     }
+    // Disable AVX completely for now.  We're not supporting AVX and things
+    // break easily if asking for AVX.
+    fprintf(stderr, "Error: AVX encodings are currently disabled\n");
+    return EXIT_FAILURE;
   }
 #endif
 
@@ -11569,7 +11387,8 @@ int main(int argc, char** argv, char** envp) {
 
   JS::SetProcessLargeAllocationFailureCallback(my_LargeAllocFailCallback);
 
-  js::SetPreserveWrapperCallback(cx, DummyPreserveWrapperCallback);
+  js::SetPreserveWrapperCallbacks(cx, DummyPreserveWrapperCallback,
+                                  DummyHasReleasedWrapperCallback);
 
   if (op.getBoolOption("disable-wasm-huge-memory")) {
     if (!sCompilerProcessFlags.append("--disable-wasm-huge-memory")) {

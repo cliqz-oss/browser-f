@@ -58,7 +58,7 @@
 #  include <gtk/gtkx.h>
 
 #  include "gfxPlatformGtk.h"
-#  include "mozilla/layers/WaylandDMABUFTextureClientOGL.h"
+#  include "mozilla/layers/DMABUFTextureClientOGL.h"
 #  include "mozilla/widget/nsWaylandDisplay.h"
 #endif
 
@@ -290,7 +290,7 @@ static TextureType GetTextureType(gfx::SurfaceFormat aFormat,
        aLayersBackend == LayersBackend::LAYERS_WR) &&
       gfxPlatformGtk::GetPlatform()->UseWaylandDMABufTextures() &&
       aFormat != SurfaceFormat::A8) {
-    return TextureType::WaylandDMABUF;
+    return TextureType::DMABUF;
   }
 #endif
 
@@ -322,6 +322,15 @@ static TextureType GetTextureType(gfx::SurfaceFormat aFormat,
 #endif
 
   return TextureType::Unknown;
+}
+
+TextureType PreferredCanvasTextureType(
+    const KnowsCompositor& aKnowsCompositor) {
+  const auto layersBackend = aKnowsCompositor.GetCompositorBackendType();
+  const auto moz2DBackend =
+      BackendTypeForBackendSelector(layersBackend, BackendSelector::Canvas);
+  return GetTextureType(gfx::SurfaceFormat::R8G8B8A8, {1, 1}, layersBackend,
+                        moz2DBackend, 2, TextureAllocationFlags::ALLOC_DEFAULT);
 }
 
 static bool ShouldRemoteTextureType(TextureType aTextureType,
@@ -363,6 +372,10 @@ TextureData* TextureData::Create(TextureForwarder* aAllocator,
       return new RecordedTextureData(canvasChild.forget(), aSize, aFormat,
                                      textureType);
     }
+
+    // We don't have a CanvasChild, but are supposed to be remote.
+    // Fall back to software.
+    textureType = TextureType::Unknown;
   }
 
   switch (textureType) {
@@ -374,8 +387,8 @@ TextureData* TextureData::Create(TextureForwarder* aAllocator,
 #endif
 
 #ifdef MOZ_WAYLAND
-    case TextureType::WaylandDMABUF:
-      return WaylandDMABUFTextureData::Create(aSize, aFormat, moz2DBackend);
+    case TextureType::DMABUF:
+      return DMABUFTextureData::Create(aSize, aFormat, moz2DBackend);
 #endif
 
 #ifdef MOZ_X11
@@ -1050,7 +1063,7 @@ bool TextureClient::InitIPDLActor(CompositableForwarder* aForwarder) {
       }
       if (ShadowLayerForwarder* forwarder = aForwarder->AsLayerForwarder()) {
         // Do the DOM labeling.
-        if (nsIEventTarget* target = forwarder->GetEventTarget()) {
+        if (nsISerialEventTarget* target = forwarder->GetEventTarget()) {
           forwarder->GetCompositorBridgeChild()->ReplaceEventTargetForActor(
               mActor, target);
         }
@@ -1073,7 +1086,7 @@ bool TextureClient::InitIPDLActor(CompositableForwarder* aForwarder) {
   mExternalImageId =
       aForwarder->GetTextureForwarder()->GetNextExternalImageId();
 
-  nsIEventTarget* target = nullptr;
+  nsISerialEventTarget* target = nullptr;
   // Get the layers id if the forwarder is a ShadowLayerForwarder.
   if (ShadowLayerForwarder* forwarder = aForwarder->AsLayerForwarder()) {
     target = forwarder->GetEventTarget();

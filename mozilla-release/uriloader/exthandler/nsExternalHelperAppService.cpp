@@ -983,16 +983,25 @@ nsExternalHelperAppService::LoadURI(nsIURI* aURI,
 
     // Also allow this load if the target is a toplevel BC and contains a
     // non-web-controlled about:blank document
-    if (bc->IsTop() && !bc->HadOriginalOpener()) {
+    if (bc->IsTop() && !bc->HadOriginalOpener() && wgp) {
       RefPtr<nsIURI> uri = wgp->GetDocumentURI();
       foundAccessibleFrame =
           uri && uri->GetSpecOrDefault().EqualsLiteral("about:blank");
     }
 
-    while (wgp && !foundAccessibleFrame) {
-      foundAccessibleFrame =
-          aTriggeringPrincipal->Subsumes(wgp->DocumentPrincipal());
-      wgp = wgp->GetParentWindowContext();
+    while (!foundAccessibleFrame) {
+      if (wgp) {
+        foundAccessibleFrame =
+            aTriggeringPrincipal->Subsumes(wgp->DocumentPrincipal());
+      }
+      // We have to get the parent via the bc, because there may not
+      // be a window global for the innermost bc; see bug 1650162.
+      BrowsingContext* parent = bc->GetParent();
+      if (!parent) {
+        break;
+      }
+      bc = parent;
+      wgp = parent->Canonical()->GetCurrentWindowGlobal();
     }
     if (!foundAccessibleFrame) {
       return NS_OK;  // deny the load.
@@ -1220,6 +1229,7 @@ nsExternalAppHandler::nsExternalAppHandler(
   // code sanitization in DownloadPaths.jsm
   mSuggestedFileName.ReplaceChar(KNOWN_PATH_SEPARATORS, '_');
   mSuggestedFileName.ReplaceChar(FILE_ILLEGAL_CHARACTERS, ' ');
+  mSuggestedFileName.ReplaceChar(char16_t(0), '_');
   mTempFileExtension.ReplaceChar(KNOWN_PATH_SEPARATORS, '_');
   mTempFileExtension.ReplaceChar(FILE_ILLEGAL_CHARACTERS, ' ');
 
@@ -2503,6 +2513,8 @@ NS_IMETHODIMP nsExternalHelperAppService::GetFromTypeAndExtension(
     nsIMIMEInfo** _retval) {
   MOZ_ASSERT(!aMIMEType.IsEmpty() || !aFileExt.IsEmpty(),
              "Give me something to work with");
+  MOZ_DIAGNOSTIC_ASSERT(aFileExt.FindChar('\0') == kNotFound,
+                        "The extension should never contain null characters");
   LOG(("Getting mimeinfo from type '%s' ext '%s'\n",
        PromiseFlatCString(aMIMEType).get(),
        PromiseFlatCString(aFileExt).get()));

@@ -30,6 +30,8 @@ class PerftestResultsHandler(object):
         live_sites=False,
         app=None,
         no_conditioned_profile=False,
+        cold=False,
+        enable_webrender=False,
         **kwargs
     ):
         self.gecko_profile = gecko_profile
@@ -45,9 +47,11 @@ class PerftestResultsHandler(object):
         self.fission_enabled = kwargs.get("extra_prefs", {}).get(
             "fission.autostart", False
         )
+        self.webrender_enabled = enable_webrender
         self.browser_version = None
         self.browser_name = None
         self.no_conditioned_profile = no_conditioned_profile
+        self.cold = cold
 
     @abstractmethod
     def add(self, new_result_json):
@@ -204,6 +208,8 @@ class RaptorResultsHandler(PerftestResultsHandler):
             new_result_json["extra_options"].append("nocondprof")
         if self.fission_enabled:
             new_result_json["extra_options"].append("fission")
+        if self.webrender_enabled:
+            new_result_json["extra_options"].append("webrender")
         self.results.append(new_result_json)
 
     def summarize_and_output(self, test_config, tests, test_names):
@@ -584,7 +590,7 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
 
                     # Differentiate Raptor `pageload` tests from `browsertime-pageload`
                     # tests while we compare and contrast.
-                    new_result["type"] = "browsertime-pageload"
+                    new_result["type"] = "pageload"
 
                     # All Browsertime measurements are elapsed times in milliseconds.
                     new_result["subtest_lower_is_better"] = True
@@ -600,6 +606,10 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                         new_result["extra_options"].append("live")
                     if self.gecko_profile:
                         new_result["extra_options"].append("gecko_profile")
+                    if self.cold:
+                        new_result["extra_options"].append("cold")
+                    if self.webrender_enabled:
+                        new_result["extra_options"].append("webrender")
 
                     return new_result
 
@@ -616,7 +626,7 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
 
                     # Differentiate Raptor `pageload` tests from other `browsertime`
                     # tests while we compare and contrast.
-                    new_result["type"] = "browsertime-%s" % test["type"]
+                    new_result["type"] = "benchmark"
 
                     # Try to get subtest values or use the defaults
                     # If values not available use the defaults

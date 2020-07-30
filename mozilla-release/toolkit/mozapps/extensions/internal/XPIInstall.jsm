@@ -1400,7 +1400,7 @@ class AddonInstall {
         logger.debug(`Postponing install of ${this.addon.id}`);
         break;
       case AddonManager.STATE_DOWNLOADING:
-      case AddonManager.STATE_CHECKING:
+      case AddonManager.STATE_CHECKING_UPDATE:
       case AddonManager.STATE_INSTALLING:
         // Installation is already running
         break;
@@ -2102,7 +2102,7 @@ var LocalAddonInstall = class extends AddonInstall {
     this.addon.installDate = addon ? addon.installDate : this.addon.updateDate;
 
     if (!this.addon.isCompatible) {
-      this.state = AddonManager.STATE_CHECKING;
+      this.state = AddonManager.STATE_CHECKING_UPDATE;
 
       await new Promise(resolve => {
         new UpdateChecker(
@@ -2212,11 +2212,12 @@ var DownloadAddonInstall = class extends AddonInstall {
   }
 
   cancel() {
-    if (this.state == AddonManager.STATE_DOWNLOADING) {
-      if (this.channel) {
-        logger.debug("Cancelling download of " + this.sourceURI.spec);
-        this.channel.cancel(Cr.NS_BINDING_ABORTED);
-      }
+    // If we're done downloading the file but still processing it we cannot
+    // cancel the installation. We just call the base class which will handle
+    // the request by throwing an error.
+    if (this.channel && this.state == AddonManager.STATE_DOWNLOADING) {
+      logger.debug("Cancelling download of " + this.sourceURI.spec);
+      this.channel.cancel(Cr.NS_BINDING_ABORTED);
     } else {
       super.cancel();
     }
@@ -2292,7 +2293,8 @@ var DownloadAddonInstall = class extends AddonInstall {
     try {
       let requireBuiltIn = Services.prefs.getBoolPref(
         PREF_INSTALL_REQUIREBUILTINCERTS,
-        !AppConstants.MOZ_REQUIRE_SIGNING
+        !AppConstants.MOZ_REQUIRE_SIGNING &&
+          !AppConstants.MOZ_APP_VERSION_DISPLAY.endsWith("esr")
       );
       this.badCertHandler = new CertUtils.BadCertHandler(!requireBuiltIn);
 
@@ -2466,7 +2468,8 @@ var DownloadAddonInstall = class extends AddonInstall {
               aRequest,
               !Services.prefs.getBoolPref(
                 PREF_INSTALL_REQUIREBUILTINCERTS,
-                !AppConstants.MOZ_REQUIRE_SIGNING
+                !AppConstants.MOZ_REQUIRE_SIGNING &&
+                  !AppConstants.MOZ_APP_VERSION_DISPLAY.endsWith("esr")
               )
             );
           } catch (e) {
@@ -2496,7 +2499,7 @@ var DownloadAddonInstall = class extends AddonInstall {
               this.downloadCompleted();
             } else {
               // TODO Should we send some event here (bug 557716)?
-              this.state = AddonManager.STATE_CHECKING;
+              this.state = AddonManager.STATE_CHECKING_UPDATE;
               new UpdateChecker(
                 this.addon,
                 {
@@ -4085,7 +4088,7 @@ var XPIInstall = {
     url = await UpdateUtils.formatUpdateURL(url);
 
     logger.info(`Starting system add-on update check from ${url}.`);
-    let res = await ProductAddonChecker.getProductAddonList(url);
+    let res = await ProductAddonChecker.getProductAddonList(url, true);
 
     // If there was no list then do nothing.
     if (!res || !res.gmpAddons) {

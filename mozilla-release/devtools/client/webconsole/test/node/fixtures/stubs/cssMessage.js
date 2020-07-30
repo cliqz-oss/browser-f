@@ -37,10 +37,11 @@ rawPackets.set(`Unknown property ‘such-unknown-property’.  Declaration dropp
     "stacktrace": null,
     "notes": null,
     "chromeContext": false,
-    "cssSelectors": "p",
-    "isPromiseRejection": false
+    "isPromiseRejection": false,
+    "isForwardedFromContentProcess": false
   },
-  "resourceType": "error-message"
+  "resourceType": "css-message",
+  "cssSelectors": "p"
 });
 
 rawPackets.set(`Error in parsing value for ‘padding-top’.  Declaration dropped.`, {
@@ -62,10 +63,11 @@ rawPackets.set(`Error in parsing value for ‘padding-top’.  Declaration dropp
     "stacktrace": null,
     "notes": null,
     "chromeContext": false,
-    "cssSelectors": "p",
-    "isPromiseRejection": false
+    "isPromiseRejection": false,
+    "isForwardedFromContentProcess": false
   },
-  "resourceType": "error-message"
+  "resourceType": "css-message",
+  "cssSelectors": "p"
 });
 
 

@@ -441,6 +441,12 @@ bool BaselineCacheIRCompiler::emitLoadFixedSlotResult(ObjOperandId objId,
   return true;
 }
 
+bool BaselineCacheIRCompiler::emitLoadFixedSlotTypedResult(
+    ObjOperandId objId, uint32_t offsetOffset, ValueType) {
+  // The type is only used by Warp.
+  return emitLoadFixedSlotResult(objId, offsetOffset);
+}
+
 bool BaselineCacheIRCompiler::emitLoadDynamicSlotResult(ObjOperandId objId,
                                                         uint32_t offsetOffset) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
@@ -1487,6 +1493,80 @@ bool BaselineCacheIRCompiler::emitIsArrayResult(ValOperandId inputId) {
   return true;
 }
 
+bool BaselineCacheIRCompiler::emitStringFromCharCodeResult(
+    Int32OperandId codeId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoOutputRegister output(*this);
+  AutoScratchRegisterMaybeOutput scratch(allocator, masm, output);
+
+  Register code = allocator.useRegister(masm, codeId);
+
+  allocator.discardStack(masm);
+
+  // We pre-allocate atoms for the first UNIT_STATIC_LIMIT characters.
+  // For code units larger than that, we must do a VM call.
+  Label vmCall;
+  masm.boundsCheck32PowerOfTwo(code, StaticStrings::UNIT_STATIC_LIMIT, &vmCall);
+
+  masm.movePtr(ImmPtr(cx_->runtime()->staticStrings->unitStaticTable), scratch);
+  masm.loadPtr(BaseIndex(scratch, code, ScalePointer), scratch);
+  Label done;
+  masm.jump(&done);
+
+  {
+    masm.bind(&vmCall);
+
+    AutoStubFrame stubFrame(*this);
+    stubFrame.enter(masm, scratch);
+
+    masm.Push(code);
+
+    using Fn = JSLinearString* (*)(JSContext*, int32_t);
+    callVM<Fn, jit::StringFromCharCode>(masm);
+
+    stubFrame.leave(masm);
+    masm.mov(ReturnReg, scratch);
+  }
+
+  masm.bind(&done);
+  masm.tagValue(JSVAL_TYPE_STRING, scratch, output.valueReg());
+  return true;
+}
+
+bool BaselineCacheIRCompiler::emitMathRandomResult(uint32_t rngOffset) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoOutputRegister output(*this);
+  AutoScratchRegister scratch1(allocator, masm);
+  AutoScratchRegister64 scratch2(allocator, masm);
+  AutoAvailableFloatRegister scratchFloat(*this, FloatReg0);
+
+  Address rngAddr(stubAddress(rngOffset));
+  masm.loadPtr(rngAddr, scratch1);
+
+  masm.randomDouble(scratch1, scratchFloat, scratch2,
+                    output.valueReg().toRegister64());
+
+  masm.boxDouble(scratchFloat, output.valueReg(), scratchFloat);
+  return true;
+}
+
+bool BaselineCacheIRCompiler::emitHasClassResult(ObjOperandId objId,
+                                                 uint32_t claspOffset) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoOutputRegister output(*this);
+  Register obj = allocator.useRegister(masm, objId);
+  AutoScratchRegisterMaybeOutput scratch(allocator, masm, output);
+
+  Address claspAddr(stubAddress(claspOffset));
+  masm.loadObjClassUnsafe(obj, scratch);
+  masm.cmpPtrSet(Assembler::Equal, claspAddr, scratch.get(), scratch);
+  masm.tagValue(JSVAL_TYPE_BOOLEAN, scratch, output.valueReg());
+  return true;
+}
+
 bool BaselineCacheIRCompiler::emitCallNativeSetter(ObjOperandId objId,
                                                    uint32_t setterOffset,
                                                    ValOperandId rhsId) {
@@ -1925,6 +2005,7 @@ bool BaselineCacheIRCompiler::init(CacheKind kind) {
       break;
     case CacheKind::GetProp:
     case CacheKind::TypeOf:
+    case CacheKind::ToPropertyKey:
     case CacheKind::GetIterator:
     case CacheKind::ToBool:
     case CacheKind::UnaryArith:

@@ -145,6 +145,8 @@ def check_schema(schema):
         def check_identifier(path, k):
             if k in (text_type, text_type, voluptuous.Extra):
                 pass
+            elif isinstance(k, voluptuous.NotIn):
+                pass
             elif isinstance(k, text_type):
                 if not identifier_re.match(k) and not whitelisted(path):
                     raise RuntimeError(
@@ -152,7 +154,7 @@ def check_schema(schema):
                         'not {!r} @ {}'.format(k, path))
             elif isinstance(k, (voluptuous.Optional, voluptuous.Required)):
                 check_identifier(path, k.schema)
-            elif isinstance(k, voluptuous.Any):
+            elif isinstance(k, (voluptuous.Any, voluptuous.All)):
                 for v in k.validators:
                     check_identifier(path, v)
             elif not whitelisted(path):
@@ -201,12 +203,13 @@ OptimizationSchema = voluptuous.Any(
     {'always': None},
     # optimize strategy aliases for build kind
     {'build': list(schedules.ALL_COMPONENTS)},
+    {'build-optimized': list(schedules.ALL_COMPONENTS)},
     {'build-fuzzing': None},
     # search the index for the given index namespaces, and replace this task if found
     # the search occurs in order, with the first match winning
     {'index-search': [text_type]},
-    {'push-interval-10': list(schedules.ALL_COMPONENTS)},
-    {'push-interval-25': list(schedules.ALL_COMPONENTS)},
+    {'push-interval-10': None},
+    {'push-interval-25': None},
     # consult SETA and skip this task if it is low-value
     {'seta': None},
     # skip this task if none of the given file patterns match

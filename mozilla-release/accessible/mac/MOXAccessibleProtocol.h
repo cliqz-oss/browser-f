@@ -129,6 +129,25 @@
 // AXMenuItemMarkChar
 - (NSString* _Nullable)moxMenuItemMarkChar;
 
+// AXLoaded
+- (NSNumber* _Nullable)moxLoaded;
+
+// AXLoadingProgress
+- (NSNumber* _Nullable)moxLoadingProgress;
+
+// Webkit also implements the following:
+// // AXCaretBrowsingEnabled
+// - (NSString* _Nullable)moxCaretBrowsingEnabled;
+
+// // AXLayoutCount
+// - (NSString* _Nullable)moxLayoutCount;
+
+// // AXWebSessionID
+// - (NSString* _Nullable)moxWebSessionID;
+
+// // AXPreventKeyboardDOMEventDispatch
+// - (NSString* _Nullable)moxPreventKeyboardDOMEventDispatch;
+
 // Table Attributes
 
 // AXRowCount
@@ -190,6 +209,24 @@
 // AXMathOver
 - (id _Nullable)moxMathOver;
 
+// AXInvalid
+- (NSString* _Nullable)moxInvalid;
+
+// AXSelectedText
+- (NSString* _Nullable)moxSelectedText;
+
+// AXSelectedTextRange
+- (NSValue* _Nullable)moxSelectedTextRange;
+
+// AXNumberOfCharacters
+- (NSNumber* _Nullable)moxNumberOfCharacters;
+
+// AXVisibleCharacterRange
+- (NSValue* _Nullable)moxVisibleCharacterRange;
+
+// AXInsertionPointLineNumber
+- (NSNumber* _Nullable)moxInsertionPointLineNumber;
+
 #pragma mark - AttributeSetters
 
 // AXValue
@@ -203,6 +240,15 @@
 
 // AXSelectedChildren
 - (void)moxSetSelectedChildren:(NSArray* _Nullable)selectedChildren;
+
+// AXSelectedText
+- (void)moxSetSelectedText:(NSString* _Nullable)selectedText;
+
+// AXSelectedTextRange
+- (void)moxSetSelectedTextRange:(NSValue* _Nullable)selectedTextRange;
+
+// AXVisibleCharacterRange
+- (void)moxSetVisibleCharacterRange:(NSValue* _Nullable)visibleCharacterRange;
 
 #pragma mark - Actions
 
@@ -220,5 +266,34 @@
 
 // AXDecrement
 - (void)moxPerformDecrement;
+
+#pragma mark - ParameterizedAttributeGetters
+
+// AXLineForIndex
+- (NSNumber* _Nullable)moxLineForIndex:(NSNumber* _Nonnull)index;
+
+// AXRangeForLine
+- (NSValue* _Nullable)moxRangeForLine:(NSNumber* _Nonnull)line;
+
+// AXStringForRange
+- (NSString* _Nullable)moxStringForRange:(NSValue* _Nonnull)range;
+
+// AXRangeForPosition
+- (NSValue* _Nullable)moxRangeForPosition:(NSValue* _Nonnull)position;
+
+// AXRangeForIndex
+- (NSValue* _Nullable)moxRangeForIndex:(NSNumber* _Nonnull)index;
+
+// AXBoundsForRange
+- (NSValue* _Nullable)moxBoundsForRange:(NSValue* _Nonnull)range;
+
+// AXRTFForRange
+- (NSData* _Nullable)moxRTFForRange:(NSValue* _Nonnull)range;
+
+// AXStyleRangeForIndex
+- (NSValue* _Nullable)moxStyleRangeForIndex:(NSNumber* _Nonnull)index;
+
+// AttributedStringForRange
+- (NSAttributedString* _Nullable)moxAttributedStringForRange:(NSValue* _Nonnull)range;
 
 @end

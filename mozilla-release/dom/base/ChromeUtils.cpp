@@ -26,6 +26,7 @@
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/IdleDeadline.h"
+#include "mozilla/dom/InProcessChild.h"
 #include "mozilla/dom/JSActorService.h"
 #include "mozilla/dom/MediaControlUtils.h"
 #include "mozilla/dom/MediaControlService.h"
@@ -760,6 +761,7 @@ static WebIDLProcType ProcTypeToWebIDL(mozilla::ProcType aType) {
 #ifdef MOZ_ENABLE_FORKSERVER
     PROCTYPE_TO_WEBIDL_CASE(ForkServer, ForkServer);
 #endif
+    PROCTYPE_TO_WEBIDL_CASE(Preallocated, Preallocated);
     PROCTYPE_TO_WEBIDL_CASE(Unknown, Unknown);
   }
 
@@ -861,6 +863,9 @@ already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
                       } else if (remoteType.EqualsLiteral(
                                      LARGE_ALLOCATION_REMOTE_TYPE)) {
                         type = mozilla::ProcType::WebLargeAllocation;
+                      } else if (remoteType.EqualsLiteral(
+                                     PREALLOC_REMOTE_TYPE)) {
+                        type = mozilla::ProcType::Preallocated;
                       } else {
                         MOZ_CRASH("Unknown remoteType");
                       }
@@ -1054,7 +1059,7 @@ already_AddRefed<Promise> ChromeUtils::CollectPerfStats(GlobalObject& aGlobal,
       PerfStats::CollectPerfStatsJSON();
 
   extPromise->Then(
-      GetCurrentThreadSerialEventTarget(), __func__,
+      GetCurrentSerialEventTarget(), __func__,
       [promise](const nsCString& aResult) {
         promise->MaybeResolve(NS_ConvertUTF8toUTF16(aResult));
       },
@@ -1290,17 +1295,19 @@ void ChromeUtils::PrivateNoteIntentionalCrash(const GlobalObject& aGlobal,
 }
 
 /* static */
-void ChromeUtils::GenerateMediaControlKeysTestEvent(
-    const GlobalObject& aGlobal, MediaControlKeysTestEvent aEvent) {
+void ChromeUtils::GenerateMediaControlKey(const GlobalObject& aGlobal,
+                                          MediaControlKey aKey) {
   RefPtr<MediaControlService> service = MediaControlService::GetService();
   if (service) {
-    service->GenerateMediaControlKeysTestEvent(
-        ConvertMediaControlKeysTestEventToMediaControlKeysEvent(aEvent));
+    service->GenerateTestMediaControlKey(aKey);
   }
 }
 
 /* static */
-nsIContentChild* ChromeUtils::GetContentChild(const GlobalObject&) {
+nsIDOMProcessChild* ChromeUtils::GetDomProcessChild(const GlobalObject&) {
+  if (XRE_IsParentProcess()) {
+    return InProcessChild::Singleton();
+  }
   return ContentChild::GetSingleton();
 }
 

@@ -11,6 +11,7 @@
 
 #include "GLContextTypes.h"
 #include "GLDefs.h"
+#include "GLScreenBuffer.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/dom/BindingDeclarations.h"
@@ -99,7 +100,8 @@ class MozFramebuffer;
 
 namespace layers {
 class CompositableHost;
-}
+class SurfaceDescriptor;
+}  // namespace layers
 
 namespace webgl {
 class AvailabilityRunnable;
@@ -268,7 +270,7 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr<WebGLContext> {
     ~LruPosition() { reset(); }
   };
 
-  LruPosition mLruPosition;
+  mutable LruPosition mLruPosition;
 
  public:
   void BumpLru() {
@@ -478,14 +480,18 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr<WebGLContext> {
     return mOptions.preserveDrawingBuffer;
   }
 
-  // Prepare the context for capture before compositing
-  bool PresentScreenBuffer(gl::GLScreenBuffer* const screen = nullptr);
-  bool PresentScreenBufferVR(gl::GLScreenBuffer* const screen = nullptr,
-                             const gl::MozFramebuffer* const fb = nullptr);
-
   // Present to compositor
-  bool Present();
+ private:
+  bool PresentInto(gl::SwapChain& swapChain);
+  bool PresentIntoXR(gl::SwapChain& swapChain, const gl::MozFramebuffer& xrFb);
 
+ public:
+  void Present(WebGLFramebuffer*, layers::TextureType, const bool webvr);
+  RefPtr<gfx::DataSourceSurface> GetFrontBufferSnapshot();
+  Maybe<layers::SurfaceDescriptor> GetFrontBuffer(WebGLFramebuffer*,
+                                                  const bool webvr);
+
+  void ClearVRSwapChain();
   void RunContextLossTimer();
   void CheckForContextLoss();
 
@@ -583,10 +589,6 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr<WebGLContext> {
   void LinkProgram(WebGLProgram& prog);
   void PixelStorei(GLenum pname, uint32_t param);
   void PolygonOffset(GLfloat factor, GLfloat units);
-
-  RefPtr<layers::SharedSurfaceTextureClient> GetVRFrame(WebGLFramebuffer* fb);
-  void ClearVRFrame();
-  void EnsureVRReady();
 
   ////
 
@@ -1178,7 +1180,7 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr<WebGLContext> {
 
   // Used for some hardware (particularly Tegra 2 and 4) that likes to
   // be Flushed while doing hundreds of draw calls.
-  int mDrawCallsSinceLastFlush = 0;
+  mutable uint64_t mDrawCallsSinceLastFlush = 0;
 
   mutable uint64_t mWarningCount = 0;
   const uint64_t mMaxWarnings;
@@ -1202,9 +1204,6 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr<WebGLContext> {
   bool mNeedsIndexValidation = false;
 
   const bool mAllowFBInvalidation;
-#if defined(MOZ_WIDGET_ANDROID)
-  UniquePtr<gl::GLScreenBuffer> mVRScreen;
-#endif
 
   bool Has64BitTimestamps() const;
 
@@ -1215,6 +1214,9 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr<WebGLContext> {
   mutable UniquePtr<gl::MozFramebuffer> mDefaultFB;
   mutable bool mDefaultFB_IsInvalid = false;
   mutable UniquePtr<gl::MozFramebuffer> mResolvedDefaultFB;
+
+  gl::SwapChain mSwapChain;
+  gl::SwapChain mWebVRSwapChain;
 
   // --
 

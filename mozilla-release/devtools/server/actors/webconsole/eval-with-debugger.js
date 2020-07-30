@@ -119,6 +119,12 @@ function isObject(value) {
  *         function.
  */
 exports.evalWithDebugger = function(string, options = {}, webConsole) {
+  if (isCommand(string.trim()) && options.eager) {
+    return {
+      result: null,
+    };
+  }
+
   const evalString = getEvalInput(string);
   const { frame, dbg } = getFrameDbg(options, webConsole);
 
@@ -211,6 +217,13 @@ function getEvalResult(
   noSideEffectDebugger
 ) {
   if (noSideEffectDebugger) {
+    // Bug 1637883 demonstrated an issue where dbgWindow was somehow in the
+    // same compartment as the Debugger, meaning it could not be debugged
+    // and thus cannot handle eager evaluation. In that case we skip execution.
+    if (!noSideEffectDebugger.hasDebuggee(dbgWindow.unsafeDereference())) {
+      return null;
+    }
+
     // When a sideeffect-free debugger has been created, we need to eval
     // in the context of that debugger in order for the side-effect tracking
     // to apply.
@@ -521,7 +534,12 @@ function getDbgWindow(options, dbg, webConsole) {
     return { bindSelf: null, dbgWindow };
   }
 
-  const actor = webConsole.actor(options.selectedObjectActor);
+  // For objects related to console messages, they will be registered under the Target Actor
+  // instead of the WebConsoleActor. That's because console messages are resources and all resources
+  // are emitted by the Target Actor.
+  const actor =
+    webConsole.actor(options.selectedObjectActor) ||
+    webConsole.parentActor.actor(options.selectedObjectActor);
 
   if (!actor) {
     return { bindSelf: null, dbgWindow };

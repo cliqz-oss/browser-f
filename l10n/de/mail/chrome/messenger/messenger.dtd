@@ -590,7 +590,7 @@
 <!ENTITY fileButton.tooltip "Gewählte Nachricht(en) ablegen">
 <!ENTITY archiveButton.tooltip "Gewählte Nachricht(en) archivieren">
 <!ENTITY openConversationButton.tooltip "Themenbaum der Nachricht anzeigen">
-<!ENTITY openMsgConversationButton.tooltip "Konversation für ausgewählte Nachrichten anzeigen">
+<!ENTITY openMsgConversationButton.tooltip "Themenbaum für ausgewählte Nachrichten anzeigen">
 <!ENTITY nextButton.tooltip "Gehe zur nächsten ungelesenen Nachricht">
 <!ENTITY nextMsgButton.tooltip "Gehe zur nächsten Nachricht">
 <!ENTITY previousButton.tooltip "Gehe zur vorherigen ungelesenen Nachricht">

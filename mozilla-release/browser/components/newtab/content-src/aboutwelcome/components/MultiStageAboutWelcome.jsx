@@ -4,6 +4,7 @@
 
 import React, { useState, useCallback, useEffect } from "react";
 import { Localized } from "./MSLocalized";
+import { Zap } from "./Zap";
 import { AboutWelcomeUtils } from "../../lib/aboutwelcome-utils";
 import { addUtmParams } from "../../asrouter/templates/FirstRun/addUtmParams";
 
@@ -29,7 +30,24 @@ export const MultiStageAboutWelcome = props => {
         );
       }
     });
+
+    // Remember that a new screen has loaded for browser navigation
+    if (index > window.history.state) {
+      window.history.pushState(index, "");
+    }
   }, [index]);
+
+  useEffect(() => {
+    // Switch to the screen tracked in state (null for initial state)
+    const handler = ({ state }) => setScreenIndex(Number(state));
+
+    // Handle page load, e.g., going back to about:welcome from about:home
+    handler(window.history);
+
+    // Watch for browser back/forward button navigation events
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, []);
 
   const [flowParams, setFlowParams] = useState(null);
   const { metricsFlowUri } = props;
@@ -108,17 +126,33 @@ export class WelcomeScreen extends React.PureComponent {
     AboutWelcomeUtils.handleUserAction({ type, data });
   }
 
+  highlightTheme(theme) {
+    const themes = document.querySelectorAll("button.theme");
+    themes.forEach(function(element) {
+      element.classList.remove("selected");
+      if (element.value === theme) {
+        element.classList.add("selected");
+      }
+    });
+  }
+
   async handleAction(event) {
     let { props } = this;
-    let targetContent = props.content[event.target.value];
+
+    let targetContent =
+      props.content[event.currentTarget.value] || props.content.tiles;
     if (!(targetContent && targetContent.action)) {
       return;
     }
 
     // Send telemetry before waiting on actions
-    AboutWelcomeUtils.sendActionTelemetry(props.messageId, event.target.value);
+    AboutWelcomeUtils.sendActionTelemetry(
+      props.messageId,
+      event.currentTarget.value
+    );
 
     let { action } = targetContent;
+
     if (action.type === "OPEN_URL") {
       this.handleOpenURL(action, props.flowParams, props.UTMTerm);
     } else if (action.type) {
@@ -128,6 +162,14 @@ export class WelcomeScreen extends React.PureComponent {
         await window.AWWaitForMigrationClose();
         AboutWelcomeUtils.sendActionTelemetry(props.messageId, "migrate_close");
       }
+    }
+
+    // A special tiles.action.theme value indicates we should use the event's value vs provided value.
+    if (action.theme) {
+      this.highlightTheme(event.currentTarget.value);
+      window.AWSelectTheme(
+        action.theme === "<event>" ? event.currentTarget.value : action.theme
+      );
     }
 
     if (action.navigate) {
@@ -153,28 +195,67 @@ export class WelcomeScreen extends React.PureComponent {
   }
 
   renderTiles() {
-    return this.props.content.tiles && this.props.topSites ? (
-      <div className="tiles-section">
-        {this.props.topSites.slice(0, 5).map(({ icon, label }) => (
-          <div className="site" key={icon + label}>
+    switch (this.props.content.tiles.type) {
+      case "topsites":
+        return this.props.topSites ? (
+          <Localized
+            text={
+              typeof this.props.content.tiles.tooltip === "object"
+                ? this.props.content.tiles.tooltip
+                : {}
+            }
+          >
             <div
-              className="icon"
-              style={
-                icon
-                  ? {
-                      backgroundColor: "transparent",
-                      backgroundImage: `url(${icon})`,
-                    }
-                  : {}
-              }
+              className={`tiles-container ${
+                this.props.content.tiles.tooltip ? "info" : ""
+              }`}
+              title={this.props.content.tiles.tooltip}
             >
-              {icon ? "" : label[0].toUpperCase()}
+              <div className="tiles-topsites-section">
+                {this.props.topSites.slice(0, 5).map(({ icon, label }) => (
+                  <div className="site" key={icon + label}>
+                    <div
+                      className="icon"
+                      style={
+                        icon
+                          ? {
+                              backgroundColor: "transparent",
+                              backgroundImage: `url(${icon})`,
+                            }
+                          : {}
+                      }
+                    >
+                      {icon ? "" : label[0].toUpperCase()}
+                    </div>
+                    {label && <div className="host">{label}</div>}
+                  </div>
+                ))}
+              </div>
             </div>
-            {label && <div className="host">{label}</div>}
+          </Localized>
+        ) : null;
+      case "theme":
+        return this.props.content.tiles.data ? (
+          <div className="tiles-theme-section">
+            {this.props.content.tiles.data.map(({ theme, label }) => (
+              <button
+                className="theme"
+                key={theme + label}
+                value={theme}
+                onClick={this.handleAction}
+              >
+                <div className={`icon ${theme}`} />
+                {label && (
+                  <Localized text={label}>
+                    <div className="text" />
+                  </Localized>
+                )}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
-    ) : null;
+        ) : null;
+    }
+    return null;
   }
 
   renderStepsIndicator() {
@@ -195,9 +276,7 @@ export class WelcomeScreen extends React.PureComponent {
         {hasSecondaryTopCTA ? this.renderSecondaryCTA("top") : null}
         <div className={`brand-logo ${hasSecondaryTopCTA ? "cta-top" : ""}`} />
         <div className="welcome-text">
-          <Localized text={content.title}>
-            <h1 />
-          </Localized>
+          <Zap hasZap={content.zap} text={content.title} />
           <Localized text={content.subtitle}>
             <h2 />
           </Localized>

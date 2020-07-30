@@ -627,7 +627,11 @@ void RenderThread::RegisterExternalImage(
     return;
   }
   MOZ_ASSERT(mRenderTextures.find(aExternalImageId) == mRenderTextures.end());
-  mRenderTextures.emplace(aExternalImageId, std::move(aTexture));
+  RefPtr<RenderTextureHost> texture = aTexture;
+  if (texture->SyncObjectNeeded()) {
+    mSyncObjectNeededRenderTextures.emplace(aExternalImageId, texture);
+  }
+  mRenderTextures.emplace(aExternalImageId, texture);
 }
 
 void RenderThread::UnregisterExternalImage(uint64_t aExternalImageId) {
@@ -640,6 +644,13 @@ void RenderThread::UnregisterExternalImage(uint64_t aExternalImageId) {
   if (it == mRenderTextures.end()) {
     return;
   }
+
+  auto& texture = it->second;
+  if (texture->SyncObjectNeeded()) {
+    MOZ_RELEASE_ASSERT(
+        mSyncObjectNeededRenderTextures.erase(aExternalImageId) == 1);
+  }
+
   if (!IsInRenderThread()) {
     // The RenderTextureHost should be released in render thread. So, post the
     // deletion task here.
@@ -738,6 +749,12 @@ void RenderThread::HandlePrepareForUse() {
   mRenderTexturesPrepareForUse.clear();
 }
 
+bool RenderThread::SyncObjectNeeded() {
+  MOZ_ASSERT(IsInRenderThread());
+  MutexAutoLock lock(mRenderTextureMapLock);
+  return !mSyncObjectNeededRenderTextures.empty();
+}
+
 void RenderThread::DeferredRenderTextureHostDestroy() {
   MutexAutoLock lock(mRenderTextureMapLock);
   mRenderTexturesDeferred.clear();
@@ -760,9 +777,13 @@ void RenderThread::InitDeviceTask() {
   MOZ_ASSERT(IsInRenderThread());
   MOZ_ASSERT(!mSharedGL);
 
+  if (gfx::gfxVars::UseSoftwareWebRender()) {
+    // Ensure we don't instantiate any shared GL context when SW-WR is used.
+    return;
+  }
+
   mSharedGL = CreateGLContext();
-  if (gfx::gfxVars::UseWebRenderProgramBinaryDisk() &&
-      !gfx::gfxVars::UseSoftwareWebRender()) {
+  if (gfx::gfxVars::UseWebRenderProgramBinaryDisk()) {
     mProgramCache = MakeUnique<WebRenderProgramCache>(ThreadPool().Raw());
   }
   // Query the shared GL context to force the
@@ -850,7 +871,7 @@ gl::GLContext* RenderThread::SharedGL() {
     mSharedGL = CreateGLContext();
     mShaders = nullptr;
   }
-  if (mSharedGL && !mShaders && !gfx::gfxVars::UseSoftwareWebRender()) {
+  if (mSharedGL && !mShaders) {
     mShaders = MakeUnique<WebRenderShaders>(mSharedGL, mProgramCache.get());
   }
 
@@ -926,7 +947,9 @@ void RenderThread::MaybeEnableGLDebugMessage(gl::GLContext* aGLContext) {
 WebRenderShaders::WebRenderShaders(gl::GLContext* gl,
                                    WebRenderProgramCache* programCache) {
   mGL = gl;
-  mShaders = wr_shaders_new(gl, programCache ? programCache->Raw() : nullptr);
+  mShaders =
+      wr_shaders_new(gl, programCache ? programCache->Raw() : nullptr,
+                     StaticPrefs::gfx_webrender_precache_shaders_AtStartup());
 }
 
 WebRenderShaders::~WebRenderShaders() {
@@ -987,7 +1010,7 @@ static already_AddRefed<gl::GLContext> CreateGLContextANGLE() {
   // Create GLContext with dummy EGLSurface, the EGLSurface is not used.
   // Instread we override it with EGLSurface of SwapChain's back buffer.
   RefPtr<gl::GLContext> gl =
-      gl::GLContextProviderEGL::CreateHeadless(flags, &discardFailureId);
+      gl::GLContextProviderEGL::CreateHeadless({flags}, &discardFailureId);
   if (!gl || !gl->IsANGLE()) {
     gfxCriticalNote << "Failed ANGLE GL context creation for WebRender: "
                     << gfx::hexa(gl.get());
@@ -1029,8 +1052,8 @@ static already_AddRefed<gl::GLContext> CreateGLContextEGL() {
 static already_AddRefed<gl::GLContext> CreateGLContextCGL() {
   nsCString failureUnused;
   return gl::GLContextProvider::CreateHeadless(
-      gl::CreateContextFlags::ALLOW_OFFLINE_RENDERER |
-          gl::CreateContextFlags::FORCE_ENABLE_HARDWARE,
+      {gl::CreateContextFlags::ALLOW_OFFLINE_RENDERER |
+       gl::CreateContextFlags::FORCE_ENABLE_HARDWARE},
       &failureUnused);
 }
 #endif

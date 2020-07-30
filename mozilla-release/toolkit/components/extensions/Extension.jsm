@@ -685,9 +685,9 @@ class ExtensionData {
     }
 
     let result = {
-      origins: this.whiteListedHosts.patterns
+      origins: this.allowedOrigins.patterns
         .map(matcher => matcher.pattern)
-        // moz-extension://id/* is always added to whiteListedHosts, but it
+        // moz-extension://id/* is always added to allowedOrigins, but it
         // is not a valid host permission in the API. So, remove it.
         .filter(pattern => !pattern.startsWith("moz-extension:")),
       apis: [...this.apiNames],
@@ -957,7 +957,7 @@ class ExtensionData {
           );
           if (!acceptedExtensions.split(",").includes(id)) {
             this.manifestError(
-              "Only whitelisted extensions are allowed to access the geckoProfiler."
+              "Only specific extensions are allowed to access the geckoProfiler."
             );
             continue;
           }
@@ -1200,12 +1200,9 @@ class ExtensionData {
     this.webAccessibleResources = manifestData.webAccessibleResources.map(
       res => new MatchGlob(res)
     );
-    this.whiteListedHosts = new MatchPatternSet(
-      manifestData.originPermissions,
-      {
-        restrictSchemes: this.restrictSchemes,
-      }
-    );
+    this.allowedOrigins = new MatchPatternSet(manifestData.originPermissions, {
+      restrictSchemes: this.restrictSchemes,
+    });
 
     return this.manifest;
   }
@@ -1300,6 +1297,12 @@ class ExtensionData {
     }
 
     return null;
+  }
+
+  // Returns true if an addon is builtin to Firefox or
+  // distributed via Normandy into a system location.
+  get isAppProvided() {
+    return this.addonData.builtIn || this.addonData.isSystem;
   }
 
   // Normalizes a Chrome-compatible locale code to the appropriate
@@ -1834,7 +1837,7 @@ class Extension extends ExtensionData {
 
     this.uninstallURL = null;
 
-    this.whiteListedHosts = null;
+    this.allowedOrigins = null;
     this._optionalOrigins = null;
     this.webAccessibleResources = null;
 
@@ -1853,9 +1856,9 @@ class Extension extends ExtensionData {
       }
 
       if (permissions.origins.length) {
-        let patterns = this.whiteListedHosts.patterns.map(host => host.pattern);
+        let patterns = this.allowedOrigins.patterns.map(host => host.pattern);
 
-        this.whiteListedHosts = new MatchPatternSet(
+        this.allowedOrigins = new MatchPatternSet(
           new Set([...patterns, ...permissions.origins]),
           {
             restrictSchemes: this.restrictSchemes,
@@ -1865,7 +1868,7 @@ class Extension extends ExtensionData {
       }
 
       this.policy.permissions = Array.from(this.permissions);
-      this.policy.allowedOrigins = this.whiteListedHosts;
+      this.policy.allowedOrigins = this.allowedOrigins;
 
       this.cachePermissions();
       this.updatePermissions();
@@ -1880,14 +1883,14 @@ class Extension extends ExtensionData {
         origin => new MatchPattern(origin, { ignorePath: true }).pattern
       );
 
-      this.whiteListedHosts = new MatchPatternSet(
-        this.whiteListedHosts.patterns.filter(
+      this.allowedOrigins = new MatchPatternSet(
+        this.allowedOrigins.patterns.filter(
           host => !origins.includes(host.pattern)
         )
       );
 
       this.policy.permissions = Array.from(this.permissions);
-      this.policy.allowedOrigins = this.whiteListedHosts;
+      this.policy.allowedOrigins = this.allowedOrigins;
 
       this.cachePermissions();
       this.updatePermissions();
@@ -2049,7 +2052,7 @@ class Extension extends ExtensionData {
   async cachePermissions() {
     let manifestData = await this.parseManifest();
 
-    manifestData.originPermissions = this.whiteListedHosts.patterns.map(
+    manifestData.originPermissions = this.allowedOrigins.patterns.map(
       pat => pat.pattern
     );
     manifestData.permissions = this.permissions;
@@ -2120,7 +2123,7 @@ class Extension extends ExtensionData {
       resourceURL: this.resourceURL,
       contentScripts: this.contentScripts,
       webAccessibleResources: this.webAccessibleResources.map(res => res.glob),
-      whiteListedHosts: this.whiteListedHosts.patterns.map(pat => pat.pattern),
+      allowedOrigins: this.allowedOrigins.patterns.map(pat => pat.pattern),
       permissions: this.permissions,
       optionalPermissions: this.optionalPermissions,
       isPrivileged: this.isPrivileged,
@@ -2755,15 +2758,16 @@ class Langpack extends ExtensionData {
 
     resourceProtocol.setSubstitution(langpackId, this.rootURI);
 
-    for (const [sourceName, basePath] of Object.entries(l10nRegistrySources)) {
-      L10nRegistry.registerSource(
-        new FileSource(
-          `${sourceName}-${langpackId}`,
-          this.startupData.languages,
-          `resource://${langpackId}/${basePath}localization/{locale}/`
-        )
+    const fileSources = Object.entries(l10nRegistrySources).map(entry => {
+      const [sourceName, basePath] = entry;
+      return new FileSource(
+        `${sourceName}-${langpackId}`,
+        this.startupData.languages,
+        `resource://${langpackId}/${basePath}localization/{locale}/`
       );
-    }
+    });
+
+    L10nRegistry.registerSources(fileSources);
 
     Services.obs.notifyObservers(
       { wrappedJSObject: { langpack: this } },
@@ -2777,11 +2781,12 @@ class Langpack extends ExtensionData {
       // system.
       return;
     }
-    for (const sourceName of Object.keys(
+
+    const sourcesToRemove = Object.keys(
       this.startupData.l10nRegistrySources
-    )) {
-      L10nRegistry.removeSource(`${sourceName}-${this.startupData.langpackId}`);
-    }
+    ).map(sourceName => `${sourceName}-${this.startupData.langpackId}`);
+    L10nRegistry.removeSources(sourcesToRemove);
+
     if (this.chromeRegistryHandle) {
       this.chromeRegistryHandle.destruct();
       this.chromeRegistryHandle = null;

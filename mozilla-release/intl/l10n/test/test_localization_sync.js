@@ -27,7 +27,7 @@ key-attr =
   };
 
   const source = new FileSource("test", ["de", "en-US"], "/localization/{locale}");
-  L10nRegistry.registerSource(source);
+  L10nRegistry.registerSources([source]);
 
   function* generateBundlesSync(resIds) {
     yield * L10nRegistry.generateBundlesSync(["de", "en-US"], resIds);
@@ -44,6 +44,20 @@ key-attr =
       {id: "key-value2"},
       {id: "key-missing"},
       {id: "key-attr"}
+    ]);
+
+    strictEqual(values[0], "[de] Value2");
+    strictEqual(values[1], "[en] Value3");
+    strictEqual(values[2], null);
+    strictEqual(values[3], null);
+  }
+
+  {
+    let values = l10n.formatValuesSync([
+      "key-value1",
+      "key-value2",
+      "key-missing",
+      "key-attr"
     ]);
 
     strictEqual(values[0], "[de] Value2");
@@ -104,7 +118,7 @@ key = { PLATFORM() ->
   };
 
   const source = new FileSource("test", ["en-US"], "/localization/{locale}");
-  L10nRegistry.registerSource(source);
+  L10nRegistry.registerSources([source]);
 
   function* generateBundlesSync(resIds) {
     yield * L10nRegistry.generateBundlesSync(["en-US"], resIds);
@@ -139,7 +153,7 @@ add_task(function test_add_remove_resourceIds() {
   };
 
   const source = new FileSource("test", ["en-US"], "/localization/{locale}");
-  L10nRegistry.registerSource(source);
+  L10nRegistry.registerSources([source]);
 
   function* generateBundlesSync(resIds) {
     yield * L10nRegistry.generateBundlesSync(["en-US"], resIds);
@@ -155,6 +169,16 @@ add_task(function test_add_remove_resourceIds() {
   l10n.addResourceIds(["/toolkit/menu.ftl"]);
 
   values = l10n.formatValuesSync([{id: "key1"}, {id: "key2"}]);
+
+  strictEqual(values[0], "Value1");
+  strictEqual(values[1], "Value2");
+
+  values = l10n.formatValuesSync(["key1", {id: "key2"}]);
+
+  strictEqual(values[0], "Value1");
+  strictEqual(values[1], "Value2");
+
+  values = l10n.formatValuesSync([{id: "key1"}, "key2"]);
 
   strictEqual(values[0], "Value1");
   strictEqual(values[1], "Value2");
@@ -176,13 +200,13 @@ add_task(function test_calling_sync_methods_in_async_mode_fails() {
 
   Assert.throws(() => {
     l10n.formatValuesSync([{ id: "key1" }, { id: "key2" }]);
-  }, /Can't use sync formatWithFallback when state is async./);
+  }, /Can't use formatValuesSync when state is async./);
 
   Assert.throws(() => {
     l10n.formatValueSync("key1");
-  }, /Can't use sync formatWithFallback when state is async./);
+  }, /Can't use formatValueSync when state is async./);
 
   Assert.throws(() => {
     l10n.formatMessagesSync([{ id: "key1"}]);
-  }, /Can't use sync formatWithFallback when state is async./);
+  }, /Can't use formatMessagesSync when state is async./);
 });

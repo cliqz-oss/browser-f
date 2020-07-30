@@ -286,18 +286,10 @@ void ReportingHeader::ReportingFromChannel(nsIHttpChannel* aChannel) {
       continue;
     }
 
-    bool found = false;
-    nsTObserverArray<Group>::ForwardIterator iter(client->mGroups);
-    while (iter.HasMore()) {
-      const Group& group = iter.GetNext();
-
-      if (group.mName == groupName) {
-        found = true;
-        break;
-      }
-    }
-
-    if (found) {
+    const auto [begin, end] = client->mGroups.NonObservingRange();
+    if (std::any_of(begin, end, [&groupName](const Group& group) {
+          return group.mName == groupName;
+        })) {
       LogToConsoleDuplicateGroup(aChannel, aURI, groupName);
       continue;
     }
@@ -512,15 +504,15 @@ void ReportingHeader::GetEndpointForReport(const nsAString& aGroupName,
     return;
   }
 
-  nsTObserverArray<Group>::ForwardIterator iter(client->mGroups);
-  while (iter.HasMore()) {
-    const Group& group = iter.GetNext();
-
-    if (group.mName == aGroupName) {
-      GetEndpointForReportInternal(group, aEndpointURI);
-      break;
-    }
+  const auto [begin, end] = client->mGroups.NonObservingRange();
+  const auto foundIt = std::find_if(
+      begin, end,
+      [&aGroupName](const Group& group) { return group.mName == aGroupName; });
+  if (foundIt != end) {
+    GetEndpointForReportInternal(*foundIt, aEndpointURI);
   }
+
+  // XXX More explicitly report an error if not found?
 }
 
 /* static */
@@ -539,10 +531,7 @@ void ReportingHeader::GetEndpointForReportInternal(
   int64_t minPriority = -1;
   uint32_t totalWeight = 0;
 
-  nsTObserverArray<Endpoint>::ForwardIterator iter(aGroup.mEndpoints);
-  while (iter.HasMore()) {
-    const Endpoint& endpoint = iter.GetNext();
-
+  for (const Endpoint& endpoint : aGroup.mEndpoints.NonObservingRange()) {
     if (minPriority == -1 || minPriority > endpoint.mPriority) {
       minPriority = endpoint.mPriority;
       totalWeight = endpoint.mWeight;
@@ -571,15 +560,16 @@ void ReportingHeader::GetEndpointForReportInternal(
 
   totalWeight = randomNumber % totalWeight;
 
-  nsTObserverArray<Endpoint>::ForwardIterator iter2(aGroup.mEndpoints);
-  while (iter2.HasMore()) {
-    const Endpoint& endpoint = iter2.GetNext();
-
-    if (minPriority == endpoint.mPriority && totalWeight < endpoint.mWeight) {
-      Unused << NS_WARN_IF(NS_FAILED(endpoint.mUrl->GetSpec(aEndpointURI)));
-      break;
-    }
+  const auto [begin, end] = aGroup.mEndpoints.NonObservingRange();
+  const auto foundIt = std::find_if(
+      begin, end, [minPriority, totalWeight](const Endpoint& endpoint) {
+        return minPriority == endpoint.mPriority &&
+               totalWeight < endpoint.mWeight;
+      });
+  if (foundIt != end) {
+    Unused << NS_WARN_IF(NS_FAILED(foundIt->mUrl->GetSpec(aEndpointURI)));
   }
+  // XXX More explicitly report an error if not found?
 }
 
 /* static */

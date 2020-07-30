@@ -8,6 +8,7 @@
 #include "mozilla/Unused.h"
 
 #include "AudioSegment.h"
+#include "CrossGraphTrack.h"
 #include "VideoSegment.h"
 #include "nsContentUtils.h"
 #include "nsPrintfCString.h"
@@ -67,7 +68,6 @@ MediaTrackGraphImpl::~MediaTrackGraphImpl() {
              "thread");
   LOG(LogLevel::Debug, ("MediaTrackGraph %p destroyed", this));
   LOG(LogLevel::Debug, ("MediaTrackGraphImpl::~MediaTrackGraphImpl"));
-  StopAudioCallbackTracing();
 }
 
 void MediaTrackGraphImpl::AddTrackGraphThread(MediaTrack* aTrack) {
@@ -297,11 +297,19 @@ void MediaTrackGraphImpl::CheckDriver() {
 
   AudioCallbackDriver* audioCallbackDriver =
       CurrentDriver()->AsAudioCallbackDriver();
-  bool audioTrackPresent = AudioTrackPresent();
+  if (audioCallbackDriver) {
+    for (PendingResumeOperation& op : mPendingResumeOperations) {
+      op.Apply(this);
+    }
+    mPendingResumeOperations.Clear();
+  }
 
   // Note that this looks for any audio tracks, input or output, and switches
-  // to a SystemClockDriver if there are none.
-  if (!audioTrackPresent) {
+  // to a SystemClockDriver if there are none active or no resume operations
+  // to make any active.
+  bool needAudioCallbackDriver =
+      !mPendingResumeOperations.IsEmpty() || AudioTrackPresent();
+  if (!needAudioCallbackDriver) {
     if (audioCallbackDriver && audioCallbackDriver->IsStarted()) {
       SwitchAtNextIteration(
           new SystemClockDriver(this, CurrentDriver(), mSampleRate));
@@ -747,11 +755,9 @@ void MediaTrackGraphImpl::RegisterAudioOutput(MediaTrack* aTrack, void* aKey) {
 void MediaTrackGraphImpl::UnregisterAllAudioOutputs(MediaTrack* aTrack) {
   MOZ_ASSERT(OnGraphThreadOrNotRunning());
 
-  for (int32_t i = mAudioOutputs.Length() - 1; i >= 0; i--) {
-    if (mAudioOutputs[i].mTrack == aTrack) {
-      mAudioOutputs.RemoveElementAt(i);
-    }
-  }
+  mAudioOutputs.RemoveElementsBy([aTrack](const TrackKeyAndVolume& aTkv) {
+    return aTkv.mTrack == aTrack;
+  });
 }
 
 void MediaTrackGraphImpl::UnregisterAudioOutput(MediaTrack* aTrack,
@@ -1160,7 +1166,8 @@ void MediaTrackGraphImpl::UpdateGraph(GraphTime aEndBlockingDecisions) {
   CheckDriver();
   UpdateTrackOrder();
 
-  bool ensureNextIteration = false;
+  // Always do another iteration if there are tracks waiting to resume.
+  bool ensureNextIteration = !mPendingResumeOperations.IsEmpty();
 
   for (MediaTrack* track : mTracks) {
     if (SourceMediaTrack* is = track->AsSourceTrack()) {
@@ -1555,6 +1562,11 @@ class MediaTrackGraphShutDownRunnable : public Runnable {
       MOZ_ASSERT(!mGraph->mDriver->AsAudioCallbackDriver()->InCallback());
     }
 #endif
+
+    for (MediaTrackGraphImpl::PendingResumeOperation& op :
+         mGraph->mPendingResumeOperations) {
+      op.Abort();
+    }
 
     if (mGraph->mGraphRunner) {
       RefPtr<GraphRunner>(mGraph->mGraphRunner)->Shutdown();
@@ -2055,6 +2067,9 @@ void MediaTrack::AddAudioOutput(void* aKey) {
     void Run() override { mTrack->AddAudioOutputImpl(mKey); }
     void* mKey;
   };
+  if (mMainThreadDestroyed) {
+    return;
+  }
   GraphImpl()->AppendMessage(MakeUnique<Message>(this, aKey));
 }
 
@@ -2083,6 +2098,9 @@ void MediaTrack::SetAudioOutputVolume(void* aKey, float aVolume) {
     void* mKey;
     float mVolume;
   };
+  if (mMainThreadDestroyed) {
+    return;
+  }
   GraphImpl()->AppendMessage(MakeUnique<Message>(this, aKey, aVolume));
 }
 
@@ -2104,6 +2122,9 @@ void MediaTrack::RemoveAudioOutput(void* aKey) {
     void Run() override { mTrack->RemoveAudioOutputImpl(mKey); }
     void* mKey;
   };
+  if (mMainThreadDestroyed) {
+    return;
+  }
   GraphImpl()->AppendMessage(MakeUnique<Message>(this, aKey));
 }
 
@@ -2162,6 +2183,9 @@ void MediaTrack::AddListener(MediaTrackListener* aListener) {
     RefPtr<MediaTrackListener> mListener;
   };
   MOZ_ASSERT(mSegment, "Segment-less tracks do not support listeners");
+  if (mMainThreadDestroyed) {
+    return;
+  }
   GraphImpl()->AppendMessage(MakeUnique<Message>(this, aListener));
 }
 
@@ -2196,6 +2220,10 @@ RefPtr<GenericPromise> MediaTrack::RemoveListener(
 
   UniquePtr<Message> message = MakeUnique<Message>(this, aListener);
   RefPtr<GenericPromise> p = message->mRemovedPromise.Ensure(__func__);
+  if (mMainThreadDestroyed) {
+    message->mRemovedPromise.Reject(NS_ERROR_FAILURE, __func__);
+    return p;
+  }
   GraphImpl()->AppendMessage(move(message));
   return p;
 }
@@ -2216,6 +2244,9 @@ void MediaTrack::AddDirectListener(DirectMediaTrackListener* aListener) {
     void Run() override { mTrack->AddDirectListenerImpl(mListener.forget()); }
     RefPtr<DirectMediaTrackListener> mListener;
   };
+  if (mMainThreadDestroyed) {
+    return;
+  }
   GraphImpl()->AppendMessage(MakeUnique<Message>(this, aListener));
 }
 
@@ -2237,6 +2268,9 @@ void MediaTrack::RemoveDirectListener(DirectMediaTrackListener* aListener) {
     }
     RefPtr<DirectMediaTrackListener> mListener;
   };
+  if (mMainThreadDestroyed) {
+    return;
+  }
   GraphImpl()->AppendMessage(MakeUnique<Message>(this, aListener));
 }
 
@@ -2264,6 +2298,9 @@ void MediaTrack::RunAfterPendingUpdates(
     nsCOMPtr<nsIRunnable> mRunnable;
   };
 
+  if (mMainThreadDestroyed) {
+    return;
+  }
   graph->AppendMessage(MakeUnique<Message>(this, runnable.forget()));
 }
 
@@ -2294,6 +2331,9 @@ void MediaTrack::SetEnabled(DisabledTrackMode aMode) {
     void Run() override { mTrack->SetEnabledImpl(mMode); }
     DisabledTrackMode mMode;
   };
+  if (mMainThreadDestroyed) {
+    return;
+  }
   GraphImpl()->AppendMessage(MakeUnique<Message>(this, aMode));
 }
 
@@ -2941,6 +2981,9 @@ void ProcessedMediaTrack::QueueSetAutoend(bool aAutoend) {
     }
     bool mAutoend;
   };
+  if (mMainThreadDestroyed) {
+    return;
+  }
   GraphImpl()->AppendMessage(MakeUnique<Message>(this, aAutoend));
 }
 
@@ -3018,8 +3061,6 @@ MediaTrackGraphImpl::MediaTrackGraphImpl(
   }
 
   mLastMainThreadUpdate = TimeStamp::Now();
-
-  StartAudioCallbackTracing();
 
   RegisterWeakAsyncMemoryReporter(this);
 
@@ -3300,6 +3341,22 @@ AudioCaptureTrack* MediaTrackGraph::CreateAudioCaptureTrack() {
   return track;
 }
 
+CrossGraphTransmitter* MediaTrackGraph::CreateCrossGraphTransmitter(
+    CrossGraphReceiver* aReceiver) {
+  CrossGraphTransmitter* track =
+      new CrossGraphTransmitter(GraphRate(), aReceiver);
+  AddTrack(track);
+  return track;
+}
+
+CrossGraphReceiver* MediaTrackGraph::CreateCrossGraphReceiver(
+    TrackRate aTransmitterRate) {
+  CrossGraphReceiver* track =
+      new CrossGraphReceiver(GraphRate(), aTransmitterRate);
+  AddTrack(track);
+  return track;
+}
+
 void MediaTrackGraph::AddTrack(MediaTrack* aTrack) {
   MediaTrackGraphImpl* graph = static_cast<MediaTrackGraphImpl*>(this);
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
@@ -3340,43 +3397,29 @@ void MediaTrackGraphImpl::RemoveTrack(MediaTrack* aTrack) {
   }
 }
 
-auto MediaTrackGraph::NotifyWhenGraphStarted(MediaTrack* aTrack)
-    -> RefPtr<GraphStartedPromise> {
-  MOZ_ASSERT(NS_IsMainThread());
-  MozPromiseHolder<GraphStartedPromise> h;
-  RefPtr<GraphStartedPromise> p = h.Ensure(__func__);
-  aTrack->GraphImpl()->NotifyWhenGraphStarted(
-      aTrack, move(h), MediaTrackGraphImpl::ProcessingThread::FALLBACK_THREAD);
-  return p;
-}
-
 auto MediaTrackGraph::NotifyWhenDeviceStarted(MediaTrack* aTrack)
     -> RefPtr<GraphStartedPromise> {
   MOZ_ASSERT(NS_IsMainThread());
   MozPromiseHolder<GraphStartedPromise> h;
   RefPtr<GraphStartedPromise> p = h.Ensure(__func__);
-  aTrack->GraphImpl()->NotifyWhenGraphStarted(
-      aTrack, move(h), MediaTrackGraphImpl::ProcessingThread::AUDIO_THREAD);
+  aTrack->GraphImpl()->NotifyWhenGraphStarted(aTrack, move(h));
   return p;
 }
 
 void MediaTrackGraphImpl::NotifyWhenGraphStarted(
-    RefPtr<MediaTrack> aTrack, MozPromiseHolder<GraphStartedPromise>&& aHolder,
-    ProcessingThread aProcessingThread) {
+    RefPtr<MediaTrack> aTrack,
+    MozPromiseHolder<GraphStartedPromise>&& aHolder) {
   class GraphStartedNotificationControlMessage : public ControlMessage {
     RefPtr<MediaTrack> mMediaTrack;
     MozPromiseHolder<GraphStartedPromise> mHolder;
-    ProcessingThread mProcessingThread = ProcessingThread::FALLBACK_THREAD;
 
    public:
     GraphStartedNotificationControlMessage(
         RefPtr<MediaTrack> aTrack,
-        MozPromiseHolder<GraphStartedPromise>&& aHolder,
-        ProcessingThread aProcessingThread)
+        MozPromiseHolder<GraphStartedPromise>&& aHolder)
         : ControlMessage(nullptr),
           mMediaTrack(move(aTrack)),
-          mHolder(move(aHolder)),
-          mProcessingThread(aProcessingThread) {}
+          mHolder(move(aHolder)) {}
     void Run() override {
       // This runs on the graph thread, so when this runs, and the current
       // driver is an AudioCallbackDriver, we know the audio hardware is
@@ -3384,9 +3427,7 @@ void MediaTrackGraphImpl::NotifyWhenGraphStarted(
       // ControlMessage.
       MediaTrackGraphImpl* graphImpl = mMediaTrack->GraphImpl();
       if (graphImpl->CurrentDriver()->AsAudioCallbackDriver() &&
-          (mProcessingThread == ProcessingThread::FALLBACK_THREAD ||
-           (mProcessingThread == ProcessingThread::AUDIO_THREAD &&
-            graphImpl->CurrentDriver()->ThreadRunning()))) {
+          graphImpl->CurrentDriver()->ThreadRunning()) {
         // Avoid Resolve's locking on the graph thread by doing it on main.
         graphImpl->Dispatch(NS_NewRunnableFunction(
             "MediaTrackGraphImpl::NotifyWhenGraphStarted::Resolver",
@@ -3397,11 +3438,10 @@ void MediaTrackGraphImpl::NotifyWhenGraphStarted(
         graphImpl->DispatchToMainThreadStableState(
             NewRunnableMethod<
                 StoreCopyPassByRRef<RefPtr<MediaTrack>>,
-                StoreCopyPassByRRef<MozPromiseHolder<GraphStartedPromise>>,
-                ProcessingThread>(
+                StoreCopyPassByRRef<MozPromiseHolder<GraphStartedPromise>>>(
                 "MediaTrackGraphImpl::NotifyWhenGraphStarted", graphImpl,
                 &MediaTrackGraphImpl::NotifyWhenGraphStarted, move(mMediaTrack),
-                move(mHolder), mProcessingThread));
+                move(mHolder)));
       }
     }
     void RunDuringShutdown() override {
@@ -3416,146 +3456,7 @@ void MediaTrackGraphImpl::NotifyWhenGraphStarted(
 
   MediaTrackGraphImpl* graph = aTrack->GraphImpl();
   graph->AppendMessage(MakeUnique<GraphStartedNotificationControlMessage>(
-      move(aTrack), move(aHolder), aProcessingThread));
-}
-
-void MediaTrackGraphImpl::SuspendOrResumeTracks(
-    AudioContextOperation aAudioContextOperation,
-    const nsTArray<MediaTrack*>& aTrackSet) {
-  MOZ_ASSERT(OnGraphThreadOrNotRunning());
-  // For our purpose, Suspend and Close are equivalent: we want to remove the
-  // tracks from the set of tracks that are going to be processed.
-  for (MediaTrack* track : aTrackSet) {
-    if (aAudioContextOperation == AudioContextOperation::Resume) {
-      track->DecrementSuspendCount();
-    } else {
-      track->IncrementSuspendCount();
-    }
-  }
-  LOG(LogLevel::Debug, ("Moving tracks between suspended and running"
-                        "state: mTracks: %zu, mSuspendedTracks: %zu",
-                        mTracks.Length(), mSuspendedTracks.Length()));
-#ifdef DEBUG
-  // The intersection of the two arrays should be null.
-  for (uint32_t i = 0; i < mTracks.Length(); i++) {
-    for (uint32_t j = 0; j < mSuspendedTracks.Length(); j++) {
-      MOZ_ASSERT(
-          mTracks[i] != mSuspendedTracks[j],
-          "The suspended track set and running track set are not disjoint.");
-    }
-  }
-#endif
-}
-
-void MediaTrackGraphImpl::ApplyAudioContextOperationImpl(
-    MediaTrack* aDestinationTrack, const nsTArray<MediaTrack*>& aTracks,
-    AudioContextOperation aOperation,
-    MozPromiseHolder<AudioContextOperationPromise>&& aHolder) {
-  MOZ_ASSERT(OnGraphThread());
-
-  SuspendOrResumeTracks(aOperation, aTracks);
-
-  if (aOperation == AudioContextOperation::Resume) {
-    // If we have suspended the last AudioContext, and we don't have other
-    // tracks that have audio, this graph will automatically switch to a
-    // SystemCallbackDriver, because it can't find a MediaTrack that has an
-    // audio track. When resuming, force switching to an AudioCallbackDriver (if
-    // we're not already switching). It would have happened at the next
-    // iteration anyways, but doing this now save some time.
-    if (!CurrentDriver()->AsAudioCallbackDriver()) {
-      AudioCallbackDriver* driver;
-      if (Switching()) {
-        MOZ_ASSERT(NextDriver()->AsAudioCallbackDriver());
-        driver = NextDriver()->AsAudioCallbackDriver();
-      } else {
-        driver = new AudioCallbackDriver(
-            this, CurrentDriver(), mSampleRate, AudioOutputChannelCount(),
-            AudioInputChannelCount(), mOutputDeviceID, mInputDeviceID,
-            AudioInputDevicePreference());
-        SwitchAtNextIteration(driver);
-      }
-      driver->EnqueueTrackAndPromiseForOperation(
-          aDestinationTrack, aOperation, mAbstractMainThread, move(aHolder));
-    } else {
-      // We are resuming a context, but we are already using an
-      // AudioCallbackDriver, we can resolve the promise now. We do this on main
-      // thread to avoid locking the holder's mutex on the graph thread.
-      DispatchToMainThreadStableState(NS_NewRunnableFunction(
-          "MediaTrackGraphImpl::ApplyAudioContextOperationImpl::Resolve1",
-          [holder = move(aHolder)]() mutable {
-            holder.Resolve(AudioContextState::Running, __func__);
-          }));
-    }
-  } else {
-    // Close, suspend: check if we are going to switch to a
-    // SystemAudioCallbackDriver, and pass the promise to the
-    // AudioCallbackDriver if that's the case, so it can notify the content.
-    // This is the same logic as in UpdateTrackOrder, but it's simpler to have
-    // it here as well so we don't have to store the Promise(s) on the Graph.
-    AudioContextState state;
-    switch (aOperation) {
-      case AudioContextOperation::Suspend:
-        state = AudioContextState::Suspended;
-        break;
-      case AudioContextOperation::Close:
-        state = AudioContextState::Closed;
-        break;
-      default:
-        MOZ_CRASH("Unexpected operation");
-    }
-    bool audioTrackPresent = AudioTrackPresent();
-
-    if (!audioTrackPresent && CurrentDriver()->AsAudioCallbackDriver()) {
-      CurrentDriver()
-          ->AsAudioCallbackDriver()
-          ->EnqueueTrackAndPromiseForOperation(aDestinationTrack, aOperation,
-                                               mAbstractMainThread,
-                                               move(aHolder));
-
-      SystemClockDriver* driver;
-      if (!Switching()) {
-        driver = new SystemClockDriver(this, CurrentDriver(), mSampleRate);
-        SwitchAtNextIteration(driver);
-      }
-      // We are closing or suspending an AudioContext, but we just got resumed.
-      // Queue the operation on the next driver so that the ordering is
-      // preserved.
-    } else if (!audioTrackPresent && Switching()) {
-      MOZ_ASSERT(NextDriver()->AsAudioCallbackDriver());
-      if (NextDriver()->AsAudioCallbackDriver()) {
-        NextDriver()
-            ->AsAudioCallbackDriver()
-            ->EnqueueTrackAndPromiseForOperation(aDestinationTrack, aOperation,
-                                                 mAbstractMainThread,
-                                                 move(aHolder));
-      } else {
-        // If this is not an AudioCallbackDriver, this means we failed opening
-        // an AudioCallbackDriver in the past, and we're constantly trying to
-        // re-open an new audio track, but are running this graph that has an
-        // audio track off a SystemClockDriver for now to keep things moving.
-        // This is the case where we're trying to switch an an system driver
-        // (because suspend or close have been called on an AudioContext, or
-        // we've closed the page), but we're already running one. We can just
-        // resolve the promise now: we're already running off a system thread.
-        // We do this on main
-        // thread to avoid locking the holder's mutex on the graph thread.
-        DispatchToMainThreadStableState(NS_NewRunnableFunction(
-            "MediaTrackGraphImpl::ApplyAudioContextOperationImpl::Resolve2",
-            [holder = move(aHolder), state]() mutable {
-              holder.Resolve(state, __func__);
-            }));
-      }
-    } else {
-      // We are closing or suspending an AudioContext, but something else is
-      // using the audio track, we can resolve the promise now. We do this on
-      // main thread to avoid locking the holder's mutex on the graph thread.
-      DispatchToMainThreadStableState(NS_NewRunnableFunction(
-          "MediaTrackGraphImpl::ApplyAudioContextOperationImpl::Resolve3",
-          [holder = move(aHolder), state]() mutable {
-            holder.Resolve(state, __func__);
-          }));
-    }
-  }
+      move(aTrack), move(aHolder)));
 }
 
 class AudioContextOperationControlMessage : public ControlMessage {
@@ -3564,39 +3465,118 @@ class AudioContextOperationControlMessage : public ControlMessage {
 
  public:
   AudioContextOperationControlMessage(
-      MediaTrack* aDestinationTrack, const nsTArray<MediaTrack*>& aTracks,
+      MediaTrack* aDestinationTrack, nsTArray<RefPtr<MediaTrack>> aTracks,
       AudioContextOperation aOperation,
       MozPromiseHolder<AudioContextOperationPromise>&& aHolder)
       : ControlMessage(aDestinationTrack),
-        mTracks(aTracks.Clone()),
+        mTracks(move(aTracks)),
         mAudioContextOperation(aOperation),
         mHolder(move(aHolder)) {}
   void Run() override {
-    mTrack->GraphImpl()->ApplyAudioContextOperationImpl(
-        mTrack, mTracks, mAudioContextOperation, move(mHolder));
+    mTrack->GraphImpl()->ApplyAudioContextOperationImpl(this);
   }
   void RunDuringShutdown() override {
     MOZ_ASSERT(mAudioContextOperation == AudioContextOperation::Close,
                "We should be reviving the graph?");
-    mHolder.Resolve(AudioContextState::Closed, __func__);
+    mHolder.Reject(false, __func__);
   }
 
- private:
-  // We don't need strong references here for the same reason ControlMessage
-  // doesn't.
-  nsTArray<MediaTrack*> mTracks;
+  nsTArray<RefPtr<MediaTrack>> mTracks;
   AudioContextOperation mAudioContextOperation;
   MozPromiseHolder<AudioContextOperationPromise> mHolder;
 };
 
+void MediaTrackGraphImpl::ApplyAudioContextOperationImpl(
+    AudioContextOperationControlMessage* aMessage) {
+  MOZ_ASSERT(OnGraphThread());
+  AudioContextState state;
+  switch (aMessage->mAudioContextOperation) {
+    // Suspend and Close operations may be performed immediately because no
+    // specific kind of GraphDriver is required.  CheckDriver() will schedule
+    // a change to a SystemCallbackDriver if all tracks are suspended.
+    case AudioContextOperation::Suspend:
+      state = AudioContextState::Suspended;
+      break;
+    case AudioContextOperation::Close:
+      state = AudioContextState::Closed;
+      break;
+    case AudioContextOperation::Resume:
+      // Resume operations require an AudioCallbackDriver.  CheckDriver() will
+      // schedule an AudioCallbackDriver if necessary and process pending
+      // operations if and when an AudioCallbackDriver is running.
+      mPendingResumeOperations.EmplaceBack(aMessage);
+      return;
+  }
+  // First resolve any pending Resume promises for the same AudioContext so as
+  // to resolve its associated promises in the same order as they were
+  // created.  These Resume operations are considered complete and immediately
+  // canceled by the Suspend or Close.
+  MediaTrack* destinationTrack = aMessage->GetTrack();
+  bool shrinking = false;
+  auto moveDest = mPendingResumeOperations.begin();
+  for (PendingResumeOperation& op : mPendingResumeOperations) {
+    if (op.DestinationTrack() == destinationTrack) {
+      op.Apply(this);
+      shrinking = true;
+      continue;
+    }
+    if (shrinking) {  // Fill-in gaps in the array.
+      *moveDest = move(op);
+    }
+    ++moveDest;
+  }
+  mPendingResumeOperations.TruncateLength(moveDest -
+                                          mPendingResumeOperations.begin());
+
+  for (MediaTrack* track : aMessage->mTracks) {
+    track->IncrementSuspendCount();
+  }
+  // Resolve after main thread state is up to date with completed processing.
+  DispatchToMainThreadStableState(NS_NewRunnableFunction(
+      "MediaTrackGraphImpl::ApplyAudioContextOperationImpl",
+      [holder = move(aMessage->mHolder), state]() mutable {
+        holder.Resolve(state, __func__);
+      }));
+}
+
+MediaTrackGraphImpl::PendingResumeOperation::PendingResumeOperation(
+    AudioContextOperationControlMessage* aMessage)
+    : mDestinationTrack(aMessage->GetTrack()),
+      mTracks(move(aMessage->mTracks)),
+      mHolder(move(aMessage->mHolder)) {
+  MOZ_ASSERT(aMessage->mAudioContextOperation == AudioContextOperation::Resume);
+}
+
+void MediaTrackGraphImpl::PendingResumeOperation::Apply(
+    MediaTrackGraphImpl* aGraph) {
+  MOZ_ASSERT(aGraph->OnGraphThread());
+  for (MediaTrack* track : mTracks) {
+    track->DecrementSuspendCount();
+  }
+  // The graph is provided through the parameter so that it is available even
+  // when the track is destroyed.
+  aGraph->DispatchToMainThreadStableState(NS_NewRunnableFunction(
+      "PendingResumeOperation::Apply", [holder = move(mHolder)]() mutable {
+        holder.Resolve(AudioContextState::Running, __func__);
+      }));
+}
+
+void MediaTrackGraphImpl::PendingResumeOperation::Abort() {
+  // The graph is shutting down before the operation completed.
+  MOZ_ASSERT(!mDestinationTrack->GraphImpl() ||
+             mDestinationTrack->GraphImpl()->mLifecycleState ==
+                 MediaTrackGraphImpl::LIFECYCLE_WAITING_FOR_THREAD_SHUTDOWN);
+  mHolder.Reject(false, __func__);
+}
+
 auto MediaTrackGraph::ApplyAudioContextOperation(
-    MediaTrack* aDestinationTrack, const nsTArray<MediaTrack*>& aTracks,
+    MediaTrack* aDestinationTrack, nsTArray<RefPtr<MediaTrack>> aTracks,
     AudioContextOperation aOperation) -> RefPtr<AudioContextOperationPromise> {
   MozPromiseHolder<AudioContextOperationPromise> holder;
   RefPtr<AudioContextOperationPromise> p = holder.Ensure(__func__);
   MediaTrackGraphImpl* graphImpl = static_cast<MediaTrackGraphImpl*>(this);
   graphImpl->AppendMessage(MakeUnique<AudioContextOperationControlMessage>(
-      aDestinationTrack, aTracks, aOperation, move(holder)));
+      aDestinationTrack, move(aTracks), aOperation, move(holder)));
   return p;
 }
 
@@ -3805,11 +3785,8 @@ void MediaTrackGraph::UnregisterCaptureTrackForWindow(uint64_t aWindowId) {
 
 void MediaTrackGraphImpl::UnregisterCaptureTrackForWindow(uint64_t aWindowId) {
   MOZ_ASSERT(NS_IsMainThread());
-  for (int32_t i = mWindowCaptureTracks.Length() - 1; i >= 0; i--) {
-    if (mWindowCaptureTracks[i].mWindowId == aWindowId) {
-      mWindowCaptureTracks.RemoveElementAt(i);
-    }
-  }
+  mWindowCaptureTracks.RemoveElementsBy(
+      [aWindowId](const auto& track) { return track.mWindowId == aWindowId; });
 }
 
 already_AddRefed<MediaInputPort> MediaTrackGraph::ConnectToCaptureTrack(

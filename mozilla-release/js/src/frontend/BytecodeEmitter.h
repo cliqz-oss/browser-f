@@ -758,6 +758,10 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   MOZ_MUST_USE bool emitSelfHostedGetPropertySuper(BinaryNode* callNode);
   MOZ_MUST_USE bool emitSelfHostedHasOwn(BinaryNode* callNode);
   MOZ_MUST_USE bool emitSelfHostedToNumeric(BinaryNode* callNode);
+  MOZ_MUST_USE bool emitSelfHostedToString(BinaryNode* callNode);
+#ifdef DEBUG
+  MOZ_MUST_USE bool checkSelfHostedUnsafeGetReservedSlot(BinaryNode* callNode);
+#endif
 
   MOZ_MUST_USE bool emitDo(BinaryNode* doNode);
   MOZ_MUST_USE bool emitWhile(BinaryNode* whileNode);

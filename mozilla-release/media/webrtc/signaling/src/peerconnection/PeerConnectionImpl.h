@@ -441,6 +441,13 @@ class PeerConnectionImpl final
     return mTimestampMaker;
   }
 
+  // Utility function, given a string pref and an URI, returns whether or not
+  // the URI occurs in the pref. Wildcards are supported (e.g. *.example.com)
+  // and multiple hostnames can be present, separated by commas.
+  static bool HostnameInPref(const char* aPrefList, nsIURI* aDocURI);
+
+  void StampTimecard(const char* aEvent);
+
  private:
   virtual ~PeerConnectionImpl();
   PeerConnectionImpl(const PeerConnectionImpl& rhs);
@@ -523,7 +530,8 @@ class PeerConnectionImpl final
   // The SDP sent in from JS
   std::string mLocalRequestedSDP;
   std::string mRemoteRequestedSDP;
-
+  // Only accessed from main
+  mozilla::dom::Sequence<mozilla::dom::RTCSdpHistoryEntryInternal> mSdpHistory;
   std::string mPendingLocalDescription;
   std::string mPendingRemoteDescription;
   std::string mCurrentLocalDescription;
@@ -608,6 +616,9 @@ class PeerConnectionImpl final
 
   DOMMediaStream* GetReceiveStream(const std::string& aId) const;
   DOMMediaStream* CreateReceiveStream(const std::string& aId);
+
+  // See Bug 1642419, this can be removed when all sites are working with RTX.
+  bool mRtxIsAllowed = true;
 
  public:
   // these are temporary until the DataChannel Listen/Connect API is removed

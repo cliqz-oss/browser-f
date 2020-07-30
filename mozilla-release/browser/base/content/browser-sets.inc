@@ -42,7 +42,7 @@
     <command id="View:PageSource" oncommand="BrowserViewSource(window.gBrowser.selectedBrowser);"/>
     <command id="View:PageInfo" oncommand="BrowserPageInfo();"/>
     <command id="View:FullScreen" oncommand="BrowserFullScreen();"/>
-    <command id="View:ReaderView" oncommand="ReaderParent.toggleReaderMode(event);"/>
+    <command id="View:ReaderView" oncommand="AboutReaderParent.toggleReaderMode(event);"/>
     <command id="View:PictureInPicture" oncommand="PictureInPicture.onCommand(event);"/>
     <command id="cmd_find" oncommand="gLazyFindCommand('onFindCommand')"/>
     <command id="cmd_findAgain" oncommand="gLazyFindCommand('onFindAgainCommand', false)"/>
@@ -93,10 +93,10 @@
       oncommand="OpenBrowserWindow({private: true});"/>
 #ifdef NIGHTLY_BUILD
     <command id="Tools:FissionWindow"
-      oncommand="OpenBrowserWindow({fission: true});"
+      oncommand="OpenBrowserWindow({fission: true, private: !!window?.browsingContext?.usePrivateBrowsing});"
       hidden="true"/>
     <command id="Tools:NonFissionWindow"
-      oncommand="OpenBrowserWindow({fission: false});"
+      oncommand="OpenBrowserWindow({fission: false, private: !!window?.browsingContext?.usePrivateBrowsing});"
       hidden="true"/>
 #endif
     <command id="History:UndoCloseTab" oncommand="undoCloseTab();" data-l10n-args='{"tabCount": 1}'/>

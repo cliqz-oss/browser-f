@@ -6,6 +6,7 @@
 
 #include "nsThreadUtils.h"
 
+#include "chrome/common/ipc_message.h"  // for IPC::Message
 #include "LeakRefPtr.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Likely.h"
@@ -39,6 +40,8 @@ static LazyLogModule sEventDispatchAndRunLog("events");
 #endif
 #define LOG1(args) \
   MOZ_LOG(sEventDispatchAndRunLog, mozilla::LogLevel::Error, args)
+#define LOG1_ENABLED() \
+  MOZ_LOG_TEST(sEventDispatchAndRunLog, mozilla::LogLevel::Error)
 
 using namespace mozilla;
 
@@ -214,7 +217,7 @@ nsresult NS_DispatchToCurrentThread(already_AddRefed<nsIRunnable>&& aEvent) {
   nsresult rv;
   nsCOMPtr<nsIRunnable> event(aEvent);
 #ifdef MOZILLA_INTERNAL_API
-  nsIEventTarget* thread = GetCurrentThreadEventTarget();
+  nsIEventTarget* thread = GetCurrentEventTarget();
   if (!thread) {
     return NS_ERROR_UNEXPECTED;
   }
@@ -275,7 +278,7 @@ nsresult NS_DelayedDispatchToCurrentThread(
     already_AddRefed<nsIRunnable>&& aEvent, uint32_t aDelayMs) {
   nsCOMPtr<nsIRunnable> event(aEvent);
 #ifdef MOZILLA_INTERNAL_API
-  nsIEventTarget* thread = GetCurrentThreadEventTarget();
+  nsIEventTarget* thread = GetCurrentEventTarget();
   if (!thread) {
     return NS_ERROR_UNEXPECTED;
   }
@@ -397,7 +400,7 @@ extern nsresult NS_DispatchToThreadQueue(already_AddRefed<nsIRunnable>&& aEvent,
              aQueue == EventQueuePriority::DeferredTimers);
 
   // XXX Using current thread for now as the nsIEventTarget.
-  nsIEventTarget* target = mozilla::GetCurrentThreadEventTarget();
+  nsIEventTarget* target = mozilla::GetCurrentEventTarget();
   if (!target) {
     return NS_ERROR_UNEXPECTED;
   }
@@ -570,7 +573,7 @@ nsAutoLowPriorityIO::~nsAutoLowPriorityIO() {
 
 namespace mozilla {
 
-nsIEventTarget* GetCurrentThreadEventTarget() {
+nsIEventTarget* GetCurrentEventTarget() {
   nsCOMPtr<nsIThread> thread;
   nsresult rv = NS_GetCurrentThread(getter_AddRefs(thread));
   if (NS_FAILED(rv)) {
@@ -584,7 +587,12 @@ nsIEventTarget* GetMainThreadEventTarget() {
   return GetMainThreadSerialEventTarget();
 }
 
-nsISerialEventTarget* GetCurrentThreadSerialEventTarget() {
+nsISerialEventTarget* GetCurrentSerialEventTarget() {
+  if (nsISerialEventTarget* current =
+          SerialEventTargetGuard::GetCurrentSerialEventTarget()) {
+    return current;
+  }
+
   nsCOMPtr<nsIThread> thread;
   nsresult rv = NS_GetCurrentThread(getter_AddRefs(thread));
   if (NS_FAILED(rv)) {
@@ -613,18 +621,65 @@ void LogTaskBase<T>::LogDispatch(T* aEvent) {
   LOG1(("DISP %p", aEvent));
 }
 
+template <>
+void LogTaskBase<IPC::Message>::LogDispatchWithPid(IPC::Message* aEvent,
+                                                   int32_t aPid) {
+  if (aEvent->seqno() && aPid > 0) {
+    LOG1(("SEND %p %d %d", aEvent, aEvent->seqno(), aPid));
+  }
+}
+
 template <typename T>
 LogTaskBase<T>::Run::Run(T* aEvent, bool aWillRunAgain)
-    : mEvent(aEvent), mWillRunAgain(aWillRunAgain) {
-  LOG1(("EXEC %p", mEvent));
+    : mWillRunAgain(aWillRunAgain) {
+  // Logging address of this RAII so that we can use it to identify the DONE log
+  // while not keeping any ref to the event that could be invalid at the dtor
+  // time.
+  LOG1(("EXEC %p %p", aEvent, this));
+}
+
+template <>
+LogTaskBase<nsIRunnable>::Run::Run(nsIRunnable* aEvent, bool aWillRunAgain)
+    : mWillRunAgain(aWillRunAgain) {
+  if (!LOG1_ENABLED()) {
+    return;
+  }
+
+  nsCOMPtr<nsINamed> named(do_QueryInterface(aEvent));
+  if (!named) {
+    LOG1(("EXEC %p %p", aEvent, this));
+    return;
+  }
+
+  nsAutoCString name;
+  named->GetName(name);
+  LOG1(("EXEC %p %p [%s]", aEvent, this, name.BeginReading()));
+}
+
+template <>
+LogTaskBase<IPC::Message>::Run::Run(IPC::Message* aMessage, bool aWillRunAgain)
+    : mWillRunAgain(aWillRunAgain) {
+  LOG1(("RECV %p %p %d [%s]", aMessage, this, aMessage->seqno(),
+        aMessage->name()));
 }
 
 template <typename T>
 LogTaskBase<T>::Run::~Run() {
-  LOG1((mWillRunAgain ? "INTERRUPTED %p" : "DONE %p", mEvent));
+  LOG1((mWillRunAgain ? "INTERRUPTED %p" : "DONE %p", this));
 }
 
 template class LogTaskBase<nsIRunnable>;
+template class LogTaskBase<MicroTaskRunnable>;
+template class LogTaskBase<IPC::Message>;
+
+MOZ_THREAD_LOCAL(nsISerialEventTarget*)
+SerialEventTargetGuard::sCurrentThreadTLS;
+void SerialEventTargetGuard::InitTLS() {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!sCurrentThreadTLS.init()) {
+    MOZ_CRASH();
+  }
+}
 
 }  // namespace mozilla
 
@@ -641,7 +696,7 @@ extern "C" {
 // that enable Rust code to get/create threads and dispatch runnables on them.
 
 nsresult NS_GetCurrentThreadEventTarget(nsIEventTarget** aResult) {
-  nsCOMPtr<nsIEventTarget> target = mozilla::GetCurrentThreadEventTarget();
+  nsCOMPtr<nsIEventTarget> target = mozilla::GetCurrentEventTarget();
   if (!target) {
     return NS_ERROR_UNEXPECTED;
   }

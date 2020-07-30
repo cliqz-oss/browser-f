@@ -54,11 +54,12 @@
 #include <cmath>
 #include <limits>
 
-using namespace mozilla;
 using namespace mozilla::dom;
 using namespace mozilla::dom::SVGTextContentElement_Binding;
 using namespace mozilla::gfx;
 using namespace mozilla::image;
+
+namespace mozilla {
 
 // ============================================================================
 // Utility functions
@@ -363,8 +364,6 @@ static double GetContextScale(const gfxMatrix& aMatrix) {
 
 // ============================================================================
 // Utility classes
-
-namespace mozilla {
 
 // ----------------------------------------------------------------------------
 // TextRenderedRun
@@ -1269,7 +1268,7 @@ class TextNodeCorrespondenceRecorder {
 
 /* static */
 void TextNodeCorrespondenceRecorder::RecordCorrespondence(SVGTextFrame* aRoot) {
-  if (aRoot->GetStateBits() & NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY) {
+  if (aRoot->HasAnyStateBits(NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY)) {
     // Resolve bidi so that continuation frames are created if necessary:
     aRoot->MaybeResolveBidiForAnonymousBlockChild();
     TextNodeCorrespondenceRecorder recorder(aRoot);
@@ -1581,7 +1580,7 @@ class TextFrameIterator {
 
 uint32_t TextFrameIterator::UndisplayedCharacters() const {
   MOZ_ASSERT(
-      !(mRootFrame->GetStateBits() & NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY),
+      !mRootFrame->HasAnyStateBits(NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY),
       "Text correspondence must be up to date");
 
   if (!mCurrentFrame) {
@@ -1627,7 +1626,7 @@ nsTextFrame* TextFrameIterator::Next() {
           mCurrentPosition -= mCurrentFrame->GetPosition();
           if (mCurrentFrame->GetContent()->IsSVGElement(nsGkAtoms::textPath)) {
             // Pop off the <textPath> frame if this is a <textPath>.
-            mTextPathFrames.TruncateLength(mTextPathFrames.Length() - 1);
+            mTextPathFrames.RemoveLastElement();
           }
           // Pop off the current baseline.
           PopBaseline();
@@ -1674,7 +1673,7 @@ void TextFrameIterator::PushBaseline(nsIFrame* aNextFrame) {
 
 void TextFrameIterator::PopBaseline() {
   NS_ASSERTION(!mBaselines.IsEmpty(), "popped too many baselines");
-  mBaselines.TruncateLength(mBaselines.Length() - 1);
+  mBaselines.RemoveLastElement();
 }
 
 // -----------------------------------------------------------------------------
@@ -2675,26 +2674,24 @@ void SVGTextDrawPathCallbacks::StrokeGeometry() {
   }
 }
 
-}  // namespace mozilla
-
 // ============================================================================
 // SVGTextFrame
 
 // ----------------------------------------------------------------------------
 // Display list item
 
-class nsDisplaySVGText final : public nsPaintedDisplayItem {
+class DisplaySVGText final : public nsPaintedDisplayItem {
  public:
-  nsDisplaySVGText(nsDisplayListBuilder* aBuilder, SVGTextFrame* aFrame)
+  DisplaySVGText(nsDisplayListBuilder* aBuilder, SVGTextFrame* aFrame)
       : nsPaintedDisplayItem(aBuilder, aFrame) {
-    MOZ_COUNT_CTOR(nsDisplaySVGText);
+    MOZ_COUNT_CTOR(DisplaySVGText);
     MOZ_ASSERT(aFrame, "Must have a frame!");
   }
 #ifdef NS_BUILD_REFCNT_LOGGING
-  MOZ_COUNTED_DTOR_OVERRIDE(nsDisplaySVGText)
+  MOZ_COUNTED_DTOR_OVERRIDE(DisplaySVGText)
 #endif
 
-  NS_DISPLAY_DECL_NAME("nsDisplaySVGText", TYPE_SVG_TEXT)
+  NS_DISPLAY_DECL_NAME("DisplaySVGText", TYPE_SVG_TEXT)
 
   virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
                        HitTestState* aState,
@@ -2712,9 +2709,9 @@ class nsDisplaySVGText final : public nsPaintedDisplayItem {
   }
 };
 
-void nsDisplaySVGText::HitTest(nsDisplayListBuilder* aBuilder,
-                               const nsRect& aRect, HitTestState* aState,
-                               nsTArray<nsIFrame*>* aOutFrames) {
+void DisplaySVGText::HitTest(nsDisplayListBuilder* aBuilder,
+                             const nsRect& aRect, HitTestState* aState,
+                             nsTArray<nsIFrame*>* aOutFrames) {
   SVGTextFrame* frame = static_cast<SVGTextFrame*>(mFrame);
   nsPoint pointRelativeToReferenceFrame = aRect.Center();
   // ToReferenceFrame() includes frame->GetPosition(), our user space position.
@@ -2731,7 +2728,7 @@ void nsDisplaySVGText::HitTest(nsDisplayListBuilder* aBuilder,
   }
 }
 
-void nsDisplaySVGText::Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) {
+void DisplaySVGText::Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) {
   DrawTargetAutoDisableSubpixelAntialiasing disable(aCtx->GetDrawTarget(),
                                                     IsSubpixelAADisabled());
 
@@ -2761,12 +2758,18 @@ NS_QUERYFRAME_HEAD(SVGTextFrame)
   NS_QUERYFRAME_ENTRY(SVGTextFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsSVGDisplayContainerFrame)
 
+}  // namespace mozilla
+
 // ---------------------------------------------------------------------
 // Implementation
 
-nsIFrame* NS_NewSVGTextFrame(PresShell* aPresShell, ComputedStyle* aStyle) {
-  return new (aPresShell) SVGTextFrame(aStyle, aPresShell->GetPresContext());
+nsIFrame* NS_NewSVGTextFrame(mozilla::PresShell* aPresShell,
+                             mozilla::ComputedStyle* aStyle) {
+  return new (aPresShell)
+      mozilla::SVGTextFrame(aStyle, aPresShell->GetPresContext());
 }
+
+namespace mozilla {
 
 NS_IMPL_FRAMEARENA_HELPERS(SVGTextFrame)
 
@@ -2803,7 +2806,7 @@ void SVGTextFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     return;
   }
   DisplayOutline(aBuilder, aLists);
-  aLists.Content()->AppendNewToTop<nsDisplaySVGText>(aBuilder, this);
+  aLists.Content()->AppendNewToTop<DisplaySVGText>(aBuilder, this);
 }
 
 nsresult SVGTextFrame::AttributeChanged(int32_t aNameSpaceID,
@@ -2878,7 +2881,7 @@ void SVGTextFrame::ScheduleReflowSVGNonDisplayText(IntrinsicDirty aReason) {
 
   nsIFrame* f = this;
   while (f) {
-    if (!(f->GetStateBits() & NS_FRAME_IS_NONDISPLAY)) {
+    if (!f->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
       if (NS_SUBTREE_DIRTY(f)) {
         // This is a displayed frame, so if it is already dirty, we will be
         // reflowed soon anyway.  No need to call FrameNeedsReflow again, then.
@@ -2962,7 +2965,7 @@ void SVGTextFrame::HandleAttributeChangeInDescendant(Element* aElement,
 
 void SVGTextFrame::FindCloserFrameForSelection(
     const nsPoint& aPoint, FrameWithDistance* aCurrentBestFrame) {
-  if (GetStateBits() & NS_FRAME_IS_NONDISPLAY) {
+  if (HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
     return;
   }
 
@@ -3293,7 +3296,7 @@ void SVGTextFrame::ReflowSVG() {
   NS_ASSERTION(nsSVGUtils::OuterSVGIsCallingReflowSVG(this),
                "This call is probaby a wasteful mistake");
 
-  MOZ_ASSERT(!(GetStateBits() & NS_FRAME_IS_NONDISPLAY),
+  MOZ_ASSERT(!HasAnyStateBits(NS_FRAME_IS_NONDISPLAY),
              "ReflowSVG mechanism not designed for this");
 
   if (!nsSVGUtils::NeedsReflowSVG(this)) {
@@ -5027,7 +5030,7 @@ void SVGTextFrame::UpdateGlyphPositioning() {
 void SVGTextFrame::MaybeResolveBidiForAnonymousBlockChild() {
   nsIFrame* kid = PrincipalChildList().FirstChild();
 
-  if (kid && kid->GetStateBits() & NS_BLOCK_NEEDS_BIDI_RESOLUTION &&
+  if (kid && kid->HasAnyStateBits(NS_BLOCK_NEEDS_BIDI_RESOLUTION) &&
       PresContext()->BidiEnabled()) {
     MOZ_ASSERT(static_cast<nsBlockFrame*>(do_QueryFrame(kid)),
                "Expect anonymous child to be an nsBlockFrame");
@@ -5041,7 +5044,7 @@ void SVGTextFrame::MaybeReflowAnonymousBlockChild() {
     return;
   }
 
-  NS_ASSERTION(!(kid->GetStateBits() & NS_FRAME_IN_REFLOW),
+  NS_ASSERTION(!kid->HasAnyStateBits(NS_FRAME_IN_REFLOW),
                "should not be in reflow when about to reflow again");
 
   if (NS_SUBTREE_DIRTY(this)) {
@@ -5140,7 +5143,9 @@ bool SVGTextFrame::UpdateFontSizeScaleFactor() {
   nsPresContext* presContext = PresContext();
 
   bool geometricPrecision = false;
-  nscoord min = nscoord_MAX, max = nscoord_MIN;
+  CSSCoord min = std::numeric_limits<float>::max();
+  CSSCoord max = std::numeric_limits<float>::min();
+  bool anyText = false;
 
   // Find the minimum and maximum font sizes used over all the
   // nsTextFrames.
@@ -5153,25 +5158,24 @@ bool SVGTextFrame::UpdateFontSizeScaleFactor() {
       geometricPrecision = f->StyleText()->mTextRendering ==
                            StyleTextRendering::Geometricprecision;
     }
-    nscoord size = f->StyleFont()->mFont.size;
-    if (size) {
-      min = std::min(min, size);
-      max = std::max(max, size);
+    const auto& fontSize = f->StyleFont()->mFont.size;
+    if (!fontSize.IsZero()) {
+      min = std::min(min, fontSize.ToCSSPixels());
+      max = std::max(max, fontSize.ToCSSPixels());
+      anyText = true;
     }
     f = it.Next();
   }
 
-  if (min == nscoord_MAX) {
+  if (!anyText) {
     // No text, so no need for scaling.
     mFontSizeScaleFactor = 1.0;
     return mFontSizeScaleFactor != oldFontSizeScaleFactor;
   }
 
-  double minSize = nsPresContext::AppUnitsToFloatCSSPixels(min);
-
   if (geometricPrecision) {
     // We want to ensure minSize is scaled to PRECISE_SIZE.
-    mFontSizeScaleFactor = PRECISE_SIZE / minSize;
+    mFontSizeScaleFactor = PRECISE_SIZE / min;
     return mFontSizeScaleFactor != oldFontSizeScaleFactor;
   }
 
@@ -5189,8 +5193,6 @@ bool SVGTextFrame::UpdateFontSizeScaleFactor() {
   }
   mLastContextScale = contextScale;
 
-  double maxSize = nsPresContext::AppUnitsToFloatCSSPixels(max);
-
   // But we want to ignore any scaling required due to HiDPI displays, since
   // regular CSS text frames will still create text runs using the font size
   // in CSS pixels, and we want SVG text to have the same rendering as HTML
@@ -5199,14 +5201,14 @@ bool SVGTextFrame::UpdateFontSizeScaleFactor() {
       presContext->AppUnitsPerDevPixel());
   contextScale *= cssPxPerDevPx;
 
-  double minTextRunSize = minSize * contextScale;
-  double maxTextRunSize = maxSize * contextScale;
+  double minTextRunSize = min * contextScale;
+  double maxTextRunSize = max * contextScale;
 
   if (minTextRunSize >= CLAMP_MIN_SIZE && maxTextRunSize <= CLAMP_MAX_SIZE) {
     // We are already in the ideal font size range for all text frames,
     // so we only have to take into account the contextScale.
     mFontSizeScaleFactor = contextScale;
-  } else if (maxSize / minSize > CLAMP_MAX_SIZE / CLAMP_MIN_SIZE) {
+  } else if (max / min > CLAMP_MAX_SIZE / CLAMP_MIN_SIZE) {
     // We can't scale the font sizes so that all of the text frames lie
     // within our ideal font size range.
     // Heuristically, if the maxTextRunSize is within the CLAMP_MAX_SIZE
@@ -5214,18 +5216,18 @@ bool SVGTextFrame::UpdateFontSizeScaleFactor() {
     // get a valid font for the maxTextRunSize one, we should honor it.
     // The same for minTextRunSize.
     if (maxTextRunSize <= CLAMP_MAX_SIZE) {
-      mFontSizeScaleFactor = CLAMP_MAX_SIZE / maxSize;
+      mFontSizeScaleFactor = CLAMP_MAX_SIZE / max;
     } else if (minTextRunSize >= CLAMP_MIN_SIZE) {
-      mFontSizeScaleFactor = CLAMP_MIN_SIZE / minSize;
+      mFontSizeScaleFactor = CLAMP_MIN_SIZE / min;
     } else {
       // So maxTextRunSize is too big, minTextRunSize is too small,
       // we can't really do anything for this case, just leave it as is.
       mFontSizeScaleFactor = contextScale;
     }
   } else if (minTextRunSize < CLAMP_MIN_SIZE) {
-    mFontSizeScaleFactor = CLAMP_MIN_SIZE / minSize;
+    mFontSizeScaleFactor = CLAMP_MIN_SIZE / min;
   } else {
-    mFontSizeScaleFactor = CLAMP_MAX_SIZE / maxSize;
+    mFontSizeScaleFactor = CLAMP_MAX_SIZE / max;
   }
 
   return mFontSizeScaleFactor != oldFontSizeScaleFactor;
@@ -5373,3 +5375,5 @@ void SVGTextFrame::AppendDirectlyOwnedAnonBoxes(
   MOZ_ASSERT(PrincipalChildList().FirstChild(), "Must have our anon box");
   aResult.AppendElement(OwnedAnonBox(PrincipalChildList().FirstChild()));
 }
+
+}  // namespace mozilla

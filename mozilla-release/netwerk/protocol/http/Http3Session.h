@@ -46,7 +46,8 @@ class Http3Session final : public nsAHttpTransaction,
   NS_DECL_NSAHTTPSEGMENTWRITER
 
   Http3Session();
-  nsresult Init(const nsACString& aOrigin, nsISocketTransport* aSocketTransport,
+  nsresult Init(const nsACString& aOrigin, const nsACString& aAlpnToken,
+                nsISocketTransport* aSocketTransport,
                 HttpConnectionUDP* readerWriter);
 
   bool IsConnected() const { return mState == CONNECTED; }
@@ -97,6 +98,8 @@ class Http3Session final : public nsAHttpTransaction,
 
   nsresult ProcessOutputAndEvents();
 
+  const nsCString& GetAlpnToken() { return mAlpnToken; }
+
  private:
   ~Http3Session();
 
@@ -140,10 +143,10 @@ class Http3Session final : public nsAHttpTransaction,
   nsRefPtrHashtable<nsPtrHashKey<nsAHttpTransaction>, Http3Stream>
       mStreamTransactionHash;
 
-  nsDeque mReadyForWrite;
+  nsDeque<Http3Stream> mReadyForWrite;
   nsTArray<uint64_t> mReadyForWriteButBlocked;
   nsTArray<RefPtr<Http3Stream>> mSlowConsumersReadyForRead;
-  nsDeque mQueuedStreams;
+  nsDeque<Http3Stream> mQueuedStreams;
 
   enum State { INITIALIZING, CONNECTED, CLOSING, CLOSED } mState;
 
@@ -173,6 +176,7 @@ class Http3Session final : public nsAHttpTransaction,
   nsDataHashtable<nsCStringHashKey, bool> mJoinConnectionCache;
 
   RefPtr<QuicSocketControl> mSocketControl;
+  nsCString mAlpnToken;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Http3Session, NS_HTTP3SESSION_IID);

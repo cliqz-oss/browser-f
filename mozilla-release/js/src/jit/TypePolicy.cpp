@@ -422,14 +422,12 @@ bool BitwisePolicy::adjustInputs(TempAllocator& alloc,
 }
 
 bool PowPolicy::adjustInputs(TempAllocator& alloc, MInstruction* ins) const {
-  MIRType specialization = ins->typePolicySpecialization();
-  MOZ_ASSERT(specialization == MIRType::Int32 ||
-             specialization == MIRType::Double ||
-             specialization == MIRType::None);
+  MOZ_ASSERT(ins->type() == MIRType::Int32 || ins->type() == MIRType::Double);
 
-  // Inputs will be boxed if either is non-numeric.
-  if (specialization == MIRType::None) {
-    return BoxInputsPolicy::staticAdjustInputs(alloc, ins);
+  if (ins->type() == MIRType::Int32) {
+    // Both operands must be int32.
+    return UnboxedInt32Policy<0>::staticAdjustInputs(alloc, ins) &&
+           UnboxedInt32Policy<1>::staticAdjustInputs(alloc, ins);
   }
 
   // Otherwise, input must be a double.
@@ -438,10 +436,13 @@ bool PowPolicy::adjustInputs(TempAllocator& alloc, MInstruction* ins) const {
   }
 
   // Power may be an int32 or a double. Integers receive a faster path.
-  if (specialization == MIRType::Double) {
-    return DoublePolicy<1>::staticAdjustInputs(alloc, ins);
+  if (ins->toPow()->power()->type() == MIRType::Int32) {
+    return true;
   }
-  return UnboxedInt32Policy<1>::staticAdjustInputs(alloc, ins);
+  if (ins->toPow()->powerIsInt32()) {
+    return UnboxedInt32Policy<1>::staticAdjustInputs(alloc, ins);
+  }
+  return DoublePolicy<1>::staticAdjustInputs(alloc, ins);
 }
 
 bool SignPolicy::adjustInputs(TempAllocator& alloc, MInstruction* ins) const {
@@ -457,6 +458,24 @@ bool SignPolicy::adjustInputs(TempAllocator& alloc, MInstruction* ins) const {
   MOZ_ASSERT(IsFloatingPointType(specialization));
   return DoublePolicy<0>::staticAdjustInputs(alloc, ins);
 }
+
+template <unsigned Op>
+bool SymbolPolicy<Op>::staticAdjustInputs(TempAllocator& alloc,
+                                          MInstruction* ins) {
+  MDefinition* in = ins->getOperand(Op);
+  if (in->type() == MIRType::Symbol) {
+    return true;
+  }
+
+  MUnbox* replace = MUnbox::New(alloc, in, MIRType::Symbol, MUnbox::Fallible);
+  ins->block()->insertBefore(ins, replace);
+  ins->replaceOperand(Op, replace);
+
+  return replace->typePolicy()->adjustInputs(alloc, replace);
+}
+
+template bool SymbolPolicy<0>::staticAdjustInputs(TempAllocator& alloc,
+                                                  MInstruction* ins);
 
 template <unsigned Op>
 bool StringPolicy<Op>::staticAdjustInputs(TempAllocator& alloc,
@@ -1290,7 +1309,8 @@ bool TypedArrayIndexPolicy::adjustInputs(TempAllocator& alloc,
   _(ObjectPolicy<0>)                                                          \
   _(ObjectPolicy<1>)                                                          \
   _(ObjectPolicy<3>)                                                          \
-  _(StringPolicy<0>)
+  _(StringPolicy<0>)                                                          \
+  _(SymbolPolicy<0>)
 
 namespace js {
 namespace jit {

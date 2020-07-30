@@ -1416,6 +1416,8 @@ inline void UpdateWrapper(T* p, void*, JSObject* obj, const JSObject* old) {
 // objects, because we cannot determine if they are wrappercached or not.
 bool TryPreserveWrapper(JS::Handle<JSObject*> obj);
 
+bool HasReleasedWrapper(JS::Handle<JSObject*> obj);
+
 // Can only be called with a DOM JSClass.
 bool InstanceClassHasProtoAtDepth(const JSClass* clasp, uint32_t protoID,
                                   uint32_t depth);
@@ -3163,6 +3165,7 @@ namespace binding_detail {
 // understanding of all the code that will run while we're using the return
 // value, including the SpiderMonkey parts.
 JSObject* UnprivilegedJunkScopeOrWorkerGlobal();
+JSObject* UnprivilegedJunkScopeOrWorkerGlobal(const fallible_t&);
 
 // Implementation of the [HTMLConstructor] extended attribute.
 bool HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,

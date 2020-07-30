@@ -1052,7 +1052,6 @@ add_task(async function test_fxa_device_telem() {
     let keep2Sync = Utils.makeGUID();
     let curdevSync = Utils.makeGUID();
     let fxaDevices = [
-      // current device. First for easy access later
       {
         id: curdev,
         isCurrentDevice: true,
@@ -1061,58 +1060,13 @@ add_task(async function test_fxa_device_telem() {
         type: "desktop",
         name: "current device",
       },
-      // Valid but push expired
       {
-        id: Utils.makeGUID(),
-        isCurrentDevice: false,
-        lastAccessTime: Date.now() - 1000 * 60 * 60 * 24 * 15,
-        pushEndpointExpired: true,
-        type: "desktop",
-        name: "push expired",
-      },
-      // three with same name, should ignore older.
-      {
-        id: Utils.makeGUID(),
-        isCurrentDevice: false,
-        lastAccessTime: Date.now() - 1000 * 60 * 60 * 24 * 15,
-        pushEndpointExpired: false,
-        type: "mobile",
-        name: "dupe",
-      },
-      {
-        // should keep
         id: keep0,
         isCurrentDevice: false,
         lastAccessTime: Date.now() - 1000 * 60 * 60 * 24 * 10,
         pushEndpointExpired: false,
         type: "mobile",
         name: "dupe",
-      },
-      {
-        id: Utils.makeGUID(),
-        isCurrentDevice: false,
-        lastAccessTime: Date.now() - 1000 * 60 * 60 * 24 * 12,
-        pushEndpointExpired: false,
-        type: "mobile",
-        name: "dupe",
-      },
-      // Valid but too old.
-      {
-        id: Utils.makeGUID(),
-        isCurrentDevice: false,
-        lastAccessTime: Date.now() - 1000 * 60 * 60 * 24 * 90,
-        pushEndpointExpired: false,
-        type: "desktop",
-        name: "too old",
-      },
-      // Valid but null date (saw locally).
-      {
-        id: Utils.makeGUID(),
-        isCurrentDevice: false,
-        lastAccessTime: null,
-        pushEndpointExpired: false,
-        type: "desktop",
-        name: "null date",
       },
       // Valid 2
       {
@@ -1290,6 +1244,8 @@ add_task(async function test_node_type_change() {
   // Default to submitting each hour - we should still submit on node change.
   let telem = get_sync_test_telemetry();
   telem.submissionInterval = 60 * 60 * 1000;
+  // reset the node type from previous test or our first sync will submit.
+  telem.lastSyncNodeType = null;
   // do 2 syncs with the same node type.
   await Service.sync();
   await Service.sync();
@@ -1306,6 +1262,16 @@ add_task(async function test_node_type_change() {
   equal(pings[1].syncs.length, 1, "1 sync in second ping");
   equal(pings[1].syncNodeType, "second-node-type");
   await promiseStopServer(server);
+});
+
+add_task(async function test_ids() {
+  let telem = get_sync_test_telemetry();
+  Assert.ok(!telem._shouldSubmitForDataChange());
+  fxAccounts.telemetry._setHashedUID("new_uid");
+  Assert.ok(telem._shouldSubmitForDataChange());
+  telem.maybeSubmitForDataChange();
+  // now it's been submitted the new uid is current.
+  Assert.ok(!telem._shouldSubmitForDataChange());
 });
 
 add_task(async function test_deletion_request_ping() {

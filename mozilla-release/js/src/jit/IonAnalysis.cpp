@@ -1197,7 +1197,7 @@ bool jit::EliminateDeadResumePointOperands(MIRGenerator* mir, MIRGraph& graph) {
       // in resume points may affect the interpreter's behavior. Rather
       // than doing a more sophisticated analysis, just ignore these.
       if (ins->isUnbox() || ins->isParameter() || ins->isTypeBarrier() ||
-          ins->isComputeThis() || ins->isFilterTypeSet()) {
+          ins->isBoxNonStrictThis() || ins->isFilterTypeSet()) {
         continue;
       }
 
@@ -1885,26 +1885,33 @@ bool TypeAnalyzer::specializePhis() {
     // loop header phi types to preheader phis.
     MBasicBlock* preHeader = graph.osrPreHeaderBlock();
     MBasicBlock* header = preHeader->getSingleSuccessor();
-    MOZ_ASSERT(header->isLoopHeader());
 
-    for (MPhiIterator phi(header->phisBegin()); phi != header->phisEnd();
-         phi++) {
-      MPhi* preHeaderPhi = phi->getOperand(0)->toPhi();
-      MOZ_ASSERT(preHeaderPhi->block() == preHeader);
+    if (header->isLoopHeader()) {
+      for (MPhiIterator phi(header->phisBegin()); phi != header->phisEnd();
+           phi++) {
+        MPhi* preHeaderPhi = phi->getOperand(0)->toPhi();
+        MOZ_ASSERT(preHeaderPhi->block() == preHeader);
 
-      if (preHeaderPhi->type() == MIRType::Value) {
-        // Already includes everything.
-        continue;
+        if (preHeaderPhi->type() == MIRType::Value) {
+          // Already includes everything.
+          continue;
+        }
+
+        MIRType loopType = phi->type();
+        if (!respecialize(preHeaderPhi, loopType)) {
+          return false;
+        }
       }
-
-      MIRType loopType = phi->type();
-      if (!respecialize(preHeaderPhi, loopType)) {
+      if (!propagateAllPhiSpecializations()) {
         return false;
       }
-    }
-
-    if (!propagateAllPhiSpecializations()) {
-      return false;
+    } else {
+      // Edge case: the header is a 'pending' loop header when control flow in
+      // the loop body is terminated unconditionally and there's no backedge.
+      // In this case the header only has the preheader as predecessor and we
+      // don't need to do anything.
+      MOZ_ASSERT(header->isPendingLoopHeader());
+      MOZ_ASSERT(header->numPredecessors() == 1);
     }
   }
 
@@ -4939,6 +4946,9 @@ bool jit::FoldLoadsWithUnbox(MIRGenerator* mir, MIRGraph& graph) {
       }
 
       // Combine the load and unbox into a single MIR instruction.
+      if (!graph.alloc().ensureBallast()) {
+        return false;
+      }
 
       MIRType type = unbox->type();
       MUnbox::Mode mode = unbox->mode();
@@ -5067,6 +5077,72 @@ bool jit::MakeLoopsContiguous(MIRGraph& graph) {
   }
 
   return true;
+}
+
+KnownClass jit::GetObjectKnownClass(const MDefinition* def) {
+  MOZ_ASSERT(def->type() == MIRType::Object);
+
+  switch (def->op()) {
+    case MDefinition::Opcode::NewArray:
+    case MDefinition::Opcode::NewArrayCopyOnWrite:
+      return KnownClass::Array;
+
+    case MDefinition::Opcode::NewObject:
+    case MDefinition::Opcode::CreateThis:
+    case MDefinition::Opcode::CreateThisWithTemplate:
+      return KnownClass::PlainObject;
+
+    case MDefinition::Opcode::Lambda:
+    case MDefinition::Opcode::LambdaArrow:
+    case MDefinition::Opcode::FunctionWithProto:
+      return KnownClass::Function;
+
+    case MDefinition::Opcode::Phi: {
+      if (def->numOperands() == 0) {
+        return KnownClass::None;
+      }
+
+      MDefinition* op = def->getOperand(0);
+      // Check for Phis to avoid recursion for now.
+      if (op->isPhi()) {
+        return KnownClass::None;
+      }
+
+      KnownClass known = GetObjectKnownClass(op);
+      if (known == KnownClass::None) {
+        return KnownClass::None;
+      }
+
+      for (size_t i = 1; i < def->numOperands(); i++) {
+        op = def->getOperand(i);
+        if (op->isPhi() || GetObjectKnownClass(op) != known) {
+          return KnownClass::None;
+        }
+      }
+
+      return known;
+    }
+
+    default:
+      break;
+  }
+
+  return KnownClass::None;
+}
+
+const JSClass* jit::GetObjectKnownJSClass(const MDefinition* def) {
+  switch (GetObjectKnownClass(def)) {
+    case KnownClass::PlainObject:
+      return &PlainObject::class_;
+    case KnownClass::Array:
+      return &ArrayObject::class_;
+    case KnownClass::Function:
+      return &JSFunction::class_;
+    case KnownClass::None:
+      break;
+  }
+
+  return nullptr;
 }
 
 MRootList::MRootList(TempAllocator& alloc) {

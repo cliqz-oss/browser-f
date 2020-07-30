@@ -4,6 +4,8 @@
 
 ## App Menu
 
+appmenuitem-update-banner =
+    .label-update-downloading = Downloading { -brand-shorter-name } update
 appmenuitem-protection-dashboard-title = Protections Dashboard
 appmenuitem-customize-mode =
     .label = Customize…
@@ -21,6 +23,8 @@ fxa-toolbar-sync-now =
     .label = Sync Now
 
 ## What's New panel in App menu.
+
+whatsnew-panel-header = What’s New
 
 # Checkbox displayed at the bottom of the What's New panel, allowing users to
 # enable/disable What's New notifications.

@@ -8,6 +8,9 @@
 var EXPORTED_SYMBOLS = ["BrowserUtils"];
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 ChromeUtils.defineModuleGetter(
   this,
   "PlacesUtils",
@@ -243,8 +246,8 @@ var BrowserUtils = {
     let rect = aElement.getBoundingClientRect();
     let win = aElement.ownerGlobal;
 
-    let x = rect.left,
-      y = rect.top;
+    let x = rect.left;
+    let y = rect.top;
 
     // We need to compensate for any iframes that might shift things
     // over. We also need to compensate for zooming.
@@ -266,15 +269,32 @@ var BrowserUtils = {
       parentFrame = win.frameElement;
     }
 
+    rect = {
+      left: x,
+      top: y,
+      width: rect.width,
+      height: rect.height,
+    };
+    rect = win.windowUtils.transformRectLayoutToVisual(
+      rect.left,
+      rect.top,
+      rect.width,
+      rect.height
+    );
+
     if (aInScreenCoords) {
-      x += win.mozInnerScreenX;
-      y += win.mozInnerScreenY;
+      rect = {
+        left: rect.left + win.mozInnerScreenX,
+        top: rect.top + win.mozInnerScreenY,
+        width: rect.width,
+        height: rect.height,
+      };
     }
 
     let fullZoom = win.windowUtils.fullZoom;
     rect = {
-      left: x * fullZoom,
-      top: y * fullZoom,
+      left: rect.left * fullZoom,
+      top: rect.top * fullZoom,
       width: rect.width * fullZoom,
       height: rect.height * fullZoom,
     };
@@ -621,20 +641,6 @@ var BrowserUtils = {
     };
   },
 
-  // Iterates through every docshell in the window and calls PermitUnload.
-  canCloseWindow(window) {
-    let docShell = window.docShell;
-    for (let i = 0; i < docShell.childCount; ++i) {
-      let childShell = docShell.getChildAt(i).QueryInterface(Ci.nsIDocShell);
-      let contentViewer = childShell.contentViewer;
-      if (contentViewer && !contentViewer.permitUnload()) {
-        return false;
-      }
-    }
-
-    return true;
-  },
-
   /**
    * Replaces %s or %S in the provided url or postData with the given parameter,
    * acccording to the best charset for the given url.
@@ -968,3 +974,10 @@ var BrowserUtils = {
     return bag;
   },
 };
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  BrowserUtils,
+  "navigationRequireUserInteraction",
+  "browser.navigation.requireUserInteraction",
+  false
+);

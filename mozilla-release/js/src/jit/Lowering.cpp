@@ -8,6 +8,7 @@
 
 #include "mozilla/DebugOnly.h"
 #include "mozilla/EndianUtils.h"
+#include "mozilla/MathAlgorithms.h"
 
 #include <type_traits>
 
@@ -337,12 +338,12 @@ void LIRGenerator::visitReturnFromCtor(MReturnFromCtor* ins) {
   define(lir, ins);
 }
 
-void LIRGenerator::visitComputeThis(MComputeThis* ins) {
-  MOZ_ASSERT(ins->type() == MIRType::Value);
+void LIRGenerator::visitBoxNonStrictThis(MBoxNonStrictThis* ins) {
+  MOZ_ASSERT(ins->type() == MIRType::Object);
   MOZ_ASSERT(ins->input()->type() == MIRType::Value);
 
-  LComputeThis* lir = new (alloc()) LComputeThis(useBoxAtStart(ins->input()));
-  defineBox(lir, ins);
+  auto* lir = new (alloc()) LBoxNonStrictThis(useBox(ins->input()));
+  define(lir, ins);
   assignSafepoint(lir, ins);
 }
 
@@ -419,7 +420,7 @@ void LIRGenerator::visitCall(MCall* call) {
 
   if (call->isCallDOMNative()) {
     // Call DOM functions.
-    MOZ_ASSERT(target && target->isNative());
+    MOZ_ASSERT(target && target->isNativeWithoutJitEntry());
     Register cxReg, objReg, privReg, argsReg;
     GetTempRegForIntArg(0, 0, &cxReg);
     GetTempRegForIntArg(1, 0, &objReg);
@@ -430,7 +431,7 @@ void LIRGenerator::visitCall(MCall* call) {
                                        tempFixed(privReg), tempFixed(argsReg));
   } else if (target) {
     // Call known functions.
-    if (target->isNativeWithCppEntry()) {
+    if (target->isNativeWithoutJitEntry()) {
       Register cxReg, numReg, vpReg, tmpReg;
       GetTempRegForIntArg(0, 0, &cxReg);
       GetTempRegForIntArg(1, 0, &numReg);
@@ -1156,8 +1157,11 @@ void LIRGenerator::visitToAsyncIter(MToAsyncIter* ins) {
   assignSafepoint(lir, ins);
 }
 
-void LIRGenerator::visitToId(MToId* ins) {
-  LToIdV* lir = new (alloc()) LToIdV(useBox(ins->input()), tempDouble());
+void LIRGenerator::visitToPropertyKeyCache(MToPropertyKeyCache* ins) {
+  MDefinition* input = ins->getOperand(0);
+  MOZ_ASSERT(ins->type() == MIRType::Value);
+
+  auto* lir = new (alloc()) LToPropertyKeyCache(useBox(input));
   defineBox(lir, ins);
   assignSafepoint(lir, ins);
 }
@@ -1525,6 +1529,28 @@ void LIRGenerator::visitPow(MPow* ins) {
   MDefinition* input = ins->input();
   MDefinition* power = ins->power();
 
+  if (ins->type() == MIRType::Int32) {
+    MOZ_ASSERT(input->type() == MIRType::Int32);
+    MOZ_ASSERT(power->type() == MIRType::Int32);
+
+    if (input->isConstant()) {
+      // Restrict this optimization to |base <= 256| to avoid generating too
+      // many consecutive shift instructions.
+      int32_t base = input->toConstant()->toInt32();
+      if (2 <= base && base <= 256 && mozilla::IsPowerOfTwo(uint32_t(base))) {
+        lowerPowOfTwoI(ins);
+        return;
+      }
+    }
+
+    auto* lir = new (alloc())
+        LPowII(useRegister(input), useRegister(power), temp(), temp());
+    assignSnapshot(lir, Bailout_PrecisionLoss);
+    define(lir, ins);
+    return;
+  }
+
+  MOZ_ASSERT(ins->type() == MIRType::Double);
   MOZ_ASSERT(input->type() == MIRType::Double);
   MOZ_ASSERT(power->type() == MIRType::Int32 ||
              power->type() == MIRType::Double);
@@ -1578,6 +1604,11 @@ void LIRGenerator::visitMathFunction(MMathFunction* ins) {
                                        tempFixed(CallTempReg0));
   }
   defineReturn(lir, ins);
+}
+
+void LIRGenerator::visitRandom(MRandom* ins) {
+  auto* lir = new (alloc()) LRandom(temp(), tempInt64(), tempInt64());
+  define(lir, ins);
 }
 
 // Try to mark an add or sub instruction as able to recover its input when
@@ -4006,6 +4037,21 @@ void LIRGenerator::visitGuardSpecificAtom(MGuardSpecificAtom* ins) {
   redefine(ins, ins->str());
 }
 
+void LIRGenerator::visitGuardSpecificSymbol(MGuardSpecificSymbol* ins) {
+  auto* guard = new (alloc()) LGuardSpecificSymbol(useRegister(ins->symbol()));
+  assignSnapshot(guard, Bailout_SpecificSymbolGuard);
+  add(guard, ins);
+  redefine(ins, ins->symbol());
+}
+
+void LIRGenerator::visitGuardNoDenseElements(MGuardNoDenseElements* ins) {
+  auto* guard =
+      new (alloc()) LGuardNoDenseElements(useRegister(ins->object()), temp());
+  assignSnapshot(guard, Bailout_NoDenseElementsGuard);
+  add(guard, ins);
+  redefine(ins, ins->object());
+}
+
 void LIRGenerator::visitGuardShape(MGuardShape* ins) {
   MOZ_ASSERT(ins->object()->type() == MIRType::Object);
 
@@ -4052,14 +4098,6 @@ void LIRGenerator::visitGuardString(MGuardString* ins) {
   // is guaranteed to be a string.
   MOZ_ASSERT(ins->input()->type() == MIRType::String);
   redefine(ins, ins->input());
-}
-
-void LIRGenerator::visitGuardSharedTypedArray(MGuardSharedTypedArray* ins) {
-  MOZ_ASSERT(ins->input()->type() == MIRType::Object);
-  LGuardSharedTypedArray* guard =
-      new (alloc()) LGuardSharedTypedArray(useRegister(ins->object()), temp());
-  assignSnapshot(guard, Bailout_NonSharedTypedArrayInput);
-  add(guard, ins);
 }
 
 void LIRGenerator::visitPolyInlineGuard(MPolyInlineGuard* ins) {
@@ -4133,6 +4171,12 @@ void LIRGenerator::visitAssertRange(MAssertRange* ins) {
 
   lir->setMir(ins);
   add(lir);
+}
+
+void LIRGenerator::visitAssertClass(MAssertClass* ins) {
+  auto* lir =
+      new (alloc()) LAssertClass(useRegisterAtStart(ins->input()), temp());
+  add(lir, ins);
 }
 
 void LIRGenerator::visitCallGetProperty(MCallGetProperty* ins) {

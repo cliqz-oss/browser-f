@@ -11,7 +11,24 @@ const TEST_MULTISTAGE_CONTENT = {
       id: "AW_STEP1",
       order: 0,
       content: {
+        zap: true,
         title: "Step 1",
+        tiles: {
+          type: "theme",
+          action: {
+            theme: "<event>",
+          },
+          data: [
+            {
+              theme: "test-theme-1",
+              label: "theme-1",
+            },
+            {
+              theme: "test-theme-2",
+              label: "theme-2",
+            },
+          ],
+        },
         primary_button: {
           label: "Next",
           action: {
@@ -35,6 +52,10 @@ const TEST_MULTISTAGE_CONTENT = {
       order: 1,
       content: {
         title: "Step 2",
+        tiles: {
+          type: "topsites",
+          tooltip: "test",
+        },
         primary_button: {
           label: "Next",
           action: {
@@ -164,12 +185,14 @@ add_task(async function test_Multistage_About_Welcome_branches() {
     [
       "div.multistageContainer",
       "main.AW_STEP1",
+      "h1.welcomeZap",
       "div.secondary-cta.top",
       "button.secondary",
+      "button.theme",
       "div.indicator.current",
     ],
     // Unexpected selectors:
-    ["main.AW_STEP2", "main.AW_STEP3"]
+    ["main.AW_STEP2", "main.AW_STEP3", "div.tiles-container.info"]
   );
 
   await onButtonClick(browser, "button.primary");
@@ -177,9 +200,14 @@ add_task(async function test_Multistage_About_Welcome_branches() {
     browser,
     "multistage step 2",
     // Expected selectors:
-    ["div.multistageContainer", "main.AW_STEP2", "button.secondary"],
+    [
+      "div.multistageContainer",
+      "main.AW_STEP2",
+      "button.secondary",
+      "div.tiles-container.info",
+    ],
     // Unexpected selectors:
-    ["main.AW_STEP1", "main.AW_STEP3", "div.secondary-cta.top"]
+    ["main.AW_STEP1", "main.AW_STEP3", "div.secondary-cta.top", "h1.welcomeZap"]
   );
   await onButtonClick(browser, "button.primary");
   await test_screen_content(
@@ -203,6 +231,42 @@ add_task(async function test_Multistage_About_Welcome_branches() {
     ["body.activity-stream"],
     // Unexpected selectors:
     ["div.multistageContainer"]
+  );
+});
+
+/**
+ * Test navigating back/forward between screens
+ */
+add_task(async function test_Multistage_About_Welcome_navigation() {
+  let browser = await openAboutWelcome();
+
+  await onButtonClick(browser, "button.primary");
+  await BrowserTestUtils.waitForCondition(() => browser.canGoBack);
+  browser.goBack();
+
+  await test_screen_content(
+    browser,
+    "multistage step 1",
+    // Expected selectors:
+    [
+      "div.multistageContainer",
+      "main.AW_STEP1",
+      "div.secondary-cta.top",
+      "button.secondary",
+      "div.indicator.current",
+    ],
+    // Unexpected selectors:
+    ["main.AW_STEP2", "main.AW_STEP3"]
+  );
+
+  await document.getElementById("forward-button").click();
+  await test_screen_content(
+    browser,
+    "multistage step 2",
+    // Expected selectors:
+    ["div.multistageContainer", "main.AW_STEP2", "button.secondary"],
+    // Unexpected selectors:
+    ["main.AW_STEP1", "main.AW_STEP3", "div.secondary-cta.top"]
   );
 });
 
@@ -234,13 +298,24 @@ add_task(async function test_AWMultistage_Primary_Action() {
 
   let clickCall;
   let impressionCall;
+  let performanceCall;
   for (let i = 0; i < callCount; i++) {
     const call = aboutWelcomeActor.onContentMessage.getCall(i);
     info(`Call #${i}: ${call.args[0]} ${JSON.stringify(call.args[1])}`);
     if (call.calledWithMatch("", { event: "CLICK_BUTTON" })) {
       clickCall = call;
-    } else if (call.calledWithMatch("", { event: "IMPRESSION" })) {
+    } else if (
+      call.calledWithMatch("", {
+        event_context: { importable: sinon.match.number },
+      })
+    ) {
       impressionCall = call;
+    } else if (
+      call.calledWithMatch("", {
+        event_context: { mountStart: sinon.match.number },
+      })
+    ) {
+      performanceCall = call;
     }
   }
 
@@ -270,6 +345,40 @@ add_task(async function test_AWMultistage_Primary_Action() {
       impressionCall.args[1].message_id,
       `${TEST_MULTISTAGE_CONTENT.id}_SITES`.toUpperCase(),
       "SITES MessageId sent in impression event telemetry"
+    );
+  }
+
+  // For some builds, we can stub fast enough to catch the performance
+  if (performanceCall) {
+    Assert.equal(
+      performanceCall.args[0],
+      "AWPage:TELEMETRY_EVENT",
+      "send telemetry event"
+    );
+    Assert.equal(
+      performanceCall.args[1].event,
+      "IMPRESSION",
+      "performance impression event recorded in telemetry"
+    );
+    Assert.equal(
+      typeof performanceCall.args[1].event_context.domComplete,
+      "number",
+      "numeric domComplete recorded in telemetry"
+    );
+    Assert.equal(
+      typeof performanceCall.args[1].event_context.domInteractive,
+      "number",
+      "numeric domInteractive recorded in telemetry"
+    );
+    Assert.equal(
+      typeof performanceCall.args[1].event_context.mountStart,
+      "number",
+      "numeric mountStart recorded in telemetry"
+    );
+    Assert.equal(
+      performanceCall.args[1].message_id,
+      TEST_MULTISTAGE_CONTENT.id.toUpperCase(),
+      "MessageId sent in performance event telemetry"
     );
   }
 
@@ -359,5 +468,72 @@ add_task(async function test_AWMultistage_Secondary_Open_URL_Action() {
     eventCall.args[1].event_context.source,
     "secondary_button",
     "secondary button click source recorded in Telemetry"
+  );
+});
+
+add_task(async function test_AWMultistage_Themes() {
+  let browser = await openAboutWelcome();
+  let aboutWelcomeActor = await getAboutWelcomeParent(browser);
+  const sandbox = sinon.createSandbox();
+  // Stub AboutWelcomeParent Content Message Handler
+  sandbox
+    .stub(aboutWelcomeActor, "onContentMessage")
+    .resolves("")
+    .withArgs("AWPage:IMPORTABLE_SITES")
+    .resolves([]);
+  registerCleanupFunction(() => {
+    sandbox.restore();
+  });
+
+  await ContentTask.spawn(browser, "Themes", async () => {
+    await ContentTaskUtils.waitForCondition(
+      () => content.document.querySelector("button.theme"),
+      "Theme Icons"
+    );
+    let themes = content.document.querySelectorAll("button.theme");
+    Assert.equal(themes.length, 2, "Two themes displayed");
+  });
+
+  await onButtonClick(browser, "button[value=test-theme-1]");
+
+  const { callCount } = aboutWelcomeActor.onContentMessage;
+  ok(callCount >= 1, `${callCount} Stub was called`);
+
+  let actionCall;
+  let eventCall;
+  for (let i = 0; i < callCount; i++) {
+    const call = aboutWelcomeActor.onContentMessage.getCall(i);
+    info(`Call #${i}: ${call.args[0]} ${JSON.stringify(call.args[1])}`);
+    if (call.calledWithMatch("SELECT_THEME")) {
+      actionCall = call;
+    } else if (call.calledWithMatch("", { event: "CLICK_BUTTON" })) {
+      eventCall = call;
+    }
+  }
+
+  Assert.equal(
+    actionCall.args[0],
+    "AWPage:SELECT_THEME",
+    "Got call to handle select theme"
+  );
+  Assert.equal(
+    actionCall.args[1],
+    "TEST-THEME-1",
+    "Theme value passed as TEST-THEME-1"
+  );
+  Assert.equal(
+    eventCall.args[0],
+    "AWPage:TELEMETRY_EVENT",
+    "Got call to handle Telemetry event when theme tile clicked"
+  );
+  Assert.equal(
+    eventCall.args[1].event,
+    "CLICK_BUTTON",
+    "click button event recorded in Telemetry"
+  );
+  Assert.equal(
+    eventCall.args[1].event_context.source,
+    "test-theme-1",
+    "test-theme-1 click source recorded in Telemetry"
   );
 });

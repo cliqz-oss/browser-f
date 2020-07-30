@@ -261,19 +261,19 @@ a.hidden,
 #protection-settings {
   -moz-context-properties: fill;
   fill: var(--gear-icon-fill);
-  background: url("chrome://global/skin/icons/settings.svg") no-repeat 0px;
+  background: url("chrome://global/skin/icons/settings.svg") no-repeat 0;
   font-size: 0.75em;
   cursor: pointer;
   width: max-content;
   color: var(--in-content-deemphasized-text);
-  margin-block: 6px 0px;
+  margin-block: 6px 0;
   font-size: 12px;
   padding-block: 4px;
   padding-inline: 24px 4px;
 }
 
 #protection-settings:dir(rtl) {
-  background-position-x: right 0px;
+  background-position-x: right;
 }
 
 #protection-settings:hover,
@@ -841,7 +841,7 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
 .monitor-block a {
   outline: none;
   color: #FFFFFF;
-  padding: 19px 0px;
+  padding: 19px 0;
 }
 
 .monitor-block a:hover {
@@ -854,14 +854,50 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
   grid-column: 1;
 }
 
+.email:hover {
+  background: linear-gradient(162.33deg, #7D43D1 0%, #7740E6 100%);
+}
+
+.email:dir(rtl) {
+  background: linear-gradient(197.67deg, #AB71FF 0%, #9059FF 100%);
+}
+
+.email:dir(rtl):hover {
+  background: linear-gradient(197.67deg, #7D43D1 0%, #7740E6 100%);
+}
+
 .breaches {
   background: linear-gradient(162.33deg, #9059FF 0%, #7542E5 100%);
   grid-column: 2;
 }
 
+.breaches:hover {
+  background: linear-gradient(162.33deg, #7740E6 0%, #4714B7 100%);
+}
+
+.breaches:dir(rtl) {
+  background: linear-gradient(197.67deg, #9059FF 0%, #7542E5 100%)
+}
+
+.breaches:dir(rtl):hover {
+  background: linear-gradient(197.67deg, #7740E6 0%, #4714B7 100%)
+}
+
 .passwords {
   background: linear-gradient(162.33deg, #7542E5 0%, #592ACB 100%);
   grid-column: 3;
+}
+
+.passwords:hover {
+  background: linear-gradient(162.33deg, #4714B7 0%, #2B009D 100%);
+}
+
+.passwords:dir(rtl) {
+  background: linear-gradient(197.67deg, #7542E5 0%, #592ACB 100%)
+}
+
+.passwords:dir(rtl):hover {
+  background: linear-gradient(197.67deg, #4714B7 0%, #2B009D 100%)
 }
 
 .monitor-stat {
@@ -911,7 +947,7 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
 .monitor-partial-breaches-link-wrapper,
 .monitor-breaches-link-wrapper {
   -moz-appearance: button;
-  background-color: var(--in-content-primary-button-background);  
+  background-color: var(--in-content-primary-button-background);
   border: 1px solid transparent;
   border-radius: 2px;
   text-decoration: none;
@@ -936,7 +972,10 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
 
 #manage-protections:focus,
 #sign-up-for-monitor-link:focus,
-#get-proxy-extension-link:focus {
+#get-proxy-extension-link:focus,
+#monitor-partial-breaches-link:focus,
+.monitor-block > a:focus,
+#monitor-breaches-link:focus {
   box-shadow: 0 0 0 1px #0a84ff inset, 0 0 0 1px #0a84ff, 0 0 0 4px rgba(10, 132, 255, 0.3);
   outline: none;
 }
@@ -984,4 +1023,3 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
     opacity: 0.02;
   }
 }
-

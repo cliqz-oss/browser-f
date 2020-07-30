@@ -560,10 +560,10 @@ class nsWindow::NPZCSupport final
 
     switch (button) {
       case java::sdk::MotionEvent::BUTTON_PRIMARY:
-        result = MouseInput::LEFT_BUTTON;
+        result = MouseInput::PRIMARY_BUTTON;
         break;
       case java::sdk::MotionEvent::BUTTON_SECONDARY:
-        result = MouseInput::RIGHT_BUTTON;
+        result = MouseInput::SECONDARY_BUTTON;
         break;
       case java::sdk::MotionEvent::BUTTON_TERTIARY:
         result = MouseInput::MIDDLE_BUTTON;
@@ -579,10 +579,10 @@ class nsWindow::NPZCSupport final
     int16_t result = 0;
 
     if (buttons & java::sdk::MotionEvent::BUTTON_PRIMARY) {
-      result |= MouseButtonsFlag::eLeftFlag;
+      result |= MouseButtonsFlag::ePrimaryFlag;
     }
     if (buttons & java::sdk::MotionEvent::BUTTON_SECONDARY) {
-      result |= MouseButtonsFlag::eRightFlag;
+      result |= MouseButtonsFlag::eSecondaryFlag;
     }
     if (buttons & java::sdk::MotionEvent::BUTTON_TERTIARY) {
       result |= MouseButtonsFlag::eMiddleFlag;
@@ -924,8 +924,8 @@ class nsWindow::LayerViewSupport final
                       java::sdk::IllegalStateException::New(
                           "The compositor has detached from the session")
                           .Cast<jni::Throwable>());
-                  results->pop();
                 }
+                results->pop();
               }
               compositor->OnCompositorDetached();
               disposer->Run();
@@ -1036,6 +1036,20 @@ class nsWindow::LayerViewSupport final
             GetUiCompositorControllerChild()) {
       mCompositorPaused = true;
       child->Pause();
+    }
+
+    if (LockedWindowPtr lock{mWindow}) {
+      while (!mCapturePixelsResults.empty()) {
+        auto result =
+            java::GeckoResult::LocalRef(mCapturePixelsResults.front().mResult);
+        if (result) {
+          result->CompleteExceptionally(
+              java::sdk::IllegalStateException::New(
+                  "The compositor has detached from the session")
+                  .Cast<jni::Throwable>());
+        }
+        mCapturePixelsResults.pop();
+      }
     }
   }
 
@@ -1205,22 +1219,23 @@ class nsWindow::LayerViewSupport final
 
   void RecvScreenPixels(Shmem&& aMem, const ScreenIntSize& aSize) {
     MOZ_ASSERT(AndroidBridge::IsJavaUiThread());
-    CaptureRequest aCaptureRequest;
-    java::GeckoResult::LocalRef aResult = nullptr;
+    CaptureRequest request;
+    java::GeckoResult::LocalRef result = nullptr;
     if (LockedWindowPtr window{mWindow}) {
-      aCaptureRequest = mCapturePixelsResults.front();
-      aResult = java::GeckoResult::LocalRef(aCaptureRequest.mResult);
-      if (aResult) {
+      // The result might have been already rejected if the compositor was
+      // detached from the session
+      if (!mCapturePixelsResults.empty()) {
+        request = mCapturePixelsResults.front();
+        result = java::GeckoResult::LocalRef(request.mResult);
         mCapturePixelsResults.pop();
       }
     }
 
-    if (aResult) {
+    if (result) {
       auto pixels = mozilla::jni::ByteBuffer::New(
-          FlipScreenPixels(aMem, aSize, aCaptureRequest.mSource,
-                           aCaptureRequest.mOutputSize),
+          FlipScreenPixels(aMem, aSize, request.mSource, request.mOutputSize),
           aMem.Size<int8_t>());
-      aResult->Complete(pixels);
+      result->Complete(pixels);
     }
 
     // Pixels have been copied, so Dealloc Shmem

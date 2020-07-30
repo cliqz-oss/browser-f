@@ -1198,13 +1198,12 @@ void EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
   EventMessage eventMessage = aEvent->mMessage;
 
   while (true) {
-    nsAutoTObserverArray<Listener, 2>::EndLimitedIterator iter(mListeners);
     Maybe<EventMessageAutoOverride> legacyAutoOverride;
-    while (iter.HasMore()) {
+    for (Listener& listenerRef : mListeners.EndLimitedRange()) {
       if (aEvent->mFlags.mImmediatePropagationStopped) {
         break;
       }
-      Listener* listener = &iter.GetNext();
+      Listener* listener = &listenerRef;
       // Check that the phase is same in event and event listener.
       // Handle only trusted events, except when listener permits untrusted
       // events.
@@ -1326,24 +1325,22 @@ void EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
     // the loop above, we need to clean up them here. Note that, this
     // could clear once listeners handled in some outer level as well,
     // but that should not affect the result.
-    mListeners.RemoveElementsBy([](const Listener& aListener) {
+    mListeners.NonObservingRemoveElementsBy([](const Listener& aListener) {
       return aListener.mListenerType == Listener::eNoListener;
     });
     NotifyEventListenerRemoved(aEvent->mSpecifiedEventType);
     if (IsDeviceType(aEvent->mMessage)) {
       // This is a device-type event, we need to check whether we can
       // disable device after removing the once listeners.
-      bool hasAnyListener = false;
-      nsAutoTObserverArray<Listener, 2>::ForwardIterator iter(mListeners);
-      while (iter.HasMore()) {
-        Listener* listener = &iter.GetNext();
-        if (EVENT_TYPE_EQUALS(listener, aEvent->mMessage,
-                              aEvent->mSpecifiedEventType,
-                              /* all events */ false)) {
-          hasAnyListener = true;
-          break;
-        }
-      }
+      const auto [begin, end] = mListeners.NonObservingRange();
+      const bool hasAnyListener =
+          std::any_of(begin, end, [aEvent](const Listener& listenerRef) {
+            const Listener* listener = &listenerRef;
+            return EVENT_TYPE_EQUALS(listener, aEvent->mMessage,
+                                     aEvent->mSpecifiedEventType,
+                                     /* all events */ false);
+          });
+
       if (!hasAnyListener) {
         DisableDevice(aEvent->mMessage);
       }
@@ -1504,9 +1501,7 @@ nsresult EventListenerManager::GetListenerInfo(
   nsCOMPtr<EventTarget> target = mTarget;
   NS_ENSURE_STATE(target);
   aList.Clear();
-  nsAutoTObserverArray<Listener, 2>::ForwardIterator iter(mListeners);
-  while (iter.HasMore()) {
-    const Listener& listener = iter.GetNext();
+  for (const Listener& listener : mListeners.ForwardRange()) {
     // If this is a script handler and we haven't yet
     // compiled the event handler itself go ahead and compile it
     if (listener.mListenerType == Listener::eJSEventListener &&

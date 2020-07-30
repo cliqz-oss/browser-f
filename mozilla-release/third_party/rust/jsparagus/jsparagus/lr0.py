@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import typing
 
 from .actions import (Accept, Action, CheckNotOnNewLine, FunCall, Lookahead,
-                      OutputExpr, Reduce, Seq)
+                      OutputExpr, Unwind, Reduce, Seq)
 from .ordered import OrderedFrozenSet
 from .grammar import (CallMethod, Element, End, ErrorSymbol, Grammar,
                       LookaheadRule, NoLineTerminatorHere, Nt, ReduceExpr,
@@ -180,14 +180,11 @@ def callmethods_to_funcalls(
     in this way are appended to `funcalls`.
     """
 
-    # TODO: find a way to carry alias sets to here.
-    alias_set = ["parser"]
     if isinstance(expr, int):
         stack_index = pop - expr
         if depth == 0:
             call = FunCall("id", (stack_index,), fallible=False,
-                           trait=types.Type("AstBuilder"), set_to=ret,
-                           alias_read=alias_set, alias_write=alias_set)
+                           trait=types.Type("AstBuilder"), set_to=ret)
             funcalls.append(call)
             return ret
         else:
@@ -206,9 +203,7 @@ def callmethods_to_funcalls(
         call = FunCall(expr.method, args,
                        trait=expr.trait,
                        fallible=expr.fallible,
-                       set_to=ret,
-                       alias_read=alias_set,
-                       alias_write=alias_set)
+                       set_to=ret)
         funcalls.append(call)
         return ret
     elif expr == "accept":
@@ -353,7 +348,7 @@ class LR0Generator:
             # parse table. (TODO: this supposed that the canonical form did not
             # move the reduce action to be part of the production)
             pop = sum(1 for e in prod.rhs if on_stack(self.grammar.grammar, e))
-            term = Reduce(prod.nt, pop)
+            term = Reduce(Unwind(prod.nt, pop))
             expr = prod.reducer
             if expr is not None:
                 funcalls = []

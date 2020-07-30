@@ -9,8 +9,7 @@ const { AppConstants } = ChromeUtils.import(
 const { ObjectUtils } = ChromeUtils.import(
   "resource://gre/modules/ObjectUtils.jsm"
 );
-
-const IS_ANDROID = AppConstants.platform == "android";
+const { setTimeout } = ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
 const { RemoteSettings } = ChromeUtils.import(
   "resource://services-settings/remote-settings.js"
@@ -22,6 +21,8 @@ const { UptakeTelemetry } = ChromeUtils.import(
 const { TelemetryTestUtils } = ChromeUtils.import(
   "resource://testing-common/TelemetryTestUtils.jsm"
 );
+
+const IS_ANDROID = AppConstants.platform == "android";
 
 const BinaryInputStream = CC(
   "@mozilla.org/binaryinputstream;1",
@@ -101,6 +102,12 @@ add_task(async function test_records_obtained_from_server_are_stored_in_db() {
   // Our test data has a single record; it should be in the local collection
   const list = await client.get();
   equal(list.length, 1);
+
+  const timestamp = await client.db.getLastModified();
+  equal(timestamp, 3000, "timestamp was stored");
+
+  const { signature } = await client.db.getMetadata();
+  equal(signature.signature, "abcdef", "metadata was stored");
 });
 add_task(clear_state);
 
@@ -216,13 +223,10 @@ add_task(clear_state);
 add_task(
   async function test_records_changes_are_overwritten_by_server_changes() {
     // Create some local conflicting data, and make sure it syncs without error.
-    await client.db.create(
-      {
-        website: "",
-        id: "9d500963-d80e-3a91-6e74-66f3811b99cc",
-      },
-      { useRecordId: true }
-    );
+    await client.db.create({
+      website: "",
+      id: "9d500963-d80e-3a91-6e74-66f3811b99cc",
+    });
 
     await client.maybeSync(2000);
 
@@ -254,6 +258,47 @@ add_task(async function test_get_does_not_load_dump_when_pref_is_false() {
 
   equal(data.map(r => r.id).join(", "), "pt-BR, xx"); // No dump, 2 pulled from test server.
   Services.prefs.clearUserPref("services.settings.load_dump");
+});
+add_task(clear_state);
+
+add_task(async function test_get_loads_dump_only_once_if_called_in_parallel() {
+  const backup = clientWithDump._importJSONDump;
+  let callCount = 0;
+  clientWithDump._importJSONDump = async () => {
+    callCount++;
+    // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return 42;
+  };
+  await Promise.all([clientWithDump.get(), clientWithDump.get()]);
+  equal(callCount, 1, "JSON dump was called more than once");
+  clientWithDump._importJSONDump = backup;
+});
+add_task(clear_state);
+
+add_task(async function test_get_falls_back_to_dump_if_db_fails() {
+  if (IS_ANDROID) {
+    // Skip test: we don't ship remote settings dumps on Android (see package-manifest).
+    return;
+  }
+  const backup = clientWithDump.db.getLastModified;
+  clientWithDump.db.getLastModified = () => {
+    throw new Error("Unknown error");
+  };
+
+  const records = await clientWithDump.get();
+  ok(records.length > 0, "dump content is returned");
+
+  // If fallback is disabled, error is thrown.
+  let error;
+  try {
+    await clientWithDump.get({ dumpFallback: false });
+  } catch (e) {
+    error = e;
+  }
+  equal(error.message, "Unknown error");
+
+  clientWithDump.db.getLastModified = backup;
 });
 add_task(clear_state);
 
@@ -326,6 +371,7 @@ add_task(async function test_get_can_verify_signature_pulled() {
       return true;
     },
   };
+  client.verifySignature = true;
 
   // No metadata in local DB, but gets pulled and then verifies.
   ok(ObjectUtils.isEmpty(await client.db.getMetadata()), "Metadata is empty");
@@ -408,6 +454,26 @@ add_task(async function test_get_does_not_verify_signature_if_load_dump() {
   ok(Object.keys(metadata).length > 0, "metadata was fetched");
   ok(called, "signature was verified for the data that was in dump");
 });
+add_task(clear_state);
+
+add_task(
+  async function test_get_does_verify_signature_if_json_loaded_in_parallel() {
+    const backup = clientWithDump._verifier;
+    let callCount = 0;
+    clientWithDump._verifier = {
+      async asyncVerifyContentSignature(serialized, signature) {
+        callCount++;
+        return true;
+      },
+    };
+    await Promise.all([
+      clientWithDump.get({ verifySignature: true }),
+      clientWithDump.get({ verifySignature: true }),
+    ]);
+    equal(callCount, 0, "No need to verify signatures if JSON dump is loaded");
+    clientWithDump._verifier = backup;
+  }
+);
 add_task(clear_state);
 
 add_task(async function test_sync_runs_once_only() {
@@ -677,7 +743,7 @@ add_task(async function test_telemetry_reports_if_application_fails() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_if_sync_fails() {
-  await client.db.saveLastModified(9999);
+  await client.db.importChanges({}, 9999);
 
   const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
 
@@ -692,7 +758,7 @@ add_task(async function test_telemetry_reports_if_sync_fails() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_if_parsing_fails() {
-  await client.db.saveLastModified(10000);
+  await client.db.importChanges({}, 10000);
 
   const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
 
@@ -707,7 +773,7 @@ add_task(async function test_telemetry_reports_if_parsing_fails() {
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_if_fetching_signature_fails() {
-  await client.db.saveLastModified(11000);
+  await client.db.importChanges({}, 11000);
 
   const startHistogram = getUptakeTelemetrySnapshot(client.identifier);
 
@@ -802,6 +868,24 @@ add_task(async function test_bucketname_changes_when_bucket_pref_changes() {
 
   equal(client.bucketName, "main-preview");
 });
+add_task(clear_state);
+
+add_task(
+  async function test_get_loads_default_records_from_a_local_dump_if_preview_collection() {
+    if (IS_ANDROID) {
+      // Skip test: we don't ship remote settings dumps on Android (see package-manifest).
+      return;
+    }
+    Services.prefs.setCharPref(
+      "services.settings.default_bucket",
+      "main-preview"
+    );
+    // When collection has a dump in services/settings/dumps/{bucket}/{collection}.json
+    const data = await clientWithDump.get();
+    notEqual(data.length, 0);
+    // No synchronization happened (responses are not mocked).
+  }
+);
 add_task(clear_state);
 
 add_task(

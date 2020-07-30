@@ -242,6 +242,25 @@ static bool ToJSValue_f64(JSContext* cx, double src, MutableHandleValue dst) {
   Debug::print(src);
   return true;
 }
+#ifdef ENABLE_WASM_SIMD
+template <typename Debug = NoDebug>
+static bool ToJSValue_v128(JSContext* cx, const V128& src,
+                           MutableHandleValue dst) {
+  // Conversion to v128 happens only in the context of the debugger, all other
+  // execution paths are blocked from running this conversion.
+  //
+  // v128 does not have a convenient representation in JS, nor a convenient way
+  // of printing it -- after all, what's the intended interpretation?  For the
+  // time being, we transform it to a single i32 that represents lane 0 of an
+  // int32x4, and we print it as an int32x4 -- at least this shows the bit
+  // representation.
+  dst.set(Int32Value(src.extractLane<int32_t>(0)));
+  for (unsigned i = 0; i < 4; i++) {
+    Debug::print(src.extractLane<int32_t>(i));
+  }
+  return true;
+}
+#endif
 template <typename Debug = NoDebug>
 static bool ToJSValue_funcref(JSContext* cx, void* src,
                               MutableHandleValue dst) {
@@ -280,7 +299,12 @@ static bool ToJSValue(JSContext* cx, const void* src, ValType type,
       return ToJSValue_f64<Debug>(cx, *reinterpret_cast<const double*>(src),
                                   dst);
     case ValType::V128:
-      MOZ_CRASH("unhandled type in ToJSValue");
+#ifdef ENABLE_WASM_SIMD
+      return ToJSValue_v128<Debug>(cx, *reinterpret_cast<const V128*>(src),
+                                   dst);
+#else
+      break;
+#endif
     case ValType::Ref:
       switch (type.refTypeKind()) {
         case RefType::Func:
@@ -1021,7 +1045,7 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
           // This element is a wasm function imported from another
           // instance. To preserve the === function identity required by
           // the JS embedding spec, we must set the element to the
-          // imported function's underlying CodeRange.funcTableEntry and
+          // imported function's underlying CodeRange.funcCheckedCallEntry and
           // Instance so that future Table.get()s produce the same
           // function object as was imported.
           WasmInstanceObject* calleeInstanceObj =
@@ -1031,13 +1055,14 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
           const CodeRange& calleeCodeRange =
               calleeInstanceObj->getExportedFunctionCodeRange(fun, calleeTier);
           void* code = calleeInstance.codeBase(calleeTier) +
-                       calleeCodeRange.funcTableEntry();
+                       calleeCodeRange.funcCheckedCallEntry();
           table.setFuncRef(dstOffset + i, code, &calleeInstance);
           continue;
         }
       }
-      void* code = codeBaseTier +
-                   codeRanges[funcToCodeRange[funcIndex]].funcTableEntry();
+      void* code =
+          codeBaseTier +
+          codeRanges[funcToCodeRange[funcIndex]].funcCheckedCallEntry();
       table.setFuncRef(dstOffset + i, code, this);
     }
   }
@@ -1472,8 +1497,8 @@ bool Instance::init(JSContext* cx, const JSFunctionVector& funcImports,
           calleeInstanceObj->getExportedFunctionCodeRange(f, calleeTier);
       import.tls = calleeInstance.tlsData();
       import.realm = f->realm();
-      import.code =
-          calleeInstance.codeBase(calleeTier) + codeRange.funcNormalEntry();
+      import.code = calleeInstance.codeBase(calleeTier) +
+                    codeRange.funcUncheckedCallEntry();
       import.jitScript = nullptr;
     } else if (void* thunk = MaybeGetBuiltinThunk(f, fi.funcType())) {
       import.tls = tlsData();

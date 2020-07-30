@@ -24,10 +24,8 @@ const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "AddonRepository",
-  "resource://gre/modules/addons/AddonRepository.jsm"
+const { RemoteSettings } = ChromeUtils.import(
+  "resource://services-settings/remote-settings.js"
 );
 
 XPCOMUtils.defineLazyModuleGetters(this, {
@@ -35,9 +33,13 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 });
 
 const PREF_PIONEER_ID = "toolkit.telemetry.pioneerId";
+const PREF_PIONEER_NEW_STUDIES_AVAILABLE =
+  "toolkit.telemetry.pioneer-new-studies-available";
 
-// For the pilot program (Fx78), only allow a single add-on ID.
-const STUDY_ADDON_WHITELIST = ["pioneer-v2-example@mozilla.org"];
+/**
+ * This is the Remote Settings key that we use to get the list of available studies.
+ */
+const STUDY_ADDON_COLLECTION_KEY = "pioneer-study-addons";
 
 function showEnrollmentStatus() {
   const pioneerId = Services.prefs.getStringPref(PREF_PIONEER_ID, null);
@@ -55,12 +57,12 @@ async function showAvailableStudies(cachedAddons) {
   for (const cachedAddon of cachedAddons) {
     if (!cachedAddon) {
       console.error(
-        `about:pioneer - Study addon ID not found in AMO cache: ${studyAddonId}`
+        `about:pioneer - Study addon ID not found in cache: ${studyAddonId}`
       );
       return;
     }
 
-    const studyAddonId = cachedAddon.id;
+    const studyAddonId = cachedAddon.addon_id;
 
     const study = document.createElement("div");
     study.setAttribute("id", studyAddonId);
@@ -84,7 +86,7 @@ async function showAvailableStudies(cachedAddons) {
 
     const studyCreator = document.createElement("span");
     studyCreator.setAttribute("class", "card-creator");
-    studyCreator.textContent = cachedAddon.creator;
+    studyCreator.textContent = cachedAddon.creator.name;
     studyBody.appendChild(studyCreator);
 
     const actions = document.createElement("div");
@@ -144,7 +146,7 @@ async function showAvailableStudies(cachedAddons) {
         joinBtn.disabled = true;
         await install.install();
       }
-      updateStudy(studyAddonId);
+      await updateStudy(studyAddonId);
     }
 
     enrollStudyBtn.addEventListener("input", toggleEnrolled);
@@ -153,7 +155,7 @@ async function showAvailableStudies(cachedAddons) {
     const availableStudies = document.getElementById("available-studies");
     availableStudies.appendChild(study);
 
-    updateStudy(studyAddonId);
+    await updateStudy(studyAddonId);
   }
 
   const availableStudies = document.getElementById("header-available-studies");
@@ -208,7 +210,7 @@ function generateUUID() {
   return str.substring(1, str.length - 1);
 }
 
-function setup() {
+async function setup(cachedAddons) {
   document
     .getElementById("enrollment-button")
     .addEventListener("click", async event => {
@@ -216,34 +218,35 @@ function setup() {
 
       if (pioneerId) {
         Services.prefs.clearUserPref(PREF_PIONEER_ID);
+        for (const cachedAddon of cachedAddons) {
+          const addon = await AddonManager.getAddonByID(cachedAddon.addon_id);
+          if (addon) {
+            await addon.uninstall();
+          }
 
-        for (const studyAddonId of STUDY_ADDON_WHITELIST) {
-          const study = document.getElementById(studyAddonId);
+          const study = document.getElementById(cachedAddon.addon_id);
           if (study) {
-            const addon = await AddonManager.getAddonByID(studyAddonId);
-            if (addon) {
-              await addon.uninstall();
-            }
-            updateStudy(studyAddonId);
+            await updateStudy(cachedAddon.addon_id);
           }
         }
       } else {
         let uuid = generateUUID();
         Services.prefs.setStringPref(PREF_PIONEER_ID, uuid);
-
-        for (const studyAddonId of STUDY_ADDON_WHITELIST) {
-          const study = document.getElementById(studyAddonId);
+        for (const cachedAddon of cachedAddons) {
+          const study = document.getElementById(cachedAddon.addon_id);
           if (study) {
-            updateStudy(studyAddonId);
+            await updateStudy(cachedAddon.addon_id);
           }
         }
       }
-      await showEnrollmentStatus();
+      showEnrollmentStatus();
     });
 
-  const onAddonEvent = addon => {
-    if (STUDY_ADDON_WHITELIST.includes(addon.id)) {
-      updateStudy(addon.id);
+  const onAddonEvent = async addon => {
+    for (const cachedAddon in cachedAddons) {
+      if (cachedAddon.addon_id == addon.id) {
+        await updateStudy(addon.id);
+      }
     }
   };
   const addonsListener = {
@@ -259,9 +262,22 @@ function setup() {
   });
 }
 
+function removeBadge() {
+  Services.prefs.setBoolPref(PREF_PIONEER_NEW_STUDIES_AVAILABLE, false);
+
+  for (let win of Services.wm.getEnumerator("navigator:browser")) {
+    const badge = win.document
+      .getElementById("pioneer-button")
+      .querySelector(".toolbarbutton-badge");
+    badge.classList.remove("feature-callout");
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async domEvent => {
-  setup();
   showEnrollmentStatus();
+
+  document.addEventListener("focus", removeBadge);
+  removeBadge();
 
   let cachedAddons;
   if (Cu.isInAutomation) {
@@ -273,8 +289,9 @@ document.addEventListener("DOMContentLoaded", async domEvent => {
       cachedAddons = JSON.parse(testCachedAddons);
     }
   } else {
-    cachedAddons = await AddonRepository.cacheAddons(STUDY_ADDON_WHITELIST);
+    cachedAddons = await RemoteSettings(STUDY_ADDON_COLLECTION_KEY).get();
   }
 
-  showAvailableStudies(cachedAddons);
+  await setup(cachedAddons);
+  await showAvailableStudies(cachedAddons);
 });

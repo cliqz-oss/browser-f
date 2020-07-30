@@ -59,9 +59,13 @@ using FinalizationRecordVector = GCVector<HeapPtrObject, 1, ZoneAllocPolicy>;
 
 }  // namespace gc
 
+// If two different nursery strings are wrapped into the same zone, and have
+// the same contents, then deduplication may make them duplicates.
+// `DuplicatesPossible` will allow this and map both wrappers to the same (now
+// tenured) source string.
 using StringWrapperMap =
     NurseryAwareHashMap<JSString*, JSString*, DefaultHasher<JSString*>,
-                        ZoneAllocPolicy>;
+                        ZoneAllocPolicy, DuplicatesPossible>;
 
 class MOZ_NON_TEMPORARY_CLASS ExternalStringCache {
   static const size_t NumEntries = 4;
@@ -121,7 +125,7 @@ class WeakRefMap
   using GCHashMap::GCHashMap;
   using Base = GCHashMap<HeapPtrObject, WeakRefHeapPtrVector,
                          MovableCellHasher<HeapPtrObject>, ZoneAllocPolicy>;
-  void sweep();
+  void sweep(gc::StoreBuffer* sbToLock);
 };
 
 }  // namespace js

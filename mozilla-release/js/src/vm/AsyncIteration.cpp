@@ -416,6 +416,16 @@ static const JSFunctionSpec async_iterator_proto_methods[] = {
     JS_SELF_HOSTED_SYM_FN(asyncIterator, "AsyncIteratorIdentity", 0, 0),
     JS_FS_END};
 
+static const JSFunctionSpec async_iterator_proto_methods_with_helpers[] = {
+    JS_SELF_HOSTED_FN("reduce", "AsyncIteratorReduce", 1, 0),
+    JS_SELF_HOSTED_FN("toArray", "AsyncIteratorToArray", 0, 0),
+    JS_SELF_HOSTED_FN("forEach", "AsyncIteratorForEach", 1, 0),
+    JS_SELF_HOSTED_FN("some", "AsyncIteratorSome", 1, 0),
+    JS_SELF_HOSTED_FN("every", "AsyncIteratorEvery", 1, 0),
+    JS_SELF_HOSTED_FN("find", "AsyncIteratorFind", 1, 0),
+    JS_SELF_HOSTED_SYM_FN(asyncIterator, "AsyncIteratorIdentity", 0, 0),
+    JS_FS_END};
+
 static const JSFunctionSpec async_from_sync_iter_methods[] = {
     JS_FN("next", AsyncFromSyncIteratorNext, 1, 0),
     JS_FN("throw", AsyncFromSyncIteratorThrow, 1, 0),
@@ -562,3 +572,61 @@ static const ClassSpec AsyncGeneratorFunctionClassSpec = {
 const JSClass js::AsyncGeneratorFunctionClass = {
     "AsyncGeneratorFunction", 0, JS_NULL_CLASS_OPS,
     &AsyncGeneratorFunctionClassSpec};
+
+// https://tc39.es/proposal-iterator-helpers/#sec-asynciterator as of revision
+// 8f10db5.
+static bool AsyncIteratorConstructor(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Step 1.
+  if (!ThrowIfNotConstructing(cx, args, js_AsyncIterator_str)) {
+    return false;
+  }
+  // Throw TypeError if NewTarget is the active function object, preventing the
+  // Iterator constructor from being used directly.
+  if (args.callee() == args.newTarget().toObject()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_BOGUS_CONSTRUCTOR, js_AsyncIterator_str);
+    return false;
+  }
+
+  // Step 2.
+  RootedObject proto(cx);
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_AsyncIterator,
+                                          &proto)) {
+    return false;
+  }
+
+  JSObject* obj = NewObjectWithClassProto<AsyncIteratorObject>(cx, proto);
+  if (!obj) {
+    return false;
+  }
+
+  args.rval().setObject(*obj);
+  return true;
+}
+
+static const ClassSpec AsyncIteratorObjectClassSpec = {
+    GenericCreateConstructor<AsyncIteratorConstructor, 0,
+                             gc::AllocKind::FUNCTION>,
+    GenericCreatePrototype<AsyncIteratorObject>,
+    nullptr,
+    nullptr,
+    async_iterator_proto_methods_with_helpers,
+    nullptr,
+    nullptr,
+};
+
+const JSClass AsyncIteratorObject::class_ = {
+    js_AsyncIterator_str,
+    JSCLASS_HAS_CACHED_PROTO(JSProto_AsyncIterator),
+    JS_NULL_CLASS_OPS,
+    &AsyncIteratorObjectClassSpec,
+};
+
+const JSClass AsyncIteratorObject::protoClass_ = {
+    js_AsyncIterator_str,
+    JSCLASS_HAS_CACHED_PROTO(JSProto_AsyncIterator),
+    JS_NULL_CLASS_OPS,
+    &AsyncIteratorObjectClassSpec,
+};

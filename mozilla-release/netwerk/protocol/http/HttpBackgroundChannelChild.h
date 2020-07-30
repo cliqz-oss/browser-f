@@ -39,9 +39,16 @@ class HttpBackgroundChannelChild final : public PHttpBackgroundChannelChild {
   // handle any incoming messages over background channel.
   void OnChannelClosed();
 
+  // Return true if OnChannelClosed has been called.
+  bool ChannelClosed();
+
   // Callback when OnStartRequest is received and handled by HttpChannelChild.
   // Enqueued messages in background channel will be flushed.
   void OnStartRequestReceived();
+
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  bool IsQueueEmpty() const { return mQueuedRunnables.IsEmpty(); }
+#endif
 
  protected:
   IPCResult RecvOnTransportAndData(const nsresult& aChannelStatus,
@@ -106,8 +113,6 @@ class HttpBackgroundChannelChild final : public PHttpBackgroundChannelChild {
   // Should be flushed after OnStartRequest is received and handled.
   // Should only access on STS thread.
   nsTArray<nsCOMPtr<nsIRunnable>> mQueuedRunnables;
-
-  RefPtr<BackgroundDataBridgeChild> mDataBridgeChild;
 };
 
 }  // namespace net

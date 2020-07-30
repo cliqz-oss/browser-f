@@ -88,8 +88,10 @@ async function assertWebRTCIndicatorStatus(expected) {
   if (!expected && ui.showGlobalIndicator) {
     // It seems the global indicator is not always removed synchronously
     // in some cases.
-    info("waiting for the global indicator to be hidden");
-    await TestUtils.waitForCondition(() => !ui.showGlobalIndicator);
+    await TestUtils.waitForCondition(
+      () => !ui.showGlobalIndicator,
+      "waiting for the global indicator to be hidden"
+    );
   }
   is(ui.showGlobalIndicator, !!expected, msg);
 
@@ -321,46 +323,50 @@ function expectObserverCalledOnClose(
   });
 }
 
-function promiseMessage(aMessage, aAction, aCount = 1) {
-  let promise = ContentTask.spawn(
-    gBrowser.selectedBrowser,
-    [aMessage, aCount],
-    async function([expectedMessage, expectedCount]) {
-      return new Promise(resolve => {
-        function listenForMessage({ data }) {
-          if (
-            (!expectedMessage || data == expectedMessage) &&
-            --expectedCount == 0
-          ) {
-            content.removeEventListener("message", listenForMessage);
-            resolve(data);
-          }
+function promiseMessage(
+  aMessage,
+  aAction,
+  aCount = 1,
+  browser = gBrowser.selectedBrowser
+) {
+  let promise = ContentTask.spawn(browser, [aMessage, aCount], async function([
+    expectedMessage,
+    expectedCount,
+  ]) {
+    return new Promise(resolve => {
+      function listenForMessage({ data }) {
+        if (
+          (!expectedMessage || data == expectedMessage) &&
+          --expectedCount == 0
+        ) {
+          content.removeEventListener("message", listenForMessage);
+          resolve(data);
         }
-        content.addEventListener("message", listenForMessage);
-      });
-    }
-  );
+      }
+      content.addEventListener("message", listenForMessage);
+    });
+  });
   if (aAction) {
     aAction();
   }
   return promise;
 }
 
-function promisePopupNotificationShown(aName, aAction) {
+function promisePopupNotificationShown(aName, aAction, aWindow = window) {
   return new Promise(resolve => {
     // In case the global webrtc indicator has stolen focus (bug 1421724)
-    window.focus();
+    aWindow.focus();
 
-    PopupNotifications.panel.addEventListener(
+    aWindow.PopupNotifications.panel.addEventListener(
       "popupshown",
       function() {
         ok(
-          !!PopupNotifications.getNotification(aName),
+          !!aWindow.PopupNotifications.getNotification(aName),
           aName + " notification shown"
         );
-        ok(PopupNotifications.isPanelOpen, "notification panel open");
+        ok(aWindow.PopupNotifications.isPanelOpen, "notification panel open");
         ok(
-          !!PopupNotifications.panel.firstElementChild,
+          !!aWindow.PopupNotifications.panel.firstElementChild,
           "notification panel populated"
         );
 
@@ -511,22 +517,24 @@ async function getMediaCaptureState() {
 async function stopSharing(
   aType = "camera",
   aShouldKeepSharing = false,
-  aFrameBC
+  aFrameBC,
+  aWindow = window
 ) {
-  // If the observers are listening to other frames, listen for a notification
-  // on the right subframe.
-  let frameBCToObserve;
-  if (gBrowserContextsToObserve.length > 1) {
-    frameBCToObserve = aFrameBC;
-  }
-
   let promiseRecordingEvent = expectObserverCalled(
     "recording-device-events",
     1,
-    frameBCToObserve
+    aFrameBC
   );
-  gIdentityHandler._identityBox.click();
-  let permissions = document.getElementById("identity-popup-permission-list");
+  aWindow.gIdentityHandler._identityBox.click();
+  let popup = aWindow.gIdentityHandler._identityPopup;
+  // If the popup gets hidden before being shown, by stray focus/activate
+  // events, don't bother failing the test. It's enough to know that we
+  // started showing the popup.
+  let hiddenEvent = BrowserTestUtils.waitForEvent(popup, "popuphidden");
+  let shownEvent = BrowserTestUtils.waitForEvent(popup, "popupshown");
+  await Promise.race([hiddenEvent, shownEvent]);
+  let doc = aWindow.document;
+  let permissions = doc.getElementById("identity-popup-permission-list");
   let cancelButton = permissions.querySelector(
     ".identity-popup-permission-icon." +
       aType +
@@ -536,7 +544,7 @@ async function stopSharing(
   let observerPromise1 = expectObserverCalled(
     "getUserMedia:revoke",
     1,
-    frameBCToObserve
+    aFrameBC
   );
 
   // If we are stopping screen sharing and expect to still have another stream,
@@ -546,12 +554,13 @@ async function stopSharing(
     observerPromise2 = expectObserverCalled(
       "recording-window-ended",
       1,
-      frameBCToObserve
+      aFrameBC
     );
   }
 
   cancelButton.click();
-  gIdentityHandler._identityPopup.hidden = true;
+  popup.hidePopup();
+
   await promiseRecordingEvent;
   await observerPromise1;
   await observerPromise2;
@@ -660,7 +669,8 @@ async function reloadAndAssertClosedStreams() {
   await checkNotSharing();
 }
 
-function checkDeviceSelectors(aAudio, aVideo, aScreen) {
+function checkDeviceSelectors(aAudio, aVideo, aScreen, aWindow = window) {
+  let document = aWindow.document;
   let micSelector = document.getElementById("webRTC-selectMicrophone");
   if (aAudio) {
     ok(!micSelector.hidden, "microphone selector visible");
@@ -724,6 +734,13 @@ async function checkSharingUI(
 
   // Then check the sharing indicators inside the control center panel.
   identityBox.click();
+  let popup = aWin.gIdentityHandler._identityPopup;
+  // If the popup gets hidden before being shown, by stray focus/activate
+  // events, don't bother failing the test. It's enough to know that we
+  // started showing the popup.
+  let hiddenEvent = BrowserTestUtils.waitForEvent(popup, "popuphidden");
+  let shownEvent = BrowserTestUtils.waitForEvent(popup, "popupshown");
+  await Promise.race([hiddenEvent, shownEvent]);
   let permissions = doc.getElementById("identity-popup-permission-list");
   for (let id of ["microphone", "camera", "screen"]) {
     let convertId = idToConvert => {
@@ -762,7 +779,11 @@ async function checkSharingUI(
       is(icon.length, 1, "should not show more than 1 " + id + " icon");
     }
   }
-  aWin.gIdentityHandler._identityPopup.hidden = true;
+  aWin.gIdentityHandler._identityPopup.hidePopup();
+  await TestUtils.waitForCondition(
+    () => identityPopupHidden(aWin),
+    "identity popup should be hidden"
+  );
 
   // Check the global indicators.
   await assertWebRTCIndicatorStatus(aExpectedGlobal || aExpected);
@@ -873,6 +894,11 @@ async function disableObserverVerification() {
   }
 }
 
+function identityPopupHidden(win = window) {
+  let popup = win.gIdentityHandler._identityPopup;
+  return !popup || popup.state == "closed";
+}
+
 async function runTests(tests, options = {}) {
   let browser = await openNewTestTab(options.relativeURI);
 
@@ -882,14 +908,14 @@ async function runTests(tests, options = {}) {
     "should start the test without any prior popup notification"
   );
   ok(
-    gIdentityHandler._identityPopup.hidden,
+    identityPopupHidden(),
     "should start the test with the control center hidden"
   );
 
   // Set prefs so that permissions prompts are shown and loopback devices
   // are not used. To test the chrome we want prompts to be shown, and
   // these tests are flakey when using loopback devices (though it would
-  // be desirable to make them work with loopback in future).
+  // be desirable to make them work with loopback in future). See bug 1643711.
   let prefs = [
     [PREF_PERMISSION_FAKE, true],
     [PREF_AUDIO_LOOPBACK, ""],

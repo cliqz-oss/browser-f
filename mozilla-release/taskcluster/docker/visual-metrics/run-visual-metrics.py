@@ -27,6 +27,7 @@ from voluptuous import ALLOW_EXTRA, Required, Schema
 #: The directory where artifacts from this job will be placed.
 OUTPUT_DIR = Path("/", "builds", "worker", "artifacts")
 
+
 #: A job to process through visualmetrics.py
 @attr.s
 class Job:
@@ -280,7 +281,7 @@ def main(log, args):
     perf_data = {
         "framework": {"name": "browsertime"},
         "application": jobs_json["application"],
-        "type": "vismet",
+        "type": "pageload",
         "suites": suites,
     }
     for entry in suites:

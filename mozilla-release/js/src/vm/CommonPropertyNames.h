@@ -139,6 +139,7 @@
   MACRO(era, era, "era")                                                       \
   MACRO(ErrorToStringWithTrailingNewline, ErrorToStringWithTrailingNewline,    \
         "ErrorToStringWithTrailingNewline")                                    \
+  MACRO(errors, errors, "errors")                                              \
   MACRO(escape, escape, "escape")                                              \
   MACRO(eval, eval, "eval")                                                    \
   MACRO(exec, exec, "exec")                                                    \
@@ -323,6 +324,7 @@
   MACRO(objectRegExp, objectRegExp, "[object RegExp]")                         \
   MACRO(objects, objects, "objects")                                           \
   MACRO(objectString, objectString, "[object String]")                         \
+  MACRO(objectSymbol, objectSymbol, "[object Symbol]")                         \
   MACRO(objectUndefined, objectUndefined, "[object Undefined]")                \
   MACRO(of, of, "of")                                                          \
   MACRO(offset, offset, "offset")                                              \
@@ -428,6 +430,7 @@
   MACRO(ToNumeric, ToNumeric, "ToNumeric")                                     \
   MACRO(toSource, toSource, "toSource")                                        \
   MACRO(toString, toString, "toString")                                        \
+  MACRO(ToString, ToString, "ToString")                                        \
   MACRO(toUTCString, toUTCString, "toUTCString")                               \
   MACRO(true, true_, "true")                                                   \
   MACRO(try, try_, "try")                                                      \
@@ -448,6 +451,15 @@
   MACRO(uninitialized, uninitialized, "uninitialized")                         \
   MACRO(unknown, unknown, "unknown")                                           \
   MACRO(unregister, unregister, "unregister")                                  \
+  MACRO(UnsafeGetReservedSlot, UnsafeGetReservedSlot, "UnsafeGetReservedSlot") \
+  MACRO(UnsafeGetObjectFromReservedSlot, UnsafeGetObjectFromReservedSlot,      \
+        "UnsafeGetObjectFromReservedSlot")                                     \
+  MACRO(UnsafeGetInt32FromReservedSlot, UnsafeGetInt32FromReservedSlot,        \
+        "UnsafeGetInt32FromReservedSlot")                                      \
+  MACRO(UnsafeGetStringFromReservedSlot, UnsafeGetStringFromReservedSlot,      \
+        "UnsafeGetStringFromReservedSlot")                                     \
+  MACRO(UnsafeGetBooleanFromReservedSlot, UnsafeGetBooleanFromReservedSlot,    \
+        "UnsafeGetBooleanFromReservedSlot")                                    \
   MACRO(unsized, unsized, "unsized")                                           \
   MACRO(unwatch, unwatch, "unwatch")                                           \
   MACRO(url, url, "url")                                                       \
