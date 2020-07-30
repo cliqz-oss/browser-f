@@ -1,6 +1,8 @@
 # Ubuntu:18.04 on 16-01-2020 at 3:14 am
 FROM ubuntu:18.04@sha256:bc025862c3e8ec4a8754ea4756e33da6c41cba38330d7e324abd25c8e0b93300
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && apt-get install -y unzip python3 make zip autoconf2.13 wget \
     python yasm clang-6.0 rsync xz-utils awscli libnss3-dev libnss3-tools bzip2 \
     libxml2
